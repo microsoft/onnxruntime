@@ -13,15 +13,10 @@
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"
+#include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/to_tensor_proto_element_type.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
 
 struct OrtValue;
 
@@ -207,18 +202,49 @@ class DataTypeImpl {
   static void RegisterDataType(MLDataType);
   static MLDataType GetDataType(const std::string&);
 
-  static const std::vector<MLDataType>& AllTensorTypes();
-  static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
-  static const std::vector<MLDataType>& AllSequenceTensorTypes();
-  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes();
-  static const std::vector<MLDataType>& AllNumericTensorTypes();
-  static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
-  static const std::vector<MLDataType>& AllFixedSizeTensorExceptHalfTypes();
-  static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
-  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();
-  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();
-  static const std::vector<MLDataType>& AllOptionalTypes();
-  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();
+  // IR4: includes all float types, includes float16, bfloat16
+  // IR9: includes float 8 types as well
+  static const std::vector<MLDataType>& AllTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllTensorTypesIRv4();
+  static const std::vector<MLDataType>& AllTensorTypesIRv9();
+
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypesIRv4();
+  static const std::vector<MLDataType>& AllFixedSizeTensorTypesIRv9();
+
+  static const std::vector<MLDataType>& AllSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllSequenceTensorTypesIRv4();
+  static const std::vector<MLDataType>& AllSequenceTensorTypesIRv9();
+
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIRv4();
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIRv9();
+
+  static const std::vector<MLDataType>& AllNumericTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllNumericTensorTypesIRv4();
+  static const std::vector<MLDataType>& AllNumericTensorTypesIRv9();
+
+  static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();  // float16, float, double
+
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv4();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv9();
+
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv4();
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv9();
+
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesIRv4();
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesIRv9();
+
+  static const std::vector<MLDataType>& AllOptionalTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllOptionalTypesIRv4();
+  static const std::vector<MLDataType>& AllOptionalTypesIRv9();
+
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();  // up to IR4 (no float 8), deprecated
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypesIRv4();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypesIRv9();
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);
@@ -254,7 +280,12 @@ struct IsAnyOf<T, H, Tail...> {
 template <typename T>
 struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                               int32_t, int64_t, std::string, bool, MLFloat16,
-                                              double, uint32_t, uint64_t, BFloat16> {
+                                              double, uint32_t, uint64_t, BFloat16
+#if !defined(DISABLE_FLOAT8_TYPES)
+                                              ,
+                                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+#endif
+                                              > {
 };
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -264,7 +295,12 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
 template <typename T>
 struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                                     int32_t, int64_t, std::string, bool, MLFloat16,
-                                                    double, uint32_t, uint64_t, BFloat16> {
+                                                    double, uint32_t, uint64_t, BFloat16
+#if !defined(DISABLE_FLOAT8_TYPES)
+                                                    ,
+                                                    Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+#endif
+                                                    > {
 };
 #endif
 
@@ -385,8 +421,8 @@ void AssignOpaqueDomainName(const char* domain, const char* name,
 
 }  // namespace data_types_internal
 
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
+// The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -613,7 +649,7 @@ class OptionalType :
 #if !defined(DISABLE_OPTIONAL_TYPE)
   OptionalType()
 #else
-  OptionalType() : DisabledTypeBase { DataTypeImpl::GeneralType::kOptional, 0 }
+  OptionalType() : DisabledTypeBase{DataTypeImpl::GeneralType::kOptional, 0}
 #endif
   {
     using namespace data_types_internal;

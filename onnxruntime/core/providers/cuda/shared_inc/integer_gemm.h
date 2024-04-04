@@ -21,4 +21,4 @@ Status GemmInt8(int m,
                 const CudaKernel* cuda_kernel,
                 onnxruntime::Stream* stream);
 }
-}
+}  // namespace onnxruntime

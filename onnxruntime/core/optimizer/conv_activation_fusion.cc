@@ -4,9 +4,10 @@
 #include "core/optimizer/conv_activation_fusion.h"
 
 #include <string_view>
-
+#include <string>
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/utils.h"
@@ -49,18 +50,30 @@ bool ConvFusionDataTypeCheck(const Node& conv_node) {
   // Assess the support level for the other compatible EPs and if they also
   // only support float, remove the EP check altogether.
   const std::string_view node_ep = conv_node.GetExecutionProviderType();
-  if (node_ep == kCudaExecutionProvider || node_ep == kCpuExecutionProvider) {
+  if (node_ep == kCudaExecutionProvider) {
     if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
       return false;
     }
+  }
+  if (node_ep == kCpuExecutionProvider) {
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+    if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
+        !HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
+      return false;
+    }
+#else
+    if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+      return false;
+    }
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
   }
 
   return true;
 }
 
-class ConvActivation : public NodeSelector {
+class ConvActivationSelector : public NodeSelector {
  public:
-  ConvActivation() = default;
+  ConvActivationSelector() = default;
 
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
@@ -70,11 +83,11 @@ class ConvActivation : public NodeSelector {
       return std::nullopt;
     }
 
-    auto is_supported_non_cuda_ep_activation = [&graph_viewer](const Node& activation_node) {
+    auto is_supported_non_cuda_rocm_ep_activation = [&graph_viewer](const Node& activation_node) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "LeakyRelu", {6})) {
+          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "LeakyRelu", {6, 16})) {
         return true;
       }
 
@@ -94,17 +107,17 @@ class ConvActivation : public NodeSelector {
     }
 
     // check EP type and activation
-    if (node_ep == kCudaExecutionProvider) {
+    if (node_ep == kCudaExecutionProvider || node_ep == kRocmExecutionProvider) {
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
         return std::nullopt;
       }
-    } else if (node_ep.empty() || node_ep == kCpuExecutionProvider) {
-      if (!is_supported_non_cuda_ep_activation(*next_node) &&
+    } else if (node_ep.empty() || node_ep == kCpuExecutionProvider || node_ep == kJsExecutionProvider) {
+      if (!is_supported_non_cuda_rocm_ep_activation(*next_node) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6})) {
         return std::nullopt;
       }
     } else {
-      if (!is_supported_non_cuda_ep_activation(*next_node)) {
+      if (!is_supported_non_cuda_rocm_ep_activation(*next_node)) {
         return std::nullopt;
       }
     }
@@ -159,11 +172,31 @@ class ConvAddRelu : public NodeSelector {
 namespace actions {
 using NTO = NodesToOptimize;
 
-class FuseConvActivation : public ReplaceWithNew {
+class FuseConvActivationAction : public ReplaceWithNew {
  private:
-  std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
+  std::string OpType(const RuntimeState& runtime_state) const override {
+    const auto& domain = runtime_state.selected_nodes.Target().Domain();
+    const auto& op_type = runtime_state.selected_nodes.Target().OpType();
+    if (domain == kOnnxDomain) {
+      if (op_type == "Conv") {
+        return "FusedConv";
+      }
+    } else if (domain == kMSDomain) {
+      if (op_type == "NhwcConv") {
+        return "NhwcFusedConv";
+      }
+    } else if (domain == kMSInternalNHWCDomain) {
+      if (op_type == "Conv") {
+        return "Conv";
+      }
+    }
+    ORT_THROW("Unsupported operator: ", op_type, " and domain: ", domain);
+  }
 
-  std::string Domain(const RuntimeState&) const override { return kMSDomain; }
+  std::string Domain(const RuntimeState& runtime_state) const override {
+    auto domain = runtime_state.selected_nodes.Target().Domain();
+    return domain == kOnnxDomain ? kMSDomain : domain;
+  }
 
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
@@ -245,10 +278,13 @@ class FuseConvAddRelu : public ReplaceWithNew {
 
 void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   const auto name = "ConvAct";
-  auto action = std::make_unique<actions::FuseConvActivation>();
+  auto action = std::make_unique<actions::FuseConvActivationAction>();
 #if !defined(ORT_MINIMAL_BUILD)
-  auto selector = std::make_unique<selectors::ConvActivation>();
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
+  const std::string msInternalNHWCDomainConv = SelectorActionRegistry::OpVersionsMapKey("Conv", kMSInternalNHWCDomain);
+  const std::string msDomainConv = SelectorActionRegistry::OpVersionsMapKey("NhwcConv", kMSDomain);
+  auto selector = std::make_unique<selectors::ConvActivationSelector>();
+
+  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}, {msInternalNHWCDomainConv, {11}}, {msDomainConv, {1}}},
                                      std::move(selector), std::move(action));
 #else
   registry.RegisterAction(name, std::move(action));

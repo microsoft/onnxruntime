@@ -248,7 +248,6 @@ TEST(TensorOpTest, TileStringType) { RunTestWrapper<std::string>(); }
 
 TEST(TensorOpTest, TileBoolType) { RunTestWrapperForBool(); }
 
-
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(TensorOpTest, TileMLFloat16Type) { RunTestWrapper<MLFloat16>(); }
 #endif

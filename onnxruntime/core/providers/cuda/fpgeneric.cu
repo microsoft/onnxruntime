@@ -64,11 +64,22 @@ __global__ void CopyVectorBFloat16(const onnxruntime::BFloat16* x, int incx, onn
 
 }  // namespace
 
+dim3 cublasTransposeHelperDimGrid(int m, int n) {
+  return dim3((n + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, (m + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, 1);
+}
+
+// cublasTransposeHelper can only be used if it won't overflow the 65536 grid y dimension size
+__host__ bool CanUse_cublasTransposeHelper_MLFloat16(int m, int n) {
+  dim3 dimGrid = cublasTransposeHelperDimGrid(m, n);
+  return dimGrid.y < 65536;
+}
+
 cublasStatus_t cublasTransposeHelper(cudaStream_t stream, cublasHandle_t, cublasOperation_t, cublasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
   if (C != A) {
-    dim3 dimGrid((n + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, (m + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, 1);
+    dim3 dimGrid = cublasTransposeHelperDimGrid(m, n);
     dim3 dimBlock(TRANS_TILE_DIM, BLOCK_ROWS, 1);
 
+    ORT_ENFORCE(dimGrid.y < 65536);  // To prevent this, call CanUse_cublasTransposeHelper_MLFloat16 first
     transposeNoOverlap<<<dimGrid, dimBlock, 0, stream>>>(C, A, n, m);
   } else {
     return CUBLAS_STATUS_NOT_SUPPORTED;

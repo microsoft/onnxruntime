@@ -296,7 +296,7 @@ void OrtEventHandler(EVENT_RECORD* pEvent, void* pContext) {
                                   [&opname, &time_spent_in_this_op](const wchar_t* key, wchar_t* value) {
                                     if (wcscmp(key, L"op_name") == 0) {
                                       opname = value;
-                                    } else if (wcscmp(key, L"time") == 0) {                                 
+                                    } else if (wcscmp(key, L"time") == 0) {
                                       time_spent_in_this_op = wcstol(value, nullptr, 10);
                                     } else {
                                       wprintf(key);

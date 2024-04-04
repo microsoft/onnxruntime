@@ -67,8 +67,9 @@ namespace Dml
     ExecutionProvider::ExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider)
+        bool enableMetacommands,
+        bool enableDynamicGraphFusion) :
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -80,12 +81,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
-
-        // Register the allocators with ORT, through concrete ORT methods on the IExecutionProvider base class
-        InsertAllocator(m_impl->GetGpuAllocator());
-        InsertAllocator(m_impl->GetCpuInputAllocator());
-        InsertAllocator(m_impl->GetCpuOutputAllocator());
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableDynamicGraphFusion);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -146,22 +142,19 @@ namespace Dml
         }
     }
 
-// ORT release pipelines agent pools do not have 19H1 SDK installed which defines D3D_FEATURE_LEVEL_1_0_CORE.
-// Once ORT/WinML github project can be built with VS2019, we can update these pools to use install the 19H1 SDK
-// using the command line installer tool with VS2019
-// Task 24384515: Update ORT AIInfra release agent pool to install 19H1 SDK on VM bootstrap
-#define D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE ((D3D_FEATURE_LEVEL)0x1000)
-
-    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands)
+ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableDynamicGraphFusion)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
-          m_areMetacommandsEnabled(enableMetacommands)
+          m_areMetacommandsEnabled(enableMetacommands),
+          m_dynamicGraphFusionEnabled(enableDynamicGraphFusion)
     {
-
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {
-            D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE,
+  #ifndef _GAMING_XBOX
+            D3D_FEATURE_LEVEL_1_0_GENERIC,
+  #endif
+            D3D_FEATURE_LEVEL_1_0_CORE,
             D3D_FEATURE_LEVEL_11_0,
             D3D_FEATURE_LEVEL_11_1,
             D3D_FEATURE_LEVEL_12_0,
@@ -176,31 +169,71 @@ namespace Dml
             sizeof(featureLevels)
             ));
 
-        m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE);
+        D3D12_FEATURE_DATA_D3D12_OPTIONS4 featureOptions = {};
+        if (SUCCEEDED(d3d12Device->CheckFeatureSupport(
+            D3D12_FEATURE_D3D12_OPTIONS4,
+            &featureOptions,
+            sizeof(featureOptions))))
+        {
+            m_native16BitShaderOpsSupported = featureOptions.Native16BitShaderOpsSupported;
+        }
+
+        m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel <= D3D_FEATURE_LEVEL_1_0_CORE);
+        m_areCustomHeapsSupported = !m_isMcdmDevice;
+
+        if (m_isMcdmDevice)
+        {
+
+            // TODO: Ingest updated header file
+            typedef struct D3D12_FEATURE_DATA_D3D12_OPTIONS19
+            {
+                BOOL MismatchingOutputDimensionsSupported;
+                UINT SupportedSampleCountsWithNoOutputs;
+                BOOL PointSamplingAddressesNeverRoundUp;
+                BOOL RasterizerDesc2Supported;
+                BOOL NarrowQuadrilateralLinesSupported;
+                BOOL AnisoFilterWithPointMipSupported;
+                UINT MaxSamplerDescriptorHeapSize;
+                UINT MaxSamplerDescriptorHeapSizeWithStaticSamplers;
+                UINT MaxViewDescriptorHeapSize;
+                _Out_  BOOL ComputeOnlyCustomHeapSupported;
+            } 	D3D12_FEATURE_DATA_D3D12_OPTIONS19;
+
+            D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19 = {};
+
+            // The call may fail in which case the default value is false
+            d3d12Device->CheckFeatureSupport(static_cast<D3D12_FEATURE>(48) /*D3D12_FEATURE_D3D12_OPTIONS19*/, &options19, sizeof(options19));
+            m_areCustomHeapsSupported = options19.ComputeOnlyCustomHeapSupported;
+        }
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
-
-        // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
-        // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
-        m_allocator = std::make_shared<BucketizedBufferAllocator>(
-            m_d3d12Device.Get(),
-            m_context,
-            CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-            D3D12_HEAP_FLAG_NONE,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
-
-        m_context->SetAllocator(m_allocator);
 
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
 
-        // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-        m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
-        m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
-
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
+
+        m_lastUploadFlushTime = std::chrono::steady_clock::now();
+    }
+
+    std::vector<onnxruntime::AllocatorPtr> ExecutionProviderImpl::CreatePreferredAllocators() {
+        if (!m_allocator)
+        {
+            // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
+            // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
+            m_allocator = std::make_shared<BucketizedBufferAllocator>(m_d3d12Device.Get(),
+                m_context,  // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
+                CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
+            m_context->SetAllocator(m_allocator);
+            // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
+            m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
+        }
+
+        return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -434,10 +467,11 @@ namespace Dml
             ID3D12Resource* dstData = dstAllocInfo->GetResource();
             const void* srcData = src->GetData();
 
-            const uint64_t dstOffset = 0;
+            constexpr uint64_t dstOffset = 0;
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
+            FlushUploadsIfReady();
         }
         else if (!src->IsCpuData() && dst->IsCpuData())
         {
@@ -512,7 +546,7 @@ namespace Dml
             }
 
             dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(*dst[i])));
-            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes.back() != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
 
             dstDatas.push_back(dst[i]->GetData());
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src[i]).GetDataInterface().Get());
@@ -557,10 +591,21 @@ namespace Dml
         assert(!m_closed);
 
         m_uploadHeap->BeginUploadToGpu(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, AsByteSpan(srcData, static_cast<size_t>(srcDataSize)));
+        FlushUploadsIfReady();
 
         return S_OK;
         }
         ORT_CATCH_RETURN
+    }
+
+    void ExecutionProviderImpl::FlushUploadsIfReady() const
+    {
+        // Periodically flush uploads to make sure the GPU is not idle for too long
+        if (std::chrono::steady_clock::now() - m_lastUploadFlushTime > m_batchFlushInterval)
+        {
+            Flush();
+            m_lastUploadFlushTime = std::chrono::steady_clock::now();
+        }
     }
 
     uint32_t ExecutionProviderImpl::GetSupportedDeviceDataTypeMask() const
@@ -615,13 +660,31 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto sequence_ops = std::array<char*, 6>{
+        auto cpuOnDmlOperators = std::array<const char*, 8>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
             "SequenceLength",
             "SequenceErase",
             "SequenceInsert",
+            "OptionalGetElement",
+            "OptionalHasElement"
+        };
+
+        for (auto& cpuOnDmlOperator : cpuOnDmlOperators)
+        {
+            if (strcmp(cpuOnDmlOperator, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool IsDmlSequenceOperator(const onnxruntime::Node& node)
+    {
+        auto sequence_ops = std::array<const char*, 1>{
+            "ConcatFromSequence"
         };
 
         for (auto& sequence_op : sequence_ops)
@@ -634,10 +697,29 @@ namespace Dml
         return false;
     }
 
+    bool IsCustomOpShader(const onnxruntime::Node& node)
+    {
+        auto custom_ops = std::array<const char*, 3>{
+            "DFT",
+            "STFT",
+            "GridSample"
+        };
+
+        for (auto& custom_op : custom_ops)
+        {
+            if (strcmp(custom_op, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool DoesNodeContainSupportedDataTypes(
         const onnxruntime::Node& node,
         _In_opt_ const InternalRegistrationInfo* regInfo,
-        uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        bool native16BitShaderOpsSupported
         )
     {
         std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
@@ -682,10 +764,27 @@ namespace Dml
                 return;
             }
 
-            // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
-            if (edgeType == MLOperatorEdgeType::SequenceTensor && IsCpuOnDmlOperator(node))
+            if (onnxElementType == MLOperatorTensorDataType::Float16 &&
+                !native16BitShaderOpsSupported &&
+                IsCustomOpShader(node))
             {
-                // Leave nodeContainsSupportedDataTypes alone.
+                // STFT is a special case since it has a dml ep registered
+                // graph transformation that will decompose fp16 STFT into convolution
+                // and so it is OK to register for fp16.
+                if (strcmp("STFT", node.OpType().c_str()) != 0)
+                {
+                    nodeContainsSupportedDataTypes = false;
+                    return;
+                }
+            }
+
+            // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
+            if (edgeType == MLOperatorEdgeType::SequenceTensor)
+            {
+                if (!IsCpuOnDmlOperator(node) && !IsDmlSequenceOperator(node))
+                {
+                    nodeContainsSupportedDataTypes = false;
+                }
                 return;
             }
 
@@ -749,7 +848,7 @@ namespace Dml
         }
 
         // Check whether the node uses any data types which are unsupported by the device.
-        if (!DoesNodeContainSupportedDataTypes(node, internalRegInfo.get(), supportedDeviceDataTypeMask))
+        if (!DoesNodeContainSupportedDataTypes(node, internalRegInfo.get(), supportedDeviceDataTypeMask, m_native16BitShaderOpsSupported))
         {
             return false;
         }
@@ -893,11 +992,6 @@ namespace Dml
         m_context->Flush();
     }
 
-    void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-    {
-        m_allocator->SetDefaultRoundingMode(roundingMode);
-    }
-
     void ExecutionProviderImpl::ReleaseCompletedReferences()
     {
          m_context->ReleaseCompletedReferences();
@@ -1024,9 +1118,19 @@ namespace Dml
         return m_isMcdmDevice;
     }
 
+    bool __stdcall ExecutionProviderImpl::CustomHeapsSupported() const noexcept
+    {
+        return m_areCustomHeapsSupported;
+    }
+
     bool __stdcall ExecutionProviderImpl::MetacommandsEnabled() const noexcept
     {
         return m_areMetacommandsEnabled;
+    }
+
+    bool ExecutionProviderImpl::DynamicGraphFusionEnabled() const noexcept
+    {
+        return m_dynamicGraphFusionEnabled;
     }
 
     std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
@@ -1045,12 +1149,6 @@ namespace Dml
         return m_cpuInputAllocator;
     }
 
-    std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuOutputAllocator()
-    {
-        return m_cpuOutputAllocator;
-    }
-
-
     onnxruntime::common::Status ExecutionProviderImpl::OnSessionInitializationEnd()
     {
         // Flush and trim resources, including staging memory used to upload weights.
@@ -1061,15 +1159,20 @@ namespace Dml
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
 
+        // Allocations after this point are potentially transient and their sizes are
+        // rounded to enable pooling.
+        m_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
+
         return onnxruntime::common::Status::OK();
     }
 
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands)
+        bool enableMetacommands,
+        bool enableDynamicGraphFusion)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableDynamicGraphFusion);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
@@ -1082,12 +1185,6 @@ namespace Dml
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->Flush();
-    }
-
-    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->SetDefaultRoundingMode(roundingMode);
     }
 
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider * provider)

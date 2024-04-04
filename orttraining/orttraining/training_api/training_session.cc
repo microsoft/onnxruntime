@@ -2,22 +2,22 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_api/training_session.h"
+#include "orttraining/training_api/utils.h"
 
-namespace onnxruntime {
-namespace training {
-namespace api {
+namespace onnxruntime::training::api {
 
 TrainingSession::TrainingSession(const Environment& session_env,
                                  const SessionOptions& session_options,
                                  const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-                                 const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-                                 const ModelIdentifiers& model_identifiers)
-    : named_parameters_{parameters},
-      module_{std::make_unique<Module>(model_identifiers.train_model, named_parameters_,
-                                       session_options, session_env, providers, model_identifiers.eval_model)},
-      optimizer_{model_identifiers.optim_model.has_value()
+                                 CheckpointState* state,
+                                 const ModelIdentifiers& model_identifiers,
+                                 gsl::span<OrtCustomOpDomain* const> custom_op_domains)
+    : state_{state},
+      module_{std::make_unique<Module>(model_identifiers, state_,
+                                       session_options, session_env, providers, custom_op_domains)},
+      optimizer_{model_identifiers.IsOptimizerModelAvailable()
                      ? std::make_unique<Optimizer>(
-                           model_identifiers.optim_model.value(), named_parameters_,
+                           model_identifiers, state_,
                            session_options, session_env, providers)
                      : std::unique_ptr<Optimizer>()} {}
 
@@ -86,15 +86,6 @@ Status TrainingSession::OptimizerStep(const RunOptions&) {
   return optimizer_->Step();
 }
 
-Status TrainingSession::CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state) const {
-  ORT_RETURN_IF_ERROR(module_->GetStateDict(chkpt_state.module_checkpoint_state));
-  if (save_optimizer_state) {
-    ORT_RETURN_IF_ERROR(optimizer_->GetStateDict(chkpt_state.optimizer_checkpoint_state));
-  }
-
-  return Status::OK();
-}
-
 Status TrainingSession::SetLearningRate(float learning_rate) noexcept {
   ORT_RETURN_IF_NOT(optimizer_, "No optimizer session initialized.");
   ORT_RETURN_IF_ERROR(optimizer_->SetLearningRate(learning_rate));
@@ -121,14 +112,23 @@ Status TrainingSession::CopyParametersToBuffer(OrtValue& parameters_buffer, cons
 }
 
 Status TrainingSession::CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only) {
-  return module_->CopyBufferToParameters(parameters_buffer, trainable_only);
+  const bool was_nominal_state = state_->module_checkpoint_state.is_nominal_state;
+  ORT_RETURN_IF_ERROR(module_->CopyBufferToParameters(parameters_buffer, trainable_only));
+
+  // If the checkpoint state was nominal before loading the params, then we need to construct the
+  // optimizer state and inputs.
+  if (was_nominal_state) {
+    ORT_RETURN_IF_ERROR(optimizer_->ConstructOptimizerStateAndInputs());
+  }
+
+  return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status TrainingSession::ExportModelForInferencing(const std::string& inference_model_path,
                                                   gsl::span<const std::string> graph_output_names) const {
   return module_->ExportModelForInferencing(inference_model_path, graph_output_names);
 }
+#endif
 
-}  // namespace api
-}  // namespace training
-}  // namespace onnxruntime
+}  // namespace onnxruntime::training::api

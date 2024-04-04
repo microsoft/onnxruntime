@@ -135,11 +135,11 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         initializer_partition.add_dims(partition_size);
         initializer_partition.set_raw_data(initializer_data + partition_offset, partition_size * sizeof(float));
 
-        //Replace the old initializer with the new one
+        // Replace the old initializer with the new one
         graph.RemoveInitializedTensor(initializer_name);
         graph.AddInitializedTensor(initializer_partition);
 
-        //add the modified weight name to get state
+        // add the modified weight name to get state
         updated_weight_names_map[initializer_name] = partition_name;
 
         auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto(AsSpan({partition_size}), dtype));
@@ -248,7 +248,7 @@ static Status AddParameterPartition(
     ORT_ENFORCE(weight_arg != nullptr, "Could not find nodearg in graph: " + weight_argdef.name);
     ORT_ENFORCE(!graph_utils::IsGraphInput(graph, weight_arg), "Cannot partition weight that is a part of graph inputs for " + weight_argdef.name);
 
-    //Partition the FP32 weight
+    // Partition the FP32 weight
     weight_views = AddPartitionsForParameter(graph, graph_defs, weight_argdef.name, view_shapes, updated_weight_names_map);
     ORT_ENFORCE(weight_views.size() == enabled.size());
     weight_partition_info[weight_argdef.name].weight_partitioned = true;

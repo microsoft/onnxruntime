@@ -2,10 +2,8 @@ from onnx import numpy_helper
 
 
 def add_name(model):
-    i = 0
-    for node in model.graph.node:
+    for i, node in enumerate(model.graph.node):
         node.name = "%s_%d" % (node.op_type, i)
-        i += 1
 
 
 def find_single_output_node(model, arg):
@@ -42,7 +40,7 @@ def find_weight_index(model, name):
     for index, w in enumerate(model.graph.initializer):
         if w.name == name:
             return index
-        index += 1
+        index += 1  # noqa: PLW2901
     return None
 
 
@@ -107,7 +105,7 @@ def add_expand_shape(model):
 
     expand_node = [n for n in model.graph.node if n.op_type == "Expand"]
     if len(expand_node) != 1:
-        raise "cannot find the single expand node in the BERT model."
+        raise "cannot find the single expand node in the BERT model."  # noqa: B016
         return
     expand_out = model.graph.value_info.add()
     expand_out.name = expand_node[0].output[0]  # base: '421' # tiny: '85'

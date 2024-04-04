@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace utils {
 
 // "Global initializer calls a non-constexpr function."
-//TODO: Fix the warning. The variable should be put in the environment class.
+// TODO: Fix the warning. The variable should be put in the environment class.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26426)

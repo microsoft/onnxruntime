@@ -4,6 +4,7 @@
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include <memory>
+#include <ostream>
 #include <cstring>
 
 namespace onnxruntime {
@@ -17,42 +18,6 @@ size_t memscpy(void* dst, size_t dst_size, const void* src, size_t copy_size) {
   memcpy(dst, src, min_size);
 
   return min_size;
-}
-
-void QnnLogStdoutCallback(const char* format,
-                          QnnLog_Level_t level,
-                          uint64_t timestamp,
-                          va_list argument_parameter) {
-  const char* levelStr = "";
-  switch (level) {
-    case QNN_LOG_LEVEL_ERROR:
-      levelStr = " ERROR ";
-      break;
-    case QNN_LOG_LEVEL_WARN:
-      levelStr = "WARNING";
-      break;
-    case QNN_LOG_LEVEL_INFO:
-      levelStr = "  INFO ";
-      break;
-    case QNN_LOG_LEVEL_DEBUG:
-      levelStr = " DEBUG ";
-      break;
-    case QNN_LOG_LEVEL_VERBOSE:
-      levelStr = "VERBOSE";
-      break;
-    case QNN_LOG_LEVEL_MAX:
-      levelStr = "UNKNOWN";
-      break;
-  }
-
-  double ms = (double)timestamp / 1000000.0;
-  // To avoid interleaved messages
-  {
-    std::lock_guard<std::mutex> lock(qnn_log_mutex_);
-    fprintf(stdout, "%8.1fms [%-7s] ", ms, levelStr);
-    vfprintf(stdout, format, argument_parameter);
-    fprintf(stdout, "\n");
-  }
 }
 
 void SetQnnTensorType(Qnn_Tensor_t& qnn_tensor, Qnn_TensorType_t tensor_type) {
@@ -119,6 +84,15 @@ void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>
     auto size = client_buf.size() * sizeof(uint32_t);
     qnn_tensor.v1.clientBuf.data = const_cast<void*>(static_cast<const void*>(client_buf.data()));
     qnn_tensor.v1.clientBuf.dataSize = static_cast<uint32_t>(size);
+  } else {
+    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+  }
+}
+
+void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, void* buf_data, uint32_t buf_size) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    qnn_tensor.v1.clientBuf.data = buf_data;
+    qnn_tensor.v1.clientBuf.dataSize = buf_size;
   } else {
     ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
   }
@@ -236,7 +210,29 @@ const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) 
   }
 }
 
+Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
+                             float& scale_diff, int32_t& offset_diff) {
+  scale_diff = 0.0f;
+  offset_diff = 0;
 
+  ORT_RETURN_IF_NOT((qparam0.encodingDefinition == qparam1.encodingDefinition &&
+                     qparam0.quantizationEncoding == qparam1.quantizationEncoding),
+                    "Expected quantization parameters to be the same type.");
+
+  if (qparam0.encodingDefinition == QNN_DEFINITION_DEFINED) {
+    switch (qparam0.quantizationEncoding) {
+      case QNN_QUANTIZATION_ENCODING_SCALE_OFFSET: {
+        scale_diff = std::abs(qparam0.scaleOffsetEncoding.scale - qparam1.scaleOffsetEncoding.scale);
+        offset_diff = std::abs(qparam0.scaleOffsetEncoding.offset - qparam1.scaleOffsetEncoding.offset);
+        break;
+      }
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported quantization encoding: ", qparam0.quantizationEncoding);
+    }
+  }
+
+  return Status::OK();
+}
 
 bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                             const Qnn_GraphHandle_t& graph,
@@ -370,7 +366,10 @@ bool QnnOpConfigWrapper::QnnGraphOpValidation(const QNN_INTERFACE_VER_TYPE& qnn_
                                               std::string& error_msg) {
   auto validation_status = qnn_interface.backendValidateOpConfig(backend_handle, op_config_);
   if (QNN_SUCCESS != validation_status) {
-    error_msg = "Validating node failed for: " + name_;
+    std::ostringstream oss;
+    oss << "QNN.backendValidateOpConfig() failed for node `" << name_ << "` of type `"
+        << type_name_ << "` with error code " << validation_status << std::endl;
+    error_msg = oss.str();
     return false;
   }
 
@@ -382,11 +381,18 @@ bool QnnOpConfigWrapper::CreateQnnGraphOp(const QNN_INTERFACE_VER_TYPE& qnn_inte
                                           std::string& error_msg) {
   auto status = qnn_interface.graphAddNode(graph, op_config_);
   if (QNN_GRAPH_NO_ERROR != status) {
-    error_msg = "Adding node failed for: " + name_;
+    std::ostringstream oss;
+    oss << "QNN.graphAddNode() failed for node `" << name_ << "` of type `" << type_name_
+        << "` with error code " << status << std::endl;
+    error_msg = oss.str();
     return false;
   }
 
   return true;
+}
+
+bool IsNpuBackend(QnnBackendType backend_type) {
+  return backend_type == QnnBackendType::HTP || backend_type == QnnBackendType::DSP;
 }
 
 }  // namespace qnn

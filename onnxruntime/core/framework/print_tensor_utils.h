@@ -139,9 +139,9 @@ void PrintCpuTensor(const Tensor& tensor, int threshold = kDefaultSnippetThresho
   bool is_snippet = (threshold > 0 && static_cast<int64_t>(threshold) < num_items);
   size_t num_dims = shape.NumDimensions();
   if (num_dims >= 3) {
-    int dim0 = static_cast<int>(shape.SizeToDimension(num_dims - 2));
-    int dim1 = static_cast<int>(shape[num_dims - 2]);
-    int dim2 = static_cast<int>(shape[num_dims - 1]);
+    int64_t dim0 = shape.SizeToDimension(num_dims - 2);
+    int64_t dim1 = shape[num_dims - 2];
+    int64_t dim2 = shape[num_dims - 1];
     if (is_snippet) {
       PrintCpuTensorSnippet<T>(data, dim0, dim1, dim2, edge_items);
     } else {
@@ -150,11 +150,11 @@ void PrintCpuTensor(const Tensor& tensor, int threshold = kDefaultSnippetThresho
     return;
   }
 
-  size_t num_rows = 1;
+  int64_t num_rows = 1;
   if (num_dims > 1) {
-    num_rows = static_cast<size_t>(shape[0]);
+    num_rows = shape[0];
   }
-  size_t row_size = num_items / num_rows;
+  int64_t row_size = num_items / num_rows;
 
   if (is_snippet) {
     PrintCpuTensorSnippet<T>(data, num_rows, row_size, edge_items);

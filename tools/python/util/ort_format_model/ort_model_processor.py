@@ -17,15 +17,15 @@ class OrtFormatModelProcessor:
         :param processors: Operator type usage processors which will be called for each matching Node.
         """
         self._required_ops = required_ops  # dictionary of {domain: {opset:[operators]}}
-        self._file = open(model_path, "rb").read()
+        self._file = open(model_path, "rb").read()  # noqa: SIM115
         self._buffer = bytearray(self._file)
         if not fbs.InferenceSession.InferenceSession.InferenceSessionBufferHasIdentifier(self._buffer, 0):
-            raise RuntimeError("File does not appear to be a valid ORT format model: '{}'".format(model_path))
+            raise RuntimeError(f"File does not appear to be a valid ORT format model: '{model_path}'")
         self._model = fbs.InferenceSession.InferenceSession.GetRootAsInferenceSession(self._buffer, 0).Model()
         self._op_type_processors = processors
 
     @staticmethod
-    def _setup_type_info(graph: fbs.Graph, outer_scope_value_typeinfo={}):
+    def _setup_type_info(graph: fbs.Graph, outer_scope_value_typeinfo={}):  # noqa: B006
         """
         Setup the node args for this level of Graph.
         We copy the current list which represents the outer scope values, and add the local node args to that
@@ -35,7 +35,7 @@ class OrtFormatModelProcessor:
         :return: Dictionary of NodeArg name to TypeInfo
         """
         value_name_to_typeinfo = outer_scope_value_typeinfo.copy()
-        for j in range(0, graph.NodeArgsLength()):
+        for j in range(graph.NodeArgsLength()):
             n = graph.NodeArgs(j)
             value_name_to_typeinfo[n.Name()] = n.Type()  # TypeInfo for this NodeArg's name
 
@@ -43,9 +43,9 @@ class OrtFormatModelProcessor:
 
     def _add_required_op(self, domain: str, opset: int, op_type: str):
         if domain not in self._required_ops:
-            self._required_ops[domain] = {opset: set([op_type])}
+            self._required_ops[domain] = {opset: {op_type}}
         elif opset not in self._required_ops[domain]:
-            self._required_ops[domain][opset] = set([op_type])
+            self._required_ops[domain][opset] = {op_type}
         else:
             self._required_ops[domain][opset].add(op_type)
 
@@ -57,7 +57,7 @@ class OrtFormatModelProcessor:
         # Merge the TypeInfo for all values in this level of the graph with the outer scope value TypeInfo.
         value_name_to_typeinfo = OrtFormatModelProcessor._setup_type_info(graph, outer_scope_value_typeinfo)
 
-        for i in range(0, graph.NodesLength()):
+        for i in range(graph.NodesLength()):
             node = graph.Nodes(i)
 
             optype = node.OpType().decode()
@@ -69,7 +69,7 @@ class OrtFormatModelProcessor:
                 self._op_type_processors.process_node(node, value_name_to_typeinfo)
 
             # Read all the attributes
-            for j in range(0, node.AttributesLength()):
+            for j in range(node.AttributesLength()):
                 attr = node.Attributes(j)
                 attr_type = attr.Type()
                 if attr_type == fbs.AttributeType.AttributeType.GRAPH:
@@ -77,7 +77,7 @@ class OrtFormatModelProcessor:
                 elif attr_type == fbs.AttributeType.AttributeType.GRAPHS:
                     # the ONNX spec doesn't currently define any operators that have multiple graphs in an attribute
                     # so entering this 'elif' isn't currently possible
-                    for k in range(0, attr.GraphsLength()):
+                    for k in range(attr.GraphsLength()):
                         self._process_graph(attr.Graphs(k), value_name_to_typeinfo)
 
     def process(self):

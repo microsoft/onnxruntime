@@ -95,7 +95,7 @@ namespace Dml
         uint64_t bucketSize = 0;
 
         // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
-        if (m_defaultRoundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
+        if (roundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
         {
             Bucket* bucket = nullptr;
 
@@ -114,7 +114,7 @@ namespace Dml
             if (bucket->resources.empty())
             {
                 // No more resources in this bucket - allocate a new one
-                resourceWrapper = m_subAllocator->Alloc(bucketSize);
+                resourceWrapper = m_subAllocator->Alloc(onnxruntime::narrow<size_t>(bucketSize));
                 resourceId = ++m_currentResourceId;
             }
             else
@@ -129,7 +129,7 @@ namespace Dml
         {
             // The allocation will not be pooled.  Construct a new one
             bucketSize = (size + 3) & ~3;
-            resourceWrapper = m_subAllocator->Alloc(bucketSize);
+            resourceWrapper = m_subAllocator->Alloc(onnxruntime::narrow<size_t>(bucketSize));
             resourceId = ++m_currentResourceId;
         }
 
@@ -212,15 +212,6 @@ namespace Dml
             ORT_THROW_HR(E_INVALIDARG);
         }
         const auto* allocInfo = static_cast<const AllocationInfo*>(opaqueHandle);
-
-        auto owner = allocInfo->GetOwner();
-        //The owner can be null if the resource was wrapped via CreateGPUAllocationFromD3DResource
-        if (owner != nullptr && owner != this)
-        {
-            // This allocation doesn't belong to this allocator!
-            ORT_THROW_HR(E_INVALIDARG);
-        }
-
         return allocInfo;
     }
 
@@ -244,17 +235,12 @@ namespace Dml
 
     void* CPUAllocator::Alloc(size_t size)
     {
-        if (size <= 0)
-        {
-            return nullptr;
-        }
-        void* p = malloc(size);
-        return p;
+        return onnxruntime::AllocatorDefaultAlloc(size);
     }
 
     void CPUAllocator::Free(void* p)
     {
-        free(p);
+        return onnxruntime::AllocatorDefaultFree(p);
     }
 
 } // namespace Dml

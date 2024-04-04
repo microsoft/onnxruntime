@@ -18,29 +18,14 @@ Abstract:
 
 #include "test_fp16.h"
 
-inline bool
-CloseEnough(float actual, float expected){
-  if (std::isnan(actual)) {
-    return std::isnan(expected);
-  }
-  float diff = std::abs(actual - expected);
-  float top = std::max(std::abs(actual), std::abs(expected));
-  float ratio = 0;
-  if (top > 0.0001) {
-    ratio = diff / top;
-  }
-  return ratio < 0.005;
-}
-
 /**
  * @brief Test class for half precision GEMM
  * @tparam AType  Data type of A matrix, can be either float or MLFp16
  * @tparam BType  Data type of b matrix, can be either float or MLFp16
-*/
+ */
 template <typename AType, typename BType, bool Packed, bool Threaded>
 class MlasHalfGemmTest : public MlasTestBase {
-
-private:
+ private:
   MatrixGuardBuffer<uint8_t> BufferBPacked;
   MatrixGuardBuffer<AType> BufferA;
   MatrixGuardBuffer<BType> BufferB;
@@ -142,7 +127,7 @@ private:
           const BType* b = B + K * N * batch + n;
           float* c = C + (M * N * batch) + (m * N) + n;
 
-          for (size_t k = 0; k < K; k+=KStride) {
+          for (size_t k = 0; k < K; k += KStride) {
             float sum = 0.0f;
             if (k == 0 && Bias != nullptr) {
               sum = float(Bias[n]);
@@ -168,7 +153,7 @@ private:
     }
   }
 
-public:
+ public:
   MlasHalfGemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, bool withBias) {
@@ -202,22 +187,20 @@ public:
       for (size_t m = 0; m < M; m++) {
         for (size_t n = 0; n < N; n++, f++) {
           ASSERT_TRUE(CloseEnough(float(C[f]), CReference[f])) << "@[" << batch << "x" << m << "x" << n << "], "
-                                                << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
+                                                               << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
           ASSERT_TRUE(CloseEnough(Cfloat[f], CReference[f])) << "Converted@[" << batch << "x" << m << "x" << n << "], "
-                                                << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
-
+                                                             << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
         }
       }
     }
     ASSERT_EQ(std::memcmp(Atail, A + K * M * BatchSize, 16 * sizeof(AType)), 0) << "Matrix A buffer overwritten!";
     ASSERT_EQ(std::memcmp(Btail, B + N * K * BatchSize, 16 * sizeof(BType)), 0) << "Matrix B buffer overwritten!";
-    if (withBias){
-        ASSERT_EQ(std::memcmp(BiasTail, Bias + N * BatchSize, 16 * sizeof(MLFp16)), 0) << "Bias buffer overwritten!";
+    if (withBias) {
+      ASSERT_EQ(std::memcmp(BiasTail, Bias + N * BatchSize, 16 * sizeof(MLFp16)), 0) << "Bias buffer overwritten!";
     }
   }
 
  private:
-
  public:
   static const char* GetTestSuiteName() {
     static std::string suite_name = std::string("HalfGemmFP") +
@@ -285,6 +268,4 @@ public:
       printf("M %zd\n", M);
     }
   }
-
-
 };

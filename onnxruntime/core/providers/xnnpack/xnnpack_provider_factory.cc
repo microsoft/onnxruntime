@@ -11,7 +11,7 @@ namespace onnxruntime {
 
 struct XnnpackProviderFactory : IExecutionProviderFactory {
   XnnpackProviderFactory(const ProviderOptions& provider_options, const SessionOptions* session_options)
-      : info_{provider_options, session_options}{
+      : info_{provider_options, session_options} {
   }
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {

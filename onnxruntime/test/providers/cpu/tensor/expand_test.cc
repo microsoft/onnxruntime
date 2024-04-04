@@ -124,34 +124,34 @@ TEST(ExpandOpTest, Expand_3x1x3x1_int64) {
 
 TEST(ExpandOpTest, Expand_3x3_float16) {
   OpTester test("Expand", 8);
-  test.AddInput<MLFloat16>("data_0", {1}, {MLFloat16(math::floatToHalf(1.0f))});
+  test.AddInput<MLFloat16>("data_0", {1}, {MLFloat16(1.0f)});
   test.AddInput<int64_t>("data_1", {2}, {3, 3});
   test.AddOutput<MLFloat16>("result", {3, 3},
-                            {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)),
-                             MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)),
-                             MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f))});
+                            {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                             MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                             MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f)});
   test.Run();
 }
 
 TEST(ExpandOpTest, Expand_3x1_float16) {
   OpTester test("Expand", 8);
-  test.AddInput<MLFloat16>("data_0", {3}, {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f))});
+  test.AddInput<MLFloat16>("data_0", {3}, {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f)});
   test.AddInput<int64_t>("data_1", {2}, {3, 1});
   test.AddOutput<MLFloat16>("result", {3, 3},
-                            {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f)),
-                             MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f)),
-                             MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f))});
+                            {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                             MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                             MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f)});
   test.Run();
 }
 
 TEST(ExpandOpTest, Expand_1x3_float16) {
   OpTester test("Expand", 8);
-  test.AddInput<MLFloat16>("data_0", {3, 1}, {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f))});
+  test.AddInput<MLFloat16>("data_0", {3, 1}, {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f)});
   test.AddInput<int64_t>("data_1", {2}, {1, 3});
   test.AddOutput<MLFloat16>("result", {3, 3},
-                            {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)),
-                             MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(2.0f)),
-                             MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f))});
+                            {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                             MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(2.0f),
+                             MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(3.0f)});
   test.Run();
 }
 
@@ -182,8 +182,8 @@ TEST(ExpandOpTest, Expand_scalar_int32) {
   test.AddInput<int32_t>("data_0", {}, {9});
   test.AddInput<int64_t>("data_1", {3}, {2, 3, 4});
   test.AddOutput<int32_t>("result", {2, 3, 4},
-                         {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
-                          9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9});
+                          {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+                           9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9});
   test.Run();
 }
 
@@ -250,5 +250,5 @@ TEST(ExpandOpTest, Strided) {
 }
 #endif
 
-}  //namespace test
-}  //namespace onnxruntime
+}  // namespace test
+}  // namespace onnxruntime

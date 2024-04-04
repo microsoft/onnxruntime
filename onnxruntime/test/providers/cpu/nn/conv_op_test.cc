@@ -59,10 +59,11 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
   // Disable TensorRT because weight as input is not supported
   excluded_providers.insert(kTensorrtExecutionProvider);
-  // QNN have issue with dynamic weight, auto pad with SAME_UPPER, SAME_LOWER
-  if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" || attributes.auto_pad == "SAME_LOWER") {
-    excluded_providers.insert(kQnnExecutionProvider);
-  }
+  // Disable CUDA NHWC execution provider as it is currently flaky
+  excluded_providers.insert(kCudaNHWCExecutionProvider);
+
+  // QNN SDK 2.10.0 has a bug that breaks support for dynamic bias inputs.
+  excluded_providers.insert(kQnnExecutionProvider);
 
   test.Run(expect_result, err_str, excluded_providers);
 }
@@ -117,7 +118,7 @@ TEST(ConvTest, Conv1D_1_DefaultStridesAndDilations) {
                         -0.012766072526574135f, 0.07113571465015411f, 0.061429332941770554f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-  
+
   // CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
@@ -154,7 +155,7 @@ TEST(ConvTest, Conv1D_2) {
                         -0.18779152631759644f, -0.11083387583494186f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-  
+
   // CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
@@ -242,7 +243,7 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
-             "Both source and target dimension have values but they differ. Source=0 Target=2 Dimension=2",
+             "Both inferred and declared dimension have values but they differ. Inferred=0 Declared=2 Dimension=2",
              -1);  // use latest opset for shape inferencing errors
 }
 
@@ -265,7 +266,7 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
-             "Both source and target dimension have values but they differ. Source=1 Target=2 Dimension=0",
+             "Both inferred and declared dimension have values but they differ. Inferred=1 Declared=2 Dimension=0",
              -1);  // use latest opset for shape inferencing errors
 }
 

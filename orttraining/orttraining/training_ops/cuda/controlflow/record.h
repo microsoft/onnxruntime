@@ -10,8 +10,8 @@ namespace onnxruntime {
 namespace cuda {
 
 class RecordEvent final : public CudaKernel {
-public:
-  RecordEvent(const OpKernelInfo& info) : CudaKernel(info) { }
+ public:
+  RecordEvent(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

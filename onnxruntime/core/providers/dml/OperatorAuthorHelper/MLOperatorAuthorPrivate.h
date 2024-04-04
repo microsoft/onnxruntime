@@ -10,18 +10,11 @@ struct DML_INPUT_GRAPH_EDGE_DESC;
 struct DML_OUTPUT_GRAPH_EDGE_DESC;
 struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
-// Either nodesAsOpDesc or nodesAsIDMLOperator is present.
-//  1) Operator kernels which implement operators using only a single DML operator will pass a DML_OPERATOR_DESC.
-//     These kernels pass DML_OPERATOR_DESC, because while building Dml graph (inside FusedGraphKernel.cpp) we can change the
-//     the flag of constant inputs to DML_TENSOR_FLAG_OWNED_BY_DML.
-//  2) Operator kernels which implement operators using DMLX graph, they will pass IDMLOperator and won't be able
-//     to use DML_TENSOR_FLAG_OWNED_BY_DML.
 struct MLOperatorGraphDesc
 {
     uint32_t nodeCount;
-    _Field_size_opt_(nodeCount) const DML_OPERATOR_DESC** nodesAsOpDesc;
-    _Field_size_opt_(nodeCount) IDMLOperator** nodesAsIDMLOperator;
-
+    _Field_size_opt_(nodeCount) const DML_OPERATOR_DESC** nodes;
+    
     uint32_t inputEdgeCount;
     _Field_size_(inputEdgeCount) const DML_INPUT_GRAPH_EDGE_DESC* inputEdges;
 
@@ -41,10 +34,16 @@ IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContex
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
 
+    STDMETHOD(TryGetConstantInputTensor)(
+        uint32_t inputIndex, 
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
+
     //! Gets the number of dimensions of a tensor output of the operator.
-    STDMETHOD(GetSequenceInputCount)(
+    STDMETHOD(GetSequenceInputInfo)(
         uint32_t inputIndex,
-        _Out_ uint32_t* inputCount
+        _Out_ uint32_t* inputCount,
+        MLOperatorTensorDataType* dataType
         ) const noexcept PURE;
 
     //! Gets the number of dimensions of a tensor output of the operator.
@@ -69,6 +68,11 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
 {
     STDMETHOD(GetConstantInputTensor)(
         uint32_t inputIndex,
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
+
+    STDMETHOD(TryGetConstantInputTensor)(
+        uint32_t inputIndex, 
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
 
@@ -187,9 +191,10 @@ interface DECLSPEC_UUID("440DA47C-018B-41F6-80A4-13FCF0544F37") DECLSPEC_NOVTABL
 IMLOperatorTensorShapeDescriptionPrivate : IUnknown
 {
     //! Gets the number of dimensions of a tensor output of the operator.
-    STDMETHOD(GetSequenceInputCount)(
+    STDMETHOD(GetSequenceInputInfo)(
         uint32_t inputIndex,
-        _Out_ uint32_t* inputCount
+        _Out_ uint32_t* inputCount,
+        MLOperatorTensorDataType* dataType
         ) const noexcept PURE;
 
     //! Gets the number of dimensions of a tensor input of the operator.
@@ -225,6 +230,11 @@ IMLOperatorKernelContextPrivate : IUnknown
         _COM_Outptr_result_maybenull_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
 
+    //! Prepare the output tensor of the operator at the specified index.
+    STDMETHOD(PrepareSequenceOutput)(
+        uint32_t outputIndex,
+        MLOperatorTensorDataType dataType) const noexcept PURE;
+
     //! Gets the output tensor of the operator at the specified index.
     //! This sets tensor to nullptr for optional outputs which do not exist.
     //! Returns an error if the output at the specified index is not a tensor.
@@ -241,9 +251,10 @@ IMLOperatorKernelContextPrivate : IUnknown
     //! Gets the input tensor of the operator at the specified index.
     //! This sets tensor to nullptr for optional inputs which do not exist.
     //! Returns an error if the input at the specified index is not a tensor.
-    STDMETHOD(GetSequenceInputCount)(
+    STDMETHOD(GetSequenceInputInfo)(
         uint32_t inputIndex,
-        _Out_ uint32_t* inputCount
+        _Out_ uint32_t* inputCount,
+        MLOperatorTensorDataType* dataType
         ) const noexcept PURE;
 
     //! Returns whether the tensor at inputIndex is a sequence tensor or not

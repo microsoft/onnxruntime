@@ -6,12 +6,10 @@
 #include "core/framework/provider_options_utils.h"
 #include "core/common/common.h"
 
-
 namespace onnxruntime::dnnl::provider_option_names {
 constexpr const char* kUseArena = "use_arena";
 constexpr const char* kThreadpoolArgs = "threadpool_args";
 }  // namespace onnxruntime::dnnl::provider_option_names
-
 
 namespace onnxruntime {
 
@@ -31,7 +29,6 @@ DnnlExecutionProviderInfo DnnlExecutionProviderInfo::FromProviderOptions(const P
           .Parse(options));
   return info;
 }
-
 
 ProviderOptions DnnlExecutionProviderInfo::ToProviderOptions(const DnnlExecutionProviderInfo& info) {
   const ProviderOptions options{

@@ -1,9 +1,10 @@
 import logging
 
 import numpy as np
-import onnxruntime.quantization as quantization
 import torch
 from torchvision import datasets, transforms
+
+import onnxruntime.quantization as quantization
 
 
 def preprocess(input_model_dir, output_model_dir):
@@ -50,13 +51,12 @@ def quantize_static(input_model_dir, output_model_dir):
 
     # Quantize the model
     logging.info(
-        "Invoking onnxruntime.quantization.quantize_static with optimize_model=False, AddQDQPairToWeight=True and QuantizeBias=False.."
+        "Invoking onnxruntime.quantization.quantize_static with AddQDQPairToWeight=True and QuantizeBias=False.."
     )
-    logging.info("Quantized model will be saved to %s." % output_model_dir)
+    logging.info("Quantized model will be saved to %s.", output_model_dir)
     quantization.quantize_static(
         input_model_dir,
         output_model_dir,
         calibration_data_reader,
-        optimize_model=False,
         extra_options=extra_options,
     )

@@ -23,6 +23,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateFlattenOpBuilder("Flatten", op_registrations);
     CreateGatherOpBuilder("Gather", op_registrations);
     CreateIdentityOpBuilder("Identity", op_registrations);
+    CreateLeakyReluOpBuilder("LeakyRelu", op_registrations);
     CreateLRNOpBuilder("LRN", op_registrations);
     CreatePadOpBuilder("Pad", op_registrations);
     CreateQuantizeLinearOpBuilder("QuantizeLinear", op_registrations);
@@ -31,6 +32,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateResizeOpBuilder("Resize", op_registrations);
     CreateSliceOpBuilder("Slice", op_registrations);
     CreateSoftMaxOpBuilder("Softmax", op_registrations);
+    CreateSplitOpBuilder("Split", op_registrations);
     CreateSqueezeOpBuilder("Squeeze", op_registrations);
     CreateTransposeOpBuilder("Transpose", op_registrations);
     CreateUnsqueezeOpBuilder("Unsqueeze", op_registrations);
@@ -83,6 +85,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {
     CreateMinMaxOpBuilder("Max", op_registrations);
     CreateMinMaxOpBuilder("Min", op_registrations);
+  }
+
+  {
+    CreateReductionOpBuilder("ReduceMean", op_registrations);
   }
 
   return op_registrations;

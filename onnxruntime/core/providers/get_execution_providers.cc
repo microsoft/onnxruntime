@@ -101,6 +101,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kJsExecutionProvider,
+#ifdef USE_JSEP
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kCoreMLExecutionProvider,
 #ifdef USE_COREML
             true,
@@ -135,6 +143,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         {
             kRknpuExecutionProvider,
 #ifdef USE_RKNPU
+            true,
+#else
+            false,
+#endif
+        },
+        {
+            kWebNNExecutionProvider,
+#ifdef USE_WEBNN
             true,
 #else
             false,
@@ -176,7 +192,7 @@ const std::vector<std::string>& GetAllExecutionProviderNames() {
     std::vector<std::string> result{};
     result.reserve(kAllExecutionProvidersCount);
     for (const auto& provider : kProvidersInPriorityOrder) {
-      ORT_ENFORCE(provider.name.size() <= kMaxExecutionProviderNameLen, "Make the EP:", provider.name , " name shorter");
+      ORT_ENFORCE(provider.name.size() <= kMaxExecutionProviderNameLen, "Make the EP:", provider.name, " name shorter");
       result.push_back(std::string(provider.name));
     }
     return result;

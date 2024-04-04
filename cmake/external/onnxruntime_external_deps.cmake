@@ -14,16 +14,25 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
     set(DEP_URL_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP_URL})
     # The third column is SHA1 hash value
     set(DEP_SHA1_${ONNXRUNTIME_DEP_NAME} ${ONNXRUNTIME_DEP})
+
+    if(ONNXRUNTIME_DEP_URL MATCHES "^https://")
+      # Search a local mirror folder
+      string(REGEX REPLACE "^https://" "${REPO_ROOT}/mirror/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
+
+      if(EXISTS "${LOCAL_URL}")
+        cmake_path(ABSOLUTE_PATH LOCAL_URL)
+        set(DEP_URL_${ONNXRUNTIME_DEP_NAME} "${LOCAL_URL}")
+      endif()
+    endif()
   endif()
 endforeach()
 
 message("Loading Dependencies ...")
 # ABSL should be included before protobuf because protobuf may use absl
-if(NOT onnxruntime_DISABLE_ABSEIL)
-  include(external/abseil-cpp.cmake)
-endif()
+include(external/abseil-cpp.cmake)
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
     re2
     URL ${DEP_URL_re2}
@@ -34,20 +43,27 @@ FetchContent_Declare(
 if (onnxruntime_BUILD_UNIT_TESTS)
   # WebAssembly threading support in Node.js is still an experimental feature and
   # not working properly with googletest suite.
-  if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(gtest_disable_pthreads ON)
   endif()
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-  if(NOT onnxruntime_DISABLE_ABSEIL)
-    # It uses both ABSL and re2
+  if (IOS OR ANDROID)
+    # on mobile platforms the absl flags class dumps the flag names (assumably for binary size), which breaks passing
+    # any args to gtest executables, such as using --gtest_filter to debug a specific test.
+    # Processing of compile definitions:
+    # https://github.com/abseil/abseil-cpp/blob/8dc90ff07402cd027daec520bb77f46e51855889/absl/flags/config.h#L21
+    # If set, this code throws away the flag and does nothing on registration, which results in no flags being known:
+    # https://github.com/abseil/abseil-cpp/blob/8dc90ff07402cd027daec520bb77f46e51855889/absl/flags/flag.h#L205-L217
     set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
+  else()
+    set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
   endif()
   # gtest and gmock
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
-    FIND_PACKAGE_ARGS NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
+    FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
   )
 endif()
 
@@ -84,42 +100,117 @@ FetchContent_Declare(
 
 # Flatbuffers
 # We do not need to build flatc for iOS or Android Cross Compile
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
 set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
+if(Patch_FOUND)
+  set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/flatbuffers/flatbuffers.patch)
+else()
+ set(ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND "")
+endif()
 
 #flatbuffers 1.11.0 does not have flatbuffers::IsOutRange, therefore we require 1.12.0+
 FetchContent_Declare(
     flatbuffers
     URL ${DEP_URL_flatbuffers}
     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
-    #FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
+    PATCH_COMMAND ${ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND}
+    FIND_PACKAGE_ARGS 23.5.9 NAMES Flatbuffers
 )
+
+# Download a protoc binary from Internet if needed
+if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
+  # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
+  # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
+  # variable.
+  if (CMAKE_HOST_APPLE)
+    # Using CMAKE_CROSSCOMPILING is not recommended for Apple target devices.
+    # https://cmake.org/cmake/help/v3.26/variable/CMAKE_CROSSCOMPILING.html
+    # To keep it simple, just download and use the universal protoc binary for all Apple host builds.
+    FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal})
+    FetchContent_Populate(protoc_binary)
+    if(protoc_binary_SOURCE_DIR)
+      message("Use prebuilt protoc")
+      set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
+      set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+    endif()
+  elseif (CMAKE_CROSSCOMPILING)
+    message("CMAKE_HOST_SYSTEM_NAME: ${CMAKE_HOST_SYSTEM_NAME}")
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+      if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win64} URL_HASH SHA1=${DEP_SHA1_protoc_win64})
+        FetchContent_Populate(protoc_binary)
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
+        FetchContent_Populate(protoc_binary)
+      endif()
+      if(protoc_binary_SOURCE_DIR)
+        message("Use prebuilt protoc")
+        set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc.exe)
+        set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+      endif()
+    elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+      if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64})
+        FetchContent_Populate(protoc_binary)
+      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86})
+        FetchContent_Populate(protoc_binary)
+      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
+        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64})
+        FetchContent_Populate(protoc_binary)
+      endif()
+      if(protoc_binary_SOURCE_DIR)
+        message("Use prebuilt protoc")
+        set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
+        set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+      endif()
+    endif()
+  endif()
+endif()
 
 #Here we support two build mode:
 #1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
-#Disable when building for catalyst
-#if(Patch_FOUND)
-#  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
-#else()
-#  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
-#endif()
+if(Patch_FOUND)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
+else()
+ set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
+endif()
 
+FetchContent_Declare(
+    utf8_range
+    URL ${DEP_URL_utf8_range}
+    URL_HASH SHA1=${DEP_SHA1_utf8_range}
+    FIND_PACKAGE_ARGS NAMES utf8_range
+)
+
+set(utf8_range_ENABLE_TESTS OFF CACHE BOOL "Build test suite" FORCE)
+set(utf8_range_ENABLE_INSTALL OFF CACHE BOOL "Configure installation" FORCE)
+
+
+#Protobuf depends on absl and utf8_range
 FetchContent_Declare(
   Protobuf
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
-  #SOURCE_SUBDIR  cmake
-  #PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
-  #FIND_PACKAGE_ARGS 3.21.12 NAMES Protobuf
+  PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
+  FIND_PACKAGE_ARGS 3.21.12 NAMES Protobuf
 )
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
+#TODO: we'd better to turn the following option off. However, it will cause
+# ".\build.bat --config Debug --parallel --skip_submodule_sync --update" fail with an error message:
+# install(EXPORT "ONNXTargets" ...) includes target "onnx_proto" which requires target "libprotobuf-lite" that is
+# not in any export set.
+#set(protobuf_INSTALL OFF CACHE BOOL "Install protobuf binaries and files" FORCE)
+set(protobuf_USE_EXTERNAL_GTEST ON CACHE BOOL "" FORCE)
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
   set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
@@ -135,13 +226,12 @@ set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
 set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
-      date
-      URL ${DEP_URL_date}
-      URL_HASH SHA1=${DEP_SHA1_date}
-    )
+  date
+  URL ${DEP_URL_date}
+  URL_HASH SHA1=${DEP_SHA1_date}
+  FIND_PACKAGE_ARGS 3...<4 NAMES date
+)
 onnxruntime_fetchcontent_makeavailable(date)
-
-
 
 FetchContent_Declare(
   mp11
@@ -149,8 +239,6 @@ FetchContent_Declare(
   URL_HASH SHA1=${DEP_SHA1_mp11}
 )
 
-set(JSON_BuildTests OFF CACHE INTERNAL "")
-set(JSON_Install OFF CACHE INTERNAL "")
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install OFF CACHE INTERNAL "")
 
@@ -177,20 +265,13 @@ if (onnxruntime_ENABLE_CPUINFO)
   else()
     # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo
     # so we don't set CPUINFO_SUPPORTED in the CXX flags below.
-    if (onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_USE_XNNPACK)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_USE_XNNPACK)
       set(CPUINFO_SUPPORTED FALSE)
     else()
       set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
-      # Exclude Windows ARM build and Windows Store
-      if (${onnxruntime_target_platform} MATCHES "^(ARM.*|arm.*)$" )
-        message(WARNING "Cpuinfo not included for compilation problems with Windows ARM.")
-        set(CPUINFO_SUPPORTED FALSE)
-      elseif (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-        message(WARNING "Cpuinfo not included non-Desktop builds")
-        set(CPUINFO_SUPPORTED FALSE)
-      endif()
+      set(CPUINFO_SUPPORTED TRUE)
     elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       message(WARNING
         "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
@@ -203,6 +284,20 @@ else()
   set(CPUINFO_SUPPORTED FALSE)
 endif()
 
+# xnnpack depends on clog
+# Android build should use the system's log library instead of clog
+if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
+  set(CLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    pytorch_clog
+    URL ${DEP_URL_pytorch_cpuinfo}
+    URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+    SOURCE_SUBDIR deps/clog
+  )
+  set(ONNXRUNTIME_CLOG_PROJ pytorch_clog)
+  set(ONNXRUNTIME_CLOG_TARGET_NAME clog)
+endif()
+
 if (CPUINFO_SUPPORTED)
   if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(IOS ON CACHE INTERNAL "")
@@ -211,7 +306,7 @@ if (CPUINFO_SUPPORTED)
 
   # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved)
   # we do not use cpuinfo in ORT code, so don't define CPUINFO_SUPPORTED.
-  if (NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
   endif()
 
@@ -220,14 +315,24 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-
-  FetchContent_Declare(
-    pytorch_cpuinfo
-    URL ${DEP_URL_pytorch_cpuinfo}
-    URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-    FIND_PACKAGE_ARGS NAMES cpuinfo
-  )
-
+  if(onnxruntime_target_platform STREQUAL "ARM64EC")
+      message("Applying a patch for Windows ARM64EC in cpuinfo")
+      FetchContent_Declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
+        FIND_PACKAGE_ARGS NAMES cpuinfo
+      )
+  else()
+      FetchContent_Declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        FIND_PACKAGE_ARGS NAMES cpuinfo
+      )
+  endif()
+  set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
 endif()
 
 
@@ -239,7 +344,10 @@ if (NOT WIN32)
   #nsync tests failed on Mac Build
   set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_makeavailable(google_nsync)
-  set(nsync_SOURCE_DIR ${google_nsync_SOURCE_DIR})
+  if (google_nsync_SOURCE_DIR)
+    add_library(nsync::nsync_cpp ALIAS nsync_cpp)
+    target_include_directories(nsync_cpp PUBLIC ${google_nsync_SOURCE_DIR}/public)
+  endif()
 endif()
 
 if(onnxruntime_USE_CUDA)
@@ -248,6 +356,7 @@ if(onnxruntime_USE_CUDA)
     URL ${DEP_URL_microsoft_gsl}
     URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
     PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
+    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
   )
 else()
   FetchContent_Declare(
@@ -264,8 +373,14 @@ FetchContent_Declare(
     URL_HASH SHA1=${DEP_SHA1_safeint}
 )
 
+# use fetch content rather than makeavailable because safeint only includes unconditional test targets
+FetchContent_Populate(safeint)
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
+onnxruntime_fetchcontent_makeavailable(utf8_range)
+# protobuf's cmake/utf8_range.cmake has the following line
+include_directories(${utf8_range_SOURCE_DIR})
+
+onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 GSL flatbuffers ${ONNXRUNTIME_CPUINFO_PROJ} ${ONNXRUNTIME_CLOG_PROJ})
 if(NOT flatbuffers_FOUND)
   if(NOT TARGET flatbuffers::flatbuffers)
     add_library(flatbuffers::flatbuffers ALIAS flatbuffers)
@@ -361,9 +476,7 @@ FetchContent_Declare(
 )
 
 
-if (CPUINFO_SUPPORTED)
-  onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
-endif()
+
 
 
 
@@ -404,7 +517,7 @@ endif()
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} WIL::WIL nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date_interface)
+set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date ${ONNXRUNTIME_CLOG_TARGET_NAME})
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
@@ -444,22 +557,32 @@ if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxrunt
   onnxruntime_fetchcontent_makeavailable(cxxopts)
 endif()
 
+if (onnxruntime_USE_COREML)
+  FetchContent_Declare(
+    coremltools
+    URL ${DEP_URL_coremltools}
+    URL_HASH SHA1=${DEP_SHA1_coremltools}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/coremltools/crossplatformbuild.patch
+  )
+  # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
+  FetchContent_Populate(coremltools)
+endif()
+
 message("Finished fetching external dependencies")
 
 
 set(onnxruntime_LINK_DIRS )
 if (onnxruntime_USE_CUDA)
       #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
+      find_package(CUDAToolkit REQUIRED)
       if (WIN32)
         if(onnxruntime_CUDNN_HOME)
           list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib/x64)
         endif()
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/x64/lib64)
       else()
         if(onnxruntime_CUDNN_HOME)
-          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib64)
+          list(APPEND onnxruntime_LINK_DIRS  ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib64)
         endif()
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/lib64)
       endif()
 endif()
 
@@ -470,7 +593,3 @@ endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
 FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
-
-if (onnxruntime_USE_AZURE)
-    include(triton)
-endif()

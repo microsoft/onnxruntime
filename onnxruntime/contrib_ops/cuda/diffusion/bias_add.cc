@@ -44,11 +44,6 @@ Status BiasAdd<T>::ComputeInternal(OpKernelContext* context) const {
                            "The input is expected to have 3 dimensions, got ", input_dims.size());
   }
 
-  if (input_dims[2] != 320 && input_dims[2] != 640 && input_dims[2] != 1280) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Number of channels should be 320, 640 or 1280, got ", input_dims[2]);
-  }
-
   const Tensor* bias = context->Input<Tensor>(1);
   const auto& bias_dims = bias->Shape().GetDims();
   if (bias_dims.size() != 1) {
@@ -71,10 +66,10 @@ Status BiasAdd<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const int32_t grid_size = static_cast<int32_t>(input_dims[0] * input_dims[1]);
   LaunchBiasAddKernel<CudaT>(Stream(context), grid_size, static_cast<int32_t>(input_dims[2]),
-                              reinterpret_cast<const CudaT*>(input->Data<T>()),
-                              reinterpret_cast<const CudaT*>(bias->Data<T>()),
-                              reinterpret_cast<const CudaT*>(skip->Data<T>()),
-                              reinterpret_cast<CudaT*>(output->MutableData<T>()));
+                             reinterpret_cast<const CudaT*>(input->Data<T>()),
+                             reinterpret_cast<const CudaT*>(bias->Data<T>()),
+                             reinterpret_cast<const CudaT*>(skip->Data<T>()),
+                             reinterpret_cast<CudaT*>(output->MutableData<T>()));
 
   CUDA_RETURN_IF_ERROR(cudaPeekAtLastError());
   return Status::OK();

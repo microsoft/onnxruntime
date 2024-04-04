@@ -27,8 +27,8 @@ std::unique_ptr<Ort::Env> ort_env;
   }
 
 #define ORT_RETURN_IF_NULL_STATUS(arg) \
-  if (!arg) {                              \
-    return -1;                             \
+  if (!arg) {                          \
+    return -1;                         \
   }
 
 namespace TestGlobalCustomThreadHooks {
@@ -63,9 +63,9 @@ int main(int argc, char** argv) {
   int status = 0;
   const int thread_pool_size = std::thread::hardware_concurrency();
 
-  //compose affinity string
+  // compose affinity string
   std::stringstream affinity_stream;
-  //skip the 1st logical processor
+  // skip the 1st logical processor
   for (int i = 2; i <= thread_pool_size; ++i) {
     affinity_stream << (i == 2 ? "" : ";") << i;
   }
@@ -125,11 +125,11 @@ int main(int argc, char** argv) {
     });
   }
 
-  //TODO: Fix the C API issue
-  ort_env.reset();  //If we don't do this, it will crash
+  // TODO: Fix the C API issue
+  ort_env.reset();  // If we don't do this, it will crash
 
 #ifndef USE_ONNXRUNTIME_DLL
-  //make memory leak checker happy
+  // make memory leak checker happy
   ::google::protobuf::ShutdownProtobufLibrary();
 #endif
   return status;

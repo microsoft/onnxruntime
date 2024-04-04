@@ -10,7 +10,7 @@
 
 #include <cuda.h>
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 namespace onnxruntime {
 namespace test {
@@ -240,14 +240,8 @@ static std::vector<int8_t> transpose(const T& src, size_t h, size_t w) {
 }
 
 TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
-  int cuda_runtime_version = 0;
-  // Need 11.4 or higher cuda runtime
-  if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
-    return;
-  }
-
-  // Needs Turing or higher architecture
-  if (NeedSkipIfCudaArchLowerThan(750)) {
+  // Needs Turing architecture
+  if (NeedSkipIfCudaArchLowerThan(750) || NeedSkipIfCudaArchGreaterEqualThan(800)) {
     return;
   }
 

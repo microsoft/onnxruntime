@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
@@ -37,8 +36,6 @@ class XnnpackExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
-
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
@@ -49,6 +46,8 @@ class XnnpackExecutionProvider : public IExecutionProvider {
   pthreadpool* GetPrivateThreadPool() const {
     return xnnpack_thread_pool_;
   }
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   pthreadpool* xnnpack_thread_pool_{nullptr};

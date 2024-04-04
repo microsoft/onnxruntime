@@ -322,7 +322,6 @@ static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, co
   return status;
 }
 
-
 bool IsTransposeReshape(const gsl::span<const size_t>& perm, gsl::span<const int64_t> input_dims) {
   // As long as the dims with values > 1 stay in the same order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
@@ -403,7 +402,7 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   bool moving_single_axis = IsTransposeMovingSingleAxis(*p_perm, from, to);
 
   if (moving_single_axis && !X.IsDataTypeString()) {
-    SingleAxisTranspose(*p_perm, X, Y, from, to);
+    SingleAxisTranspose(*p_perm, X, Y, from, to, nullptr, ctx->GetOperatorThreadPool());
   } else {
     // fall back to default implementation
     status = DoUntypedTranspose(*p_perm, X, Y);

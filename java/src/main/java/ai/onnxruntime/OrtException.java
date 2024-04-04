@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -8,6 +8,7 @@ package ai.onnxruntime;
 public class OrtException extends Exception {
   private static final long serialVersionUID = 1L;
 
+  /** The OrtErrorCode for this exception. */
   private final OrtErrorCode errorCode;
 
   /**
@@ -51,22 +52,35 @@ public class OrtException extends Exception {
   }
 
   /**
-   * Maps the OrtErrorCode struct in "onnxruntime_c_api.h" with an additional entry for Java side
-   * errors.
+   * Maps the {@code OrtErrorCode} struct in {@code onnxruntime_c_api.h} with an additional entry
+   * for Java side errors.
    */
   public enum OrtErrorCode {
+    /** An unknown error occurred in the Java API. */
     ORT_JAVA_UNKNOWN(-1),
+    /** The operation completed without error. */
     ORT_OK(0),
+    /** The operation failed. */
     ORT_FAIL(1),
+    /** The operation received an invalid argument. */
     ORT_INVALID_ARGUMENT(2),
+    /** The operation could not load the required file. */
     ORT_NO_SUCHFILE(3),
+    /** The operation could not use the model. */
     ORT_NO_MODEL(4),
+    /** There is an internal error in the ORT engine. */
     ORT_ENGINE_ERROR(5),
+    /** The operation threw a runtime exception. */
     ORT_RUNTIME_EXCEPTION(6),
+    /** The provided protobuf was invalid. */
     ORT_INVALID_PROTOBUF(7),
+    /** The model was loaded. */
     ORT_MODEL_LOADED(8),
+    /** The requested operation has not been implemented. */
     ORT_NOT_IMPLEMENTED(9),
+    /** The ONNX graph is invalid. */
     ORT_INVALID_GRAPH(10),
+    /** The ORT execution provider failed. */
     ORT_EP_FAIL(11);
 
     private final int value;

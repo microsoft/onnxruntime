@@ -17,4 +17,4 @@ class ConcatFromSequence final : public OpKernel, public ConcatBase {
   Status Compute(OpKernelContext* context) const override;
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

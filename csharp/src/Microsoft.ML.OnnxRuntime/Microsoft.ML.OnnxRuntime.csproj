@@ -4,59 +4,56 @@
     <OrtPackageId Condition="'$(OrtPackageId)' == ''">Microsoft.ML.OnnxRuntime</OrtPackageId>
   </PropertyGroup>
 
-  <!--
-  Temporary setup until official Visual Studio 2022 release supports .net6, as the CIs require the official release.
-  We will be able to build all targets with VS once that happens.
-
-  Until then, we need to build the pre-.net6 targets with VS and the .net6 targets with dotnet.
-
-  The pre-.net6 Xamarin targets are optional and only included if the machine has the required workloads.
-
-  We have 3 scenarios
-    1) Build pre-net6 targets with VS - SelectedTargets=PreNet6
-    2) Build net6 targets - SelectedTargets=Net6
-    3) Run 'Pack' target to create nuget package from combination of 1 and 2 - SelectedTargets=All
-
-  Default is PreNet6 so that existing projects and CI builds will do the same thing unless explicitly updated.
-  -->
   <PropertyGroup>
-    <SelectedTargets>PreNet6</SelectedTargets>
-    <BaseTargets>netstandard1.1;netstandard2.0;net5.0;netcoreapp3.1</BaseTargets>
+    <IncludeMobileTargets>true</IncludeMobileTargets>
+    <BaseTargets>netstandard2.0;netcoreapp3.1;net6.0</BaseTargets>
+    <MobileTargets></MobileTargets>
   </PropertyGroup>
 
-  <!-- only set the Xamarin mobile targets if we're building an ORT package,
-       and only if the mobile workloads are installed -->
+  <!-- special case the DesktopOnly solution -->
+  <PropertyGroup Condition="'$(SolutionName)' == 'OnnxRuntime.DesktopOnly.CSharp'">
+    <IncludeMobileTargets>false</IncludeMobileTargets>
+  </PropertyGroup>
+
+  <!-- add Xamarin mobile targets if we're building an ORT package and the Xamarin workloads are installed
+
+       NOTE: We include in a build of the managed package when creating Microsoft.ML.OnnxRuntime.Gpu as both
+             the CPU and GPU packaging pipelines can publish Microsoft.ML.OnnxRuntime.Managed, and we need the targets
+             to be consistent in both.
+  -->
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu') AND
-                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND
-                             Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
-    <XamarinTargets>xamarinios10;monoandroid11.0</XamarinTargets>
+                            '$(IncludeMobileTargets)' == 'true' AND
+                            Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND
+                            Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
+    <MobileTargets>xamarinios10;monoandroid11.0</MobileTargets>
   </PropertyGroup>
 
-  <!-- only set the .net6 targets if we're building an ORT package.
-       we can add .net6 support to other packages later as needed -->
+  <PropertyGroup Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training' AND
+                            '$(IncludeMobileTargets)' == 'true' AND
+                            Exists('$(MSBuildExtensionsPath)\Xamarin\Android')">
+    <MobileTargets>monoandroid11.0</MobileTargets>
+  </PropertyGroup>
+
+  <!-- add MAUI targets if building ORT package -->
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
-                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu')">
-    <Net6Targets>net6.0;net6.0-android;net6.0-ios;net6.0-macos</Net6Targets>
+                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Azure') AND
+                            '$(IncludeMobileTargets)' == 'true'">
+    <MobileTargets>$(MobileTargets);net6.0-android;net6.0-ios</MobileTargets>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(SelectedTargets)'=='PreNet6'">
-    <TargetFrameworks>$(BaseTargets);$(XamarinTargets)</TargetFrameworks>
+  <PropertyGroup Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training' AND
+                            '$(IncludeMobileTargets)' == 'true'">
+    <MobileTargets>$(MobileTargets);net6.0-android</MobileTargets>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(SelectedTargets)'=='Net6'">
-    <TargetFrameworks>$(Net6Targets)</TargetFrameworks>
+  <PropertyGroup>
+    <TargetFrameworks>$(BaseTargets);$(MobileTargets)</TargetFrameworks>
   </PropertyGroup>
-
-  <!-- nuget package creation -->
-  <PropertyGroup Condition="'$(SelectedTargets)'=='All'">
-    <TargetFrameworks>$(BaseTargets);$(XamarinTargets);$(Net6Targets)</TargetFrameworks>
-  </PropertyGroup>
-
 
   <PropertyGroup>
     <Platforms>AnyCPU;x86</Platforms>
-    <LangVersion>7.2</LangVersion>
+    <LangVersion>default</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
@@ -130,8 +127,7 @@
   </PropertyGroup>
 
   <!-- Enable training APIs for the build. The native package must be
-       a training build with build flags 'enable_training' and
-       'enable_training_apis' set.
+       a training build with build flag 'enable_training_apis'.
   -->
   <PropertyGroup Condition="'$(EnableTrainingApis)'=='true'">
     <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_APIS__</OrtConstants>
@@ -179,7 +175,7 @@
   </PropertyGroup>
 
   <!-- CoreML may be valid for one of these targets as they support macOS. we do a runtime check that the OS is
-       macOS before attempting to enable CoreML. This includes net5.0, netcoreapp3.1, net6.0
+       macOS before attempting to enable CoreML. This includes netcoreapp3.1 and net6.0
        NOTE: $(TargetFrameworkIdentitier) may not be set yet, so we need to call GetTargetFrameworkIdentifier
   -->
   <PropertyGroup Condition="$([MSBuild]::GetTargetFrameworkIdentifier('$(TargetFramework)'))=='.NETCoreApp' AND
@@ -195,8 +191,9 @@
     <DefineConstants>$(DefineConstants);$(OrtConstants)</DefineConstants>
   </PropertyGroup>
 
-  <!-- debug output - makes finding/fixing any issues with the the conditions easy.
+  <!-- debug output - makes finding/fixing any issues with the the conditions easy.  -->
   <Target Name="DumpValues" BeforeTargets="PreBuildEvent">
+    <Message Text="SolutionName='$(SolutionName)'" />
     <Message Text="TargetPlatform='$(TargetPlatform)' TargetPlatformIdentifier='$(TargetPlatformIdentifier)' " />
     <Message Text="TargetFramework='$(TargetFramework)' TargetFrameworkIdentifier='$(TargetFrameworkIdentifier)' " />
     <Message Text="[MSBuild]::GetTargetPlatformIdentifier(TargetFramework)='$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))' " />
@@ -205,7 +202,6 @@
     <Message Text="OrtConstants='$(OrtConstants)' " />
     <Message Text="TargetFrameworks='$(TargetFrameworks)' " />
   </Target>
-  -->
 
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
@@ -222,6 +218,13 @@
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h"
           Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
+          PackagePath="\build\native\include"
+          Pack="false"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\orttraining\orttraining\training_api\include\onnxruntime_training*.h"
+          Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training'"
           PackagePath="\build\native\include"
           Pack="false"
           CopyToOutputDirectory="Never"
@@ -289,7 +292,7 @@
           Visible="false"
     />
     <None Include="targets\netstandard\$(PackageId).targets"
-          PackagePath="build\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets"
+          PackagePath="build\netstandard2.0\$(PackageId).targets"
           Pack="true"
           Visible="false"
     />
@@ -315,13 +318,13 @@
   </ItemGroup>
 
   <ItemGroup Condition="$(TargetFramework.StartsWith('netstandard'))">
-    <PackageReference Include="System.Memory" Version="4.5.3" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <Compile Include="**\*.netstandard.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup Condition=" $(TargetFramework.StartsWith('net')) AND !$(TargetFramework.StartsWith('netstandard')) ">
-    <PackageReference Include="System.Memory" Version="4.5.3" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <Compile Include="**\*.net.cs" Link="platform\net\%(Filename)%(Extension)" />
   </ItemGroup>

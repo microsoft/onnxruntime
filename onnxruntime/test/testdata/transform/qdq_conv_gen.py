@@ -3,7 +3,7 @@ from onnx import TensorProto, helper
 
 
 # Generate a basic QDQ Conv model with `num_convs` Conv nodes and their surrounding DQ/Q nodes
-def GenerateModel(model_path, num_convs):
+def GenerateModel(model_path, num_convs):  # noqa: N802
     nodes = []
     initializers = []
     inputs = []
@@ -12,7 +12,7 @@ def GenerateModel(model_path, num_convs):
     for i in range(num_convs):
 
         def name(base):
-            return f"{base}_{i}"
+            return f"{base}_{i}"  # noqa: B023
 
         nodes.extend(
             [

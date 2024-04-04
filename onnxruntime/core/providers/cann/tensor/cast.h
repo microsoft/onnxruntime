@@ -20,7 +20,7 @@ class Cast final : public CannKernel {
     to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
   }
 
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
   ONNX_NAMESPACE::TensorProto_DataType to_;

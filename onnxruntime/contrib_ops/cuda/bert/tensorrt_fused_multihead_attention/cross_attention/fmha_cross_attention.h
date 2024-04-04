@@ -211,13 +211,13 @@ static Fused_multihead_attention_params_mhca getMHCAParams(
 
   // Set the pointers.
   params.gmem_q_params.ptr = const_cast<void*>(q_packed_d);
-  params.gmem_q_params.stride_in_bytes = h * d * sizeof(half);
+  params.gmem_q_params.stride_in_bytes = static_cast<int64_t>(h) * d * static_cast<int64_t>(sizeof(half));
   params.gmem_q_params.h = h;
   params.gmem_q_params.d = d;
   params.gmem_q_params.cu_seqlens = static_cast<int32_t*>(cu_seqlens_q_d);
 
   params.gmem_kv_params.ptr = const_cast<void*>(kv_packed_d);
-  params.gmem_kv_params.stride_in_bytes = h * 2 * d * sizeof(half);
+  params.gmem_kv_params.stride_in_bytes = static_cast<int64_t>(h) * 2 * d * static_cast<int64_t>(sizeof(half));
   params.gmem_kv_params.h = h;
   params.gmem_kv_params.d = d;
   params.gmem_kv_params.cu_seqlens = static_cast<int32_t*>(cu_seqlens_kv_d);

@@ -3,10 +3,12 @@
 
 #pragma once
 
+#include <array>
 #include <unordered_map>
 
 #include "core/common/common.h"
 #include "core/platform/ort_mutex.h"
+#include "core/framework/allocator.h"
 #include "core/framework/tuning_results.h"
 
 namespace onnxruntime {
@@ -24,6 +26,22 @@ class ITuningContext {
   virtual void DisableTunableOp() = 0;
   virtual bool IsTunableOpEnabled() const = 0;
 
+  virtual void EnableTuning() = 0;
+  virtual void DisableTuning() = 0;
+  virtual bool IsTuningEnabled() const = 0;
+
+  virtual void SetMaxTuningDurationMs(int max_duration_ms) = 0;
+  virtual int GetMaxTuningDurationMs() const = 0;
+  virtual void EnableTunableOpAndTuning() final {
+    EnableTunableOp();
+    EnableTuning();
+  }
+
+  virtual void DisableTunableOpAndTuning() final {
+    DisableTunableOp();
+    DisableTuning();
+  }
+
   virtual TuningResultsManager& GetTuningResultsManager() = 0;
   virtual const TuningResultsManager& GetTuningResultsManager() const = 0;
 
@@ -32,8 +50,11 @@ class ITuningContext {
   virtual TuningResults GetTuningResults() const;
   virtual Status LoadTuningResults(const TuningResults& tr);
 
+  void RegisterAllocatorsView(const AllocatorMap* allocators) { allocators_ = allocators; }
+
  protected:
   IExecutionProvider* ep_;
+  const AllocatorMap* allocators_;
 };
 
 class TuningResultsManager {

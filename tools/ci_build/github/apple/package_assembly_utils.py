@@ -16,7 +16,7 @@ repo_root = _script_dir.parents[3]
 class PackageVariant(enum.Enum):
     Full = 0  # full ORT build with all opsets, ops, and types
     Mobile = 1  # minimal ORT build with reduced ops
-    Test = -1  # for testing purposes only
+    Training = 2  # full ORT build with all opsets, ops, and types, plus training APIs
 
     @classmethod
     def release_variant_names(cls):
@@ -46,7 +46,7 @@ def gen_file_from_template(
     :param strict Whether to require the set of template variable names in the file and the keys of
                   `variable_substitutions` to be equal.
     """
-    with open(template_file, mode="r") as template:
+    with open(template_file) as template:
         content = template.read()
 
     variables_in_file = set()
@@ -68,6 +68,27 @@ def gen_file_from_template(
 
     with open(output_file, mode="w") as output:
         output.write(content)
+
+
+def filter_files(all_file_patterns: List[str], excluded_file_patterns: List[str]):
+    """
+    Filters file paths based on inclusion and exclusion patterns
+
+    :param all_file_patterns The list of file paths to filter.
+    :param excluded_file_patterns The list of exclusion patterns.
+
+    :return The filtered list of file paths
+    """
+    # get all files matching the patterns in all_file_patterns
+    all_files = [str(path.relative_to(repo_root)) for pattern in all_file_patterns for path in repo_root.glob(pattern)]
+
+    # get all files matching the patterns in excluded_file_patterns
+    exclude_files = [
+        str(path.relative_to(repo_root)) for pattern in excluded_file_patterns for path in repo_root.glob(pattern)
+    ]
+
+    # return the difference
+    return list(set(all_files) - set(exclude_files))
 
 
 def copy_repo_relative_to_dir(patterns: List[str], dest_dir: pathlib.Path):
@@ -94,7 +115,7 @@ def load_json_config(json_config_file: pathlib.Path):
     :param json_config_file The JSON configuration file path.
     :return The configuration info values.
     """
-    with open(json_config_file, mode="r") as config:
+    with open(json_config_file) as config:
         return json.load(config)
 
 
@@ -104,5 +125,5 @@ def get_ort_version():
 
     :return The ONNX Runtime version string.
     """
-    with open(repo_root / "VERSION_NUMBER", mode="r") as version_file:
+    with open(repo_root / "VERSION_NUMBER") as version_file:
         return version_file.read().strip()

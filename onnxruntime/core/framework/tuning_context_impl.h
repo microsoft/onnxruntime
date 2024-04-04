@@ -120,7 +120,7 @@ void DisjointMergeImpl(
     /*out*/ std::unordered_map<std::string, KernelMap>& results) {
   auto it = results.find(op_signature);
   if (it == results.end()) {
-    for(const auto& [param_sig, kernel_id] : kernel_map) {
+    for (const auto& [param_sig, kernel_id] : kernel_map) {
       LOGS_DEFAULT(VERBOSE) << op_signature << "(" << param_sig << ") -> " << kernel_id;
     }
     results[op_signature] = kernel_map;

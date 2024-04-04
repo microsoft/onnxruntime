@@ -48,7 +48,7 @@ def _to_gradient_definition(gradient):
                 attr_def.name = key
                 attr_def.value_json = json.dumps(value["value"])
                 attr_def.dtype = value["dtype"]
-                attr_def.is_tensor = value["is_tensor"] if "is_tensor" in value else False
+                attr_def.is_tensor = value.get("is_tensor", False)
                 attributes.append(attr_def)
         node_def.attributes = attributes
         node_defs.append(node_def)
@@ -56,17 +56,17 @@ def _to_gradient_definition(gradient):
 
 
 class CustomGradientRegistry:
-    _GRADIENTS = {}
-    _STOP_GRADIENT_EDGES = {}
+    _GRADIENTS = {}  # noqa: RUF012
+    _STOP_GRADIENT_EDGES = {}  # noqa: RUF012
 
     @classmethod
     def register(cls, domain, name, attributes, fn):
-        key = "::".join([domain, name] + list(attributes))
+        key = "::".join([domain, name, *list(attributes)])
         cls._GRADIENTS[key] = _to_gradient_definition(fn())
 
     @classmethod
     def register_custom_stop_gradient_edges(cls, edges, domain, name, *attributes):
-        key = "::".join([domain, name] + list(attributes))
+        key = "::".join([domain, name, *list(attributes)])
         cls._STOP_GRADIENT_EDGES[key] = set(edges)
 
     @classmethod
@@ -213,7 +213,7 @@ CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.ate
 
 
 @register_gradient("org.pytorch.aten", "ATen", "numpy_T", "")
-def numpy_T_gradient():
+def numpy_T_gradient():  # noqa: N802
     return [
         (
             ("ATen", "org.pytorch.aten"),
@@ -241,8 +241,8 @@ def native_group_norm_gradient():
 # are available for all versions, though they are not that convienent to use.
 def _upsample_gradient(backward_fn, dims):
     scales = ["" for _ in range(dims)]
-    if "bilinear" in backward_fn:
-        scales = ["I(2)"] + scales
+    if "bicubic" in backward_fn:
+        scales = ["I(2)", *scales]
     return [
         ("Shape", ["I(0)"], ["Shape_X"]),
         ("Shape", ["O(0)"], ["Shape_Y"]),
@@ -251,7 +251,7 @@ def _upsample_gradient(backward_fn, dims):
         ("Slice", ["Shape_Y", "Const_Start", "Const_End"], ["Sliced_Shape_Y"]),
         (
             ("ATen", "org.pytorch.aten"),
-            ["GO(0)", "Sliced_Shape_Y", "Shape_X"] + scales,
+            ["GO(0)", "Sliced_Shape_Y", "Shape_X", *scales],
             ["GI(0)"],
             {"operator": {"value": backward_fn, "dtype": "string"}},
         ),
@@ -273,6 +273,6 @@ def upsample_nearest3d_gradient():
     return _upsample_gradient("upsample_nearest3d_backward", 3)
 
 
-@register_gradient("org.pytorch.aten", "ATen", "upsample_bilinear2d", "vec")
-def upsample_bilinear2d_gradient():
-    return _upsample_gradient("upsample_bilinear2d_backward", 2)
+@register_gradient("org.pytorch.aten", "ATen", "upsample_bicubic2d", "vec")
+def upsample_bicubic2d_gradient():
+    return _upsample_gradient("upsample_bicubic2d_backward", 2)

@@ -73,9 +73,9 @@ inline void ValidateOpsetForDomain(const std::unordered_map<std::string, int>& o
 }
 
 /** Generates a unique identifier for the given FunctionProto using the function proto domain and name.
-*/
+ */
 inline std::string GetModelLocalFuncId(const ONNX_NAMESPACE::FunctionProto& function_proto) {
   return function_proto.domain() + ":" + function_proto.name();
 }
-}  //namespace model_load_utils
+}  // namespace model_load_utils
 }  // namespace onnxruntime

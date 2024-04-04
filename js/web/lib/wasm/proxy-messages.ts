@@ -1,22 +1,42 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
+import type {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
 /**
- *  tuple elements are: ORT element type; dims; tensor data
+ * Among all the tensor locations, only 'cpu' is serializable.
  */
-export type SerializableTensor = [Tensor.Type, readonly number[], Tensor.DataType];
+export type SerializableTensorMetadata =
+    [dataType: Tensor.Type, dims: readonly number[], data: Tensor.DataType, location: 'cpu'];
+
+export type GpuBufferMetadata = {
+  gpuBuffer: Tensor.GpuBufferType;
+  download?: () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
+  dispose?: () => void;
+};
 
 /**
- *  tuple elements are: InferenceSession handle; input names; output names
+ * Tensors on location 'cpu-pinned' and 'gpu-buffer' are not serializable.
  */
-export type SerializableSessionMetadata = [number, string[], string[]];
+export type UnserializableTensorMetadata =
+    [dataType: Tensor.Type, dims: readonly number[], data: GpuBufferMetadata, location: 'gpu-buffer']|
+    [dataType: Tensor.Type, dims: readonly number[], data: Tensor.DataType, location: 'cpu-pinned'];
 
 /**
- *  tuple elements are: modeldata.offset, modeldata.length
+ * Tensor metadata is a tuple of [dataType, dims, data, location], where
+ * - dataType: tensor data type
+ * - dims: tensor dimensions
+ * - data: tensor data, which can be one of the following depending on the location:
+ *   - cpu: Uint8Array
+ *   - cpu-pinned: Uint8Array
+ *   - gpu-buffer: GpuBufferMetadata
+ * - location: tensor data location
  */
-export type SerializableModeldata = [number, number];
+export type TensorMetadata = SerializableTensorMetadata|UnserializableTensorMetadata;
+
+export type SerializableSessionMetadata = [sessionHandle: number, inputNames: string[], outputNames: string[]];
+
+export type SerializableInternalBuffer = [bufferOffset: number, bufferLength: number];
 
 interface MessageError {
   err?: string;
@@ -24,50 +44,48 @@ interface MessageError {
 
 interface MessageInitWasm extends MessageError {
   type: 'init-wasm';
-  in ?: Env.WebAssemblyFlags;
+  in ?: Env;
+  out?: never;
 }
 
-interface MessageInitOrt extends MessageError {
-  type: 'init-ort';
-  in ?: {numThreads: number; loggingLevel: number};
+interface MessageInitEp extends MessageError {
+  type: 'init-ep';
+  in ?: {env: Env; epName: string};
+  out?: never;
 }
 
-interface MessageCreateSessionAllocate extends MessageError {
-  type: 'create_allocate';
-  in ?: {model: Uint8Array};
-  out?: SerializableModeldata;
-}
-
-interface MessageCreateSessionFinalize extends MessageError {
-  type: 'create_finalize';
-  in ?: {modeldata: SerializableModeldata; options?: InferenceSession.SessionOptions};
-  out?: SerializableSessionMetadata;
+interface MessageCopyFromExternalBuffer extends MessageError {
+  type: 'copy-from';
+  in ?: {buffer: Uint8Array};
+  out?: SerializableInternalBuffer;
 }
 
 interface MessageCreateSession extends MessageError {
   type: 'create';
-  in ?: {model: Uint8Array; options?: InferenceSession.SessionOptions};
+  in ?: {model: SerializableInternalBuffer|Uint8Array; options?: InferenceSession.SessionOptions};
   out?: SerializableSessionMetadata;
 }
 
 interface MessageReleaseSession extends MessageError {
   type: 'release';
   in ?: number;
+  out?: never;
 }
 
 interface MessageRun extends MessageError {
   type: 'run';
   in ?: {
-    sessionId: number; inputIndices: number[]; inputs: SerializableTensor[]; outputIndices: number[];
+    sessionId: number; inputIndices: number[]; inputs: SerializableTensorMetadata[]; outputIndices: number[];
     options: InferenceSession.RunOptions;
   };
-  out?: SerializableTensor[];
+  out?: SerializableTensorMetadata[];
 }
 
 interface MesssageEndProfiling extends MessageError {
   type: 'end-profiling';
   in ?: number;
+  out?: never;
 }
 
-export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCreateSessionAllocate|MessageCreateSessionFinalize|
-    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling;
+export type OrtWasmMessage = MessageInitWasm|MessageInitEp|MessageCopyFromExternalBuffer|MessageCreateSession|
+    MessageReleaseSession|MessageRun|MesssageEndProfiling;

@@ -7,7 +7,6 @@
 
 template <bool Threaded>
 class MlasSymmQgemmTestBase : public MlasTestBase {
-
  protected:
   MLAS_THREADPOOL* threadpool_;
 
@@ -61,7 +60,6 @@ class MlasSymmQgemmTest;
 template <typename AType, bool Threaded>
 class MlasSymmQgemmTest<AType, int32_t, Threaded> : public MlasSymmQgemmTestBase<Threaded> {
  public:
-
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, int32_t offa) {
     // Symmetric kernel will have limited buffer overrun when reading the input buffer
     constexpr size_t OVERRUN = 15;
@@ -210,4 +208,3 @@ class MlasSymmQgemmTest<AType, int32_t, Threaded> : public MlasSymmQgemmTestBase
     }
   }
 };
-

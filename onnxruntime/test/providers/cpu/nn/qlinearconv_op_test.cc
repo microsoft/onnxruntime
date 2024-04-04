@@ -1100,7 +1100,6 @@ TEST(QLinearConvTest, Conv2D_S8S8_Sym_M64_C64) {
   test.Run();
 }
 
-
 TEST(QLinearConvTest, Conv2D_S8S8_Sym_M16_C4_Bias) {
   QLinearConvOpTester<int8_t, int8_t> test;
   test.GenerateRandomInput({1, 4, 3, 3}, .05f, 4);

@@ -12,9 +12,8 @@ namespace _winml {
 class numeric_data : public _winml::idata {
  public:
   static std::shared_ptr<_winml::idata> create(
-    size_t num_elements,
-    size_t element_size_in_bytes,
-    wfc::IIterable<wss::IBuffer> const& buffers);
+    size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers
+  );
 
   // Privte constructor as this type should be created as a shared_ptr
   numeric_data(size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers);

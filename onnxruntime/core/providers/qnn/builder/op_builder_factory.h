@@ -50,11 +50,13 @@ const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
 
 void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateSoftmaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
-void CreateQdqOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
@@ -76,5 +78,44 @@ void CreateTopKOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateInstanceNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateReduceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateBatchNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateLayerNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+struct HandleConvertResult {
+  Status status;                // Indicates an unexpected error. Check if q_node_unit != nullptr to determine
+                                // whether a DQ -> Q sequence was successfully merged into a Convert.
+  const NodeUnit* q_node_unit;  // Non-null if successfully merged DQ -> Q sequence.
+                                // Set to nullptr if this node unit could not be merged into a Convert.
+};
+
+/**
+ * Tries to merge a DQ -> Q sequence into a QNN Convert operator. The DQ -> Q must be converting from
+ * one quantization type (e.g., uint8_t) to another (e.g., uint16_t).
+ *
+ * \param qnn_model_wrapper The QNN model that is being built.
+ * \param maybe_dq_node_unit The node unit that could potentially start the DQ -> Q sequence.
+ * \param logger The logger.
+ * \param do_op_validation True if should call QNN operator validation APIs.
+ * \return An qnn::HandleConvertResult object that indicates success/failure and provides a pointer
+ *         to the Q node unit that was successfully merged with the provided DQ node unit.
+ */
+HandleConvertResult TryHandleConvertSequence(QnnModelWrapper& qnn_model_wrapper,
+                                             const NodeUnit& maybe_dq_node_unit,
+                                             const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                             const logging::Logger& logger,
+                                             bool do_op_validation);
 }  // namespace qnn
 }  // namespace onnxruntime

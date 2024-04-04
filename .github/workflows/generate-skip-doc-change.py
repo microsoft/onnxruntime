@@ -7,7 +7,7 @@ from jinja2 import Environment, FileSystemLoader, Template
 GITHUB_DIR = Path(__file__).resolve().parent.parent
 
 
-class Skipped_Workflow:
+class Skipped_Workflow:  # noqa: N801
     def __init__(self, workflow_name: str, job_names: list, output_file_name: str):
         self.workflow_name = workflow_name
         self.job_names = job_names

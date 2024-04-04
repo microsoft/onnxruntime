@@ -3,14 +3,14 @@
 
 #include "core/optimizer/initializer.h"
 
-#include "core/common/gsl.h"
+#include <functional>
+#include <memory>
 
+#include "core/common/gsl.h"
 #include "core/common/path.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/platform/env.h"
-
-#include <functional>
 
 namespace onnxruntime {
 
@@ -18,7 +18,8 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
                          std::string_view name,
                          gsl::span<const int64_t> dims)
     : name_(name),
-      data_(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims, std::make_shared<CPUAllocator>()) {
+      data_(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims,
+            std::make_shared<CPUAllocator>()) {
   if (!data_.IsDataTypeString()) {
     memset(data_.MutableDataRaw(), 0, data_.SizeInBytes());
   }
@@ -26,10 +27,14 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
 
 Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path) {
   ORT_ENFORCE(utils::HasDataType(tensor_proto), "Initializer must have a datatype");
+#if !defined(__wasm__)
+  // using full filepath is required by utils::TensorProtoToTensor(). One exception is WebAssembly platform, where
+  // external data is not loaded from real file system.
   if (utils::HasExternalData(tensor_proto)) {
     ORT_ENFORCE(!model_path.IsEmpty(),
                 "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
   }
+#endif
 
   auto proto_data_type = tensor_proto.data_type();
   if (utils::HasName(tensor_proto)) {
@@ -39,7 +44,8 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
   auto proto_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
 
   // This must be pre-allocated
-  Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape, std::make_shared<CPUAllocator>());
+  Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape,
+           std::make_shared<CPUAllocator>());
   ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path.ToPathString().c_str(), tensor_proto, w));
   data_ = std::move(w);
 }
@@ -289,35 +295,48 @@ Initializer& Initializer::sqrt() {
 namespace {
 template <typename T>
 struct ScaleByAxis {
-  void operator()(Tensor& data, const Tensor& scalers, const int64_t block_size, const int64_t num_blocks) const {
+  void operator()(Tensor& data,
+                  const Tensor& scalers,
+                  const size_t block_size,
+                  const size_t num_blocks,
+                  const bool column_major) const {
     ToNumeric<T> to_numeric;
     const auto scaler_size = scalers.Shape().Size();
     T* dst = data.MutableData<T>();
     const T* scalers_data = scalers.Data<T>();
     if (scaler_size == 1) {
       const auto numeric_scaler = to_numeric(scalers_data[0]);
-      for (int64_t block_offset = 0, limit = block_size * num_blocks; block_offset < limit; ++block_offset) {
+      for (size_t block_offset = 0, limit = block_size * num_blocks; block_offset < limit; ++block_offset) {
         dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
       }
-    } else
-      for (int64_t block_offset = 0, i = 0; i < num_blocks; i++) {
-        const auto numeric_scaler = to_numeric(scalers_data[i]);
-        for (int64_t j = 0; j < block_size; ++j, ++block_offset) {
-          dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+    } else {
+      for (size_t block_offset = 0, i = 0; i < num_blocks; i++) {
+        if (column_major) {
+          for (size_t j = 0; j < block_size; ++j, ++block_offset) {
+            const auto numeric_scaler = to_numeric(scalers_data[j]);
+            dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+          }
+        } else {
+          const auto numeric_scaler = to_numeric(scalers_data[i]);
+          for (size_t j = 0; j < block_size; ++j, ++block_offset) {
+            dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+          }
         }
       }
+    }
   }
 };
-
 }  // namespace
 
-void Initializer::scale_by_axis(const Initializer& scalers, int axis) {
+void Initializer::scale_by_axis(const Initializer& scalers, int axis, bool column_major) {
   ORT_ENFORCE(axis >= 0, "Axis must be non-negative");
-  const int64_t block_size = data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis));
-  const int64_t num_blocks = size() / block_size;
-  ORT_ENFORCE(scalers.size() == 1 || scalers.size() == num_blocks, "Invalid other(scalers) size");
+  const size_t block_size = narrow<size_t>(data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
+  const size_t num_blocks = size() / block_size;
+  ORT_ENFORCE(scalers.size() == 1 ||
+                  (column_major ? scalers.size() == block_size : scalers.size() == num_blocks),
+              "Invalid other(scalers) size");
   utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-  t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks);
+  t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks, column_major);
 }
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
 }  // namespace onnxruntime

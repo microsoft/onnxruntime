@@ -8,18 +8,18 @@
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
+#ifdef USE_CUDA
+#include <core/providers/cuda/cuda_provider_options.h>
+#endif
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/session_options.h"
 
 namespace onnxruntime {
+
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
-  auto ret = CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
-  // The factory created CPU provider doesn't create/reg allocators; something that is expected by
-  // clients of DefaultCpuExecutionProvider; hence the need to call RegisterAllocator explicitly.
-  AllocatorManager mgr;  // needed only to call RegisterAllocator
-  ret->RegisterAllocator(mgr);
-  return ret;
+  return CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
 }
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
@@ -74,7 +74,9 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
   OrtMIGraphXProviderOptions params{
       0,
       0,
-      0};
+      0,
+      0,
+      nullptr};
   return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
@@ -91,10 +93,19 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params) {
+#ifdef USE_OPENVINO
+  return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(params);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
-  OrtOpenVINOProviderOptions params;
-  return OpenVINOProviderFactoryCreator::Create(&params)->CreateProvider();
+  ProviderOptions provider_options_map;
+  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -102,10 +113,35 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions provider_options{};
+  OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
   if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
+#ifdef ENABLE_CUDA_NHWC_OPS
+std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
+#if defined(USE_CUDA)
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.prefer_nhwc = true;
+  if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+#endif
+
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
+#ifdef USE_CUDA
+  if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
+    return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
 #endif
   return nullptr;
 }
@@ -179,7 +215,9 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
 #ifdef USE_ROCM
   OrtROCMProviderOptions provider_options{};
   provider_options.do_copy_in_default_stream = true;
-  provider_options.tunable_op_enabled = test_tunable_op ? 1 : 0;
+  provider_options.tunable_op_enable = test_tunable_op ? 1 : 0;
+  provider_options.tunable_op_tuning_enable = test_tunable_op ? 1 : 0;
+  provider_options.tunable_op_max_tuning_duration_ms = 0;
   if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
@@ -187,15 +225,21 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
-// For any non - macOS system, CoreML will only be used for ort model converter
-// Make it unavailable here, you can still manually append CoreML EP to session for model conversion
+std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
+  // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
+  // The test will create a model but execution of it will obviously fail.
 #if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+
+  if (use_mlprogram) {
+    coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+  }
+
   return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(use_mlprogram);
   return nullptr;
 #endif
 }
@@ -218,8 +262,19 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
   backend_path = "./QnnCpu.dll";
 #endif
   provider_options_map["backend_path"] = backend_path;
-  return QNNProviderFactoryCreator::Create(provider_options_map)->CreateProvider();
+  return QNNProviderFactoryCreator::Create(provider_options_map, nullptr)->CreateProvider();
 #else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options,
+                                                                    const SessionOptions* session_options) {
+#ifdef USE_QNN
+  return QNNProviderFactoryCreator::Create(options, session_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(session_options);
   return nullptr;
 #endif
 }
@@ -243,8 +298,9 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
-  if (auto factory = DMLProviderFactoryCreator::Create(0))
+  if (auto factory = DMLProviderFactoryCreator::CreateFromOptions(nullptr, false, false)) {
     return factory->CreateProvider();
+  }
 #endif
   return nullptr;
 }

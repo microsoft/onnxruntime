@@ -459,7 +459,7 @@ public:
             maskIndexOutputEdge.FromNodeOutputIndex = 0;
             outputEdges.push_back(std::move(maskIndexOutputEdge));
         }
-        else
+        else if (maskIndexDesc.Desc)
         {
             // Insert the edge feeding into the MaskIndex output
             DML_OUTPUT_GRAPH_EDGE_DESC maskIndexOutputEdge = {};
@@ -484,7 +484,7 @@ public:
         operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
         operatorGraphDesc.outputEdges = outputEdges.data();
         operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
-        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
+        operatorGraphDesc.nodes = opDescs.data();
 
         SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }

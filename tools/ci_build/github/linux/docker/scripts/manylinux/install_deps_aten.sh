@@ -6,12 +6,12 @@ yum -y install \
     graphviz
 
 if [ ! -d "/opt/conda/bin" ]; then
-    PYTHON_EXES=("/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9")
+    PYTHON_EXES=("/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11")
 else
     PYTHON_EXES=("/opt/conda/bin/python")
 fi
 
-os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
+os_major_version=$(tr -dc '0-9.' < /etc/redhat-release |cut -d \. -f1)
 
 SYS_LONG_BIT=$(getconf LONG_BIT)
 mkdir -p /tmp/src
@@ -19,7 +19,7 @@ GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
 
 DISTRIBUTOR=$(lsb_release -i -s)
 
-if [[ "$DISTRIBUTOR" = "CentOS" && $SYS_LONG_BIT = "64" ]]; then
+if [[  ("$DISTRIBUTOR" = "CentOS" || "$DISTRIBUTOR" = "RedHatEnterprise") && $SYS_LONG_BIT = "64" ]]; then
   LIBDIR="lib64"
 else
   LIBDIR="lib"
@@ -29,9 +29,6 @@ cd /tmp/src
 source $(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)/install_shared_deps.sh
 
 cd /tmp/src
-GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
-unzip /tmp/src/gradle-6.3-bin.zip
-mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_deps_aten\.sh/..\/install_protobuf.sh}
@@ -46,7 +43,7 @@ do
   if ! [[ ${PYTHON_EXE} = "/opt/python/cp310-cp310/bin/python3.10" ]]; then
     ${PYTHON_EXE} -m pip install -r ${0/%install_deps_aten\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_cpu\/requirements.txt}
   else
-    ${PYTHON_EXE} -m pip install torch==1.13.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+    ${PYTHON_EXE} -m pip install torch==2.0.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
   fi
 done
 

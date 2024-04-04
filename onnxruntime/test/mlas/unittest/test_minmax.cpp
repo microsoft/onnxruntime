@@ -46,8 +46,6 @@ class MlasFindMinMaxElementsTest : public MlasTestBase {
   }
 };
 
-template <> MlasFindMinMaxElementsTest* MlasTestFixture<MlasFindMinMaxElementsTest>::mlas_tester(nullptr);
-
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -56,4 +54,3 @@ template <> MlasFindMinMaxElementsTest* MlasTestFixture<MlasFindMinMaxElementsTe
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute ? MlasDirectShortExecuteTests<MlasFindMinMaxElementsTest>::RegisterShortExecute() : 0;
 });
-

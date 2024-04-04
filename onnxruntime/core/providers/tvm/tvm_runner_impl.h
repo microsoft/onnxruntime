@@ -14,12 +14,11 @@
 #include "tvm_common.h"
 #include "tvm_ep_options.h"
 
-
 namespace onnxruntime {
 namespace tvm {
 
 class RunnerImpl {
-public:
+ public:
   RunnerImpl() = delete;
   RunnerImpl(const std::shared_ptr<TvmModule>& mod,
              const InputsInfoMap& inputs_info,
@@ -62,13 +61,13 @@ public:
   virtual void run() = 0;
   virtual void get_outputs() = 0;
 
-protected:
+ protected:
   void convert_input_tensors2dl_tensors(Ort::KernelContext& context,
                                         std::vector<DLTensor>& dst,
                                         std::vector<size_t>& dst_inds);
   void add_device_type_data2output_tensors(Ort::KernelContext& context);
 
-protected:
+ protected:
   std::shared_ptr<TvmModule> mod_;
   InputsInfoMap inputs_info_;
   TVMTensorShapes output_shapes_;
@@ -76,9 +75,8 @@ protected:
   bool set_output_zero_copy_;
 };
 
-
 class GERunnerImpl : public RunnerImpl {
-public:
+ public:
   GERunnerImpl() = delete;
   GERunnerImpl(const std::shared_ptr<TvmModule>& mod,
                const InputsInfoMap& inputs_info,
@@ -94,9 +92,8 @@ public:
   void get_outputs() final;
 };
 
-
 class VMRunnerImpl : public RunnerImpl {
-public:
+ public:
   VMRunnerImpl() = delete;
   VMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
                const InputsInfoMap& inputs_info,
@@ -111,20 +108,19 @@ public:
   void run() final;
   void get_outputs() final;
 
-private:
-    void infer_once_to_get_output_shapes();
+ private:
+  void infer_once_to_get_output_shapes();
 
-private:
-    bool probe_infer_ = false;
+ private:
+  bool probe_infer_ = false;
 };
-
 
 std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
                                              const TvmEPOptions& options,
                                              const InputsInfoMap& inputs_info,
                                              const std::vector<DLTensor> output_tensors);
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime
 
 #endif  // TVM_TVM_RUNNER_IMPL_H

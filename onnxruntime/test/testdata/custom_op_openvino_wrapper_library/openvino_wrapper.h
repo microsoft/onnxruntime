@@ -8,7 +8,7 @@
 #undef ORT_API_MANUAL_INIT
 
 #ifdef _MSC_VER
-#pragma warning(disable: 4100)
+#pragma warning(disable : 4100)
 #endif
 #include <openvino/openvino.hpp>
 #ifdef _MSC_VER
@@ -34,6 +34,7 @@ struct KernelOpenVINO {
   ov::OutputVector ov_outputs_;
   Ort::Value weights_;
   std::string device_type_;
+  Ort::Logger logger_;
 };
 
 struct CustomOpOpenVINO : Ort::CustomOpBase<CustomOpOpenVINO, KernelOpenVINO> {

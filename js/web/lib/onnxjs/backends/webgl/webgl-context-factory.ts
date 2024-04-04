@@ -20,7 +20,18 @@ export function createWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContext {
     context = cache.webgl;
   }
 
-  context = context || createNewWebGLContext(contextId);
+  if (!context) {
+    try {
+      // try to create webgl context from an offscreen canvas
+      const offscreenCanvas = createOffscreenCanvas();
+      context = createNewWebGLContext(offscreenCanvas, contextId);
+    } catch (e) {
+      // if failed, fallback to try to use a normal canvas element
+      const canvas = createCanvas();
+      context = createNewWebGLContext(canvas, contextId);
+    }
+  }
+
   contextId = contextId || context.version === 1 ? 'webgl' : 'webgl2';
   const gl = context.gl;
 
@@ -44,8 +55,7 @@ export function createWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContext {
   return context;
 }
 
-export function createNewWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContext {
-  const canvas = createCanvas();
+export function createNewWebGLContext(canvas: HTMLCanvasElement, contextId?: 'webgl'|'webgl2'): WebGLContext {
   const contextAttributes: WebGLContextAttributes = {
     alpha: false,
     depth: false,
@@ -88,13 +98,17 @@ declare let OffscreenCanvas: {new (width: number, height: number): HTMLCanvasEle
 
 function createCanvas(): HTMLCanvasElement {
   if (typeof document === 'undefined') {
-    if (typeof OffscreenCanvas === 'undefined') {
-      throw new TypeError('failed to create canvas: OffscreenCanvas is not supported');
-    }
-    return new OffscreenCanvas(1, 1);
+    throw new TypeError('failed to create canvas: document is not supported');
   }
   const canvas: HTMLCanvasElement = document.createElement('canvas');
   canvas.width = 1;
   canvas.height = 1;
   return canvas;
+}
+
+function createOffscreenCanvas(): HTMLCanvasElement {
+  if (typeof OffscreenCanvas === 'undefined') {
+    throw new TypeError('failed to create offscreen canvas: OffscreenCanvas is not supported');
+  }
+  return new OffscreenCanvas(1, 1);
 }

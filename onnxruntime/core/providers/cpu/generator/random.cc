@@ -55,7 +55,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0,
     int32_t, int64_t);
-}
+}  // namespace op_kernel_type_control
 
 using EnabledRandomNormalOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0);
@@ -428,4 +428,14 @@ template Status MultinomialComputeShared<int64_t>(AllocatorPtr& alloc,
                                                   std::default_random_engine& generator,
                                                   Tensor& Y);
 
+#if !defined(DISABLE_CONTRIB_OPS)
+// used by onnxruntime/contrib_ops/cpu/transformers/sampling_cpu_helper.h
+template Status MultinomialComputeShared<int32_t>(AllocatorPtr& alloc,
+                                                  const Tensor& X,
+                                                  const int64_t batch_size,
+                                                  const int64_t num_classes,
+                                                  const int64_t num_samples,
+                                                  std::default_random_engine& generator,
+                                                  Tensor& Y);
+#endif
 }  // namespace onnxruntime

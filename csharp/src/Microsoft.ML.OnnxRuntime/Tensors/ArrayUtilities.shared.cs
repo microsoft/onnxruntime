@@ -11,28 +11,14 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Diagnostics;
 using System;
+using System.Diagnostics;
 
 namespace Microsoft.ML.OnnxRuntime.Tensors
 {
     internal static class ArrayUtilities
     {
         public const int StackallocMax = 16;
-
-        public static long GetSizeForShape(long[] shape)
-        {
-            long product = 1;
-            foreach( var dim in shape)
-            {
-                if (dim < 0)
-                {
-                    throw new ArgumentOutOfRangeException("Shape must not have negative elements:" + dim);
-                }
-                product *= dim;
-            }
-            return product;
-        }
 
         public static long GetProduct(ReadOnlySpan<int> dimensions, int startIndex = 0)
         {
@@ -162,7 +148,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Calculates the n-d indices from the 1-d index in a layout specificed by strides
+        /// Calculates the n-d indices from the 1-d index in a layout specified by strides
         /// </summary>
         /// <param name="strides"></param>
         /// <param name="reverseStride"></param>
@@ -245,7 +231,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             for (int i = 0; i < sourceStrides.Length; i++)
             {
                 // reverse the index for reverseStride so that we divide by largest stride first
-                var nIndex = sourceReverseStride ? sourceStrides.Length - 1 - i: i;
+                var nIndex = sourceReverseStride ? sourceStrides.Length - 1 - i : i;
 
                 var sourceStride = sourceStrides[nIndex];
                 var transformStride = transformStrides[nIndex];
@@ -255,6 +241,19 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             }
 
             return transformIndex;
+        }
+
+        public static T[] GetEmpty<T>()
+        {
+            // Match the implementation of Array.GetEmpty<T>()
+            // from dotnet/runtime. Having it as a static in a
+            // nested class ensures we only allocate the empty
+            // array once and only when actually necessary.
+            return EmptyArray<T>.Value;
+        }
+        private static class EmptyArray<T>
+        {
+            public static readonly T[] Value = new T[0];
         }
     }
 }

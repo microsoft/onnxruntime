@@ -16,7 +16,6 @@ class MyEPDataTransfer : public IDataTransfer {
   // Dumpen MSVC warning about not fully overriding
   using IDataTransfer::CopyTensor;
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
-
 };
 
 }  // namespace onnxruntime

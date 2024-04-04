@@ -36,7 +36,7 @@ class FusionBiasAdd(Fusion):
         skip_layer_norm = nodes[-1]
 
         # Check skip connection is from SkipLayerNormalization output
-        if not (add_node.input[1] in skip_layer_norm.output):
+        if add_node.input[1] not in skip_layer_norm.output:
             return
 
         bias_index, bias_value = self.model.get_constant_input(bias_node)

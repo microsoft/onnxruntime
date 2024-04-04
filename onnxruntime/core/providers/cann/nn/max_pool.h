@@ -15,7 +15,7 @@ class MaxPool : public CannKernel, public PoolBase {
  public:
   explicit MaxPool(const OpKernelInfo& info) : CannKernel(info), PoolBase(info) {}
 
-  Status ComputeInternal(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
 }  // namespace cann

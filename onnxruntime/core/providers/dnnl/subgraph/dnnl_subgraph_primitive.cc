@@ -85,7 +85,7 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
     return;
   }
   dnnl::memory to_mem;
-  if (!IsMemoryInExpectedOrtFormat(md)|| mem.get_engine().get_kind() != dnnl::engine::kind::cpu) {
+  if (!IsMemoryInExpectedOrtFormat(md) || mem.get_engine().get_kind() != dnnl::engine::kind::cpu) {
     printf("\n print memory reorder started \n");
     dnnl::memory::desc to_md = dnnl::memory::desc(md.get_dims(), md.get_data_type(), GetDnnlFormat(md.get_dims().size()));
     to_mem = dnnl::memory(to_md, GetCPUEngine());
@@ -110,8 +110,7 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
       if (&data != &data_vec.back()) std::cout << ", ";
     }
     std::cout << "]\n";
-  }
-  else if (dt == dnnl::memory::data_type::u8) {
+  } else if (dt == dnnl::memory::data_type::u8) {
     std::vector<uint8_t> data_vec(Product(dims));
     auto dh = to_mem.get_data_handle();
     for (size_t i = 0; i < to_mem.get_desc().get_size(); ++i) {
@@ -141,7 +140,7 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
     std::vector<int32_t> data_vec(Product(dims));
     auto dh = to_mem.get_data_handle();
     for (size_t i = 0; i < to_mem.get_desc().get_size(); ++i) {
-    ((char*)data_vec.data())[i] = ((char*)dh)[i];
+      ((char*)data_vec.data())[i] = ((char*)dh)[i];
     }
 
     std::cout << "[";
@@ -154,7 +153,7 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
     ORT_THROW("Cannot print such data type");
   }
 }
-#endif // DNNL_TENSOR_PRINT_MEMORY
+#endif  // DNNL_TENSOR_PRINT_MEMORY
 
 int Product(dnnl::memory::dims d) {
   int result = 1;
@@ -179,7 +178,7 @@ void DnnlSubgraphPrimitive::AddKernels() {
     } else if (node.OpType() == "Cast") {
       DnnlCast().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Concat") {
-      DnnlConcat().CreatePrimitive(*this, node);      
+      DnnlConcat().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv" || node.OpType() == "ConvRelu") {
       DnnlConv().CreatePrimitive(*this, node);
     } else if (node.OpType() == "DequantizeLinear") {
@@ -188,7 +187,7 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlDynamicQuantizeLinear().CreatePrimitive(*this, node);
     } else if (elementwise_ops.count(node.OpType())) {
       DnnlElementwise().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "FastGelu"){
+    } else if (node.OpType() == "FastGelu") {
       DnnlGelu().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Gelu" || node.OpType() == "BiasGelu") {
       DnnlGelu().CreatePrimitive(*this, node);
@@ -198,9 +197,9 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
-    // MatMulPostOps is a OneDNN only fusion of MatMul and upto 32 elementwise or binary ops
-    // FusedMatMul is a ContribOperator defined here:
-    //    https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.FusedMatMul
+      // MatMulPostOps is a OneDNN only fusion of MatMul and upto 32 elementwise or binary ops
+      // FusedMatMul is a ContribOperator defined here:
+      //    https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.FusedMatMul
     } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulPostOps" || node.OpType() == "FusedMatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger" || node.OpType() == "MatMulIntegerPostOps") {
@@ -261,7 +260,7 @@ bool DnnlSubgraphPrimitive::IsScalar(const DnnlTensor& tensor) {
 }
 
 void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTensorData>& inputs) {
-  //if already compiled once and is not dynamic, then don't compile again
+  // if already compiled once and is not dynamic, then don't compile again
   if (!shape_key_.empty() && !IsDynamic()) {
     return;
   }
@@ -298,8 +297,8 @@ void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTe
   net_args_.clear();
   reshapes_.clear();
   scalar_outputs_.clear();
-  //initializer should not be cleared upon recompile
-  //initializers_.clear();
+  // initializer should not be cleared upon recompile
+  // initializers_.clear();
 
   for (auto nodearg : subgraph_->GetDnnlInputs()) {
     auto dnnl_tensor_name = nodearg->Name();
@@ -539,8 +538,6 @@ void DnnlSubgraphPrimitive::SetInitializer(std::string memory_name, dnnl::memory
   }
 }
 
-
-
 dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose) {
   // if found just return
   if (HasMemory(tensor.Name(), mem_desc, eng)) {
@@ -564,18 +561,18 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
       LOGS_DEFAULT(ERROR) << tensor.Name() << ", Dims From: " << mem_from_dims << ", To: " << mem_to_dims;
       throw std::invalid_argument("not a valid reshape, inconsistent dim product");
     }
-    //keep the same data type from mem_from but reshape the dims with mem_desc
+    // keep the same data type from mem_from but reshape the dims with mem_desc
     auto mem_from_reshape_md = mem_from.get_desc();
     if (transpose) {
-      //hard coded to transpose 2 dimensional matrix
-      //TODO: expand to arbitrary permutation or transpose on given 2 dims for higher dimensional tensors
+      // hard coded to transpose 2 dimensional matrix
+      // TODO: expand to arbitrary permutation or transpose on given 2 dims for higher dimensional tensors
       mem_from_reshape_md = mem_from_reshape_md.permute_axes({1, 0});
     }
     mem_from_reshape_md = mem_from_reshape_md.reshape(mem_desc.get_dims());
     auto mem_from_reshape = dnnl::memory(mem_from_reshape_md, mem_from.get_engine(), nullptr);
     if (is_constant) {  // if constant, do reshape now
       LOGS_DEFAULT(INFO) << "reshaped now";
-      //use the stream as a hint to make sure data handle gets set
+      // use the stream as a hint to make sure data handle gets set
       mem_from_reshape.set_data_handle(mem_from.get_data_handle());
     } else {
       AddReshape(mem_from, mem_from_reshape);
@@ -618,7 +615,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryInOrtFormat(const DnnlTensor& tenso
     dnnl::memory to_mem = dnnl::memory(to_md, eng);
     AddPrimitive(dnnl::reorder(from_mem, to_mem), {{DNNL_ARG_FROM, from_mem},
                                                    {DNNL_ARG_TO, to_mem}});
-   return to_mem;
+    return to_mem;
   } else {
     // If using GPU this will move the memory from the CPU to the GPU.
     return GetMemoryAndReshape(tensor, from_desc, eng);
@@ -659,7 +656,6 @@ void DnnlSubgraphPrimitive::AddPrimitive(dnnl::primitive prim, std::unordered_ma
 }
 
 onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs, const std::unordered_map<std::string, OnnxTensorData>& outputs) {
-
   auto stream = GetStream();
 
   for (auto& input : inputs) {
@@ -680,12 +676,11 @@ onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_
     reshape_pair.second.set_data_handle(reshape_pair.first.get_data_handle());
   }
 
-
   for (size_t i = 0; i < net_.size(); ++i) {
     net_.at(i).execute(stream, net_args_.at(i));
     stream.wait();
 #if DNNL_TENSOR_PRINT_MEMORY
-    //for debug memory purpose
+    // for debug memory purpose
     for (auto e : items_to_print_) {
       auto net_index = e.first;
       auto net_arg_index = e.second;
@@ -693,14 +688,14 @@ onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_
         PrintMemory(net_args_.at(i)[net_arg_index]);
       }
     }
-#endif  //DNNL_TENSOR_PRINT_MEMORY
+#endif  // DNNL_TENSOR_PRINT_MEMORY
   }
 
   return Status::OK();
 }
 
 bool DnnlSubgraphPrimitive::IsScalarOutput(const std::string& name) {
-  return Contains(scalar_outputs_,name);
+  return Contains(scalar_outputs_, name);
 }
 
 dnnl::memory::desc DnnlSubgraphPrimitive::GetOutputInfo(std::string name) {

@@ -1,18 +1,28 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <optional>
 #include <random>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include "graph_transform_test_builder.h"
-
 #include "core/graph/graph.h"
-#include "qdq_test_utils.h"
+#include "core/graph/node_attr_utils.h"
+#include "core/framework/op_node_proto_helper.h"
+#include "core/framework/utils.h"
+#include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
+#include "core/optimizer/transpose_optimization/optimizer_api.h"
+#include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+
 #include "test/test_environment.h"
+#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/providers/internal_testing/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -310,17 +320,6 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
                     /*opset_version*/ {11, 18});
 }
 
-// The CUDA Resize kernel assumes that the input is NCHW and
-// Resize can't be supported in ORT builds with CUDA enabled.
-// TODO: Enable this once the CUDA Resize kernel is implemented
-// "generically" (i.e.) aligning with the generic nature of the
-// ONNX spec.
-// See https://github.com/microsoft/onnxruntime/pull/10824 for
-// a similar fix applied to the CPU Resize kernel.
-// Per tests included in #10824, the ROCM EP also generates
-// incorrect results when this handler is used, so the Resize
-// handler is not enabled even for those builds.
-#if !defined(USE_CUDA) && !defined(USE_ROCM)
 TEST(TransposeOptimizerTests, TestResize) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
@@ -349,7 +348,9 @@ TEST(TransposeOptimizerTests, TestResize) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {10, 18});
 }
 
@@ -377,7 +378,9 @@ TEST(TransposeOptimizerTests, TestResizeOpset11) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {11, 18});
 }
 
@@ -405,7 +408,9 @@ TEST(TransposeOptimizerTests, TestResizeOpset15) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {15, 18});
 }
 
@@ -435,7 +440,9 @@ TEST(TransposeOptimizerTests, TestResizeSizeRoi) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {15, 18});
 }
 
@@ -469,7 +476,9 @@ TEST(TransposeOptimizerTests, TestResizeRoiScalesZeroRank0) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     {12, 18});
 }
 
@@ -498,7 +507,9 @@ TEST(TransposeOptimizerTests, TestResizeNonconst) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {11, 18});
 }
 
@@ -527,11 +538,12 @@ TEST(TransposeOptimizerTests, TestResizeNonconstOpset13) {
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
-                    TransformerLevel::Level1,
+                    // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
+                    // assigned to the CPU EP first
+                    TransformerLevel::Level2,
                     /*opset_version*/ {13, 18});
 }
 
-#endif
 TEST(TransposeOptimizerTests, TestAdd) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
@@ -1270,7 +1282,7 @@ TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsFalse) {
     auto& transpose_2 = builder.AddNode("Transpose", {reducemax_1_out_0}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 0});
   };
-  
+
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
     EXPECT_EQ(transpose_cost, 0);
@@ -2962,11 +2974,23 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsDiv) {
     EXPECT_EQ(transpose_cost, 0);
   };
 
+#if defined(_M_ARM64) && _MSC_VER >= 1930
+  // Slight difference in Windows ARM64 VS 2022:
+  // expected 19.3678 (419af143), got 19.3678 (419af144), diff: 1.90735e-06, tol=0
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 18},
+                    /*per_sample_tolerance*/ 1e-07,
+                    /*relative_per_sample_tolerance*/ 1e-06);
+#else
   TransformerTester(build_test_case_1,
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ {15, 18});
+#endif  // defined(_M_ARM64) && _MSC_VER >= 1930
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsPRelu) {
@@ -3482,119 +3506,117 @@ TEST(TransposeOptimizerTests, TestWhere) {
                     /*opset_version*/ {15, 18});
 }
 
-TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
-  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+// Utility function that runs TransformerTester for the graph Transpose -> QuantizeLinear -> Transpose.
+// Expects the Tranpose nodes to cancel.
+template <typename QuantType>
+static void RunQuantizeLinearTestCase(const std::optional<std::vector<int64_t>>& zp_input_shape,
+                                      const std::vector<int64_t>& zp_value_shape,
+                                      std::optional<ONNX_NAMESPACE::AttributeProto> axis,
+                                      const std::string& q_domain = "") {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
     auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
+
+    NodeArg* scale_arg = nullptr;
+    NodeArg* zero_point_arg = nullptr;
+
+    if (zp_value_shape.empty()) {  // Per-tensor quantization
+      QuantType zp = (qmax + qmin) / 2;
+      scale_arg = MakeInput<float>(builder, zp_input_shape, zp_value_shape, {0.05f});
+      zero_point_arg = MakeInput<QuantType>(builder, zp_input_shape, zp_value_shape, {zp});
+    } else {  // Per-axis quantization
+      scale_arg = MakeInput<float>(builder, zp_input_shape, zp_value_shape, 0.0f, 1.0f);
+      zero_point_arg = MakeInput<QuantType>(builder, zp_input_shape, zp_value_shape, qmin, qmax);
+    }
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0});
+    auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, scale_arg, zero_point_arg},
+                                             {quantizelinear_1_out_0}, q_domain);
+
+    if (axis.has_value()) {
+      quantizelinear_1.AddAttributeProto(*axis);
+    }
+
     auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
   };
 
-  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+  auto check_optimized_graph = [](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
     EXPECT_EQ(transpose_cost, 0);
   };
 
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ {15, 18});
+}
+
+TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
+  std::optional<std::vector<int64_t>> zp_input_shape = std::vector<int64_t>{};
+  std::vector<int64_t> zp_value_shape{};
+  std::optional<ONNX_NAMESPACE::AttributeProto> empty_axis;  // No axis value.
+
+  RunQuantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, empty_axis, kOnnxDomain);
+
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use com.microsoft.QuantizeLinear op.
+  RunQuantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, empty_axis, kMSDomain);
+  RunQuantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, empty_axis, kMSDomain);
+  RunQuantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, empty_axis, kMSDomain);
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
-  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
-    auto* transpose_1_out_0 = builder.MakeIntermediate();
-    auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
-    auto* transpose_2_out_0 = builder.MakeOutput();
+  std::optional<std::vector<int64_t>> zp_input_shape = std::vector<int64_t>{};
+  std::vector<int64_t> zp_value_shape{};
+  auto ignored_axis = utils::MakeAttribute("axis", static_cast<int64_t>(10));  // Should be ignored for per-tensor Q
 
-    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0});
-    quantizelinear_1.AddAttribute("axis", (int64_t)10);
-    auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
-    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-  };
+  RunQuantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, ignored_axis, kOnnxDomain);
 
-  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    EXPECT_EQ(transpose_cost, 0);
-  };
-
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
-                    TransformerLevel::Default,
-                    TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use com.microsoft.QuantizeLinear op.
+  RunQuantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, ignored_axis, kMSDomain);
+  RunQuantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, ignored_axis, kMSDomain);
+  RunQuantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, ignored_axis, kMSDomain);
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
-  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<float>(builder, {{-1}}, {2}, {2.3f, 2.4f});
-    auto* input2_arg = MakeInput<uint8_t>(builder, {{-1}}, {2}, {10, 12});
-    auto* transpose_1_out_0 = builder.MakeIntermediate();
-    auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
-    auto* transpose_2_out_0 = builder.MakeOutput();
+  std::optional<std::vector<int64_t>> zp_input_shape = std::vector<int64_t>{-1};
+  std::vector<int64_t> zp_value_shape = {2};
+  auto axis = utils::MakeAttribute("axis", static_cast<int64_t>(0));
 
-    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0});
-    quantizelinear_1.AddAttribute("axis", (int64_t)0);
-    auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
-    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-  };
+  RunQuantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, axis, kOnnxDomain);
 
-  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    EXPECT_EQ(transpose_cost, 0);
-  };
-
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
-                    TransformerLevel::Default,
-                    TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use com.microsoft.QuantizeLinear op.
+  RunQuantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, axis, kMSDomain);
+  RunQuantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, axis, kMSDomain);
+  RunQuantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, axis, kMSDomain);
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearVectorUnknownRank) {
-  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<float>(builder, std::nullopt, {3}, {2.3f, 2.4f, 2.5f});
-    auto* input2_arg = MakeInput<uint8_t>(builder, std::nullopt, {3}, {10, 12, 13});
-    auto* transpose_1_out_0 = builder.MakeIntermediate();
-    auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
-    auto* transpose_2_out_0 = builder.MakeOutput();
+  std::optional<std::vector<int64_t>> zp_unknown_shape;  // Empty shape
+  std::vector<int64_t> zp_value_shape = {3};
+  auto axis = utils::MakeAttribute("axis", static_cast<int64_t>(1));
 
-    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0});
-    quantizelinear_1.AddAttribute("axis", (int64_t)1);
-    auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
-    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-  };
+  RunQuantizeLinearTestCase<uint8_t>(zp_unknown_shape, zp_value_shape, axis, kOnnxDomain);
 
-  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    EXPECT_EQ(transpose_cost, 0);
-  };
-
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
-                    TransformerLevel::Default,
-                    TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use com.microsoft.QuantizeLinear op.
+  RunQuantizeLinearTestCase<uint8_t>(zp_unknown_shape, zp_value_shape, axis, kMSDomain);
+  RunQuantizeLinearTestCase<uint16_t>(zp_unknown_shape, zp_value_shape, axis, kMSDomain);
+  RunQuantizeLinearTestCase<int16_t>(zp_unknown_shape, zp_value_shape, axis, kMSDomain);
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearScalarOpset10) {
@@ -3625,125 +3647,99 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalarOpset10) {
                     /*opset_version*/ 10);
 }
 
-TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
-  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
-    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
+// Utility function that runs TransformerTester for the graph Transpose -> DequantizeLinear -> Transpose.
+// Expects the Tranpose nodes to cancel.
+template <typename QuantType>
+static void RunDequantizeLinearTestCase(const std::optional<std::vector<int64_t>>& zp_input_shape,
+                                        const std::vector<int64_t>& zp_value_shape,
+                                        std::optional<ONNX_NAMESPACE::AttributeProto> axis,
+                                        const std::string& q_domain = "") {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input0_arg = MakeInput<QuantType>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, qmin, qmax);
+
+    NodeArg* scale_arg = nullptr;
+    NodeArg* zero_point_arg = nullptr;
+
+    if (zp_value_shape.empty()) {  // Per-tensor quantization
+      QuantType zp = (qmax + qmin) / 2;
+      scale_arg = MakeInput<float>(builder, zp_input_shape, zp_value_shape, {0.05f});
+      zero_point_arg = MakeInput<QuantType>(builder, zp_input_shape, zp_value_shape, {zp});
+    } else {  // Per-axis quantization
+      scale_arg = MakeInput<float>(builder, zp_input_shape, zp_value_shape, 0.0f, 1.0f);
+      zero_point_arg = MakeInput<QuantType>(builder, zp_input_shape, zp_value_shape, qmin, qmax);
+    }
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    auto& dequantizelinear_1 = builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {dequantizelinear_1_out_0});
-    dequantizelinear_1.AddAttribute("axis", (int64_t)10);
+    auto& dequantizelinear_1 = builder.AddNode("DequantizeLinear", {transpose_1_out_0, scale_arg, zero_point_arg},
+                                               {dequantizelinear_1_out_0}, q_domain);
+
+    if (axis.has_value()) {
+      dequantizelinear_1.AddAttributeProto(*axis);
+    }
+
     auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
   };
 
-  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+  auto check_optimized_graph = [](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
     EXPECT_EQ(transpose_cost, 0);
   };
 
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ {15, 18});
+}
+
+TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
+  std::optional<std::vector<int64_t>> zp_input_shape = std::vector<int64_t>{};
+  std::vector<int64_t> zp_value_shape{};
+  auto ignored_axis = utils::MakeAttribute("axis", static_cast<int64_t>(10));  // Should be ignored for per-tensor Q
+
+  RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, ignored_axis, kOnnxDomain);
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use com.microsoft.DequantizeLinear ops
+  RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, ignored_axis, kMSDomain);
+  RunDequantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, ignored_axis, kMSDomain);
+  RunDequantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, ignored_axis, kMSDomain);
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestDequantizeLinearVector) {
-  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
-    auto* input1_arg = MakeInput<float>(builder, {{2}}, {2}, {2.3f, 2.4f});
-    auto* input2_arg = MakeInput<uint8_t>(builder, {{2}}, {2}, {10, 12});
-    auto* transpose_1_out_0 = builder.MakeIntermediate();
-    auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
-    auto* transpose_2_out_0 = builder.MakeOutput();
+  std::optional<std::vector<int64_t>> zp_input_shape = std::vector<int64_t>{2};
+  std::vector<int64_t> zp_value_shape = {2};
+  auto axis = utils::MakeAttribute("axis", static_cast<int64_t>(-4));
 
-    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    auto& dequantizelinear_1 = builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {dequantizelinear_1_out_0});
-    dequantizelinear_1.AddAttribute("axis", (int64_t)-4);
-    auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
-    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-  };
-
-  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    EXPECT_EQ(transpose_cost, 0);
-  };
-
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
-                    TransformerLevel::Default,
-                    TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+  RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, axis, kOnnxDomain);
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use com.microsoft.DequantizeLinear ops
+  RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, axis, kMSDomain);
+  RunDequantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, axis, kMSDomain);
+  RunDequantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, axis, kMSDomain);
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
-  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
-    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
-    auto* transpose_1_out_0 = builder.MakeIntermediate();
-    auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
-    auto* transpose_2_out_0 = builder.MakeOutput();
+  std::optional<std::vector<int64_t>> zp_input_shape = std::vector<int64_t>{};
+  std::vector<int64_t> zp_value_shape{};
+  std::optional<ONNX_NAMESPACE::AttributeProto> no_axis;  // Empty axis value will not be set.
 
-    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {dequantizelinear_1_out_0});
-    auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
-    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-  };
-
-  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    EXPECT_EQ(transpose_cost, 0);
-  };
-
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
-                    TransformerLevel::Default,
-                    TransformerLevel::Level1,
-                    /*opset_version*/ 10);
-}
-
-TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
-  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
-    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
-    auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
-    auto* transpose_1_out_0 = builder.MakeOutput();
-    auto* transpose_2_out_0 = builder.MakeOutput();
-
-    builder.AddNode("DequantizeLinear", {input0_arg, input1_arg, input2_arg}, {dequantizelinear_1_out_0});
-
-    auto& transpose_1 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_1_out_0});
-    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-
-    auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
-    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-  };
-
-  auto check_graph = [&](InferenceSessionWrapper& session) {
-    std::vector<std::string> expected_op_types_in_order{
-        "DequantizeLinear",
-        "Transpose",
-        "Transpose"};
-
-    const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
-    EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
-  };
-
-  TransformerTester(build_test_case_1,
-                    check_graph,
-                    TransformerLevel::Default,
-                    TransformerLevel::Level1,
-                    /*opset_version*/ 10);
+  RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, no_axis, kOnnxDomain);
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use com.microsoft.DequantizeLinear ops
+  RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, no_axis, kMSDomain);
+  RunDequantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, no_axis, kMSDomain);
+  RunDequantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, no_axis, kMSDomain);
+#endif
 }
 
 TEST(TransposeOptimizerTests, TestCast) {
@@ -3853,9 +3849,9 @@ TEST(TransposeOptimizerTests, TestSimpleReshapeAsTranspose) {
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 0);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -3884,9 +3880,9 @@ TEST(TransposeOptimizerTests, TestReshapeAsTransposeGraphOutput) {
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 0);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -3894,6 +3890,195 @@ TEST(TransposeOptimizerTests, TestReshapeAsTransposeGraphOutput) {
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ {15, 18});
+}
+
+enum class TransposeReshapeResult {
+  kUnchanged,  // nodes cannot be merged or removed
+  kMerge,      // merge Transpose and Reshape into single Transpose
+  kCancel      // Transpose and Reshape cancel each other and both can be dropped
+};
+
+static void TestTransposeReshape(const std::vector<int64_t>& input_shape,    // model and Transpose input shape
+                                 const std::vector<int64_t>& perms,          // perms for Transpose node
+                                 const std::vector<int64_t>& reshape_shape,  // shape for Reshape node
+                                 TransposeReshapeResult expected_result,
+                                 const std::vector<int64_t>& merged_perms = {},  // expected perms num_transpose == 1
+                                 bool allow_zero = false) {                      // Reshape 'allowzero' value
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, 0.0, 1.0);
+    auto* mul_arg1 = builder.MakeInput<float>({1}, 0.0, 1.0);
+    auto* reshape_shape_value = builder.MakeInitializer<int64_t>({int64_t(reshape_shape.size())}, reshape_shape);
+
+    auto* mul_out_0 = builder.MakeOutput();
+    auto* transpose_out_0 = builder.MakeIntermediate();
+    auto* reshape_out_0 = builder.MakeIntermediate();
+    auto* identity_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input_arg, mul_arg1}, {mul_out_0});  // node so Transpose isn't consuming graph input
+
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_out_0}, {transpose_out_0});
+    transpose_1.AddAttribute("perm", perms);
+
+    auto& reshape = builder.AddNode("Reshape", {transpose_out_0, reshape_shape_value}, {reshape_out_0});
+    if (allow_zero) {
+      reshape.AddAttribute("allowzero", int64_t(1));
+    }
+
+    builder.AddNode("Identity", {reshape_out_0}, {identity_out_0});  // node so Reshape isn't graph output
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const auto& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    if (expected_result == TransposeReshapeResult::kCancel) {
+      ASSERT_EQ(op_to_count["Transpose"], 0);
+      ASSERT_EQ(op_to_count["Reshape"], 0);
+    } else if (expected_result == TransposeReshapeResult::kMerge) {
+      ASSERT_EQ(op_to_count["Transpose"], 1);
+      ASSERT_EQ(op_to_count["Reshape"], 0);
+
+      // find Transpose node and check perms
+      const auto& nodes = graph.Nodes();
+      const Node& transpose = *std::find_if(nodes.begin(), nodes.end(),
+                                            [](const auto& node) { return node.OpType() == "Transpose"; });
+
+      ProtoHelperNodeContext proto_helper_ctx(transpose);
+      OpNodeProtoHelper<ProtoHelperNodeContext> proto_helper(&proto_helper_ctx);
+      std::vector<int64_t> actual_perms;
+      ASSERT_STATUS_OK(proto_helper.GetAttrs<int64_t>("perm", actual_perms));
+      ASSERT_THAT(actual_perms, testing::ContainerEq(merged_perms));
+    } else {
+      ASSERT_EQ(op_to_count["Transpose"], 1);
+      ASSERT_EQ(op_to_count["Reshape"], 1);
+    }
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+// Transpose -> Reshape can be merged if the Reshape could also be expressed as a Transpose due to not changing the
+// order or size of dims with value > 1.
+TEST(TransposeOptimizerTests, TestReshapeCanMerge) {
+  // 3D
+  TestTransposeReshape({4, 1, 3}, {2, 0, 1},  // transpose input shape and perms. output shape {3, 4, 1}
+                       {1, 3, 4},             // reshape 'shape'
+                       TransposeReshapeResult::kMerge,
+                       {1, 2, 0});  // perms required to merge
+
+  // essentially the same test but with the 2 non-1 dims having the same value
+  TestTransposeReshape({4, 1, 4}, {2, 0, 1},  // transpose input shape and perms. output shape {4, 4, 1}
+                       {1, 4, 4},             // reshape 'shape'
+                       TransposeReshapeResult::kMerge,
+                       {1, 2, 0});  // perms required to merge
+
+  // 4D - various combinations to exercise different paths in the perms calculation
+  TestTransposeReshape({1, 6, 1, 5}, {3, 0, 1, 2},  // transpose input shape and perms. output shape {5, 1, 6, 1}
+                       {1, 1, 5, 6},                // reshape 'shape'. equiv. transpose perms == 1,3,0,2
+                       TransposeReshapeResult::kMerge,
+                       {0, 2, 3, 1});  // merged perms of 3,0,1,2 followed by 1,3,0,2
+
+  TestTransposeReshape({1, 6, 1, 5}, {2, 3, 1, 0},  // transpose input shape and perms. output shape {1, 5, 6, 1}
+                       {5, 6, 1, 1},                // reshape 'shape'. equiv. transpose perms == 1,2,0,3
+                       TransposeReshapeResult::kMerge,
+                       {3, 1, 2, 0});  // merged perms of 2,3,1,0 followed by 1,2,0,3
+
+  TestTransposeReshape({1, 6, 1, 5}, {3, 0, 2, 1},  // transpose input shape and perms. output shape {5, 1, 1, 6}
+                       {1, 5, 6, 1},                // reshape 'shape'. equiv. transpose perms == 1,0,3,1
+                       TransposeReshapeResult::kMerge,
+                       {0, 3, 1, 2});  // merged perms of 3,0,2,1 followed by 1,0,3,1
+
+  TestTransposeReshape({1, 6, 1, 5}, {2, 3, 0, 1},  // transpose input shape and perms. output shape {1, 5, 1, 6}
+                       {5, 1, 6, 1},                // reshape 'shape'. equiv. transpose perms == 1,0,3,2
+                       TransposeReshapeResult::kMerge,
+                       {3, 2, 1, 0});  // merged perms of 2,3,0,1 followed by 1,0,3,2
+}
+
+// Transpose -> Reshape cancel each other out if Reshape can be expressed as a Transpose due to not changing the
+// order or size of dims with value > 1, and the Transpose input shape is equal to the Reshape output shape.
+TEST(TransposeOptimizerTests, TestReshapeCancelsTranspose) {
+  // 2D
+  TestTransposeReshape({1, 8}, {1, 0},  // transpose input shape and perms. output shape {8, 1}
+                       {1, 8},          // reshape 'shape'
+                       TransposeReshapeResult::kCancel);
+  // 3D
+  TestTransposeReshape({2, 1, 4}, {1, 0, 2},  // transpose input shape and perms. output shape {1, 2, 4}
+                       {2, 1, 4},             // reshape 'shape'
+                       TransposeReshapeResult::kCancel);
+
+  // 4D
+  TestTransposeReshape({1, 2, 1, 3}, {0, 2, 1, 3},  // transpose input shape and perms. output shape {1, 1, 2, 3}
+                       {1, 2, 1, 3},                // reshape 'shape'
+                       TransposeReshapeResult::kCancel);
+}
+
+// test some Reshape combinations that cannot be treated as a Transpose
+TEST(TransposeOptimizerTests, TestReshapeCantMerge) {
+  // rank mismatch
+  TestTransposeReshape({2, 1, 4}, {1, 0, 2},  // transpose input shape and perms. output shape {1, 2, 4}
+                       {2, 4},                // reshape 'shape'
+                       TransposeReshapeResult::kUnchanged);
+
+  // reshape can't be treated as a Transpose as a dim size changes
+  TestTransposeReshape({1, 4, 4, 5}, {0, 3, 1, 2},  // transpose input shape and perms. output shape {1, 5, 4, 4}
+                       {1, 5, 2, 8},                // reshape 'shape'
+                       TransposeReshapeResult::kUnchanged);
+
+  // reshape can't be treated as a Transpose as the order of dims with value > 1 changes
+  TestTransposeReshape({1, 4, 8, 3}, {0, 3, 1, 2},  // transpose input shape and perms. output shape {1, 3, 4, 8}
+                       {1, 3, 8, 4},                // reshape 'shape'
+                       TransposeReshapeResult::kUnchanged);
+}
+
+// test Reshape with allow zero.
+// If allow_zero is false, the dim value is inferred from the matching input dim.
+// If allow_zero is true, a zero is maintained as-is (resulting in an output of empty data)
+TEST(TransposeOptimizerTests, TestReshapeWithZero) {
+  // First 2 tests have a 0 in the Reshape `shape` input. One can be merged, one can't.
+  TestTransposeReshape({1, 5, 7, 1}, {0, 3, 2, 1},  // transpose input shape and perms. output shape {1, 1, 7, 5}
+                       {1, 7, 1, 0},                // reshape 'shape'. the '0' should == 5 from the transpose output.
+                                                    // equiv. transpose perms == 0,2,1,3
+                       TransposeReshapeResult::kMerge,
+                       {0, 2, 3, 1},  // result should be {1, 7, 1, 5}. merged perms of 0,3,2,1 followed by 0,2,1,3
+                       false);        // allow_zero
+
+  TestTransposeReshape({1, 4, 8, 3}, {0, 3, 1, 2},  // transpose input shape and perms. output shape {1, 3, 4, 8}
+                       {1, 0, 8, 4},                // reshape 'shape'. '3' is inferred but last 2 dims swap
+                       TransposeReshapeResult::kUnchanged,
+                       {},
+                       false);
+
+  // Next test has a 0 in the Reshape `shape` input.
+  TestTransposeReshape({1, 5, 7, 0}, {0, 2, 1, 3},  // transpose input shape and perms. output shape {1, 7, 5, 0}
+                       {7, 5, 1, 0},                // reshape 'shape'. the '0' should be kept. we can't merge as a
+                       TransposeReshapeResult::kMerge,
+                       {2, 1, 0, 3},  // result should be {7, 5, 1, 0}. merged perms of 0,2,1,3 followed by 1,2,0,3
+                       true);         // allow_zero
+
+  TestTransposeReshape({1, 5, 7, 0}, {0, 2, 1, 3},  // transpose input shape and perms. output shape {1, 7, 5, 0}
+                       {0, 7, 5, 1},                // reshape 'shape'. the '0' should be kept.
+                       TransposeReshapeResult::kUnchanged,
+                       {},
+                       true);  // allow_zero
+}
+
+// test Reshape with an inferred dim due to value of -1
+// test valid (inferred dim is 1:1 with existing) and invalid (inferred size differs)
+TEST(TransposeOptimizerTests, TestReshapeWithMinusOne) {
+  TestTransposeReshape({1, 5, 7, 1}, {0, 3, 2, 1},  // transpose input shape and perms. output shape {1, 1, 7, 5}
+                       {1, 7, 1, -1},               // reshape 'shape'. -1 -> 5
+                                                    // equiv. transpose perms == 0,2,1,3
+                       TransposeReshapeResult::kMerge,
+                       {0, 2, 3, 1});  // result should be {1, 7, 1, 5}. merged perms of 0,3,2,1 followed by 0,2,1,3
+
+  // -1 dim changes size
+  TestTransposeReshape({1, 8, 4, 1}, {0, 3, 2, 1},  // transpose input shape and perms. output shape {1, 1, 4, 8}
+                       {1, -1, 2, 8},               // reshape 'shape'. -1 -> 2 which is incompatible
+                       TransposeReshapeResult::kUnchanged);
 }
 
 TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
@@ -3915,9 +4100,9 @@ TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 0);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -3927,7 +4112,7 @@ TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
                     /*opset_version*/ {15, 18});
 }
 
-TEST(TransposeOptimizerTests, TestNonCancelingReshape) {
+TEST(TransposeOptimizerTests, TestNonCancelingReshapeDueToNonConstShape) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, 0.0, 1.0);
     auto* input1_arg = builder.MakeInput<float>({1, 3}, 0.0, 1.0);
@@ -3948,9 +4133,9 @@ TEST(TransposeOptimizerTests, TestNonCancelingReshape) {
     // Transpose on mul output cannot be removed since reshape's shape input
     // is not const
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 1);
-    ASSERT_TRUE(op_to_count["Reshape"] == 1);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
 
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
     EXPECT_EQ(transpose_cost, 1);
@@ -4121,8 +4306,7 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
       auto* init = builder.MakeInitializer<int64_t>({1}, {1});
       auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0, init}, {reducemax_1_out_0});
       reducemax_1.AddAttribute("keepdims", (int64_t)0);
-    }
-    else {
+    } else {
       auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0}, {reducemax_1_out_0});
       reducemax_1.AddAttribute("axes", std::vector<int64_t>{1});
       reducemax_1.AddAttribute("keepdims", (int64_t)0);
@@ -4154,9 +4338,9 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue9671) {
 
   SessionOptions so;
   so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue9671";
-  InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_uri));
-  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());  // optimizers run during initialization
 }
 
 // regression test for a model where the transpose optimizations incorrectly removed a node providing an implicit
@@ -4168,9 +4352,9 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue10305) {
 
   SessionOptions so;
   so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue10305";
-  InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_uri));
-  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());  // optimizers run during initialization
 }
 
 // regression test for a model with DQ node with per-axis dequantization followed by a Transpose.
@@ -4191,18 +4375,378 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
 
   {
     so.graph_optimization_level = TransformerLevel::Default;  // off
-    InferenceSession session_object{so, GetEnvironment()};
-    ASSERT_STATUS_OK(session_object.Load(model_uri));
-    ASSERT_STATUS_OK(session_object.Initialize());
-    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches_orig));
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
   }
 
   {
     so.graph_optimization_level = TransformerLevel::Level1;  // enable transpose optimizer
-    InferenceSession session_object{so, GetEnvironment()};
-    ASSERT_STATUS_OK(session_object.Load(model_uri));
-    ASSERT_STATUS_OK(session_object.Initialize());
-    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches));
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// These tests use the internal testing EP with static kernels which requires a full build and contrib ops,
+// and the NHWC Conv which requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
+// Test a Transpose node followed by a Reshape that is logically equivalent to an Transpose can be merged.
+// The test graph was extracted from a model we were trying to use with the QNN EP.
+TEST(TransposeOptimizerTests, QnnTransposeReshape) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.onnx");
+
+  SessionOptions so;
+
+  // enable dumping graph so one test validates that infrastructure works. we don't want to do that in multiple
+  // tests as the filenames for the debug output are hardcoded.
+  // check the build output directory for files called `post_layout_transform_step_<step#>.onnx` to see how the graph
+  // changes during the layout transformation process.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // if we merge the Transpose -> Reshape the resulting Transpose node can be pushed down and will cancel out
+  // all downstream Transpose nodes.
+  // if the merge fails those two nodes remain, and the Transpose is blocked from being pushed down.
+  // additionally, running the L1 transformers after the layout transform should constant fold the Transpose node that
+  // gets inserted on the weights used by the Add node.
+  // end result of everything working as expected is a single Transpose of the input data to NHWC as that can't be
+  // avoided.
+  ASSERT_EQ(op_to_count["Transpose"], 1) << "All layout transform Transpose ops should have been handled "
+                                            "with the exception of the initial node prior to the Conv";
+
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                                << "' was not assigned to the internal testing EP.";
+
+    if (node.Name() == "Mul_212" || node.Name() == "Add_213") {
+      // check that the special case in TransposeInputs for a single element input reconnects things back up correctly
+      const auto& inputs = node.InputDefs();
+      EXPECT_EQ(inputs.size(), size_t(2));
+      EXPECT_TRUE(inputs[1]->Exists());
+    }
+  }
+}
+
+TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.qdq.onnx");
+
+  SessionOptions so;
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // if we merge the Transpose -> Reshape the resulting Transpose node can be pushed down and will cancel out
+  // all downstream Transpose nodes.
+  // if the merge fails those two nodes remain, and the Transpose is blocked from being pushed down.
+  // additionally, running the L1 transformers after the layout transform should constant fold the Transpose node that
+  // gets inserted on the weights used by the Add node.
+  // end result of everything working as expected is a single Transpose of the input data to NHWC as that can't be
+  // avoided.
+  ASSERT_EQ(op_to_count["Transpose"], 1) << "All layout transform Transpose ops should have been handled "
+                                            "with the exception of the initial node prior to the Conv";
+
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                                << "' was not assigned to the internal testing EP.";
+  }
+}
+
+// Validate handling for EP with layout specific Resize that prefers NHWC
+TEST(TransposeOptimizerTests, QnnResizeOpset11) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/nhwc_resize_scales_opset11.onnx");
+
+  SessionOptions so;
+  // Uncomment to debug
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                                << "' was not assigned to the internal testing EP.";
+    if (node.OpType() == "Resize") {
+      EXPECT_EQ(node.Domain(), kMSInternalNHWCDomain) << "Resize was not converted to NHWC layout";
+    }
+  }
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2) << "Resize should have been wrapped in 2 Transpose nodes to convert to NHWC";
+
+  // And the post-Resize Transpose should have been pushed all the way to the end
+  GraphViewer viewer(graph);
+  EXPECT_EQ(graph.GetNode(viewer.GetNodesInTopologicalOrder().back())->OpType(), "Transpose");
+}
+
+// model where layout transform results in transposing a non-const input that is broadcast.
+// this inserts Unsqueeze -> Transpose between the input and the node.
+// test that QDQ node units are created for Unsqueeze and Transpose by inserting Q->DQ pairs after them
+TEST(TransposeOptimizerTests, QnnTransposeNonConstBroadcastInput) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/layout_transform_nonconst_broadcast_input.onnx");
+
+  SessionOptions so;
+
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Transpose"], 3) << "Should have Transpose on 2 inputs and one on output.";
+
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                            << "' was not assigned to the internal testing EP.";
+    // all nodes should be in QDQ node units except the Cast on an input which was not in a QDQ unit
+    if (node.OpType() != "QuantizeLinear" && node.OpType() != "DequantizeLinear" && node.OpType() != "Cast") {
+      for (auto cur_input = node.InputNodesBegin(), end = node.InputNodesEnd(); cur_input != end; ++cur_input) {
+        EXPECT_EQ(cur_input->OpType(), "DequantizeLinear");
+      }
+
+      for (auto cur_output = node.OutputNodesBegin(), end = node.OutputNodesEnd(); cur_output != end; ++cur_output) {
+        EXPECT_EQ(cur_output->OpType(), "QuantizeLinear");
+      }
+    }
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
+static void CheckSharedInitializerHandling(bool broadcast) {
+  auto model_uri = broadcast ? ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast.onnx")
+                             : ORT_TSTR("testdata/transpose_optimizer_shared_initializers.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 2, 2, 3};
+  std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input_dims, input_data, &input);
+
+  NameMLValMap feeds{{"input0", input}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+
+  // get results with no modifications to the model
+  {
+    so.graph_optimization_level = TransformerLevel::Default;  // off
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    // we call the ONNX transpose optimizer directly to simplify the model required to exercise the shared initializer
+    // handling. this means we don't need to disable optimizers that might alter the graph before the
+    // transpose optimizer runs (at a minimum ConstantFolding, CommonSubexpressionElimination and ConstantSharing).
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    using namespace onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    // default optimization cost check
+    OptimizeResult result = Optimize(*api_graph);
+
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()), "updated_model.onnx"));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Transpose"], 0) << "The Transpose nodes should have been pushed through or canceled out.";
+    if (broadcast) {
+      EXPECT_EQ(op_to_count["Unsqueeze"], 0) << "Any Unsqueeze nodes should have been canceled out.";
+    }
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// test we re-use a modified shared initializer wherever possible. model has one initializer that is used by 3 DQ nodes
+// and one initializer that is used by 2 Add nodes. both cases should be handled with the initializer being
+// modified in-place for the first usage, and the Transpose added to the second usage being cancelled out when the
+// original Transpose at the start of the model is pushed down.
+TEST(TransposeOptimizerTests, SharedInitializerHandling) {
+  CheckSharedInitializerHandling(/*broadcast*/ false);
+}
+
+// same setup as the above test, however the initializer is broadcast to bring UnsqueezeInput into play.
+// the in-place modification of the initializer for the first usage results in
+//   <initializer> -> Transpose -> Squeeze -> {DQ | Add}
+// the later usages of the initializer should attempt to cancel out the Squeeze in UnsqueezeInput,
+// followed by canceling out the Transpose in TransposeInput.
+TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast) {
+  CheckSharedInitializerHandling(/*broadcast*/ true);
+}
+
+// Unit test where EstimateTransposeValueCost must look past a DQ -> Squeeze to see the Transponse of a shared
+// initializer for the overall cost of pushing the Transpose throught the second Where to be negative.
+TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast2) {
+  auto model_uri = ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast2.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> cond_input_0_dims{3, 2};
+  std::vector<int64_t> cond_input_1_dims{2, 3};
+  std::vector<bool> cond_input_data = {true, false, false, true, true, false};
+
+  std::vector<int64_t> x_0_input_dims{3};
+  std::vector<int64_t> x_1_input_dims{3};
+  std::vector<float> x_input_data_0 = random.Gaussian<float>(x_0_input_dims, 0.0f, 1.0f);
+  std::vector<float> x_input_data_1 = random.Gaussian<float>(x_1_input_dims, 0.0f, 1.0f);
+
+  OrtValue cond_input_0, cond_input_1, x_input_0, x_input_1;
+  CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], cond_input_0_dims, cond_input_data,
+                      &cond_input_0);
+  CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], cond_input_1_dims, cond_input_data,
+                      &cond_input_1);
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], x_0_input_dims, x_input_data_0,
+                       &x_input_0);
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], x_1_input_dims, x_input_data_1,
+                       &x_input_1);
+
+  NameMLValMap feeds{{"cond_in_0", cond_input_0},
+                     {"cond_in_1", cond_input_1},
+                     {"x_in_0", x_input_0},
+                     {"x_in_1", x_input_1}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+
+  // get results with no modifications to the model
+  {
+    so.graph_optimization_level = TransformerLevel::Default;  // off
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    // we call the ONNX transpose optimizer directly to simplify the model required to exercise the shared initializer
+    // handling. this means we don't need to disable optimizers that might alter the graph before the
+    // transpose optimizer runs (at a minimum ConstantFolding, CommonSubexpressionElimination and ConstantSharing).
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    using namespace onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    // default optimization cost check
+    OptimizeResult result = Optimize(*api_graph);
+
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()), updated_model.onnx"));
+
+    // Pushing the initial Transpose through the 2 Where nodes results in
+    // - x_in_0 needs Transpose and Unsqueeze to broadcast correctly into the first Where
+    // - y_quant is updated in-place to transposed layout and used in both Where nodes
+    // - x_in_1 needs Transpose and Unsqueeze to broadcast correctly into the second Where
+    // - cond_in_1 needs Transpose
+    //   - as we're pushing a Transpose through the Add for one input, and undo-ing the Transpose on y_quant for
+    //     the other input, we save 2 by adding 1 to cond_in_1
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Transpose"], 3) << "The 2 X inputs and cond_in_1 should require transpose.";
+    EXPECT_EQ(op_to_count["Unsqueeze"], 2) << "The 2 X inputs should require Unsqueeze.";
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
   }
 
   ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),

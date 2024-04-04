@@ -35,6 +35,54 @@ enum class ProfilingLevel : uint8_t {
   INVALID
 };
 
+// Defines performance modes available for HTP backend.
+enum class HtpPerformanceMode : uint8_t {
+  kHtpDefault = 0,
+  kHtpSustainedHighPerformance,
+  kHtpBurst,
+  kHtpHighPerformance,
+  kHtpPowerSaver,
+  kHtpLowPowerSaver,
+  kHtpHighPowerSaver,
+  kHtpLowBalanced,
+  kHtpBalanced,
+  kHtpExtremePowerSaver,
+};
+
+enum class ContextPriority : uint8_t {
+  LOW = 0,
+  NORMAL,
+  NORMAL_HIGH,
+  HIGH,
+  UNDEFINED
+};
+
+// Defines the graph optimization strategy used by the HTP backend.
+enum class HtpGraphFinalizationOptimizationMode : uint8_t {
+  kDefault = 0,
+  kMode1 = 1,  // Faster preparation time, less optimal graph
+  kMode2 = 2,  // Longer preparation time, more optimal graph
+  kMode3 = 3,  // Longest preparation time, most likely even more optimal graph.
+};
+
+enum class QnnBackendType : uint8_t {
+  CPU = 0,
+  GPU,
+  DSP,
+  HTP,
+  HTP_FP16
+};
+
+bool IsNpuBackend(QnnBackendType backend_type);
+
+// constexpr config values
+constexpr const int kSleepMinLatency = 40;
+constexpr const int kSleepLowLatency = 100;
+constexpr const int kSleepMediumLatency = 1000;
+constexpr const int kSleepHighLatency = 2000;
+constexpr const int kDcvsDisable = 0;
+constexpr const int kDcvsEnable = 1;
+
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);
   OnnxTensorInfo(size_t index, int32_t data_type, std::vector<int64_t>&& shape) : index_(index), data_type_(data_type), shape_(std::move(shape)) {}
@@ -53,6 +101,7 @@ void SetQnnTensorDim(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>& dime
 void SetQnnTensorMemType(Qnn_Tensor_t& qnn_tensor, Qnn_TensorMemType_t mem_type);
 void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint8_t>& client_buf);
 void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>& client_buf);
+void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, void* buf_data, uint32_t buf_size);
 void SetQnnTensorClientBufSize(Qnn_Tensor_t& qnn_tensor, uint32_t client_buf_size);
 void SetQnnTensorClientBufData(Qnn_Tensor_t& qnn_tensor, void* client_buf_data);
 void SetQnnTensorQParams(Qnn_Tensor_t& qnn_tensor, const Qnn_QuantizeParams_t& quantize_params);
@@ -74,6 +123,20 @@ uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
+
+/**
+ * Compares two sets of quantization parameters. Sets the parameters `scale_diff` and `offset_diff`
+ * to the absolute differences. Returns an error status if the quantization parameters are not
+ * of the same type, or if the type is not supported.
+ *
+ * \param qparam0 The first set of quantization parameters.
+ * \param qparam1 The second set of quantization parameters.
+ * \param scale_diff Set to the absolute value of the difference in scale value.
+ * \param offset_diff Set to the absolute value of the difference in offset value.
+ * \return Status indicating success.
+ */
+Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
+                             float& max_scale_diff, int32_t& max_offset_diff);
 
 // TODO: split out separate files for Wrappers
 class QnnTensorWrapper {
@@ -101,6 +164,30 @@ class QnnTensorWrapper {
     }
 
     SetQnnTensorQParams(qnn_tensor_, quantize_params);
+  }
+
+  QnnTensorWrapper(const Qnn_Tensor_t& qnn_tensor) : tensor_name_(GetQnnTensorName(qnn_tensor)),
+                                                     client_buf_{} {
+    qnn_tensor_ = qnn_tensor;
+    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+
+    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+    const auto& src_quantize_param = GetQnnTensorQParams(qnn_tensor);
+    // quantization only support SCALE_OFFSET encoding
+    quantize_param.encodingDefinition = src_quantize_param.encodingDefinition;
+    quantize_param.quantizationEncoding = src_quantize_param.quantizationEncoding;
+    quantize_param.scaleOffsetEncoding = src_quantize_param.scaleOffsetEncoding;
+    SetQnnTensorQParams(qnn_tensor_, quantize_param);
+
+    uint32_t shape_rank = GetQnnTensorRank(qnn_tensor);
+    uint32_t* shape_data = GetQnnTensorDims(qnn_tensor);
+    dimensions_.assign(shape_data, shape_data + shape_rank);
+    SetQnnTensorDim(qnn_tensor_, dimensions_);
+
+    // This method is only used for graph inputs/outputs when desearilize from cached context
+    // no client buffer should be set
+
+    SetQnnTensorMemType(qnn_tensor_, QNN_TENSORMEMTYPE_RAW);
   }
 
   QnnTensorWrapper() = default;
@@ -360,7 +447,7 @@ class QnnOpProperty {
 
 class GraphInfo {
  public:
-  GraphInfo(Qnn_GraphHandle_t graph,
+  GraphInfo(const Qnn_GraphHandle_t graph,
             const std::string& name,
             std::vector<QnnTensorWrapper>&& input_tensors,
             std::vector<QnnTensorWrapper>&& output_tensors) : graph_name_(name),
@@ -391,42 +478,6 @@ typedef struct GraphConfigInfo {
   const char* graphName;
   const QnnGraph_Config_t** graphConfigs;
 } GraphConfigInfo_t;
-
-void QnnLogStdoutCallback(const char* format,
-                          QnnLog_Level_t level,
-                          uint64_t timestamp,
-                          va_list argument_parameter);
-static std::mutex qnn_log_mutex_;
-
-namespace qnn_def {
-const std::string package_name = "qti.aisw";
-const std::string dilation = "dilation";
-const std::string pad_amount = "pad_amount";
-const std::string stride = "stride";
-const std::string group = "group";
-const std::string filter_size = "filter_size";
-const std::string count_pad_for_edges = "count_pad_for_edges";
-const std::string perm = "perm";
-const std::string axis = "axis";
-const std::string axes = "axes";
-const std::string keep_dims = "keep_dims";
-const std::string transpose_in0 = "transpose_in0";
-const std::string transpose_in1 = "transpose_in1";
-const std::string min_value = "min_value";
-const std::string max_value = "max_value";
-const std::string ranges = "ranges";
-const std::string output_padding = "output_padding";
-const std::string split_index = "split_index";
-const std::string align_corners = "align_corners";
-const std::string half_pixel_centers = "half_pixel_centers";
-const std::string exclude_outside = "exclude_outside";
-const std::string transformation_mode = "transformation_mode";
-const std::string interpolation_mode = "interpolation_mode";
-const std::string nearest_mode = "nearest_mode";
-const std::string rounding_mode = "rounding_mode";
-const std::string topk = "k";
-const std::string multiples = "multiples";
-}  // namespace qnn_def
 
 }  // namespace qnn
 }  // namespace onnxruntime

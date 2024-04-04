@@ -229,7 +229,7 @@ void FuseBiasSoftmaxSubgraph(
   graph_utils::FinalizeNodeFusion(graph, {add_node, softmax_node}, fused_node);
 }
 
-} // namespace anonymous
+}  // namespace
 
 namespace onnxruntime {
 

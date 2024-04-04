@@ -13,12 +13,12 @@ unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", vocab_size])
 Gather_Y = helper.make_tensor_value_info("gather_output", TensorProto.FLOAT, ["batch", 128])
 
-layer_norm1_weight_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+layer_norm1_weight_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape(128)
 layer_norm1_weight_initializer = numpy_helper.from_array(
     layer_norm1_weight_np_vals, "bert.encoder.layer.2.output.LayerNorm.weight"
 )
 
-layer_norm1_bias_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+layer_norm1_bias_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape(128)
 layer_norm1_bias_initializer = numpy_helper.from_array(
     layer_norm1_bias_np_vals, "bert.encoder.layer.2.output.LayerNorm.bias"
 )
@@ -26,15 +26,15 @@ layer_norm1_bias_initializer = numpy_helper.from_array(
 matmul1_np_vals = np.random.uniform(0.0, 1.0, (128, 128)).astype(np.float32).reshape((128, 128))
 matmul1_initializer = numpy_helper.from_array(matmul1_np_vals, "matmul1_initializer")
 
-add1_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+add1_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape(128)
 add1_initializer = numpy_helper.from_array(add1_np_vals, "add1_initializerr")
 
-layer_norm2_weight_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+layer_norm2_weight_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape(128)
 layer_norm2_weight_initializer = numpy_helper.from_array(
     layer_norm2_weight_np_vals, "cls.predictions.transform.LayerNorm.weight"
 )
 
-layer_norm2_bias_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
+layer_norm2_bias_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape(128)
 layer_norm2_bias_initializer = numpy_helper.from_array(
     layer_norm2_bias_np_vals, "cls.predictions.transform.LayerNorm.bias"
 )
@@ -42,7 +42,7 @@ layer_norm2_bias_initializer = numpy_helper.from_array(
 matmul2_np_vals = np.random.uniform(0.0, 1.0, (128, vocab_size)).astype(np.float32).reshape((128, vocab_size))
 matmul2_initializer = numpy_helper.from_array(matmul2_np_vals, "bert.embeddings.word_embeddings.weight_transposed")
 
-add2_np_vals = np.random.uniform(0.0, 1.0, (vocab_size)).astype(np.float32).reshape((vocab_size))
+add2_np_vals = np.random.uniform(0.0, 1.0, (vocab_size)).astype(np.float32).reshape(vocab_size)
 add2_initializer = numpy_helper.from_array(add2_np_vals, "cls.predictions.bias")
 
 gather_indice_np_vals = np.asarray([0]).astype(np.int64).reshape(())

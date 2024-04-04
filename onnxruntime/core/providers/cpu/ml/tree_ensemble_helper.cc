@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/providers/cpu/ml/tree_ensemble_helper.h"
 #include "core/common/common.h"
 #include "onnx/defs/tensor_proto_util.h"
@@ -32,7 +34,7 @@ Status GetNumberOfElementsAttrsOrDefault(const OpKernelInfo& info, const std::st
   return Status::OK();
 }
 
-template<typename TH>
+template <typename TH>
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name,
                                ONNX_NAMESPACE::TensorProto_DataType proto_type, std::vector<TH>& data) {
   if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE) {
@@ -64,3 +66,5 @@ Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name
 
 }  // namespace ml
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

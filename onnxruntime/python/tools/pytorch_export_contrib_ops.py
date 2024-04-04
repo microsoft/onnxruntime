@@ -11,7 +11,7 @@ try:
     # TODO(justinchuby): Create a function to alert users when torch is not installed
     import torch
 except ModuleNotFoundError:
-    raise ModuleNotFoundError(
+    raise ModuleNotFoundError(  # noqa: B904
         "This module is only useful in combination with PyTorch. To install PyTorch see https://pytorch.org/."
     )
 

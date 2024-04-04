@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import fileinput
+import fileinput  # noqa: F401
 import os
-import sys
+import sys  # noqa: F401
 
 from setuptools import setup
 from torch.utils import cpp_extension
@@ -18,7 +18,7 @@ filenames = [
     os.path.join(os.path.dirname(__file__), "multi_tensor_l2norm_kernel.cu"),
 ]
 
-use_rocm = True if os.environ["ONNXRUNTIME_ROCM_VERSION"] else False
+use_rocm = bool(os.environ["ONNXRUNTIME_ROCM_VERSION"])
 extra_compile_args = {"cxx": ["-O3"]}
 if not use_rocm:
     nvcc_extra_args = os.environ.get("ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS", "")

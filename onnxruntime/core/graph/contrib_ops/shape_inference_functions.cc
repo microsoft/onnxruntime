@@ -2,13 +2,18 @@
 // Licensed under the MIT License.
 
 #include "core/graph/contrib_ops/shape_inference_functions.h"
+#include "core/graph/onnx_protobuf.h"
 #include <onnx/defs/shape_inference.h>
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
 void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 2, 0);
-  propagateElemTypeFromInputToOutput(ctx, 0, 1);
+  auto mask_index_type = getAttribute(ctx, "mask_index_type", 1);
+  if (mask_index_type > 0) {
+    propagateElemTypeFromInputToOutput(ctx, 0, 1);
+  }
   if (!hasInputShape(ctx, 0)) {
     // TODO(kreeger): In this case update the output to (?, ?, hidden_size).
     return;
@@ -97,13 +102,54 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
   updateOutputShape(ctx, 0, output_shape);
 
   // mask_index shape is (batch_size)
-  ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
-  *mask_index_shape.add_dim() = input_ids_dims[0];
-  updateOutputShape(ctx, 1, mask_index_shape);
+  if (mask_index_type > 0) {
+    ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
+    *mask_index_shape.add_dim() = input_ids_dims[0];
+    updateOutputShape(ctx, 1, mask_index_shape);
+  }
 
-  if (ctx.getNumOutputs() > 2) {
+  if (ctx.getNumOutputs() == 3 || (ctx.getNumOutputs() == 2 && mask_index_type == 0)) {
     updateOutputShape(ctx, 2, output_shape);
     propagateElemTypeFromInputToOutput(ctx, 0, 2);
+  }
+}
+
+void SkipLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& ctx) {
+  propagateShapeAndTypeFromFirstInput(ctx);
+
+  auto stash_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  if (ctx.getNumOutputs() > 1) {
+    auto output_type = ctx.getOutputType(1);
+    output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(stash_type));
+  }
+  if (ctx.getNumOutputs() > 2) {
+    auto output_type = ctx.getOutputType(2);
+    output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(stash_type));
+  }
+  if (ctx.getNumOutputs() > 3) {
+    propagateElemTypeFromInputToOutput(ctx, 0, 3);
+  }
+  if (!hasNInputShapes(ctx, 1)) {
+    return;
+  }
+  auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+  int64_t input_ndim = input_shape.dim_size();
+  int axis = static_cast<int>(input_ndim - 1);
+
+  if (ctx.getNumOutputs() > 1) {
+    auto mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+    mean_shape->CopyFrom(input_shape);
+    mean_shape->mutable_dim(axis)->set_dim_value(1);
+  }
+
+  if (ctx.getNumOutputs() > 2) {
+    auto inv_std_dev_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+    inv_std_dev_shape->CopyFrom(input_shape);
+    inv_std_dev_shape->mutable_dim(axis)->set_dim_value(1);
+  }
+
+  if (ctx.getNumOutputs() > 3) {
+    propagateShapeFromInputToOutput(ctx, 0, 3);
   }
 }
 
@@ -122,9 +168,16 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
   // When past and present share buffer, they shape is same: (2, batch_size, num_heads, max_sequence_length, head_size)
 
   // Type inference
-  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
-  if (ctx.getNumOutputs() > 1) {
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 1);
+  if (hasInputShape(ctx, 2)) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
+    if (ctx.getNumOutputs() > 1) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 1);
+    }
+  } else {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+    if (ctx.getNumOutputs() > 1) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+    }
   }
 
   // Shape inference

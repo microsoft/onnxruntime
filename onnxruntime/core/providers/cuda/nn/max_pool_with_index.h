@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 namespace cuda {
-template <typename T>
+template <typename T, bool Layout>
 void MaxPoolWithIndex(
     cudaStream_t stream,
     const TensorShape& input_shape,
@@ -20,5 +20,5 @@ void MaxPoolWithIndex(
     const T* p_input,
     T* p_output,
     int64_t* p_indices);
-}  //namespace cuda
-}  //namespace onnxruntime
+}  // namespace cuda
+}  // namespace onnxruntime

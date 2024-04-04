@@ -4,6 +4,7 @@
 #pragma once
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlEdgeShapes.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/tensorprotoutils.h"
@@ -92,42 +93,6 @@ public:
 };
 
 using AttributeMap = std::map<std::string, AttributeValue>;
-
-// Encapsulation of shapes across different edges of an operator.    Non-tensor
-// edges and unused edges have an empty array of dimensions.
-class EdgeShapes
-{
-public:
-    EdgeShapes() = default;
-
-    EdgeShapes(size_t count) : m_shapes(count) {}
-
-    const std::vector<uint32_t>& GetShape(size_t edgeIndex) const
-    {
-        return m_shapes[edgeIndex];
-    }
-
-    std::vector<uint32_t>& GetMutableShape(size_t edgeIndex)
-    {
-        return m_shapes[edgeIndex];
-    }
-
-    size_t EdgeCount() const { return m_shapes.size(); }
-
-    void Reset(size_t edge_count)
-    {
-        m_shapes.clear();
-        m_shapes.resize(edge_count);
-    }
-
-    bool operator!=(const EdgeShapes& other) const noexcept
-    {
-        return (m_shapes != other.m_shapes);
-    }
-
- private:
-    std::vector<std::vector<uint32_t>> m_shapes;
-};
 
 // Base class for ABI objects which may be "Closed", at which point calls will predictably
 // fail or return a dummy value.  This is used for transient ABI context objects which
@@ -227,7 +192,7 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
     HRESULT STDMETHODCALLTYPE GetInputTensorDimensionCount(uint32_t inputIndex, uint32_t* dimensionCount) const noexcept;
     HRESULT STDMETHODCALLTYPE GetInputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept;
 
-    HRESULT STDMETHODCALLTYPE GetSequenceInputCount(uint32_t inputIndex, uint32_t* inputCount) const noexcept;
+    HRESULT STDMETHODCALLTYPE GetSequenceInputInfo(uint32_t inputIndex, uint32_t* inputCount, MLOperatorTensorDataType* dataType) const noexcept;
     HRESULT STDMETHODCALLTYPE GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t* dimensionCount) const noexcept;
     HRESULT STDMETHODCALLTYPE GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept;
 
@@ -235,6 +200,11 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
     bool STDMETHODCALLTYPE IsOutputValid(uint32_t outputIndex) const noexcept override;
 
     HRESULT STDMETHODCALLTYPE GetConstantInputTensor(
+        uint32_t inputIndex,
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept;
+
+    HRESULT STDMETHODCALLTYPE TryGetConstantInputTensor(
         uint32_t inputIndex,
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept;
@@ -334,9 +304,12 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
     const onnxruntime::Tensor* GetInterface() const { return nullptr; }
     onnxruntime::Tensor* GetInterface() { return nullptr; }
 
+    size_t GetTensorByteSize() const { return m_tensorByteSize; }
+
  private:
     size_t m_tensorByteSize = 0;
     std::unique_ptr<std::byte[]> m_unpackedTensor;
+    std::vector<uint8_t> m_unpackedExternalTensor;
     std::byte* m_dataPtr = nullptr;
 
     // Lifetime is managed by the caller and guaranteed to outlive this class
@@ -434,6 +407,7 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
         const onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> * protoHelper,
         const void* executionHandle,
         bool isInternalOperator,
+        const EdgeShapes* inputShapesOverrides,
         const EdgeShapes* inferredOutputShapes,
         const AttributeMap* defaultAttributes,
         DmlGraphNodeCreateInfo* graphNodeCreateInfo,
@@ -480,8 +454,12 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
     OpKernelContextWrapper(onnxruntime::OpKernelContext* context, const onnxruntime::IExecutionProvider* provider, bool isInternalOperator, const EdgeShapes* outputShapes);
 
     bool STDMETHODCALLTYPE IsSequenceInputTensor(uint32_t inputIndex) const noexcept override;
-    HRESULT STDMETHODCALLTYPE GetSequenceInputCount(uint32_t inputIndex, uint32_t* inputCount) const noexcept override;
+    HRESULT STDMETHODCALLTYPE GetSequenceInputInfo(uint32_t inputIndex, uint32_t* inputCount, MLOperatorTensorDataType* dataType) const noexcept override;
     HRESULT STDMETHODCALLTYPE GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex, IMLOperatorTensor** tensor) const noexcept override;
+
+    HRESULT STDMETHODCALLTYPE PrepareSequenceOutput(
+        uint32_t outputIndex,
+        MLOperatorTensorDataType dataType) const noexcept override;
 
     HRESULT STDMETHODCALLTYPE GetSequenceOutputTensor(
         uint32_t outputIndex,
@@ -506,6 +484,8 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
 
     std::vector<IMLOperatorTensor*> GetInputTensors();
     std::vector<IMLOperatorTensor*> GetOutputTensors(const EdgeShapes& outputShapes);
+
+    onnxruntime::OpKernelContext* GetOpKernelContext() { return m_impl; }
 
  protected:
     void ClearTempAllocations();

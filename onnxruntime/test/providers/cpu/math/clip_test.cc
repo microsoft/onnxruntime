@@ -23,7 +23,7 @@ TEST(MathOpTest, Clip_6) {
                         {10.0f, 4.4f, 10.0f,
                          -1.3f, 3.5f, 10.0f,
                          -5.4f, 9.3f, 10.0f});
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32) || defined(OPENVINO_CONFIG_CPU_FP16)
+#if defined(OPENVINO_CONFIG_CPU_FP32) || defined(OPENVINO_CONFIG_CPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run();
@@ -43,11 +43,7 @@ TEST(MathOpTest, Clip_Default) {
                          -1.3f, 3.5f, 64.0f,
                          -5.4f, 9.3f, 82.4f});
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-#else
   test.Run();
-#endif
 }
 
 TEST(MathOpTest, Clip_Default_int8) {
@@ -123,6 +119,44 @@ TEST(MathOpTest, Clip_Default_uint64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(MathOpTest, Clip_int32) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<int32_t>("X", dims,
+                         {-1, 0, 1,
+                          -16, 12, -6,
+                          -5, 2, 16});
+  test.AddInput<int32_t>("min", {}, {-10});
+  test.AddInput<int32_t>("max", {}, {10});
+  test.AddOutput<int32_t>("Y", dims,
+                          {-1, 0, 1,
+                           -10, 10, -6,
+                           -5, 2, 10});
+
+  // TensorRT does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(MathOpTest, Clip_uint32) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<uint32_t>("X", dims,
+                          {0, 0, 1,
+                           5, 12, 3,
+                           2, 7, 16});
+  test.AddInput<uint32_t>("min", {}, {3});
+  test.AddInput<uint32_t>("max", {}, {10});
+  test.AddOutput<uint32_t>("Y", dims,
+                           {3, 3, 3,
+                            5, 10, 3,
+                            3, 7, 10});
+
+  // TensorRT does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(MathOpTest, Clip) {
   // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {
@@ -148,7 +182,7 @@ TEST(MathOpTest, Clip) {
   run_test(true);
 }
 
-// Use clip between [0, 6] as Relu6 (for some EPs, such as NNAPI)
+// Use clip between [0, 6] as Relu6 to test optimized path in some  EPs, such as NNAPI and CoreML
 TEST(MathOpTest, Clip_Relu6) {
   // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {
@@ -165,6 +199,31 @@ TEST(MathOpTest, Clip_Relu6) {
                           {0.0f, 0.0f, 1.0f,
                            0.0f, 3.5f, 6.0f,
                            0.0f, 2.0f, 6.0f});
+
+    // TensorRT does not support Clip opset 11 yet.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+// Use clip between [0, inf] as Relu to test optimized path in some EPs, such as CoreML
+TEST(MathOpTest, Clip_Relu) {
+  // To test NNAPI EP, we need the min/max to be in initializers
+  auto run_test = [](bool min_max_are_initializer) {
+    OpTester test("Clip", 11);
+
+    std::vector<int64_t> dims{3, 3};
+    test.AddInput<float>("X", dims,
+                         {-1.0f, 0.0f, 1.0f,
+                          -6.0f, 3.5f, 6.0f,
+                          -5.4f, 2.0f, 8.0f});
+    test.AddInput<float>("min", {}, {0.0f}, min_max_are_initializer);
+    test.AddOutput<float>("Y", dims,
+                          {0.0f, 0.0f, 1.0f,
+                           0.0f, 3.5f, 6.0f,
+                           0.0f, 2.0f, 8.0f});
 
     // TensorRT does not support Clip opset 11 yet.
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});

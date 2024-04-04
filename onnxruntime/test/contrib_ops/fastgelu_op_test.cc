@@ -82,12 +82,10 @@ static void RunFastGeluGpuTest(const std::vector<float>& input_data, const std::
 
 #if defined(USE_DNNL)
 static void RunFastGeluTest_bf16(const std::vector<float>& input_data, const std::vector<float>& bias_data,
-                               const std::vector<float>& output_data, const std::vector<int64_t>& input_dims,
-                               const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims,
-                               bool has_bias = true) {
-
+                                 const std::vector<float>& output_data, const std::vector<int64_t>& input_dims,
+                                 const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims,
+                                 bool has_bias = true) {
   OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
-
 
   tester.AddInput<BFloat16>("X", input_dims, FloatsToBFloat16s(input_data));
   if (has_bias) {
@@ -96,12 +94,12 @@ static void RunFastGeluTest_bf16(const std::vector<float>& input_data, const std
   tester.AddOutput<BFloat16>("Y", output_dims, FloatsToBFloat16s(output_data));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  #if defined(USE_DNNL)
+#if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-  #endif  //  USE_DNNL
+#endif  //  USE_DNNL
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif //  USE_DNNL
+#endif  //  USE_DNNL
 
 static void RunFastGeluCpuTest(const std::vector<float>& input_data, const std::vector<float>& bias_data,
                                const std::vector<float>& output_data, const std::vector<int64_t>& input_dims,
@@ -165,7 +163,7 @@ TEST(FastGeluTest, FastGeluWithNullInput) {
 #if defined(USE_DNNL)
 TEST(FastGeluTest, FastGeluWithBias_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -183,7 +181,6 @@ TEST(FastGeluTest, FastGeluWithBias_bfloat16) {
 
   std::vector<float> output_data = GetExpectedResult(input_data, bias_data);
 
-
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {hidden_size};
   std::vector<int64_t> output_dims = input_dims;
@@ -193,7 +190,7 @@ TEST(FastGeluTest, FastGeluWithBias_bfloat16) {
 
 TEST(FastGeluTest, FastGeluWithoutBias_bfloat16) {
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -217,7 +214,7 @@ TEST(FastGeluTest, FastGeluWithoutBias_bfloat16) {
 
   RunFastGeluTest_bf16(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, false);
 }
-#endif //  USE_DNNL
+#endif  //  USE_DNNL
 
 TEST(FastGeluTest, FastGeluWithBiasFloat32) {
   int batch_size = 1;
@@ -331,7 +328,7 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16_4) {
 
   std::vector<float> output_data = {
       0.63037109375f, -0.154296875f, 0.0f, 0.8408203125f,
-      0.345703125f, 0.11578369140625f, 0.1854248046875f, -0.1646728515625f };
+      0.345703125f, 0.11578369140625f, 0.1854248046875f, -0.1646728515625f};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {};
@@ -394,7 +391,7 @@ TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }

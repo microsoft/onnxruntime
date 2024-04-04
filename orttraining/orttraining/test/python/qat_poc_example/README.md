@@ -1,6 +1,6 @@
 ## Quantization Aware Training (QAT) with onnxruntime POC
 
-This directory contains a complete example of how users can perform QAT in onnxruntime (as a Proof of Concept). There are two approaches to perform QAT in ort - a). Using `onnxruntime.trainig.api` and b). Using `onnxruntime.training.ORTModule`. The contents of this tutorial focus on the former (QAT with `ORTModule` is still under development and is not ready).
+This directory contains a complete example of how users can perform QAT in onnxruntime (as a Proof of Concept). There are two approaches to perform QAT in ort - a). Using `onnxruntime.training.api` and b). Using `onnxruntime.training.ORTModule`. The contents of this tutorial focus on the former (QAT with `ORTModule` is still under development and is not ready).
 
 We will walk through a POC example using the `MNIST` dataset and a simple neural network with two linear layers:
 
@@ -48,7 +48,7 @@ We use `onnxruntime.training.onnxblock` to perform the above operations to get t
 
 > **_NOTE:_**  As of this writing, ORT does not have its own `"Observers"`. Instead, we rely on the `onnxruntime.quantization` tool to quantize the model and give us an initial estimate of the quantization parameters using its calibration process. Here the calibration process is used as a substitute for the observers to present the POC.
 
-> **_NOTE:_** Typically, the weights in the statically quantized onnx model is associated with a DQ node only (not the QDQ pair) since weights are quantized. However, QAT requires weights and biases to be non quantized. We ensure that the weights have dedicated QDQ pair by passing in the flag AddQDQPairToWeight=True`
+> **_NOTE:_** Typically, the weights in the statically quantized onnx model is associated with a DQ node only (not the QDQ pair) since weights are quantized. However, QAT requires weights and biases to be non quantized. We ensure that the weights have dedicated QDQ pair by passing in the flag `AddQDQPairToWeight=True`
 
 > **_NOTE:_**  Typically, the bias term in the statically quantized onnx model is associated with a DQ node only (not the QDQ pair) since it is quantized as int32 as opposed to int8. So, we disable quantizing the bias term using the flag QuantizeBias=False`
 

@@ -12,7 +12,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
 
@@ -28,7 +28,7 @@ stages:
         artifactName: 'onnxruntime-android-full-aar'
         job_name_suffix: 'Full'
         publish_executables: '1'
-        pool_name: 'Linux-CPU'
+        pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
 # build Python packages
 # Linux GPU only
@@ -36,10 +36,8 @@ stages:
   - template: templates/py-packaging-stage.yml
     parameters:
       enable_linux_gpu: true
-      enable_ubuntu_cpu: false
       enable_linux_cpu: false
       enable_windows_cpu: false
       enable_windows_gpu: false
       enable_mac_cpu: false
-      enable_mac_silicon: false
       enable_linux_arm: false

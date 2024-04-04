@@ -2,12 +2,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import sys
 import argparse
+import logging
+import sys
 
 from _test_commons import run_subprocess
-
-import logging
 
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger("ORTModuleDistributedTests")
@@ -71,6 +70,19 @@ def run_ortmodule_fairscale_sharded_optimizer_tests(cwd, log, data_dir):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_distributed_cache_test(cwd, log):
+    log.debug("Running: ORTModule Cache Test")
+
+    command = [
+        "torchrun",
+        "--nproc_per_node",
+        "2",
+        "orttraining_test_ortmodule_cache.py",
+    ]
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
@@ -83,6 +95,8 @@ def main():
 
     run_ortmodule_deepspeed_pipeline_parallel_tests(cwd, log)
     run_ortmodule_fairscale_sharded_optimizer_tests(cwd, log, args.mnist)
+
+    run_distributed_cache_test(cwd, log)
     return 0
 
 

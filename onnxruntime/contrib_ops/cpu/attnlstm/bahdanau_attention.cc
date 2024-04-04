@@ -108,17 +108,17 @@ static void SoftmaxInplace(const gsl::span<T>& alignments) {
 }
 
 /**
-  * Args:
-  *     queries: Tensor, shape `[batch_size_, query_depth_]` to compare to keys.
-  *     keys_: Processed memory, shape `[batch_size_, max_memory_step_, attn_depth_]`.
-  */
+ * Args:
+ *     queries: Tensor, shape `[batch_size_, query_depth_]` to compare to keys.
+ *     keys_: Processed memory, shape `[batch_size_, max_memory_step_, attn_depth_]`.
+ */
 template <typename T>
 void BahdanauAttention<T>::Compute(
     const gsl::span<const T>& queries,
     const gsl::span<const T>&,  // Not used by bahdanau attention
     const gsl::span<T>& output,
     const gsl::span<T>& aligns) const {
-  //process query in dense query layer without bias
+  // process query in dense query layer without bias
   math::GemmEx<T>(CblasNoTrans, CblasNoTrans,
                   batch_size_, attn_depth_, query_depth_, T{1.0},
                   queries.data(), query_depth_,

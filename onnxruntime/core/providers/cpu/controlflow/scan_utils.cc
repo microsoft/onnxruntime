@@ -168,11 +168,11 @@ Status CreateFeedsFetchesManager(const Node& node,
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
 
   // we provide fetches using memory allocated by Scan, so provide locations based on the Scan output locations
-  std::vector<const OrtMemoryInfo*> fetch_locations;
+  std::vector<const OrtDevice*> fetch_locations;
   fetch_locations.reserve(info.num_outputs);
 
   for (const auto& output : node.OutputDefs()) {
-    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, output->Name());
+    const auto& alloc_info = utils::FindDeviceForValue(session_state, output->Name());
     fetch_locations.push_back(&alloc_info);
   }
 
@@ -243,7 +243,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
           // use a custom allocator that will forward the allocation request to the Scan context
           // and add the sequence length dimension. this avoids using a temporary value for the first output
-          fetch_allocators[output] = [i, &iterator, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
+          fetch_allocators[output] = [i, &iterator, &fetches](const TensorShape& shape, const OrtDevice& location,
                                                               OrtValue& ort_value, bool& allocated) {
             auto status = iterator.AllocateFinalOutput(shape);
             ORT_RETURN_IF_ERROR(status);
@@ -254,7 +254,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
             // if that does not match the required device we don't update the provided OrtValue and return false for
             // 'allocated'. the execution frame will allocate a buffer on the required device, and the fetches copy
             // logic in utils::ExecuteSubgraph will handle moving it to CPU (and into the tensor we allocated here)
-            if (value.Get<Tensor>().Location().device == location.device) {
+            if (value.Get<Tensor>().Location().device == location) {
               // update OrtValue with a current slice from the iterator.
               ort_value = value;
               allocated = true;

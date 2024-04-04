@@ -27,7 +27,8 @@ void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObj
   } else {
     addrs[addr].push_back(log_tag);
   }
-  LOGS_DEFAULT(WARNING) << "Track" << ObjCategoryToString(category) << "\tAddress: [" << addr << "]\tRefCnt: " << Py_REFCNT(addr) << "\tLogTag: " << log_tag;
+  LOGS_DEFAULT(VERBOSE) << "Track" << ObjCategoryToString(category) << "\tAddress: [" << addr << "]\tRefCnt: "
+                        << Py_REFCNT(addr) << "\tLogTag: " << log_tag;
 #endif
 }
 
@@ -48,7 +49,7 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
     }
   }
   oss << "==========================================================" << std::endl;
-  LOGS_DEFAULT(WARNING) << oss.str();
+  LOGS_DEFAULT(VERBOSE) << oss.str();
 #endif
 }
 

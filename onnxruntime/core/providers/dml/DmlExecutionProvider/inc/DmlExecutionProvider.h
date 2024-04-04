@@ -3,6 +3,9 @@
 
 #pragma once
 interface IMLOperatorRegistry;
+interface IDMLDevice;
+interface ID3D12CommandQueue;
+interface ID3D12Resource;
 
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
@@ -28,11 +31,11 @@ namespace Dml
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands = true);
+        bool enableMetacommands,
+        bool enableDynamicGraphFusion);
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
     void FlushContext(onnxruntime::IExecutionProvider* provider);
-    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
 
     onnxruntime::common::Status CopyTensor(

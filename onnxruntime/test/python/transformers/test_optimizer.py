@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.  See License.txt in the project root for
@@ -63,7 +62,7 @@ class TestModelOptimization(unittest.TestCase):
             if len(onnx_model.get_nodes_by_op_type(op_type)) != count:
                 print(f"Counters is not expected in test: {test_name}")
                 for op, counter in expected_node_count.items():
-                    print("{}: {} expected={}".format(op, len(onnx_model.get_nodes_by_op_type(op)), counter))
+                    print(f"{op}: {len(onnx_model.get_nodes_by_op_type(op))} expected={counter}")
 
                 self.assertEqual(len(onnx_model.get_nodes_by_op_type(op_type)), count)
 
@@ -123,7 +122,7 @@ class TestModelOptimization(unittest.TestCase):
             "SkipLayerNormalization": expected_fusion_result_list[6],
         }
 
-        for _onnx_path, value in model_fusion_statistics.items():
+        for value in model_fusion_statistics.values():
             actual_node_count = value
 
         for op_type, count in expected_node_count.items():
@@ -305,12 +304,16 @@ class TestModelOptimization(unittest.TestCase):
     def test_huggingface_bart_fusion(self):
         self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
 
+    @pytest.mark.slow
+    def test_huggingface_vit_fusion(self):
+        self._test_optimizer_on_huggingface_model("google/vit-base-patch16-224", [0, 11, 0, 0, 12, 1, 24])
+
 
 @unittest.skipUnless(is_tf_available(), "skip TestBertOptimizationTF since tensorflow is not available")
 class TestTensorflowModelOptimization(unittest.TestCase):
-    def Setup(self):
+    def setUp(self):
         try:
-            import tf2onnx
+            import tf2onnx  # noqa: F401
         except ImportError:
             self.skipTest("skip TestBertOptimizationTF since tf2onnx not installed")
 
@@ -351,7 +354,7 @@ class TestTensorflowModelOptimization(unittest.TestCase):
                 fusion_options,
             )
 
-        onnx_model = list(model_fusion_statistics.keys())[0]
+        onnx_model = next(iter(model_fusion_statistics.keys()))
         fusion_result_list = list(model_fusion_statistics[onnx_model].values())
 
         if validate_model:

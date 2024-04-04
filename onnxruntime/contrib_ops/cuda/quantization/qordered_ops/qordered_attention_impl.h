@@ -9,8 +9,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
 Status BuildTableForSoftmaxPowerOf(
     cudaStream_t stream, const double base, float* table);
 
@@ -26,8 +24,6 @@ Status QOrderBatchTransposeInt8Matrix(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
     const int batch_size, const int rows, const int cols,
     const int8_t* input, int8_t* output);
-
-#endif
 
 }  // namespace cuda
 }  // namespace contrib

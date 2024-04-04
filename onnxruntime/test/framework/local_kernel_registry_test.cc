@@ -201,7 +201,7 @@ void RunSession(InferenceSession& session_object,
                 std::vector<float>& values_y) {
   // prepare inputs
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 
@@ -317,7 +317,7 @@ TEST(CustomKernelTests, CustomKernelWithOptionalOutput) {
   RunSession(session_object, dims_x, values_x, expected_dims_y, expected_values_y);
 }
 
-// Regression test for OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory needing to reset `version` before 
+// Regression test for OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory needing to reset `version` before
 // falling through to the ONNX schema lookup.
 //
 // If there is a custom registry that matches the ONNX domain but not the current op, we fall though but need to

@@ -12,7 +12,6 @@ namespace ort_dnnl {
 DnnlGelu::DnnlGelu() {}
 
 void DnnlGelu::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
-
   auto dnnl_engine = sp.GetEngine();
 
   bool is_biased = node.Input(IN_BIAS).Exists();
@@ -67,11 +66,11 @@ void DnnlGelu::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
                                   {DNNL_ARG_SRC_1, bias_mem},
                                   {DNNL_ARG_DST, dst_mem}});
   } else {
-    auto dst_md = dnnl::memory::desc( src_mem.get_desc().get_dims(),
-                                      node.Output(OUT_Y).Type(),  
-                                      dnnl::memory::format_tag::any);
+    auto dst_md = dnnl::memory::desc(src_mem.get_desc().get_dims(),
+                                     node.Output(OUT_Y).Type(),
+                                     dnnl::memory::format_tag::any);
     dnnl::algorithm algo = dnnl_util::OrtOperatorToDnnlAlgorithm(node.OpType());
-    auto gelu_pd = dnnl::eltwise_forward::primitive_desc( dnnl_engine, dnnl::prop_kind::forward_inference, algo,
+    auto gelu_pd = dnnl::eltwise_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference, algo,
                                                          gelu_src_mem.get_desc(), dst_md);
 
     // If using GPU this will move the memory from the CPU to the GPU.

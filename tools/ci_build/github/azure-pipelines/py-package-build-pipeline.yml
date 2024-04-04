@@ -47,7 +47,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
 - template: templates/py-packaging-selectable-stage.yml

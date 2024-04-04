@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -14,25 +13,62 @@ import numpy
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 
-from onnxruntime.quantization.quant_utils import compute_scale_zp, load_model, model_has_infer_metadata
+from onnxruntime.quantization.quant_utils import compute_scale_zp, load_model_with_shape_infer, model_has_infer_metadata
 
 
 class TestQuantUtil(unittest.TestCase):
     def test_compute_scale_zp(self):
-        self.assertEqual(compute_scale_zp(0.0, 0.0, -127, 127, symmetric=True), [0, 1.0])
-        self.assertEqual(compute_scale_zp(1.0, -1.0, -127, 127, symmetric=True), [0, 1.0])
-        self.assertEqual(compute_scale_zp(0.0, 0.0, 0, 255, symmetric=True), [0, 1.0])
-        self.assertEqual(compute_scale_zp(1.0, -1.0, 0, 255, symmetric=True), [0, 1.0])
+        def _compute_scale_zp(rmin, rmax, qmin, qmax, qtype, symmetric=False, min_real_range=None):
+            zp, scale = compute_scale_zp(
+                numpy.array(rmin, dtype=numpy.float32),
+                numpy.array(rmax, dtype=numpy.float32),
+                numpy.array(qmin, dtype=qtype),
+                numpy.array(qmax, dtype=qtype),
+                symmetric=symmetric,
+                min_real_range=min_real_range,
+            )
+            assert isinstance(zp, numpy.ndarray)
+            assert isinstance(scale, numpy.ndarray)
+            return [float(zp), float(scale)]
 
-        self.assertEqual(compute_scale_zp(-1.0, 2.0, -127, 127, symmetric=True), [0, 2.0 / 127])
-        self.assertEqual(compute_scale_zp(-1.0, 2.0, -127, 127, symmetric=False), [-42, 3.0 / 254])
+        self.assertEqual(_compute_scale_zp(0.0, 0.0, -127, 127, numpy.int8, symmetric=True), [0, 1.0])
+        self.assertEqual(_compute_scale_zp(1.0, -1.0, -127, 127, numpy.int8, symmetric=True), [0, 1.0])
+        self.assertEqual(_compute_scale_zp(0.0, 0.0, 0, 255, numpy.uint8, symmetric=True), [0, 1.0])
+        self.assertEqual(_compute_scale_zp(1.0, -1.0, 0, 255, numpy.uint8, symmetric=True), [0, 1.0])
 
-        self.assertEqual(compute_scale_zp(-1.0, 2.0, 0, 255, symmetric=True), [128, 4.0 / 255])
-        self.assertEqual(compute_scale_zp(-1.0, 2.0, 0, 255, symmetric=False), [85, 3.0 / 255])
+        self.assertEqual(
+            _compute_scale_zp(-1.0, 2.0, -127, 127, numpy.int8, symmetric=True), [0, numpy.float32(2.0 / 127)]
+        )
+        self.assertEqual(
+            _compute_scale_zp(-1.0, 2.0, -127, 127, numpy.int8, symmetric=False), [-42, numpy.float32(3.0 / 254)]
+        )
+
+        self.assertEqual(
+            _compute_scale_zp(-1.0, 2.0, 0, 255, numpy.uint8, symmetric=True), [128, numpy.float32(4.0 / 255)]
+        )
+        self.assertEqual(
+            _compute_scale_zp(-1.0, 2.0, 0, 255, numpy.uint8, symmetric=False), [85, numpy.float32(3.0 / 255)]
+        )
 
         tiny_float = numpy.float32(numpy.finfo(numpy.float32).tiny * 0.1)
-        self.assertEqual(compute_scale_zp(-tiny_float, tiny_float, 0, 255, symmetric=True), [0, 1.0])
-        self.assertEqual(compute_scale_zp(-tiny_float, 0.0, 0, 255, symmetric=False), [0, 1.0])
+        self.assertEqual(_compute_scale_zp(-tiny_float, tiny_float, 0, 255, numpy.uint8, symmetric=True), [0, 1.0])
+        self.assertEqual(_compute_scale_zp(-tiny_float, 0.0, 0, 255, numpy.uint8, symmetric=False), [0, 1.0])
+
+        # Test enforcing a minimum floatint-point range.
+        self.assertEqual(
+            _compute_scale_zp(0.0, 0.0, 0, 255, numpy.uint8, symmetric=False, min_real_range=0.0001), [0, 0.0001 / 255]
+        )
+        self.assertEqual(
+            _compute_scale_zp(0.0, 0.0, -128, 127, numpy.int8, symmetric=True, min_real_range=0.0001), [0, 0.0002 / 255]
+        )
+        self.assertEqual(
+            _compute_scale_zp(0.0, 0.0, 0, 65535, numpy.uint16, symmetric=False, min_real_range=0.0001),
+            [0, 0.0001 / 65535],
+        )
+        self.assertEqual(
+            _compute_scale_zp(0.0, 0.0, -32768, 32767, numpy.int16, symmetric=True, min_real_range=0.0001),
+            [0, 0.0002 / 65535],
+        )
 
     def test_load_external_model(self):
         input_name = "input"
@@ -62,7 +98,7 @@ class TestQuantUtil(unittest.TestCase):
             self.assertFalse(model_has_infer_metadata(model))
             model_file_path = temp_dir + "/test_load_external_model.onnx"
             onnx.save(model, model_file_path, save_as_external_data=True)
-            model_reloaded = load_model(Path(model_file_path), False)
+            model_reloaded = load_model_with_shape_infer(Path(model_file_path))
             self.assertTrue(model_has_infer_metadata(model_reloaded))
 
 

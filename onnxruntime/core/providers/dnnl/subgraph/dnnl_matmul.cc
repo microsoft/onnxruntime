@@ -12,6 +12,25 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
+inline static dnnl::memory::format_tag get_default_format(const dnnl::memory::dims& tensor_dims) {
+  switch (tensor_dims.size()) {
+    case 1:
+      return dnnl::memory::format_tag::a;
+    case 2:
+      return dnnl::memory::format_tag::ab;
+    case 3:
+      return dnnl::memory::format_tag::abc;
+    case 4:
+      return dnnl::memory::format_tag::abcd;
+    case 5:
+      return dnnl::memory::format_tag::abcde;
+    case 6:
+      return dnnl::memory::format_tag::abcdef;
+    default:
+      return dnnl::memory::format_tag::undef;
+  }
+}
+
 DnnlMatMul::DnnlMatMul() {}
 
 // This handles ONNX defined "MatMul" as well as two other variations of MatMul
@@ -51,8 +70,8 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   bool transBatchB = false;
   float alpha = 1.0;
   if (node.OpType() == "FusedMatMul") {
-  // Fused matmul is matmul modified to behave like numpy:
-  // https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
+    // Fused matmul is matmul modified to behave like numpy:
+    // https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
     is_fusedmatmul = true;
     transA = GetTransA(node);
     transBatchA = GetTransBatchA(node);
@@ -64,17 +83,15 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto src_dims = sp.GetMemory(node.Input(IN_A)).get_desc().get_dims();
   auto weights_dims = sp.GetMemory(node.Input(IN_B)).get_desc().get_dims();
 
-
   // If this is required for transposed inputs, then this will be done later on in the code.
   if (src_dims.size() != weights_dims.size()) {
-      while (src_dims.size() < weights_dims.size() && (!transA && !transBatchA)) {
-        src_dims.insert(src_dims.begin(), 1);
-      }
-      while (src_dims.size() > weights_dims.size() && (!transB && !transBatchB)) {
-        weights_dims.insert(weights_dims.begin(), 1);
-      }
+    while (src_dims.size() < weights_dims.size() && (!transA && !transBatchA)) {
+      src_dims.insert(src_dims.begin(), 1);
+    }
+    while (src_dims.size() > weights_dims.size() && (!transB && !transBatchB)) {
+      weights_dims.insert(weights_dims.begin(), 1);
+    }
   }
-
 
   auto dataA_dims = src_dims;
   auto ndataA_dims = src_dims.size();
@@ -87,7 +104,6 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dataA_mem = sp.GetMemory(node.Input(IN_A));
   auto dataB_mem = sp.GetMemory(node.Input(IN_B));
 
-
   // Holds transposed matrices A and B. ToDo: Eliminate its usage if in place transpose is possbile for FusedMatmul
   dnnl::memory::desc transposedA_md;
   dnnl::memory transposedA_mem;
@@ -95,8 +111,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   dnnl::memory::desc transposedB_md;
   dnnl::memory transposedB_mem;
 
-  if (is_fusedmatmul)
-  {
+  if (is_fusedmatmul) {
     if (transA || transBatchA) {
       dnnl::memory::dims strides = GetStrides(dataA_dims, transA, transBatchA, transposedA_dims);
 
@@ -117,7 +132,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       void* handle = intermediateA_mem.get_data_handle();
       transposedA_mem.set_data_handle(handle);
     }
-    if (transB || transBatchB) {                // Exact same logic for matrix B as used for matrix A
+    if (transB || transBatchB) {  // Exact same logic for matrix B as used for matrix A
       dnnl::memory::dims strides = GetStrides(dataB_dims, transB, transBatchB, transposedB_dims);
 
       dnnl::memory::desc intermediateB_md = dnnl::memory::desc(dataB_dims, node.Input(IN_B).Type(), strides);
@@ -143,14 +158,14 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   if (transA || transBatchA) {
     src_md = transposedA_md;
   } else {
-    src_md = dnnl::memory::desc(src_dims, node.Input(IN_A).Type(), dnnl::memory::format_tag::any);
+    src_md = dnnl::memory::desc(src_dims, node.Input(IN_A).Type(), get_default_format(src_dims));
   }
 
   dnnl::memory::desc weights_md;
   if (transB || transBatchB) {
     weights_md = transposedB_md;
   } else {
-    weights_md = dnnl::memory::desc(weights_dims, node.Input(IN_B).Type(), dnnl::memory::format_tag::any);
+    weights_md = dnnl::memory::desc(weights_dims, node.Input(IN_B).Type(), get_default_format(weights_dims));
   }
 
   auto output_shape = src_dims;
@@ -245,7 +260,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     attr.set_scales_mask(DNNL_ARG_SRC, 0);
   }
 
-  auto dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
+  auto dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), get_default_format(output_shape));
 
   auto matmul_pd = dnnl::matmul::primitive_desc(eng, src_md, weights_md, dst_md, attr);
 
@@ -309,7 +324,7 @@ dnnl::memory::dims DnnlMatMul::GetStrides(dnnl::memory::dims& data_dims,
   // Temp vector to hold indices of the dims, will be used to track transposes required
   for (uint32_t i = 0; i < ndata_dims; i++)
     permA.push_back(i);
-  Batch = permA[0];              // Batch Dimension
+  Batch = permA[0];             // Batch Dimension
   M_A = permA[ndata_dims - 1];  // M Dimension
   if (ndata_dims == 4)          // This will only be used if transBatch is true
     N_A.push_back(permA[ndata_dims - 3]);

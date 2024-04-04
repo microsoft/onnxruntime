@@ -5,15 +5,14 @@
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include <gtest/gtest.h>
 
-
 TEST(CApiTest, allocation_info) {
   auto cpu_mem_info_1 = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   auto cpu_mem_info_2 = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   ASSERT_EQ(cpu_mem_info_1, cpu_mem_info_2);
-  
+
   ASSERT_EQ(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_CPU, cpu_mem_info_1.GetDeviceType());
   ASSERT_EQ(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_CPU, cpu_mem_info_2.GetDeviceType());
-  
+
   ASSERT_EQ("Cpu", cpu_mem_info_1.GetAllocatorName());
   ASSERT_EQ(OrtArenaAllocator, cpu_mem_info_1.GetAllocatorType());
   ASSERT_EQ(OrtMemTypeDefault, cpu_mem_info_1.GetMemoryType());
@@ -22,7 +21,7 @@ TEST(CApiTest, allocation_info) {
 TEST(CApiTest, DefaultAllocator) {
   Ort::AllocatorWithDefaultOptions default_allocator;
   auto cpu_info = default_allocator.GetInfo();
-  
+
   ASSERT_EQ("Cpu", cpu_info.GetAllocatorName());
   ASSERT_EQ(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_CPU, cpu_info.GetDeviceType());
   ASSERT_EQ(OrtDeviceAllocator, cpu_info.GetAllocatorType());
@@ -33,4 +32,3 @@ TEST(CApiTest, DefaultAllocator) {
   ASSERT_NE(allocation.get(), nullptr);
   memset(allocation.get(), 0, 100U);
 }
-

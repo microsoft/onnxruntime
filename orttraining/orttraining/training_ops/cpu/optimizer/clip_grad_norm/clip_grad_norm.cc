@@ -29,8 +29,7 @@ void ClipGradNorm(T total_norm, T max_norm, TensorSeq& gradients) {
   const T clip_coefficient = std::min(max_norm / (total_norm + static_cast<T>(Epsilon)), static_cast<T>(1.0f));
 
   auto gradients_size = gradients.Size();
-  for (size_t i = 0; i < gradients_size; i++)
-  {
+  for (size_t i = 0; i < gradients_size; i++) {
     const auto& grad = gradients.Get(i);
     auto& tensor = const_cast<Tensor&>(grad);
     MakeEigenArrayMap<T>(tensor) *= clip_coefficient;
@@ -50,8 +49,7 @@ Status PopulateOutput(OpKernelContext* ctx, const TensorSeq* gradients, TensorSe
 
   auto gradients_size = gradients->Size();
   clipped_gradients->Reserve(gradients_size);
-  for (size_t i = 0; i < gradients_size; i++)
-  {
+  for (size_t i = 0; i < gradients_size; i++) {
     const auto& grad = gradients->Get(i);
     Tensor target_tensor(grad.DataType(), grad.Shape(), alloc);
     CopyCpuTensor(&grad, &target_tensor);

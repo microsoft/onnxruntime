@@ -130,4 +130,4 @@ class Crop final : public CropBase, public OpKernel {
 };
 
 }  // namespace contrib
-}  //namespace onnxruntime
+}  // namespace onnxruntime

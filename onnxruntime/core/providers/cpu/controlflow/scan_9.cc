@@ -486,7 +486,7 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output, 
+      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output,
                                               context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
     }
@@ -515,11 +515,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
                                    Scan<9>);
 
 // Opset 16 starts to support BFloat16 type for the type constraint "V"
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
+                                   16, 18,
+                                   KernelDefBuilder()
+                                       // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
+                                       //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   Scan<9>);
+
+// Opset 19 starts to support float 8 types for the type constraint "V"
 ONNX_CPU_OPERATOR_KERNEL(Scan,
-                         16,
+                         19,
                          KernelDefBuilder()
                              // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
                              //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                          Scan<9>);
 }  // namespace onnxruntime

@@ -6,13 +6,13 @@
 import argparse
 import os
 import sys
+from pathlib import Path
 
 import numpy
 import torch
 
 
 def parse_arguments(namespace_filter=None):
-
     parser = argparse.ArgumentParser()
 
     # useful EPs that don't require the use of optmizer.py
@@ -41,7 +41,7 @@ def parse_arguments(namespace_filter=None):
     return args, sys.argv[:1] + remaining_args
 
 
-def find_transformers_source(sub_dir_paths=[]):
+def find_transformers_source(sub_dir_paths=[]):  # noqa: B006
     source_dir = os.path.join(
         os.path.dirname(__file__),
         "..",
@@ -52,6 +52,7 @@ def find_transformers_source(sub_dir_paths=[]):
         "transformers",
         *sub_dir_paths,
     )
+    source_dir = os.path.normpath(source_dir)
     if os.path.exists(source_dir):
         if source_dir not in sys.path:
             sys.path.append(source_dir)
@@ -64,21 +65,18 @@ def create_inputs(
     sequence_length=1,
     hidden_size=768,
     float16=False,
-    device=torch.device("cuda"),
+    device=torch.device("cuda"),  # noqa: B008
 ):
     float_type = torch.float16 if float16 else torch.float32
-    input = torch.normal(mean=0.0, std=10.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
-    return input
+    return torch.normal(mean=0.0, std=10.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
 
 
 def export_onnx(model, onnx_model_path, float16, hidden_size, device):
-    from pathlib import Path
-
     Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
     input_hidden_states = create_inputs(hidden_size=hidden_size, float16=float16, device=device)
     with torch.no_grad():
-        outputs = model(input_hidden_states)
+        model(input_hidden_states)
 
     dynamic_axes = {
         "input": {0: "batch_size", 1: "seq_len"},
@@ -213,7 +211,7 @@ def run_parity(
     max_diffs = []
     printed = False  # print only one sample
     ort_session = create_ort_session(onnx_model_path, device.type == "cuda", optimized=optimized, verbose=verbose)
-    for i in range(test_cases):
+    for _i in range(test_cases):
         input_hidden_states = create_inputs(batch_size, sequence_length, hidden_size, float16, device)
 
         with torch.no_grad():

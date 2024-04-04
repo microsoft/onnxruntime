@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-/* 
+/*
  * \class! WeightLayoutTiling2D
  * \breif! Transform 2D weight to 4D by tiling both dimension,
  *         this layout is used for tensorization.

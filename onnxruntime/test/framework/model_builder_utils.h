@@ -57,6 +57,29 @@ struct Type {
       dim->set_dim_param(d);
     }
   }
+
+  static Type MakeSequence(const ONNX_NAMESPACE::TypeProto& element_proto) {
+    ONNX_NAMESPACE::TypeProto proto;
+    proto.mutable_sequence_type()->mutable_elem_type()->CopyFrom(element_proto);
+    return Type(std::move(proto));
+  }
+
+  static Type MakeMap(ONNX_NAMESPACE::TensorProto_DataType dtype, const ONNX_NAMESPACE::TypeProto& value_proto) {
+    ONNX_NAMESPACE::TypeProto proto;
+    auto& mut_map = *proto.mutable_map_type();
+    mut_map.set_key_type(static_cast<int32_t>(dtype));
+    mut_map.mutable_value_type()->CopyFrom(value_proto);
+    return Type(std::move(proto));
+  }
+
+  static Type MakeOptional(const ONNX_NAMESPACE::TypeProto& contained_proto) {
+    ONNX_NAMESPACE::TypeProto proto;
+    proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(contained_proto);
+    return Type(std::move(proto));
+  }
+
+ private:
+  explicit Type(ONNX_NAMESPACE::TypeProto type_proto) : value(std::move(type_proto)) {}
 };
 
 }  // namespace modelbuilder

@@ -38,12 +38,13 @@ typedef NS_ENUM(int32_t, ORTTensorElementDataType) {
   ORTTensorElementDataTypeUInt32,
   ORTTensorElementDataTypeInt64,
   ORTTensorElementDataTypeUInt64,
+  ORTTensorElementDataTypeString,
 };
 
 /**
  * The ORT graph optimization levels.
  * See here for more details:
- * https://onnxruntime.ai/docs/performance/graph-optimizations.html
+ * https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html
  */
 typedef NS_ENUM(int32_t, ORTGraphOptimizationLevel) {
   ORTGraphOptimizationLevelNone,

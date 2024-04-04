@@ -38,7 +38,9 @@ struct ROCMExecutionProviderExternalAllocatorInfo {
 
 namespace rocm {
 struct TunableOpInfo {
-  bool enabled{false};
+  bool enable{false};
+  bool tuning_enable{false};
+  int max_tuning_duration_ms{};
 };
 }  // namespace rocm
 
@@ -56,20 +58,48 @@ struct ROCMExecutionProviderInfo {
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
-  bool miopen_conv_use_max_workspace{false};
+
+  // By default, try to use as much as possible memory for algo search.
+  // If set to false, use fix workspace size (32M) for Conv algo search, the final algo might not be the best.
+  bool miopen_conv_use_max_workspace{true};
+
+  bool enable_hip_graph{false};
 
   rocm::TunableOpInfo tunable_op{};
 
   static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
+  static ProviderOptions ToProviderOptions(const OrtROCMProviderOptions& info);
 };
 }  // namespace onnxruntime
 
-template<>
-struct std::hash<::onnxruntime::rocm::TunableOpInfo> {
-  size_t operator()(const ::onnxruntime::rocm::TunableOpInfo& info) const {
-    size_t seed_and_value{0xbc9f1d34};
-    onnxruntime::HashCombine(info.enabled, seed_and_value);
-    return seed_and_value;
+template <>
+struct std::hash<::onnxruntime::ROCMExecutionProviderInfo> {
+  size_t operator()(const ::onnxruntime::ROCMExecutionProviderInfo& info) const {
+    size_t value{0xbc9f1d34};  // seed
+
+    // Bits: device_id (16), arena_extend_strategy/miopen_conv_exhaustive_search (reserved 2), boolean options (1 each)
+    size_t data = static_cast<size_t>(info.device_id) ^
+                  (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
+                  (static_cast<size_t>(info.miopen_conv_exhaustive_search) << 18) ^
+                  (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
+                  (static_cast<size_t>(info.has_user_compute_stream) << 21) ^
+                  (static_cast<size_t>(info.miopen_conv_use_max_workspace) << 22) ^
+                  (static_cast<size_t>(info.enable_hip_graph) << 23) ^
+                  (static_cast<size_t>(info.tunable_op.enable) << 24) ^
+                  (static_cast<size_t>(info.tunable_op.tuning_enable) << 25);
+    onnxruntime::HashCombine(data, value);
+
+    onnxruntime::HashCombine(info.gpu_mem_limit, value);
+    onnxruntime::HashCombine(info.tunable_op.max_tuning_duration_ms, value);
+
+    // Memory pointers
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.user_compute_stream), value);
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.alloc), value);
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.free), value);
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache), value);
+
+    // The default memory arena cfg is not used in hashing right now.
+    return value;
   }
 };

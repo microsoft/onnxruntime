@@ -80,7 +80,7 @@ bool CanDoTranspose3D(const cudaDeviceProp& prop, size_t rank, const gsl::span<c
   } break
 
 Status Transpose3DImpl(cudaStream_t stream, size_t element_size, const TArray<int64_t>& input_shape,
-                       const TArray<int64_t>& input_strides, const void* input_data, void* output_data, int64_t N,
+                       const TArray<int64_t>& input_strides, const void* input_data, void* output_data, int64_t /*N*/,
                        const dim3& grid_size, const dim3& block_size) {
   switch (element_size) {
     HANDLE_TRANSPOSE_3D_TILE_DIM(int8_t);
@@ -248,10 +248,10 @@ __global__ void Transpose4DKernelParallelizeOneElementPerThread(
 }
 
 bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
-                                                    size_t element_size,
+                                                    size_t /*element_size*/,
                                                     int32_t rank,
                                                     const gsl::span<const int64_t>& input_dims,
-                                                    const gsl::span<const size_t>& permutations,
+                                                    const gsl::span<const size_t>& /*permutations*/,
                                                     dim3& grid_size, dim3& block_size) {
   if (rank == 4) {
     // dims[3]: block.x

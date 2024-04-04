@@ -83,7 +83,7 @@ std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node
                                                const InlinedHashSet<std::string_view>& compatible_execution_providers) {
   // Try to match the current node with QuantizeLinear in the effort of searching for the pattern
   // QuantizeLinear -> DequantizeLinear.
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(quantize_node, "QuantizeLinear", {10, 13}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(quantize_node, "QuantizeLinear", {10, 13, 19}) ||
       !graph_utils::IsSupportedProvider(quantize_node, compatible_execution_providers)) {
     return {false, nullptr};
   }

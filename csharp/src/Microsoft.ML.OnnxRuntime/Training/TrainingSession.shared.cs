@@ -4,21 +4,48 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
 #if __ENABLE_TRAINING_APIS__
+    /// <summary>
+    /// This class defines utility methods for training.
+    /// </summary>
+    public class TrainingUtils
+    {
+        /// <summary>
+        /// Use this function to generate reproducible results. It should be noted that completely
+        /// reproducible results are not guaranteed.
+        /// </summary>
+        /// <param name="seed">Manual seed to use for random number generation.</param>
+        public static void SetSeed(long seed)
+        {
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSetSeed(seed));
+        }
+    }
+
     enum LRScheduler
     {
         None = 0,
         Constant = 1,
         Linear = 2
     }
+
     /// <summary>
-    /// Represents a Training Session on an ONNX Model.
-    /// This is a IDisposable class and it must be disposed of
-    /// using either a explicit call to Dispose() method or
+    /// Trainer class that provides training, evaluation and optimizer methods for training an ONNX model.
+    ///
+    /// The training session requires four training artifacts
+    /// - The training onnx model
+    /// - The evaluation onnx model (optional)
+    /// - The optimizer onnx model
+    /// - The checkpoint directory
+    ///
+    /// These artifacts can be generated using the `onnxruntime-training` python [utility](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/onnxblock/README.md).
+    ///
+    /// This is an IDisposable class and it must be disposed of
+    /// using either an explicit call to Dispose() method or
     /// a pattern of using() block. If this is a member of another
     /// class that class must also become IDisposable and it must
     /// dispose of TrainingSession in its Dispose() method.
@@ -26,7 +53,7 @@ namespace Microsoft.ML.OnnxRuntime
     public class TrainingSession : IDisposable
     {
         /// <summary>
-        /// A pointer to a underlying native instance of OrtTrainingSession
+        /// A pointer to an underlying native instance of OrtTrainingSession
         /// </summary>
         private IntPtr _nativeHandle;
 
@@ -34,66 +61,81 @@ namespace Microsoft.ML.OnnxRuntime
         private ulong _evalOutputCount;
         private List<string> _trainOutputNames;
         private List<string> _evalOutputNames;
+        private List<string> _trainInputNames;
+        private List<string> _evalInputNames;
 
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
         private LRScheduler _scheduler = LRScheduler.None;
         private bool _disposed = false;
 
-    #region Public API
+        #region Public API
 
         /// <summary>
-        /// Creates TrainingSession from the model and checkpoint in <paramref name="state"/>.
+        /// Create a training session that can be used to begin or resume training.
+        ///
+        /// This constructor instantiates the training session based on the env and session options provided that can
+        /// begin or resume training from a given checkpoint state for the given onnx models.
+        /// The checkpoint state represents the parameters of the training session which will be moved
+        /// to the device specified by the user through the session options (if necessary).
         /// </summary>
-        /// <param name="state">Model checkpoint loaded into <see cref="CheckpointState"/>.</param>
-        /// <param name="trainModelPath">Specify path to training model graph.</param>
-        /// <param name="evalModelPath">Specify path to eval model graph.</param>
-        /// <param name="optimizerModelPath">Specify path to optimizer model graph.</param>
+        /// <param name="state">Training states that the training session uses as a starting point for training.</param>
+        /// <param name="trainModelPath">Model to be used to perform training.</param>
+        /// <param name="evalModelPath">Model to be used to perform evaluation.</param>
+        /// <param name="optimizerModelPath">Model to be used to perform weight update.</param>
         public TrainingSession(CheckpointState state, string trainModelPath, string evalModelPath, string optimizerModelPath)
         {
             Init(null, state, NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath), NativeOnnxValueHelper.GetPlatformSerializedString(evalModelPath), NativeOnnxValueHelper.GetPlatformSerializedString(optimizerModelPath));
         }
 
         /// <summary>
-        /// Creates TrainingSession from the model and checkpoint in <paramref name="state"/>.
+        /// Create a training session that can be used to begin or resume training.
+        ///
+        /// This constructor instantiates the training session based on the env and session options provided that can
+        /// begin or resume training from a given checkpoint state for the given onnx models.
+        /// The checkpoint state represents the parameters of the training session which will be moved
+        /// to the device specified by the user through the session options (if necessary).
         /// </summary>
-        /// <param name="state">Model checkpoint loaded into <see cref="CheckpointState"/>.</param>
-        /// <param name="trainModelPath">Specify path to training model graph.</param>
-        /// <param name="optimizerModelPath">Specify path to optimizer model graph.</param>
+        /// <param name="state">Training states that the training session uses as a starting point for training.</param>
+        /// <param name="trainModelPath">Model to be used to perform training.</param>
+        /// <param name="optimizerModelPath">Model to be used to perform weight update.</param>
         public TrainingSession(CheckpointState state, string trainModelPath, string optimizerModelPath)
         {
             Init(null, state, NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath), null, NativeOnnxValueHelper.GetPlatformSerializedString(optimizerModelPath));
         }
 
         /// <summary>
-        /// Creates TrainingSession from the model and checkpoint in <paramref name="state"/>.
+        /// Create a training session that can be used to begin or resume training.
+        ///
+        /// This constructor instantiates the training session based on the env and session options provided that can
+        /// begin or resume training from a given checkpoint state for the given onnx models.
+        /// The checkpoint state represents the parameters of the training session which will be moved
+        /// to the device specified by the user through the session options (if necessary).
         /// </summary>
-        /// <param name="state">Model checkpoint loaded into <see cref="CheckpointState"/>.</param>
-        /// <param name="trainModelPath">Specify path to training model graph.</param>
-        public TrainingSession(CheckpointState state, string trainModelPath)
-        {
-            Init(null, state, NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath), null, null);
-        }
-
-
-        /// <summary>
-        /// Creates TrainingSession from the model and checkpoint in <paramref name="state"/>.
-        /// </summary>
-        /// <param name="options">Session options</param>
-        /// <param name="state">Model checkpoint loaded into <see cref="CheckpointState"/>.</param>
-        /// <param name="trainModelPath">Specify path to training model graph.</param>
-        /// <param name="evalModelPath">Specify path to eval model graph.</param>
-        /// <param name="optimizerModelPath">Specify path to optimizer model graph.</param>
+        /// <param name="options">SessionOptions that the user can customize for this training session.</param>
+        /// <param name="state">Training states that the training session uses as a starting point for training.</param>
+        /// <param name="trainModelPath">Model to be used to perform training.</param>
+        /// <param name="evalModelPath">Model to be used to perform evaluation.</param>
+        /// <param name="optimizerModelPath">Model to be used to perform weight update.</param>
         public TrainingSession(SessionOptions options, CheckpointState state, string trainModelPath, string evalModelPath, string optimizerModelPath)
         {
             Init(options, state, NativeOnnxValueHelper.GetPlatformSerializedString(trainModelPath), NativeOnnxValueHelper.GetPlatformSerializedString(evalModelPath), NativeOnnxValueHelper.GetPlatformSerializedString(optimizerModelPath));
         }
 
         /// <summary>
-        /// Runs a train step on the loaded model for the given inputs.
+        /// Computes the outputs of the training model and the gradients of the trainable parameters for the given inputs
+        ///
+        /// This function performs a training step that computes the outputs of the training model and the gradients
+        /// of the trainable parameters for the given inputs. The train step is performed based on the training model
+        /// that was provided to the training session.
+        /// The TrainStep method is equivalent of running forward propagation and backward propagation in a single
+        /// step.
+        /// The gradients computed are stored inside the training session state so they can be later consumed
+        /// by the OptimizerStep function.
+        /// The gradients can be lazily reset by invoking the LazyResetGrad function.
         /// </summary>
-        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
-        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values to the training model.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values of the training model.</param>
         public void TrainStep(
            IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
            IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
@@ -102,17 +144,26 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Runs a train step on the loaded model for the given inputs. Uses the given RunOptions for this run.
+        /// Computes the outputs of the training model and the gradients of the trainable parameters for the given inputs
+        ///
+        /// This function performs a training step that computes the outputs of the training model and the gradients
+        /// of the trainable parameters for the given inputs. The train step is performed based on the training model
+        /// that was provided to the training session.
+        /// The TrainStep method is equivalent of running forward propagation and backward propagation in a single
+        /// step.
+        /// The gradients computed are stored inside the training session state so they can be later consumed
+        /// by the OptimizerStep function.
+        /// The gradients can be lazily reset by invoking the LazyResetGrad function.
         /// </summary>
         /// <param name="options">Specify <see cref="RunOptions"/> for step.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
-        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values to the training model.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values of the training model.</param>
         public void TrainStep(
             RunOptions options,
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
         {
-            if (_trainOutputCount!= (ulong)outputValues.Count())
+            if (_trainOutputCount != (ulong)outputValues.Count())
             {
                 throw new ArgumentException($"Length of {nameof(outputValues)} ({outputValues.Count}) must match that of train model ({_trainOutputCount}).");
             }
@@ -124,32 +175,41 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Runs the loaded model for the given inputs, and fetches the graph outputs.
+        /// Computes the outputs of the training model and the gradients of the trainable parameters for the given inputs
+        ///
+        /// This function performs a training step that computes the outputs of the training model and the gradients
+        /// of the trainable parameters for the given inputs. The train step is performed based on the training model
+        /// that was provided to the training session.
+        /// The TrainStep method is equivalent of running forward propagation and backward propagation in a single
+        /// step.
+        /// The gradients computed are stored inside the training session state so they can be later consumed
+        /// by the OptimizerStep function.
+        /// The gradients can be lazily reset by invoking the LazyResetGrad function.
         /// </summary>
-        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values to the training model.</param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> TrainStep(
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
         {
-            using (var ortValues = new DisposableList<OrtValue>((int)_trainOutputCount))
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
+            IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, _builtInRunOptions.Handle, (UIntPtr)inputValues.Count,
+                inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
+
+            // On success ortValues would contain nulls that will be
+            // ignored. On failure, ortValues would contain at least
+            // some valid OrtValue instances that need to be disposed.
+            // It would be nice to use using() clause, but we need to upgrade to C# 8.0 for that.
+            var ortValueDisposer = ConvertNativeHandlesToOrtValues(outputValuesArray);
+            try
             {
-                IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
-                IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
-
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, _builtInRunOptions.Handle, (UIntPtr)inputValues.Count,
-                    inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
-                foreach (var v in outputValuesArray)
-                {
-                    ortValues.Add(new OrtValue(v));
-                }
-
                 var result = new DisposableList<DisposableNamedOnnxValue>(_trainOutputNames.Count);
                 try
                 {
-                    for (int i = 0; i < ortValues.Count; i++)
+                    for (int i = 0; i < ortValueDisposer.Span.Length; i++)
                     {
-                        var ortValue = ortValues[i];
-                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ortValue));
+                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ref ortValueDisposer.Span[i]));
                     }
                 }
                 catch (OnnxRuntimeException)
@@ -159,37 +219,54 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 return result;
             }
+            finally
+            {
+                // On success ortValues would contain nulls that will be
+                // ignored. On failure, ortValues would contain at least
+                // some valid OrtValue instances that need to be disposed.
+                ortValueDisposer.Dispose();
+            }
         }
 
         /// <summary>
-        /// Runs the loaded model for the given inputs, and fetches the specified outputs in <paramref name="outputNames"/>. Uses the given RunOptions for this run.
+        /// Computes the outputs of the training model and the gradients of the trainable parameters for the given inputs
+        ///
+        /// This function performs a training step that computes the outputs of the training model and the gradients
+        /// of the trainable parameters for the given inputs. The train step is performed based on the training model
+        /// that was provided to the training session.
+        /// The TrainStep method is equivalent of running forward propagation and backward propagation in a single
+        /// step.
+        /// The gradients computed are stored inside the training session state so they can be later consumed
+        /// by the OptimizerStep function.
+        /// The gradients can be lazily reset by invoking the LazyResetGrad function.
         /// </summary>
         /// <param name="options">Specify <see cref="RunOptions"/> for step.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values to the training model.</param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> TrainStep(
             RunOptions options,
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
         {
-            using (var ortValues = new DisposableList<OrtValue>((int)_trainOutputCount))
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
+            IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
+                inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
+
+
+            // On success ortValues would contain nulls that will be
+            // ignored. On failure, ortValues would contain at least
+            // some valid OrtValue instances that need to be disposed.
+            // It would be nice to use using() clause, but we need to upgrade to C# 8.0 for that.
+            var ortValueDisposer = ConvertNativeHandlesToOrtValues(outputValuesArray);
+            try
             {
-                IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
-                IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
-
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
-                    inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
-                foreach (var v in outputValuesArray)
-                {
-                    ortValues.Add(new OrtValue(v));
-                }
-
                 var result = new DisposableList<DisposableNamedOnnxValue>(_trainOutputNames.Count);
                 try
                 {
-                    for (int i = 0; i < ortValues.Count; i++)
+                    for (int i = 0; i < ortValueDisposer.Span.Length; i++)
                     {
-                        var ortValue = ortValues[i];
-                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ortValue));
+                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ref ortValueDisposer.Span[i]));
                     }
                 }
                 catch (OnnxRuntimeException)
@@ -199,11 +276,97 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 return result;
             }
+            finally
+            {
+                ortValueDisposer.Dispose();
+            }
         }
 
         /// <summary>
-        /// Sets the reset grad flag on the training graph. The gradient buffers will be reset while executing the
-        /// next train step.
+        /// This function performs a training step that computes the outputs of the training model and the gradients
+        /// of the trainable parameters for the given OrtValue inputs. The train step is performed based on the training model
+        /// that was provided to the training session.
+        /// The TrainStep method is equivalent of running forward propagation and backward propagation in a single
+        /// step.
+        /// The gradients computed are stored inside the training session state so they can be later consumed
+        /// by the OptimizerStep function.
+        /// The gradients can be lazily reset by invoking the LazyResetGrad function.
+        /// Example usage:
+        /// <code>
+        /// using OrtValue x = OrtValue.CreateTensorValueFromMemory(...);
+        /// using OrtValue label = OrtValue.CreateTensorValueFromMemory(...);
+        /// List<OrtValue> inputValues = new List<OrtValue> { x, label };
+        /// using (var loss = trainingSession.TrainStep(inputValues))
+        /// {
+        ///     // process output values
+        /// }
+        /// </code>
+        /// </summary>
+        /// <param name="inputValues">Specify a collection of <see cref="OrtValue"/> that indicates the input values to the training model.</param>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
+        public IDisposableReadOnlyCollection<OrtValue> TrainStep(IReadOnlyCollection<OrtValue> inputValues)
+        {
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues);
+            IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, IntPtr.Zero, (UIntPtr)inputValues.Count,
+                inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
+
+
+            var disposableHandles = new DisposableOrtValueHandleArray(outputValuesArray);
+            try
+            {
+                return CreateDisposableResult(disposableHandles);
+            }
+            finally
+            {
+                disposableHandles.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Convert native OrtValue handles to OrtValue instances
+        /// in an exceptions safe manner.
+        /// </summary>
+        /// <param name="nativeHandles"></param>
+        /// <returns></returns>
+        private DisposableArray<OrtValue> ConvertNativeHandlesToOrtValues(IntPtr[] nativeHandles)
+        {
+            var diposableArray = new DisposableOrtValueHandleArray(nativeHandles);
+            try
+            {
+                var ortValues = new OrtValue[nativeHandles.Length];
+                var ortValueDisposer = new DisposableArray<OrtValue>(ortValues);
+                try
+                {
+                    for (int i = 0; i < nativeHandles.Length; i++)
+                    {
+                        ortValues[i] = new OrtValue(nativeHandles[i]);
+                        nativeHandles[i] = IntPtr.Zero;
+                    }
+                    return ortValueDisposer;
+                }
+                catch (Exception)
+                {
+                    // ortValues is the result, dispose only on exception
+                    ortValueDisposer.Dispose();
+                    throw;
+                }
+            }
+            catch (Exception)
+            {
+                // No need to dispose on exception since the ownership is transferred to ortValues
+                diposableArray.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Reset the gradients of all trainable parameters to zero lazily.
+        ///
+        /// This function sets the internal state of the training session such that the gradients of the trainable
+        /// parameters in the OrtCheckpointState will be scheduled to be reset just before the new gradients are
+        /// computed on the next invocation of the next TrainStep.
         /// </summary>
         public void LazyResetGrad()
         {
@@ -211,10 +374,12 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Runs an eval step on the loaded model for the given inputs. The eval graph must be passed while TrainingSession creation.
+        /// Computes the outputs for the eval model for the given inputs
+        /// This function performs an eval step that computes the outputs of the eval model for the given inputs.
+        /// The eval step is performed based on the eval model that was provided to the training session.
         /// </summary>
-        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
-        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values to the eval model.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values of the eval model.</param>
         public void EvalStep(
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
@@ -223,32 +388,83 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Runs an eval step on the loaded model for the given inputs. The eval graph must be passed while TrainingSession creation.
+        /// Computes the outputs for the eval model for the given inputs
+        /// This function performs an eval step that computes the outputs of the eval model for the given inputs.
+        /// The eval step is performed based on the eval model that was provided to the training session.
         /// </summary>
         /// <param name="options">Specify <see cref="RunOptions"/> for step.</param>
-        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
-        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
+        /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values to the eval model.</param>
+        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values of the eval model.</param>
         public void EvalStep(
             RunOptions options,
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
         {
-            if (!_evalOutputCount.Equals(outputValues.Count))
+            if (_evalOutputCount != (ulong)outputValues.Count())
             {
-                throw new ArgumentException($"Length of {nameof(outputValues)} ({outputValues.Count}) must match that of train model ({_trainOutputCount}).");
+                throw new ArgumentException($"Length of {nameof(outputValues)} ({outputValues.Count}) must match that of eval model ({_evalOutputCount}).");
             }
-            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
+            const bool isInput = true;
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, isInput);
 
-            IntPtr[] outputValuesArray = GetOrtValuesHandles(outputValues, false); /* pointers to Pre-allocated OrtValue instances */
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
+            IntPtr[] outputValuesArray = GetOrtValuesHandles(outputValues, !isInput); /* pointers to Pre-allocated OrtValue instances */
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtEvalStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
                 inputValuesArray, (UIntPtr)outputValues.Count, outputValuesArray));
+        }
+
+        /// <summary>
+        /// This function performs an eval step that computes the outputs of the eval model for the given inputs.
+        /// Inputs are expected to be of type OrtValue. The eval step is performed based on the eval model that was
+        /// provided to the training session.
+        /// Example usage:
+        /// <code>
+        /// using OrtValue x = OrtValue.CreateTensorValueFromMemory(...);
+        /// using OrtValue label = OrtValue.CreateTensorValueFromMemory(...);
+        /// List<OrtValue> inputValues = new List<OrtValue> { x, label };
+        /// using (var loss = trainingSession.EvalSteps(inputValues))
+        /// {
+        ///     // process output values
+        /// }
+        /// </code>
+        /// </summary>
+        /// <param name="inputValues">Specify a collection of <see cref="OrtValue"/> that indicates the input values to the eval model.</param>
+        public IDisposableReadOnlyCollection<OrtValue> EvalStep(IReadOnlyCollection<OrtValue> inputValues)
+        {
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues);
+            IntPtr[] outputValuesArray = new IntPtr[(int)_evalOutputCount];
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtEvalStep(_nativeHandle, IntPtr.Zero, (UIntPtr)inputValues.Count,
+                inputValuesArray, (UIntPtr)_evalOutputCount, outputValuesArray));
+
+
+            var disposableHandles = new DisposableOrtValueHandleArray(outputValuesArray);
+            try
+            {
+                return CreateDisposableResult(disposableHandles);
+            }
+            finally
+            {
+                disposableHandles.Dispose();
+            }
         }
 
 
         /// <summary>
-        /// Sets a constant learning rate for the session. LR must be controlled by either this method
-        /// or by registering a LR scheduler.
+        /// Sets the learning rate for this training session.
+        ///
+        /// This function allows users to set the learning rate for the training session. The current
+        /// learning rate is maintained by the training session and can be overwritten by invoking
+        /// this function with the desired learning rate. This function should not be used when a valid
+        /// learning rate scheduler is registered. It should be used either to set the learning rate
+        /// derived from a custom learning rate scheduler or to set a constant learning rate to be used
+        /// throughout the training session.
+        /// <note type="note">
+        /// Please note that this function does not set the initial learning rate that may be needed
+        /// by the predefined learning rate schedulers. To set the initial learning rate for learning
+        /// rate schedulers, please look at the function RegisterLinearLRScheduler.
+        /// </note>
         /// </summary>
+        /// <param name="learningRate">Desired learning rate to be set.</param>
         public void SetLearningRate(float learningRate)
         {
             if (_scheduler != LRScheduler.None && _scheduler != LRScheduler.Constant)
@@ -260,8 +476,13 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Gets the current learning rate for the session.
+        /// Gets the current learning rate for this training session.
+        ///
+        /// This function allows users to get the learning rate for the training session. The current
+        /// learning rate is maintained by the training session, and users can query it for the purpose
+        /// of implementing their own learning rate schedulers.
         /// </summary>
+        /// <returns>float representing the current learning rate.</returns>
         public float GetLearningRate()
         {
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetLearningRate(_nativeHandle, out float lr));
@@ -269,12 +490,16 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Registers a linear learning rate scheduler for the session. LR must be controlled by either
-        /// the SetLearningRate method or by registering a LR scheduler.
+        /// Registers a linear learning rate scheduler for the training session.
+        ///
+        /// Register a linear learning rate scheduler that decays the learning rate by linearly updated
+        /// multiplicative factor from the initial learning rate set on the training session to 0. The decay
+        /// is performed after the initial warm up phase where the learning rate is linearly incremented
+        /// from 0 to the initial learning rate provided.
+        /// </summary>
         /// <param name="warmupStepCount"> Number of warmup steps</param>
         /// <param name="totalStepCount"> Number of total steps</param>
         /// <param name="initialLearningRate"> Initial learning rate</param>
-        /// </summary>
         public void RegisterLinearLRScheduler(long warmupStepCount,
                                               long totalStepCount,
                                               float initialLearningRate)
@@ -284,12 +509,19 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new InvalidOperationException("Cannot set LR scheduler while using constant LR.");
             }
 
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtRegisterLinearLRScheduler(_nativeHandle, warmupStepCount,totalStepCount, initialLearningRate));
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtRegisterLinearLRScheduler(_nativeHandle, warmupStepCount, totalStepCount, initialLearningRate));
             _scheduler = LRScheduler.Linear;
         }
 
         /// <summary>
-        /// Runs a LR scheduler step. There must be a valid LR scheduler registered for the training session.
+        /// Update the learning rate based on the registered learning rate scheduler.
+        ///
+        /// Takes a scheduler step that updates the learning rate that is being used by the training session.
+        /// This function should typically be called before invoking the optimizer step for each round,
+        /// or as determined necessary to update the learning rate being used by the training session.
+        /// <note type="note">
+        /// Please note that a valid predefined learning rate scheduler must be first registered to invoke this function.
+        /// </note>
         /// </summary>
         public void SchedulerStep()
         {
@@ -301,7 +533,13 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Runs an optimizer step on the loaded model for the given inputs. The optimizer graph must be passed while TrainingSession creation.
+        /// Performs the weight updates for the trainable parameters using the optimizer model.
+        ///
+        /// This function performs the weight update step that updates the trainable parameters such that they
+        /// take a step in the direction of their gradients (gradient descent). The optimizer step is performed
+        /// based on the optimizer model that was provided to the training session.
+        /// The updated parameters are stored inside the training state so that they can be used by the next
+        /// TrainStep function call.
         /// </summary>
         public void OptimizerStep()
         {
@@ -309,10 +547,15 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Runs an eval step on the loaded model for the given inputs. The eval graph must be passed while TrainingSession creation.
+        /// Performs the weight updates for the trainable parameters using the optimizer model.
+        ///
+        /// This function performs the weight update step that updates the trainable parameters such that they
+        /// take a step in the direction of their gradients (gradient descent). The optimizer step is performed
+        /// based on the optimizer model that was provided to the training session.
+        /// The updated parameters are stored inside the training state so that they can be used by the next
+        /// TrainStep function call.
         /// </summary>
         /// <param name="options">Specify <see cref="RunOptions"/> for step.</param>
-        /// <param name="outputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the output values.</param>
         public void OptimizerStep(RunOptions options)
         {
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtOptimizerStep(_nativeHandle, options.Handle));
@@ -320,23 +563,101 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Saves a checkpoint to path. It can be loaded into <see cref="CheckpointState"/>
+        /// Export a model that can be used for inferencing.
+        /// If the training session was provided with an eval model, the training session can generate
+        /// an inference model if it knows the inference graph outputs. The input inference graph outputs
+        /// are used to prune the eval model so that the inference model's outputs align with the provided outputs.
+        /// The exported model is saved at the path provided and can be used for inferencing with InferenceSession.
+        /// Note that the function re-loads the eval model from the path provided to TrainingSession
+        /// and expects that this path still be valid.
         /// </summary>
-        /// <param name="path">Specify path for saving the checkpoint.</param>
-        /// <param name="saveOptimizerState">SFlag indicating whether to save optimizer state or not.</param>
-        public void SaveCheckpoint(string path, bool saveOptimizerState = false)
+        /// <param name="inferenceModelPath">Path where the inference model should be serialized to.</param>
+        /// <param name="graphOutputNames">Names of the outputs that are needed in the inference model.</param>
+        public void ExportModelForInferencing(string inferenceModelPath, IReadOnlyCollection<string> graphOutputNames)
         {
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtSaveCheckpoint(NativeOnnxValueHelper.GetPlatformSerializedString(path), _nativeHandle, saveOptimizerState));
+            using (var cleanupList = new DisposableList<IDisposable>())
+            {
+                var outputNamesArray = ConvertNamesToUtf8(graphOutputNames, cleanupList);
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtExportModelForInferencing(
+                    _nativeHandle, NativeOnnxValueHelper.GetPlatformSerializedString(inferenceModelPath),
+                    (UIntPtr)graphOutputNames.Count, outputNamesArray));
+            }
         }
 
-    #endregion
-    #region private methods
+        /// <summary>
+        /// Returns a contiguous buffer that holds a copy of all training state parameters
+        /// </summary>
+        /// <param name="onlyTrainable">Whether to only copy trainable parameters or to copy all parameters.</param>
+        public OrtValue ToBuffer(bool onlyTrainable)
+        {
+            UIntPtr bufferSize = UIntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out bufferSize, onlyTrainable));
+
+            float[] bufferMemory = new float[bufferSize.ToUInt64()];
+
+            var shape = new long[] { (long)bufferSize };
+            var buffer = OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance, Tensors.TensorElementType.Float, shape);
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyParametersToBuffer(_nativeHandle, buffer.Handle, onlyTrainable));
+
+            return buffer;
+        }
+
+        /// <summary>
+        /// Loads the training session model parameters from a contiguous buffer
+        /// </summary>
+        /// <param name="ortValue">Contiguous buffer to load the parameters from.</param>
+        /// <param name="onlyTrainable">Whether to only load trainable parameters or to load all parameters.</param>
+        public void FromBuffer(OrtValue ortValue, bool onlyTrainable)
+        {
+            if (ortValue.OnnxType != OnnxValueType.ONNX_TYPE_TENSOR)
+            {
+                throw new ArgumentException("Incorrect buffer received. Expected a tensor buffer.");
+            }
+
+            var tensorInfo = ortValue.GetTensorTypeAndShape();
+            if (tensorInfo.ElementDataType != Tensors.TensorElementType.Float)
+            {
+                throw new ArgumentException("Incorrect buffer received. Expected a tensor buffer of type float.");
+            }
+
+            UIntPtr numElements = UIntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out numElements, onlyTrainable));
+            if ((ulong)tensorInfo.ElementCount != (ulong)numElements)
+            {
+                string errorMessage = "Incorrect buffer size received. Expected size to be " + numElements.ToString() + ". Actual size: " + tensorInfo.ElementCount.ToString();
+                throw new ArgumentException(errorMessage);
+            }
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyBufferToParameters(_nativeHandle, ortValue.Handle, onlyTrainable));
+        }
+
+        /// <summary>
+        /// Retrieves the names of the user outputs for the training and eval models.
+        /// </summary>
+        /// <param name="training">Whether the training model output names are requested or eval model output names.</param>
+        public List<string> OutputNames(bool training)
+        {
+            return training ? _trainOutputNames : _evalOutputNames;
+        }
+
+        /// <summary>
+        /// Retrieves the names of the user inputs for the training and eval models.
+        /// </summary>
+        /// <param name="training">Whether the training model input names are requested or eval model input names.</param>
+        public List<string> InputNames(bool training)
+        {
+            return training ? _trainInputNames : _evalInputNames;
+        }
+
+        #endregion
+        #region private methods
 
         private void Init(SessionOptions sessOptions, CheckpointState state, byte[] trainModelPath, byte[] evalModelPath, byte[] optimizerModelPath)
         {
             if (!NativeTrainingMethods.TrainingEnabled())
             {
-                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training_apis. \n");
+                throw new InvalidOperationException("This package does not contain the training API. Please install the Microsoft.ML.OnnxRuntime.Training NuGet package.\n");
             }
             var options = sessOptions;
             if (sessOptions == null)
@@ -344,7 +665,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _builtInSessionOptions = new SessionOptions();
                 options = _builtInSessionOptions;
             }
-            var envHandle = OrtEnv.Handle;
+            var envHandle = OrtEnv.Instance().Handle;
             try
             {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCreateTrainingSession(envHandle, options.Handle, state.Handle, trainModelPath,
@@ -361,6 +682,14 @@ namespace Microsoft.ML.OnnxRuntime
                     _trainOutputNames.Add(GetOutputName(i, true));
                 }
 
+                _trainInputNames = new List<string>();
+                UIntPtr inputCount = UIntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelInputCount(_nativeHandle, out inputCount));
+                for (ulong i = 0; i < inputCount.ToUInt64(); i++)
+                {
+                    _trainInputNames.Add(GetInputName(i, true));
+                }
+
                 if (evalModelPath != null)
                 {
                     outputCount = UIntPtr.Zero;
@@ -370,6 +699,14 @@ namespace Microsoft.ML.OnnxRuntime
                     for (ulong i = 0; i < _evalOutputCount; i++)
                     {
                         _evalOutputNames.Add(GetOutputName(i, false));
+                    }
+
+                    _evalInputNames = new List<string>();
+                    inputCount = UIntPtr.Zero;
+                    NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetEvalModelInputCount(_nativeHandle, out inputCount));
+                    for (ulong i = 0; i < inputCount.ToUInt64(); i++)
+                    {
+                        _evalInputNames.Add(GetInputName(i, false));
                     }
                 }
 
@@ -386,7 +723,6 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr nameHandle;
-            string str = null;
             if (training)
             {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelOutputName(
@@ -403,13 +739,30 @@ namespace Microsoft.ML.OnnxRuntime
                                            allocator.Pointer,
                                            out nameHandle));
             }
+            return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle, allocator);
+        }
 
-            using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+        private string GetInputName(ulong index, bool training)
+        {
+            var allocator = OrtAllocator.DefaultInstance;
+            IntPtr nameHandle;
+            if (training)
             {
-                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetTrainingModelInputName(
+                                           _nativeHandle,
+                                           (UIntPtr)index,
+                                           allocator.Pointer,
+                                           out nameHandle));
             }
-
-            return str;
+            else
+            {
+                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetEvalModelInputName(
+                                           _nativeHandle,
+                                           (UIntPtr)index,
+                                           allocator.Pointer,
+                                           out nameHandle));
+            }
+            return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle, allocator);
         }
 
         private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<FixedBufferOnnxValue> values, bool input)
@@ -427,6 +780,53 @@ namespace Microsoft.ML.OnnxRuntime
             return valuesArray;
         }
 
+        private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<OrtValue> inputValues)
+        {
+            var valuesArray = new IntPtr[inputValues.Count];
+            for (int index = 0; index < inputValues.Count; ++index)
+            {
+                valuesArray[index] = inputValues.ElementAt(index).Handle;
+            }
+            return valuesArray;
+        }
+
+        private static IDisposableReadOnlyCollection<OrtValue> CreateDisposableResult(DisposableOrtValueHandleArray disposableHandles)
+        {
+            var outputValues = new DisposableList<OrtValue>(disposableHandles.Span.Length);
+            try
+            {
+                for (int i = 0; i < disposableHandles.Span.Length; i++)
+                {
+                    outputValues.Add(new OrtValue(disposableHandles.Span[i]));
+                    disposableHandles.Span[i] = IntPtr.Zero;
+                }
+                return outputValues;
+            }
+            catch (Exception)
+            {
+                outputValues.Dispose();
+                throw;
+            }
+        }
+
+        private IntPtr[] ConvertNamesToUtf8(IReadOnlyCollection<string> names, DisposableList<IDisposable> cleanupList)
+        {
+            cleanupList.Capacity += names.Count;
+            var result = new IntPtr[names.Count];
+            for (int i = 0; i < names.Count; ++i)
+            {
+                var name = names.ElementAt(i);
+                var utf8Name = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
+                var pinnedHandle = new Memory<byte>(utf8Name).Pin();
+                unsafe
+                {
+                    result[i] = (IntPtr)pinnedHandle.Pointer;
+                }
+                cleanupList.Add(pinnedHandle);
+            }
+            return result;
+        }
+
         /// <summary>
         /// Other classes access
         /// </summary>
@@ -438,9 +838,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-    #endregion
+        #endregion
 
-    #region IDisposable
+        #region IDisposable
 
         /// <summary>
         /// Finalizer.
@@ -498,7 +898,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-    #endregion
+        #endregion
     }
 #endif
 }

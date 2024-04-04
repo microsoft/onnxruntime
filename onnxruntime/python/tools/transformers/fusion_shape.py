@@ -29,12 +29,12 @@ class FusionShape(Fusion):
             return None
 
     def get_dimensions(self, input_name: str) -> Union[int, None]:
-        graph_input = self.model.find_graph_input(input_name)
-        if graph_input:
-            return self.get_dimensions_from_tensor_proto(graph_input)
+        shape = self.model.get_shape(input_name)
+        if shape is not None:
+            return len(shape)
 
         if not self.shape_infer_done:
-            self.shape_infer = self.model.infer_runtime_shape({}, update=True)
+            self.shape_infer = self.model.infer_runtime_shape(update=True)
             self.shape_infer_done = True
 
         if self.shape_infer is not None:
@@ -48,22 +48,22 @@ class FusionShape(Fusion):
         input_name_to_nodes: Dict[str, List[NodeProto]],
         output_name_to_node: Dict[str, NodeProto],
     ):
-        """
-        Smplify subgraph like
-
-                   (2d_input)
-                    /       \
-                Shape       shape
-                /             \
-            Gather(indices=0)  Gather(indices=1)
-                |                |
-            Unsqueeze(axes=0)   Unsqueeze(axes=0)
-                   \          /
-                      Concat
-                        |
-
-        into  (2d_input) --> Shape -->
-        """
+        #
+        # Simplify subgraph like
+        #
+        #          (2d_input)
+        #           /       \
+        #       Shape       shape
+        #       /             \
+        #   Gather(indices=0)  Gather(indices=1)
+        #       |                |
+        #   Unsqueeze(axes=0)   Unsqueeze(axes=0)
+        #          \           /
+        #             Concat
+        #               |
+        #
+        # into  (2d_input) --> Shape -->
+        #
         opset_version = self.model.get_opset_version()
 
         inputs = len(concat_node.input)

@@ -1,7 +1,8 @@
 import argparse
-import numpy as np
-import os
 import csv
+import os  # noqa: F401
+
+import numpy as np  # noqa: F401
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input", type=str)
@@ -67,18 +68,10 @@ groups = group_gpu_activity(lines)
 for name in groups:
     activities = groups[name]
     print(
-        "{}: N={}, calls={}, absolute={:.3f}s, percent={:.2f}%".format(
-            name,
-            len(activities),
-            gpu_kernel_calls(activities),
-            gpu_absolute_time(activities),
-            gpu_percent_time(activities),
-        )
+        f"{name}: N={len(activities)}, calls={gpu_kernel_calls(activities)}, absolute={gpu_absolute_time(activities):.3f}s, percent={gpu_percent_time(activities):.2f}%"
     )
 
 total = [item for name in groups for item in groups[name]]
 print(
-    "Total: N={}, calls={}, absolute={:.3f}s, percent={:.2f}%".format(
-        len(total), gpu_kernel_calls(total), gpu_absolute_time(total), gpu_percent_time(total)
-    )
+    f"Total: N={len(total)}, calls={gpu_kernel_calls(total)}, absolute={gpu_absolute_time(total):.3f}s, percent={gpu_percent_time(total):.2f}%"
 )

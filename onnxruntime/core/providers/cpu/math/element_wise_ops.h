@@ -1032,8 +1032,8 @@ struct TensorAllocator {
   template <typename T>
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) const {
     return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                            shape,
-                                            allocator_);
+                                    shape,
+                                    allocator_);
   }
 
  private:

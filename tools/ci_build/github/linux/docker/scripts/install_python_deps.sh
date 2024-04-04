@@ -5,8 +5,8 @@ INSTALL_DEPS_TRAINING=false
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
 TARGET_ROCM=false
-CU_VER="11.6"
-TORCH_VERSION='1.13.1'
+CU_VER="11.8"
+TORCH_VERSION='2.0.0'
 USE_CONDA=false
 
 while getopts p:h:d:v:tmurc parameter_Option
@@ -46,6 +46,8 @@ elif [[ "$PYTHON_VER" = "3.10" && -d "/opt/python/cp310-cp310"  ]]; then
    PYTHON_EXE="/opt/python/cp310-cp310/bin/python3.10"
 elif [[ "$PYTHON_VER" = "3.11" && -d "/opt/python/cp311-cp311"  ]]; then
    PYTHON_EXE="/opt/python/cp311-cp311/bin/python3.11"
+elif [[ "$PYTHON_VER" = "3.12" && -d "/opt/python/cp312-cp312"  ]]; then
+   PYTHON_EXE="/opt/python/cp312-cp312/bin/python3.12"
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi

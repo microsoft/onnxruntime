@@ -59,15 +59,17 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
     return Status::OK();
   }
 
-  size_t packed_weights_data_size = SafeInt<size_t>(packed_weights_size * num_directions_);
-  auto* packed_weights_data = alloc->Alloc(packed_weights_data_size);
+  size_t packed_weights_data_size = SafeInt<size_t>(packed_weights_size) * num_directions_;
+
+  packed_weights.buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weights_data_size, true);
+
+  auto* packed_weights_data = packed_weights.buffer_.get();
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
 
-  packed_weights.buffer_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
   packed_weights.buffer_size_ = packed_weights_data_size;
   packed_weights.weights_size_ = packed_weights_size;
   packed_weights.shape_ = shape;
@@ -132,7 +134,7 @@ Status DynamicQuantizeLSTM::UseSharedPrePackedBuffers(std::vector<BufferUniquePt
 
 #define WeightCheck(weight_shape, weight_name)                                                                                              \
   if ((weight_shape.NumDimensions() != 1 && weight_shape.NumDimensions() != 2) ||                                                           \
-      (weight_shape.NumDimensions() == 2 && weight_shape[1] != static_cast<int64_t>(hidden_size_) * 4) ||                                                         \
+      (weight_shape.NumDimensions() == 2 && weight_shape[1] != static_cast<int64_t>(hidden_size_) * 4) ||                                   \
       weight_shape[0] != num_directions_) {                                                                                                 \
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,                                                                                   \
                            "Input ", #weight_name, " must have shape {", num_directions_, "} for per-tensor/layer quantization or shape {", \

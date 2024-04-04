@@ -173,6 +173,12 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
       // QNN can't handle 0 shap
       excluded_providers.insert(kQnnExecutionProvider);
     }
+#if defined(__linux__)
+    if (t.name == "test padding and broadcast B > A") {
+      // Accuracy error with QNN SDK 2.17.0 on CPU backend.
+      excluded_providers.insert(kQnnExecutionProvider);
+    }
+#endif
     test.ConfigExcludeEps(excluded_providers)
         .Config(run_with_tunable_op)
         .RunWithConfig();
@@ -263,7 +269,7 @@ TEST(MathOpTest, MatMul_bfloat16) {
   }
 #endif
 #ifdef USE_DNNL
-   if (!DnnlHasBF16Support()) {
+  if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }

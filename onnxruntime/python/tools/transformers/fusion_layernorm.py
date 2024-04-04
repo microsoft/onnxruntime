@@ -80,11 +80,11 @@ class FusionLayerNormalization(Fusion):
         second_add_node = parent_nodes[1]
         i, add_weight = self.model.get_constant_input(second_add_node)
         if add_weight is None or add_weight <= 0 or add_weight > 1.0e-4:
-            logger.warning(f"epsilon value is not expeced: {add_weight}")
+            logger.debug(f"skip SkipLayerNormalization fusion since epsilon value is not expected: {add_weight}")
             return
 
         pow_node = parent_nodes[3]
-        if not self.model.find_constant_input(pow_node, 2.0) == 1:
+        if self.model.find_constant_input(pow_node, 2.0) != 1:
             return
 
         mul_node = input_name_to_nodes[div_node.output[0]][0]
@@ -106,7 +106,7 @@ class FusionLayerNormalization(Fusion):
             input_name_to_nodes,
             output_name_to_node,
         ):
-            logger.debug(f"It is not safe to fuse LayerNormalization node. Skip")
+            logger.debug("It is not safe to fuse LayerNormalization node. Skip")
             return
 
         weight_input = mul_node.input[1 - self.model.input_index(div_node.output[0], mul_node)]
@@ -187,7 +187,7 @@ class FusionLayerNormalizationTF(Fusion):
                 ),
             ],
             output_name_to_node,
-        )  # yapf: disable
+        )
 
         if parent_nodes is None:
             return

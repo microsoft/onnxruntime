@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include "matmul_integer_base.h"
 
 namespace onnxruntime {
@@ -16,7 +15,7 @@ class QLinearMatMul : public MatMulIntegerBase {
   /**
    * @brief Give each input a name, should be consistent with doc spec in
    * Operators.md
-  */
+   */
   enum InputTensors : int {
     IN_A = 0,
     IN_A_SCALE = 1,

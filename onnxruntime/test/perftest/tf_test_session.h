@@ -206,7 +206,7 @@ class TensorflowTestSession : public TestSession {
     feed_tensors_[test_data_id][input_id] = t;
   }
   std::chrono::duration<double> Run() override {
-    //Randomly pick one OrtValueArray from feed_tensors_. (NOT ThreadSafe)
+    // Randomly pick one OrtValueArray from feed_tensors_. (NOT ThreadSafe)
     const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(feed_tensors_.size() - 1));
     const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
     std::vector<TF_Tensor*>& feed_tensors = feed_tensors_.at(id);

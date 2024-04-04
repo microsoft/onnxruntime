@@ -8,21 +8,22 @@ $ deepspeed orttraining_test_ortmodule_deepspeed_zero_stage_1.py \
     --deepspeed_config=orttraining_test_ortmodule_deepspeed_zero_stage_1_config.json
 ```
 """
-import argparse
-import torch
-import time
-from torchvision import datasets, transforms
-import torch.distributed as dist
 
-import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
+import argparse
+import time
 
 import deepspeed
+import torch
+import torch.distributed as dist
+from torchvision import datasets, transforms
+
+import onnxruntime
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
 
 
 class NeuralNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -36,11 +37,7 @@ class NeuralNet(torch.nn.Module):
 
 
 def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
-    print(
-        "\n======== Epoch {:} / {:} with batch size {:} ========".format(
-            epoch + 1, args.epochs, model.train_batch_size()
-        )
-    )
+    print(f"\n======== Epoch {epoch + 1} / {args.epochs} with batch size {model.train_batch_size()} ========")
     model.train()
     # Measure how long the training epoch takes.
     t0 = time.time()
@@ -50,8 +47,8 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
     total_loss = 0
 
     for iteration, (data, target) in enumerate(train_loader):
-        data, target = data.to(device), target.to(device)
-        data = data.reshape(data.shape[0], -1).half()
+        data, target = data.to(device), target.to(device)  # noqa: PLW2901
+        data = data.reshape(data.shape[0], -1).half()  # noqa: PLW2901
 
         optimizer.zero_grad()
         probability = model(data)
@@ -77,13 +74,7 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
             curr_time = time.time()
             elapsed_time = curr_time - start_time
             print(
-                "[{:5}/{:5} ({:2.0f}%)]\tLoss: {:.6f}\tExecution time: {:.4f}".format(
-                    iteration * len(data),
-                    len(train_loader.dataset),
-                    100.0 * iteration / len(train_loader),
-                    loss,
-                    elapsed_time,
-                )
+                f"[{iteration * len(data):5}/{len(train_loader.dataset):5} ({100.0 * iteration / len(train_loader):2.0f}%)]\tLoss: {loss:.6f}\tExecution time: {elapsed_time:.4f}"
             )
             start_time = curr_time
 
@@ -91,8 +82,8 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
     avg_train_loss = total_loss / len(train_loader)
 
     epoch_time = time.time() - t0
-    print("\n  Average training loss: {0:.2f}".format(avg_train_loss))
-    print("  Training epoch took: {:.4f}s".format(epoch_time))
+    print(f"\n  Average training loss: {avg_train_loss:.2f}")
+    print(f"  Training epoch took: {epoch_time:.4f}s")
     return epoch_time
 
 
@@ -105,8 +96,8 @@ def test(args, model, device, loss_fn, test_loader):
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            data = data.reshape(data.shape[0], -1).half()
+            data, target = data.to(device), target.to(device)  # noqa: PLW2901
+            data = data.reshape(data.shape[0], -1).half()  # noqa: PLW2901
             output = model(data)
 
             # Stats
@@ -115,19 +106,13 @@ def test(args, model, device, loss_fn, test_loader):
             correct += pred.eq(target.view_as(pred)).sum().item()
     test_loss /= len(test_loader.dataset)
     print(
-        "\nTest set: Batch size: {:}, Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n".format(
-            args.test_batch_size,
-            test_loss,
-            correct,
-            len(test_loader.dataset),
-            100.0 * correct / len(test_loader.dataset),
-        )
+        f"\nTest set: Batch size: {args.test_batch_size}, Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100.0 * correct / len(test_loader.dataset):.0f}%)\n"
     )
 
     # Report the final accuracy for this validation run.
     epoch_time = time.time() - t0
-    print("  Accuracy: {0:.2f}".format(float(correct) / len(test_loader.dataset)))
-    print("  Validation took: {:.4f}s".format(epoch_time))
+    print(f"  Accuracy: {float(correct) / len(test_loader.dataset):.2f}")
+    print(f"  Validation took: {epoch_time:.4f}s")
     return epoch_time
 
 
@@ -251,7 +236,7 @@ def main():
 
     # Train loop
     total_training_time, total_test_time, epoch_0_training = 0, 0, 0
-    for epoch in range(0, args.epochs):
+    for epoch in range(args.epochs):
         total_training_time += train(args, model, device, optimizer, my_loss, train_loader, epoch)
         if not args.pytorch_only and epoch == 0:
             epoch_0_training = total_training_time
@@ -263,12 +248,12 @@ def main():
         estimated_export = 0
         if args.epochs > 1:
             estimated_export = epoch_0_training - (total_training_time - epoch_0_training) / (args.epochs - 1)
-            print("  Estimated ONNX export took:               {:.4f}s".format(estimated_export))
+            print(f"  Estimated ONNX export took:               {estimated_export:.4f}s")
         else:
             print("  Estimated ONNX export took:               Estimate available when epochs > 1 only")
-        print("  Accumulated training without export took: {:.4f}s".format(total_training_time - estimated_export))
-    print("  Accumulated training took:                {:.4f}s".format(total_training_time))
-    print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
+        print(f"  Accumulated training without export took: {total_training_time - estimated_export:.4f}s")
+    print(f"  Accumulated training took:                {total_training_time:.4f}s")
+    print(f"  Accumulated validation took:              {total_test_time:.4f}s")
 
 
 if __name__ == "__main__":

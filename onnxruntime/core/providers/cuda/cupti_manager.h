@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
@@ -10,7 +13,7 @@
 
 // Do not move the check for CUDA_VERSION above #include <cupti.h>
 // the macros are defined in cupti.h
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
 
 #include "core/common/gpu_profiler_common.h"
 #include "core/common/inlined_containers.h"
@@ -48,5 +51,5 @@ class CUPTIManager : public GPUTracerManager<CUPTIManager> {
 } /* namespace profiling */
 } /* namespace onnxruntime */
 
-#endif /* #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 */
+#endif /* #if defined(USE_CUDA) */
 #endif /* #if defined (USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */

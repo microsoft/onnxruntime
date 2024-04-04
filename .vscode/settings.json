@@ -11,33 +11,23 @@
         // Auto sort imports
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-            "source.organizeImports": true
+            "source.organizeImports": "explicit"
         },
+        "editor.defaultFormatter": "ms-python.black-formatter"
     },
     // Enable Python linting and Pylance type checking
     "python.analysis.typeCheckingMode": "basic",
-    "python.formatting.provider": "black",
-    "python.formatting.blackArgs": [
-        "--line-length",
-        "120"
-    ],
-    "python.sortImports.args": [
-        "--profile",
-        "black",
-        "--line-length",
-        "120"
-    ],
-    "python.linting.enabled": true,
-    "python.linting.flake8Enabled": true,
-    "python.linting.pylintEnabled": false,
-    "python.linting.pydocstyleEnabled": false,
-    "python.linting.pydocstyleArgs": [
-        "--convention=google"
-    ],
-    "python.linting.banditEnabled": false,
     "cpplint.lineLength": 120,
     "cpplint.filters": [
         "-build/include_subdir",
         "-runtime/references"
-    ]
+    ],
+    "files.associations": {
+        "span": "cpp",
+        "tensor": "cpp",
+        "__node_handle": "cpp",
+        "optional": "cpp",
+        "regex": "cpp",
+        "*.main": "cpp"
+    }
 }

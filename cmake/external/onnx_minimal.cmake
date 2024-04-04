@@ -27,18 +27,6 @@ target_compile_definitions(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprot
 set(_src_prefix "onnx/")
 onnxruntime_protobuf_generate(NO_SRC_INCLUDES GEN_SRC_PREFIX ${_src_prefix} IMPORT_DIRS ${ONNX_SOURCE_ROOT} TARGET onnx_proto)
 
-if (WIN32)
-  target_compile_options(onnx_proto PRIVATE "/wd4146" "/wd4125" "/wd4456" "/wd4267" "/wd4309")
-else()
-  if(HAS_UNUSED_VARIABLE)
-    target_compile_options(onnx_proto PRIVATE "-Wno-unused-variable")
-  endif()
-
-  if(HAS_UNUSED_BUT_SET_VARIABLE)
-    target_compile_options(onnx_proto PRIVATE "-Wno-unused-but-set-variable")
-  endif()
-endif()
-
 # For reference, this would be the full ONNX source include. We only need data_type_utils in this build.
 # file(GLOB_RECURSE onnx_src CONFIGURE_DEPENDS
 #     "${ONNX_SOURCE_ROOT}/onnx/*.h"
@@ -99,4 +87,3 @@ else()
     target_compile_options(onnx PRIVATE "-Wno-unused-but-set-variable")
   endif()
 endif()
-

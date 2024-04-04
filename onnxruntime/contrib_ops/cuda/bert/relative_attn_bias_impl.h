@@ -19,8 +19,7 @@ Status LaunchRelPosAttnBiasKernel(
     const int num_bucket,
     const int max_distance,
     const bool is_bidirectional,
-    const int max_threads_per_block
-);
+    const int max_threads_per_block);
 
 template <typename T>
 Status LaunchGatedRelativePositionBiasKernel(
@@ -36,6 +35,12 @@ Status LaunchGatedRelativePositionBiasKernel(
     const int seq_len,
     const int D,
     const int ldqw);
+
+template <typename T>
+void RestorePaddingAddBiasTranspose(
+    const T* query, const T* bias, T* output,
+    const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
+    const int32_t* token_offset, int32_t token_count, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

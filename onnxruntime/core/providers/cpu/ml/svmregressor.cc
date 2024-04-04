@@ -16,18 +16,20 @@ template <typename T>
 SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
     : OpKernel(info),
       SVMCommon(info),
-      vector_count_(info.GetAttrOrDefault<int64_t>("n_supports", 0)),
       support_vectors_(info.GetAttrsOrDefault<float>("support_vectors")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
-  ORT_ENFORCE(info.GetAttrs<float>("rho", rho_).IsOK());
-  ORT_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
+  int64_t vector_count = 0;
+  ORT_THROW_IF_ERROR(info.GetAttr<int64_t>("n_supports", &vector_count));
+  vector_count_ = narrow<ptrdiff_t>(vector_count);
+  ORT_THROW_IF_ERROR(info.GetAttrs<float>("rho", rho_));
+  ORT_THROW_IF_ERROR(info.GetAttrs<float>("coefficients", coefficients_));
   ORT_ENFORCE(!coefficients_.empty());
 
   auto onec = info.GetAttrOrDefault<int64_t>("one_class", 0);
   one_class_ = (onec != 0);
 
   if (vector_count_ > 0) {
-    feature_count_ = support_vectors_.size() / vector_count_;  //length of each support vector
+    feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
     mode_ = SVM_TYPE::SVM_SVC;
   } else {
     feature_count_ = coefficients_.size();
@@ -40,9 +42,9 @@ template <typename T>
 Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
 
-  int64_t num_features = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
-  int64_t num_batches = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
-  ORT_ENFORCE(num_features == feature_count_);
+  ptrdiff_t num_features = X->Shape().NumDimensions() == 1 ? narrow<ptrdiff_t>(X->Shape()[0]) : narrow<ptrdiff_t>(X->Shape()[1]);
+  ptrdiff_t num_batches = X->Shape().NumDimensions() == 1 ? 1 : narrow<ptrdiff_t>(X->Shape()[0]);
+  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0, "Invalid argument");
 
   // X: [num_batches, feature_count_] where features could be coefficients or support vectors
   // coefficients_: [vector_count_]

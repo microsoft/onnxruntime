@@ -172,9 +172,8 @@ class SessionScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
         ,
-        dump_context_ {
-    session_state_.GetGraphExecutionCounter(), 0
-  }
+        dump_context_{
+            session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
     if (session_state_.Profiler().IsEnabled()) {
@@ -182,7 +181,7 @@ class SessionScope {
     }
 
     auto& logger = session_state_.Logger();
-    LOGS(logger, VERBOSE) << "Begin execution";
+    VLOGS(logger, 0) << "Begin execution";
     const SequentialExecutionPlan& seq_exec_plan = *session_state_.GetExecutionPlan();
     const auto& exec_plan_vec = seq_exec_plan.execution_plan;
     VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
@@ -218,10 +217,10 @@ class SessionScope {
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     if (flush_memory_info_) {
-        session_state_.GetMemoryProfiler()->CreateEvents(
-            "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-            session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
-        session_state_.GetMemoryProfiler()->Clear();
+      session_state_.GetMemoryProfiler()->CreateEvents(
+          "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+          session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+      session_state_.GetMemoryProfiler()->Clear();
     }
 #endif
 
@@ -248,7 +247,7 @@ class SessionScope {
   }
 #endif
 
-private:
+ private:
   const SessionState& session_state_;
   TimePoint session_start_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -298,9 +297,8 @@ class KernelScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
         ,
-        dump_context_ {
-    session_scope_.dump_context_.iteration, kernel_.Node().Index()
-  }
+        dump_context_{
+            session_scope_.dump_context_.iteration, kernel_.Node().Index()}
 #endif
   {
 #ifdef CONCURRENCY_VISUALIZER
@@ -308,18 +306,20 @@ class KernelScope {
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-    auto& node = kernel_.Node();
-    profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
-    profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
-    if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
-      // Start timing forward pass when encountering the first forward node.
-      forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() &&
-               forward_range.IsBeginCalled()) {
-      // Start timing backward pass when encountering the first backward node.
-      // In the meanwhile, forward range ends.
-      forward_range.End();
-      backward_range.Begin();
+    {
+      auto& node = kernel_.Node();
+      profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
+      profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
+      if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+        // Start timing forward pass when encountering the first forward node.
+        forward_range.Begin();
+      } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() &&
+                 forward_range.IsBeginCalled()) {
+        // Start timing backward pass when encountering the first backward node.
+        // In the meanwhile, forward range ends.
+        forward_range.End();
+        backward_range.Begin();
+      }
     }
 #endif
 
@@ -517,7 +517,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     return Status(status.Category(), status.Code(), msg_string);
   }
   ctx.RecycleNodeInputs(idx);
-  LOGS(logger, VERBOSE) << "stream " << stream_idx << " launch kernel with idx " << idx;
+  VLOGS(logger, 0) << "stream " << stream_idx << " launch kernel with idx " << idx;
   return Status::OK();
 }
 
@@ -533,7 +533,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
-  LOGS(logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
+  VLOGS(logger, 0) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
   for (auto& stream : execution_plan->execution_plan) {
     if (stream && stream->steps_.size() > 0)

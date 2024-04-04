@@ -13,7 +13,6 @@ namespace onnxruntime {
 namespace ort_dnnl {
 namespace dnnl_util {
 
-
 enum GPUInfo {
   AVALIBLITY,
   BF16SUPPORT
@@ -43,38 +42,37 @@ bool GetGPUInfo(GPUInfo gpu_info) {
       dnnl::primitive_attr attr;
       attr.set_scales_mask(DNNL_ARG_SRC, 0);
       attr.set_zero_points_mask(DNNL_ARG_SRC, /* mask */ 0);
-      auto src0_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
-      auto src1_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
-      auto dst_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
+      auto src0_md = dnnl::memory::desc({1, 1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
+      auto src1_md = dnnl::memory::desc({1, 1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
+      auto dst_md = dnnl::memory::desc({1, 1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
       try {
         auto matmul_pd = dnnl::matmul::primitive_desc(gpu_engine, src0_md, src1_md, dst_md, attr);
         gpuBF16Supported = true;
-      } catch(const dnnl::error& e) {
+      } catch (const dnnl::error& e) {
         if (e.status == dnnl_unimplemented) {
           gpuBF16Supported = false;
         }
       }
     }
-    });
-#endif // (DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL) || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL)
+  });
+#endif  // (DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL) || (DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL)
 #endif  // defined(DNNL_GPU_RUNTIME)
-  switch (gpu_info)
-  {
-  case AVALIBLITY: {
-    return gpuRuntimeFound;
-    break;
-  }
-  case BF16SUPPORT: {
-    return gpuBF16Supported;
-    break;
-  }
-  default:
-    return false;
-    break;
+  switch (gpu_info) {
+    case AVALIBLITY: {
+      return gpuRuntimeFound;
+      break;
+    }
+    case BF16SUPPORT: {
+      return gpuBF16Supported;
+      break;
+    }
+    default:
+      return false;
+      break;
   }
 }
 
-bool IsGPURuntimeAvalible(){
+bool IsGPURuntimeAvalible() {
   return GetGPUInfo(AVALIBLITY);
 }
 
@@ -84,7 +82,7 @@ bool IsGPUBF16Supported() {
 
 bool IsBF16Supported() {
   static bool use_all_bf16_hardware = false;
-  if(IsGPURuntimeAvalible() && IsGPUBF16Supported()){
+  if (IsGPURuntimeAvalible() && IsGPUBF16Supported()) {
     return true;
   }
   std::call_once(flag2, []() {
@@ -92,7 +90,7 @@ bool IsBF16Supported() {
     if (!bf16_env.empty()) {
       use_all_bf16_hardware = (std::stoi(bf16_env) == 0 ? false : true);
     }
-      });
+  });
 
   // HasAVX512Skylake checks for AVX512BW which can run bfloat16 but
   // is slower than float32 by 3x to 4x.
@@ -101,7 +99,7 @@ bool IsBF16Supported() {
   if (use_all_bf16_hardware && CPUIDInfo::GetCPUIDInfo().HasAVX512Skylake()) {
     return true;
   }
-  
+
   // If AVX512-BF16 or AMX-BF16 exist then bfloat16 ops are HW accelerated
   if (CPUIDInfo::GetCPUIDInfo().HasAVX512_BF16() ||
       CPUIDInfo::GetCPUIDInfo().HasAMX_BF16()) {
@@ -112,45 +110,44 @@ bool IsBF16Supported() {
 
 dnnl::algorithm OrtOperatorToDnnlAlgorithm(std::string op) {
   std::unordered_map<std::string, dnnl::algorithm> operator_to_algorithm = {
-          // binary algorithms
-          {"Add", dnnl::algorithm::binary_add},
-          {"Mul", dnnl::algorithm::binary_mul},
-          {"Sub", dnnl::algorithm::binary_sub},
-          {"Div", dnnl::algorithm::binary_div},
-          // eltwise algorithms
-          {"Abs", dnnl::algorithm::eltwise_abs},
-          {"BiasGelu", dnnl::algorithm::eltwise_gelu_erf},
-          {"Elu", dnnl::algorithm::eltwise_elu},  // algorithm requires alpha value
-          {"Equal", dnnl::algorithm::binary_eq},
-          {"Exp", dnnl::algorithm::eltwise_exp},
-          {"FastGelu", dnnl::algorithm::eltwise_gelu_tanh},
-          {"Gelu", dnnl::algorithm::eltwise_gelu_erf},
-          {"Greater", dnnl::algorithm::binary_gt},
-          {"GreaterOrEqual", dnnl::algorithm::binary_ge},
-          {"LeakyRelu", dnnl::algorithm::eltwise_relu},  // algorithm requires alpha value
-          {"Less", dnnl::algorithm::binary_lt},
-          {"LessOrEqual", dnnl::algorithm::binary_le},
-          {"Log", dnnl::algorithm::eltwise_log},
-          {"Relu", dnnl::algorithm::eltwise_relu},
-          {"Round", dnnl::algorithm::eltwise_round},
-          // OneDNN eltwise_logistic is defined as 1/(1 + exp(-x)) which matches the definition of "Sigmoid" in ONNX
-          {"Sigmoid", dnnl::algorithm::eltwise_logistic},
-          // OneDNN eltwise_soft_relu is defined as ln(1 + exp(x)) which matches the definition of "Softplus" in ONNX
-          {"Softplus", dnnl::algorithm::eltwise_soft_relu},
-          {"Sqrt", dnnl::algorithm::eltwise_sqrt},
-          {"Tanh", dnnl::algorithm::eltwise_tanh},
-          // Reduction algorithms
-          {"ReduceL1", dnnl::algorithm::reduction_norm_lp_power_p_sum},
-          {"ReduceL2", dnnl::algorithm::reduction_norm_lp_sum},
-          {"ReduceLogSum", dnnl::algorithm::reduction_sum},
-          {"ReduceLogSumExp", dnnl::algorithm::reduction_sum},
-          {"ReduceMax", dnnl::algorithm::reduction_max},
-          {"ReduceMean", dnnl::algorithm::reduction_mean},
-          {"ReduceMin", dnnl::algorithm::reduction_min},
-          {"ReduceProd", dnnl::algorithm::reduction_mul},
-          {"ReduceSum", dnnl::algorithm::reduction_sum},
-          {"ReduceSumSquare", dnnl::algorithm::reduction_sum}
-        };
+      // binary algorithms
+      {"Add", dnnl::algorithm::binary_add},
+      {"Mul", dnnl::algorithm::binary_mul},
+      {"Sub", dnnl::algorithm::binary_sub},
+      {"Div", dnnl::algorithm::binary_div},
+      // eltwise algorithms
+      {"Abs", dnnl::algorithm::eltwise_abs},
+      {"BiasGelu", dnnl::algorithm::eltwise_gelu_erf},
+      {"Elu", dnnl::algorithm::eltwise_elu},  // algorithm requires alpha value
+      {"Equal", dnnl::algorithm::binary_eq},
+      {"Exp", dnnl::algorithm::eltwise_exp},
+      {"FastGelu", dnnl::algorithm::eltwise_gelu_tanh},
+      {"Gelu", dnnl::algorithm::eltwise_gelu_erf},
+      {"Greater", dnnl::algorithm::binary_gt},
+      {"GreaterOrEqual", dnnl::algorithm::binary_ge},
+      {"LeakyRelu", dnnl::algorithm::eltwise_relu},  // algorithm requires alpha value
+      {"Less", dnnl::algorithm::binary_lt},
+      {"LessOrEqual", dnnl::algorithm::binary_le},
+      {"Log", dnnl::algorithm::eltwise_log},
+      {"Relu", dnnl::algorithm::eltwise_relu},
+      {"Round", dnnl::algorithm::eltwise_round},
+      // OneDNN eltwise_logistic is defined as 1/(1 + exp(-x)) which matches the definition of "Sigmoid" in ONNX
+      {"Sigmoid", dnnl::algorithm::eltwise_logistic},
+      // OneDNN eltwise_soft_relu is defined as ln(1 + exp(x)) which matches the definition of "Softplus" in ONNX
+      {"Softplus", dnnl::algorithm::eltwise_soft_relu},
+      {"Sqrt", dnnl::algorithm::eltwise_sqrt},
+      {"Tanh", dnnl::algorithm::eltwise_tanh},
+      // Reduction algorithms
+      {"ReduceL1", dnnl::algorithm::reduction_norm_lp_power_p_sum},
+      {"ReduceL2", dnnl::algorithm::reduction_norm_lp_sum},
+      {"ReduceLogSum", dnnl::algorithm::reduction_sum},
+      {"ReduceLogSumExp", dnnl::algorithm::reduction_sum},
+      {"ReduceMax", dnnl::algorithm::reduction_max},
+      {"ReduceMean", dnnl::algorithm::reduction_mean},
+      {"ReduceMin", dnnl::algorithm::reduction_min},
+      {"ReduceProd", dnnl::algorithm::reduction_mul},
+      {"ReduceSum", dnnl::algorithm::reduction_sum},
+      {"ReduceSumSquare", dnnl::algorithm::reduction_sum}};
 
   auto found = operator_to_algorithm.find(op);
   if (found == operator_to_algorithm.end()) {

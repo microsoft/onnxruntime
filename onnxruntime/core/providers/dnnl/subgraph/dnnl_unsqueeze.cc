@@ -70,7 +70,7 @@ void DnnlUnsqueeze::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 std::vector<int64_t> DnnlUnsqueeze::GetAxes(DnnlNode& node) {
   auto attr = node.Attributes().find("axes");
   std::vector<int64_t> axes;
-  if (attr != node.Attributes().end() && 
+  if (attr != node.Attributes().end() &&
       attr->second().type() == ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS) {
     axes.reserve(attr->second().ints_size());
     for (int i = 0; i < attr->second().ints_size(); ++i) {
@@ -78,7 +78,7 @@ std::vector<int64_t> DnnlUnsqueeze::GetAxes(DnnlNode& node) {
     }
   } else {
     ORT_ENFORCE("Missing/Invalid 'axes' attribute value");
-  } 
+  }
   return axes;
 }
 }  // namespace ort_dnnl

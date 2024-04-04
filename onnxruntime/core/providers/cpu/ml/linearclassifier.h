@@ -17,7 +17,7 @@ class LinearClassifier final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  void ComputeImpl(const gsl::span<const float> input, int64_t num_batches, int64_t num_features, int64_t num_targets,
+  void ComputeImpl(const gsl::span<const float> input, ptrdiff_t num_batches, ptrdiff_t num_features, ptrdiff_t num_targets,
                    const std::vector<float>& coefficients,
                    const std::vector<float>& intercepts,
                    Tensor& labels_output,
@@ -27,7 +27,7 @@ class LinearClassifier final : public OpKernel {
                    concurrency::ThreadPool* threadpool) const;
 
   int64_t multi_class_;
-  int64_t class_count_;
+  ptrdiff_t class_count_;
   POST_EVAL_TRANSFORM post_transform_;
   bool using_strings_;
   std::vector<float> coefficients_;

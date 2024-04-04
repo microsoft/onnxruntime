@@ -35,14 +35,13 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 5; }
-  bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+  bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                    const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
@@ -59,10 +58,10 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 
 Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
-  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& graph_viewer(model_builder.GetGraphViewer());
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
-  const auto& shape_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
+  const auto& shape_tensor = *graph_viewer.GetConstantInitializer(node_unit.Inputs()[1].node_arg.Name());
   Initializer unpacked_tensor(shape_tensor);
   auto raw_shape = unpacked_tensor.DataAsSpan<int64_t>();
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
@@ -80,7 +79,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   int32_t x_zero_point = 0;
   if (IsQuantizedOp(node_unit)) {
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+        graph_viewer, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
   }
 
@@ -93,12 +92,13 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
 }
 
-bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool ReshapeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                          const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
   const auto& perm_name = inputs[1].node_arg.Name();
-  if (!Contains(initializers, perm_name)) {
-    LOGS_DEFAULT(VERBOSE) << "New shape of reshape must be known";
+  const auto* perm = graph_viewer.GetConstantInitializer(perm_name);
+  if (!perm) {
+    LOGS_DEFAULT(VERBOSE) << "New shape of reshape must be a constant initializer";
     return false;
   }
 
@@ -112,7 +112,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializer
     return false;
   }
 
-  const auto& perm_tensor = *initializers.at(perm_name);
+  const auto& perm_tensor = *perm;
   Initializer unpacked_tensor(perm_tensor);
   auto raw_perm = unpacked_tensor.DataAsSpan<int64_t>();
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
@@ -138,17 +138,17 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializer
 }
 
 bool ReshapeOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const GraphViewer& graph_viewer, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
   if (!IsQuantizedOp(node_unit)) {
-    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(graph_viewer, node_unit, params);
   }
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kInput)) {
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kInput)) {
     return false;
   }
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput)) {
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput)) {
     return false;
   }
 

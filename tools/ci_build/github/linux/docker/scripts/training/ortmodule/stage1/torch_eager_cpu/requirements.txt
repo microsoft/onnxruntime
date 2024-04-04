@@ -1,7 +1,7 @@
 --pre
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.13.1+cpu
-setuptools>=41.4.0
+setuptools>=68.2.2
 cerberus
 h5py
 scikit-learn

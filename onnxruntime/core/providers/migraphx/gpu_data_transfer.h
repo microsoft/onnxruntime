@@ -8,7 +8,6 @@
 
 namespace onnxruntime {
 
-
 class GPUDataTransfer : public IDataTransfer {
  public:
   GPUDataTransfer() = default;

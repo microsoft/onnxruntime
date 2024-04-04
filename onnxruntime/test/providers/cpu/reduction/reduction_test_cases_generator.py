@@ -1,12 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import os
-
 import numpy as np
 
 
-def TestReduction(op, data, axes, keepdims):
+def TestReduction(op, data, axes, keepdims):  # noqa: N802
     if op == "ReduceL1":
         return np.sum(a=np.abs(data), axis=axes, keepdims=keepdims)
     elif op == "ReduceL2":
@@ -41,7 +39,7 @@ def TestReduction(op, data, axes, keepdims):
         return res
 
 
-def PrintResult(op, axes, keepdims, res):
+def PrintResult(op, axes, keepdims, res):  # noqa: N802
     print('  {"%s",' % op)
     print("OpAttributesResult(")
     print("    // ReductionAttribute")
@@ -61,13 +59,13 @@ def PrintResult(op, axes, keepdims, res):
 
     print(" // expected values")
     print("{", end="")
-    for i in range(0, res.size):
+    for i in range(res.size):
         print("%5.6ff," % res.item(i))
 
     print("})},")
 
 
-def PrintDisableOptimizations():
+def PrintDisableOptimizations():  # noqa: N802
     print("// Optimizations are disabled in this file to improve build throughput")
     print("#if defined(_MSC_VER) || defined(__INTEL_COMPILER)")
     print('#pragma optimize ("", off)')
@@ -81,7 +79,7 @@ def PrintDisableOptimizations():
     print("#endif")
 
 
-def PrintReenableOptimizations():
+def PrintReenableOptimizations():  # noqa: N802
     print("#if defined(_MSC_VER) || defined(__INTEL_COMPILER)")
     print('\t#pragma optimize ("", on)')
     print("#elif defined(__GNUC__)")
@@ -130,7 +128,7 @@ if __name__ == "__main__":
     print("ReductionTestCases testcases = {")
     print("// input_data")
     print("{")
-    for i in range(0, input_data.size):
+    for i in range(input_data.size):
         print(
             "%5.6ff," % input_data.item(i),
         )

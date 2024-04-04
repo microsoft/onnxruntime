@@ -11,8 +11,8 @@
 #include <iostream>
 #endif
 
-using onnxruntime::cuda::ToCudaType;
 using onnxruntime::cuda::dispatch_blockwise_softmax_forward;
+using onnxruntime::cuda::ToCudaType;
 
 namespace onnxruntime {
 namespace contrib {
@@ -20,7 +20,7 @@ namespace SamplingCudaHelper {
 
 template <typename T>
 Status Sample(AllocatorPtr& allocator,
-              cudaStream_t cuda_stream,
+              Stream* stream,
               gsl::span<T>& next_token_scores,
               transformers::ISamplingState<T>* sampling_state,
               transformers::IGreedySearchState<T>* greedy_state,
@@ -29,6 +29,8 @@ Status Sample(AllocatorPtr& allocator,
               const transformers::IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(dumper);
   typedef typename ToCudaType<T>::MappedType CudaT;
+
+  auto cuda_stream = static_cast<cudaStream_t>(stream->GetHandle());
 
   gsl::span<int>& d_index_in = sampling_state->d_index_in;
   gsl::span<int>& d_offset = sampling_state->d_offset;
@@ -54,7 +56,7 @@ Status Sample(AllocatorPtr& allocator,
                                   cuda_stream);
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("d_offset_buffer", d_offset.data(), parameters->batch_size + 1, 1);
+    dumper->Print("d_offset_buffer", d_offset.data(), parameters->batch_size + 1, 1);
 #endif
 
     void* temp_storage = allocator->Alloc(sampling_state->temp_storage_bytes);
@@ -66,7 +68,7 @@ Status Sample(AllocatorPtr& allocator,
   gsl::span<int>& d_index_out = sampling_state->d_index_out;
 
 #ifdef DEBUG_GENERATION
-    dumper->Print("temp_storage_bytes", sampling_state->temp_storage_bytes, true);
+  dumper->Print("temp_storage_bytes", sampling_state->temp_storage_bytes, true);
 #endif
 
   cuda::LaunchSortPairs<CudaT>(storage_buffer.get(),
@@ -83,27 +85,27 @@ Status Sample(AllocatorPtr& allocator,
 
 #ifdef DEBUG_GENERATION
   dumper->Print("d_sorted_score_buffer",
-                 reinterpret_cast<T*>(d_sorted_score.data()),
-                 parameters->batch_size,
-                 parameters->vocab_size);
+                reinterpret_cast<T*>(d_sorted_score.data()),
+                parameters->batch_size,
+                parameters->vocab_size);
   dumper->Print("d_index_buffer_in", d_index_in.data(), parameters->batch_size, parameters->vocab_size);
   dumper->Print("d_index_buffer_out", d_index_out.data(), parameters->batch_size, parameters->vocab_size);
 #endif
 
   gsl::span<float>& d_sorted_softmaxed_score = sampling_state->d_sorted_softmaxed_score;
-  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(stream,
                                                                                       d_sorted_softmaxed_score.data(),
                                                                                       reinterpret_cast<CudaT*>(d_sorted_score.data()),
                                                                                       parameters->vocab_size,
                                                                                       parameters->vocab_size,
                                                                                       parameters->vocab_size,
                                                                                       parameters->batch_size)));
- 
+
 #ifdef DEBUG_GENERATION
   dumper->Print("d_sorted_softmaxed_score_buffer",
-                 d_sorted_softmaxed_score.data(),
-                 parameters->batch_size,
-                 parameters->vocab_size);
+                d_sorted_softmaxed_score.data(),
+                parameters->batch_size,
+                parameters->vocab_size);
 #endif
 
   cuda::LaunchFilterLogitsKernel<CudaT>(d_sorted_softmaxed_score.data(),
@@ -119,13 +121,13 @@ Status Sample(AllocatorPtr& allocator,
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after filtering logits",
-                 reinterpret_cast<T*>(next_token_scores.data()),
-                 parameters->batch_size,
-                 parameters->vocab_size);
+                reinterpret_cast<T*>(next_token_scores.data()),
+                parameters->batch_size,
+                parameters->vocab_size);
 #endif
 
   gsl::span<float>& d_softmaxed_score = sampling_state->d_softmaxed_score;
-  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(stream,
                                                                                       d_softmaxed_score.data(),
                                                                                       reinterpret_cast<CudaT*>(next_token_scores.data()),
                                                                                       parameters->vocab_size,
@@ -135,9 +137,9 @@ Status Sample(AllocatorPtr& allocator,
 
 #ifdef DEBUG_GENERATION
   dumper->Print("d_softmaxed_score_buffer",
-                 d_softmaxed_score.data(),
-                 parameters->batch_size,
-                 parameters->vocab_size);
+                d_softmaxed_score.data(),
+                parameters->batch_size,
+                parameters->vocab_size);
 #endif
 
   // Multinomial sampling
@@ -185,6 +187,6 @@ Status Sample(AllocatorPtr& allocator,
   return Status::OK();
 }
 
-} // namespace SamplingCudaHelper
-} // namespace contrib
-} // namespace onnxruntime
+}  // namespace SamplingCudaHelper
+}  // namespace contrib
+}  // namespace onnxruntime

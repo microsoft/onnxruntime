@@ -33,12 +33,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>()),
     Reshape);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Reshape,
-    14,
+    14, 18,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>()),
+    Reshape);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Reshape,
+    19,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypesIRv9())
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>()),
     Reshape);
 

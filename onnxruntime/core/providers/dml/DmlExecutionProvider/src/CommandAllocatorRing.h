@@ -47,6 +47,14 @@ namespace Dml
             return m_commandAllocators[m_currentCommandAllocator].Get();
         }
 
+        // Updates the completion event of the current allocator to a different value.  This is used when the caller
+        // decides to issue an unrelated call to the queue such as ExecuteCommandLists which updates its fence between calling 
+        // GetNextAllocator and executing the work which it recorded using the allocator it received.
+        void UpdateCurrentAllocatorCompletionEvent(GpuEvent nextCompletionEvent)
+        {
+            m_commandAllocators[m_currentCommandAllocator].completionEvent = nextCompletionEvent;
+        }
+
     private:
         struct CommandAllocatorInfo
         {

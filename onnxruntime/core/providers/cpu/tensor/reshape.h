@@ -67,4 +67,4 @@ class Reshape_1 final : public OpKernel {
   TensorShapeVector shape_;
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

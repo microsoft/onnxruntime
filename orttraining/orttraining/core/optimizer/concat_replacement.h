@@ -10,7 +10,7 @@ namespace onnxruntime {
 /**
 @Class ConcatReplacement
 
-Rewrite rule that replaces Concat with ConcatTraining, that has an additional output 
+Rewrite rule that replaces Concat with ConcatTraining, that has an additional output
 used in building the gradient for Concat node.
 
 It is attempted to be triggered only on nodes with op type "Concat".

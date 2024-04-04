@@ -12,7 +12,6 @@
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/dnnl_execution_provider_info.h"
 
-
 using namespace onnxruntime;
 
 namespace onnxruntime {
@@ -31,7 +30,6 @@ std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
   return std::make_unique<DnnlExecutionProvider>(info_);
 }
 
-
 struct ProviderInfo_Dnnl_Impl : ProviderInfo_Dnnl {
   void DnnlExecutionProviderInfo__FromProviderOptions(const ProviderOptions& options,
                                                       DnnlExecutionProviderInfo& info) override {
@@ -44,9 +42,7 @@ struct ProviderInfo_Dnnl_Impl : ProviderInfo_Dnnl {
   }
 } g_info;
 
-
 struct Dnnl_Provider : Provider {
-
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
 #if defined(DNNL_OPENMP)
     LoadOpenMP();
@@ -110,7 +106,7 @@ struct Dnnl_Provider : Provider {
 #endif  // _DEBUG
     ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, dll_name, &handle);
     assert(handle);  // It should exist
-#endif  // defined(_WIN32)
+#endif               // defined(_WIN32)
   }
 
 } g_provider;

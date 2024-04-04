@@ -32,7 +32,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
   ORT_RETURN_IF(!stream, "stream is null");
   auto* cuda_stream = static_cast<CudaStream*>(stream);
   cublasHandle_t cublas_handle = cuda_stream ? cuda_stream->cublas_handle_ : nullptr;
-  EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_, stream);
+  EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_, stream, Info().GetAllocator(OrtMemType::OrtMemTypeDefault));
 
   // EinsumComputePreprocessor section -
   auto einsum_compute_preprocessor = EinsumComputePreprocessor::Create(*einsum_equation_preprocessor_, inputs, allocator,

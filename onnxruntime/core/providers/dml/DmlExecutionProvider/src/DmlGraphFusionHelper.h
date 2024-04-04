@@ -45,34 +45,60 @@ namespace DmlGraphFusionHelper
         gsl::span<std::unique_ptr<GraphPartition>> partitions
     );
 
+    template <size_t AllocatorSize>
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
-        _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         const uint32_t inputCount,
         const uint32_t outputCount,
-        _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+        IDMLDevice* device,
+        StackAllocator<AllocatorSize>& allocator,
+        const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex,
+        _Out_ DML_GRAPH_DESC& dmlGraphDesc,
+        _Inout_ std::vector<ComPtr<IDMLOperator>>& dmlOperators,
         _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
 
-    void CreateIDmlCompiledOperatorAndRegisterKernel(
-        onnxruntime::Graph& graph,
-        const onnxruntime::IndexedSubGraph& indexedSubGraph,
-        const onnxruntime::Node& fusedNode,
-        const std::unordered_map<std::string, GraphNodeProperties>& partitionNodePropsMap,
-        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
-        const ExecutionProviderImpl* providerImpl,
-        onnxruntime::KernelRegistry* registryForPartitionKernels);
-
-    void FusePartitionAndRegisterKernel(
+    onnxruntime::IndexedSubGraph CreateIndexedSubGraph(
         GraphPartition* partition,
         uint32_t partitionIndex,
+        const std::string& partitionKernelPrefix);
+
+    std::unordered_map<std::string, GraphNodeProperties> CreatePartitionNodePropsMap(
+        const onnxruntime::Graph& graph,
+        const onnxruntime::IndexedSubGraph& indexedSubGraph,
+        std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>&& graphNodePropertyMap);
+
+    Microsoft::WRL::ComPtr<IDMLCompiledOperator> TryCreateCompiledOperator(
+        const GraphDescBuilder::GraphDesc& graphDesc,
+        const onnxruntime::IndexedSubGraph& indexedSubGraph,
+        const ExecutionProviderImpl* providerImpl,
+        const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex);
+
+    void FusePartitionAndRegisterKernel(
+        const uint32_t partitionIndex,
         onnxruntime::Graph& graph,
-        std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
-        const std::string& partitionKernelPrefix,
-        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
-        const ExecutionProviderImpl* providerImpl);
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
+        const ExecutionProviderImpl* providerImpl,
+        const onnxruntime::IndexedSubGraph& indexedSubGraph,
+        std::vector<uint8_t>&& isInputsUploadedByDmlEP,
+        const GraphDescBuilder::GraphDesc& graphDesc,
+        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
+        const bool graphSerializationEnabled,
+        const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex = nullptr,
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex = nullptr);
+
+    void RegisterDynamicKernel(
+        onnxruntime::Graph& graph,
+        onnxruntime::KernelRegistry* registryForPartitionKernels,
+        const ExecutionProviderImpl* providerImpl,
+        std::unordered_map<const onnxruntime::Node*, GraphNodeProperties> graphNodePropertyMap,
+        const std::unordered_set<std::string>& dynamicCpuInputMap,
+        std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
+        std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>&& isInitializerTransferable);
 }
 }

@@ -31,7 +31,10 @@ void TestNhwcConvOp(const NhwcConvOpAndTestAttributes& attributes,
                     bool weight_is_initializer = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  if (enable_cuda) {
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+  bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
+
+  if (enable_cuda || enable_rocm || enable_dml) {
     OpTester test("NhwcConv", 1, onnxruntime::kMSDomain);
     test.AddAttribute("group", attributes.group);
     test.AddAttribute("kernel_shape", attributes.kernel_shape);
@@ -71,7 +74,19 @@ void TestNhwcConvOp(const NhwcConvOpAndTestAttributes& attributes,
     }
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
+
+    if (enable_cuda) {
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+    }
+
+    if (enable_rocm) {
+      execution_providers.push_back(DefaultRocmExecutionProvider());
+    }
+
+    if (enable_dml) {
+      execution_providers.push_back(DefaultDmlExecutionProvider());
+    }
+
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
@@ -217,6 +232,52 @@ TEST(NhwcConvTest, Conv2D_AutoPad2) {
                         12.0f, 24.0f, 12.0f, 24.0f, 12.0f,
                         5.0f, 10.0f, 5.0f, 10.0f, 5.0f};
   RunNhwcConv(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+TEST(NhwcConvTest, Conv2D_asymmetric_padding1) {
+  NhwcConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{3, 3},        // kernel_shape
+      vector<int64_t>{1, 1, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  vector<int64_t> X_shape = {1, 3, 3, 1};
+  vector<float> W = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
+  vector<int64_t> W_shape = {1, 3, 3, 1};
+  vector<float> B = {1.f};
+  vector<int64_t> B_shape = {1};
+  vector<int64_t> Y_shape = {1, 2, 2, 1};
+  auto expected_vals = {13.f, 22.f, 28.f, 46.f};
+
+  RunNhwcConv(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+}
+
+TEST(NhwcConvTest, Conv2D_asymmetric_padding2) {
+  NhwcConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{3, 3},        // kernel_shape
+      vector<int64_t>{0, 0, 1, 1},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  vector<int64_t> X_shape = {1, 3, 3, 1};
+  vector<float> W = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
+  vector<int64_t> W_shape = {1, 3, 3, 1};
+  vector<float> B = {1.f};
+  vector<int64_t> B_shape = {1};
+  vector<int64_t> Y_shape = {1, 2, 2, 1};
+  auto expected_vals = {46.f, 34.f, 40.f, 29.f};
+
+  RunNhwcConv(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 }  // namespace test

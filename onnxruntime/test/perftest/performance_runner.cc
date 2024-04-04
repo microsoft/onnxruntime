@@ -10,12 +10,8 @@
 #include <iostream>
 
 #include "TestCase.h"
-#include "TFModelInfo.h"
 #include "utils.h"
 #include "ort_test_session.h"
-#ifdef HAVE_TENSORFLOW
-#include "tf_test_session.h"
-#endif
 using onnxruntime::Status;
 
 // TODO: Temporary, while we bring up the threadpool impl...
@@ -31,6 +27,13 @@ using onnxruntime::Status;
 // {aka ‘const signed char’} [-Werror=class-memaccess]
 #ifdef HAS_CLASS_MEMACCESS
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
+// eigen-src/unsupported/Eigen/CXX11/src/ThreadPool/EventCount.h:231:56: error: implicit conversion loses integer
+//   precision: 'uint64_t' (aka 'unsigned long long') to 'size_t' (aka 'unsigned long') [-Werror,-Wshorten-64-to-32]
+// next = wnext == kStackMask ? nullptr : &waiters_[wnext];
+//                                         ~~~~~~~~ ^~~~~
+#ifdef HAS_SHORTEN_64_TO_32
+#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -108,13 +111,20 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
   }
 }
 
+void PerformanceRunner::LogSessionCreationTime() {
+  std::chrono::duration<double> session_create_duration = session_create_end_ - session_create_start_;
+  std::cout << "\nSession creation time cost: " << session_create_duration.count() << " s\n";
+}
+
 Status PerformanceRunner::Run() {
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
   }
 
   // warm up
+  initial_inference_result_.start = std::chrono::high_resolution_clock::now();
   ORT_RETURN_IF_ERROR(RunOneIteration<true>());
+  initial_inference_result_.end = std::chrono::high_resolution_clock::now();
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
@@ -139,9 +149,12 @@ Status PerformanceRunner::Run() {
   std::chrono::duration<double> session_create_duration = session_create_end_ - session_create_start_;
   // TODO: end profiling
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
+  auto first_inference_duration =
+      std::chrono::duration_cast<std::chrono::milliseconds>(initial_inference_result_.end - initial_inference_result_.start).count();
   std::chrono::duration<double> inference_duration = performance_result_.end - performance_result_.start;
 
   std::cout << "Session creation time cost: " << session_create_duration.count() << " s\n"
+            << "First inference time cost: " << first_inference_duration << " ms\n"
             << "Total inference time cost: " << performance_result_.total_time_cost << " s\n"  // sum of time taken by each request
             << "Total inference requests: " << performance_result_.time_costs.size() << "\n"
             << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
@@ -202,7 +215,7 @@ Status PerformanceRunner::RunParallelDuration() {
     duration_seconds = end - start;
   } while (duration_seconds.count() < performance_test_config_.run_config.duration_in_seconds);
 
-  //Join
+  // Join
   std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
@@ -235,7 +248,7 @@ Status PerformanceRunner::ForkJoinRepeat() {
     });
   }
 
-  //Join
+  // Join
   std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
@@ -243,47 +256,25 @@ Status PerformanceRunner::ForkJoinRepeat() {
 }
 
 static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfig& performance_test_config_) {
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    const auto& file_path = performance_test_config_.model_info.model_file_path;
+  const auto& file_path = performance_test_config_.model_info.model_file_path;
 #if !defined(ORT_MINIMAL_BUILD)
-    if (HasExtensionOf(file_path, ORT_TSTR("onnx"))) {
-      return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
-    }
-#endif
-
-    if (HasExtensionOf(file_path, ORT_TSTR("ort"))) {
-      return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
-    }
-
-    ORT_NOT_IMPLEMENTED(ToUTF8String(file_path), " is not supported");
-  }
-
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
-    return TFModelInfo::Create(performance_test_config_.model_info.model_file_path.c_str());
-  }
-
-  ORT_NOT_IMPLEMENTED(ToUTF8String(performance_test_config_.backend), " is not supported");
-}
-
-static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_device& rd,
-                                                  const PerformanceTestConfig& performance_test_config_,
-                                                  const TestModelInfo& test_model_info) {
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, test_model_info);
-  }
-#ifdef HAVE_TENSORFLOW
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
-    return new TensorflowTestSession(rd, performance_test_config_, test_model_info);
+  if (HasExtensionOf(file_path, ORT_TSTR("onnx"))) {
+    return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
   }
 #endif
-  ORT_NOT_IMPLEMENTED(ToUTF8String(performance_test_config_.backend), " is not supported");
+
+  if (HasExtensionOf(file_path, ORT_TSTR("ort"))) {
+    return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
+  }
+
+  ORT_NOT_IMPLEMENTED(ToUTF8String(file_path), " is not supported");
 }
 
 PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd)
     : performance_test_config_(test_config),
       test_model_info_(CreateModelInfo(test_config)) {
   session_create_start_ = std::chrono::high_resolution_clock::now();
-  session_ = CreateSession(env, rd, test_config, *test_model_info_);
+  session_ = std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, *test_model_info_);
   session_create_end_ = std::chrono::high_resolution_clock::now();
 }
 

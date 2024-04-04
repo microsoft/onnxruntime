@@ -23,11 +23,9 @@ struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, _winml::ILotusV
   wfc::IIterable<Windows::Media::VideoFrame> VideoFrames();
   winml::LearningModelFeatureKind Kind();
 
-  static winml::ImageFeatureValue ImageFeatureValue::Create(
-      uint32_t batchSize,
-      Windows::Graphics::Imaging::BitmapPixelFormat format,
-      uint32_t width,
-      uint32_t height);
+  static winml::ImageFeatureValue Create(
+    uint32_t batchSize, Windows::Graphics::Imaging::BitmapPixelFormat format, uint32_t width, uint32_t height
+  );
   static winml::ImageFeatureValue CreateFromVideoFrame(Windows::Media::VideoFrame const& image);
 
   std::optional<ImageResourceMetadata> GetInputMetadata(const _winml::BindingContext& context);
@@ -53,15 +51,11 @@ struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, _winml::ILotusV
   uint32_t m_batchSize = 1;
   // Crop the image with desired aspect ratio.
   // This function does not crop image to desried width and height, but crops to center for desired ratio
-  wgi::BitmapBounds CenterAndCropBounds(
-      uint32_t idx,
-      uint32_t desiredWidth,
-      uint32_t desiredHeight);
+  wgi::BitmapBounds CenterAndCropBounds(uint32_t idx, uint32_t desiredWidth, uint32_t desiredHeight);
   void Initialize();
 };
 }  // namespace WINMLP
 
 namespace WINML::factory_implementation {
-struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, implementation::ImageFeatureValue> {
-};
-}  // namespace WINMLP
+struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, implementation::ImageFeatureValue> {};
+}  // namespace WINML::factory_implementation

@@ -102,7 +102,6 @@ void DnnlConvGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     w_md = dnnl::memory::desc({w_dims}, node.Input(IN_W).Type(), format);
   }
 
-
   // dX memory desc is the same as the input X
   dnnl::memory::desc dx_md = x_md;
 
@@ -127,7 +126,6 @@ void DnnlConvGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
                                                                 fwd_x_md, w_md, fwd_b_md, fwd_y_md,
                                                                 strides, dilations, padding_left, padding_right);
   } else {
-
     conv_forward_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_training,
                                                                 dnnl::algorithm::convolution_direct,
                                                                 fwd_x_md, w_md, fwd_y_md,
@@ -136,25 +134,24 @@ void DnnlConvGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   // Create the convolution backward data primitive desc
   auto conv_backward_data_pd =
-    dnnl::convolution_backward_data::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct,
-                                                    dx_md, w_md, dy_md, strides, dilations, padding_left,
-                                                    padding_right, conv_forward_pd);
+      dnnl::convolution_backward_data::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct,
+                                                      dx_md, w_md, dy_md, strides, dilations, padding_left,
+                                                      padding_right, conv_forward_pd);
 
   // Create the convolution backward weights primitve desc
   dnnl::convolution_backward_weights::primitive_desc conv_backward_weights_pd;
   if (db_required) {
-
-    conv_backward_weights_pd = 
-      dnnl::convolution_backward_weights::primitive_desc( dnnl_engine, dnnl::algorithm::convolution_direct,
-                                                          x_md, dw_md, db_md, dy_md,
-                                                          strides, dilations, padding_left,
-                                                          padding_right, conv_forward_pd);
+    conv_backward_weights_pd =
+        dnnl::convolution_backward_weights::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct,
+                                                           x_md, dw_md, db_md, dy_md,
+                                                           strides, dilations, padding_left,
+                                                           padding_right, conv_forward_pd);
   } else {
-    conv_backward_weights_pd = 
-      dnnl::convolution_backward_weights::primitive_desc( dnnl_engine, dnnl::algorithm::convolution_direct,
-                                                          x_md, dw_md, dy_md,
-                                                          strides, dilations, padding_left, padding_right,
-                                                          conv_forward_pd);
+    conv_backward_weights_pd =
+        dnnl::convolution_backward_weights::primitive_desc(dnnl_engine, dnnl::algorithm::convolution_direct,
+                                                           x_md, dw_md, dy_md,
+                                                           strides, dilations, padding_left, padding_right,
+                                                           conv_forward_pd);
   }
 
   // check if memory needs to be moved to GPU
@@ -222,7 +219,6 @@ std::vector<int64_t> DnnlConvGrad::GetPads(DnnlNode& node, ConvShape shape) {
     for (int i = 0; i < attr->second().ints_size(); ++i) {
       pads.push_back(attr->second().ints(i));
     }
-
 
     return dnnl::memory::dims(pads.begin(), pads.end());
   }

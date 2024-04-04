@@ -8,14 +8,11 @@
 import argparse
 import os
 import random
-import sys
 from pathlib import Path
 
 import numpy as np
-from onnx import ModelProto, TensorProto, numpy_helper
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data
+from onnx import ModelProto, TensorProto
 from onnx_model import OnnxModel
 
 
@@ -41,6 +38,23 @@ def parse_arguments():
         default=128,
         help="maximum sequence length of input",
     )
+
+    parser.add_argument(
+        "-a",
+        "--average_sequence_length",
+        default=-1,
+        type=int,
+        help="average sequence length excluding padding",
+    )
+
+    parser.add_argument(
+        "-r",
+        "--random_sequence_length",
+        required=False,
+        action="store_true",
+        help="use uniform random instead of fixed sequence length",
+    )
+    parser.set_defaults(random_sequence_length=False)
 
     parser.add_argument(
         "--global_tokens",
@@ -131,7 +145,7 @@ def get_longformer_inputs(onnx_file, input_ids_name=None, input_mask_name=None, 
         return input_ids, input_mask, global_mask
 
     if len(graph_inputs) != 3:
-        raise ValueError("Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs)))
+        raise ValueError(f"Expect the graph to have 3 inputs. Got {len(graph_inputs)}")
 
     # Try guess the inputs based on naming.
     input_ids = None
@@ -190,7 +204,8 @@ def fake_test_data(
     input_mask,
     global_mask,
     num_global_tokens,
-    random_mask_length=False,
+    average_sequence_length,
+    random_sequence_length,
 ):
     """
     Generate fake input data for test.
@@ -206,7 +221,9 @@ def fake_test_data(
         inputs = {input_ids.name: input_1}
 
         if input_mask:
-            inputs[input_mask.name] = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
+            inputs[input_mask.name] = fake_input_mask_data(
+                input_mask, batch_size, sequence_length, average_sequence_length, random_sequence_length
+            )
 
         if global_mask:
             inputs[global_mask.name] = fake_global_mask_data(
@@ -230,7 +247,8 @@ def generate_test_data(
     input_mask,
     global_mask,
     num_global_tokens,
-    random_mask_length=False,
+    average_sequence_length,
+    random_sequence_length,
 ):
     dictionary_size = 10000
     all_inputs = fake_test_data(
@@ -244,7 +262,8 @@ def generate_test_data(
         input_mask,
         global_mask,
         num_global_tokens,
-        random_mask_length,
+        average_sequence_length,
+        random_sequence_length,
     )
     if len(all_inputs) != test_cases:
         print("Failed to create test data for test.")
@@ -263,8 +282,9 @@ def create_longformer_test_data(
     input_mask_name,
     global_mask_name,
     num_global_tokens,
+    average_sequence_length,
+    random_sequence_length,
 ):
-
     input_ids, input_mask, global_mask = get_longformer_inputs(model, input_ids_name, input_mask_name, global_mask_name)
     all_inputs = generate_test_data(
         batch_size,
@@ -276,6 +296,8 @@ def create_longformer_test_data(
         input_mask,
         global_mask,
         num_global_tokens,
+        average_sequence_length,
+        random_sequence_length,
     )
 
     for i, inputs in enumerate(all_inputs):
@@ -290,7 +312,7 @@ def main():
         # Default output directory is a sub-directory under the directory of model.
         output_dir = os.path.join(
             Path(args.model).parent,
-            "b{}_s{}_g{}".format(args.batch_size, args.sequence_length, args.global_tokens),
+            f"b{args.batch_size}_s{args.sequence_length}_g{args.global_tokens}",
         )
 
     if output_dir is not None:
@@ -299,6 +321,9 @@ def main():
         path.mkdir(parents=True, exist_ok=True)
     else:
         print("Directory existed. test data files will be overwritten.")
+
+    if args.average_sequence_length <= 0:
+        args.average_sequence_length = args.sequence_length
 
     create_longformer_test_data(
         args.model,
@@ -312,6 +337,7 @@ def main():
         args.input_mask_name,
         args.global_mask_name,
         args.global_tokens,
+        args.average_sequence_length,
     )
 
     print("Test data is saved to directory:", output_dir)

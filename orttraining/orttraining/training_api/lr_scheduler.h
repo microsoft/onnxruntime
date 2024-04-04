@@ -30,11 +30,11 @@ struct LRSchedulerBase {
 
  protected:
   int64_t GetStepInternal() {
-    return optim_->optimizer_state_.step;
+    return optim_->optimizer_state_->step;
   }
 
   float GetInitialLRInternal() {
-    return optim_->optimizer_state_.initial_lr;
+    return optim_->optimizer_state_->initial_lr;
   }
 
  private:

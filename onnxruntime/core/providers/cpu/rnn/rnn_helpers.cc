@@ -17,7 +17,7 @@
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
 #endif
@@ -269,7 +269,7 @@ void ComputeGemm(const int M,
   GetQuantizationParameter(A, M * K, a_scale, a_zero_point, thread_pool);
 
   // quantize the data
-  ParQuantizeLinear(A, quantized_A_buffer, M * K, a_scale, a_zero_point, thread_pool);
+  ParQuantizeLinearStd(A, quantized_A_buffer, M * K, a_scale, a_zero_point, thread_pool);
 
   bool b_is_signed = weights.quant_para_->is_signed;
   uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;
@@ -573,7 +573,8 @@ void gru_reset_gate_tanh(const float* ps1, float* ps2, float* pd, int c, float a
     float q = x2 * beta_6 + beta_4;
     q = x2 * q + beta_2;
     q = x2 * q + beta_0;
-    pd[i] = ps1[i] * p / q;
+    ps2[i] = p / q;
+    pd[i] = ps1[i] * ps2[i];
   }
 }
 
@@ -596,7 +597,8 @@ void gru_reset_gate_sigmoid(const float* ps1, float* ps2, float* pd, int c, floa
     float q = x2 * beta_6 + beta_4;
     q = x2 * q + beta_2;
     q = x2 * q + beta_0;
-    pd[i] = ps1[i] * 0.5f * (1 + p / q);
+    ps2[i] = 0.5f * (1 + p / q);
+    pd[i] = ps1[i] * ps2[i];
   }
 }
 
@@ -636,7 +638,8 @@ void gru_output_gate_tanh(float* ph, const float* pz, const float* ps, float* po
     float q = x2 * beta_6 + beta_4;
     q = x2 * q + beta_2;
     q = x2 * q + beta_0;
-    po[i] = (1 - pz[i]) * (p / q) + pz[i] * ps[i];
+    ph[i] = p / q;
+    po[i] = (1 - pz[i]) * ph[i] + pz[i] * ps[i];
   }
 }
 

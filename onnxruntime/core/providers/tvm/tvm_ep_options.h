@@ -14,7 +14,6 @@
 
 #include "tvm_defaults.h"
 
-
 namespace onnxruntime {
 
 namespace tvm {
@@ -53,7 +52,7 @@ struct TvmEPOptions {
 std::ostream& operator<<(std::ostream& out, const TvmEPOptions& options);
 
 class TvmEPOptionsHelper {
-public:
+ public:
   static TvmEPOptions FromOptionsString(const char* options);
   static TvmEPOptions FromProviderOptions(const ProviderOptions& options);
   static std::string whitespace_trimming(const std::string& str);
@@ -61,7 +60,7 @@ public:
   static bool checkCPUTarget(const std::string& target);
   static bool checkGPUTarget(const std::string& target);
 
-private:
+ private:
   static void optionsPostprocess(TvmEPOptions& options);
   static void setInputShapes(TvmEPOptions& options);
   static void targetPostprocess(std::string& target);

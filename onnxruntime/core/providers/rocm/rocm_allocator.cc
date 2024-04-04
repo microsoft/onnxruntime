@@ -3,7 +3,6 @@
 
 #include "rocm_allocator.h"
 #include "rocm_common.h"
-#include "core/framework/allocatormgr.h"
 #include "gpu_data_transfer.h"
 
 namespace onnxruntime {
@@ -44,7 +43,7 @@ void* ROCMAllocator::Alloc(size_t size) {
   CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
-    //BFCArena was updated recently to handle the exception and adjust the request size
+    // BFCArena was updated recently to handle the exception and adjust the request size
     HIP_CALL_THROW(hipMalloc((void**)&p, size));
   }
   return p;
@@ -52,9 +51,8 @@ void* ROCMAllocator::Alloc(size_t size) {
 
 void ROCMAllocator::Free(void* p) {
   SetDevice(false);
-  CheckDevice(false);  // ignore ROCM failure when free
-  // do not throw error since it's OK for hipFree to fail during shutdown; void to silence nodiscard
-  (void)hipFree(p);
+  CheckDevice(false);                   // ignore ROCM failure when free
+  ORT_IGNORE_RETURN_VALUE(hipFree(p));  // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
 void* ROCMExternalAllocator::Alloc(size_t size) {

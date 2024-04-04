@@ -9,7 +9,7 @@ import unittest
 
 import onnx
 import torch
-from parity_utilities import *
+from parity_utilities import export_onnx, find_transformers_source, optimize_onnx, parse_arguments, run_parity
 from torch import nn
 
 if find_transformers_source():
@@ -297,9 +297,7 @@ class TestLayerNormParity(unittest.TestCase):
 
     def test_cuda(self):
         if not torch.cuda.is_available():
-            import pytest
-
-            pytest.skip("test requires GPU and torch+cuda")
+            self.skipTest("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
             self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, run_extra_tests=True, verbose=self.verbose)

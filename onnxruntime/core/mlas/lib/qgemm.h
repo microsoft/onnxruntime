@@ -170,8 +170,8 @@ MlasGemmQuantKernel(
 
 /**
  * @brief Usually a wrapper of assembly/intrinsic kernel
- *        of symmetric quant gemm 
- * @tparam KernelType 
+ *        of symmetric quant gemm
+ * @tparam KernelType
  * @param A                   Left hand side matrix
  * @param B                   Prepacked right hand side matrix
  * @param C                   Result matrix
@@ -225,7 +225,7 @@ MlasGemmQuantScaleSumBuffer(
 
 template<typename KernelType>
 MLAS_FORCEINLINE
-void 
+void
 MlasGemmQuantThreadInit()
 {
     constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::Strides;
@@ -240,7 +240,7 @@ MlasGemmQuantThreadInit()
     constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides = KernelType::PackedStrides;
     constexpr size_t packedASize =
         UpAlignSize(PackedStrides.M * PackedStrides.K * sizeof(typename KernelType::PackedAType));
-    
+
     constexpr size_t bufsize = std::max(packASize + packBSize, packedASize) + rowSumSize + colSumSize + zpbSize;
 
     MlasThreadedBufAlloc(bufsize);
@@ -737,12 +737,12 @@ Return Value:
 /**
  * @brief Operation for Quantized GEMM where B is symmetrically
  *          quantized and packed matrix
- * @param Shape 
- * @param Data 
- * @param RangeStartM 
- * @param RangeCountM 
- * @param RangeStartN 
- * @param RangeCountN 
+ * @param Shape
+ * @param Data
+ * @param RangeStartM
+ * @param RangeCountM
+ * @param RangeStartN
+ * @param RangeCountN
 */
 template<typename KernelType>
 void
@@ -773,7 +773,7 @@ MlasSymmQGemmPackedOperation(
     const int32_t* PackedColumnSumBuffer = (const int32_t*)PackedB;
     PackedB = (const int8_t*)(PackedColumnSumBuffer + AlignedN);
     PackedColumnSumBuffer += RangeStartN;
-    
+
     const size_t PackedCountK = (K + KernelType::PackedK - 1) / KernelType::PackedK;
 
     //
@@ -871,7 +871,7 @@ MlasGemmQuantGetDispatch(
         GemmQuantDispatch = &MlasGemmQuantDispatchDefault;
     }
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_LARCH64)
     if (!AIsSigned) {
         if (BIsSigned) {
             GemmQuantDispatch = GetMlasPlatform().GemmU8S8Dispatch;
@@ -882,13 +882,9 @@ MlasGemmQuantGetDispatch(
     }
 #elif defined(MLAS_TARGET_ARM64)
     if(BIsSigned) {
-        if(GetMlasPlatform().GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
-            GemmQuantDispatch = &MlasGemmX8S8DispatchNeon;
-        } else {
-            GemmQuantDispatch = AIsSigned? &MlasGemmS8S8DispatchSdot : &MlasGemmU8X8DispatchUdot;
-        }
+        GemmQuantDispatch = AIsSigned ? GetMlasPlatform().GemmS8S8Dispatch : GetMlasPlatform().GemmU8S8Dispatch;
     } else if(!AIsSigned) {
-        GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
+        GemmQuantDispatch = GetMlasPlatform().GemmU8U8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     if(BIsSigned || !AIsSigned) {
@@ -907,13 +903,10 @@ MlasGemmQuantGetDispatch(
 #endif
 
     if (nullptr == GemmQuantDispatch) {
-#if defined(MLAS_NO_EXCEPTION)
-        abort();
-#else
         std::stringstream ss;
-        ss << "Quant GEMM format: AIsSigned(" << AIsSigned << "), BIsSigned(" << BIsSigned << ") is not supported on this device";
-        throw std::invalid_argument(ss.str());
-#endif
+        ss << "Quant GEMM format: AIsSigned(" << AIsSigned << "), BIsSigned(" << BIsSigned
+           << ") is not supported on this device";
+        MLAS_THROW_EX(std::invalid_argument, ss.str());
     }
 
     return GemmQuantDispatch;

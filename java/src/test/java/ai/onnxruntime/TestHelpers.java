@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -13,11 +13,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Assertions;
 
@@ -25,6 +31,10 @@ import org.junit.jupiter.api.Assertions;
 public class TestHelpers {
 
   private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
+
+  static void deleteDirectoryTree(Path input) throws IOException {
+    Files.walk(input).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+  }
 
   static boolean[] toPrimitiveBoolean(List<Boolean> input) {
     boolean[] output = new boolean[input.size()];
@@ -250,8 +260,24 @@ public class TestHelpers {
     output.addAll(Arrays.asList(input));
   }
 
+  static void loudLogger(Class<?> loggerClass) {
+    Logger l = Logger.getLogger(loggerClass.getName());
+    l.setLevel(Level.INFO);
+  }
+
+  static void quietLogger(Class<?> loggerClass) {
+    Logger l = Logger.getLogger(loggerClass.getName());
+    l.setLevel(Level.OFF);
+  }
+
   public static Path getResourcePath(String path) {
-    return new File(InferenceTest.class.getResource(path).getFile()).toPath();
+    return new File(TestHelpers.class.getResource(path).getFile()).toPath();
+  }
+
+  public static void zeroBuffer(FloatBuffer buf) {
+    for (int i = 0; i < buf.capacity(); i++) {
+      buf.put(i, 0.0f);
+    }
   }
 
   public static float[] loadTensorFromFile(Path filename) {
@@ -403,6 +429,25 @@ public class TestHelpers {
     OnnxTensor onnxTensor = OnnxTensor.createTensor(env, buffer, intDims, tensorElemType);
 
     return new StringTensorPair(nodeName, onnxTensor);
+  }
+
+  public static OnnxTensor makeIdentityMatrix(OrtEnvironment env, int size) throws OrtException {
+    float[][] values = new float[size][size];
+    for (int i = 0; i < values.length; i++) {
+      values[i][i] = 1.0f;
+    }
+
+    return OnnxTensor.createTensor(env, values);
+  }
+
+  public static OnnxTensor makeIdentityMatrixBuf(OrtEnvironment env, int size) throws OrtException {
+    FloatBuffer buf =
+        ByteBuffer.allocateDirect(size * size * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
+    for (int i = 0; i < size; i++) {
+      buf.put(i * size + i, 1.0f);
+    }
+
+    return OnnxTensor.createTensor(env, buf, new long[] {size, size});
   }
 
   private static class TypeWidth {

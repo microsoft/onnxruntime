@@ -3,7 +3,6 @@ authors = ["Nicolas Bigaouette <nbigaouette@elementai.com>"]
 edition = "2018"
 name = "onnxruntime-sys"
 version = "0.0.14"
-
 description = "Unsafe wrapper around Microsoft's ONNX Runtime"
 documentation = "https://docs.rs/onnxruntime-sys"
 homepage = "https://github.com/nbigaouette/onnxruntime-rs"
@@ -13,6 +12,7 @@ repository = "https://github.com/nbigaouette/onnxruntime-rs"
 
 categories = ["science"]
 keywords = ["neuralnetworks", "onnx", "bindings"]
+include = ["src", "example", "vendor", "build.rs"]
 
 [dependencies]
 libloading = "0.7"
@@ -21,6 +21,7 @@ libloading = "0.7"
 bindgen = { version = "0.59", optional = true }
 ureq = "2.1"
 cmake = "0.1"
+anyhow = "1.0"
 
 # Used on Windows
 zip = "0.5"

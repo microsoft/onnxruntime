@@ -22,6 +22,8 @@ steps:
   displayName: 'Extract package file name (POSIX)'
   inputs:
     script: |
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
       echo "##vso[task.setvariable variable=NpmPackageFilesForTest;]`ls $(Build.BinariesDirectory)/nodejs-artifact/*.tgz | tr '\n' ' '`"
     workingDirectory: '$(Build.BinariesDirectory)/e2e_test'
 

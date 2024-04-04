@@ -26,7 +26,7 @@ class RNN : public OpKernel {
     activation_alpha_ = info.GetAttrsOrDefault("activation_alpha", std::vector<float>(num_directions, 0.0F));
     activation_beta_ = info.GetAttrsOrDefault("activation_beta", std::vector<float>(num_directions, 0.0F));
     ORT_ENFORCE(info.GetAttrs("activations", activations_).IsOK());
-    //TODO: is it optional or not?
+    // TODO: is it optional or not?
     ORT_ENFORCE(info.GetAttr("hidden_size", &hidden_size_).IsOK());
 
     if (activations_.size() == 2 && num_directions == 1) {

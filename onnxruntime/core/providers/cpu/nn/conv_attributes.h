@@ -113,11 +113,12 @@ struct ConvAttributes {
 
     const int64_t M = weight_shape[0];
     const int64_t C = input_channels_last ? input_shape.GetDims().back() : input_shape[1];
+    const int64_t weight_channels = weight_channels_last ? weight_shape.GetDims().back() : weight_shape[1];
 
-    if (C != (weight_channels_last ? weight_shape.GetDims().back() : weight_shape[1]) * group) {
+    if (C != weight_channels * group) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
                              " C: ", C,
-                             " kernel channels: ", weight_shape[1],
+                             " kernel channels: ", weight_channels,
                              " group: ", group);
     }
 
@@ -190,7 +191,8 @@ struct ConvAttributes {
                                           bool& post_slicing_needed,
                                           TensorShapeVector& slice_starts,
                                           TensorShapeVector& slice_ends,
-                                          TensorShapeVector& slice_axes) const {
+                                          TensorShapeVector& slice_axes,
+                                          bool channels_last = false) const {
     size_t rank = input_shape.NumDimensions();
     // Make sure all "metadata" containers have the right number of elements
     if (rank > strides_p.size())
@@ -256,7 +258,11 @@ struct ConvAttributes {
           }
 
           post_slicing_needed = true;
-          slice_axes.push_back(static_cast<int64_t>(dim) + 2);
+          if (channels_last) {
+            slice_axes.push_back(static_cast<int64_t>(dim) + 1);
+          } else {
+            slice_axes.push_back(static_cast<int64_t>(dim) + 2);
+          }
           slice_starts.push_back(excess_output_head);
           slice_ends.push_back(excess_output_head + output_dim_size);                      // we may modify this below
           output_shape_with_revised_pads.push_back(excess_output_head + output_dim_size);  // we may modify this below
@@ -286,7 +292,11 @@ struct ConvAttributes {
               // Head has not been over-padded. Only tail pads need to be modified.
               post_slicing_needed = true;
 
-              slice_axes.push_back(static_cast<int64_t>(dim) + 2);
+              if (channels_last) {
+                slice_axes.push_back(static_cast<int64_t>(dim) + 1);
+              } else {
+                slice_axes.push_back(static_cast<int64_t>(dim) + 2);
+              }
               slice_starts.push_back(0);
               slice_ends.push_back(output_dim_size - revised_dim_size);
             }

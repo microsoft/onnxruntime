@@ -11,16 +11,14 @@ using namespace std;
 namespace onnxruntime {
 namespace rocm {
 
-#define REGISTER_GRADIENT_KERNEL_TYPED(T, T1, T2)                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                             \
-      BatchNormalizationGrad,                                                                \
-      kMSDomain,                                                                             \
-      1,                                                                                     \
-      T##_##T1##_##T2,                                                                       \
-      kRocmExecutionProvider,                                                                \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>())    \
-                                   .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())  \
-                                   .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>()), \
+#define REGISTER_GRADIENT_KERNEL_TYPED(T, T1, T2)                                                                                                                                                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                                                                           \
+      BatchNormalizationGrad,                                                                                                                                                                              \
+      kMSDomain,                                                                                                                                                                                           \
+      1,                                                                                                                                                                                                   \
+      T##_##T1##_##T2,                                                                                                                                                                                     \
+      kRocmExecutionProvider,                                                                                                                                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>()).TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>()), \
       BatchNormalizationGrad<T, T1, T2>);
 
 template <typename T, typename T1, typename T2>

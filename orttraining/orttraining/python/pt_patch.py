@@ -1,9 +1,7 @@
 import torch
-
-from torch.onnx import symbolic_opset10
-from torch.onnx import symbolic_opset12
-from torch.onnx.symbolic_helper import parse_args
 import torch.onnx.symbolic_helper as sym_help
+from torch.onnx import symbolic_opset10, symbolic_opset12
+from torch.onnx.symbolic_helper import parse_args
 
 
 @parse_args("v", "v", "v", "v", "i", "none")

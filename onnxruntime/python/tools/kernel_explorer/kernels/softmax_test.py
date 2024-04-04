@@ -11,7 +11,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_bytes, dtype_to_suffix
+from utils import dtype_to_bytes, dtype_to_suffix, softmax
 
 
 def get_test_sizes():
@@ -29,13 +29,6 @@ def dtype_to_funcs(dtype):
     return type_map[dtype]
 
 
-def softmax(x, is_log_softmax):
-    x = x - np.max(x, axis=-1, keepdims=1)
-    if is_log_softmax:
-        return x - np.log(np.sum(np.exp(x), axis=-1, keepdims=1))
-    return (np.exp(x)) / np.sum(np.exp(x), axis=-1, keepdims=1)
-
-
 def _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, func):
     np.random.seed(0)
     x = np.random.rand(batch_count, softmax_elements).astype(dtype)
@@ -43,7 +36,7 @@ def _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, func):
 
     x_d = ke.DeviceArray(x)
     y_d = ke.DeviceArray(y)
-    y_ref = softmax(x, is_log_softmax)
+    y_ref = softmax(x, is_log_softmax=is_log_softmax)
 
     softmax_func = getattr(ke, func)
     softmax_op = softmax_func(
@@ -56,7 +49,7 @@ def _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, func):
         softmax_op.Run()
         y_d.UpdateHostNumpyArray()
 
-        np.testing.assert_allclose(y_ref, y, rtol=1e-02)
+        np.testing.assert_allclose(y_ref, y, rtol=1e-02, err_msg=func)
 
 
 dtypes = ["float16", "float32"]
@@ -72,7 +65,7 @@ def test_softmax(batch_count, softmax_elements, is_log_softmax, dtype):
 @pytest.mark.parametrize("batch_count, softmax_elements, is_log_softmax", get_test_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
 def test_ck_softmax(batch_count, softmax_elements, is_log_softmax, dtype):
-    ck_f_name = "CKSoftmax" + "_" + dtype_to_suffix(dtype)
+    ck_f_name = "CKSoftmax_" + dtype_to_suffix(dtype)
     _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, ck_f_name)
 
 
@@ -83,10 +76,10 @@ class SoftmaxMetric(ke.BandwidthMetric):
     is_log_softmax: bool
 
     def report(self):
-        prefix = f"{self.name:<110} {self.dtype} batch_count={self.batch_count:<4} softmax_elements={self.softmax_elements:<4} is_log_softmax={self.is_log_softmax:<4}"
+        common = f"{self.dtype} batch_count={self.batch_count:<4} softmax_elements={self.softmax_elements:<4} is_log_softmax={self.is_log_softmax:<4} {self.name}"
         if self.duration > 0:
-            return prefix + f"{self.duration:.2f} us, {self.gbps:.2f} GB/s"
-        return prefix + "not supported"
+            return f"{self.duration:6.2f} us {self.gbps:5.2f} GB/s " + common
+        return "not supported        " + common
 
 
 def profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, func):
@@ -116,7 +109,7 @@ def profile_with_args(batch_count, softmax_elements, is_log_softmax, dtype, sort
         for func in dtype_to_funcs(dtype):
             profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, func)
         # ck function
-        ck_f_name = "CKSoftmax" + "_" + dtype_to_suffix(dtype)
+        ck_f_name = "CKSoftmax_" + dtype_to_suffix(dtype)
         profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, ck_f_name)
 
 

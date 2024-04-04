@@ -619,7 +619,7 @@ CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_rang
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(
-    cudaStream_t stream,
+    cudaStream_t /*stream*/,
     ChunkGroup<4> chunk_group,
     const CudaKernel& kernel,
     void* reduction_buffer,

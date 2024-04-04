@@ -199,8 +199,8 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   left_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   left_permutation.insert(left_permutation.end(), lro.begin(), lro.end());
   left_permutation.insert(left_permutation.end(), lo.begin(), lo.end());
-//  left_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
-  for(auto & a : reduce_dims){
+  //  left_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
+  for (auto& a : reduce_dims) {
     left_permutation.push_back(onnxruntime::narrow<size_t>(a));
   }
   left_permutation.insert(left_permutation.end(), ro.begin(), ro.end());
@@ -227,8 +227,8 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   InlinedVector<size_t> right_permutation;
   right_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   right_permutation.insert(right_permutation.end(), lro.begin(), lro.end());
-//  right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
-  for(auto & a : reduce_dims){
+  //  right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
+  for (auto& a : reduce_dims) {
     right_permutation.push_back(onnxruntime::narrow<size_t>(a));
   }
   right_permutation.insert(right_permutation.end(), ro.begin(), ro.end());
@@ -362,8 +362,8 @@ Status EinsumTypedComputeProcessor<T>::Run() {
 
   {
     TensorShapeVector reduced_dims;
-    TensorShapeVector preserved_dims;              // dims which were not reduced
-    TensorShapeVector preserved_shape;             // shape pertaining to only the dims that were preserved (not reduced)
+    TensorShapeVector preserved_dims;                                           // dims which were not reduced
+    TensorShapeVector preserved_shape;                                          // shape pertaining to only the dims that were preserved (not reduced)
     reduced_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));    // num_subscript_labels is the upper bound. No harm in over-reserving.
     preserved_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the upper bound. No harm in over-reserving.
 

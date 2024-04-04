@@ -161,10 +161,12 @@ class TFusedMHAKernelFactory {
     const auto id = hashID(type, sm);
     const auto findIter = mKernels.find(id);
     if (findIter == mKernels.end()) {
-      TFusedMHAKernelList* newKernel = new TFusedMHAKernelList{pKernelList, nbKernels, type, sm};
+      GSL_SUPPRESS(r.11)
+      std::unique_ptr<TFusedMHAKernelList> newKernel(new TFusedMHAKernelList{pKernelList, nbKernels, type, sm});
       newKernel->loadXMMAKernels();
-      mKernels.insert(std::make_pair(id, std::unique_ptr<TFusedMHAKernelList>(newKernel)));
-      return newKernel;
+      TFusedMHAKernelList* ret = newKernel.get();
+      mKernels.emplace(id, std::move(newKernel));      
+      return ret;
     }
     return findIter->second.get();
   }

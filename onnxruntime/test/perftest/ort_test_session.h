@@ -45,6 +45,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::vector<const char*> input_names_;
   std::vector<std::string> input_names_str_;
   const int input_length_;
+  std::string provider_name_;
 };
 
 }  // namespace perftest

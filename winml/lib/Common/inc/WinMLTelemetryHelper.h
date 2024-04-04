@@ -40,11 +40,8 @@ class Profiler;
 #define WINML_TLM_NAMED_DIMENSION_OVERRIDE_VERSION 0
 #define WINML_TLM_EXPERIMENTAL_API_VERSION 0
 
-#define WinMLTraceLoggingWrite(hProvider, EventName, ...)                \
-  TraceLoggingWrite(hProvider,                                           \
-                    EventName,                                           \
-                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"), \
-                    __VA_ARGS__)
+#define WinMLTraceLoggingWrite(hProvider, EventName, ...) \
+  TraceLoggingWrite(hProvider, EventName, TraceLoggingBool(true, "UTCReplace_AppSessionGuid"), __VA_ARGS__)
 //
 // WinMLRuntime Telemetry Support
 //
@@ -66,7 +63,6 @@ class WinMLTelemetryHelper {
   WinMLTelemetryHelper();
   virtual ~WinMLTelemetryHelper();
 
-
   //
   // Register telemetry provider and check success.  Will only succeed if
   // client has opted in to sending MS telemetry.
@@ -82,35 +78,26 @@ class WinMLTelemetryHelper {
   //
   // Un-Register telemetry provider to ignore events from a TraceLogging provider.
   //
-  void UnRegister() {
-    TraceLoggingUnregister(provider_);
-  }
+  void UnRegister() { TraceLoggingUnregister(provider_); }
 
   void LogApiUsage(const char* name);
   void LogWinMLShutDown();
   void LogWinMLSuspended();
   void LogRuntimeError(HRESULT hr, std::string message, PCSTR file, PCSTR function, int line);
   void LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line);
-  void LogRegisterOperatorKernel(
-      const char* name,
-      const char* domain,
-      int execution_type);
+  void LogRegisterOperatorKernel(const char* name, const char* domain, int execution_type);
   void RegisterOperatorSetSchema(
-      const char* name,
-      uint32_t input_count,
-      uint32_t output_count,
-      uint32_t type_constraint_count,
-      uint32_t attribute_count,
-      uint32_t default_attribute_count);
-  void SetIntraOpNumThreadsOverride(
-      uint32_t num_threads);
-  void SetIntraOpThreadSpinning(
-      bool allow_spinning);
-  void SetNamedDimensionOverride(
-      winrt::hstring name,
-      uint32_t value);
-  void SetLearningModelDeviceKind(
-      int device_kind);
+    const char* name,
+    uint32_t input_count,
+    uint32_t output_count,
+    uint32_t type_constraint_count,
+    uint32_t attribute_count,
+    uint32_t default_attribute_count
+  );
+  void SetIntraOpNumThreadsOverride(uint32_t num_threads);
+  void SetIntraOpThreadSpinning(bool allow_spinning);
+  void SetNamedDimensionOverride(winrt::hstring name, uint32_t value);
+  void SetLearningModelDeviceKind(int device_kind);
   void EndRuntimeSession() { ++runtime_session_id_; };
   bool IsMeasureSampled();
   int GetRuntimeSessionId() { return runtime_session_id_; }

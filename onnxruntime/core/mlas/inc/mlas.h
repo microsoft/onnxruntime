@@ -69,6 +69,9 @@ Abstract:
 #endif
 #endif
 
+#if defined(__loongarch64)
+#define MLAS_TARGET_LARCH64
+#endif
 //
 // Define the support levels for the target architecture.
 //
@@ -78,12 +81,16 @@ Abstract:
 #endif
 
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
-// Visual Studio older than 2022 does not support fp16 intrinsic
-
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
+#if !defined(__APPLE__)
+// Had to temporary disable fp16 under APPLE ARM64, as compiling
+// the source files require a hardware specific compilation flag.
+// When building an universial binary for APPLE, this flag would
+// cause trouble for x64 target.
 
 #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
+#endif //
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
@@ -154,6 +161,7 @@ enum MLAS_ACTIVATION_KIND {
     MlasLogisticActivation,
     MlasClipActivation,
     MlasHardSigmoidActivation,
+    MlasActivationKindCount,
 };
 
 struct MLAS_ACTIVATION {
@@ -1432,18 +1440,20 @@ public:
 };
 
 /**
- * @brief Half precision activation functions
+ * @brief Half precision activation functions, with optional sum tensor.
+ * Supplied sum tensor must be the same layout as the GEMM output tensor.
+ * And the supplied sum tensor will be added to the tensor before activation.
 */
-class MLAS_HALF_GEMM_ACTIVATION_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
-public:
+class MLAS_HALF_GEMM_ACTIVATION_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR
+{
+  public:
     MLAS_HALF_GEMM_ACTIVATION_PROCESSOR(
-        const MLAS_ACTIVATION& Activation
-        ) :
-            Activation_(Activation)
+        const MLAS_ACTIVATION& Activation,
+        const MLAS_FP16* SumBuf = nullptr)
+       : Activation_(Activation), SumBuf_(SumBuf)
     {}
 
-    void
-    Process(
+    void Process(
         MLAS_FP16* C,
         size_t StartM,
         size_t StartN,
@@ -1452,8 +1462,9 @@ public:
         size_t ldc
         ) const override;
 
-private:
+  private:
     const MLAS_ACTIVATION& Activation_;
+    const MLAS_FP16* SumBuf_;
 };
 
 inline
@@ -1602,3 +1613,195 @@ MlasHalfGemmConvertPackB(
     size_t ldb,
     void* PackedB
     );
+
+#if defined(__aarch64__) && defined(__linux__)
+/**
+ * @brief Whether current CPU supports Bfloat16(bf16) acceleration.
+ */
+bool MLASCALL
+MlasBf16AccelerationSupported();
+
+/**
+ * @brief Interface for bf16 gemm post processors.
+ *
+ * Example implementation of this interface includes activations,
+ * conversion from single precision to precision, etc.
+ *
+ * SBGEMM is computed tile by tile. When a tile of result matrix
+ * is produced, the method Process() is called to process this tile.
+ * Parameters of this method describe the location and shape of the
+ * tile.
+ */
+class MLAS_SBGEMM_POSTPROCESSOR
+{
+   public:
+    virtual void Process(float*, /**< the address of matrix to process */
+                         size_t, /**< the start row index of matrix */
+                         size_t, /**< the start col index of matrix */
+                         size_t, /**< the element count per row to process */
+                         size_t, /**< the element count per col to process */
+                         size_t  /**< the leading dimension of matrix */
+    ) const = 0;
+
+    virtual ~MLAS_SBGEMM_POSTPROCESSOR() {}
+};
+
+/**
+ * @brief bfloat16 precision activation functions, with optional sum tensor.
+ * Supplied sum tensor must be the same layout as the GEMM output tensor.
+ * And the supplied sum tensor will be added to the tensor before activation.
+ */
+class MLAS_SBGEMM_ACTIVATION_PROCESSOR : public MLAS_SBGEMM_POSTPROCESSOR
+{
+   public:
+    MLAS_SBGEMM_ACTIVATION_PROCESSOR(const MLAS_ACTIVATION& Activation, const float* SumBuf = nullptr)
+        : Activation_(Activation), SumBuf_(SumBuf)
+    {
+    }
+
+    void Process(float* C, size_t StartM, size_t StartN, size_t CountM, size_t CountN, size_t ldc)
+        const override;
+
+   private:
+    const MLAS_ACTIVATION& Activation_;
+    const float* SumBuf_;
+};
+
+/**
+ * @brief Data parameters for bfloat16 precision GEMM routine
+ *        All except C are [in] parameters
+ */
+struct MLAS_SBGEMM_DATA_PARAMS {
+    const void* A = nullptr;     /**< address of A */
+    const void* B = nullptr;     /**< address of B */
+    const float* Bias = nullptr; /**< address of Bias, vector size N */
+    float* C = nullptr;          /**< address of result matrix */
+    size_t lda = 0;              /**< leading dimension of A */
+    size_t ldb = 0;              /**< leading dimension of B, 0 when B is pre-packed*/
+    size_t ldc = 0;              /**< leading dimension of C*/
+    const MLAS_SBGEMM_POSTPROCESSOR* OutputProcessor = nullptr;
+    bool AIsfp32 = false; /**< matrix A is fp32, needs to be converted to bf16*/
+    bool BIsfp32 = false; /**< matrix B is fp32, needs to be converted to bf16*/
+};
+
+/**
+ * @brief Bfloat16 precision Batched GEMM:  C = A * B + Bias
+ *        Either B can be either fp32 or bf16
+ *
+ * Note:  We only support uniform batching, so shapes and types of the
+ *        input must be same across all parameter blocks.
+ *
+ * @param[in]  M       row size of matrix A and C
+ * @param[in]  N       column size of matrix B and C
+ * @param[in]  K       column size of matrix A and row size of matrix B
+ * @param[in]  BatchN  number of batches
+ * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
+ * @param[in]  ThreadPool
+ * @return
+ */
+void MLASCALL
+MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* DataParams, MLAS_THREADPOOL* ThreadPool = nullptr);
+
+/**
+ * @brief For bfloat16 precision GEMM, returns size of the
+ *        packing buffer needed for right hand side
+ * @param[in] N   Number of columns
+ * @param[in] K   Number of rows
+ * @return  size of the packing buffer,
+ *          0 if operation not supported
+ */
+size_t MLASCALL
+MlasSBGemmPackBSize(size_t N, size_t K);
+
+/**
+ * @brief For bfloat16 precision GEMM, convert the float matrix B
+ *        to blfoat16 precision and pack it into a packing buffer
+ *
+ * @param[in]  N        Number of columns
+ * @param[in]  K        Number of rows
+ * @param[in]  B        Address of matrix B
+ * @param[in]  ldb      leading dimension of input matrix B
+ * @param[out] PackedB  Address of the packed matrix
+ */
+void MLASCALL
+MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* PackedB);
+#endif
+
+/**
+ * @brief Indirect Depthwise convolution for fp16
+ * @param Input         Supplies the indirect buffer for NHWC input
+ * @param Filter        Supplies the address for filter tensor
+ * @param Output        Supplies the address for the result tensor
+ * @param Channels      # of input channels
+ * @param OutputCount   # of output pixels
+ * @param KernelSize    # kernel size
+ * @return
+*/
+void
+MLASCALL
+MlasConvDepthwise(
+    const MLAS_FP16* const* Input,
+    const MLAS_FP16* Filter,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize,
+    MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
+    );
+
+
+inline
+void
+MlasTranspose(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t M,
+    size_t N
+    )
+{
+    MlasTranspose(
+        reinterpret_cast<const uint16_t*>(Input),
+        reinterpret_cast<uint16_t*>(Output),
+        M, N);
+}
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+/**
+ * @brief Max Pooling for fp16 NHWC
+ * @param Input         Indirect buffer to activations
+ * @param Output        Address of the result tensor
+ * @param Channels      C in NHWC
+ * @param OutputCount   Number of output pixels
+ * @param KernelSize    Size of the kernel
+ * @return
+*/
+void
+MLASCALL
+MlasNhwcMaxPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+/**
+ * @brief Avg Pooling for fp16 nhwc
+ * @param Input         Indirect buffer to activations
+ * @param Output        Address of the output data
+ * @param Channels      C in NHWC
+ * @param OutputCount   Number of output pixels
+ * @param KernelSize    size of the kernel
+ * @return
+*/
+void
+MLASCALL
+MlasNhwcAvgPool(
+    const MLAS_FP16* const* Input,
+    MLAS_FP16* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+#endif

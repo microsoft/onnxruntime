@@ -8,19 +8,16 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-
 DnnlBatchNorm::DnnlBatchNorm() {}
 
-
 void DnnlBatchNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
-
   using namespace dnnl;
 
   // get the engine, currently only support either single gpu or single cpu device
   auto dnnl_engine = sp.GetEngine();
 
   auto epsilon = ReadEpsilon(node);
-  
+
   auto batchnorm_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = batchnorm_src_mem.get_desc();
 
@@ -37,15 +34,13 @@ void DnnlBatchNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto batchnorm_var_mem = sp.GetMemory(node.Input(IN_VAR));
   auto var_md = batchnorm_var_mem.get_desc();
 
-  // Primitive desc info 
+  // Primitive desc info
   auto dst_md = dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(), dnnl::memory::format_tag::any);
-  auto flags = dnnl::normalization_flags::use_scale
-              | dnnl::normalization_flags::use_shift
-              | dnnl::normalization_flags::use_global_stats;
+  auto flags = dnnl::normalization_flags::use_scale | dnnl::normalization_flags::use_shift | dnnl::normalization_flags::use_global_stats;
 
-  auto batchnorm_pd = 
-    dnnl::batch_normalization_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
-                                                      src_md, dst_md, epsilon, flags);
+  auto batchnorm_pd =
+      dnnl::batch_normalization_forward::primitive_desc(dnnl_engine, dnnl::prop_kind::forward_inference,
+                                                        src_md, dst_md, epsilon, flags);
 
   // If using GPU this will move the memory from the CPU to the GPU.
   batchnorm_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), batchnorm_pd.src_desc(), dnnl_engine);
@@ -68,14 +63,13 @@ void DnnlBatchNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
 float DnnlBatchNorm::ReadEpsilon(DnnlNode& node) {
   auto attr = node.Attributes().find("epsilon");
-  float epsilon = 1e-05f;  //Default value according to ONNX spec
+  float epsilon = 1e-05f;  // Default value according to ONNX spec
   if (attr != node.Attributes().end() &&
       attr->second().type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
     epsilon = attr->second().f();
   }
   return epsilon;
 }
-
 
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

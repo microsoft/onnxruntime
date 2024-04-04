@@ -79,7 +79,8 @@ class FusionBiasSplitGelu(Fusion):
         ):  # end index of slice_before_mul is start index of slice_before_gelu
             return
 
-        subgraph_nodes = start_index_nodes + [
+        subgraph_nodes = [
+            *start_index_nodes,
             end_index_nodes[0],
             mul_after_gelu,
             gelu_node,

@@ -40,7 +40,7 @@ class SliceOpBuilder : public BaseOpBuilder {
   // We only support slice from opset 10
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 10; }
 
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
 
@@ -163,7 +163,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   if (std::all_of(compute_metadata.steps_.cbegin(),
                   compute_metadata.steps_.cend(),
                   [](int64_t i) { return i == 1; }) &&
-      model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+      model_builder.GetEffectiveFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     op_code = ANEURALNETWORKS_SLICE;
     // the nnapi size of the slice in this case is the output shape
     ORT_RETURN_IF_ERROR(AddOperand("sizes", param_dimen, compute_metadata.output_dims_));  // nnapi_sizes
@@ -201,7 +201,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 // Operator support related
 
-bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool SliceOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                        const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
@@ -219,19 +219,19 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     return false;
   }
 
-  if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[1].node_arg.Name(), "starts")) {
+  if (!CheckIsConstantInitializer(graph_viewer, node_unit, node_unit.Inputs()[1].node_arg.Name(), "starts")) {
     return false;
   }
-  if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[2].node_arg.Name(), "ends")) {
+  if (!CheckIsConstantInitializer(graph_viewer, node_unit, node_unit.Inputs()[2].node_arg.Name(), "ends")) {
     return false;
   }
   const auto& inputs = node_unit.Inputs();
   if (inputs.size() > 3) {
-    if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[3].node_arg.Name(), "axes")) {
+    if (!CheckIsConstantInitializer(graph_viewer, node_unit, node_unit.Inputs()[3].node_arg.Name(), "axes")) {
       return false;
     }
     if (inputs.size() > 4) {
-      if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[4].node_arg.Name(), "steps")) {
+      if (!CheckIsConstantInitializer(graph_viewer, node_unit, node_unit.Inputs()[4].node_arg.Name(), "steps")) {
         return false;
       }
     }

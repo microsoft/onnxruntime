@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template<typename TIndex>
+template <typename TIndex>
 void ComputeSliceOffsetsImpl(
     cudaStream_t stream,
     const int64_t batch_dims,

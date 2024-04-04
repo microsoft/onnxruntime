@@ -5,26 +5,14 @@
 #include <atomic>
 #include <string>
 #include "core/session/onnxruntime_c_api.h"
-#include "core/common/logging/isink.h"
 #include "core/platform/ort_mutex.h"
 #include "core/common/status.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
 class Environment;
 }
-
-class LoggingWrapper : public onnxruntime::logging::ISink {
- public:
-  LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param);
-
-  void SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/, const std::string& logger_id,
-                const onnxruntime::logging::Capture& message) override;
-
- private:
-  OrtLoggingFunction logging_function_;
-  void* logger_param_;
-};
 
 struct OrtEnv {
  public:
@@ -75,6 +63,7 @@ struct OrtEnv {
   onnxruntime::common::Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
   OrtEnv(std::unique_ptr<onnxruntime::Environment> value);
   ~OrtEnv();
+  onnxruntime::common::Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
  private:
   static std::unique_ptr<OrtEnv> p_instance_;

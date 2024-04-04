@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession as InferenceSessionImpl} from './inference-session-impl';
-import {OnnxValue} from './onnx-value';
+import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
+import {OnnxModelOptions} from './onnx-model.js';
+import {OnnxValue, OnnxValueDataLocation} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -43,7 +44,7 @@ export declare namespace InferenceSession {
   /**
    * A set of configurations for session behavior.
    */
-  export interface SessionOptions {
+  export interface SessionOptions extends OnnxModelOptions {
     /**
      * An array of execution provider options.
      *
@@ -65,6 +66,13 @@ export declare namespace InferenceSession {
      * This setting is available only in ONNXRuntime (Node.js binding and react-native).
      */
     interOpNumThreads?: number;
+
+    /**
+     * The free dimension override.
+     *
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
+     */
+    freeDimensionOverrides?: {readonly [dimensionName: string]: number};
 
     /**
      * The optimization level.
@@ -103,7 +111,7 @@ export declare namespace InferenceSession {
     optimizedModelFilePath?: string;
 
     /**
-     * Wether enable profiling.
+     * Whether enable profiling.
      *
      * This setting is a placeholder for a future use.
      */
@@ -139,6 +147,20 @@ export declare namespace InferenceSession {
     logVerbosityLevel?: number;
 
     /**
+     * Specify string as a preferred data location for all outputs, or an object that use output names as keys and a
+     * preferred data location as corresponding values.
+     *
+     * This setting is available only in ONNXRuntime Web for WebGL and WebGPU EP.
+     */
+    preferredOutputLocation?: OnnxValueDataLocation|{readonly [outputName: string]: OnnxValueDataLocation};
+
+    /**
+     * Whether enable graph capture.
+     * This setting is available only in ONNXRuntime Web for WebGPU EP.
+     */
+    enableGraphCapture?: boolean;
+
+    /**
      * Store configurations for a session. See
      * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/
      * onnxruntime_session_options_config_keys.h
@@ -164,14 +186,21 @@ export declare namespace InferenceSession {
   // #region execution providers
 
   // Currently, we have the following backends to support execution providers:
-  // Backend Node.js binding: supports 'cpu' and 'cuda'.
-  // Backend WebAssembly: supports 'cpu', 'wasm' and 'xnnpack'.
+  // Backend Node.js binding: supports 'cpu', 'dml' (win32), 'coreml' (macOS) and 'cuda' (linux).
+  // Backend WebAssembly: supports 'cpu', 'wasm', 'webgpu' and 'webnn'.
   // Backend ONNX.js: supports 'webgl'.
+  // Backend React Native: supports 'cpu', 'xnnpack', 'coreml' (iOS), 'nnapi' (Android).
   interface ExecutionProviderOptionMap {
+    coreml: CoreMLExecutionProviderOption;
     cpu: CpuExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
+    dml: DmlExecutionProviderOption;
+    nnapi: NnapiExecutionProviderOption;
+    tensorrt: TensorRtExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
+    webgpu: WebGpuExecutionProviderOption;
+    webnn: WebNNExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
   }
 
@@ -190,6 +219,14 @@ export declare namespace InferenceSession {
     readonly name: 'cuda';
     deviceId?: number;
   }
+  export interface DmlExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'dml';
+    deviceId?: number;
+  }
+  export interface TensorRtExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'tensorrt';
+    deviceId?: number;
+  }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'wasm';
   }
@@ -199,6 +236,60 @@ export declare namespace InferenceSession {
   }
   export interface XnnpackExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'xnnpack';
+  }
+  export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'webgpu';
+    preferredLayout?: 'NCHW'|'NHWC';
+  }
+  export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'webnn';
+    deviceType?: 'cpu'|'gpu';
+    numThreads?: number;
+    powerPreference?: 'default'|'low-power'|'high-performance';
+  }
+  export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'coreml';
+    /**
+     * The bit flags for CoreML execution provider.
+     *
+     * ```
+     * COREML_FLAG_USE_CPU_ONLY = 0x001
+     * COREML_FLAG_ENABLE_ON_SUBGRAPH = 0x002
+     * COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004
+     * COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES = 0x008
+     * COREML_FLAG_CREATE_MLPROGRAM = 0x010
+     * ```
+     *
+     * See include/onnxruntime/core/providers/coreml/coreml_provider_factory.h for more details.
+     *
+     * This flag is available only in ONNXRuntime (Node.js binding).
+     */
+    coreMlFlags?: number;
+    /**
+     * Specify whether to use CPU only in CoreML EP.
+     *
+     * This setting is available only in ONNXRuntime (react-native).
+     */
+    useCPUOnly?: boolean;
+    /**
+     * Specify whether to enable CoreML EP on subgraph.
+     *
+     * This setting is available only in ONNXRuntime (react-native).
+     */
+    enableOnSubgraph?: boolean;
+    /**
+     * Specify whether to only enable CoreML EP for Apple devices with ANE (Apple Neural Engine).
+     *
+     * This setting is available only in ONNXRuntime (react-native).
+     */
+    onlyEnableDeviceWithANE?: boolean;
+  }
+  export interface NnapiExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'nnapi';
+    useFP16?: boolean;
+    useNCHW?: boolean;
+    cpuDisabled?: boolean;
+    cpuOnly?: boolean;
   }
   // #endregion
 
@@ -297,6 +388,15 @@ export interface InferenceSession {
    */
   run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+
+  // #endregion
+
+  // #region release()
+
+  /**
+   * Release the inference session and the underlying resources.
+   */
+  release(): Promise<void>;
 
   // #endregion
 

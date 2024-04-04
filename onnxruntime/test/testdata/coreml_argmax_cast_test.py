@@ -7,7 +7,7 @@ from onnx import TensorProto, helper
 # We have this separated test script to generate graph for the case: An ArgMax followed by a Cast to int32 type
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [
         helper.make_node("ArgMax", ["X"], ["argmax_output_int64"], "argmax", axis=1, keepdims=1),
         helper.make_node("Cast", ["argmax_output_int64"], ["Y"], "cast", to=6),  # cast to int32 type

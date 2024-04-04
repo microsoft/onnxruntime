@@ -6,7 +6,6 @@
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include <unsupported/Eigen/SpecialFunctions>
-#include "core/util/math.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/common/gsl.h"
 
@@ -14,38 +13,38 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-void ComputeShareSoftmaxCrossEntropyCPU(const int n,
-                                        const int d,
-                                        const int nd,
+void ComputeShareSoftmaxCrossEntropyCPU(const int nd,
+                                        const int c,
+                                        const Eigen::Index nd_c,
                                         const T* logit_data,
                                         T* shifted_logit,
                                         T* log_prob_data) {
   // Find the max in each batch, resulting in a tensor of shape [batch]
   // logit_max = max(logit_data)
-  std::vector<T> logit_max(n);
-  math::RowwiseMax<T, CPUMathUtil>(n, d, logit_data, logit_max.data(), nullptr);
+  std::vector<T> logit_max(nd);
+  math::RowwiseMax<T, CPUMathUtil>(nd, c, logit_data, logit_max.data(), nullptr);
 
   // Subtract the max in batch b from every element in batch b.
   // Broadcasts along the batch dimension.
   // shifted_logit = logit_data - logit_max
-  gsl::copy(gsl::make_span(logit_data, nd), gsl::make_span(shifted_logit, nd));
-  math::SubToCol<T, CPUMathUtil>(n, d, logit_max.data(), shifted_logit, nullptr);
+  gsl::copy(gsl::make_span(logit_data, nd_c), gsl::make_span(shifted_logit, nd_c));
+  math::SubToCol<T, CPUMathUtil>(nd, c, logit_max.data(), shifted_logit, nullptr);
 
   // exp_shifted_logit = exp(shifted_logit)
-  math::Exp<T, CPUMathUtil>(nd, shifted_logit, log_prob_data, nullptr);
+  math::Exp<T, CPUMathUtil>(nd_c, shifted_logit, log_prob_data, nullptr);
 
   // sum_exp = sum_{class} (exp_shifted_logit)
   float* sum_exp = logit_max.data();
-  math::RowwiseSum<T, CPUMathUtil>(n, d, log_prob_data, sum_exp, nullptr);
+  math::RowwiseSum<T, CPUMathUtil>(nd, c, log_prob_data, sum_exp, nullptr);
 
   // log_sum_exp = log(sum_exp)
   float* log_sum_exp = sum_exp;
-  math::Log<T, CPUMathUtil>(n, sum_exp, log_sum_exp, nullptr);
+  math::Log<T, CPUMathUtil>(nd, sum_exp, log_sum_exp, nullptr);
 
   // log_prob = shifted_logit - log(sum_exp)
   // the subtraction broadcasts along the batch dimension
-  gsl::copy(gsl::make_span(shifted_logit, nd), gsl::make_span(log_prob_data, nd));
-  math::SubToCol<T, CPUMathUtil>(n, d, log_sum_exp, log_prob_data, nullptr);
+  gsl::copy(gsl::make_span(shifted_logit, nd_c), gsl::make_span(log_prob_data, nd_c));
+  math::SubToCol<T, CPUMathUtil>(nd, c, log_sum_exp, log_prob_data, nullptr);
 }
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -70,7 +69,7 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
   const int n = gsl::narrow_cast<int>(N);
   const int d = gsl::narrow_cast<int>(D);
-  const int nd = gsl::narrow_cast<int>(N * D);
+  const ptrdiff_t nd = narrow<ptrdiff_t>(N * D);
 
   Tensor* loss = context->Output(0, TensorShape({}));
   Tensor* log_prob = context->Output(1, logit_shape);
@@ -85,7 +84,9 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   // probability = exp(shifted_logit) / sum(exp(shifted_logit))
   // where shifted_logit = logit - max_logit
   // along classes
-  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data,
+
+  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd,
+                                     logit_data,
                                      shifted_logit.data(),
                                      log_prob_data);
 
@@ -180,7 +181,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
   const int n = gsl::narrow_cast<int>(N);
   const int d = gsl::narrow_cast<int>(D);
-  const int nd = gsl::narrow_cast<int>(N * D);
+  const ptrdiff_t nd = narrow<ptrdiff_t>(N * D);
 
   Tensor* loss = context->Output(0, TensorShape({}));
   Tensor* log_prob = context->Output(1, logit_shape);
@@ -192,6 +193,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
 
   // computation begins here
   std::vector<float> shifted_logit(nd);
+
   ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data,
                                      shifted_logit.data(),
                                      log_prob_data);

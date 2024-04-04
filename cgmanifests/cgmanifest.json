@@ -398,7 +398,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "56195b3a67d988fa9c6eafdc459d92f0909f4782",
+               "commitHash": "aead4d751c2101e23336aa73f2380df83e7a13f3",
                "repositoryUrl": "https://github.com/pypa/manylinux"
             },
             "comments": "For building our CI build docker image"
@@ -469,7 +469,7 @@
             "type": "pip",
             "pip": {
                "Name": "transformers",
-               "Version": "2.11.0"
+               "Version": "4.36.0"
             },
             "comments": "Installed in the training docker image"
          }
@@ -562,6 +562,15 @@
                "repositoryUrl": "https://github.com/python-pillow/Pillow.git"
             },
             "comments": "python-pillow. Implementation logic for anti-aliasing copied by Resize CPU kernel."
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "e7248b26a1ed53fa030c5c459f7ea095dfd276ac",
+               "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
+            }
          }
       }
    ],
