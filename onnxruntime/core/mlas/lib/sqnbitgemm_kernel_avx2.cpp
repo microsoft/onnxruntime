@@ -269,9 +269,9 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
           );
 
         // Interleave lower and upper to form the final 8-bit unpacked values
-        __m128i load_mask_v = _mm_set1_epi8(0x0F);  // Mask to isolate the lower 4 bits
-        __m128i lower = _mm_and_si128(bvi4, load_mask_v);
-        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi4, 4), load_mask_v);
+        __m128i lower_mask = _mm_set1_epi8(0x0F);  // Mask to isolate the lower 4 bits
+        __m128i lower = _mm_and_si128(bvi4, lower_mask);
+        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi4, 4), lower_mask);
 
         // Interleave lower and upper to form 8-bit unpacked values
         __m128i unpacked = _mm_unpacklo_epi8(lower, upper);
@@ -650,100 +650,92 @@ Q4BitBlkDequantBForSgemm_CompFp32(
     size_t BlockStrideQuantB
 )
 {
-  //auto impl0_reference = [&]() {
-  //  constexpr size_t BlkBitWidth = 4;
-  //  constexpr size_t SubBlkLen = 16;
+  auto impl0_reference = [&]() {
+    constexpr size_t BlkBitWidth4 = 4;
 
-  //  float* Dst = FpData;
+    float* Dst = FpData;
 
-  //  const std::byte* QuantBDataCol = QuantBData;
-  //  const float* QuantBScaleCol = QuantBScale;
-  //  const std::byte* QuantBZeroPointCol = QuantBZeroPoint;
+    const std::byte* QuantBDataCol = QuantBData;
+    const float* QuantBScaleCol = QuantBScale;
+    const std::byte* QuantBZeroPointCol = QuantBZeroPoint;
 
-  //  for (size_t n = 0; n < CountN; n += 16) {
-  //    const size_t nnlen = std::min(CountN - n, size_t{ 16 });
+    for (size_t n = 0; n < CountN; n += 16) {
+      const size_t nnlen = std::min(CountN - n, size_t{ 16 });
 
-  //    for (size_t nn = 0; nn < nnlen; ++nn) {
-  //      for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
-  //        const size_t kklen = std::min(CountK - k, BlkLen);
+      for (size_t nn = 0; nn < nnlen; ++nn) {
+        for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
+          const size_t kklen = std::min(CountK - k, BlkLen);
 
-  //        const std::byte* b_data =
-  //          QuantBDataCol + k_blk_idx * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-  //        const float b_s = QuantBScaleCol[k_blk_idx];
-  //        const uint8_t b_z =
-  //          (QuantBZeroPointCol != nullptr)
-  //          ? ((k_blk_idx & 1) == 1)
-  //          ? std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] >> 4)
-  //          : std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] & std::byte{ 0x0F })
-  //          : 8;
+          const std::byte* b_data =
+            QuantBDataCol + k_blk_idx * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen);
+          const float b_s = QuantBScaleCol[k_blk_idx];
+          const uint8_t b_z =
+            (QuantBZeroPointCol != nullptr)
+            ? ((k_blk_idx & 1) == 1)
+            ? std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] >> 4)
+            : std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] & std::byte{ 0x0F })
+            : 8;
 
-  //        for (size_t kk = 0; kk < kklen; ++kk) {
-  //          const size_t packed_idx = kk % SubBlkLen;
+          for (size_t kk = 0; kk < kklen; ++kk) {
+            const std::byte b_packed = b_data[kk / 2];
+            const std::byte b_byte = (kk % 2 == 0) ? b_packed & std::byte{ 0x0F } : (b_packed >> 4);
+            const float b_value = (std::to_integer<int8_t>(b_byte) - b_z) * b_s;
+            Dst[(k + kk) * 16 + nn] = b_value;
+          }
+        }
 
-  //          const bool is_low_half = packed_idx < (SubBlkLen / 2);
-  //          const size_t packed_byte_idx = packed_idx % (SubBlkLen / 2);
-  //          const size_t packed_range_offset = (kk / SubBlkLen) * (SubBlkLen / 2);
+        QuantBDataCol += BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen);
+        QuantBScaleCol += BlockStrideQuantB;
+        if (QuantBZeroPointCol != nullptr) {
+          QuantBZeroPointCol += MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth4>(BlockStrideQuantB);
+        }
+      }
 
-  //          const std::byte b_packed = b_data[packed_range_offset + packed_byte_idx];
-  //          const std::byte b_byte = is_low_half ? (b_packed & std::byte{ 0x0F }) : (b_packed >> 4);
-  //          const float b_value = (std::to_integer<int8_t>(b_byte) - b_z) * b_s;
+      // zero out any remaining columns
 
-  //          Dst[(k + kk) * 16 + nn] = b_value;
-  //        }
-  //      }
+      if (nnlen < 16) {
+        for (size_t k = 0; k < CountK; ++k) {
+          std::fill_n(Dst + (k * 16) + nnlen, 16 - nnlen, 0.0f);
+        }
+      }
 
-  //      QuantBDataCol += BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-  //      QuantBScaleCol += BlockStrideQuantB;
-  //      if (QuantBZeroPointCol != nullptr) {
-  //        QuantBZeroPointCol += MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
-  //      }
-  //    }
+      Dst += CountK * 16;
+    }
+    };
 
-  //    // zero out any remaining columns
+  impl0_reference();
 
-  //    if (nnlen < 16) {
-  //      for (size_t k = 0; k < CountK; ++k) {
-  //        std::fill_n(Dst + (k * 16) + nnlen, 16 - nnlen, 0.0f);
-  //      }
-  //    }
+  //constexpr size_t BlkBitWidth = 4;
+  //float* dst_ptr = FpData;
 
-  //    Dst += CountK * 16;
+  //const std::byte* quant_b_data_col_ptr = QuantBData;
+  //const float* quant_b_scale_col_ptr = QuantBScale;
+  //const std::byte* quant_b_zero_point_col_ptr = QuantBZeroPoint;
+
+  //for (size_t n = 0; n < CountN; n++) {
+  //  if (BlkLen == 16) {
+  //    if (QuantBZeroPoint)
+  //      Q4BitBlkDequantBBlkLen16<true>(
+  //        dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, quant_b_zero_point_col_ptr, CountK);
+  //    else
+  //      Q4BitBlkDequantBBlkLen16<false>(
+  //        dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, nullptr, CountK);
   //  }
-  //  };
-
-  //impl0_reference();
-
-  constexpr size_t BlkBitWidth = 4;
-  float* dst_ptr = FpData;
-
-  const std::byte* quant_b_data_col_ptr = QuantBData;
-  const float* quant_b_scale_col_ptr = QuantBScale;
-  const std::byte* quant_b_zero_point_col_ptr = QuantBZeroPoint;
-
-  for (size_t n = 0; n < CountN; n++) {
-    if (BlkLen == 16) {
-      if (QuantBZeroPoint)
-        Q4BitBlkDequantBBlkLen16<true>(
-          dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, quant_b_zero_point_col_ptr, CountK);
-      else
-        Q4BitBlkDequantBBlkLen16<false>(
-          dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, nullptr, CountK);
-    }
-    else {
-      if (QuantBZeroPoint)
-        Q4BitBlkDequantBBlkLen32Plus<true>(
-          BlkLen, dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, quant_b_zero_point_col_ptr, CountK);
-      else
-        Q4BitBlkDequantBBlkLen32Plus<true>(
-          BlkLen, dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, nullptr, CountK);
-    }
-    dst_ptr += CountK;
-    quant_b_data_col_ptr += BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    quant_b_scale_col_ptr += BlockStrideQuantB;
-    if (QuantBZeroPoint) {
-      quant_b_zero_point_col_ptr += MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
-    }
-  }
+  //  else {
+  //    if (QuantBZeroPoint)
+  //      Q4BitBlkDequantBBlkLen32Plus<true>(
+  //        BlkLen, dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, quant_b_zero_point_col_ptr, CountK);
+  //    else
+  //      Q4BitBlkDequantBBlkLen32Plus<true>(
+  //        BlkLen, dst_ptr, quant_b_data_col_ptr, quant_b_scale_col_ptr, nullptr, CountK);
+  //  }
+  //  dst_ptr += CountK;
+  //  quant_b_data_col_ptr += BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+  //  quant_b_scale_col_ptr += BlockStrideQuantB;
+  //  if (QuantBZeroPoint) {
+  //    quant_b_zero_point_col_ptr += MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
+  //  }
+  //}
 }
 
 //
