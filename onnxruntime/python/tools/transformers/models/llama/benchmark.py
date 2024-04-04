@@ -109,7 +109,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 past_seq_len=0,
                 max_seq_len=max_seq_len,
                 use_fp16=args.use_fp16,
-                use_gqa=args.use_gqa,
+                use_buffer_share=args.use_buffer_share,
                 engine="pt",
                 return_dict=True,
             )
@@ -121,7 +121,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 past_seq_len=args.sequence_length,
                 max_seq_len=max_seq_len,
                 use_fp16=args.use_fp16,
-                use_gqa=args.use_gqa,
+                use_buffer_share=args.use_buffer_share,
                 engine="pt",
                 return_dict=True,
             )
@@ -136,7 +136,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=0,
             max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
-            use_gqa=args.use_gqa,
+            use_buffer_share=args.use_buffer_share,
             engine="ort",
             return_dict=True,
             world_size=args.world_size,
@@ -149,7 +149,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=args.sequence_length,
             max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
-            use_gqa=args.use_gqa,
+            use_buffer_share=args.use_buffer_share,
             engine="ort",
             return_dict=True,
             world_size=args.world_size,
@@ -166,7 +166,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             seq_len=args.sequence_length,
             max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
-            use_gqa=args.use_gqa,
+            use_buffer_share=args.use_buffer_share,
             split_kv=split_kv,
         )
         iter_inputs = get_msft_sample_inputs(
@@ -176,7 +176,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             seq_len=1,
             max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
-            use_gqa=args.use_gqa,
+            use_buffer_share=args.use_buffer_share,
             split_kv=split_kv,
         )
 
@@ -457,7 +457,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
         # Add IO bindings for non-CPU execution providers
         if args.device != "cpu":
             io_binding, kv_cache_ortvalues = add_io_bindings_as_ortvalues(
-                model, inputs, args.device, int(args.rank), args.use_gqa, kv_cache_ortvalues
+                model, inputs, args.device, int(args.rank), args.use_buffer_share, kv_cache_ortvalues
             )
             setattr(args, "io_binding", io_binding)  # noqa: B010
             return io_binding, kv_cache_ortvalues
@@ -684,9 +684,9 @@ def main():
         gqa_nodes = list(filter(lambda node: node.op_type == "GroupQueryAttention", onnx_model.graph.node))
 
         use_buffer_share = use_fp16 and len(gqa_nodes) > 0 and args.device != "cpu"
-        setattr(args, "use_gqa", use_buffer_share)  # noqa: B010
+        setattr(args, "use_buffer_share", use_buffer_share)  # noqa: B010
     else:
-        setattr(args, "use_gqa", False)  # noqa: B010
+        setattr(args, "use_buffer_share", False)  # noqa: B010
 
     # Measure prompt cost (init_inputs) and generated token cost (iter_inputs)
     for batch_size, sequence_length in itertools.product(args.batch_sizes, args.sequence_lengths):
