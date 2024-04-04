@@ -47,7 +47,7 @@ float* alloc_aligned_buffer(int D, int byte_aligned, void*& buffer) {
 }
 
 void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
-  const auto byte_aligned = narrow<int>(state.range(0));
+  // const auto byte_aligned = narrow<int>(state.range(0));
   const auto N = narrow<int>(state.range(1));
   const auto D = narrow<int>(state.range(2));
   const auto threads = narrow<int>(state.range(3));
@@ -64,24 +64,24 @@ void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
-  auto data = RandomVectorUniform<float>(static_cast<size_t>(N * D), -1.0f, 1.0f);
-  void* buffer = nullptr;
-  float* input = alloc_aligned_buffer(N * D, byte_aligned, buffer);
-  float* output = input;
-  std::copy(data.begin(), data.end(), input); // Copy the data to the aligned memory
+  auto input = RandomVectorUniform<float>(static_cast<size_t>(N * D), -1.0f, 1.0f);
+  // void* buffer = nullptr;
+  // float* input = alloc_aligned_buffer(N * D, byte_aligned, buffer);
+  // float* output = input;
+  // std::copy(data.begin(), data.end(), input); // Copy the data to the aligned memory
+  std::vector<float> output(static_cast<size_t>(N * D));
+
 
   // warm up run
-  MlasComputeSoftmax(input, output, N, D, false, tp.get());
+  MlasComputeSoftmax(input.data(), output.data(), N, D, false, tp.get());
 
   for (auto _ : state) {
-    MlasComputeSoftmax(input, output, N, D, false, tp.get());
+    MlasComputeSoftmax(input.data(), output.data(), N, D, false, tp.get());
   }
-
-  free(buffer);
 }
 
 void REDUCEMAXIMUMF32KERNELAVX(benchmark::State& state) {
-  const auto byte_aligned = narrow<int>(state.range(0));
+  //const auto byte_aligned = narrow<int>(state.range(0));
   const auto D = narrow<int>(state.range(1));
 
   if (D <= 0) {
@@ -89,18 +89,18 @@ void REDUCEMAXIMUMF32KERNELAVX(benchmark::State& state) {
   }
 
   auto data = RandomVectorUniform<float>(static_cast<size_t>(D), -1.0f, 1.0f);
-  void* buffer = nullptr;
-  float* input = alloc_aligned_buffer(D, byte_aligned, buffer);
-  std::copy(data.begin(), data.end(), input); // Copy the data to the aligned memory
+  //void* buffer = nullptr;
+  //float* input = alloc_aligned_buffer(D, byte_aligned, buffer);
+  //std::copy(data.begin(), data.end(), input); // Copy the data to the aligned memory
 
   // warm up run
-  float Maximum = MlasReduceMaximumF32KernelAvx(input, D);
+  float Maximum = MlasReduceMaximumF32KernelAvx(data.data(), D);
 
   for (auto _ : state) {
-    Maximum = MlasReduceMaximumF32KernelAvx(input, D);
+    Maximum = MlasReduceMaximumF32KernelAvx(data.data(), D);
   }
 
-  free(buffer);
+  //free(buffer);
   (void)Maximum;
 }
 
@@ -112,16 +112,16 @@ void REDUCEMAXIMUMF32KERNELAVX512F(benchmark::State& state) {
     throw std::invalid_argument("D must be greater than 0!");
   }
 
-  auto data = RandomVectorUniform<float>(static_cast<size_t>(D), -1.0f, 1.0f);
+  auto data = RandomVectorUniform<float>(static_cast<size_t>((D + 15)/16*16), -1.0f, 1.0f);
   void* buffer = nullptr;
   float* input = alloc_aligned_buffer(D, byte_aligned, buffer);
   std::copy(data.begin(), data.end(), input); // Copy the data to the aligned memory
 
   // warm up run
-  float Maximum = MlasReduceMaximumF32KernelAvx512F(input, D);
+  float Maximum = MlasReduceMaximumF32KernelAvx512F(data.data(), D);
 
   for (auto _ : state) {
-    Maximum = MlasReduceMaximumF32KernelAvx512F(input, D);
+    Maximum = MlasReduceMaximumF32KernelAvx512F(data.data(), D);
   }
 
   free(buffer);
@@ -212,10 +212,10 @@ static void ComputeSoftmaxInplaceArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"Byte Aligned", "N", "D", "Threads"});
 
   b->ArgsProduct({
-      {4, 8, 16, 32, 64, 128},     // Byte Aligned
-      {208000, 240000}, // N
-      {13, 15, 2000},   // D
-      {1, 8},           // Threads
+      {64},     // Byte Aligned
+      {240000}, // N
+      {2000, 2001, 2002, 2016},  // D
+      {1},           // Threads
   });
 }
 
@@ -243,15 +243,16 @@ BENCHMARK(REDUCEMAXIMUMF32KERNELAVX)->ArgNames({"Byte Aligned", "D"})
 
 BENCHMARK(REDUCEMAXIMUMF32KERNELAVX512F)->ArgNames({"Byte Aligned", "D"})
     ->ArgsProduct({
-      {4, 8, 16, 32, 64, 128},   // Byte Aligned
-      {13, 15, 2000}, // D
+      {64},   // Byte Aligned
+      // {2000, 2001, 1999, 2016, 2002}, // D
+      {2001}, // D
       })
     ->UseRealTime();
 
 BENCHMARK(COMPUTESUMEXPF32KERNELAVX512F)->ArgNames({"Byte Aligned", "D"})
     ->ArgsProduct({
-      {4, 8, 16, 32, 64, 128},   // Byte Aligned
-      {13, 15, 2000}, // D
+      {64},   // Byte Aligned
+      {2000, 2001}, // D
       })
     ->UseRealTime();
 
