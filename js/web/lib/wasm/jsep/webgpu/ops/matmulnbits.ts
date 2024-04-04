@@ -63,7 +63,6 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const blobSize = attributes.blockSize / 8 * attributes.bits;
       const blobSizeInWords = blobSize / 4;
       const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
-      const outputNumber = getMaxComponents(dimAOuter);
       const components = getMaxComponents(dimBOuter);
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
@@ -195,17 +194,12 @@ export const createBlockwiseMatMulNBitsProgramInfo =
                 ${(() => {
           const code = [];
           for (let j = 0; j < 8; j += aComponents) {
-            for (let m = 0; m < Math.ceil(dimAOuter / outputNumber); m++) {
-              for (let k = 0; k < outputNumber; k++) {
-                code.push(`workgroup_shared[((block * ${dimAOuter / outputNumber} + ${m}) * ${outputNumber}) + ${k}] ${
-                    components > 1 ? '[c]' : ''} +=
+            for (let m = 0; m < dimAOuter; m++) {
+              code.push(`workgroup_shared[(block * ${dimAOuter} + ${m})] ${components > 1 ? '[c]' : ''} +=
                             ${
-                    aComponents === 1 ?
-                        `a_data_array[${m} * ${outputNumber} + ${k}][offset] * b_dequantized_values[${j}]` :
-                        `dot(a_data_array[${m} * ${outputNumber} + ${k}][offset], b_dequantized_values[${j} / ${
-                            aComponents}]);`};
+                  aComponents === 1 ? `a_data_array[${m}][offset] * b_dequantized_values[${j}]` :
+                                      `dot(a_data_array[${m}][offset], b_dequantized_values[${j} / ${aComponents}]);`};
                         `);
-              }
             }
             code.push('offset++;');
           }
@@ -220,20 +214,16 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           if (local_id.x == 0u) {
             ${output.indicesSet('output_indices', '0', 'batch')};
             ${output.indicesSet('output_indices', outputRank - 1, 'col')};
-            for (var m: u32 = 0u; m < ${Math.ceil(dimAOuter / outputNumber)}u; m++) {
                 ${(() => {
           const code = [];
-          for (let k = 0; k < outputNumber; k++) {
-            const rhs = Array.from(
-                {length: nBlocksPerCol},
-                (_, b) => `workgroup_shared[(${b * dimAOuter / outputNumber} + m) * ${outputNumber} + ${k}]`);
-            code.push(`let output_value${k} = ${rhs.join(' + ')};`);
-            code.push(`${output.indicesSet('output_indices', outputRank - 2, `m * ${outputNumber} + ${k}`)};`);
-            code.push(`${output.setByIndices('output_indices', `output_value${k}`)};`);
+          for (let n = 0; n < dimBOuter; n++) {
+            const rhs = Array.from({length: workgroupSize[0]}, (_, b) => `workgroup_shared[${(b * dimAOuter + n)}]`);
+            code.push(`let output_value_${n} = ${rhs.join(' + ')};`);
+            code.push(`${output.indicesSet('output_indices', outputRank - 2, n)};`);
+            code.push(`${output.setByIndices('output_indices', `output_value_${n}`)};`);
           }
           return code.join('\n');
         })()};
-            }
           }
         }`;
       };
