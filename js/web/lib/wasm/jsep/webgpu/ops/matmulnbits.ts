@@ -63,31 +63,25 @@ export const createBlockwiseMatMulNBitsProgramInfo =
       const blobSize = attributes.blockSize / 8 * attributes.bits;
       const blobSizeInWords = blobSize / 4;
       const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
-      const components = getMaxComponents(dimBOuter);
+      const componentsTmp = getMaxComponents(dimBOuter);
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
       const elementSize = getTensorElementSize(inputs[0].dataType);
       if (!elementSize) {
         throw new Error(`Unsupported data type: ${inputs[0].dataType}`);
       }
-      const requiredStorageSizePerWorkgroupX = dimAOuter * elementSize * components;
-      // TODO use alternative implementation if requiredStorageSizePerWorkgroupX is too large
-      if (requiredStorageSizePerWorkgroupX > maxComputeWorkgroupStorageSize) {
-        throw new Error('The required storage size per workgroup is too large.');
+      let requiredStorageSize = dimAOuter * componentsTmp * elementSize * nBlocksPerCol;
+      const components = requiredStorageSize <= maxComputeWorkgroupStorageSize ? componentsTmp : 1;
+      if (requiredStorageSize > maxComputeWorkgroupStorageSize) {
+        requiredStorageSize = dimAOuter * components * elementSize * nBlocksPerCol;
       }
-      const maxWorkgroupsizeX = Math.ceil(maxComputeWorkgroupStorageSize / requiredStorageSizePerWorkgroupX);
-      const maxWorkgroupSizeX = Math.min(maxComputeWorkgroupSizes[0], nBlocksPerCol, maxWorkgroupsizeX);
-      // Find the largest workgroupSizeX that divides nBlocksPerCol.
-      const workgroupSizeX = (() => {
-        for (let i = maxWorkgroupSizeX; i > 1; i--) {
-          if (nBlocksPerCol % i === 0) {
-            return i;
-          }
-        }
-        return 1;
-      })();
-      const workgroupSize = [workgroupSizeX, 1, 1];
-      const dispatch = [Math.ceil(dimAOuter / workgroupSize[0]), Math.ceil(dimBOuter / components), batchSize];
+
+      if (maxComputeWorkgroupSizes[0] < nBlocksPerCol || maxComputeWorkgroupStorageSize < requiredStorageSize) {
+        throw new Error(`The blockwise matmulnbits requires all
+            ${nBlocksPerCol} in the same workgroup. The GPU limits prevent this. `);
+      }
+      const workgroupSize = [nBlocksPerCol, 1, 1];
+      const dispatch = [Math.ceil(nBlocksPerCol / workgroupSize[0]), Math.ceil(dimBOuter / components), batchSize];
 
       const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: attributes.blockSize}];
       const inputShapeTemp = [batchSize, dimAOuter, dimInner / aComponents];
