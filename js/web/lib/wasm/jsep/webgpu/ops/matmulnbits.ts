@@ -209,16 +209,14 @@ export const createBlockwiseMatMulNBitsProgramInfo =
           if (local_id.x == 0u) {
             ${output.indicesSet('output_indices', '0', 'batch')};
             ${output.indicesSet('output_indices', outputRank - 1, 'col')};
-                ${(() => {
-          const code = [];
-          for (let n = 0; n < dimBOuter; n++) {
-            const rhs = Array.from({length: workgroupSize[0]}, (_, b) => `workgroup_shared[${(b * dimAOuter + n)}]`);
-            code.push(`let output_value_${n} = ${rhs.join(' + ')};`);
-            code.push(`${output.indicesSet('output_indices', outputRank - 2, n)};`);
-            code.push(`${output.setByIndices('output_indices', `output_value_${n}`)};`);
-          }
-          return code.join('\n');
-        })()};
+            for (var m: u32 = 0u; m < ${dimAOuter}u; m++) {
+                var output_value: ${output.type.value} = ${output.type.value}(0);
+                for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
+                  output_value += workgroup_shared[b * ${dimAOuter} + m];
+                }
+                ${output.indicesSet('output_indices', outputRank - 2, 'm')};
+                ${output.setByIndices('output_indices', 'output_value')};
+            }
           }
         }`;
       };
