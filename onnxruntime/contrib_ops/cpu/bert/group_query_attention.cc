@@ -111,7 +111,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   GroupQueryAttentionParameters parameters = {};
   constexpr float scale = 1.0f;
-  // bool past_present_share_buffer = false;
+//   bool past_present_share_buffer = false;
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                 key,
                                                                 value,
@@ -175,7 +175,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(),
                         V.GetMutable<Tensor>()->MutableData<T>(), past_key, past_value, output, present_k, present_v,
-                        batch_size, sequence_length, head_size, q_hidden_size, context);
+                        seqlens_k, batch_size, sequence_length, head_size, q_hidden_size, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
