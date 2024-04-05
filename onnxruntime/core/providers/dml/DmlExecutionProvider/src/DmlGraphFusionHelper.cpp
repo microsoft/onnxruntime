@@ -596,37 +596,37 @@ namespace DmlGraphFusionHelper
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex)
     {
-      if (graphSerializationEnabled)
-      {
-
-        const std::wstring modelName = GetModelName(graph.ModelPath());
-        auto buffer = SerializeDmlGraph(graphDesc);
-
-        const std::wstring partitionName =
-            L"Partition_" +
-            std::to_wstring(partitionIndex) +
-            L".bin";
-        WriteToFile(modelName, partitionName, buffer.data(), buffer.size());
-
-        std::vector<std::unique_ptr<std::byte[]>> rawData;
-        DmlSerializedGraphDesc deserializedGraphDesc = DeserializeDmlGraph(buffer.data(), rawData);
-        GraphDescBuilder::GraphDesc deserializedDmlGraphDesc = {};
-        deserializedDmlGraphDesc.InputCount = deserializedGraphDesc.InputCount;
-        deserializedDmlGraphDesc.InputEdges = std::move(deserializedGraphDesc.InputEdges);
-        deserializedDmlGraphDesc.IntermediateEdges = std::move(deserializedGraphDesc.IntermediateEdges);
-        deserializedDmlGraphDesc.Nodes = std::move(deserializedGraphDesc.Nodes);
-        deserializedDmlGraphDesc.OutputCount = deserializedGraphDesc.OutputCount;
-        deserializedDmlGraphDesc.OutputEdges = std::move(deserializedGraphDesc.OutputEdges);
-        deserializedDmlGraphDesc.reuseCommandList = graphDesc.reuseCommandList;
-        deserializedDmlGraphDesc.outputShapes = graphDesc.outputShapes;
-
-        compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
-                        deserializedDmlGraphDesc,
-                        indexedSubGraph,
-                        providerImpl,
-                        serializedGraphInputIndexToSubgraphInputIndex,
-                        serializedGraphLargeConstantNameToSubgraphInputIndex);
-      }
+        if (graphSerializationEnabled)
+        {
+        
+          const std::wstring modelName = GetModelName(graph.ModelPath());
+          auto buffer = SerializeDmlGraph(graphDesc);
+        
+          const std::wstring partitionName =
+              L"Partition_" +
+              std::to_wstring(partitionIndex) +
+              L".bin";
+          WriteToFile(modelName, partitionName, buffer.data(), buffer.size());
+        
+          std::vector<std::unique_ptr<std::byte[]>> rawData;
+          DmlSerializedGraphDesc deserializedGraphDesc = DeserializeDmlGraph(buffer.data(), rawData);
+          GraphDescBuilder::GraphDesc deserializedDmlGraphDesc = {};
+          deserializedDmlGraphDesc.InputCount = deserializedGraphDesc.InputCount;
+          deserializedDmlGraphDesc.InputEdges = std::move(deserializedGraphDesc.InputEdges);
+          deserializedDmlGraphDesc.IntermediateEdges = std::move(deserializedGraphDesc.IntermediateEdges);
+          deserializedDmlGraphDesc.Nodes = std::move(deserializedGraphDesc.Nodes);
+          deserializedDmlGraphDesc.OutputCount = deserializedGraphDesc.OutputCount;
+          deserializedDmlGraphDesc.OutputEdges = std::move(deserializedGraphDesc.OutputEdges);
+          deserializedDmlGraphDesc.reuseCommandList = graphDesc.reuseCommandList;
+          deserializedDmlGraphDesc.outputShapes = graphDesc.outputShapes;
+        
+          compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
+                          deserializedDmlGraphDesc,
+                          indexedSubGraph,
+                          providerImpl,
+                          serializedGraphInputIndexToSubgraphInputIndex,
+                          serializedGraphLargeConstantNameToSubgraphInputIndex);
+        }
 
         auto& fusedNode = graph.BeginFuseSubGraph(indexedSubGraph, indexedSubGraph.GetMetaDef()->name);
         fusedNode.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);

@@ -51,8 +51,8 @@ def chain_model(args):
     decoder_model = onnx.load_model(args.decoder_path, load_external_data=True)
     decoder_model.graph.name = "decoder subgraph"
 
-    config = WhisperConfig.from_pretrained(args.model_name_or_path)
-    tokenizer = WhisperTokenizer.from_pretrained(args.model_name_or_path)
+    config = WhisperConfig.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    tokenizer = WhisperTokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
 
     # Create inputs/outputs for WhisperBeamSearch op
     temperature_name = "temperature_fp16" if args.precision == Precision.FLOAT16 else "temperature"

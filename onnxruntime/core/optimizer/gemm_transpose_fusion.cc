@@ -75,7 +75,7 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
     nodes_to_remove.push_back(output_node);
   }
 
-  Node& new_gemm_node = graph.AddNode(graph.GenerateNodeName(gemm_node.Name() + "_transformed"),
+  Node& new_gemm_node = graph.AddNode(graph.GenerateNodeName(gemm_node.Name() + "/GemmTransposeFusion/"),
                                       gemm_node.OpType(),
                                       "Fused Gemm with Transpose",
                                       new_gemm_input_defs,
