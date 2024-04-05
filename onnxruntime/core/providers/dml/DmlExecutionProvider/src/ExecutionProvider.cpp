@@ -100,6 +100,9 @@ namespace Dml
 
     void ExecutionProviderImpl::Close()
     {
+        // Release the cached command list references before closing the context
+        m_capturedGraphs.clear();
+
         m_context->Close();
     }
 
