@@ -198,8 +198,6 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
 
 #ifdef USE_DML
 
-constexpr GUID execution_context_guid = {0x50fd773b, 0x4462, 0x4b28, {0x98, 0x9e, 0x8c, 0xa0, 0x54, 0x05, 0xbd, 0x4a}};
-constexpr GUID upload_heap_guid = {0x125235f9, 0xef41, 0x4043, {0xa4, 0x9d, 0xdd, 0xc9, 0x61, 0xe7, 0xdb, 0xee}};
 constexpr GUID dml_readback_heap_guid = {0x00d32df8, 0xea2d, 0x40bf, {0xa4, 0x47, 0x9c, 0xb4, 0xbc, 0xf1, 0x1d, 0x5e}};
 
 AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
@@ -232,7 +230,13 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
     auto context = std::make_shared<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get());
 
     // We leak the upload and readback heaps to keep them alive, just like the map
-    auto upload_heap = std::make_unique<Dml::PooledUploadHeap>(d3d12_device.Get(), context).release();
+    Dml::PooledUploadHeap* upload_heap_dummy = nullptr;
+    uint32_t upload_heap_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(upload_heap_dummy));
+    if (FAILED(d3d12_device->GetPrivateData(dml_upload_heap_guid, &upload_heap_ptr_size, &upload_heap_dummy))) {
+      auto upload_heap = std::make_unique<Dml::PooledUploadHeap>(d3d12_device.Get(), context).release();
+      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_upload_heap_guid, sizeof(upload_heap), &upload_heap));
+    }
+
     auto readback_heap = std::make_unique<Dml::ReadbackHeap>(d3d12_device.Get()).release();
 
     auto dml_allocator = std::make_shared<Dml::BucketizedBufferAllocator>(
@@ -246,10 +250,6 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
     dml_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
     context->SetAllocator(dml_allocator);
 
-    auto context_ptr = context.get();
-
-    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(execution_context_guid, sizeof(context_ptr), &context_ptr));
-    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(upload_heap_guid, sizeof(upload_heap), &upload_heap));
     ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_readback_heap_guid, sizeof(readback_heap), &readback_heap));
 
     hit = id_to_allocator_map->emplace(id, std::move(dml_allocator)).first;
@@ -265,17 +265,12 @@ void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes) {
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(dst_data->GetDevice(IID_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
 
-  Dml::ExecutionContext* context = nullptr;
-  uint32_t context_size = gsl::narrow_cast<uint32_t>(sizeof(context));
-  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(execution_context_guid, &context_size, &context));
-
   Dml::PooledUploadHeap* upload_heap = nullptr;
   uint32_t upload_heap_size = gsl::narrow_cast<uint32_t>(sizeof(upload_heap));
-  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(upload_heap_guid, &upload_heap_size, &upload_heap));
+  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(dml_upload_heap_guid, &upload_heap_size, &upload_heap));
 
   upload_heap->BeginUploadToGpu(
       dst_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, gsl::make_span(static_cast<const std::byte*>(src), num_bytes));
-  context->Flush();
 }
 
 void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {

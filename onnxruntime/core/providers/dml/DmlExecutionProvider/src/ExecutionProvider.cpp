@@ -21,6 +21,7 @@
 #include "DmlCommittedResourceWrapper.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/common/parse_string.h"
+#include "core/providers/dml/dml_provider_factory_creator.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -82,8 +83,6 @@ namespace Dml
 
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
-
-        constexpr GUID dml_command_queue_guid = {0x9270ce8c, 0x7150, 0x4944, {0xa1, 0xda, 0x5c, 0x07, 0x60, 0xd5, 0x68, 0x10}};
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableGraphCapture);
     }
@@ -219,9 +218,8 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get());
 
         // Set the upload heap on the D3D12 device to allow the python API to use the same queue
-        constexpr GUID upload_heap_guid = {0x125235f9, 0xef41, 0x4043, {0xa4, 0x9d, 0xdd, 0xc9, 0x61, 0xe7, 0xdb, 0xee}};
         auto uploadHeapPointer = m_uploadHeap.get();
-        m_d3d12Device->SetPrivateData(upload_heap_guid, sizeof(uploadHeapPointer), &uploadHeapPointer);
+        m_d3d12Device->SetPrivateData(dml_upload_heap_guid, sizeof(uploadHeapPointer), &uploadHeapPointer);
 
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
 
