@@ -276,7 +276,8 @@ static void SortHeterogenousDXCoreAdapterList(
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFromDeviceOptions(
     const ConfigOptions& config_options,
     const OrtDmlDeviceOptions* device_options,
-    bool disable_metacommands) {
+    bool disable_metacommands,
+    bool python_api) {
   auto default_device_options = OrtDmlDeviceOptions { Default, Gpu };
   if (device_options == nullptr) {
     device_options = &default_device_options;
@@ -323,7 +324,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
     adapters.begin(),
     [](auto& a){ return a.Adapter; });
 
-  return onnxruntime::DMLProviderFactoryCreator::CreateFromAdapterList(config_options, std::move(adapters), disable_metacommands);
+  return onnxruntime::DMLProviderFactoryCreator::CreateFromAdapterList(config_options, std::move(adapters), disable_metacommands, python_api);
 }
 
 static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(const ProviderOptions& provider_options) {
@@ -411,7 +412,8 @@ static bool ParseBoolean(const ProviderOptions& provider_options, const std::str
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFromProviderOptions(
     const ConfigOptions& config_options,
-    const ProviderOptions& provider_options) {
+    const ProviderOptions& provider_options,
+    bool python_api) {
 
   bool disable_metacommands = ParseBoolean(provider_options, "disable_metacommands");
   bool skip_software_device_check = false;
@@ -419,7 +421,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
 
   if (device_id.has_value())
   {
-    return onnxruntime::DMLProviderFactoryCreator::Create(config_options, device_id.value(), skip_software_device_check, disable_metacommands);
+    return onnxruntime::DMLProviderFactoryCreator::Create(config_options, device_id.value(), skip_software_device_check, disable_metacommands, python_api);
   }
 
   auto preference = ParsePerformancePreference(provider_options);
@@ -427,7 +429,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
 
   // If no preference/filters are specified then create with default preference/filters.
   if (!preference.has_value() && !filter.has_value()) {
-    return onnxruntime::DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, nullptr, disable_metacommands);
+    return onnxruntime::DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, nullptr, disable_metacommands, python_api);
   }
 
   if (!preference.has_value()) {
@@ -441,7 +443,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
   OrtDmlDeviceOptions device_options;
   device_options.Preference = preference.value();
   device_options.Filter = filter.value();
-  return onnxruntime::DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, &device_options, disable_metacommands);
+  return onnxruntime::DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, &device_options, disable_metacommands, python_api);
 }
 
 Microsoft::WRL::ComPtr<ID3D12Device> DMLProviderFactoryCreator::CreateD3D12Device(
@@ -535,13 +537,23 @@ static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_devi
 std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(
   const ConfigOptions& config_options,
   ID3D12Device* d3d12_device,
-  bool disable_metacommands) {
+  bool disable_metacommands,
+  bool python_api = false) {
   D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
   cmd_queue_desc.Type = CalculateCommandListType(d3d12_device);
   cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 
   ComPtr<ID3D12CommandQueue> cmd_queue;
-  ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+  uint32_t cmd_queue_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(cmd_queue.GetAddressOf()));
+
+  // First, check if an I/O binding API that was used before this session or another session has already created a queue
+  if (FAILED(d3d12_device->GetPrivateData(dml_command_queue_guid, &cmd_queue_ptr_size, cmd_queue.GetAddressOf()))) {
+    ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+
+    if (python_api) {
+      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_command_queue_guid, sizeof(cmd_queue.Get()), cmd_queue.GetAddressOf()));
+    }
+  }
 
   auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device);
   return CreateExecutionProviderFactory_DML(config_options, dml_device.Get(), cmd_queue.Get(), disable_metacommands);
@@ -551,15 +563,17 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(
     const ConfigOptions& config_options,
     int device_id,
     bool skip_software_device_check,
-    bool disable_metacommands) {
+    bool disable_metacommands,
+    bool python_api) {
   ComPtr<ID3D12Device> d3d12_device = CreateD3D12Device(device_id, skip_software_device_check);
-  return CreateDMLDeviceAndProviderFactory(config_options, d3d12_device.Get(), disable_metacommands);
+  return CreateDMLDeviceAndProviderFactory(config_options, d3d12_device.Get(), disable_metacommands, python_api);
 }
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFromAdapterList(
     const ConfigOptions& config_options,
     std::vector<ComPtr<IDXCoreAdapter>>&& adapters,
-    bool disable_metacommands) {
+    bool disable_metacommands,
+    bool python_api) {
   // Choose the first device from the list since it's the highest priority
   auto adapter = adapters[0];
 
@@ -580,7 +594,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
     ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), feature_level, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
   }
 
-  return CreateDMLDeviceAndProviderFactory(config_options, d3d12_device.Get(), disable_metacommands);
+  return CreateDMLDeviceAndProviderFactory(config_options, d3d12_device.Get(), disable_metacommands, python_api);
 }
 
 }  // namespace onnxruntime

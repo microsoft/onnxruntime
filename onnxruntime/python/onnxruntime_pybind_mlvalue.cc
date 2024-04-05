@@ -221,8 +221,13 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
     cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 
     ComPtr<ID3D12CommandQueue> cmd_queue;
-    ORT_THROW_IF_FAILED(
-        d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+    uint32_t cmd_queue_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(cmd_queue.GetAddressOf()));
+
+    // First, check if one of the sessions has already created a queue
+    if (FAILED(d3d12_device->GetPrivateData(dml_command_queue_guid, &cmd_queue_ptr_size, cmd_queue.GetAddressOf()))) {
+      ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_command_queue_guid, sizeof(cmd_queue.Get()), cmd_queue.GetAddressOf()));
+    }
 
     auto context = std::make_shared<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get());
 
@@ -271,11 +276,6 @@ void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes) {
   upload_heap->BeginUploadToGpu(
       dst_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, gsl::make_span(static_cast<const std::byte*>(src), num_bytes));
   context->Flush();
-
-  // We don't use the same command queue as the execution provider, so we need to sync to make sure that all data has
-  // been uploaded to the resource. This function is usually called before inference just to upload initial data to the
-  // GPU, so it shouldn't be a bottleneck.
-  context->GetCurrentCompletionEvent().WaitForSignal();
 }
 
 void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
