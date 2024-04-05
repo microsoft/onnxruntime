@@ -1231,6 +1231,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     dump_subgraphs_ = info.dump_subgraphs;
     engine_cache_enable_ = info.engine_cache_enable;
+    weightless_engine_enable_ = info.weightless_engine_enable;
     timing_cache_enable_ = info.timing_cache_enable;
     force_timing_cache_match_ = info.force_timing_cache;
     detailed_build_log_ = info.detailed_build_log;
@@ -1328,6 +1329,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string engine_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheEnable);
       if (!engine_cache_enable_env.empty()) {
         engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
+      }
+
+      const std::string weightless_engine_enable_env
+        = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kWeightlessEngineEnable);
+      if (!weightless_engine_enable_env.empty()) {
+        weightless_engine_enable_ = (std::stoi(weightless_engine_enable_env) == 0 ? false : true);
       }
 
       const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
@@ -1599,6 +1606,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_dla_core: " << dla_core_
                         << ", trt_dump_subgraphs: " << dump_subgraphs_
                         << ", trt_engine_cache_enable: " << engine_cache_enable_
+                        << ", trt_weightless_engine_enable: " << weightless_engine_enable_
                         << ", trt_cache_path: " << cache_path_
                         << ", trt_global_cache_path: " << global_cache_path_
                         << ", trt_engine_decryption_enable: " << engine_decryption_enable_
@@ -2265,6 +2273,21 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // Generate unique kernel name for TRT graph
   HashValue model_hash = TRTGenerateId(graph);
 
+  SubGraph_t supported_node_vector = {{}, true};
+  for (int index = 0 ; index < graph.NumberOfNodes() ; ++index) {
+    supported_node_vector.first.push_back(index);
+  }
+  std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash,
+                                                           /*subgraph_index=*/0);
+
+  // For the weightless functionality, report the entire graph as TRT eligible.
+  // TODO(mguzek): weightless_engine_enable_ flag for now implicitly assumes the the entire graph as TRT eligible.
+  const bool single_cached_weightless_engine_present = IsSingleCachedWeightlessEnginePresent(sub_graph->GetMetaDef()->name());
+  if (weightless_engine_enable_ || single_cached_weightless_engine_present) {
+    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+    return result;
+  }
+
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
@@ -2455,9 +2478,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       output_map[output_defs[i]->Name()] = i;
     }
 
+    const bool serialized_engine_flow = weightless_engine_enable_ && single_serialized_weightless_engine_exists_;
     Status status;
-    if (GraphHasCtxNode(graph_body_viewer)) {
-      status = CreateNodeComputeInfoFromPrecompiledEngine(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
+    if (GraphHasCtxNode(graph_body_viewer) || serialized_engine_flow) {
+      status = CreateNodeComputeInfoFromPrecompiledEngine(graph_body_viewer,
+                                                          fused_node,
+                                                          input_map,
+                                                          output_map,
+                                                          node_compute_funcs,
+                                                  /*engine_within_onnx_model=*/serialized_engine_flow ? false : true);
     } else {
       status = CreateNodeComputeInfoFromGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
     }
@@ -2749,6 +2778,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 #endif
 
+#if NV_TENSORRT_MAJOR >= 10
+  if (weightless_engine_enable_) {
+    trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
+  }
+#endif
+
   // limit used tactic sources
   if (!tactic_sources_.empty()) {
     nvinfer1::TacticSources tactics = trt_config->getTacticSources();
@@ -2765,23 +2801,25 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
 
-  std::string cache_path = "";
-  std::string cache_suffix = "";
-  // Customize cache prefix if assigned
-  if (!cache_prefix_.empty()) {
-    // Generate cache suffix in case user would like to customize cache prefix
-    cache_suffix = "_" + GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
-    cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
-  } else {
-    cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
-  }
+  std::string cache_suffix;
+  std::string cache_path_prefix;  // not used
+  std::string engine_cache_path;
+  std::string encrypted_engine_cache_path;
+  std::string weightless_engine_cache_path;
+  std::string profile_cache_path;
 
-  // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
-  // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-  const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
-  const std::string engine_cache_path = cache_path_prefix + ".engine";
-  const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
-  const std::string profile_cache_path = cache_path_prefix + ".profile";
+  // Name the engine cache based on GPU compute capacity
+  FillCachePaths(cache_suffix,
+                 cache_prefix_,
+                 fused_node.Name(),
+                 trt_node_name_with_precision,
+                 cache_path_,
+                 compute_capability_,
+                 cache_path_prefix,
+                 engine_cache_path,
+                 encrypted_engine_cache_path,
+                 weightless_engine_cache_path,
+                 profile_cache_path);
 
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {
@@ -2908,6 +2946,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
             file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized engine " + engine_cache_path;
           }
+        }
+        if (weightless_engine_enable_) {
+          std::ofstream file(weightless_engine_cache_path, std::ios::binary | std::ios::out);
+          file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized weightless engine " + weightless_engine_cache_path;
         }
         // serialize and save timing cache
         if (timing_cache_enable_) {
@@ -3530,18 +3573,72 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
                                                                              const Node& fused_node,
                                                                              std::unordered_map<std::string, size_t>& input_map,
                                                                              std::unordered_map<std::string, size_t>& output_map,
-                                                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
+                                                                             std::vector<NodeComputeInfo>& node_compute_funcs,
+                                                                             bool engine_within_onnx_model) {
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
   std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index
   std::unordered_map<std::string, size_t> output_indexes;  // TRT engine output name -> ORT kernel context output index
   std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
 
-  // Get engine binary data and deserialize it
-  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), model_path_, compute_capability_);
-  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
-  if (status != Status::OK()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+  if (engine_within_onnx_model)
+  {
+    // Get engine binary data and deserialize it
+    auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), model_path_, compute_capability_);
+    auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
+    if (status != Status::OK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+    }
+  }
+  else {
+    // Weightless engine refit logic
+
+    // Ifstream file check, engine serialization/deserialization and engine refit are in critical section.
+    // It needs lock protection to prevent race condition when inferencing with multithreading.
+    auto lock = GetApiLock();
+
+    auto deserialize_engine = [this, &trt_engine](const std::string& filename) {
+      std::ifstream serialized_engine_file(filename, std::ios::binary | std::ios::in);
+      if (serialized_engine_file) {
+        serialized_engine_file.seekg(0, std::ios::end);
+        const size_t engine_size = serialized_engine_file.tellg();
+        serialized_engine_file.seekg(0, std::ios::beg);
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        serialized_engine_file.read((char*)engine_buf.get(), engine_size);
+        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(),
+                                                                                            engine_size));
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + filename;
+      }
+      if (!serialized_engine_file || !trt_engine) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                            "TensorRT EP could not deserialize engine from cache: " + filename);
+      }
+      return common::Status();
+    };
+
+    common::Status status = deserialize_engine(serialized_weightless_engine_cache_path_);
+    if(!status.IsOK()) {
+      return status;
+    }
+    // Refit weightless engine
+    TensorrtLogger& trt_logger = GetTensorrtLogger();
+    auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(*trt_engine, trt_logger));
+    auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
+                            nvonnxparser::createParserRefitter(*refitter, trt_logger));
+    if(!parser_refitter->refitFromFile(model_path_)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                          "TensorRT EP could not refit deserialized weightless engine from cache: "
+                          + serialized_weightless_engine_cache_path_);
+    }
+    if(refitter->refitCudaEngine()) {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weightless engine: "
+      + serialized_weightless_engine_cache_path_;
+    }
+    else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                          "TensorRT EP could not refit deserialized weightless engine from cache: "
+                          + serialized_weightless_engine_cache_path_);
+    }
   }
 
   // Build context
@@ -3837,6 +3934,42 @@ OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) 
   if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
   return default_device_;
+}
+
+bool TensorrtExecutionProvider::IsSingleCachedWeightlessEnginePresent(const std::string& sub_graph_metadef_name) const {
+  std::ostringstream oss;
+  oss << /*EP Type*/ Type() << "_" << sub_graph_metadef_name << "_" << /*fused_node_unique_id=*/0;
+  const std::string fused_node_name = oss.str();
+  std::string trt_node_name_with_precision = fused_node_name;
+  if (fp16_enable_ && int8_enable_) {
+    trt_node_name_with_precision += "_fp16_int8";
+  } else if (fp16_enable_) {
+    trt_node_name_with_precision += "_fp16";
+  } else if (int8_enable_) {
+    trt_node_name_with_precision += "_int8";
+  }
+
+  std::string cache_suffix; // not used
+  std::string cache_path_prefix; // not used
+  std::string engine_cache_path;  // not used
+  std::string encrypted_engine_cache_path;  // not used
+  std::string profile_cache_path; // not used
+
+  // Name the engine cache based on GPU compute capacity
+  FillCachePaths(cache_suffix,
+                cache_prefix_,
+                fused_node_name,
+                trt_node_name_with_precision,
+                cache_path_,
+                compute_capability_,
+                cache_path_prefix,
+                engine_cache_path,
+                encrypted_engine_cache_path,
+                serialized_weightless_engine_cache_path_,
+                profile_cache_path);
+
+  single_serialized_weightless_engine_exists_ = std::filesystem::exists(serialized_weightless_engine_cache_path_);
+  return single_serialized_weightless_engine_exists_;
 }
 
 }  // namespace onnxruntime
