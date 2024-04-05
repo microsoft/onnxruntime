@@ -178,9 +178,9 @@ export const createMatMulNBitsProgramInfo =
             zero_point_word = ${zeroPoints.getByOffset('zero_point_index')};
           }` :
                                                   '';
+
         return useBlockwiseMatMulNBits ?
             `
-        const block_size = ${attributes.blockSize};
         var<workgroup> workgroup_shared: array<${output.type.value}, ${dimAOuter * workgroupSize[0]}>;
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart([
@@ -260,7 +260,6 @@ export const createMatMulNBitsProgramInfo =
               }
             }
           }
-
           workgroupBarrier();
           if (local_id.x == 0u) {
             ${output.indicesSet('output_indices', '0', 'batch')};
