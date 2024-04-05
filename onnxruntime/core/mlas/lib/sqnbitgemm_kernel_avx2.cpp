@@ -154,9 +154,9 @@ namespace
     FoldAccumulators(const __m256& acc0, const __m256& acc1, const __m256& acc2, const __m256& acc3)
   {
     __m256 acc_lo01 = _mm256_unpacklo_ps(acc0, acc1);
-    __m256 acc_hi01 = _mm256_unpacklo_ps(acc0, acc1);
+    __m256 acc_hi01 = _mm256_unpackhi_ps(acc0, acc1);
     __m256 acc_lo23 = _mm256_unpacklo_ps(acc2, acc3);
-    __m256 acc_hi23 = _mm256_unpacklo_ps(acc2, acc3);
+    __m256 acc_hi23 = _mm256_unpackhi_ps(acc2, acc3);
 
     __m256 acc_lo0123 = _mm256_castpd_ps(
       _mm256_unpacklo_pd(_mm256_castps_pd(acc_lo01), _mm256_castps_pd(acc_lo23)));
@@ -183,26 +183,27 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
     const std::byte* QuantBDataColPtr,
     const float* QuantBScaleColPtr,
     const std::byte* QuantBZeroPointColPtr,
-    float* SumPtr,
+    float* sum_ptr,
     size_t CountK,
     size_t StrideQuantBData,
     size_t StrideQuantBScale,
     size_t StrideQuantBZeroPoint,
-    const float* BiasPtr
+    const float* bias_ptr
 )
 {
-  constexpr size_t BlkBitWidth = 4;
-  constexpr size_t SubBlkLen = 16;
-  constexpr size_t SubBlkStep = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, SubBlkLen);
+  constexpr size_t BlkBitWidth4 = 4;
+  constexpr size_t SubBlkLen16 = 16;
+  constexpr size_t SubBlkStep8 = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, SubBlkLen16);
+  static_assert(SubBlkStep8 == 8);  // 16 * 4 / 8
 
   const __m256i lowMask = _mm256_set1_epi8(0xF);
 
-  __m256 acc_lo[NCols];
+  __m256 acc[NCols];
   UnrolledLoop<NCols>([&](size_t i) {
-    acc_lo[i] = _mm256_setzero_ps();
+    acc[i] = _mm256_setzero_ps();
     });
 
-  const std::byte* b = QuantBDataColPtr;
+  const std::byte* b_blk_data_ptr = QuantBDataColPtr;
   const float* s = QuantBScaleColPtr;
 
   [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
@@ -216,9 +217,9 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
       scale_v[i] = *(s + StrideQuantBScale * i);
       });
 
-    std::byte* bptr[NCols];
+    std::byte* b_blk_data_col_ptr[NCols];
     UnrolledLoop<NCols>([&](size_t i) {
-      bptr[i] = (std::byte *)(b + StrideQuantBData * i);
+      b_blk_data_col_ptr[i] = (std::byte *)(b_blk_data_ptr + StrideQuantBData * i);
       });
 
     [[maybe_unused]] uint8_t offset[NCols];
@@ -234,11 +235,11 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
         });
     }
 
-    for (size_t kk = 0; kk < ck; kk += SubBlkLen) {
-      size_t kklen = std::min((size_t)SubBlkLen, ck - kk);
+    for (size_t kk = 0; kk < ck; kk += SubBlkLen16) {
+      size_t kklen = std::min((size_t)SubBlkLen16, ck - kk);
 
       // Load A row vectors
-      uint32_t load_mask = 0xffff >> (SubBlkLen - kklen);
+      uint32_t load_mask = 0xffff >> (SubBlkLen16 - kklen);
       __m256 av_lo = _mm256_maskz_loadu_ps(__mmask8(load_mask), ARowPtr + k + kk);
 
       load_mask = load_mask >> 8;
@@ -249,38 +250,25 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
       UnrolledLoop<NCols>([&](size_t i) {
         // Load B col vectors. get SubBlkLen(16) 4 bits quantized features from each column
         // TODO: what happens if remaining k is less than SubBlkStep?
-        assert(SubBlkStep == 8);  // 16 * 4 / 8
-        __m128i bvi4 = _mm_loadu_si64(bptr[i]);
-        bptr[i] += SubBlkStep;
+        __m128i bvi4 = _mm_loadu_si64(b_blk_data_col_ptr[i]);
+        b_blk_data_col_ptr[i] += SubBlkStep8;
 
-        bool debug_b = false;
-        if (debug_b)
-#pragma warning(disable : 4309)
-          bvi4 = _mm_setr_epi8(
-            (0 & 0xf) | (1 << 4),
-            (2 & 0xf) | (3 << 4),
-            (4 & 0xf) | (5 << 4),
-            (6 & 0xf) | (7 << 4),
-            (8 & 0xf) | (9 << 4),
-            (10 & 0xf) | (11 << 4),
-            (12 & 0xf) | (13 << 4),
-            (14 & 0xf) | (15 << 4),
-            0, 0, 0, 0, 0, 0, 0, 0 // Fill the rest with zeros
-          );
+        // TODO: avoid _mm_set1_epi8
+        //__m128i lower_mask_epi8 = _mm_cmpeq_epi16(bvi4, bvi4); // can use any __m128i
+        //lower_mask_epi8 = _mm_srli_epi16(lower_mask_epi8, 13);
+        //lower_mask_epi8 = _mm_packus_epi16(lower_mask_epi8, lower_mask_epi8);
+        __m128i lower_mask_epi8 = _mm_set1_epi8(0x0F);  // Mask to isolate the lower 4 bits
+        __m128i lower_epi8 = _mm_and_si128(bvi4, lower_mask_epi8);
+        __m128i upper_epi8 = _mm_and_si128(_mm_srli_epi16(bvi4, 4), lower_mask_epi8);
 
-        // Interleave lower and upper to form the final 8-bit unpacked values
-        __m128i lower_mask = _mm_set1_epi8(0x0F);  // Mask to isolate the lower 4 bits
-        __m128i lower = _mm_and_si128(bvi4, lower_mask);
-        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi4, 4), lower_mask);
-
-        // Interleave lower and upper to form 8-bit unpacked values
-        __m128i unpacked = _mm_unpacklo_epi8(lower, upper);
+        // Interleave lower and upper to form 16 8-bit unpacked values
+        __m128i unpacked_epi8 = _mm_unpacklo_epi8(lower_epi8, upper_epi8);
 
         // Convert the unpacked 8-bit integers to 16-bit integers
-        __m256i bv_lo = _mm256_cvtepu8_epi32(unpacked);
+        __m256i bv_lo = _mm256_cvtepu8_epi32(unpacked_epi8);
 
         // Extract the second 8 8-bit integers
-        __m128i unpacked_next_8 = _mm_srli_si128(unpacked, 8);
+        __m128i unpacked_next_8 = _mm_srli_si128(unpacked_epi8, 8);
 
         // Extend the 8-bit integers to 32-bit integers
         __m256i bv_hi = _mm256_cvtepu8_epi32(unpacked_next_8);
@@ -309,33 +297,41 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
         bvf_hi[i] = _mm256_mul_ps(bvf_hi[i], s);
 
         // c[m,n] += a[m,k] * b[k,n]
-        acc_lo[i] = _mm256_fmadd_ps(bvf_lo[i], av_lo, acc_lo[i]);
-        acc_lo[i] = _mm256_fmadd_ps(bvf_hi[i], av_hi, acc_lo[i]);
+        acc[i] = _mm256_fmadd_ps(bvf_lo[i], av_lo, acc[i]);
+        acc[i] = _mm256_fmadd_ps(bvf_hi[i], av_hi, acc[i]);
         });
-    }
+    } // kk
 
-    b += MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    b_blk_data_ptr += MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen);
     s++;
 
     if constexpr (HasZeroPoint) {
       QuantBZeroPointIdx += 1;
     }
+  } // k
+
+  if constexpr (NCols == 4) {
+    __m128 acc_x = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
+    if (bias_ptr != nullptr) {
+      acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(bias_ptr));
+    }
+    _mm_storeu_ps(sum_ptr, acc_x);
   }
+  else {
+    UnrolledLoop<NCols>([&](size_t i) {
+      __m128 vlow = _mm256_castps256_ps128(acc[i]);
+      __m128 vhigh = _mm256_extractf128_ps(acc[i], 1); // Extract high 128 bit
 
-  // TODO: need to fix FoldAccumulators and call it when NCols == 4
-  UnrolledLoop<NCols>([&](size_t i) {
-    __m128 vlow = _mm256_castps256_ps128(acc_lo[i]);
-    __m128 vhigh = _mm256_extractf128_ps(acc_lo[i], 1); // Extract high 128 bit
+      // Add the two 128-bit vectors together
+      __m128 vsum = _mm_add_ps(vlow, vhigh);
+      // Horizontally add the elements of the resulting 128-bit vector
+      vsum = _mm_hadd_ps(vsum, vsum);
+      vsum = _mm_hadd_ps(vsum, vsum);
 
-    // Add the two 128-bit vectors together
-    __m128 vsum = _mm_add_ps(vlow, vhigh);
-    // Horizontally add the elements of the resulting 128-bit vector
-    vsum = _mm_hadd_ps(vsum, vsum);
-    vsum = _mm_hadd_ps(vsum, vsum);
-
-    _mm_store_ss(&SumPtr[i], vsum);
-    SumPtr[i] += BiasPtr == nullptr ? 0.0f : BiasPtr[i];
-    });
+      _mm_store_ss(&sum_ptr[i], vsum);
+      sum_ptr[i] += bias_ptr == nullptr ? 0.0f : bias_ptr[i];
+      });
+  }
 }
 
 template <bool HasZeroPoint>
@@ -1049,19 +1045,19 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
   assert(BlkLen % SubBlkLen == 0);
   // ported from MlasQ8Q4GemmKernelAvx512f
   const __m256i zero = _mm256_setzero_si256();
-  const __m128i lowMask = _mm_set1_epi8(0xF);
+  const __m128i low_mask = _mm_set1_epi8(0xF);
 
   constexpr size_t BlkBitWidth = 4;
   constexpr size_t SubBlkStep = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, SubBlkLen);
 
-  __m256 acc_lo[NCols];
+  __m256 acc[NCols];
   UnrolledLoop<NCols>([&](size_t i) {
-    acc_lo[i] = _mm256_setzero_ps();
+    acc[i] = _mm256_setzero_ps();
     });
 
   const std::byte* ablob = QuantARowPtr;
-  const auto* b = QuantBDataColPtr;
-  const float* s = QuantBScaleColPtr;
+  const auto* b_blk_data_ptr = QuantBDataColPtr;
+  const float* blk_scale_ptr = QuantBScaleColPtr;
 
   [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
   // only used if HasZeroPoint == true
@@ -1074,12 +1070,12 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
 
     float scale_v[NCols];
     UnrolledLoop<NCols>([&](size_t i) {
-      scale_v[i] = (*(s + StrideQuantBScale * i)) * a_scale;
+      scale_v[i] = (*(blk_scale_ptr + StrideQuantBScale * i)) * a_scale;
       });
 
     std::byte* bptr[NCols];
     UnrolledLoop<NCols>([&](size_t i) {
-      bptr[i] = (std::byte*)(b + StrideQuantBData * i);
+      bptr[i] = (std::byte*)(b_blk_data_ptr + StrideQuantBData * i);
       });
 
     [[maybe_unused]] uint8_t offset[NCols];
@@ -1112,8 +1108,8 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
       // expand 4b into byte array
       __m256i bytes[NCols];
       UnrolledLoop<NCols>([&](size_t i) {
-        __m128i lower = _mm_and_si128(bvi[i], lowMask);
-        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi[i], 4), lowMask);
+        __m128i lower = _mm_and_si128(bvi[i], low_mask);
+        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi[i], 4), low_mask);
         __m128i u0 = _mm_unpacklo_epi8(lower, upper);
         __m128i u1 = _mm_unpackhi_epi8(lower, upper);
         bytes[i] = _mm256_set_m128i(u1, u0);
@@ -1140,28 +1136,27 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
           zero, _mm256_sign_epi8(bytes[i], bytes[i]), _mm256_sign_epi8(a_bytes, bytes[i]));
 
         const __m256 sums = _mm256_cvtepi32_ps(summed_pairs);
-        acc_lo[i] = _mm256_fmadd_ps(_mm256_set1_ps(scale_v[i]), sums, acc_lo[i]);
+        acc[i] = _mm256_fmadd_ps(_mm256_set1_ps(scale_v[i]), sums, acc[i]);
         });
     }
-    b += MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    s++;
+    b_blk_data_ptr += MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    blk_scale_ptr++;
     if constexpr (HasZeroPoint) {
       QuantBZeroPointIdx += 1;
     }
   }
 
-  // FoldAccumulators double count something: Expected: 1024 Actual: 2048@[0x0], M=1, N=32, K=1
-  //if constexpr (NCols == 4) {
-  //  __m128 acc_x = FoldAccumulators(acc_lo[0], acc_lo[1], acc_lo[2], acc_lo[3]);
-  //  if (BiasPtr != nullptr) {
-  //    acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(BiasPtr));
-  //  }
-  //  _mm_storeu_ps(SumPtr, acc_x);
-  //}
-  //else {
+  if constexpr (NCols == 4) {
+    __m128 acc_x = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
+    if (BiasPtr != nullptr) {
+      acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(BiasPtr));
+    }
+    _mm_storeu_ps(SumPtr, acc_x);
+  }
+  else {
     UnrolledLoop<NCols>([&](size_t i) {
-      __m128 vlow = _mm256_castps256_ps128(acc_lo[i]);
-      __m128 vhigh = _mm256_extractf128_ps(acc_lo[i], 1); // Extract high 128 bit
+      __m128 vlow = _mm256_castps256_ps128(acc[i]);
+      __m128 vhigh = _mm256_extractf128_ps(acc[i], 1); // Extract high 128 bit
 
       // Add the two 128-bit vectors together
       __m128 vsum = _mm_add_ps(vlow, vhigh);
@@ -1172,7 +1167,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
       _mm_store_ss(&SumPtr[i], vsum);
       SumPtr[i] += BiasPtr == nullptr ? 0.0f : BiasPtr[i];
       });
-  //}
+  }
 }
 
 template <bool HasZeroPoint>
