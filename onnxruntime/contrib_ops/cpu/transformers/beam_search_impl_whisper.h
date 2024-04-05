@@ -431,38 +431,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       decoder_fetches.clear();
     }
   }
- /*
-  if (decoder_subgraph_.output_cross_qk_) {
 
-    TensorShape cross_qk_shape{
-        static_cast<int64_t>(parameters->batch_size),
-        static_cast<int64_t>(parameters->num_return_sequences),
-        cross_qk_layer_head_pair_count,
-        static_cast<int64_t>(iteration_counter - 1),
-        frames_of_k};
-    cross_qk_output = this->context_.Output(3, cross_qk_shape);
-
-    size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
-    const int* cache_indir_data = decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>()->Data<int32_t>();
-    ORT_RETURN_IF_ERROR(this->finalize_decoder_cross_qk_func_(
-      this->ort_stream_,
-      iteration_counter,
-      current_length,
-      parameters->batch_size,
-      parameters->num_beams,
-      parameters->max_length,
-      static_cast<int>(cross_qk_layer_head_pair_count),
-      cross_qk_layer_head_pairs,
-      static_cast<int>(frames_of_k),
-      cross_qk_buffer_data,
-      cross_qk_output->MutableData<float>(),
-      parameters->num_return_sequences,
-      cache_indir_data,
-      ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices),
-      this->GetConsoleDumper(),
-      real_decoded_length));
-  }
-*/
   gsl::span<const float> final_beam_scores = beam_state.beam_scores;
   if (this->IsCuda()) {
     ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores,

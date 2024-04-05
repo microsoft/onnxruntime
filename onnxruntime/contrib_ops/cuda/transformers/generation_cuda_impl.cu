@@ -1082,7 +1082,6 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   const int batch = br / num_return_sequences;
   const int ret_seq_id = br % num_return_sequences;
 
-  // We shuffled around indices in UpdateDecoderCrossQK, so the desired beam will always be index 0
   const int src_beam = beam_indices[batch * num_beams + ret_seq_id] % num_beams;
 
   const int64_t offset_in_cache = ((int64_t)batch * num_beams + src_beam) * max_length + token_decoding_index + context_decoding_len;
@@ -1093,8 +1092,8 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   const T* src = cross_qk_buffer_data +
           ((int64_t)bi_src * layer_head_pair_count * max_length + (int64_t)pair * max_length + token_decoding_index) * frames_of_k;
   for (int tid = threadIdx.x; tid < frames_of_k; tid += blockDim.x) {
-      target[tid] = src[tid]; // use vectorized read write in future if needed
-    }
+    target[tid] = src[tid]; // use vectorized read write in future if needed
+  }
 }
 
 void LaunchFinalizeCrossQK(
