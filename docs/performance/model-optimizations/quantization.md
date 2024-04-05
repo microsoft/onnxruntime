@@ -38,11 +38,16 @@ Quantization in ONNX Runtime refers to 8 bit linear quantization of an ONNX mode
 
 ## ONNX quantization representation format
 There are two ways to represent quantized ONNX models:
-- Operator-oriented (QOperator). All the quantized operators have their own ONNX definitions, like QLinearConv, MatMulInteger and etc.
-- Tensor-oriented (QDQ; Quantize and DeQuantize). This format inserts DeQuantizeLinear(QuantizeLinear(tensor)) between the original operators to simulate the quantization and dequantization process. In Static Quantization, the QuantizeLinear and DeQuantizeLinear operators also carry the quantization parameters. In Dynamic Quantization, a ComputeQuantizationParameters function proto is inserted to calculate quantization parameters on the fly. Models generated in the following ways are in the QDQ format:
-  - Models quantized by quantize_static or quantize_dynamic API, explained below, with `quant_format=QuantFormat.QDQ`.
-  - Quantization-Aware training (QAT) models converted from Tensorflow or exported from PyTorch.
-  - Quantized models converted from TFLite and other frameworks.
+- Operator-oriented (QOperator) :  
+  All the quantized operators have their own ONNX definitions, like QLinearConv, MatMulInteger and etc.
+- Tensor-oriented (QDQ; Quantize and DeQuantize) :  
+  This format inserts DeQuantizeLinear(QuantizeLinear(tensor)) between the original operators to simulate the quantization and dequantization process.  
+  In Static Quantization, the QuantizeLinear and DeQuantizeLinear operators also carry the quantization parameters.  
+  In Dynamic Quantization, a ComputeQuantizationParameters function proto is inserted to calculate quantization parameters on the fly.
+- Models generated in the following ways are in the QDQ format:
+    1. Models quantized by quantize_static, explained below, with `quant_format=QuantFormat.QDQ`.
+    2. Quantization-Aware training (QAT) models converted from Tensorflow or exported from PyTorch.
+    3. Quantized models converted from TFLite and other frameworks.  
 
 For the latter two cases, you don't need to quantize the model with the quantization tool. ONNX Runtime can run them directly as a quantized model.
 
