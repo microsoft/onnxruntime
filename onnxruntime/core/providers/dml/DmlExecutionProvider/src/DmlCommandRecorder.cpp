@@ -359,23 +359,23 @@ void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* com
 {
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
-    onnxruntime::concurrency::ThreadPool::Schedule(m_threadPool.get(), [this, currentCommandListInfo = m_currentCommandListInfo]() {
-        currentCommandListInfo->completionEvent.WaitForSignal();
-        ORT_THROW_IF_FAILED(currentCommandListInfo->allocator->Reset());
-        ORT_THROW_IF_FAILED(currentCommandListInfo->commandList->Reset(currentCommandListInfo->allocator.Get(), nullptr));
-
-        {
-            std::unique_lock lock(m_mutex);
-            m_availableCommandLists.push_back(std::move(currentCommandListInfo));
-        }
-    });
-
     ID3D12GraphicsCommandList* commandListsToExecute[2] = {};
     uint32_t commandListsToExecuteCount = 0;
 
     if (m_operationsRecordedInCurrentCommandList)
     {
         commandListsToExecute[commandListsToExecuteCount++] = m_currentCommandList.Get();
+
+        onnxruntime::concurrency::ThreadPool::Schedule(m_threadPool.get(), [this, currentCommandListInfo = m_currentCommandListInfo]() {
+            currentCommandListInfo->completionEvent.WaitForSignal();
+            ORT_THROW_IF_FAILED(currentCommandListInfo->allocator->Reset());
+            ORT_THROW_IF_FAILED(currentCommandListInfo->commandList->Reset(currentCommandListInfo->allocator.Get(), nullptr));
+
+            {
+                std::unique_lock lock(m_mutex);
+                m_availableCommandLists.push_back(std::move(currentCommandListInfo));
+            }
+        });
     }
 
     if (commandList)
