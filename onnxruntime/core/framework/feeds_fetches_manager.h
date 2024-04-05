@@ -73,8 +73,6 @@ struct FeedsFetchesInfo {
 struct MLValueCopyInfo {
   OrtDevice source_device{};
   OrtDevice target_device{};  // default is CPU
-
-  // if all the consume ops are from the same stream, this variable is the stream index; otherwise -1
   int unique_stream_index_consumes_it = -1;
 };
 

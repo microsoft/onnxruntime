@@ -45,10 +45,8 @@ public enum OnnxJavaType {
 
   /** The native value of the enum. */
   public final int value;
-
   /** The Java side type used as the carrier. */
   public final Class<?> clazz;
-
   /** The number of bytes used by a single value of this type. */
   public final int size;
 

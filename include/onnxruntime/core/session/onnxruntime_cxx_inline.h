@@ -7,26 +7,16 @@
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
 
-#include <algorithm>
+#include <cstring>
 #include <functional>
-#include <iterator>
-#include <type_traits>
 
-// Convert OrtStatus to Ort::Status and return
-// instead of throwing
-#define ORT_CXX_RETURN_ON_API_FAIL(expression) \
-  {                                            \
-    auto ort_status = (expression);            \
-    if (ort_status) {                          \
-      return Ort::Status(ort_status);          \
-    }                                          \
+#define RETURN_ON_API_FAIL(expression) \
+  {                                    \
+    auto err = (expression);           \
+    if (err) {                         \
+      return Status(err);              \
+    }                                  \
   }
-
-#ifdef __cpp_if_constexpr
-#define ORT_CXX_IF_CONSTEXPR if constexpr
-#else
-#define ORT_CXX_IF_CONSTEXPR if
-#endif
 
 namespace Ort {
 
@@ -1977,7 +1967,7 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
 
 inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shape) {
   OrtTensorTypeAndShapeInfo* info = {};
-  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->CreateTensorTypeAndShapeInfo(&info));
+  RETURN_ON_API_FAIL(ort_api_->CreateTensorTypeAndShapeInfo(&info));
 
   using InfoPtr = std::unique_ptr<OrtTensorTypeAndShapeInfo, std::function<void(OrtTensorTypeAndShapeInfo*)>>;
 
@@ -2001,9 +1991,9 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
     }
   }
 
-  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->SetDimensions(info, integer_dims.data(), integer_dims.size()));
-  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->SetSymbolicDimensions(info, symbolic_dims.data(), symbolic_dims.size()));
-  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->ShapeInferContext_SetOutputTypeShape(ctx_, indice, info));
+  RETURN_ON_API_FAIL(ort_api_->SetDimensions(info, integer_dims.data(), integer_dims.size()));
+  RETURN_ON_API_FAIL(ort_api_->SetSymbolicDimensions(info, symbolic_dims.data(), symbolic_dims.size()));
+  RETURN_ON_API_FAIL(ort_api_->ShapeInferContext_SetOutputTypeShape(ctx_, indice, info));
   return Status{nullptr};
 }
 

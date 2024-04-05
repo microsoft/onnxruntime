@@ -98,27 +98,12 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
   return true;
 }
 
-/*
- * Get number of profile setting.
- *
- * profile_min_shapes/profile_max_shapes/profile_opt_shapes may contain multiple profile settings.
- * Note: TRT EP currently only supports one profile setting.
- *
- * {
- *   tensor_a: [[dim_0_value_0, dim_1_value_1, dim_2_value_2]],
- *   tensor_b: [[dim_0_value_3, dim_1_value_4, dim_2_value_5]]
- * }
- *
- */
 int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
-  int num_profile = 0;
-  for (auto it = profile_shapes.begin(); it != profile_shapes.end(); it++) {
-    num_profile = static_cast<int>(it->second.size());
-    if (num_profile > 0) {
-      break;
-    }
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
+  for (it = profile_shapes.begin(); it != profile_shapes.end(); it++) {
+    return static_cast<int>(it->second.size());
   }
-  return num_profile;
+  return 0;
 }
 
 /*
@@ -171,10 +156,10 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, in
   auto tensors_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
   auto keys = tensors_range_entries.Keys();
   auto values = tensors_range_entries.Values();
-  for (size_t i = 0, i_end = keys.size(); i < i_end; ++i) {
+  for (size_t i = 0, end = keys.size(); i < end; ++i) {
     auto dim_range_vectors = values[i].AsTypedVector();
     std::unordered_map<size_t, std::pair<int64_t, int64_t>> inner_map;
-    for (size_t j = 0, j_end = dim_range_vectors.size() / 3; j < j_end; ++j) {
+    for (size_t j = 0, end = dim_range_vectors.size() / 3; j < end; ++j) {
       size_t idx = 3 * j;
       inner_map[dim_range_vectors[idx].AsInt64()] = std::make_pair(dim_range_vectors[idx + 1].AsInt64(), dim_range_vectors[idx + 2].AsInt64());
     }

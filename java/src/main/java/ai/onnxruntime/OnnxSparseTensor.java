@@ -637,7 +637,6 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
 
     /** The buffer holding the indices. */
     final T indices;
-
     /** The buffer holding the values. */
     final Buffer values;
 

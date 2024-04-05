@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "directx/d3d12.h"
+#include <d3d12.h>
 
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 

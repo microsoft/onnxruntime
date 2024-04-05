@@ -21,7 +21,6 @@ constexpr const char* kMemLimit = "npu_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kEnableCannGraph = "enable_cann_graph";
 constexpr const char* kDumpGraphs = "dump_graphs";
-constexpr const char* kDumpOmModel = "dump_om_model";
 constexpr const char* kPrecisionMode = "precision_mode";
 constexpr const char* kOpSelectImplMode = "op_select_impl_mode";
 constexpr const char* kOpTypeListForImplMode = "optypelist_for_implmode";
@@ -59,7 +58,6 @@ CANNExecutionProviderInfo CANNExecutionProviderInfo::FromProviderOptions(const P
               arena_extend_strategy_mapping, info.arena_extend_strategy)
           .AddAssignmentToReference(cann::provider_option_names::kEnableCannGraph, info.enable_cann_graph)
           .AddAssignmentToReference(cann::provider_option_names::kDumpGraphs, info.dump_graphs)
-          .AddAssignmentToReference(cann::provider_option_names::kDumpOmModel, info.dump_om_model)
           .AddAssignmentToReference(cann::provider_option_names::kPrecisionMode, info.precision_mode)
           .AddAssignmentToReference(cann::provider_option_names::kOpSelectImplMode, info.op_select_impl_mode)
           .AddAssignmentToReference(cann::provider_option_names::kOpTypeListForImplMode, info.optypelist_for_implmode)
@@ -75,7 +73,6 @@ ProviderOptions CANNExecutionProviderInfo::ToProviderOptions(const CANNExecution
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cann::provider_option_names::kEnableCannGraph, MakeStringWithClassicLocale(info.enable_cann_graph)},
       {cann::provider_option_names::kDumpGraphs, MakeStringWithClassicLocale(info.dump_graphs)},
-      {cann::provider_option_names::kDumpOmModel, MakeStringWithClassicLocale(info.dump_om_model)},
       {cann::provider_option_names::kPrecisionMode, MakeStringWithClassicLocale(info.precision_mode)},
       {cann::provider_option_names::kOpSelectImplMode, MakeStringWithClassicLocale(info.op_select_impl_mode)},
       {cann::provider_option_names::kOpTypeListForImplMode, MakeStringWithClassicLocale(info.optypelist_for_implmode)}};
@@ -90,7 +87,6 @@ ProviderOptions CANNExecutionProviderInfo::ToProviderOptions(const OrtCANNProvid
        EnumToName(arena_extend_strategy_mapping, ArenaExtendStrategy(info.arena_extend_strategy))},
       {cann::provider_option_names::kEnableCannGraph, MakeStringWithClassicLocale(info.enable_cann_graph)},
       {cann::provider_option_names::kDumpGraphs, MakeStringWithClassicLocale(info.dump_graphs)},
-      {cann::provider_option_names::kDumpOmModel, MakeStringWithClassicLocale(info.dump_om_model)},
       {cann::provider_option_names::kPrecisionMode, MakeStringWithClassicLocale(info.precision_mode)},
       {cann::provider_option_names::kOpSelectImplMode, MakeStringWithClassicLocale(info.op_select_impl_mode)},
       {cann::provider_option_names::kOpTypeListForImplMode, MakeStringWithClassicLocale(info.optypelist_for_implmode)}};

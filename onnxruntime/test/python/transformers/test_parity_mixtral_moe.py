@@ -226,9 +226,9 @@ class MixtralSparseMoeBlock(nn.Module):
         w2_list = []
         w3_list = []
         for i in range(self.num_experts):
-            w1_list.append(self.experts[i].w1.weight)
-            w2_list.append(self.experts[i].w2.weight)
-            w3_list.append(self.experts[i].w3.weight)
+            w1_list.append(self.experts[i].w1.weight.transpose(0, 1))
+            w2_list.append(self.experts[i].w2.weight.transpose(0, 1))
+            w3_list.append(self.experts[i].w3.weight.transpose(0, 1))
 
         self.moe_experts_weight1 = torch.stack(w1_list, dim=0)
         self.moe_experts_weight2 = torch.stack(w2_list, dim=0)

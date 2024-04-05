@@ -42,7 +42,7 @@ namespace cutlass {
 namespace layout {
 
 template <int RowsPerTile, int ColumnsInterleaved>
-struct ColumnMajorTileInterleave {
+class ColumnMajorTileInterleave {
   static constexpr int kRowsPerTile = RowsPerTile;
   static constexpr int kColumnsInterleaved = ColumnsInterleaved;
 };

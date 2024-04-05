@@ -783,7 +783,7 @@ export interface ShaderHelper {
 }
 
 class ShaderHelperImpl implements ShaderHelper {
-  constructor(private normalizedDispatchGroup: [number, number, number], private limits: GPUSupportedLimits) {}
+  constructor(private normalizedDispatchGroup: [number, number, number]) {}
 
   guardAgainstOutOfBoundsWorkgroupSizes(size: number|string): string {
     // Guard against out-of-bounds work group sizes
@@ -796,26 +796,11 @@ class ShaderHelperImpl implements ShaderHelper {
     const workgroupSizeY = typeof workgroupSize === 'number' ? 1 : workgroupSize[1];
     const workgroupSizeZ = typeof workgroupSize === 'number' ? 1 : workgroupSize[2];
 
-    if (workgroupSizeX > this.limits.maxComputeWorkgroupSizeX ||
-        workgroupSizeY > this.limits.maxComputeWorkgroupSizeY ||
-        workgroupSizeZ > this.limits.maxComputeWorkgroupSizeZ) {
-      throw new Error(`workgroup size [${workgroupSizeX}, ${workgroupSizeY}, ${
-          workgroupSizeZ}] exceeds the maximum workgroup size [${this.limits.maxComputeWorkgroupSizeX}, ${
-          this.limits.maxComputeWorkgroupSizeY}, ${this.limits.maxComputeWorkgroupSizeZ}].`);
-    }
-
-    if (workgroupSizeX * workgroupSizeY * workgroupSizeZ > this.limits.maxComputeInvocationsPerWorkgroup) {
-      throw new Error(`workgroup size [${workgroupSizeX}, ${workgroupSizeY}, ${
-          workgroupSizeZ}] exceeds the maximum workgroup invocations ${
-          this.limits.maxComputeInvocationsPerWorkgroup}.`);
-    }
-
     const is1DimensionDispatch = this.normalizedDispatchGroup[1] === 1 && this.normalizedDispatchGroup[2] === 1;
     const paramList = is1DimensionDispatch ? `@builtin(global_invocation_id) global_id : vec3<u32>,
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(local_invocation_id) local_id : vec3<u32>` :
-                                             `@builtin(global_invocation_id) global_id : vec3<u32>,
-                                             @builtin(local_invocation_id) local_id : vec3<u32>,
+                                             `@builtin(local_invocation_id) local_id : vec3<u32>,
     @builtin(local_invocation_index) local_idx : u32,
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(num_workgroups) num_workgroups : vec3<u32>`;
@@ -934,8 +919,7 @@ class ShaderHelperImpl implements ShaderHelper {
   }
 }
 
-export const createShaderHelper = (dispatchGroup: [number, number, number], limits: GPUSupportedLimits) =>
-    new ShaderHelperImpl(dispatchGroup, limits);
+export const createShaderHelper = (dispatchGroup: [number, number, number]) => new ShaderHelperImpl(dispatchGroup);
 
 /**
  * This function comes from https://github.com/tensorflow/tfjs/blob/master/tfjs-core/src/ops/broadcast_util.ts#L18-L40

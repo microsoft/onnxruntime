@@ -415,7 +415,7 @@ template <typename EdgeType> void PopulateEdges(
                 if (edgeToOutgoingNodeIndexMap.find(edgeName->string_view()) == edgeToOutgoingNodeIndexMap.end())
                 {
                     throw std::range_error("Neither there is any graph input with name " + edgeName->str() + 
-                                           " nor there is any node which has " + edgeName->str() + " as one of the output.");
+                                           "nor there is any node which has " + edgeName->str() + " as one of the output.");
                 }
                 auto& intermediateEdgeNodeIndex = edgeToOutgoingNodeIndexMap[edgeName->string_view()];
                 DmlIntermediateSerializedGraphEdge intermediateEdge = {};
@@ -475,7 +475,6 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
             inputEdges,
             intermediateEdges,
             edgeToOutgoingNodeIndexMap);
-
         PopulateEdges<DmlOutputSerializedGraphEdge>(
             nodeIndex,
             flatbufferNode->outputNames(),
@@ -483,7 +482,7 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
             outputEdges,
             intermediateEdges,
             edgeToOutgoingNodeIndexMap);
-        
+
         DmlSerializedGraphNode node = {};
         if (flatbufferNode->name()->size() == 0)
         {
@@ -504,7 +503,7 @@ DmlSerializedGraphDesc DeserializeDmlGraph(
 
                 ConstantName constantNode = {flatbufferConstantNode->data_as_ConstantName()->name()->c_str()};
                 node.Desc = constantNode;
-                // Output of this node will be part of constantInputs list.
+                // output of this node will part of constantInputs list
                 for (uint32_t outputIndex = 0; outputIndex < flatbufferNode->outputNames()->size(); outputIndex++)
                 {
                     constantInputs.insert(flatbufferNode->outputNames()->Get(outputIndex)->c_str());

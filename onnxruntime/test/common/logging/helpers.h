@@ -5,6 +5,7 @@
 
 #include <sstream>
 
+#include "date/date.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -29,7 +30,7 @@ class MockSink : public ::onnxruntime::logging::ISink {
 #endif
 
 ACTION(PrintArgs) {
-  using onnxruntime::logging::timestamp_ns::operator<<;
+  using date::operator<<;
 
   // const Timestamp &timestamp, const std::string &logger_id, const Message &message
   //                  arg0                          arg1                        arg2

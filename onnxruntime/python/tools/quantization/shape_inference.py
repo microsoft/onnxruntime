@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 def quant_pre_process(
-    input_model: Optional[Union[str, Path, onnx.ModelProto]] = None,
-    output_model_path: Optional[Union[str, Path]] = None,
+    input_model: Union[str, Path, onnx.ModelProto],
+    output_model_path: Union[str, Path],
     skip_optimization: bool = False,
     skip_onnx_shape: bool = False,
     skip_symbolic_shape: bool = False,
@@ -36,7 +36,6 @@ def quant_pre_process(
     all_tensors_to_one_file: bool = False,
     external_data_location: Optional[str] = None,
     external_data_size_threshold: int = 1024,
-    **deprecated_kwargs,
 ) -> None:
     """Shape inference and model optimization, in preparation for quantization.
 
@@ -64,13 +63,6 @@ def quant_pre_process(
         external_data_location: The file location to save the external file
         external_data_size_threshold: The size threshold for external data
     """
-
-    if input_model is None:
-        input_model = deprecated_kwargs.pop("input_model_path", None)
-    assert input_model is not None
-
-    assert output_model_path is not None, "output_model_path is required."
-
     with tempfile.TemporaryDirectory(prefix="pre.quant.") as quant_tmp_dir:
         temp_path = Path(quant_tmp_dir)
         model = None
