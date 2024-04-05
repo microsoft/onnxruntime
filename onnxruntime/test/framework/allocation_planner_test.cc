@@ -1974,6 +1974,74 @@ TEST_F(PlannerTest, TestCpuIf) {
     ASSERT_TRUE(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()) == WaitOnEPStep);
   }
 }
+
+// model looks like:
+//                                                 |-----------> Gather
+//                                                 |-----------> Gather
+//                                                 |-----------> Gather
+//                                                 |-----------> Gather
+// Shape ----------------> Reshape --> Shape ------------------> Reshape
+//                           ^                                     ^
+// InstanceNormalization ----|         InstanceNormalization ------|
+//
+// Python script to create this model:
+// def CreateModelFor19480():
+//    #shape->reshape->shape->reshape, 4 gather
+//    graphNodes = []
+//    graphNodes.append(h.make_node('Shape', inputs=['shape_input'], outputs=['9']))
+//    graphNodes.append(h.make_node('InstanceNormalization', inputs=['in0_input', 'scale0', 'B0'], outputs=['8']))
+//    graphNodes.append(h.make_node('Reshape', inputs=['8', '9'], outputs=['Reshape15_output']))
+//    graphNodes.append(h.make_node('Shape', inputs=['Reshape15_output'], outputs=['281']))
+//    graphNodes.append(h.make_node('InstanceNormalization', inputs=['in1_input', 'scale1', 'B1'], outputs=['293']))
+//    graphNodes.append(h.make_node('Reshape', inputs=['293', '281'], outputs=['output0']))
+//    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices1'], outputs=['output1']))
+//    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices2'], outputs=['output2']))
+//    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices3'], outputs=['output3']))
+//    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices4'], outputs=['output4']))
+//    g = h.make_graph(graphNodes, 'issue_19480',
+//                     [h.make_tensor_value_info('shape_input', tp.FLOAT, ['batch', 128, None, None]),
+//                      h.make_tensor_value_info('in0_input', tp.FLOAT, ['batch', 32, None]),
+//                      h.make_tensor_value_info('scale0', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('B0', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('in1_input', tp.FLOAT, ['batch', 32, None]),
+//                      h.make_tensor_value_info('scale1', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('B1', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('indices1', tp.INT32, []),
+//                      h.make_tensor_value_info('indices2', tp.INT32, []),
+//                      h.make_tensor_value_info('indices3', tp.INT32, []),
+//                      h.make_tensor_value_info('indices4', tp.INT32, [])],
+//                     [h.make_tensor_value_info('output0', tp.FLOAT, None),
+//                      h.make_tensor_value_info('output1', tp.INT64, None),
+//                      h.make_tensor_value_info('output2', tp.INT64, None),
+//                      h.make_tensor_value_info('output3', tp.INT64, None),
+//                      h.make_tensor_value_info('output4', tp.INT64, None)])
+//    model = h.make_model(g, opset_imports=[h.make_operatorsetid("", 17)], producer_name='producer_name')
+//    onnx.save(model, 'issue_19480.onnx')
+//
+TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/issue_19480.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  status = sess.Load();
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK()) << "No crash";
+  const SequentialExecutionPlan* plan = sess.GetSessionState().GetExecutionPlan();
+  ASSERT_EQ(plan->allocation_plan[14].alloc_kind, AllocKind::kReuse) << "The input of reshape and gather will reuse the output of shape";
+
+  int gather_count = 0;
+  for (size_t i = 0; i < plan->execution_plan[1]->steps_.size(); i++) {
+    if (strstr(typeid(*(plan->execution_plan[1]->steps_[i])).name(), "LaunchKernelStep")) {
+      const Node* node = sess.GetSessionState().GetGraphViewer().GetNode(plan->execution_plan[1]->steps_[i]->GetNodeIndex());
+      if (node->OpType() == "Gather")
+        gather_count++;
+      else
+        FAIL() << "CPU stream should contain only gather ops";
+    }
+  }
+  ASSERT_EQ(gather_count, 4) << "4 gather ops are all placed in CPU stream";
+}
 #endif
 }  // namespace test
 }  // namespace onnxruntime
