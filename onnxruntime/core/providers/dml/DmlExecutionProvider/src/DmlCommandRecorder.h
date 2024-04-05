@@ -18,8 +18,6 @@ namespace Dml
             IDMLDevice* device,
             std::shared_ptr<CommandQueue> commandQueue);
 
-        ~DmlCommandRecorder();
-
         void InitializeOperator(
             IDMLCompiledOperator* op,
             const DML_BINDING_DESC& persistentResourceBinding,

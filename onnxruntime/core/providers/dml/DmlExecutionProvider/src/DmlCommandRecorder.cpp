@@ -28,18 +28,6 @@ DmlCommandRecorder::DmlCommandRecorder(
       true);
 }
 
-DmlCommandRecorder::~DmlCommandRecorder()
-{
-    // Detach the threads to avoid crashes when terminating the program
-    for (auto& resetThread : m_resetThreads)
-    {
-        if (resetThread)
-        {
-            resetThread->detach();
-        }
-    }
-}
-
 void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
 {
     m_bufferAllocator = allocator;
