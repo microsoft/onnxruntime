@@ -1489,8 +1489,7 @@ Status UpdateDecoderCrossQK(
     AllocatorPtr allocator,
     gsl::span<const int32_t> beam_indices_gpu,
     OrtValue cross_qk_buffer_value,
-    int num_beams,
-    const transformers::IConsoleDumper* dumper) {
+    int num_beams) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   if (qk_layer_pointers.get() == nullptr) {
@@ -1525,6 +1524,7 @@ Status UpdateDecoderCrossQK(
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
+  
   // Shuffle according to new beam_indices
   cudaStreamSynchronize(cuda_stream);
 
@@ -1556,9 +1556,6 @@ Status UpdateDecoderCrossQK(
   }
 
   cross_qk_buffer_data = new_cross_qk_span.data();
-
-  //dumper->Print("Cross_QK_Scores update:", cross_qk_buffer_data, batchxbeam, max_length, frames); //batchxbeam, layer_head_pair_count, max_length, frame
-
   return Status::OK();
 }
 
@@ -1576,14 +1573,13 @@ Status FinalizeDecoderCrossQK(
     float* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data,
-    gsl::span<const int32_t> beam_indices_gpu,
-    int real_decoded_length) {
+    gsl::span<const int32_t> beam_indices_gpu) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   
   cuda::LaunchFinalizeCrossQK(
     cuda_stream,
-    real_decoded_length,
+    iteration_number,
     context_decoding_len,
     batch_size,
     num_beams,

@@ -1100,8 +1100,7 @@ Status UpdateDecoderCrossQK(
     [[maybe_unused]] AllocatorPtr allocator,
     [[maybe_unused]] gsl::span<const int32_t> beam_indices_gpu,
     [[maybe_unused]] OrtValue cross_qk_buffer_value,
-    [[maybe_unused]] int num_beams,
-    [[maybe_unused]] const transformers::IConsoleDumper* dumper
+    [[maybe_unused]] int num_beams
 ) {
   throw std::runtime_error("CPU beam search current not support output cross QK.");
   return Status::OK();
@@ -1121,8 +1120,7 @@ Status FinalizeDecoderCrossQK(
     [[maybe_unused]] float* cross_qk_output,
     [[maybe_unused]] int num_return_sequences,
     [[maybe_unused]] const int* cache_indir_data,
-    [[maybe_unused]] gsl::span<const int32_t> beam_indices,
-    [[maybe_unused]] int real_decoded_length
+    [[maybe_unused]] gsl::span<const int32_t> beam_indices
 ) {
   throw std::runtime_error("CPU beam search current not support output cross QK.");
   return Status::OK();

@@ -384,8 +384,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         this->temp_space_allocator_,
         ReinterpretAsSpan<const int32_t>(beam_indices),
         cross_qk_buffer_value,
-        parameters->num_beams,
-        this->GetConsoleDumper()));
+        parameters->num_beams));
     }
 
     // When all batches are finished, stop earlier to avoid wasting computation.
@@ -501,18 +500,12 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   }
 
   if (decoder_subgraph_.output_cross_qk_) {
-      // Trim output of Cross_QK to match real sequence size
-    int real_decoded_length = 0;
-    for (int i = 0; i < output_sequences->Shape()[2]; i++) { // Assumes num_return_sequences and batch size == 1, need to change for bsz
-      if (output_sequences->MutableDataAsSpan<int32_t>().data()[i] != parameters->eos_token_id)
-        real_decoded_length++;
-    }
-
+      // Copy Cross_QK values to match real sequence size for each batch 
     TensorShape cross_qk_shape{
         static_cast<int64_t>(parameters->batch_size),
         static_cast<int64_t>(parameters->num_return_sequences),
         cross_qk_layer_head_pair_count,
-        static_cast<int64_t>(real_decoded_length-1),
+        static_cast<int64_t>(iteration_counter-1),
         frames_of_k};
     cross_qk_output = this->context_.Output(3, cross_qk_shape);
 
@@ -532,12 +525,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       cross_qk_output->MutableData<float>(),
       parameters->num_return_sequences,
       cache_indir_data,
-      ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices),
-      real_decoded_length));
-    }
-
-
-
+      ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)));
+  }
   return status;
 }
 

@@ -1083,24 +1083,23 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   const int ret_seq_id = br % num_return_sequences;
 
   // We shuffled around indices in UpdateDecoderCrossQK, so the desired beam will always be index 0
-  const int src_beam = 0;//beam_indices[batch * num_beams + ret_seq_id] % num_beams;
+  const int src_beam = beam_indices[batch * num_beams + ret_seq_id] % num_beams;
 
   const int64_t offset_in_cache = ((int64_t)batch * num_beams + src_beam) * max_length + token_decoding_index + context_decoding_len;
   int bm_mapped = ((num_beams <= 1) ? 0: ((token_decoding_index == total_decoding_length - 1) ?  ret_seq_id : cache_indir_data[offset_in_cache]));
   int bi_src = batch * num_beams + bm_mapped;
-
   T* target =  cross_qk_output +
           (((int64_t)br * layer_head_pair_count + (int64_t)pair) * total_decoding_length + token_decoding_index) * frames_of_k;
   const T* src = cross_qk_buffer_data +
           ((int64_t)bi_src * layer_head_pair_count * max_length + (int64_t)pair * max_length + token_decoding_index) * frames_of_k;
   for (int tid = threadIdx.x; tid < frames_of_k; tid += blockDim.x) {
-    target[tid] = src[tid]; // use vectorized read write in future if needed
-  }
+      target[tid] = src[tid]; // use vectorized read write in future if needed
+    }
 }
 
 void LaunchFinalizeCrossQK(
     cudaStream_t stream,
-    int real_decoding_len,
+    int iteration_number,
     int context_decoding_len,
     int batch_size,
     int num_beams,
@@ -1116,7 +1115,7 @@ void LaunchFinalizeCrossQK(
 ) {
   int64_t br = (int64_t)batch_size * num_return_sequences;
   ORT_ENFORCE(br < 65536L && cross_qk_layer_head_pair_count < 65536);
-  const int total_decoding_length = real_decoding_len - 1;
+  const int total_decoding_length = iteration_number - 1;
   dim3 block(512);
   dim3 grid(total_decoding_length, cross_qk_layer_head_pair_count, (unsigned)br);
   typedef typename ToCudaType<float>::MappedType CudaT;
