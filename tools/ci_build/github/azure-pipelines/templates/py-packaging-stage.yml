@@ -475,9 +475,9 @@ stages:
       - template: py-win-arm64-qnn.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
-          QNN_SDK: 'qnn-v2.18.0.240101_win'
+          QNN_SDK: 'qnn-v2.19.2.240210_win'
           PYTHON_VERSION: '3.11'
-          NUMPY_VERSION: '1.25.2'
+          NUMPY_VERSION: '1.26.4'
 
   - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
     - stage: Python_Packaging_Windows_x64_QNN
@@ -486,4 +486,4 @@ stages:
         - template: py-win-x64-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-            QNN_SDK: 'qnn-v2.18.0.240101_win'
+            QNN_SDK: 'qnn-v2.19.2.240210_win'
