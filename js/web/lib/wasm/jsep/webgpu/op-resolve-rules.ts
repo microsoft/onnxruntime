@@ -27,6 +27,7 @@ import * as pool from './ops/pool';
 import {range} from './ops/range';
 import {reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
+import {rotaryEmbedding} from './ops/rotary-embedding';
 import {skipLayerNorm} from './ops/skip-layer-norm';
 import {parseSliceAttributes, slice} from './ops/slice';
 import {parseSoftmaxAttributes, softmax} from './ops/softmax';
@@ -116,6 +117,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ReduceSumSquare', [reduceSumSquare]],
   ['Relu', [unaryOps.relu]],
   ['Resize', [resize, parseResizeAttributes]],
+  ['RotaryEmbedding', [rotaryEmbedding]],
   ['Sigmoid', [unaryOps.sigmoid]],
   ['Sin', [unaryOps.sin]],
   ['Sinh', [unaryOps.sinh]],
