@@ -24,15 +24,15 @@ namespace contrib {
 // TODO: How can I specify float32 for cpu only
 // These ops are internal-only, so register outside of onnx
 ONNX_OPERATOR_TYPED_KERNEL_EX(
-    GroupQueryAttention,
-    kMSDomain,
-    1,
-    float,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>()}),
-    GroupQueryAttention<float>);
+  GroupQueryAttention,
+  kMSDomain,
+  1,
+  float,
+  kCpuExecutionProvider,
+  KernelDefBuilder()
+    .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+    .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>()}),
+  GroupQueryAttention<float>);
 
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info) : OpKernel(info), GQAAttentionBase(info, false) {
@@ -111,7 +111,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   GroupQueryAttentionParameters parameters = {};
   constexpr float scale = 1.0f;
-//   bool past_present_share_buffer = false;
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                 key,
                                                                 value,

@@ -1104,7 +1104,7 @@ def parity_check_gqa_prompt(
     out = out.detach().cpu().numpy()
 
     # print(cache_seqlens[0])
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[0, 0, :, 0])
+    # print((present_k - k_cache_ref.detach().cpu().numpy())[:, 0, :, 0])
     # print((out - out_ref)[0, :, 0, 0])
 
     # Make sure past-present buffer updating correctly
@@ -1800,7 +1800,7 @@ class TestGQA(unittest.TestCase):
         # rotary_interleaved = False
         # past_kv_format = Formats.BNSH
         # packed = False
-        # parity_check_gqa_prompt_no_buff(
+        # parity_check_gqa_prompt(
         #     config,
         #     local=local,
         #     past_format=past_kv_format,
@@ -1823,14 +1823,14 @@ class TestGQA(unittest.TestCase):
                         rotary_interleaved = False
                         past_kv_format = Formats.BNSH
                         packed = False
-                        # parity_check_gqa_prompt(
-                        #     config,
-                        #     local=local,
-                        #     past_format=past_kv_format,
-                        #     rotary=rotary,
-                        #     rotary_interleaved=rotary_interleaved,
-                        #     packed=packed,
-                        # )
+                        parity_check_gqa_prompt(
+                            config,
+                            local=local,
+                            past_format=past_kv_format,
+                            rotary=rotary,
+                            rotary_interleaved=rotary_interleaved,
+                            packed=packed,
+                        )
                         parity_check_gqa_prompt_no_buff(
                             config,
                             local=local,
@@ -1895,16 +1895,16 @@ class TestGQA(unittest.TestCase):
                         rotary_interleaved = False
                         past_kv_format = Formats.BNSH
                         packed = False
-                        # parity_check_gqa_past(
-                        #     config,
-                        #     local=local,
-                        #     past_format=past_kv_format,
-                        #     rtol=1e-3,
-                        #     atol=1e-3,
-                        #     rotary=rotary,
-                        #     rotary_interleaved=rotary_interleaved,
-                        #     packed=packed,
-                        # )
+                        parity_check_gqa_past(
+                            config,
+                            local=local,
+                            past_format=past_kv_format,
+                            rtol=1e-3,
+                            atol=1e-3,
+                            rotary=rotary,
+                            rotary_interleaved=rotary_interleaved,
+                            packed=packed,
+                        )
                         parity_check_gqa_past_no_buff(
                             config,
                             local=local,

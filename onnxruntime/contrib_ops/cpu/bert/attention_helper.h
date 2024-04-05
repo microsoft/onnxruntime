@@ -176,7 +176,7 @@ void PrepareMaskGQA(T* mask_data,
     if (sequence_length > 1) {
       // std::cout << "sequence_length > 1" << std::endl;
       // Apply unidirectional mask for prompt case.
-      for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+      for (int s_i = 0; s_i < sequence_length; s_i++) {
         // std::cout << "s_i: " << s_i << std::endl;
         for (int m_i = /*past_sequence_length +*/ s_i + 1; m_i < buffer_sequence_length; m_i++) {
           // std::cout << m_i << " ";
@@ -235,13 +235,24 @@ T* ConcatStateChunkGQA(const T* past,
                     size_t past_buff_chunk_length,
                     size_t past_chunk_length,
                     size_t new_chunk_length,
+                    bool is_prompt,
+                    bool past_present_share_buffer,
                     std::ptrdiff_t i) {
+
+  // std::cout << "present_buff_chunk_length: " << present_buff_chunk_length << std::endl;
+  // std::cout << "past_buff_chunk_length: " << past_buff_chunk_length << std::endl;
+  // std::cout << "past_chunk_length: " << past_chunk_length << std::endl;
+  // std::cout << "new_chunk_length: " << new_chunk_length << std::endl;
+  // std::cout << "past_present_share_buffer: " << past_present_share_buffer << std::endl;
+
   T* start = present + i * present_buff_chunk_length;
 
   T* p = start;
-  if (nullptr != past) {
-    const T* src_past = past + i * past_buff_chunk_length;
-    memcpy(p, src_past, past_chunk_length * sizeof(T));
+  if (!is_prompt) {
+    if (!past_present_share_buffer) {
+      const T* src_past = past + i * past_buff_chunk_length;
+      memcpy(p, src_past, past_chunk_length * sizeof(T));
+    }
     p += past_chunk_length;
   }
 
