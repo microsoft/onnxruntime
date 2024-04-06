@@ -47,27 +47,34 @@ Return Value:
         vbroadcastss zmm0,DWORD PTR C_UNDERSCORE(MlasMinimumF32Value)[rip]
         test    rsi,rsi
         jz      .LReduceMaximum.ExitKernel
-        cmp     rsi,16
-        jb      .LReduceMaximum.ProcessRemainingCountBy1
-        cmp     rsi,64
-        jb      .LReduceMaximum.ProcessRemainingCountBy16
+        sub     rsi, 48
+        jb      .LReduceMaximum.ProcessRemainingCount
         vmovaps zmm1,zmm0
         vmovaps zmm2,zmm0
-        vmovaps zmm3,zmm0
+        ;vmovaps zmm3,zmm0
+        ;vmovaps zmm4,zmm0
+        ;vmovaps zmm5,zmm0
+        ;vmovaps zmm6,zmm0
+        ;vmovaps zmm7,zmm0
 
 .LReduceMaximum.ProcessRemainingCountBy64:
         vmaxps  zmm0,zmm0,ZMMWORD PTR [rdi]
         vmaxps  zmm1,zmm1,ZMMWORD PTR [rdi+16*4]
-        sub     rsi,64
         vmaxps  zmm2,zmm2,ZMMWORD PTR [rdi+32*4]
-        vmaxps  zmm3,zmm3,ZMMWORD PTR [rdi+48*4]
-        #sub     rsi,64
-        add     rdi,64*4                        # advance input by 64 elements
-        cmp     rsi,64
+        ;vmaxps  zmm3,zmm3,ZMMWORD PTR [rdi+48*4]
+        ;vmaxps  zmm4,zmm4,ZMMWORD PTR [rdi+64*4]
+        ;vmaxps  zmm5,zmm5,ZMMWORD PTR [rdi+80*4]
+        ;vmaxps  zmm6,zmm6,ZMMWORD PTR [rdi+96*4]
+        ;vmaxps  zmm7,zmm7,ZMMWORD PTR [rdi+112*4]
+        add     rdi,48*4                        # advance input by 64 elements
+        sub     rsi,48
         jae     .LReduceMaximum.ProcessRemainingCountBy64
         vmaxps  zmm0,zmm0,zmm1                  # reduce to single vector
-        vmaxps  zmm2,zmm2,zmm3
+        ;vmaxps  zmm2,zmm2,zmm3
         vmaxps  zmm0,zmm0,zmm2
+
+.LReduceMaximum.ProcessRemainingCount:
+        add     rsi,48                          # correct for over-subtract above
 
 .LReduceMaximum.ProcessRemainingCountBy16:
         cmp     rsi,16
