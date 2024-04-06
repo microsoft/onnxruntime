@@ -1,0 +1,6 @@
+coloredlogs
+flatbuffers
+numpy
+packaging
+protobuf
+sympy
