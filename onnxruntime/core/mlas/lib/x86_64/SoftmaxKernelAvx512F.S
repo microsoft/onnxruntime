@@ -61,6 +61,10 @@ Return Value:
         sub     rsi,64
         vmaxps  zmm2,zmm2,ZMMWORD PTR [rdi+32*4]
         vmaxps  zmm3,zmm3,ZMMWORD PTR [rdi+48*4]
+        #prefetcht0 [rdi+64*4*64]
+        #prefetcht0 [rdi+64*4*64+16*4]
+        #prefetcht0 [rdi+64*4*64+32*4]
+        #prefetcht0 [rdi+64*4*64+48*4]
         #sub     rsi,64
         add     rdi,64*4                        # advance input by 64 elements
         cmp     rsi,64

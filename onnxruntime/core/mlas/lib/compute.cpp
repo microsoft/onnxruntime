@@ -856,6 +856,10 @@ Return Value:
 
     while (CountN > 0) {
 
+        //for (size_t i = 0; i * 16 < D; i++) {
+        //    _mm_prefetch((char*)(Input + D) + i * 64, _MM_HINT_T0);
+        //}
+
         //
         // Find the maximum value for the row.
         //
