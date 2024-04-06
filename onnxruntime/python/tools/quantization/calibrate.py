@@ -134,6 +134,7 @@ class CalibrationMethod(Enum):
     Entropy = 1
     Percentile = 2
     Distribution = 3
+    MeanStd = 99
 
 
 class CalibrationDataReader(metaclass=abc.ABCMeta):
@@ -262,6 +263,254 @@ class CalibraterBase:
         """
         raise NotImplementedError
 
+class MeanStdCalibrater(CalibraterBase):
+    def __init__(
+        self,
+        model_path: Union[str, Path],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
+        augmented_model_path="augmented_model.onnx",
+        symmetric=False,
+        use_external_data_format=False,
+        moving_average=False,
+        averaging_constant=0.01,
+        max_intermediate_outputs=None,
+    ):
+        """
+        :param model_path: ONNX model to calibrate. It is a model path
+        :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
+        :param augmented_model_path: save augmented model to this path.
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param moving_average: compute the moving average of the minimum and maximum values instead of the global minimum and maximum.
+        :param averaging_constant: constant smoothing factor to use when computing the moving average.
+        :param max_intermediate_outputs: maximum number of intermediate outputs before an intermediate range is computed.
+        """
+        super().__init__(
+            model_path,
+            op_types_to_calibrate=op_types_to_calibrate,
+            augmented_model_path=augmented_model_path,
+            symmetric=symmetric,
+            use_external_data_format=use_external_data_format,
+        )
+        self.intermediate_outputs = []
+        self.calibrate_tensors_range = None
+        self.num_model_outputs = len(self.model.graph.output)
+        self.model_original_outputs = {output.name for output in self.model.graph.output}
+        self.moving_average = moving_average
+        if moving_average and (averaging_constant < 0 or averaging_constant > 1):
+            raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
+        self.averaging_constant = averaging_constant
+        self.max_intermediate_outputs = max_intermediate_outputs
+
+    def augment_graph(self):
+        """
+        Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
+        model and ensures their outputs are stored as part of the graph output
+        :return: augmented ONNX model
+        """
+        tensors, _ = self.select_tensors_to_calibrate(self.model)
+        reshape_shape_name = str(uuid.uuid4())
+        reshape_shape = numpy_helper.from_array(np.array([1], dtype=np.int64), reshape_shape_name)
+        self.model.graph.initializer.append(reshape_shape)
+
+        def add_reduce_std(tensor_name):
+            # When doing ReduceMax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
+            # To make the code simple, we always let keepdims to be 1.
+            keepdims = 1
+
+            mean_output = tensor_name + "_" + "Mean"
+            mean_node = onnx.helper.make_node(
+                "ReduceMean", [tensor_name], [mean_output], keepdims=keepdims, name=mean_output
+            )
+
+            reshape_mean = tensor_name + "_ReshapeMean"
+            reshape_mean_node = onnx.helper.make_node(
+                "Reshape",
+                inputs=[mean_output, reshape_shape_name],
+                outputs=[reshape_mean],
+                name=reshape_mean,
+            )
+
+            diff_output = tensor_name + "_" + "MeanDiff"
+            diff_node = onnx.helper.make_node(
+                "Sub",
+                inputs=[tensor_name, mean_output],
+                outputs=[diff_output],
+                name=diff_output,
+            )
+
+            square_output = tensor_name + "_" + "DiffSquare"
+            square_node = onnx.helper.make_node(
+                "Mul",
+                inputs=[diff_output, diff_output],
+                outputs=[square_output],
+                name=square_output,
+            )
+
+            variance_output = tensor_name + "_" + "Variance"
+            variance_node = onnx.helper.make_node(
+                "ReduceMean", [square_output], [variance_output], keepdims=keepdims, name=variance_output
+            )
+
+            reshape_variance = tensor_name + "_ReshapeVariance"
+            reshape_var_node = onnx.helper.make_node(
+                "Reshape",
+                inputs=[variance_output, reshape_shape_name],
+                outputs=[reshape_variance],
+                name=reshape_variance,
+            )
+
+            min_output = tensor_name + "_" + "Min"
+            min_node = onnx.helper.make_node(
+                "ReduceMin", [tensor_name], [min_output], keepdims=keepdims, name=min_output
+            )
+
+            reshape_min = tensor_name + "_ReshapeMin"
+            reshape_min_node = onnx.helper.make_node(
+                "Reshape",
+                inputs=[min_output, reshape_shape_name],
+                outputs=[reshape_min],
+                name=reshape_min,
+            )
+
+            max_output = tensor_name + "_" + "Max"
+            max_node = onnx.helper.make_node(
+                "ReduceMax", [tensor_name], [max_output], keepdims=keepdims, name=max_output
+            )
+
+            reshape_max = tensor_name + "_ReshapeMax"
+            reshape_max_node = onnx.helper.make_node(
+                "Reshape",
+                inputs=[max_output, reshape_shape_name],
+                outputs=[reshape_max],
+                name=reshape_max,
+            )
+
+            self.model.graph.node.extend([mean_node, reshape_mean_node,
+                                          diff_node, square_node, variance_node, reshape_var_node,
+                                          min_node, reshape_min_node,
+                                          max_node, reshape_max_node])
+            value_infos = {vi.name: vi for vi in self.model.graph.value_info}
+            value_infos.update({o.name: o for o in self.model.graph.output})
+            value_infos.update({i.name: i for i in self.model.graph.input})
+            if tensor_name in value_infos:
+                onnx_type = value_infos[tensor_name].type.tensor_type.elem_type
+            else:
+                raise ValueError(
+                    f"Unable to guess tensor type for tensor {tensor_name!r}, "
+                    f"running shape inference before quantization may resolve this issue."
+                )
+            self.model.graph.output.append(helper.make_tensor_value_info(reshape_mean, onnx_type, [1]))
+            self.model.graph.output.append(helper.make_tensor_value_info(reshape_variance, onnx_type, [1]))
+            self.model.graph.output.append(helper.make_tensor_value_info(reshape_min, onnx_type, [1]))
+            self.model.graph.output.append(helper.make_tensor_value_info(reshape_max, onnx_type, [1]))
+
+        for tensor in tensors:
+            add_reduce_std(tensor)
+
+        onnx.save(
+            self.model,
+            self.augmented_model_path,
+            save_as_external_data=self.use_external_data_format,
+        )
+
+    def clear_collected_data(self):
+        self.intermediate_outputs = []
+
+    def collect_data(self, data_reader: CalibrationDataReader):
+        while True:
+            inputs = data_reader.get_next()
+            if not inputs:
+                break
+            self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+            if (
+                self.max_intermediate_outputs is not None
+                and len(self.intermediate_outputs) == self.max_intermediate_outputs
+            ):
+                self.compute_data()
+                self.clear_collected_data()
+
+        if len(self.intermediate_outputs) == 0 and self.calibrate_tensors_range is None:
+            raise ValueError("No data is collected.")
+
+        t = self.compute_data()
+        if not isinstance(t, TensorsData):
+            raise TypeError(f"compute_data must return a TensorsData not {type(t)}.")
+        self.clear_collected_data()
+
+    def merge_range(self, old_range, new_range):
+        if not old_range:
+            return new_range
+
+        for key in old_range:
+            old_lowest, old_highest = old_range[key].range_value
+            new_lowest, new_highest = new_range[key].range_value
+            if self.moving_average:
+                min_value = old_lowest + self.averaging_constant * (new_lowest - old_lowest)
+                max_value = old_highest + self.averaging_constant * (new_highest - old_highest)
+            else:
+                min_value = min(old_lowest, new_lowest)
+                max_value = max(old_highest, new_highest)
+            new_range[key].lowest = min_value
+            new_range[key].highest = max_value
+
+        return new_range
+
+    def compute_data(self) -> TensorsData:
+        """
+        Compute the min-max range of tensor
+        :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
+        """
+
+        if len(self.intermediate_outputs) == 0:
+            return self.calibrate_tensors_range
+
+        output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
+        output_dicts_list = [
+            dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
+        ]
+
+        merged_output_dict = {}
+        for d in output_dicts_list:
+            for k, v in d.items():
+                merged_output_dict.setdefault(k, []).append(v)
+        added_output_names = output_names[self.num_model_outputs :]
+        calibrate_tensor_names = [
+            added_output_names[i].rpartition("_")[0] for i in range(0, len(added_output_names), 4)
+        ]  # output names
+
+        merged_added_output_dict = {
+            i: merged_output_dict[i] for i in merged_output_dict if i not in self.model_original_outputs
+        }
+
+        pairs = []
+        for i in range(0, len(added_output_names), 4):
+            mean_value_array = np.array(merged_added_output_dict[added_output_names[i]])
+            std_value_array = np.sqrt(merged_added_output_dict[added_output_names[i + 1]])
+            min_value_array = np.array(merged_added_output_dict[added_output_names[i + 2]])
+            max_value_array = np.array(merged_added_output_dict[added_output_names[i + 3]])
+            lower_value_array = np.maximum(mean_value_array - 3 * std_value_array, min_value_array)
+            upper_value_array = np.minimum(mean_value_array + 3 * std_value_array, max_value_array)
+            alpha = 0.2
+            lower_value_array = (1 - alpha) * lower_value_array + alpha * min_value_array
+            upper_value_array = (1 - alpha) * upper_value_array + alpha * max_value_array
+
+            if self.moving_average:
+                min_value = np.mean(lower_value_array, axis=0)
+                max_value = np.mean(upper_value_array, axis=0)
+            else:
+                min_value = np.min(lower_value_array, axis=0)
+                max_value = np.max(upper_value_array, axis=0)
+
+            pairs.append(tuple([min_value, max_value]))
+
+        new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs)))
+        if self.calibrate_tensors_range:
+            self.calibrate_tensors_range = self.merge_range(self.calibrate_tensors_range, new_calibrate_tensors_range)
+        else:
+            self.calibrate_tensors_range = new_calibrate_tensors_range
+
+        return self.calibrate_tensors_range
 
 class MinMaxCalibrater(CalibraterBase):
     def __init__(
@@ -1104,6 +1353,22 @@ def create_calibrator(
         averaging_constant = extra_options.get("averaging_constant", 0.01)
         max_intermediate_outputs = extra_options.get("max_intermediate_outputs", None)
         calibrator = MinMaxCalibrater(
+            model,
+            op_types_to_calibrate,
+            augmented_model_path,
+            use_external_data_format=use_external_data_format,
+            symmetric=symmetric,
+            moving_average=moving_average,
+            averaging_constant=averaging_constant,
+            max_intermediate_outputs=max_intermediate_outputs,
+        )
+    elif calibrate_method == CalibrationMethod.MeanStd:
+        # default settings for min-max algorithm
+        symmetric = extra_options.get("symmetric", False)
+        moving_average = extra_options.get("moving_average", False)
+        averaging_constant = extra_options.get("averaging_constant", 0.01)
+        max_intermediate_outputs = extra_options.get("max_intermediate_outputs", None)
+        calibrator = MeanStdCalibrater(
             model,
             op_types_to_calibrate,
             augmented_model_path,
