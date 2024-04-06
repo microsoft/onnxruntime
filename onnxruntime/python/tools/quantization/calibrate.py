@@ -368,6 +368,7 @@ class MinMaxCalibrater(CalibraterBase):
                 self.max_intermediate_outputs is not None
                 and len(self.intermediate_outputs) == self.max_intermediate_outputs
             ):
+                self.compute_data()
                 self.clear_collected_data()
 
         if len(self.intermediate_outputs) == 0 and self.calibrate_tensors_range is None:
@@ -382,14 +383,17 @@ class MinMaxCalibrater(CalibraterBase):
         if not old_range:
             return new_range
 
-        for key, value in old_range.items():
+        for key in old_range:
+            old_lowest, old_highest = old_range[key].range_value
+            new_lowest, new_highest = new_range[key].range_value
             if self.moving_average:
-                min_value = value[0] + self.averaging_constant * (new_range[key][0] - value[0])
-                max_value = value[1] + self.averaging_constant * (new_range[key][1] - value[1])
+                min_value = old_lowest + self.averaging_constant * (new_lowest - old_lowest)
+                max_value = old_highest + self.averaging_constant * (new_highest - old_highest)
             else:
-                min_value = min(value[0], new_range[key][0])
-                max_value = max(value[1], new_range[key][1])
-            new_range[key] = (min_value, max_value)
+                min_value = min(old_lowest, new_lowest)
+                max_value = max(old_highest, new_highest)
+            new_range[key].lowest = min_value
+            new_range[key].highest = max_value
 
         return new_range
 
