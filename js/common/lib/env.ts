@@ -13,7 +13,7 @@ export declare namespace Env {
     'ort-wasm-simd-threaded.wasm'?: string;
     /* eslint-enable @typescript-eslint/naming-convention */
   };
-  export type WorkerPaths = string | {
+  export type WorkerPaths = string|{
     /* eslint-disable @typescript-eslint/naming-convention */
     'ort-wasm-threaded-main-script'?: string;
     'ort-wasm-threaded-worker-script'?: string;
