@@ -63,24 +63,27 @@ export const createMatMulNBitsProgramInfo =
       const blobSize = attributes.blockSize / 8 * attributes.bits;
       const blobSizeInWords = blobSize / 4;
       const outputNumber = getMaxComponents(dimAOuter);
-      const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
-      const componentsTmp = getMaxComponents(dimBOuter);
+      const componentsTmp1 = getMaxComponents(dimBOuter);
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
-      const elementSize = getTensorElementSize(inputs[0].dataType);
-      if (!elementSize) {
+      const elementSizeTmp = getTensorElementSize(inputs[0].dataType);
+      if (!elementSizeTmp) {
         throw new Error(`Unsupported data type: ${inputs[0].dataType}`);
       }
+      const elementSize = elementSizeTmp;
       const workgroupOutputSize = dimAOuter * nBlocksPerCol * elementSize;
       // Check if the required memory exceeds the maximum workgroup storage size.
-      const components = (componentsTmp * workgroupOutputSize > maxComputeWorkgroupStorageSize) &&
+      const componentsTmp2 = (componentsTmp1 * workgroupOutputSize > maxComputeWorkgroupStorageSize) &&
               (workgroupOutputSize <= maxComputeWorkgroupStorageSize) ?
           1 :
-          componentsTmp;
+          componentsTmp1;
       const useBlockwiseMatMulNBits = nBlocksPerCol <= maxComputeWorkgroupSizes[0] &&
-          (dimAOuter * components * elementSize * nBlocksPerCol) <= maxComputeWorkgroupStorageSize;
+          (dimAOuter * componentsTmp2 * elementSize * nBlocksPerCol) <= maxComputeWorkgroupStorageSize;
+      const components = useBlockwiseMatMulNBits ? componentsTmp2 : componentsTmp1;
       const workgroupSize = [nBlocksPerCol, 1, 1];
       const dispatch = [Math.ceil(nBlocksPerCol / workgroupSize[0]), Math.ceil(dimBOuter / components), batchSize];
+      const outputShape = useBlockwiseMatMulNBits ? batchDims.concat([dimAOuter, dimBOuter]) :
+                                                    inputShape.slice(0, aRank - 1).concat(attributes.n);
       const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
 
       const programUniforms: ProgramUniform[] =
@@ -89,19 +92,23 @@ export const createMatMulNBitsProgramInfo =
             {type: DataType.uint32, data: attributes.n}, {type: DataType.uint32, data: attributes.accuracyLevel},
             {type: DataType.uint32, data: attributes.bits}, {type: DataType.uint32, data: attributes.blockSize}
           ];
+      const aShape = inputShape.slice();
+      aShape.splice(-1, 1, attributes.k / aComponents);
       const inputShapeTemp = [batchSize, dimAOuter, dimInner / aComponents];
       const bShape = ShapeUtil.convertShape(inputs[1].dims).slice();
       bShape.splice(-1, 1, blobSizeInWords / bComponents);
-      programUniforms.push(...createTensorShapeVariables(inputShapeTemp));
+      programUniforms.push(...createTensorShapeVariables(useBlockwiseMatMulNBits ? inputShapeTemp : aShape));
       programUniforms.push(...createTensorShapeVariables(bShape));
       programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
       if (inputs.length === 4) {
         programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(inputs[3].dims)));
       }
+      const oShape = outputShape.slice();
+      oShape.splice(-1, 1, attributes.n / components);
       const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
-      programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
+      programUniforms.push(...createTensorShapeVariables(useBlockwiseMatMulNBits ? outputShapeTemp : oShape));
       const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const inputRank = inputShapeTemp.length;
+        const inputRank = useBlockwiseMatMulNBits ? inputShapeTemp.length : aShape.length;
         const a = inputVariable('a', inputs[0].dataType, inputRank, aComponents);
         const b = inputVariable('b', DataType.uint32, bShape.length, bComponents);
         const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length);
@@ -111,7 +118,7 @@ export const createMatMulNBitsProgramInfo =
         if (zeroPoints) {
           inputVariables.push(zeroPoints);
         }
-        const outputRank = outputShapeTemp.length;
+        const outputRank = useBlockwiseMatMulNBits ? outputShapeTemp.length : outputShape.length;
         const output = outputVariable('output', inputs[0].dataType, outputRank, components);
         const uniforms: UniformsArrayType = useBlockwiseMatMulNBits ? [{name: 'block_size', type: 'u32'}] : [
           {name: 'output_size', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
@@ -282,8 +289,8 @@ export const createMatMulNBitsProgramInfo =
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
           var output_values: array<${output.type.value}, ${outputNumber}>;
           var output_indices = ${output.offsetToIndices('global_idx')};
-          var n = ${output.indicesGet('output_indices', inputRank - 1)};
-          var m = ${output.indicesGet('output_indices', inputRank - 2)};
+          var n = ${output.indicesGet('output_indices', aRank - 1)};
+          var m = ${output.indicesGet('output_indices', aRank - 2)};
           var a_indices: ${a.type.indices} = output_indices;
           // Two zero points are packed into one byte because uniforms.bits <= 4.
           // zero_point_offset is either 0 or 4. It is bit offset within one byte.
@@ -316,9 +323,9 @@ export const createMatMulNBitsProgramInfo =
                   // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
                   var offset: u32 = word_offset;
                   for (var j: u32 = 0; j < 8/${aComponents}; j++) {
-                    ${a.indicesSet('a_indices', inputRank - 1, `offset/${aComponents}`)};
+                    ${a.indicesSet('a_indices', aRank - 1, `offset/${aComponents}`)};
                     for (var k: u32 = 0; k < ${outputNumber}u; k++) {
-                      ${a.indicesSet('a_indices', inputRank - 2, `m * ${outputNumber} + k`)};
+                      ${a.indicesSet('a_indices', aRank - 2, `m * ${outputNumber} + k`)};
                       let a_data = ${a.getByIndices('a_indices')};
                       output_values[k]${components > 1 ? '[c]' : ''} += ${
                 aComponents === 1 ? 'a_data * b_dequantized_values[j]' : 'dot(a_data, b_dequantized_values[j])'};
@@ -340,7 +347,7 @@ export const createMatMulNBitsProgramInfo =
                              ''}
             }
             for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
-              ${output.indicesSet('output_indices', inputRank - 2, `${outputNumber + ' * m + k'}`)};
+              ${output.indicesSet('output_indices', aRank - 2, `${outputNumber + ' * m + k'}`)};
               ${output.setByIndices('output_indices', 'output_values[k]')}
             }
         }`;
