@@ -201,17 +201,6 @@ export const createMatMulNBitsProgramInfo =
             }
           }
 
-          // Initialize shared memory.
-          if (local_id.x == 0u) {
-            for (var i: u32 = 0; i < ${dimAOuter}; i++) {
-              var offset: u32 = i * ${nBlocksPerCol};
-              for (var j: u32 = 0; j < ${nBlocksPerCol}; j++) {
-                workgroup_shared[offset] = ${output.type.value}(0);
-                offset++;
-              }
-            }
-          }
-          workgroupBarrier();
           // Two zero points are packed into one byte when uniforms.bits is 4.
           for (var c: u32 = 0; c < ${components}; c++) {
             let col_times_components_plus_c = col * ${components} + c;
