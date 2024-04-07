@@ -210,7 +210,8 @@ export const createMatMulNBitsProgramInfo =
             // The default zero point is 8 for unsigned 4-bit quantization.
             let zero_point = ${dataType}(${zeroPoints ? '(zero_point_word) & 0xFu' : 8.0});
             ${b.indicesSet('b_indices', '1', 'block')};
-            var word_offset: u32 = 0;
+            var word_offset: u32 = block * ${attributes.blockSize / aComponents};
+            var workgroup_shared_offset: u32 = block * ${dimAOuter};
             for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
               ${b.indicesSet('b_indices', '2', 'word')};
               let b_data = ${b.getByIndices('b_indices')};
@@ -251,13 +252,17 @@ export const createMatMulNBitsProgramInfo =
             var output_indices: ${output.type.indices};
             ${output.indicesSet('output_indices', '0', 'batch')};
             ${output.indicesSet('output_indices', outputRank - 1, 'col')};
+            ${output.indicesSet('output_indices', outputRank - 2, '0')};
+            var output_offset = ${output.indicesToOffset('output_indices')};
             for (var m: u32 = 0u; m < ${dimAOuter}u; m++) {
               var output_value: ${output.type.value} = ${output.type.value}(0);
+              var workgroup_shared_offset: u32 = m;
               for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
-                output_value += workgroup_shared[b * ${dimAOuter} + m];
+                output_value += workgroup_shared[workgroup_shared_offset];
+                workgroup_shared_offset += ${dimAOuter};
               }
-              ${output.indicesSet('output_indices', outputRank - 2, 'm')};
-              ${output.setByIndices('output_indices', 'output_value')};
+              ${output.setByOffset('output_offset', 'output_value')};
+              output_offset += ${dimBOuter / components};
             }
           }
         }` :
