@@ -359,6 +359,7 @@ class BaseQuantizer:
             raise ValueError("{} is not an initializer", weight_name)
 
         weights = tensor_proto_to_array(initializer)
+        weights_rank = len(weights.shape)
         channel_count = weights.shape[channel_axis]
         quant_overrides_for_channels = self.tensor_quant_overrides.get_per_channel_overrides(
             weight_name, default_val=[{"axis": channel_axis}]
@@ -376,7 +377,10 @@ class BaseQuantizer:
         if "quant_type" in quant_overrides_for_channels[0]:
             weight_qType = quant_overrides_for_channels[0]["quant_type"].tensor_type  # noqa: N806
 
-        if normalize_axis(quant_overrides_for_channels[0]["axis"], len(weights.shape))[1] != channel_axis:
+        if (
+            normalize_axis(quant_overrides_for_channels[0]["axis"], weights_rank)[1]
+            != normalize_axis(channel_axis, weights_rank)[1]
+        ):
             raise ValueError(
                 f"Tensor quantization overrides for {weight_name} specify an unexpected axis. "
                 f"Expected {channel_axis}, but got {quant_overrides_for_channels[0]['axis']}."
