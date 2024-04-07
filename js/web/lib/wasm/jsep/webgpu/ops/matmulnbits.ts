@@ -229,22 +229,20 @@ export const createMatMulNBitsProgramInfo =
             })()};
                 // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
                 var offset: u32 = word_offset;
-                ${(() => {
-              const code = [];
-              for (let j = 0; j < 8; j += aComponents) {
-                for (let m = 0; m < dimAOuter; m++) {
-                  code.push(`workgroup_shared[(block * ${dimAOuter} + ${m})] ${components > 1 ? '[c]' : ''} +=
-                            ${
-                      aComponents === 1 ?
-                          `a_data_array[${m}][offset] * b_dequantized_values[${j}]` :
-                          `dot(a_data_array[${m}][offset], b_dequantized_values[${j} / ${aComponents}]);`};
-                        `);
+                for (var j: u32 = 0; j < 8; j += ${aComponents}) {
+                  ${a.indicesSet('a_indices', inputRank - 1, 'offset')};
+                  ${a.indicesSet('a_indices', inputRank - 2, '0')};
+                  var input_offset = ${a.indicesToOffset('a_indices')};
+                  for (var m: u32 = 0; m < ${dimAOuter}u; m++) {
+                    let a_data = ${a.getByOffset('input_offset')};
+                    workgroup_shared[workgroup_shared_offset + m]${components > 1 ? '[c]' : ''} += ${
+                aComponents === 1 ? 'a_data * b_dequantized_values[j]' :
+                                    `dot(a_data, b_dequantized_values[j / ${aComponents}])`};
+                    input_offset += ${dimInner / aComponents};
+                  }
+                  offset++;
                 }
-                code.push('offset++;');
-              }
-              code.push(`word_offset += ${8 / aComponents};`);
-              return code.join('\n');
-            })()};
+                word_offset += ${8 / aComponents};
               }
             }
           }
