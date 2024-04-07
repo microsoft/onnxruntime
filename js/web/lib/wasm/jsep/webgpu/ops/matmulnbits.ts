@@ -191,13 +191,11 @@ export const createMatMulNBitsProgramInfo =
           var a_data_array: array<array<${a.type.value}, ${attributes.blockSize / aComponents}>, ${dimAOuter}>;
           // Fetch A data into non-shared memory.
           ${a.indicesSet('a_indices', '0', 'batch')};
-          ${a.indicesSet('a_indices', '2', `block * ${attributes.blockSize / aComponents}`)};
           for (var m: u32 = 0; m < ${dimAOuter}; m++) {
             ${a.indicesSet('a_indices', '1', 'm')};
-            var input_offset = ${a.indicesToOffset('a_indices')};
             for (var i: u32 = 0; i < ${attributes.blockSize / aComponents}; i++) {
-              a_data_array[m][i] = ${a.getByOffset('input_offset')};
-              input_offset++;
+              ${a.indicesSet('a_indices', '2', `(${attributes.blockSize / aComponents}) * block + i`)};
+              a_data_array[m][i] = ${a.getByIndices('a_indices')};
             }
           }
 
@@ -262,21 +260,16 @@ export const createMatMulNBitsProgramInfo =
           }
           workgroupBarrier();
           if (local_id.x == 0u) {
-            for (var b: u32 = 1u; b < ${nBlocksPerCol}u; b++) {
-              var offset: u32 = b * ${dimAOuter};
-              for (var m: u32 = 0u; m < ${dimAOuter}u; m++) {
-                workgroup_shared[m] += workgroup_shared[offset];
-                offset++;
-              }
-            }
             var output_indices: ${output.type.indices};
             ${output.indicesSet('output_indices', '0', 'batch')};
             ${output.indicesSet('output_indices', outputRank - 1, 'col')};
-            ${output.indicesSet('output_indices', outputRank - 2, '0')};
-            var output_offset = ${output.indicesToOffset('output_indices')};
             for (var m: u32 = 0u; m < ${dimAOuter}u; m++) {
-              ${output.setByOffset('output_offset', 'workgroup_shared[m]')};
-              output_offset += ${dimBOuter / components};
+              var output_value: ${output.type.value} = ${output.type.value}(0);
+              for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
+                output_value += workgroup_shared[b * ${dimAOuter} + m];
+              }
+              ${output.indicesSet('output_indices', outputRank - 2, 'm')};
+              ${output.setByIndices('output_indices', 'output_value')};
             }
           }
         }` :
