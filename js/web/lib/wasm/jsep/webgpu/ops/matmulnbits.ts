@@ -188,17 +188,7 @@ export const createMatMulNBitsProgramInfo =
           var block = local_id.x;
           var col = workgroup_id.y;
           var batch = workgroup_id.z;
-          var a_data_array: array<array<${a.type.value}, ${attributes.blockSize / aComponents}>, ${dimAOuter}>;
-          // Fetch A data into non-shared memory.
           ${a.indicesSet('a_indices', '0', 'batch')};
-          for (var m: u32 = 0; m < ${dimAOuter}; m++) {
-            ${a.indicesSet('a_indices', '1', 'm')};
-            for (var i: u32 = 0; i < ${attributes.blockSize / aComponents}; i++) {
-              ${a.indicesSet('a_indices', '2', `(${attributes.blockSize / aComponents}) * block + i`)};
-              a_data_array[m][i] = ${a.getByIndices('a_indices')};
-            }
-          }
-
           // Two zero points are packed into one byte when uniforms.bits is 4.
           for (var c: u32 = 0; c < ${components}; c++) {
             let col_times_components_plus_c = col * ${components} + c;
