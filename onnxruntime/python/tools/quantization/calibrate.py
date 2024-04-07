@@ -368,7 +368,6 @@ class MinMaxCalibrater(CalibraterBase):
                 self.max_intermediate_outputs is not None
                 and len(self.intermediate_outputs) == self.max_intermediate_outputs
             ):
-                self.compute_range()
                 self.clear_collected_data()
 
         if len(self.intermediate_outputs) == 0 and self.calibrate_tensors_range is None:
