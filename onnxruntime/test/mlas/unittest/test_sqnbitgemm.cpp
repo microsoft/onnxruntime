@@ -392,7 +392,8 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
     // SQNBITGEMM<4>/BlkLen:128/M:1024/N:4096/K:4096/Threads:1/Symmetric:1/ComputeType:4/real_time
     // SQNBitGemmBlkBitWidth4BlkLen128.SingleThread/isSymmetric1/M1024xN4096xK4096/hasBias0/computeTypeInt8
     if constexpr (BlkLen == 128)
-      tests_registered += RegisterSingleTest(1024, 4096, 4096, CompInt8, true, true, false);
+      // replace 1024 with 128 to reduce execution time in debug
+      tests_registered += RegisterSingleTest(128/*1024*/, 4096, 4096, CompInt8, true, true, false);
 
     if constexpr (BlkLen == 64) {
       // SQNBitGemmBlkBitWidth4BlkLen64.SingleThread/isSymmetric1/M1xN1xK64/hasBias0/computeTypeInt8
