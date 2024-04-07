@@ -62,12 +62,13 @@ export const createMatMulNBitsProgramInfo =
       const batchSize = ShapeUtil.size(batchDims);
       const blobSize = attributes.blockSize / 8 * attributes.bits;
       const blobSizeInWords = blobSize / 4;
+      const dataType = inputs[0].dataType;
       const outputNumber = getMaxComponents(dimAOuter);
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
-      const elementSizeTmp = getTensorElementSize(inputs[0].dataType);
+      const elementSizeTmp = getTensorElementSize(dataType);
       if (!elementSizeTmp) {
-        throw new Error(`Unsupported data type: ${inputs[0].dataType}`);
+        throw new Error(`Unsupported data type: ${dataType}`);
       }
       const elementSize = elementSizeTmp;
       const workgroupOutputCount = dimAOuter * nBlocksPerCol;
@@ -340,12 +341,12 @@ export const createMatMulNBitsProgramInfo =
       return {
         name: useBlockwiseMatMulNBits ? 'BlockwiseMatMulNBits' : 'MatMulNBits',
         shaderCache: {
-          hint: `${attributes.cacheKey};${inputs[0].dims[inputs[0].dims.length - 2]};${inputs[0].dataType};${
-              inputs.length}`,
+          hint: useBlockwiseMatMulNBits ? `${attributes.cacheKey};${dimAOuter};${dataType};${inputs.length}` :
+                                          `${attributes.cacheKey};${inputs.length}`,
           inputDependencies: Array(inputs.length).fill('rank')
         },
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          outputs: [{dims: outputShape, dataType}],
           name: useBlockwiseMatMulNBits ? 'BlockwiseMatMulNBits' : 'MatMulNBits',
           dispatchGroup: useBlockwiseMatMulNBits ? {x: 1, y: Math.ceil(dimBOuter / components), z: batchSize} :
                                                    {x: Math.ceil(outputSize / 64 /* workgroup size */)},
