@@ -344,11 +344,11 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             extra_options={
                 "TensorQuantOverrides": {
                     "WGT": [
-                        {"zero_point": zp_vals[0], "scale": scale_vals[0]},
+                        {"axis": 0, "zero_point": zp_vals[0], "scale": scale_vals[0]},
                         {"zero_point": zp_vals[1], "scale": scale_vals[1]},
                     ],
                     "BIAS": [
-                        {"zero_point": zp_vals[0], "scale": scale_vals[0]},
+                        {"axis": 0, "zero_point": zp_vals[0], "scale": scale_vals[0]},
                         {"zero_point": zp_vals[1], "scale": scale_vals[1]},
                     ],
                 }
@@ -373,55 +373,58 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         Test per-channel overriding of rmin, rmax, reduce_range, and quant_type for Conv weight.
         """
-        rmin_vals = [0.0, 0.2]
-        rmax_vals = [1.0, 0.8]
-        quant_type = QuantType.QUInt8
-        reduce_ranges = [True, False]
-        (
-            _,
-            _,
-            _,
-            _,
-            wgt_zp,
-            wgt_sc,
-            bias_zp,
-            bias_sc,
-            _,
-            _,
-        ) = self.perform_qdq_quantization(
-            "model_per_channel_quant_overrides2.onnx",
-            extra_options={
-                "TensorQuantOverrides": {
-                    "WGT": [
-                        {
-                            "quant_type": quant_type,
-                            "rmin": np.array(rmin_vals[0], dtype=np.float32),
-                            "rmax": np.array(rmax_vals[0], dtype=np.float32),
-                            "reduce_range": reduce_ranges[0],
-                        },
-                        {
-                            "quant_type": quant_type,
-                            "rmin": np.array(rmin_vals[1], dtype=np.float32),
-                            "rmax": np.array(rmax_vals[1], dtype=np.float32),
-                            "reduce_range": reduce_ranges[1],
-                        },
-                    ],
-                }
-            },
-            per_channel=True,
-        )
+        for reduce_range in (False, True):
+            with self.subTest(reduce_range=reduce_range):
+                qdq_model_name = f"model_per_chan_overrides_2_reduce_range_{reduce_range}.onnx"
+                rmin_vals = [0.0, 0.2]
+                rmax_vals = [1.0, 0.8]
+                quant_type = QuantType.QUInt8
+                (
+                    _,
+                    _,
+                    _,
+                    _,
+                    wgt_zp,
+                    wgt_sc,
+                    bias_zp,
+                    bias_sc,
+                    _,
+                    _,
+                ) = self.perform_qdq_quantization(
+                    qdq_model_name,
+                    extra_options={
+                        "TensorQuantOverrides": {
+                            "WGT": [
+                                {
+                                    "axis": 0,
+                                    "quant_type": quant_type,
+                                    "rmin": np.array(rmin_vals[0], dtype=np.float32),
+                                    "rmax": np.array(rmax_vals[0], dtype=np.float32),
+                                    "reduce_range": reduce_range,
+                                },
+                                {
+                                    "quant_type": quant_type,
+                                    "rmin": np.array(rmin_vals[1], dtype=np.float32),
+                                    "rmax": np.array(rmax_vals[1], dtype=np.float32),
+                                    "reduce_range": reduce_range,
+                                },
+                            ],
+                        }
+                    },
+                    per_channel=True,
+                )
 
-        self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
-        for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
-            wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type, reduce_range=reduce_ranges[index])
-            expected_zp, expected_scale = compute_scale_zp(
-                np.array(rmin_vals[index], dtype=np.float32),
-                np.array(rmax_vals[index], dtype=np.float32),
-                wgt_qmin,
-                wgt_qmax,
-            )
-            self.assertEqual(zp, expected_zp)
-            self.assertEqual(scale, np.float32(expected_scale))
+                self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
+                for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
+                    wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type, reduce_range=reduce_range)
+                    expected_zp, expected_scale = compute_scale_zp(
+                        np.array(rmin_vals[index], dtype=np.float32),
+                        np.array(rmax_vals[index], dtype=np.float32),
+                        wgt_qmin,
+                        wgt_qmax,
+                    )
+                    self.assertEqual(zp, expected_zp)
+                    self.assertEqual(scale, np.float32(expected_scale))
 
     def test_16bit_overrides_set_ms_domain(self):
         """

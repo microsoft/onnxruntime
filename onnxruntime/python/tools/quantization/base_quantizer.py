@@ -24,6 +24,7 @@ from .quant_utils import (
     QuantType,
     find_by_name,
     model_has_infer_metadata,
+    normalize_axis,
     quantize_data,
     quantize_nparray,
     save_and_reload_model_with_shape_infer,
@@ -120,9 +121,9 @@ class BaseQuantizer:
         # Get tensor-level quantization overrides and ensure they are valid.
         self.tensor_quant_overrides = TensorQuantOverridesHelper(self.extra_options.get("TensorQuantOverrides", {}))
 
-        initializer_names = {initzer.name for initzer in self.model.initializer()}
+        self.initializers = {initzer.name: initzer for initzer in self.model.initializer()}
         overrides_valid, overrides_err = self.tensor_quant_overrides.is_valid(
-            initializer_names, self.value_infos.keys(), activation_qType
+            self.initializers, self.value_infos.keys(), activation_qType
         )
         if not overrides_valid:
             raise ValueError(overrides_err)
@@ -252,7 +253,7 @@ class BaseQuantizer:
         quantized_bias_zp_name = quantized_bias_name + "_zero_point"
         if self.weight_qType == onnx.TensorProto.FLOAT8E4M3FN:
             packed_bias_zp_initializer = onnx.helper.make_tensor(quantized_bias_zp_name, self.weight_qType, [1], [0.0])
-        elif self.is_per_channel():
+        elif bias_scale.size > 1:
             bias_zp_data = np.zeros(bias_scale.shape, dtype=np.int32).reshape(-1)
             packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
         else:
@@ -282,7 +283,7 @@ class BaseQuantizer:
 
         # Quantize weight data. Use quantization overrides if provided by the user.
         weight_data = tensor_proto_to_array(weight)
-        quant_overrides = self.tensor_quant_overrides.get_per_tensor_overrides(weight.name)
+        quant_overrides = self.tensor_quant_overrides.get_per_tensor_overrides(weight.name, default_val={})
         if "quant_type" in quant_overrides:
             qType = quant_overrides["quant_type"].tensor_type  # noqa: N806
 
@@ -359,19 +360,40 @@ class BaseQuantizer:
 
         weights = tensor_proto_to_array(initializer)
         channel_count = weights.shape[channel_axis]
-        quant_overrides_for_channels = self.tensor_quant_overrides.get_per_channel_overrides(weight_name, channel_count)
+        quant_overrides_for_channels = self.tensor_quant_overrides.get_per_channel_overrides(
+            weight_name, default_val=[{"axis": channel_axis}]
+        )
 
-        # If user provides per-channel quantization overrides, all channels must use the same quantization type.
-        # So, just use the first channel's type.
+        num_channel_overrides = len(quant_overrides_for_channels)
+        if num_channel_overrides != 1 and num_channel_overrides != channel_count:
+            raise ValueError(
+                f"Per-channel tensor quantization overrides for {weight_name} must have "
+                f"either 1 or {channel_count} elements in the list of dictionaries."
+            )
+
+        # If user provides per-channel quantization overrides, all channels must use the same quant_type,
+        # axis, symmetric, and reduce_range values. So, just use the first channel's values.
         if "quant_type" in quant_overrides_for_channels[0]:
             weight_qType = quant_overrides_for_channels[0]["quant_type"].tensor_type  # noqa: N806
 
+        if normalize_axis(quant_overrides_for_channels[0]["axis"], len(weights.shape))[1] != channel_axis:
+            raise ValueError(
+                f"Tensor quantization overrides for {weight_name} specify an unexpected axis. "
+                f"Expected {channel_axis}, but got {quant_overrides_for_channels[0]['axis']}."
+            )
+
+        symmetric = quant_overrides_for_channels[0].get(
+            "symmetric",
+            (self.is_weight_symmetric or weight_qType in (onnx.TensorProto.INT8, onnx.TensorProto.FLOAT8E4M3FN)),
+        )
+        reduce_range = quant_overrides_for_channels[0].get("reduce_range", self.reduce_range and reduce_range)
         zero_point_list = []
         scale_list = []
         quantized_per_channel_data_list = []
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
-            channel_quant_overrides = quant_overrides_for_channels[i]
+            channel_override_index = i if i < num_channel_overrides else 0
+            channel_quant_overrides = quant_overrides_for_channels[channel_override_index]
 
             if "scale" in channel_quant_overrides and "zero_point" in channel_quant_overrides:
                 zero_point = np.array(channel_quant_overrides["zero_point"], dtype=ONNX_TYPE_TO_NP_TYPE[weight_qType])
@@ -389,18 +411,11 @@ class BaseQuantizer:
                 ), f"Unexpected type {type(quantized_per_channel_data)}"
 
             else:
-                symmetric = channel_quant_overrides.get(
-                    "symmetric",
-                    (
-                        self.is_weight_symmetric
-                        or weight_qType in (onnx.TensorProto.INT8, onnx.TensorProto.FLOAT8E4M3FN)
-                    ),
-                )
                 _, _, zero_point, scale, quantized_per_channel_data = quantize_data(
                     per_channel_data.flatten(),
                     weight_qType,
                     symmetric,
-                    reduce_range=channel_quant_overrides.get("reduce_range", self.reduce_range and reduce_range),
+                    reduce_range=reduce_range,
                     min_real_range=self.min_real_range,
                     rmin_override=channel_quant_overrides.get("rmin"),
                     rmax_override=channel_quant_overrides.get("rmax"),
