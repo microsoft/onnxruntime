@@ -285,7 +285,7 @@ Status QnnBackendManager::InitializeBackend() {
   }
 
   auto result = qnn_interface_.backendCreate(log_handle_, (const QnnBackend_Config_t**)backend_config_, &backend_handle_);
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend");
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend. Error: ", result);
 
   backend_initialized_ = true;
   return Status::OK();
