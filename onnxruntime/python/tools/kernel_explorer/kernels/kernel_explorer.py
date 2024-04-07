@@ -295,6 +295,9 @@ def is_rocm_available():
 
 def dispatchable(f: Callable | None = None, *, pattern_arg: int | None = None):
     def wrap_dispatch(f, *args, **kwargs):
+        if _ke_context.dispatch_depth == 0:
+            if _ke_context.save_tuning_results is not None:
+                _kernel_explorer.enable_collect_tuning_results()
         _ke_context.dispatch_depth += 1
         ret = f(*args, **kwargs)
         _ke_context.dispatch_depth -= 1

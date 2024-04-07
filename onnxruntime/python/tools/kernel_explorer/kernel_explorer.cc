@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 static py::module::module_def _kernel_explorer_module_def;
 
-bool TuningInfo::collect_enabled_{true};
+bool TuningInfo::collect_enabled_{false};
 std::vector<TuningResults> TuningInfo::collected_tuning_results_ = {};
 std::optional<int> TuningInfo::max_tuning_duration_ms_ = {};
 
@@ -42,7 +42,7 @@ KE_REGISTER(m) {
       .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray)
       .def("UpdateDeviceArray", &DeviceArray::UpdateDeviceArray);
 
-  m.def("collect_tuning_results", TuningInfo::EnableCollect);
+  m.def("enable_collect_tuning_results", TuningInfo::EnableCollect, pybind11::arg("enable") = true);
 
   m.def("max_tuning_duration_ms", TuningInfo::SetMaxTuningDurationMs);
 
