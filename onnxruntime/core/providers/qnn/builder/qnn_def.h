@@ -93,6 +93,7 @@ struct OnnxTensorInfo {
 
 size_t memscpy(void* dst, size_t dst_size, const void* src, size_t copy_size);
 
+void SetQnnTensorV2(Qnn_Tensor_t& qnn_tensor);
 void SetQnnTensorType(Qnn_Tensor_t& qnn_tensor, Qnn_TensorType_t tensor_type);
 void SetQnnTensorName(Qnn_Tensor_t& qnn_tensor, const char* name);
 void SetQnnTensorDataFormat(Qnn_Tensor_t& qnn_tensor, Qnn_TensorDataFormat_t data_format);
@@ -150,6 +151,7 @@ class QnnTensorWrapper {
                    Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW) : tensor_name_(name),
                                                                            dimensions_(std::move(shape)),
                                                                            client_buf_(std::move(client_buf)) {
+    SetQnnTensorV2(qnn_tensor_);
     SetQnnTensorType(qnn_tensor_, tensor_type);
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
     SetQnnTensorDataType(qnn_tensor_, data_type);

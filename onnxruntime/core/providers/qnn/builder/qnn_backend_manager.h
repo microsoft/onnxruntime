@@ -81,6 +81,8 @@ class QnnBackendManager {
     return CreateContext();
   }
 
+  bool IsDynamicShapeSupported();
+
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
   Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,

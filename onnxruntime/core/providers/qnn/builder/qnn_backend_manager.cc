@@ -306,6 +306,18 @@ Status QnnBackendManager::ShutdownBackend() {
   return Status::OK();
 }
 
+bool QnnBackendManager::IsDynamicShapeSupported() {
+  if (nullptr != qnn_interface_.propertyHasCapability) {
+    auto rt = qnn_interface_.propertyHasCapability(QNN_PROPERTY_TENSOR_SUPPORT_DYNAMIC_DIMENSIONS);
+    if (QNN_PROPERTY_NOT_SUPPORTED == rt || QNN_PROPERTY_ERROR_UNKNOWN_KEY == rt) {
+      LOGS_DEFAULT(INFO) << "Dynamic shape not supported or unknown to backend.";
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool QnnBackendManager::IsDevicePropertySupported() {
   if (nullptr != qnn_interface_.propertyHasCapability) {
     auto rt = qnn_interface_.propertyHasCapability(QNN_PROPERTY_GROUP_DEVICE);

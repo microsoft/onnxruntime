@@ -360,6 +360,9 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const size_t node_unit_size,
                                         bool is_qnn_ctx_model,
                                         const logging::Logger& logger) const {
+  auto is_dynamic_shape_supported = qnn_backend_manager_->IsDynamicShapeSupported();
+  LOGS(logger, VERBOSE) << "Dynamic shape support: " << is_dynamic_shape_supported;
+
   std::unordered_set<const Node*> supported_nodes{};
   // Filter in the EPContext node for QNN
   if (is_qnn_ctx_model) {
@@ -465,6 +468,21 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                             << "] index: [" << node_unit->Index()
                             << "] name: [" << node_unit->Name()
                             << "]";
+    }
+
+    // Check dimensions
+    if (!is_dynamic_shape_supported && supported) {
+      for (const auto* input : node->InputDefs()) {
+        auto *shape = input->Shape();
+        if (shape != nullptr) {
+          for (int j = 0; j < shape->dim_size(); j++) {
+            if (shape->dim(j).has_dim_param()) {
+              supported = false;
+              break;
+            }
+          }
+        }
+      }
     }
 
     if (supported) {

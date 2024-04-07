@@ -68,8 +68,11 @@ Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeA
     std::vector<int64_t> shape;
     shape.reserve(dims.size());
     for (const auto& dim : dims) {
-      ORT_RETURN_IF_NOT(dim.has_dim_value(), "Dynamic shape is not supported yet, for output: ", name);
-      shape.push_back(dim.dim_value());
+      if (dim.has_dim_value()) {
+        shape.push_back(dim.dim_value());
+      } else {
+        shape.push_back(0);
+      }
     }
     const auto* type_proto = input_output_defs[i]->TypeAsProto();
     int32_t data_type = type_proto->tensor_type().elem_type();
