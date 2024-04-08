@@ -130,16 +130,17 @@ async function testAllBrowserCases({hostInKarma}) {
 }
 
 async function testAllBrowserPackagesConsumingCases() {
-  for (const main of BUNDLER_TEST_CASES) {
-    await runKarma({hostInKarma: true, main, ortMain: ''});
+  for (const [main, format] of BUNDLER_TEST_CASES) {
+    await runKarma({hostInKarma: true, main, ortMain: '', format});
   }
 }
 
-async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js', args = []}) {
+async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js', format = 'iife', args = []}) {
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   const argsStr = args.map(i => `--test-args=${i}`).join(' ');
+  const formatFlag = `--format=${format}`;
   await runInShell(`npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
-      ortMain} --test-main=${main} --user-data=${getNextUserDataDir()} ${argsStr}`);
+      ortMain} --test-main=${main} --user-data=${getNextUserDataDir()} ${argsStr} ${formatFlag}`);
 }
 
 async function runInShell(cmd) {

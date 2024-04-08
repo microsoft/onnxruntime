@@ -11,7 +11,7 @@ const NODEJS_TEST_CASES = [
   './node-test-wasm-path-override-prefix.js',
 ];
 
-// [test_for_same_origin, test_for_cross_origin, main_js, ort_main_js]
+// [test_for_same_origin, test_for_cross_origin, main_js, ort_main_js, [test_args]]
 const BROWSER_TEST_CASES = [
   [true, true, './browser-test-webgl.js', 'ort.min.js'],                               // webgl
   [true, true, './browser-test-webgl.js', 'ort.webgl.min.js'],                         // webgl
@@ -41,13 +41,14 @@ const BROWSER_TEST_CASES = [
   [true, true, './browser-test-webgpu-external-data.js', 'ort.webgpu.min.js'],  // external data
 ];
 
+// [bundle_path, format]
 const BUNDLER_TEST_CASES = [
-  './dist/webpack_esm_js/ort-test-e2e.bundle.mjs',
-  './dist/webpack_umd_js/ort-test-e2e.bundle.js',
-  './dist/rollup_esm_js/ort-test-e2e.bundle.mjs',
-  './dist/rollup_umd_js/ort-test-e2e.bundle.js',
-  './dist/parcel_esm_js/main.js',
-  './dist/parcel_umd_js/main.js',
+  ['./dist/webpack_esm_js/ort-test-e2e.bundle.mjs', 'esm'],
+  ['./dist/webpack_umd_js/ort-test-e2e.bundle.js', 'iife'],
+  ['./dist/rollup_esm_js/ort-test-e2e.bundle.mjs', 'esm'],
+  ['./dist/rollup_umd_js/ort-test-e2e.bundle.js', 'iife'],
+  ['./dist/parcel_esm_js/main.js', 'esm'],
+  ['./dist/parcel_umd_js/main.js', 'iife'],
 ];
 
 module.exports = {

@@ -15,6 +15,11 @@ if (typeof USER_DATA !== 'string') {
   throw new Error('flag --user-data=<CHROME_USER_DATA_FOLDER> is required');
 }
 
+const FORMAT = args['format'];
+if (FORMAT !== 'esm' && FORMAT !== 'iife') {
+  throw new Error('flag --format=<esm|iife> is required');
+}
+
 const testArgs = args['test-args'];
 const normalizedTestArgs = !testArgs || Array.isArray(testArgs) ? testArgs : [testArgs];
 
@@ -27,7 +32,7 @@ if (ORT_MAIN) {
   files.push(
       {pattern: (SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/') + ORT_MAIN});
 }
-if (TEST_MAIN.endsWith('.mjs')) {
+if (FORMAT === 'esm') {
   files.push({pattern: TEST_MAIN, type: 'module'});
 } else {
   files.push({pattern: './common.js'}, {pattern: TEST_MAIN});
