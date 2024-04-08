@@ -4,10 +4,16 @@
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # set all triton kernel ops that need to be compiled
-set(triton_kernel_scripts
-    "onnxruntime/core/providers/rocm/math/softmax_triton.py"
-    "onnxruntime/contrib_ops/rocm/diffusion/group_norm_triton.py"
-)
+if(onnxruntime_USE_CUDA)
+  set(triton_kernel_scripts
+      "onnxruntime/contrib_ops/cuda/sparse/sparse_attention_triton.py"
+  )
+else()
+  set(triton_kernel_scripts
+      "onnxruntime/core/providers/rocm/math/softmax_triton.py"
+      "onnxruntime/contrib_ops/rocm/diffusion/group_norm_triton.py"
+  )
+endif()
 
 function(compile_triton_kernel out_triton_kernel_obj_file out_triton_kernel_header_dir)
   # compile triton kernel, generate .a and .h files
