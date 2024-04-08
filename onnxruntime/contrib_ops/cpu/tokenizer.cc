@@ -40,6 +40,9 @@ class Tokenizer final : public OpKernel {
                          size_t N, size_t C,
                          gsl::span<const int64_t> input_dims) const;
 
+  void OutputData(gsl::span<const std::pmr::vector<re2::StringPiece>> rows,
+                  size_t max_tokens, size_t max_output_index, std::string* output_data) const;
+
   bool mark_{false};
   std::string pad_value_;
   size_t mincharnum_{0};
@@ -254,8 +257,35 @@ class MonitonicAllocatorWithDefault : public std::pmr::monotonic_buffer_resource
   MonitonicAllocatorWithDefault(void* ptr, size_t size_in_bytes, std::pmr::memory_resource* upstream)
       : monotonic_buffer_resource(ptr, size_in_bytes, upstream) {}
 };
-
 }  // namespace
+
+void Tokenizer::OutputData(gsl::span<const std::pmr::vector<re2::StringPiece>> rows,
+                           size_t max_tokens, size_t max_output_index, std::string* output_data) const {
+  size_t output_index = 0;
+  for (const auto& row : rows) {
+#ifdef _DEBUG
+    size_t c_idx = output_index;
+#endif
+    if (mark_) {
+      output_data[output_index++].assign(&kStartMarker, 1);
+    }
+    // Output tokens for this row
+    for (const auto& token : row) {
+      output_data[output_index++].assign(token.data(), token.length());
+    }
+    if (mark_) {
+      output_data[output_index++].assign(&kEndMarker, 1);
+    }
+    const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
+    for (size_t p = 0; p < pads; ++p) {
+      output_data[output_index++] = pad_value_;
+    }
+#ifdef _DEBUG
+    assert(output_index <= max_output_index);
+    assert((output_index - c_idx) <= max_tokens);
+#endif
+  }
+}
 
 Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
                                                size_t N, size_t C,
@@ -398,37 +428,8 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   auto output_tensor = ctx->Output(0, output_shape);
   auto const output_data = output_tensor->MutableData<std::string>();
 
-#ifdef _DEBUG
-  const size_t max_output_index = N * C * max_tokens;
-#endif
-  size_t output_index = 0;
-  for (const auto& row : rows) {
-#ifdef _DEBUG
-    size_t c_idx = output_index;
-#endif
-    if (mark_) {
-      output_data[output_index].assign(&kStartMarker, 1);
-      ++output_index;
-    }
-    // Output tokens for this row
-    for (const auto& token : row) {
-      output_data[output_index].assign(token.data(), token.size());
-      ++output_index;
-    }
-    if (mark_) {
-      output_data[output_index].assign(&kEndMarker, 1);
-      ++output_index;
-    }
-    const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
-    for (size_t p = 0; p < pads; ++p) {
-      output_data[output_index] = pad_value_;
-      ++output_index;
-    }
-#ifdef _DEBUG
-    assert(output_index <= max_output_index);
-    assert((output_index - c_idx) <= max_tokens);
-#endif
-  }
+  OutputData(rows, max_tokens, output_shape.Size(), output_data);
+
   return Status::OK();
 }
 
@@ -528,37 +529,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   auto output_tensor = ctx->Output(0, output_shape);
   auto const output_data = output_tensor->MutableData<std::string>();
 
-#ifdef _DEBUG
-  const size_t max_output_index = N * C * max_tokens;
-#endif
-  size_t output_index = 0;
-  for (const auto& row : rows) {
-#ifdef _DEBUG
-    size_t c_idx = output_index;
-#endif
-    if (mark_) {
-      (output_data + output_index)->assign(&kStartMarker, 1);
-      ++output_index;
-    }
-    // Output tokens for this row
-    for (const auto& token : row) {
-      (output_data + output_index)->assign(token.data(), token.length());
-      ++output_index;
-    }
-    if (mark_) {
-      (output_data + output_index)->assign(&kEndMarker, 1);
-      ++output_index;
-    }
-    const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
-    for (size_t p = 0; p < pads; ++p) {
-      *(output_data + output_index) = pad_value_;
-      ++output_index;
-    }
-#ifdef _DEBUG
-    assert(output_index <= max_output_index);
-    assert((output_index - c_idx) <= max_tokens);
-#endif
-  }
+  OutputData(rows, max_tokens, output_shape.Size(), output_data);
 
   return Status::OK();
 }
