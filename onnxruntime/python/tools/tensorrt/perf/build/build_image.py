@@ -178,7 +178,8 @@ def overwrite_onnx_tensorrt_commit_id(commit_id):
     Overwrite onnx-tensorrt commit id in cmake/deps.txt.
     """
     deps_file_path = "../../../../../../cmake/deps.txt"
-    new_line = None
+    line_index = None
+    zip_url = None
 
     with open(deps_file_path) as file:
         lines = file.readlines()
@@ -186,21 +187,19 @@ def overwrite_onnx_tensorrt_commit_id(commit_id):
     for i, line in enumerate(lines):
         if line.startswith("onnx_tensorrt"):
             parts = line.split(";")
-            new_zip_url = ";".join(
-                [parts[0], f"https://github.com/onnx/onnx-tensorrt/archive/{commit_id}.zip", parts[2]]
-            )
-            new_line = i
+            zip_url = ";".join([parts[0], f"https://github.com/onnx/onnx-tensorrt/archive/{commit_id}.zip", parts[2]])
+            line_index = i
             break
 
-    if new_line is not None:
-        wget_command = f"wget {new_zip_url.split(';')[1]} -O temp.zip"
+    if line_index and zip_url:
+        wget_command = f"wget {zip_url.split(';')[1]} -O temp.zip"
         subprocess.run(wget_command, shell=True, check=True)
 
         sha1sum_command = "sha1sum temp.zip"
         result = subprocess.run(sha1sum_command, shell=True, capture_output=True, text=True, check=True)
         hash_value = result.stdout.split()[0]
 
-        lines[new_line] = new_zip_url.split(";")[0] + ";" + new_zip_url.split(";")[1] + ";" + hash_value + "\n"
+        lines[line_index] = zip_url.split(";")[0] + ";" + zip_url.split(";")[1] + ";" + hash_value + "\n"
 
         with open(deps_file_path, "w") as file:
             file.writelines(lines)
@@ -212,7 +211,9 @@ def overwrite_onnx_tensorrt_commit_id(commit_id):
             with open(deps_file_path) as file:
                 lines = file.readlines()
                 for line in lines:
-                    print(line.strip())
+                    if line.startswith("onnx_tensorrt"):
+                        print(line.strip())
+                        break
         except Exception as e:
             print(f"Failed to read the file: {e}")
 
