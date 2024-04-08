@@ -357,6 +357,7 @@ class TestInferenceSession(unittest.TestCase):
             # test for user_compute_stream
             option = options["TensorrtExecutionProvider"]
             option["user_compute_stream"] = "1"
+            option["trt_engine_cache_enable"] = "false"
             sess.set_providers(["TensorrtExecutionProvider"], [option])
             new_options = sess.get_provider_options()
             new_option = new_options["TensorrtExecutionProvider"]
