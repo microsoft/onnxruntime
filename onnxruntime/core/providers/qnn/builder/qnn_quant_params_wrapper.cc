@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
+#include <algorithm>
 #include <cassert>
 #include <optional>
 #include <vector>
@@ -43,7 +44,7 @@ Status QnnQuantParamsWrapper::Init(const Qnn_QuantizeParams_t& params) {
     params_ = QNN_QUANTIZE_PARAMS_INIT;
   }
 
-  if (params.encodingDefinition == QNN_DEFINITION_UNDEFINED) {
+  if (params.encodingDefinition != QNN_DEFINITION_DEFINED) {
     params_ = params;
     return Status::OK();
   }
@@ -140,7 +141,7 @@ Status QnnQuantParamsWrapper::Init(const QnnModelWrapper& qnn_model_wrapper, con
                       "Expected the same number of zero-points and scales for per-channel quantization");
 
     scale_offset_data_ = std::make_unique<Qnn_ScaleOffset_t[]>(num_elems);
-    gsl::span<Qnn_ScaleOffset_t> data_span(reinterpret_cast<Qnn_ScaleOffset_t*>(scale_offset_data_.get()), num_elems);
+    gsl::span<Qnn_ScaleOffset_t> data_span(scale_offset_data_.get(), num_elems);
 
     for (size_t i = 0; i < num_elems; i++) {
       data_span[i].scale = scales[i];

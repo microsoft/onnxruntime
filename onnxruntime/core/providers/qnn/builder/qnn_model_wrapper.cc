@@ -374,7 +374,13 @@ Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::v
   return Status::OK();
 }
 
+// Checks if a tensor in the ONNX graph is per-axis quantized.
 Status QnnModelWrapper::IsPerAxisQuantized(const onnxruntime::NodeUnitIODef& io_def, /*out*/ bool& is_per_axis) const {
+  if (!io_def.quant_param) {
+    is_per_axis = false;
+    return Status::OK();
+  }
+
   const std::string& scale_name = io_def.quant_param->scale.Name();
   const auto& graph_initializers = GetInitializerTensors();
   auto iter = graph_initializers.find(scale_name);
@@ -383,6 +389,9 @@ Status QnnModelWrapper::IsPerAxisQuantized(const onnxruntime::NodeUnitIODef& io_
   gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
   TensorShape scale_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(*scale_tensor_proto);
 
+  // Check the number of scale values to determine if the tensor is per-axis.
+  // This is consistent with CPU EP's Quant/Dequant logic. We can't use the presence of an axis because even a
+  // per-axis DQ/Q op may not have an explicit axis attribute (assumed to default to 1 if missing).
   const bool is_scalar_or_1_elem_vector = scale_shape.NumDimensions() == 0 ||
                                           (scale_shape.NumDimensions() == 1 && scale_shape.Size() == 1);
 
