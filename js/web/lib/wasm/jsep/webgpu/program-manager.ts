@@ -87,7 +87,7 @@ export class ProgramManager {
     if (device.features.has('shader-f16')) {
       extensions.push('enable f16;');
     }
-    const shaderHelper = createShaderHelper(normalizedDispatchGroupSize);
+    const shaderHelper = createShaderHelper(normalizedDispatchGroupSize, this.backend.device.limits);
     const userCode = programInfo.getShaderSource(shaderHelper);
     const code = `${extensions.join('\n')}\n${shaderHelper.additionalImplementations}\n${userCode}`;
     const shaderModule = device.createShaderModule({code, label: programInfo.name});
@@ -97,7 +97,7 @@ export class ProgramManager {
         {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});
 
     TRACE_FUNC_END(programInfo.name);
-    return {programInfo, computePipeline};
+    return {programInfo, computePipeline, uniformVariablesInfo: shaderHelper.variablesInfo};
   }
 
   normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['getRunData']>['dispatchGroup']):

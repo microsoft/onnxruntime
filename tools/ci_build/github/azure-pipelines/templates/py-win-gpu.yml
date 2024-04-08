@@ -1,4 +1,8 @@
 parameters:
+- name: MACHINE_POOL
+  type: string
+  default: 'onnxruntime-Win2022-GPU-T4'
+
 - name: EP_NAME
   type: string
 
@@ -39,13 +43,11 @@ stages:
     dependsOn: []
     jobs:
     - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
-      timeoutInMinutes: 120
+      timeoutInMinutes: 360
       workspace:
         clean: all
       pool:
         name: onnxruntime-Win-CPU-2022
-    #    demands:
-    #      - ImageVersionOverride -equals 1.0.367516
       variables:
         GRADLE_OPTS: '-Dorg.gradle.daemon=false'
         VSGenerator: 'Visual Studio 17 2022'
@@ -126,7 +128,9 @@ stages:
               inputs:
                 targetPath: '$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\'
                 publishLocation: 'pipeline'
-                artifactName: onnx_py12_wheel
+                # In fact, the onnx artifact is same with different EP_NAME, but in CI, we couldn't publish artifact with same name.
+                # And there's not way to check if the artifact exists.
+                artifactName: onnx_py12_wheel_${{ parameters.EP_NAME }}
 
           - template: set-nightly-build-option-variable-step.yml
 
@@ -200,6 +204,17 @@ stages:
             inputs:
               AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
 
+          - task: TSAUpload@2
+            displayName: 'TSA upload'
+            condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+            inputs:
+              GdnPublishTsaOnboard: false
+              GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
+
+          - template: component-governance-component-detection-steps.yml
+            parameters:
+              condition: 'succeeded'
+
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
     dependsOn: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
     jobs:
@@ -207,7 +222,7 @@ stages:
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win2022-GPU-T4
+        name: ${{parameters.MACHINE_POOL}}
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'
@@ -225,7 +240,7 @@ stages:
 
         - template: flex-downloadPipelineArtifact.yml
           parameters:
-            ArtifactName: "onnxruntime_${{ parameters.EP_NAME }}"
+            ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
             StepName: 'Download Pipeline Artifact - Windows GPU Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
@@ -235,7 +250,7 @@ stages:
         - ${{ if eq(parameters.PYTHON_VERSION, '3.12') }}:
           - template: flex-downloadPipelineArtifact.yml
             parameters:
-              ArtifactName: "onnx_py12_wheel"
+              ArtifactName: onnx_py12_wheel_${{ parameters.EP_NAME }}
               StepName: 'Download Pipeline Artifact - Onnx Python12 wheel'
               TargetPath: '$(Agent.TempDirectory)\onnx\'
               SpecificArtifact: ${{ parameters.SpecificArtifact }}
@@ -266,14 +281,3 @@ stages:
             python onnx_backend_test_series.py
           workingDirectory: '$(Build.sourcesDirectory)'
           displayName: 'Run Python Tests'
-
-        - task: TSAUpload@2
-          displayName: 'TSA upload'
-          condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-          inputs:
-            GdnPublishTsaOnboard: false
-            GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-
-        - template: component-governance-component-detection-steps.yml
-          parameters:
-            condition: 'succeeded'
