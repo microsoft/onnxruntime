@@ -57,7 +57,7 @@ class Utf8ConverterGeneric {
     std::codecvt_base::result ret_code = std::codecvt_base::ok;
 
     // Continue while we exhaust the sequence
-    while (true) {
+    while (converted < wstr.length()) {
       ret_code = converter_.out(state,
                                 wchar_next,
                                 src_end,
@@ -67,10 +67,6 @@ class Utf8ConverterGeneric {
                                 char_next);
       result += (char_next - dummy_dest);
       converted = (wchar_next - src);
-
-      if (converted == wstr.length()) {
-        break;
-      }
 
       if (ret_code != std::codecvt_base::partial &&
           ret_code != std::codecvt_base::ok) {
@@ -137,14 +133,14 @@ class Utf8ConverterGeneric {
     const char* src = str.data();
     const char* src_end = src + str.length();
 
-    wchar_t dummy_dest[256] = {0};
+    wchar_t dummy_dest[128] = {0};
     const char* char_next = src;
     wchar_t* wchar_next = dummy_dest;
 
     size_t converted = 0;
 
     std::codecvt_base::result ret_code = std::codecvt_base::ok;
-    while (true) {
+    while (converted < str.length()) {
       ret_code = converter_.in(state,
                                char_next,
                                src_end,
@@ -154,9 +150,6 @@ class Utf8ConverterGeneric {
                                wchar_next);
       result += (wchar_next - dummy_dest);
       converted = (char_next - src);
-      if (converted == str.length()) {
-        break;
-      }
 
       if (ret_code != std::codecvt_base::partial &&
           ret_code != std::codecvt_base::ok) {
