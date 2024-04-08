@@ -65,7 +65,7 @@ Status QnnQuantParamsWrapper::Init(const Qnn_QuantizeParams_t& params) {
         scale_offset_data_ = std::make_unique<Qnn_ScaleOffset_t[]>(num_elems);
         gsl::span<Qnn_ScaleOffset_t> src_span(params.axisScaleOffsetEncoding.scaleOffset, num_elems);
         std::copy(src_span.begin(), src_span.end(), scale_offset_data_.get());
-        params_.axisScaleOffsetEncoding.scaleOffset = reinterpret_cast<Qnn_ScaleOffset_t*>(scale_offset_data_.get());
+        params_.axisScaleOffsetEncoding.scaleOffset = scale_offset_data_.get();
       } else {
         params_.axisScaleOffsetEncoding.scaleOffset = nullptr;
       }
