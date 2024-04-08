@@ -267,9 +267,13 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.device_id = internal_options.device_id;
 
   // The 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance can be set by C API UpdateTensorRTProviderOptionsWithValue() as well
-  // We only set the 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance if it is provided in options
+  // We only set the 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance if it is provided in options or user_compute_stream is provided
   if (options.find("has_user_compute_stream") != options.end()) {
     trt_provider_options_v2.has_user_compute_stream = internal_options.has_user_compute_stream;
+  }
+  if (options.find("user_compute_stream") != options.end() && internal_options.user_compute_stream != nullptr) {
+    trt_provider_options_v2.user_compute_stream = internal_options.user_compute_stream;
+    trt_provider_options_v2.has_user_compute_stream = true;
   }
 
   trt_provider_options_v2.trt_max_partition_iterations = internal_options.max_partition_iterations;

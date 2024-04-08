@@ -355,10 +355,14 @@ class TestInferenceSession(unittest.TestCase):
             """
 
             # test for user_compute_stream
-            option["user_compute_stream"] = "0"
+            option = options["TensorrtExecutionProvider"]
+            option["user_compute_stream"] = "1"
             sess.set_providers(["TensorrtExecutionProvider"], [option])
-            options = sess.get_provider_options()
-            self.assertEqual(options["TensorrtExecutionProvider"]["user_compute_stream"], "0")
+            new_options = sess.get_provider_options()
+            new_option = new_options["TensorrtExecutionProvider"]
+            self.assertEqual(new_option["user_compute_stream"], "1")
+            # set user_compute_stream will set has_user_compute_stream to 1 too
+            self.assertEqual(new_option["has_user_compute_stream"], "1")
 
             try:
                 import torch
