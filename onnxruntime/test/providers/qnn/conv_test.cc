@@ -551,14 +551,18 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
                                      QDQTolerance(0.00413f));
 }
 
-TEST_F(QnnHTPBackendTests, ConvU8S8S32_per_axis) {
+// Test per-channel QDQ Conv. in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
+TEST_F(QnnHTPBackendTests, ConvU8S8S32_PerAxis) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
-  TestInputDef<float> input_def(input_shape, false, GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
-  TestInputDef<float> weight_def(weight_shape, true, GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
-  TestInputDef<float> bias_def(bias_shape, true, GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerAxisTest<uint8_t, int8_t>("Conv",
                                            input_def,
@@ -570,8 +574,33 @@ TEST_F(QnnHTPBackendTests, ConvU8S8S32_per_axis) {
                                            "NOTSET",
                                            ExpectedEPNodeAssignment::All,
                                            false,  // use_qdq_contrib_ops
-                                           13,     // opset
-                                           QDQTolerance());
+                                           13);    // opset
+}
+
+// Test per-channel QDQ Conv. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
+TEST_F(QnnHTPBackendTests, ConvU16S8S32_PerAxis) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerAxisTest<uint16_t, int8_t>("Conv",
+                                            input_def,
+                                            weight_def,
+                                            bias_def,
+                                            {1, 1},        // Strides
+                                            {0, 0, 0, 0},  // Pads
+                                            {1, 1},        // Dilations
+                                            "NOTSET",
+                                            ExpectedEPNodeAssignment::All,
+                                            true,  // use_qdq_contrib_ops
+                                            13);   // opset
 }
 
 // Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's Conv2d)

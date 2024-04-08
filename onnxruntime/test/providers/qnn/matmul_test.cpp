@@ -55,6 +55,51 @@ static GetTestQDQModelFn<OutputQType> BuildMatMulOpQDQTestCase(const TestInputDe
   };
 }
 
+// Returns a function that creates a graph with a QDQ MatMul operator whose input[1] is per-channel
+// quantized weight.
+template <typename Input0QType, typename WeightQType, typename OutputQType>
+static GetTestQDQModelFn<OutputQType> BuildQDQPerAxisMatMulOpTestCase(const TestInputDef<float>& input1_def,
+                                                                      const TestInputDef<float>& weights_def,
+                                                                      int64_t weight_quant_axis,
+                                                                      bool use_contrib_qdq) {
+  return [input1_def, weights_def, weight_quant_axis,
+          use_contrib_qdq](ModelTestBuilder& builder,
+                           std::vector<QuantParams<OutputQType>>& output_qparams) {
+    // input1 -> Q -> DQ ->
+    NodeArg* input1 = MakeTestInput(builder, input1_def);
+    QuantParams<Input0QType> input1_qparams = GetTestInputQuantParams<Input0QType>(input1_def);
+    auto* input1_qdq = AddQDQNodePair<Input0QType>(builder, input1, input1_qparams.scale, input1_qparams.zero_point,
+                                                   use_contrib_qdq);
+
+    // Quantized(weights) -> DQ ->
+    ORT_ENFORCE(weights_def.IsInitializer() && weights_def.IsRawData());
+    std::vector<float> weight_scales;
+    std::vector<WeightQType> weight_zero_points;
+    GetTestInputQuantParamsPerAxis<WeightQType>(weights_def, weight_scales, weight_zero_points,
+                                                static_cast<size_t>(weight_quant_axis), true);
+
+    TensorShape weights_shape = weights_def.GetTensorShape();
+    std::vector<WeightQType> quantized_weights(weights_shape.Size());
+    QuantizeValues<float, WeightQType>(weights_def.GetRawData(), quantized_weights, weights_shape,
+                                       weight_scales, weight_zero_points, weight_quant_axis);
+
+    NodeArg* weights_initializer = builder.MakeInitializer<WeightQType>(weights_def.GetShape(), quantized_weights);
+    NodeArg* weights_dq = builder.MakeIntermediate();
+    Node& weights_dq_node = builder.AddDequantizeLinearNode<WeightQType>(weights_initializer, weight_scales,
+                                                                         weight_zero_points, weights_dq,
+                                                                         nullptr, use_contrib_qdq);
+    weights_dq_node.AddAttribute("axis", weight_quant_axis);
+
+    // MatMul
+    auto* op_output = builder.MakeIntermediate();
+    builder.AddNode("MatMul", {input1_qdq, weights_dq}, {op_output});
+
+    // op_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<OutputQType>(builder, op_output, output_qparams[0].scale,
+                                                       output_qparams[0].zero_point, use_contrib_qdq);
+  };
+}
+
 // Runs an MatMul model on the QNN CPU backend. Checks the graph node assignment, and that inference
 // outputs for QNN and CPU match.
 static void RunMatMulOpOpTest(const TestInputDef<float>& input1_def,
@@ -97,6 +142,34 @@ static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
                        provider_options,
                        opset,
                        expected_ep_assignment);
+}
+
+// Runs a QDQ MatMul model (per-axis quantized input[1]) on the QNN HTP backend.
+// Checks the graph node assignment, and that the QDQ model is accurate on QNN EP (compared to CPU EP).
+template <typename Input0QType, typename WeightQType, typename OutputQType>
+static void RunQDQPerAxisMatMulOpOpTest(const TestInputDef<float>& input1_def,
+                                        const TestInputDef<float>& weights_def,
+                                        int64_t weight_quant_axis,
+                                        ExpectedEPNodeAssignment expected_ep_assignment,
+                                        int opset = 18,
+                                        bool use_contrib_qdq = false) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto f32_model_fn = BuildMatMulOpTestCase(input1_def, weights_def);
+  auto qdq_model_fn = BuildQDQPerAxisMatMulOpTestCase<Input0QType, WeightQType, OutputQType>(input1_def,
+                                                                                             weights_def,
+                                                                                             weight_quant_axis,
+                                                                                             use_contrib_qdq);
+  TestQDQModelAccuracy(f32_model_fn,
+                       qdq_model_fn,
+                       provider_options,
+                       opset,
+                       expected_ep_assignment, QDQTolerance(), logging::Severity::kVERBOSE);
 }
 
 //
@@ -151,6 +224,40 @@ TEST_F(QnnHTPBackendTests, MatMulOp_HTP_u8) {
   RunQDQMatMulOpOpTest<uint8_t, uint8_t, uint8_t>(TestInputDef<float>({2, 3}, false, input0_data),
                                                   TestInputDef<float>({3, 2}, false, input1_data),
                                                   ExpectedEPNodeAssignment::All, 18);
+}
+
+// TODO: Fix graph finalization error for per-axis QDQ MatMul (axis: 3, in0: u16, in1: s8, out: u16)
+// 2024-04-07 21:21:54.2099083 [V:onnxruntime:Default, qnn_backend_manager.cc:249 onnxruntime::qnn::QnnLogging] QnnDsp <I> QnnGraph_finalize started, graph = 0x1
+// QnnDsp <V> Construct graph input node
+// QnnDsp <V> Graph Input Tensor 1 InputDef[2, 0]
+// QnnDsp <V> Construct graph nullinput node
+// QnnDsp <V> Construct graph output node
+// QnnDsp <V> Graph Output Tensor 5 hexagon_nn_input[23, 0]
+// QnnDsp <I> rpcMemoryAlloc 8 isInit 1
+// QnnDsp <I> rpcMemoryAlloc 16 isInit 1
+// QnnDsp <V> Found transport session 00000269996A22D0 for deviceId 0 coreId 0 pdId 0!
+// Starting stage: Graph Preparation Initializing
+// Completed stage: Graph Preparation Initializing (193 us)
+// Starting stage: Graph Transformations and Optimizations
+// C:\zsnpe\QAISW\FirstParty\QNN\HTP\HTP\src\hexagon\include\public\optimize.h:883:ERROR:Parameter Input not found
+// C:\zsnpe\QAISW\FirstParty\QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:4584:ERROR:Exception during graph prepare. match parm not found
+// Completed stage: Graph Transformations and Optimizations (4599 us)
+// QnnDsp <E> RouterWindows graph prepare failed 99
+// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
+// QnnDsp <V> Wake up free backend 1 thread(s)
+// QnnDsp <I> QnnGraph_finalize done. status 0x3ea
+// Failed to finalize QNN graph.
+TEST_F(QnnHTPBackendTests, DISABLED_MatMul_U16S8_PerAxis) {
+  std::vector<int64_t> input0_shape = {1, 1, 2, 3};
+  std::vector<int64_t> weight_shape = {1, 2, 3, 2};
+  std::vector<float> input0_data = GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input0_shape).Size());
+  std::vector<float> weight_data = {-1.5f, -1.0f, 0.0f, 0.2f, 1.0f, 1.5f, -3.0f, 0.2f, 0.4f, 0.8f, 1.2f, 1.5f};
+  RunQDQPerAxisMatMulOpOpTest<uint16_t, int8_t, uint16_t>(TestInputDef<float>(input0_shape, false, input0_data),
+                                                          TestInputDef<float>(weight_shape, true, weight_data),
+                                                          3,  // axis (last axis required by QNN)
+                                                          ExpectedEPNodeAssignment::All,
+                                                          18,     // opset
+                                                          true);  // Use contrib Q/DQ ops for u16
 }
 
 // Test QDQ MatMul with 16-bit act, 8-bit weights (static)
