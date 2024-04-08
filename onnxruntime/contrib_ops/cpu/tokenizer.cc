@@ -10,7 +10,12 @@
 #include "core/framework/tensor.h"
 #include "re2/re2.h"
 
+#if defined(__clang__) || defined(__GNUC__)
+#include <experimental/memory_resource>
+#else
 #include <memory_resource>
+#endif
+
 #include <type_traits>
 
 namespace onnxruntime {
@@ -250,22 +255,20 @@ inline void* AlignedAllocate(size_t num, std::unique_ptr<uint8_t[]>& buf, size_t
 /// If the allocated buffer is not enough, additional allocations are done using
 /// new/delete.
 /// </summary>
-class MonitonicAllocatorWithDefault : public std::pmr::monotonic_buffer_resource {
+class MonotonicAllocatorWithDefault : public std::pmr::monotonic_buffer_resource {
  public:
-  MonitonicAllocatorWithDefault(void* ptr, size_t size_in_bytes)
+  MonotonicAllocatorWithDefault(void* ptr, size_t size_in_bytes)
       : monotonic_buffer_resource(ptr, size_in_bytes, std::pmr::get_default_resource()) {}
-  MonitonicAllocatorWithDefault(void* ptr, size_t size_in_bytes, std::pmr::memory_resource* upstream)
+  MonotonicAllocatorWithDefault(void* ptr, size_t size_in_bytes, std::pmr::memory_resource* upstream)
       : monotonic_buffer_resource(ptr, size_in_bytes, upstream) {}
 };
 }  // namespace
 
 void Tokenizer::OutputData(gsl::span<const std::pmr::vector<re2::StringPiece>> rows,
-                           size_t max_tokens, size_t max_output_index, std::string* output_data) const {
+                           size_t max_tokens, [[maybe_unused]] size_t max_output_index, std::string* output_data) const {
   size_t output_index = 0;
   for (const auto& row : rows) {
-#ifdef _DEBUG
-    size_t c_idx = output_index;
-#endif
+    [[maybe_unused]] size_t c_idx = output_index;
     if (mark_) {
       output_data[output_index++].assign(&kStartMarker, 1);
     }
@@ -280,10 +283,8 @@ void Tokenizer::OutputData(gsl::span<const std::pmr::vector<re2::StringPiece>> r
     for (size_t p = 0; p < pads; ++p) {
       output_data[output_index++] = pad_value_;
     }
-#ifdef _DEBUG
     assert(output_index <= max_output_index);
     assert((output_index - c_idx) <= max_tokens);
-#endif
   }
 }
 
@@ -310,7 +311,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   size_t allocated_size = 0;
   void* aligned_buf_ptr = AlignedAllocate<StringPiece>(total_tokens_estimate, buf_holder, allocated_size);
 
-  MonitonicAllocatorWithDefault monotonic_allocator(aligned_buf_ptr, allocated_size);
+  MonotonicAllocatorWithDefault monotonic_allocator(aligned_buf_ptr, allocated_size);
 
   // Make sure the vectors below are destroyed before the allocator
   const size_t vector_num = SafeInt<size_t>(N) * C;
@@ -452,7 +453,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   size_t allocated_size = 0;
   void* aligned_buf_ptr = AlignedAllocate<StringPiece>(total_tokens_estimate, buf_holder, allocated_size);
 
-  MonitonicAllocatorWithDefault monotonic_allocator(aligned_buf_ptr, allocated_size);
+  MonotonicAllocatorWithDefault monotonic_allocator(aligned_buf_ptr, allocated_size);
 
   // Make sure the vectors below are destroyed before the allocator
   const size_t vector_num = SafeInt<size_t>(N) * C;
