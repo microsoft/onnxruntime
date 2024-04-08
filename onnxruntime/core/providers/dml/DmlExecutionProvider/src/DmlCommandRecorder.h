@@ -4,6 +4,7 @@
 #pragma once
 
 #include "ICommandRecorder.h"
+#include "CommandAllocatorRing.h"
 
 namespace Dml
 {
@@ -67,18 +68,6 @@ namespace Dml
         }
 
     private:
-        struct CommandListInfo
-        {
-            ComPtr<ID3D12GraphicsCommandList> commandList;
-            ComPtr<ID3D12CommandAllocator> allocator;
-
-            // The event which will be signaled when the last command list submitted using this allocator
-            // completes execution on the GPU.
-            GpuEvent completionEvent = {};
-
-            ID3D12CommandAllocator* Get() const { return allocator.Get(); }
-        };
-
         void CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList);
 
         std::shared_ptr<CommandQueue> m_queue;
@@ -95,16 +84,14 @@ namespace Dml
         // The weak pointer avoids a circular reference from context->recorder->allocator->context
         std::weak_ptr<BucketizedBufferAllocator> m_bufferAllocator;
 
+        CommandAllocatorRing<2> m_commandAllocatorRing;
+
         // The command list currently being recorded into, and whether any command have been recorded yet.
         ComPtr<ID3D12GraphicsCommandList> m_currentCommandList;
-        std::shared_ptr<CommandListInfo> m_currentCommandListInfo;
         bool m_operationsRecordedInCurrentCommandList = false;
 
-        static constexpr int threadPoolSize = 8;
-
-        std::unique_ptr<onnxruntime::concurrency::ThreadPool> m_threadPool;
-        std::mutex m_mutex;
-        std::list<std::shared_ptr<CommandListInfo>> m_availableCommandLists;
+        // A cached command list which may be re-used.
+        ComPtr<ID3D12GraphicsCommandList> m_cachedCommandList;
 
         void SetDescriptorHeap(ID3D12DescriptorHeap* descriptorHeap);
     };

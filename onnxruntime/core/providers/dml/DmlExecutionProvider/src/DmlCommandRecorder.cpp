@@ -15,17 +15,11 @@ DmlCommandRecorder::DmlCommandRecorder(
     : m_queue(std::move(commandQueue)),
       m_d3dDevice(d3dDevice),
       m_dmlDevice(dmlDevice),
-      m_descriptorPool(d3dDevice, 2048)
+      m_descriptorPool(d3dDevice, 2048),
+      m_commandAllocatorRing(d3dDevice, m_queue->GetType(), m_queue->GetCurrentCompletionEvent())
 {
     ORT_THROW_IF_FAILED(dmlDevice->CreateOperatorInitializer(0, nullptr, IID_PPV_ARGS(&m_initializer)));
     ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
-
-    m_threadPool = std::make_unique<onnxruntime::concurrency::ThreadPool>(
-      &onnxruntime::Env::Default(),
-      onnxruntime::ThreadOptions(),
-      ORT_TSTR("CommandListPool"),
-      threadPoolSize,
-      true);
 }
 
 void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
@@ -269,7 +263,7 @@ void DmlCommandRecorder::ExecuteCommandList(
         gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(&commandList), 1));
 
         // The fence value at which the current command allocator may be re-used will now be higher
-        m_currentCommandListInfo->completionEvent = m_queue->GetNextCompletionEvent();
+        m_commandAllocatorRing.UpdateCurrentAllocatorCompletionEvent(m_queue->GetNextCompletionEvent());
 
         // Fail early if something horrifying happens
         ORT_THROW_IF_FAILED(m_dmlDevice->GetDeviceRemovedReason());
@@ -319,35 +313,23 @@ void DmlCommandRecorder::Open()
 {
     assert(m_currentDescriptorHeap == nullptr);
 
-    if (m_availableCommandLists.empty())
-    {
-        ComPtr<ID3D12CommandAllocator> allocator;
-        ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommandAllocator(
-            m_queue->GetType(),
-            IID_GRAPHICS_PPV_ARGS(allocator.ReleaseAndGetAddressOf())));
+    ID3D12CommandAllocator* allocator = m_commandAllocatorRing.GetNextAllocator(m_queue->GetNextCompletionEvent());
 
-        ComPtr<ID3D12GraphicsCommandList> commandList;
+    if (!m_cachedCommandList)
+    {
         ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommandList(
             0,
             m_queue->GetType(),
-            allocator.Get(),
+            allocator,
             nullptr,
-            IID_GRAPHICS_PPV_ARGS(commandList.ReleaseAndGetAddressOf())));
-
-        auto commandListInfo = std::make_shared<CommandListInfo>();
-        commandListInfo->allocator = std::move(allocator);
-        commandListInfo->commandList = std::move(commandList);
-        m_currentCommandListInfo = std::move(commandListInfo);
+            IID_GRAPHICS_PPV_ARGS(m_currentCommandList.ReleaseAndGetAddressOf())));
     }
     else
     {
-        std::unique_lock lock(m_mutex);
-        m_currentCommandListInfo = m_availableCommandLists.back();
-        m_availableCommandLists.pop_back();
+        m_currentCommandList = m_cachedCommandList;
+        m_cachedCommandList = nullptr;
+        ORT_THROW_IF_FAILED(m_currentCommandList->Reset(allocator, nullptr));
     }
-
-    m_currentCommandList = m_currentCommandListInfo->commandList;
-    m_currentCommandListInfo->completionEvent = m_queue->GetNextCompletionEvent();
 }
 
 void DmlCommandRecorder::CloseAndExecute()
@@ -365,17 +347,6 @@ void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* com
     if (m_operationsRecordedInCurrentCommandList)
     {
         commandListsToExecute[commandListsToExecuteCount++] = m_currentCommandList.Get();
-
-        onnxruntime::concurrency::ThreadPool::Schedule(m_threadPool.get(), [this, currentCommandListInfo = m_currentCommandListInfo]() {
-            currentCommandListInfo->completionEvent.WaitForSignal();
-            ORT_THROW_IF_FAILED(currentCommandListInfo->allocator->Reset());
-            ORT_THROW_IF_FAILED(currentCommandListInfo->commandList->Reset(currentCommandListInfo->allocator.Get(), nullptr));
-
-            {
-                std::unique_lock lock(m_mutex);
-                m_availableCommandLists.push_back(std::move(currentCommandListInfo));
-            }
-        });
     }
 
     if (commandList)
@@ -389,6 +360,8 @@ void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* com
                 gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(commandListsToExecute), commandListsToExecuteCount));
     }
 
+    m_cachedCommandList = m_currentCommandList;
+    m_currentCommandList = nullptr;
     m_operationsRecordedInCurrentCommandList = false;
 
     // The descriptor heap must be set on the command list the next time it's opened.
