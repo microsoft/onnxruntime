@@ -425,7 +425,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // The other EPs can choose which opsets to test.
   // If an EP doesn't have any CI build pipeline, then there is no need to specify any opset.
 #ifdef USE_TENSORRT
-  // tensorrt: only enable opset 14 to 17 of onnx tests
+  // tensorrt: only enable opset 12 to 17 of onnx tests
   provider_names[provider_name_tensorrt] = {opset12, opset14, opset15, opset16, opset17};
 #endif
 #ifdef USE_MIGRAPHX
@@ -612,6 +612,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       ORT_TSTR("SSD-MobilenetV1-12"),  // symbolic shape inference shape error
       ORT_TSTR("SSD"),                 // needs to run symbolic shape inference shape first
       ORT_TSTR("size")                 // INVALID_ARGUMENT: Cannot find binding of given name: x
+      ORT_TSTR("ResNet50-fp32")        // TensorRT EP output tensor data type: 0 not supported
   };
   std::vector<std::filesystem::path> paths;
 
