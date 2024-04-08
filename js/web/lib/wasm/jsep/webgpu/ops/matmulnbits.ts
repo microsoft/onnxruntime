@@ -222,26 +222,30 @@ export const createMatMulNBitsProgramInfo =
                     .join(', ')});
                 let b_dequantized_values = ${(() => {
               if (aComponents === 1) {
-                return `return ${qDqDataType}(${
+                return `${qDqDataType}(${
                     Array.from({length: 8}, (_, i) => `(b_quantized_values[${i}] - zero_point) * scale`).join(', ')});`;
               } else {
                 return `(b_quantized_values - ${qDqDataType}(${Array(8).fill('zero_point').join(',')})) * scale;`;
               }
             })()};
                 // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
-                var offset: u32 = word_offset;
-                for (var j: u32 = 0; j < 8; j += ${aComponents}) {
-                  ${a.indicesSet('a_indices', inputRank - 1, 'offset')};
-                  ${a.indicesSet('a_indices', inputRank - 2, '0')};
+                for (var m: u32 = 0; m < ${dimAOuter}u; m++) {
+                  ${a.indicesSet('a_indices', inputRank - 2, 'm')};
+                  ${a.indicesSet('a_indices', inputRank - 1, 'word_offset')};
                   var input_offset = ${a.indicesToOffset('a_indices')};
-                  for (var m: u32 = 0; m < ${dimAOuter}u; m++) {
-                    let a_data = ${a.getByOffset('input_offset')};
-                    workgroup_shared[workgroup_shared_offset + m]${components > 1 ? '[c]' : ''} += ${
-                aComponents === 1 ? 'a_data * b_dequantized_values[j]' :
-                                    `dot(a_data, b_dequantized_values[j / ${aComponents}])`};
-                    input_offset += ${dimInner / aComponents};
+                  var a_data: ${qDqDataType};
+                  for (var j: u32 = 0; j < ${8 / aComponents}; j++) {
+                    a_data[j] = ${a.getByOffset('input_offset')};
+                    input_offset++;
                   }
-                  offset++;
+                  workgroup_shared[workgroup_shared_offset + m]${components > 1 ? '[c]' : ''} += ${
+                Array
+                    .from(
+                        {length: 8 / aComponents},
+                        (_, i) => `${
+                            aComponents === 1 ? `a_data[${i}] * b_dequantized_values[${i}]` :
+                                                `dot(a_data[${i}], b_dequantized_values[${i}])`}`)
+                    .join(' + ')};
                 }
                 word_offset += ${8 / aComponents};
               }
