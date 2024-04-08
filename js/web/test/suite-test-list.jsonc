@@ -1385,6 +1385,7 @@
       "pow_int32.jsonc",
       "pow-big-number.jsonc",
       "reshape.jsonc",
+      "rotary-embedding.jsonc",
       "skip-layer-norm.jsonc",
       "slice.jsonc",
       //"softmax.jsonc",
