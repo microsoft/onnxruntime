@@ -393,7 +393,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
           int8_t quant_value = static_cast<int8_t>(quant_value_int);
           raw_tensor[i] = *reinterpret_cast<uint8_t*>(&quant_value);
         } else {
-          // TODO: Should support 16-bit quantization as well.
+          // TODO(adrianlizarraga): Should support 16-bit quantization as well.
           ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", info.qnn_data_type);
         }
       }

@@ -193,7 +193,8 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQPerAxisConvTestCase(const std:
 
       TensorShape bias_shape = bias_def.GetTensorShape();
       std::vector<int32_t> quantized_biases(bias_shape.Size());
-      QuantizeValues<float, int32_t>(bias_def.GetRawData(), quantized_biases, bias_shape, bias_scales, bias_zero_points, 0);
+      QuantizeValues<float, int32_t>(bias_def.GetRawData(), quantized_biases, bias_shape, bias_scales,
+                                     bias_zero_points, 0);
 
       NodeArg* bias_initializer = builder.MakeInitializer<int32_t>(bias_def.GetShape(), quantized_biases);
       NodeArg* bias_dq = builder.MakeIntermediate();

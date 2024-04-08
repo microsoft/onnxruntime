@@ -2,16 +2,15 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <functional>
+#include <numeric>
+#include <string>
+#include <type_traits>
+#include <vector>
+
 #include "QnnTypes.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/node_unit.h"
-
-#include <functional>
-#include <numeric>
-#include <vector>
-#include <string>
-#include <type_traits>
-
 #include "core/util/qmath.h"
 
 namespace onnxruntime {

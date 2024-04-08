@@ -72,7 +72,8 @@ struct QuantParams {
 // range of output values. Note that the function is able to overwrite the output_qparams parameter if necessary
 // (Example: MaxPool must have identical input and output quantization params).
 template <typename QuantType>
-using GetTestQDQModelFn = std::function<void(ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams)>;
+using GetTestQDQModelFn = std::function<void(ModelTestBuilder& builder,
+                                             std::vector<QuantParams<QuantType>>& output_qparams)>;
 
 // Computes quantization parameters for an array of floating-point values.
 template <typename QType = uint8_t>
@@ -393,8 +394,8 @@ struct QDQTolerance {
  * \param qnn_options QNN EP provider options.
  * \param opset_version The opset version.
  * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
- * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the QDQ model on CPU EP.
- *                  This tolerance is a percentage of the output range.
+ * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the QDQ model
+ *                  on CPU EP. This tolerance is a percentage of the output range.
  * \param log_severity The logger's severity setting.
  */
 template <typename QuantType>
@@ -594,8 +595,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
  * \param qnn_options QNN EP provider options.
  * \param opset_version The opset version.
  * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
- * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the FP16 model on CPU EP.
- *                  This tolerance is a percentage of the output range.
+ * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the FP16 model
+ *                  on CPU EP. This tolerance is a percentage of the output range.
  * \param log_severity The logger's severity setting.
  */
 inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
@@ -820,9 +821,10 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
   return input;
 }
 
-// ONNX spec does not allow quantizing float to int32. However, this function will create an int32 input (divide by scale)
-// and then return the output of DequantizeLinear. Note that bias_scale should be generally be equal
-// to input_scale * weights_scale. See quantization tool: onnx_quantizer.py::quantize_bias_static()
+// ONNX spec does not allow quantizing float to int32. However, this function will create an int32
+// input (divide by scale) and then return the output of DequantizeLinear. Note that bias_scale should
+// be generally be equal to input_scale * weights_scale.
+// See quantization tool: onnx_quantizer.py::quantize_bias_static()
 //
 // i.e., initial bias => manual quantization (int32) => DQ => final float bias
 NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
@@ -879,12 +881,13 @@ inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
  * \returns A model building function.
  */
 template <typename QuantType, typename OtherInputType = int64_t>
-inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(const std::string& op_type,
-                                                       const std::vector<TestInputDef<float>>& quant_input_defs,
-                                                       const std::vector<TestInputDef<OtherInputType>>& non_quant_input_defs,
-                                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                                       const std::string& op_domain = kOnnxDomain,
-                                                       bool use_contrib_qdq = false) {
+inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
+    const std::string& op_type,
+    const std::vector<TestInputDef<float>>& quant_input_defs,
+    const std::vector<TestInputDef<OtherInputType>>& non_quant_input_defs,
+    const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+    const std::string& op_domain = kOnnxDomain,
+    bool use_contrib_qdq = false) {
   return [op_type, quant_input_defs, non_quant_input_defs, attrs, op_domain,
           use_contrib_qdq](ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams) {
     std::vector<NodeArg*> op_inputs;

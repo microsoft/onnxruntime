@@ -296,44 +296,50 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
     // QNN use -offset for some reason
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(initializer_bytes));
-      std::transform(int8_span.begin(), int8_span.end(), std::back_inserter(zero_points), [](int8_t zp) -> int32_t {
-        return -static_cast<int32_t>(zp);
-      });
+      std::transform(int8_span.begin(), int8_span.end(), std::back_inserter(zero_points),
+                     [](int8_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       auto uint8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(initializer_bytes));
-      std::transform(uint8_span.begin(), uint8_span.end(), std::back_inserter(zero_points), [](uint8_t zp) -> int32_t {
-        return -static_cast<int32_t>(zp);
-      });
+      std::transform(uint8_span.begin(), uint8_span.end(), std::back_inserter(zero_points),
+                     [](uint8_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
       auto uint16_span = ReinterpretAsSpan<const uint16_t>(gsl::make_span(initializer_bytes));
-      std::transform(uint16_span.begin(), uint16_span.end(), std::back_inserter(zero_points), [](uint16_t zp) -> int32_t {
-        return -static_cast<int32_t>(zp);
-      });
+      std::transform(uint16_span.begin(), uint16_span.end(), std::back_inserter(zero_points),
+                     [](uint16_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(initializer_bytes));
-      std::transform(int16_span.begin(), int16_span.end(), std::back_inserter(zero_points), [](int16_t zp) -> int32_t {
-        return -static_cast<int32_t>(zp);
-      });
+      std::transform(int16_span.begin(), int16_span.end(), std::back_inserter(zero_points),
+                     [](int16_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(initializer_bytes));
-      std::transform(int32_span.begin(), int32_span.end(), std::back_inserter(zero_points), [](int32_t zp) -> int32_t {
-        return -zp;
-      });
+      std::transform(int32_span.begin(), int32_span.end(), std::back_inserter(zero_points),
+                     [](int32_t zp) -> int32_t {
+                       return -zp;
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {
       auto uint32_span = ReinterpretAsSpan<const uint32_t>(gsl::make_span(initializer_bytes));
-      std::transform(uint32_span.begin(), uint32_span.end(), std::back_inserter(zero_points), [](uint32_t zp) -> int32_t {
-        return -static_cast<int32_t>(zp);
-      });
+      std::transform(uint32_span.begin(), uint32_span.end(), std::back_inserter(zero_points),
+                     [](uint32_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     default: {

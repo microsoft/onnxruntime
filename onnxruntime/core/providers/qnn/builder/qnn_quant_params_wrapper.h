@@ -2,12 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <memory>
 #include "QnnTypes.h"
 #include "core/common/common.h"
 #include "core/common/gsl.h"
 #include "core/framework/node_unit.h"
-
-#include <memory>
 
 namespace onnxruntime {
 namespace qnn {
@@ -135,7 +134,7 @@ class QnnQuantParamsWrapper {
 
  private:
   Qnn_QuantizeParams_t params_;
-  std::unique_ptr<char[]> scale_offset_data_;  // Stores per-axis scales and offsets
+  std::unique_ptr<Qnn_ScaleOffset_t[]> scale_offset_data_;  // Stores per-axis scales and offsets
 };
 
 }  // namespace qnn

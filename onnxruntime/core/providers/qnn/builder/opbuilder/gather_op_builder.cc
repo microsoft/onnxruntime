@@ -93,8 +93,8 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
       // Add Cast node for indices
       indices_input_name = input_name + "_ort_qnn_ep_cast";
-      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32, QnnQuantParamsWrapper(),
-                                   std::move(cast_output_shape));
+      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32,
+                                   QnnQuantParamsWrapper(), std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(indices_input_name,
                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,

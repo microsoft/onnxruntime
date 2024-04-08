@@ -4,6 +4,7 @@
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 #include <cassert>
 #include <optional>
+#include <vector>
 #include "QnnTypes.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 
@@ -61,9 +62,9 @@ Status QnnQuantParamsWrapper::Init(const Qnn_QuantizeParams_t& params) {
       const uint32_t num_elems = params.axisScaleOffsetEncoding.numScaleOffsets;
 
       if (num_elems > 0) {
-        const size_t num_bytes = num_elems * sizeof(Qnn_ScaleOffset_t);
-        scale_offset_data_ = std::make_unique<char[]>(num_bytes);
-        std::memcpy(scale_offset_data_.get(), params.axisScaleOffsetEncoding.scaleOffset, num_bytes);
+        scale_offset_data_ = std::make_unique<Qnn_ScaleOffset_t[]>(num_elems);
+        gsl::span<Qnn_ScaleOffset_t> src_span(params.axisScaleOffsetEncoding.scaleOffset, num_elems);
+        std::copy(src_span.begin(), src_span.end(), scale_offset_data_.get());
         params_.axisScaleOffsetEncoding.scaleOffset = reinterpret_cast<Qnn_ScaleOffset_t*>(scale_offset_data_.get());
       } else {
         params_.axisScaleOffsetEncoding.scaleOffset = nullptr;
@@ -138,8 +139,7 @@ Status QnnQuantParamsWrapper::Init(const QnnModelWrapper& qnn_model_wrapper, con
     ORT_RETURN_IF_NOT(no_zero_points || zero_points.size() == num_elems,
                       "Expected the same number of zero-points and scales for per-channel quantization");
 
-    const size_t num_bytes = num_elems * sizeof(Qnn_ScaleOffset_t);
-    scale_offset_data_ = std::make_unique<char[]>(num_bytes);
+    scale_offset_data_ = std::make_unique<Qnn_ScaleOffset_t[]>(num_elems);
     gsl::span<Qnn_ScaleOffset_t> data_span(reinterpret_cast<Qnn_ScaleOffset_t*>(scale_offset_data_.get()), num_elems);
 
     for (size_t i = 0; i < num_elems; i++) {
