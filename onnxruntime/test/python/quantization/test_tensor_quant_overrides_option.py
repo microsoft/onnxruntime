@@ -506,7 +506,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
                 },
             )
 
-        self.assertIn("option 'rmax' is invalid with 'scale' and 'zero_point'", str(context.exception))
+        self.assertIn("option(s) [rmax] are invalid with 'scale' and 'zero_point'", str(context.exception))
 
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
@@ -524,7 +524,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
                 },
             )
 
-        self.assertIn("Tensor override option 'rmax' is invalid with 'scale' and 'zero_point'", str(context.exception))
+        self.assertIn("option(s) [rmax] are invalid with 'scale' and 'zero_point'", str(context.exception))
 
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
@@ -542,7 +542,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
                 },
             )
 
-        self.assertIn("option 'symmetric' is invalid with 'scale' and 'zero_point'", str(context.exception))
+        self.assertIn("option(s) [symmetric] are invalid with 'scale' and 'zero_point'", str(context.exception))
 
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
@@ -560,7 +560,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
                 },
             )
 
-        self.assertIn("option 'reduce_range' is invalid with 'scale' and 'zero_point'", str(context.exception))
+        self.assertIn("option(s) [reduce_range] are invalid with 'scale' and 'zero_point'", str(context.exception))
 
     def test_get_qnn_qdq_config_sigmoid(self):
         """

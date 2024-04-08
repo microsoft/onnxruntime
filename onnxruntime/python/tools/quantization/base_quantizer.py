@@ -360,6 +360,14 @@ class BaseQuantizer:
 
         weights = tensor_proto_to_array(initializer)
         weights_rank = len(weights.shape)
+        is_axis_valid, axis_norm = normalize_axis(channel_axis, weights_rank)
+        if not is_axis_valid:
+            raise ValueError(
+                f"Weight {weight_name} has a per-channel axis with value {channel_axis} that is "
+                f"out-of-bounds for rank {weights_rank}"
+            )
+
+        channel_axis = axis_norm
         channel_count = weights.shape[channel_axis]
         quant_overrides_for_channels = self.tensor_quant_overrides.get_per_channel_overrides(
             weight_name, default_val=[{"axis": channel_axis}]
@@ -372,19 +380,17 @@ class BaseQuantizer:
                 f"either 1 or {channel_count} elements in the list of dictionaries."
             )
 
-        # If user provides per-channel quantization overrides, all channels must use the same quant_type,
-        # axis, symmetric, and reduce_range values. So, just use the first channel's values.
-        if "quant_type" in quant_overrides_for_channels[0]:
-            weight_qType = quant_overrides_for_channels[0]["quant_type"].tensor_type  # noqa: N806
-
-        if (
-            normalize_axis(quant_overrides_for_channels[0]["axis"], weights_rank)[1]
-            != normalize_axis(channel_axis, weights_rank)[1]
-        ):
+        is_axis_override_valid, axis_override = normalize_axis(quant_overrides_for_channels[0]["axis"], weights_rank)
+        if not is_axis_override_valid or axis_override != channel_axis:
             raise ValueError(
                 f"Tensor quantization overrides for {weight_name} specify an unexpected axis. "
                 f"Expected {channel_axis}, but got {quant_overrides_for_channels[0]['axis']}."
             )
+
+        # If user provides per-channel quantization overrides, all channels must use the same quant_type,
+        # axis, symmetric, and reduce_range values. So, just use the first channel's values.
+        if "quant_type" in quant_overrides_for_channels[0]:
+            weight_qType = quant_overrides_for_channels[0]["quant_type"].tensor_type  # noqa: N806
 
         symmetric = quant_overrides_for_channels[0].get(
             "symmetric",
