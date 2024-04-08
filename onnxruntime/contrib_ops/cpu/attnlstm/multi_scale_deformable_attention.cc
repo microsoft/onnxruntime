@@ -24,7 +24,6 @@ Status MultiScaleDeformableAttention::Compute(_Inout_ OpKernelContext* context) 
   const auto& value_spatial_shapes_input_shape = value_spatial_shapes->Shape();
   const auto& attention_weights_input_shape = attention_weights->Shape();
 
-  const int64_t S = value_input_shape[1];
   const int64_t M = value_input_shape[2];
   const int64_t D = value_input_shape[3];
   const int64_t L = value_spatial_shapes_input_shape[0];
