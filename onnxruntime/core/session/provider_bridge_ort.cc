@@ -1650,8 +1650,8 @@ void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptio
     LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
 
     auto context_cache_path = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-    tensorrt_options->trt_ep_context_file_path = context_cache_path.c_str();
-    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << tensorrt_options->trt_ep_context_file_path;
+    tensorrt_options->trt_ep_context_file_path = (context_cache_path == "")? nullptr : context_cache_path.c_str();
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path;
 
     auto embed_mode = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
     if ("1" == embed_mode) {
