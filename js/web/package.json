@@ -1,6 +1,5 @@
 {
   "license": "MIT",
-  "browser": "dist/ort-web.min.js",
   "unpkg": "dist/ort.min.js",
   "name": "onnxruntime-web",
   "repository": {

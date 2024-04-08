@@ -341,6 +341,16 @@
         },
         "comments": "composable_kernel"
       }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "de28d93dfa9ebf3e473127c1c657e1920a5345ee",
+          "repositoryUrl": "https://github.com/microsoft/DirectX-Headers.git"
+        },
+        "comments": "directx_headers"
+      }
     }
   ]
 }

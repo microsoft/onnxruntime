@@ -69,6 +69,7 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/label_encoder_fusion.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1901,6 +1902,68 @@ TEST_F(GraphTransformationTests, DivMulFusion) {
   ASSERT_TRUE(op_to_count["Mul"] == 2);
 }
 
+TEST_F(GraphTransformationTests, LabelEncoderFusion) {
+  using common::INVALID_GRAPH;
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/label_encoder.onnx";
+
+  NameMLValMap feeds;
+
+  constexpr size_t ALPH = 26;
+  OrtValue mlvalue_a;
+  std::vector<int64_t> dims_a = {ALPH};
+  std::vector<std::string> values_a = {};
+  for (char letter = 'a'; letter <= 'z'; letter++) {
+    values_a.emplace_back(1, letter);
+  }
+  CreateMLValue<std::string>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_a,
+                             values_a, &mlvalue_a);
+  feeds.insert(std::make_pair("A", mlvalue_a));
+
+  bool is_implemented = true;
+
+  auto run_model_test = [&](TransformerLevel level, std::vector<OrtValue>& fetches, const int requiredLabelEncoderCount) {
+    SessionOptions session_options;
+    session_options.graph_optimization_level = level;
+    session_options.session_logid = "OptimizerTests";
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+
+    // If we did not initialize the session correctly, the operator is missing.
+    if (!session.Load(model_uri).IsOK() || !session.Initialize().IsOK()) {
+      is_implemented = false;
+      return;
+    }
+
+    // Count if the number of LabelEncoders is as expected
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_TRUE(op_to_count["ai.onnx.ml.LabelEncoder"] == requiredLabelEncoderCount);
+
+    std::vector<std::string> output_names = {};
+    for (const auto& output : session.GetGraph().GetOutputs()) {
+      output_names.push_back(output->Name());
+    }
+
+    RunOptions run_options;
+    ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+  };
+
+  // run model with and w/o optimizations and compare the results
+  std::vector<OrtValue> unoptimized_fetches;
+  run_model_test(TransformerLevel::Default, unoptimized_fetches, 11);
+
+  std::vector<OrtValue> optimized_fetches;
+  run_model_test(TransformerLevel::MaxLevel, optimized_fetches, 7);
+
+  // If there was a problem loading the model, do not compare the 2 results
+  if (!is_implemented) {
+    GTEST_SKIP();
+    return;
+  }
+
+  // Compare results
+  auto ret = CompareOrtValue(optimized_fetches[0], unoptimized_fetches[0], 0.0, 0.0, false);
+  EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+}
+
 TEST_F(GraphTransformationTests, NotWhereFusion) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/not_where.onnx";
   std::shared_ptr<Model> model;
@@ -2724,7 +2787,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTranspose) {
   auto gemm_node =
       std::find_if(
           graph.Nodes().cbegin(), graph.Nodes().cend(),
-          [](const Node& node) { return node.Name() == "Gemm_transformed"; });
+          [](const Node& node) { return node.Name() == "Gemm/GemmTransposeFusion/"; });
 
   auto& node = *gemm_node;
   ASSERT_TRUE(node.OpType() == "Gemm");
@@ -2760,7 +2823,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemm
   auto gemm1_node =
       std::find_if(
           graph.Nodes().cbegin(), graph.Nodes().cend(),
-          [](const Node& node) { return node.Name() == "Gemm1_transformed"; });
+          [](const Node& node) { return node.Name() == "Gemm1/GemmTransposeFusion/"; });
 
   auto& node1 = *gemm1_node;
   ASSERT_TRUE(node1.OpType() == "Gemm");
@@ -2773,7 +2836,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemm
   auto gemm2_node =
       std::find_if(
           graph.Nodes().cbegin(), graph.Nodes().cend(),
-          [](const Node& node) { return node.Name() == "Gemm2_transformed"; });
+          [](const Node& node) { return node.Name() == "Gemm2/GemmTransposeFusion/"; });
 
   auto& node2 = *gemm2_node;
   ASSERT_TRUE(node2.OpType() == "Gemm");
@@ -5952,6 +6015,33 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 
   ASSERT_STATUS_OK(session_object.FilterEnabledOptimizers({"ConstantFolding"}));
+  ASSERT_STATUS_OK(session_object.Initialize());  // Initialize runs the transformers
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 1);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+}
+
+TEST_F(GraphTransformationTests, FilterEnabledOptimizersViaSessionOptions) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_with_scalar_shape_to_initializer.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.FilterEnabledOptimizersViaSessionOptions";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, "ConstantFolding"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+
+  const auto& graph = session_object.GetGraph();
+
+  // check the ops that should go away if the constant folding transformer runs
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 1);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+
   ASSERT_STATUS_OK(session_object.Initialize());  // Initialize runs the transformers
 
   op_to_count = CountOpsInGraph(graph);

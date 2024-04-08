@@ -170,7 +170,7 @@ def get_args(argv: list[str]):
     parser.add_argument(
         "-m",
         "--model_name",
-        required=True,
+        required=False,
         help="Model name in Hugging Face",
     )
 
