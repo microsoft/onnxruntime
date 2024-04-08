@@ -139,14 +139,9 @@ namespace Dml
         for (Chunk& chunk : m_chunks)
         {
             auto* allocs = &chunk.allocations;
-
-            // Remove all allocations which have had their fences signaled - this indicates that they are no longer
-            // being used by the GPU. We can stop as soon as we find an allocation which is still in use, because we
-            // only use a single command queue and executions always complete in the order they were submitted.
-            while (!allocs->empty() && allocs->front().doneEvent.IsSignaled())
-            {
-                allocs->pop_front();
-            }
+            allocs->remove_if([](const Allocation& allocation) {
+                return !allocation.locked && allocation.doneEvent.IsSignaled();
+            });
         }
     }
 
@@ -190,7 +185,132 @@ namespace Dml
         GpuEvent doneEvent = m_executionContext->GetCurrentCompletionEvent();
 
         // Add an allocation entry to the chunk
-        chunk->allocations.push_back(Allocation{ static_cast<size_t>(src.size()), offsetInChunk, doneEvent });
+        chunk->allocations.push_back(Allocation{ static_cast<size_t>(src.size()), offsetInChunk, doneEvent, false });
+
+        return doneEvent;
+    }
+
+    GpuEvent PooledUploadHeap::BeginReusableUploadToGpu(
+        ID3D12Resource* dst,
+        uint64_t dstOffset,
+        D3D12_RESOURCE_STATES dstState,
+        gsl::span<const std::byte> src)
+    {
+        assert(!src.empty());
+        assert(dst->GetDesc().Dimension == D3D12_RESOURCE_DIMENSION_BUFFER);
+
+        InvariantChecker checker(this);
+
+        ReusableCopyKey key{};
+        key.dstOffset = dstOffset;
+        key.srcSizeInBytes = src.size();
+        key.dstResource = dst;
+
+        auto cacheIter = m_reusableCommandListsCache.find(key);
+
+        // Unlock the least recently used command list before reclaiming the allocations
+        if (cacheIter == m_reusableCommandListsCache.end() && m_reusableCommandLists.size() == maxReusableCommandLists)
+        {
+            m_executionContext->QueueReference(m_reusableCommandLists.front().commandList.Get());
+            m_executionContext->QueueReference(m_reusableCommandLists.front().commandAllocator.Get());
+            m_reusableCommandLists.front().allocation->locked = false;
+            m_reusableCommandLists.pop_front();
+            m_reusableCommandListsCache.erase(key);
+        }
+
+        ReclaimAllocations();
+
+        if (cacheIter == m_reusableCommandListsCache.end())
+        {
+            // Allocate space from the upload heap
+            Chunk* chunk = nullptr;
+            size_t offsetInChunk = 0;
+            std::tie(chunk, offsetInChunk) = Reserve(src.size());
+
+            assert(chunk != nullptr);
+            assert(offsetInChunk + src.size() <= chunk->capacityInBytes);
+
+            ComPtr<ID3D12CommandAllocator> allocator;
+            ORT_THROW_IF_FAILED(m_device->CreateCommandAllocator(
+                m_executionContext->GetCommandListTypeForQueue(),
+                IID_GRAPHICS_PPV_ARGS(allocator.ReleaseAndGetAddressOf())));
+
+            ComPtr<ID3D12GraphicsCommandList> commandList;
+            ORT_THROW_IF_FAILED(m_device->CreateCommandList(
+                0,
+                m_executionContext->GetCommandListTypeForQueue(),
+                allocator.Get(),
+                nullptr,
+                IID_GRAPHICS_PPV_ARGS(commandList.ReleaseAndGetAddressOf())));
+
+            // Map the upload heap and copy the source data into it at the specified offset
+            void* uploadHeapData = nullptr;
+            ORT_THROW_IF_FAILED(chunk->resource->Map(0, nullptr, &uploadHeapData));
+            memcpy(static_cast<byte*>(uploadHeapData) + offsetInChunk, src.data(), src.size());
+            chunk->resource->Unmap(0, nullptr);
+
+            // Copy from the upload heap into the destination resource
+            std::vector<D3D12_RESOURCE_BARRIER> barriers;
+
+            if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
+            {
+                auto resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(dst, dstState, D3D12_RESOURCE_STATE_COPY_DEST);
+                commandList->ResourceBarrier(1, &resourceBarrier);
+            }
+
+            commandList->CopyBufferRegion(dst, dstOffset, chunk->resource.Get(), offsetInChunk, src.size());
+
+            if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
+            {
+                auto resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(dst, D3D12_RESOURCE_STATE_COPY_DEST, dstState);
+                commandList->ResourceBarrier(1, &resourceBarrier);
+            }
+
+            commandList->Close();
+
+            GpuEvent doneEvent = m_executionContext->GetCurrentCompletionEvent();
+
+            // Add an allocation entry to the chunk
+            chunk->allocations.push_back(Allocation{ static_cast<size_t>(src.size()), offsetInChunk, doneEvent, true });
+
+            static_assert(
+                std::is_same_v<decltype(chunk->allocations), std::list<Allocation>>,
+                "Make sure chunk->allocations uses a container that doesn't invalidate pointers when resizing if using &chunk->allocations.back()");
+
+            ReusableCopyCommandListState commandListState{};
+            commandListState.commandAllocator = std::move(allocator);
+            commandListState.commandList = std::move(commandList);
+            commandListState.allocation = &chunk->allocations.back();
+            commandListState.chunkResource = chunk->resource.Get();
+
+            ComPtr<ID3D12Fence> fence;
+            uint64_t completionValue;
+            m_executionContext->ExecuteCommandList(commandListState.commandList.Get(), &fence, &completionValue);
+
+            // Add the command list to the cache
+            m_reusableCommandLists.push_back(std::move(commandListState));
+            m_reusableCommandListsCache.emplace(std::move(key), std::next(m_reusableCommandLists.end(), -1));
+        }
+        else
+        {
+            auto offsetInChunk = cacheIter->second->allocation->offsetInChunk;
+            auto chunkResource = cacheIter->second->chunkResource;
+
+            // Map the upload heap and copy the source data into it at the specified offset
+            void* uploadHeapData = nullptr;
+            ORT_THROW_IF_FAILED(chunkResource->Map(0, nullptr, &uploadHeapData));
+            memcpy(static_cast<byte*>(uploadHeapData) + offsetInChunk, src.data(), src.size());
+            chunkResource->Unmap(0, nullptr);
+
+            ComPtr<ID3D12Fence> fence;
+            uint64_t completionValue;
+            m_executionContext->ExecuteCommandList(cacheIter->second->commandList.Get(), &fence, &completionValue);
+
+            // Update the value that the allocation can be freed at
+            cacheIter->second->allocation->doneEvent = m_executionContext->GetCurrentCompletionEvent();
+        }
+
+        GpuEvent doneEvent = m_executionContext->GetCurrentCompletionEvent();
 
         return doneEvent;
     }
@@ -225,15 +345,6 @@ namespace Dml
 
         // Chunks should be sorted by ascending capacity
         assert(std::is_sorted(m_chunks.begin(), m_chunks.end(), chunkCapacityComparer));
-
-        // Allocations in a chunk should be sorted by ascending fence value
-        for (const auto& chunk : m_chunks)
-        {
-            auto allocFenceValueComparer = [](const Allocation& lhs, const Allocation& rhs) {
-                return lhs.doneEvent.fenceValue < rhs.doneEvent.fenceValue;
-            };
-            assert(std::is_sorted(chunk.allocations.begin(), chunk.allocations.end(), allocFenceValueComparer));
-        }
 
         // Validate chunk properties
         for (const auto& chunk : m_chunks)

@@ -269,7 +269,7 @@ void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes) {
   uint32_t upload_heap_size = gsl::narrow_cast<uint32_t>(sizeof(upload_heap));
   ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(dml_upload_heap_guid, &upload_heap_size, &upload_heap));
 
-  upload_heap->BeginUploadToGpu(
+  upload_heap->BeginReusableUploadToGpu(
       dst_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, gsl::make_span(static_cast<const std::byte*>(src), num_bytes));
 }
 
