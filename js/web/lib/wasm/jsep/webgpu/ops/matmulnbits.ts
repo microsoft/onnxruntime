@@ -66,11 +66,7 @@ export const createMatMulNBitsProgramInfo =
       const outputNumber = getMaxComponents(dimAOuter);
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
-      const elementSizeTmp = getTensorElementSize(dataType);
-      if (!elementSizeTmp) {
-        throw new Error(`Unsupported data type: ${dataType}`);
-      }
-      const elementSize = elementSizeTmp;
+      const elementSize = getTensorElementSize(dataType)!;
       const workgroupOutputCount = dimAOuter * nBlocksPerCol;
       const componentsTmp =
           getMaxComponents(dimBOuter, Math.ceil(maxComputeWorkgroupStorageSize / workgroupOutputCount / elementSize));
@@ -217,9 +213,12 @@ export const createMatMulNBitsProgramInfo =
               ${b.indicesSet('b_indices', '2', 'word')};
               let b_data = ${b.getByIndices('b_indices')};
               for (var i: u32 = 0; i < ${bComponents}; i++) {
-                let b_value = ${bComponents === 1 ? 'b_data' : 'b_data[word + i]'};
+                let b_value: u32 = ${bComponents === 1 ? 'b_data' : 'b_data[word + i]'};
+                let b_mask: u32 = 0x0F0F0F0Fu;
+                let b_value_lower: vec4<u32> = unpack4xU8(b_value & b_mask);
+                let b_value_upper: vec4<u32> = unpack4xU8((b_value >> 4) & b_mask);
                 let b_quantized_values = ${qDqDataType}(${
-                Array.from({length: 8}, (_, i) => `${dataType}((b_value >> ${(i * 4).toString()}) & 0xFu)`)
+                Array.from({length: 4}, (_, i) => `${dataType}(b_value_lower[${i}]), ${dataType}(b_value_upper[${i}])`)
                     .join(', ')});
                 let b_dequantized_values = ${(() => {
               if (aComponents === 1) {
