@@ -113,6 +113,31 @@ struct GroupQueryAttentionParameters {
   int* zero_ptr;
 };
 
+// Parameters for sparse attention.
+struct SparseAttentionParameters {
+  int batch_size;           // batch size
+  int sequence_length;      // sequence length of input query, key, value
+  int hidden_size;          // hidden size of query
+  int num_heads;            // number of heads of query
+  int head_size;            // hidden size per head of query, key or value
+  int kv_hidden_size;       // hidden size of key or value
+  int kv_num_heads;         // number of heads of key or value
+  bool is_unidirectional;   // causal or not
+  bool do_rotary;           // whether to use rotary embedding
+  bool rotary_interleaved;  // whether to use interleaved rotary embedding
+  int rotary_dim;           // rotary embedding dimension
+  int sparse_block_size;    // block size for sparse attention
+  float scale;              // softmax scale
+  int max_blocks;           // max number of blocks
+  int max_sequence_length;  // max sequence length allowed
+  bool is_packed_qkv;       // whether qkv is packed
+
+  bool past_present_share_buffer;  // whether past_key and present_key share buffer, so is past_value and present_value.
+
+  AttentionQkvFormat qkv_format;
+  AttentionQkvFormat past_kv_format;
+};
+
 namespace attention {
 // Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION";

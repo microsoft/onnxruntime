@@ -230,7 +230,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
 // Type and shape inference for group query attention and sparse attention.
 void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                   int past_key_index = -1,
-                                                  int has_fixed_past_present_buffer = -1) {
+                                                  int use_max_past_present_buffer = -1) {
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
   int64_t kv_sequence_length = -1;
@@ -276,6 +276,12 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
   }
 
   if (ctx.getNumOutputs() > 1) {  // has present output
+    // copy the type from query to present key
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+
+    // copy the type from query to present value
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
+
     if (past_key_index >= 0 && hasInputShape(ctx, past_key_index)) {
       auto& past_shape = getInputShape(ctx, past_key_index);
       auto& past_dims = past_shape.dim();
@@ -285,17 +291,11 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
         fail_shape_inference("The past_key input shall be 4 dimensions");
       }
 
-      // copy the type from past key to present key
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
-
-      // copy the type from  past value to present value
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
-
-      if (has_fixed_past_present_buffer == 1) {
-        // When past and present has fixed buffer, they have the same shape
+      if (use_max_past_present_buffer == 1) {
+        // When past and present use max buffer, they have the same shape
         ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, past_key_index, 1);
         ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
-      } else if (has_fixed_past_present_buffer == 0) {
+      } else if (use_max_past_present_buffer == 0) {
         if (kv_sequence_length > 0 && past_dims[2].has_dim_value()) {
           int64_t total_sequence_length = kv_sequence_length + past_dims[2].dim_value();
 
@@ -317,13 +317,13 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
 void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
   // TODO(aciddelgado): propagate output shapes depending if kv-share buffer is on or not
-  constexpr int has_fixed_past_present_buffer = -1;
-  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, has_fixed_past_present_buffer);
+  constexpr int use_max_past_present_buffer = -1;
+  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer);
 }
 
 void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
-  constexpr int has_fixed_past_present_buffer = 1;
-  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, has_fixed_past_present_buffer);
+  constexpr int use_max_past_present_buffer = 1;
+  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer);
 }
 
 constexpr const char* Attention_ver1_doc = R"DOC(
@@ -1140,6 +1140,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* SparseAttention_ver1_doc = R"DOC(
 Block Sparse Attention used in Sparse Transformers (https://arxiv.org/pdf/1904.10509) and BigBird (https://arxiv.org/pdf/2007.14062).
 It supports cache of past key and value in linear buffers.
+Padding shall be on the right side.
+For performance, it is recommended that past_key and present_key share same memory buffer, and past_value and present_value too.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1173,23 +1175,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T",
                OpSchema::Optional)
         .Input(3,
-               "block_mask",
-               "block mask. 1 indicates attention and 0 no attention. "
-               "Its shape is (num_heads, max_blocks, max_blocks), where max_blocks is max_sequence_length / sparse_block_size.",
-               "M")
-        .Input(4,
                "past_key",
-               "past key with shape (batch_size, kv_num_heads, max_sequence_length, head_size)",
+               "Key cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(4,
+               "past_value",
+               "Value cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(5,
-               "past_value",
-               "past value with shape (batch_size, kv_num_heads, max_sequence_length, head_size)",
-               "T",
-               OpSchema::Optional)
+               "block_mask",
+               "block mask. 1 indicates attention and 0 no attention. "
+               "Its shape is (kv_num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks), "
+               "where max_blocks is max_sequence_length / block_size.",
+               "M")
         .Input(6,
-               "total_sequence_length",
-               "Scalar tensor of total sequence length (past_sequence_length + sequence_length).",
+               "total_key_sequence_lengths",
+               "Total length (past_sequence_length + sequence_length) of each key sequence excluding paddings. "
+               "Its shape is (batch_size).",
                "M")
         .Input(7,
                "cos_cache",
@@ -1207,16 +1211,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "present_key and past_key uses the same memory buffer",
+                "Updated key cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size).",
                 "T")
         .Output(2,
                 "present_value",
-                "present_key and past_key uses the same memory buffer",
+                "Updated value cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size).",
                 "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("P", {"tensor(int64)"}, "Constrain integer type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          SparseAttentionTypeAndShapeInference(ctx, 4);
+          SparseAttentionTypeAndShapeInference(ctx, 3);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
