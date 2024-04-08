@@ -1187,8 +1187,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(5,
                "block_mask",
                "block mask. 1 indicates attention and 0 no attention. "
-               "Its shape is (kv_num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks), "
-               "where max_blocks is max_sequence_length / block_size.",
+               "Its shape is (num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks), "
+               "where the later means all heads use same sparse pattern, "
+               "and max_blocks is max_sequence_length / block_size.",
                "M")
         .Input(6,
                "total_key_sequence_lengths",

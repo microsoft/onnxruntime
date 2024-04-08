@@ -32,7 +32,8 @@ Status CheckInputs(void* params,
   // Shape for other inputs:
   //   past_key             (batch_size, kv_num_heads, max_sequence_length, head_size) or nullptr
   //   past_value           (batch_size, kv_num_heads, max_sequence_length, head_size) or nullptr
-  //   block_mask           (kv_num_heads, max_blocks, max_blocks) where max_blocks = max_sequence_length / sparse_block_size
+  //   block_mask           (num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks)
+  //                                    where max_blocks = max_sequence_length / sparse_block_size
   //   total_key_seq_len    (batch_size)
   //   cos_cache            (max_sequence_length, rotary_dim / 2) when do_rotary is true.
   //   sin_cache            (max_sequence_length, rotary_dim / 2) when do_rotary is true.
@@ -69,8 +70,9 @@ Status CheckInputs(void* params,
                              head_size);
     }
     if (value == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' shall be both present, or both absent in the case of packed qkv.");
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "Input 'key' and 'value' shall be both present, or both absent in the case of packed qkv.");
     }
     const auto& key_dims = key->Shape().GetDims();
     if (key_dims.size() != 3) {
@@ -108,8 +110,9 @@ Status CheckInputs(void* params,
     }
 
     if (value != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' shall be both present, or both absent in the case of packed qkv.");
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "Input 'key' and 'value' shall be both present, or both absent in the case of packed qkv.");
     }
 
     q_hidden_size = head_size * num_heads;
@@ -117,9 +120,11 @@ Status CheckInputs(void* params,
   }
 
   const auto& block_mask_dim = block_mask->Shape().GetDims();
-  if (block_mask_dim.size() != 3 && block_mask_dim[0] != kv_num_heads && block_mask_dim[1] != block_mask_dim[2]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "block_mask must have shape (kv_num_heads, max_blocks, max_blocks).");
+  if (!(block_mask_dim.size() == 3 && block_mask_dim[1] == block_mask_dim[2] &&
+        (block_mask_dim[0] == static_cast<int64_t>(num_heads) || block_mask_dim[0] == 1L))) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "block_mask must have shape (num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks).");
   }
 
   int max_blocks = static_cast<int>(block_mask_dim[1]);
