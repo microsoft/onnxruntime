@@ -2,13 +2,16 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-
 #include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/common/utf8_util.h"
-#include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensor.h"
 #include "re2/re2.h"
+
+#include <memory_resource>
+#include <type_traits>
 
 namespace onnxruntime {
 namespace contrib {
@@ -23,6 +26,10 @@ class Tokenizer final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  Status EstimateNumberOfTokens(gsl::span<const std::string> input_span,
+                                size_t& max_tokens_per_row,
+                                size_t& total_tokens_estimate) const;
+
   Status CharTokenize(OpKernelContext* context, size_t N, size_t C,
                       gsl::span<const int64_t> input_dims) const;
 
@@ -35,7 +42,7 @@ class Tokenizer final : public OpKernel {
 
   bool mark_{false};
   std::string pad_value_;
-  int64_t mincharnum_{0};
+  size_t mincharnum_{0};
   bool char_tokenezation_{false};
   InlinedVector<std::unique_ptr<re2::RE2>> separators_;
   std::unique_ptr<re2::RE2> regex_;
@@ -52,8 +59,8 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     contrib::Tokenizer);
 
 namespace tokenizer_details {
-constexpr char start_text = 0x2;
-constexpr char end_text = 0x3;
+constexpr char kStartMarker = 0x2;
+constexpr char kEndMarker = 0x3;
 }  // namespace tokenizer_details
 
 using namespace tokenizer_details;
@@ -67,9 +74,11 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
   status = info.GetAttr("pad_value", &pad_value_);
   ORT_ENFORCE(status.IsOK(), "attribute pad_value is not set");
 
-  status = info.GetAttr("mincharnum", &mincharnum_);
+  int64_t mincharnum = 0;
+  status = info.GetAttr("mincharnum", &mincharnum);
   ORT_ENFORCE(status.IsOK(), "attribute mincharnum is not set");
-  ORT_ENFORCE(mincharnum_ > 0, "attribute mincharnum must have a positive value");
+  ORT_ENFORCE(mincharnum > 0, "attribute mincharnum must have a positive value");
+  mincharnum_ = narrow<size_t>(mincharnum);
 
   // Optional attributes either or
   std::vector<std::string> separators;
@@ -116,6 +125,25 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
   }
 }
 
+Status Tokenizer::EstimateNumberOfTokens(gsl::span<const std::string> input_span,
+                                         size_t& max_tokens_per_row, size_t& total_tokens_estimate) const {
+  total_tokens_estimate = 0;
+  max_tokens_per_row = 0;
+  for (const auto& s : input_span) {
+    size_t utf8_chars = 0;  // length in utf8 chars
+    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
+                       utf8_chars)) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Input string contains invalid utf8 chars: " + s);
+    }
+    auto tokens = std::max<size_t>(1, utf8_chars / mincharnum_);
+    total_tokens_estimate += tokens;
+    max_tokens_per_row = std::max(max_tokens_per_row, tokens);
+  }
+
+  return Status::OK();
+}
+
 Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
                                gsl::span<const int64_t> input_dims) const {
   // With char tokenzation we get as many tokens as the number of
@@ -133,8 +161,7 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
                        tokens)) {
       // Please do not include the input text in the error message as it could
       // be deemed as a compliance violation by teams using this operator
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input string contains invalid utf8 chars");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input string contains invalid utf8 chars:", s);
     }
     max_tokens = std::max(max_tokens, tokens);
     ++curr_input;
@@ -162,7 +189,7 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   while (curr_input != last) {
     const auto& s = *curr_input;
     if (mark_) {
-      output_data[output_index].assign(&start_text, 1);
+      output_data[output_index].assign(&kStartMarker, 1);
       ++output_index;
     }
     size_t tokens = 0;
@@ -178,7 +205,7 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
       ++tokens;
     }
     if (mark_) {
-      output_data[output_index].assign(&end_text, 1);
+      output_data[output_index].assign(&kEndMarker, 1);
       ++output_index;
     }
     // Padding strings
@@ -193,45 +220,99 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   return Status::OK();
 }
 
+namespace {
+
+/// <summary>
+/// Pre-allocate memory for the tokens to reduce a number of individual
+/// allocations and thus memory contention.
+/// Used in conjunction with PMR memory allocatior
+/// </summary>
+/// <typeparam name="T"></typeparam>
+/// <param name="num">number of objects of T</param>
+/// <param name="buf">buffer holder</param>
+/// <param name="allocated_size">aligned allocated size</param>
+/// <returns>pointer to the buffer</returns>
+template <typename T>
+inline void* AlignedAllocate(size_t num, std::unique_ptr<uint8_t[]>& buf, size_t& allocated_size) {
+  constexpr size_t alignment = alignof(T);
+  const size_t size_bytes = SafeInt<size_t>(num) * sizeof(T) + alignment;
+  buf = std::make_unique<uint8_t[]>(size_bytes);
+  void* ptr = buf.get();
+  allocated_size = size_bytes;
+  return std::align(alignment, size_bytes, ptr, allocated_size);
+}
+
+/// <summary>
+/// This class provides a thin abstraction over the std::pmr::monotonic_buffer_resource
+/// If the allocated buffer is not enough, additional allocations are done using
+/// new/delete.
+/// </summary>
+class MonitonicAllocatorWithDefault : public std::pmr::monotonic_buffer_resource {
+ public:
+  MonitonicAllocatorWithDefault(void* ptr, size_t size_in_bytes)
+      : monotonic_buffer_resource(ptr, size_in_bytes, std::pmr::get_default_resource()) {}
+  MonitonicAllocatorWithDefault(void* ptr, size_t size_in_bytes, std::pmr::memory_resource* upstream)
+      : monotonic_buffer_resource(ptr, size_in_bytes, upstream) {}
+};
+
+}  // namespace
+
 Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
                                                size_t N, size_t C,
                                                gsl::span<const int64_t> input_dims) const {
   using namespace re2;
-  std::vector<InlinedVector<StringPiece>> rows;
-  rows.reserve(N * C);
+
+  auto X = ctx->Input<Tensor>(0);
+  const auto input_span = X->DataAsSpan<std::string>();
+
+  // Let's estimate maximum number of tokens
+  // It is hard to estimate the number of separate characters that would not appear in the
+  // output.
+  size_t max_tokens_per_row = 0;
+  size_t total_tokens_estimate = 0;
+  ORT_RETURN_IF_ERROR(EstimateNumberOfTokens(input_span, max_tokens_per_row, total_tokens_estimate));
+
+  // Add a scratch token vector allocation
+  total_tokens_estimate += max_tokens_per_row;
+
+  // Pre-allocate memory for all tokens (StringPieces)
+  std::unique_ptr<uint8_t[]> buf_holder;
+  size_t allocated_size = 0;
+  void* aligned_buf_ptr = AlignedAllocate<StringPiece>(total_tokens_estimate, buf_holder, allocated_size);
+
+  MonitonicAllocatorWithDefault monotonic_allocator(aligned_buf_ptr, allocated_size);
+
+  // Make sure the vectors below are destroyed before the allocator
+  const size_t vector_num = SafeInt<size_t>(N) * C;
+
+  // We use std::vector in this case, because InlinedVector::clear() is incompatible
+  // with std::vector. It also deallocates memory, which is not what we want.
+  std::vector<std::pmr::vector<StringPiece>> rows;
+  rows.reserve(vector_num + 2);  // We allocate 2 scratch vectors
+
+  // Re-use the same vector for each tokenization round
+  std::pmr::vector<StringPiece> tokens(&monotonic_allocator);
+  tokens.reserve(max_tokens_per_row);
 
   // We do not constraint the search to match
   // on the beginning or end of the string
-  const RE2::Anchor anchor = RE2::UNANCHORED;
+  constexpr RE2::Anchor anchor = RE2::UNANCHORED;
 
   // Scan all strings and attempt to find separators in them
   // collect all the output tokens here
   size_t max_tokens = 0;
-  auto X = ctx->Input<Tensor>(0);
-  auto const input_data = X->Data<std::string>();
-  auto curr_input = input_data;
-  auto const last = input_data + N * C;
-  while (curr_input != last) {
-    const auto& s = *curr_input;
+  for (const auto& s : input_span) {
     size_t utf8_chars = 0;  // length in utf8 chars
-    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
-                       utf8_chars)) {
+    if (!utf8_len(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
+                  utf8_chars)) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Input string contains invalid utf8 chars: " + s);
     }
 
-    // This produces heap contention.
-    // Let's re-use the same vector with pre-allocated max space
-    // It is difficult to estimate the length of the buffer required here
-    // if no separate matches, we then have just one string
-    // We can not have more tokens than the number of utf-8 characters
-    // No data, available, so we can estimate half the number of UTF-8 characters
-    InlinedVector<StringPiece> row;
-    row.reserve(utf8_chars / 2);
+    const auto expected_tokens = std::max<size_t>(1, utf8_chars / mincharnum_);
+    auto& row = rows.emplace_back(&monotonic_allocator);
+    row.reserve(expected_tokens);
     row.emplace_back(s);
-
-    InlinedVector<StringPiece> tokens;
-    tokens.reserve(utf8_chars / 2);
 
     for (const auto& sep : separators_) {
       for (const auto& text : row) {
@@ -255,7 +336,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
               return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                             "Match contains invalid utf8 chars: " + std::string{submatch});
             }
-            if (utf8_chars >= size_t(mincharnum_)) {
+            if (utf8_chars >= mincharnum_) {
               tokens.emplace_back(text.data() + start_pos, token_len);
             }
             // Update starting position
@@ -274,22 +355,159 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
             utf8_chars = 0;
             utf8_len(reinterpret_cast<const unsigned char*>(text.data() + start_pos),
                      trailing_len, utf8_chars);
-            if (utf8_chars >= size_t(mincharnum_)) {
+            if (utf8_chars >= mincharnum_) {
               tokens.emplace_back(text.data() + start_pos, trailing_len);
             }
           }
         } while (match);
       }  // row
+
       // We want to preserve the buffer for the next separator
       // copying slices is cheaper than allocating new memory
-      row = tokens;
+      if (!tokens.empty()) {
+        row = tokens;
+        tokens.clear();
+        continue;
+      }
+
+      // Nothing more to match for any remaining separators
+      row.clear();
       tokens.clear();
+      break;
     }  // separators_
     max_tokens = std::max(max_tokens, row.size());
-    rows.push_back(std::move(row));
-    ++curr_input;
   }
 
+  TensorShapeVector output_dims(input_dims.begin(), input_dims.end());
+  // Check if we have no output due to either empty input
+  // or everything is a separator
+  if (max_tokens == 0) {
+    output_dims.push_back(0);
+    TensorShape output_shape(output_dims);
+    ctx->Output(0, output_shape);
+    return Status::OK();
+  }
+
+  if (mark_) {
+    max_tokens += 2;  // Start/end markers as separate tokens
+  }
+
+  output_dims.push_back(max_tokens);
+  TensorShape output_shape(output_dims);
+
+  auto output_tensor = ctx->Output(0, output_shape);
+  auto const output_data = output_tensor->MutableData<std::string>();
+
+#ifdef _DEBUG
+  const size_t max_output_index = N * C * max_tokens;
+#endif
+  size_t output_index = 0;
+  for (const auto& row : rows) {
+#ifdef _DEBUG
+    size_t c_idx = output_index;
+#endif
+    if (mark_) {
+      output_data[output_index].assign(&kStartMarker, 1);
+      ++output_index;
+    }
+    // Output tokens for this row
+    for (const auto& token : row) {
+      output_data[output_index].assign(token.data(), token.size());
+      ++output_index;
+    }
+    if (mark_) {
+      output_data[output_index].assign(&kEndMarker, 1);
+      ++output_index;
+    }
+    const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
+    for (size_t p = 0; p < pads; ++p) {
+      output_data[output_index] = pad_value_;
+      ++output_index;
+    }
+#ifdef _DEBUG
+    assert(output_index <= max_output_index);
+    assert((output_index - c_idx) <= max_tokens);
+#endif
+  }
+  return Status::OK();
+}
+
+Status Tokenizer::TokenExpression(OpKernelContext* ctx,
+                                  size_t N, size_t C,
+                                  gsl::span<const int64_t> input_dims) const {
+  using namespace re2;
+
+  size_t max_tokens = 0;
+  auto X = ctx->Input<Tensor>(0);
+  const auto input_span = X->DataAsSpan<std::string>();
+
+  // Let's estimate maximum number of tokens
+  size_t total_tokens_estimate = 0;
+  size_t max_tokens_per_row = 0;
+  ORT_RETURN_IF_ERROR(EstimateNumberOfTokens(input_span, max_tokens_per_row, total_tokens_estimate));
+
+  // Pre-allocate memory for all tokens (StringPieces)
+  std::unique_ptr<uint8_t[]> buf_holder;
+  size_t allocated_size = 0;
+  void* aligned_buf_ptr = AlignedAllocate<StringPiece>(total_tokens_estimate, buf_holder, allocated_size);
+
+  MonitonicAllocatorWithDefault monotonic_allocator(aligned_buf_ptr, allocated_size);
+
+  // Make sure the vectors below are destroyed before the allocator
+  const size_t vector_num = SafeInt<size_t>(N) * C;
+
+  // We use std::vector in this case, because InlinedVector::clear() is incompatible
+  // with std::vector. It also deallocates memory, which is not what we want.
+  std::vector<std::pmr::vector<StringPiece>> rows;
+  rows.reserve(vector_num);
+
+  // We do not constraint the search to match
+  // on the beginning or end of the string
+  constexpr RE2::Anchor anchor = RE2::UNANCHORED;
+
+  for (const auto& s : input_span) {
+    auto& row = rows.emplace_back(&monotonic_allocator);
+
+    size_t utf8_chars = 0;
+    utf8_len(reinterpret_cast<const unsigned char*>(s.data()), s.size(), utf8_chars);
+
+    if (utf8_chars >= mincharnum_) {
+      StringPiece text(s);
+      const auto end_pos = s.length();
+      size_t start_pos = 0;
+      StringPiece submatch;
+
+      bool match = true;
+      do {
+        match = regex_->Match(text, start_pos, end_pos, anchor, &submatch, 1);
+        if (match) {
+          // Record  pos/len
+          assert(submatch.data() != nullptr);
+          size_t match_pos = submatch.data() - s.data();
+          assert(match_pos >= start_pos);
+          // Guard against empty match and make
+          // sure we make progress either way
+          auto token_len = submatch.length();
+          utf8_chars = 0;
+          if (!utf8_len(reinterpret_cast<const unsigned char*>(submatch.data()), token_len, utf8_chars)) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "Match contains invalid utf8 chars: " + std::string{submatch});
+          }
+          if (utf8_chars >= mincharnum_) {
+            row.push_back(submatch);
+            start_pos = match_pos + token_len;
+          } else {
+            size_t bytes = 0;
+            utf8_bytes(*submatch.data(), bytes);
+            start_pos = match_pos + bytes;
+          }
+        }
+      } while (match);
+    }
+    max_tokens = std::max(max_tokens, row.size());
+  }
+
+  // Check for empty output
   TensorShapeVector output_dims(input_dims.begin(), input_dims.end());
   // Check if we have no output due to either empty input
   // everything is a separator
@@ -314,138 +532,12 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   const size_t max_output_index = N * C * max_tokens;
 #endif
   size_t output_index = 0;
-  curr_input = input_data;
-  for (auto& row : rows) {
+  for (const auto& row : rows) {
 #ifdef _DEBUG
     size_t c_idx = output_index;
 #endif
     if (mark_) {
-      output_data[output_index].assign(&start_text, 1);
-      ++output_index;
-    }
-    // Output tokens for this row
-    for (const auto& token : row) {
-      output_data[output_index].assign(token.data(), token.size());
-      ++output_index;
-    }
-    if (mark_) {
-      output_data[output_index].assign(&end_text, 1);
-      ++output_index;
-    }
-    const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
-    for (size_t p = 0; p < pads; ++p) {
-      output_data[output_index] = pad_value_;
-      ++output_index;
-    }
-#ifdef _DEBUG
-    assert(output_index <= max_output_index);
-    assert((output_index - c_idx) <= max_tokens);
-#endif
-    ++curr_input;
-  }
-  return Status::OK();
-}
-
-Status Tokenizer::TokenExpression(OpKernelContext* ctx,
-                                  size_t N, size_t C,
-                                  gsl::span<const int64_t> input_dims) const {
-  using namespace re2;
-  // Represents a token that will be output after
-  // first is the index, second is the size;
-  std::vector<InlinedVector<StringPiece>> tokens;
-  tokens.reserve(N * C);
-
-  size_t max_tokens = 0;
-  auto X = ctx->Input<Tensor>(0);
-  auto const input_data = X->Data<std::string>();
-  auto curr_input = input_data;
-  auto const last = input_data + N * C;
-
-  // We do not constraint the search to match
-  // on the beginning or end of the string
-  const RE2::Anchor anchor = RE2::UNANCHORED;
-
-  while (curr_input != last) {
-    const auto& s = *curr_input;
-
-    size_t utf8_chars = 0;
-    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
-                       utf8_chars)) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input string contains invalid utf8 chars: " + s);
-    }
-
-    tokens.emplace_back();
-    auto& row = tokens.back();
-
-    StringPiece text(s);
-    const auto end_pos = s.length();
-    size_t start_pos = 0;
-    StringPiece submatch;
-
-    bool match = true;
-    do {
-      match = regex_->Match(text, start_pos, end_pos, anchor, &submatch, 1);
-      if (match) {
-        // Record  pos/len
-        assert(submatch.data() != nullptr);
-        size_t match_pos = submatch.data() - s.data();
-        assert(match_pos >= start_pos);
-        // Guard against empty match and make
-        // sure we make progress either way
-        auto token_len = submatch.length();
-        utf8_chars = 0;
-        if (!utf8_len(reinterpret_cast<const unsigned char*>(submatch.data()), token_len, utf8_chars)) {
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Match contains invalid utf8 chars: " + std::string{submatch});
-        }
-        if (utf8_chars >= size_t(mincharnum_)) {
-          row.push_back(submatch);
-          start_pos = match_pos + token_len;
-        } else {
-          size_t bytes = 0;
-          utf8_bytes(*submatch.data(), bytes);
-          start_pos = match_pos + bytes;
-        }
-      }
-    } while (match);
-    max_tokens = std::max(max_tokens, row.size());
-    ++curr_input;
-  }
-
-  // Check for empty output
-  std::vector<int64_t> output_dims(input_dims.begin(), input_dims.end());
-  // Check if we have no output due to either empty input
-  // everything is a separator
-  if (max_tokens == 0) {
-    output_dims.push_back(0);
-    TensorShape output_shape(output_dims);
-    ctx->Output(0, output_shape);
-    return Status::OK();
-  }
-
-  if (mark_) {
-    max_tokens += 2;  // Start/end markers as separate tokens
-  }
-
-  output_dims.push_back(max_tokens);
-  TensorShape output_shape(output_dims);
-
-  auto output_tensor = ctx->Output(0, output_shape);
-  auto const output_data = output_tensor->MutableData<std::string>();
-
-#ifdef _DEBUG
-  const size_t max_output_index = N * C * max_tokens;
-#endif
-  curr_input = input_data;
-  size_t output_index = 0;
-  for (const auto& row : tokens) {
-    assert(curr_input != last);
-#ifdef _DEBUG
-    size_t c_idx = output_index;
-#endif
-    if (mark_) {
-      (output_data + output_index)->assign(&start_text, 1);
+      (output_data + output_index)->assign(&kStartMarker, 1);
       ++output_index;
     }
     // Output tokens for this row
@@ -454,7 +546,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
       ++output_index;
     }
     if (mark_) {
-      (output_data + output_index)->assign(&end_text, 1);
+      (output_data + output_index)->assign(&kEndMarker, 1);
       ++output_index;
     }
     const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
@@ -466,7 +558,6 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
     assert(output_index <= max_output_index);
     assert((output_index - c_idx) <= max_tokens);
 #endif
-    ++curr_input;
   }
 
   return Status::OK();
