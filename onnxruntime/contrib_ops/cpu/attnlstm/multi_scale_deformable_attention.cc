@@ -42,14 +42,12 @@ Status MultiScaleDeformableAttention::Compute(_Inout_ OpKernelContext* context) 
     // TODO: check AVX512 availability
     // AVX512 implementation
     ComputeInternal(
-      context,
       value->Data<float>(),
       value_spatial_shapes->Data<int64_t>(),
       reference_points->Data<float>(),
       sampling_locations->Data<float>(),
       attention_weights->Data<float>(),
       output_ptr,
-      S,
       M,
       L,
       P,

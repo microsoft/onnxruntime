@@ -24,14 +24,12 @@
 namespace onnxruntime {
 namespace contrib {
   void MultiScaleDeformableAttention::ComputeInternal(
-    const OpKernelContext* context,
     const float* value,
     const int64_t* value_spatial_shapes,
     const float* reference_points,
     const float* sampling_locations,
     const float* attention_weights,
     float* output,
-    int64_t S,
     int64_t M,
     int64_t L,
     int64_t P,
