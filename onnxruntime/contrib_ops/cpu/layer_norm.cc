@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 // original LayerNormalization contrib op (incorrectly using onnx domain though)
 #define REGISTER_CONTRIB_KERNELS(T)                                                                         \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(LayerNormalization, kMSDomain, 1, 16, T, kCpuExecutionProvider, \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalization, kMSDomain, 1, T, kCpuExecutionProvider, \
                                           KernelDefBuilder()                                                \
                                               .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
                                               .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())        \
