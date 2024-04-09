@@ -4,6 +4,13 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if TARGET_OS_IOS
+#define ORT_IOS
+#endif
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -206,7 +213,7 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperEmptyCase) {
 
 // Fails on iOS because necessary locales are not installed
 // MacOS runs fine.
-#ifndef __APPLE__
+#ifndef ORT_IOS
 TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperSameOutput) {
   // Empty output case
   // - casesensitive approach
