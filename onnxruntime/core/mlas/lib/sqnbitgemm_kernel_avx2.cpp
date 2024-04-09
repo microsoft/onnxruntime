@@ -64,9 +64,11 @@ SQ4BitGemmPackQuantBData(
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-    const size_t SubBlkLen = (ComputeType == CompInt8)
+    size_t SubBlkLen = (ComputeType == CompInt8)
                                  ? ((BlkLen == 16) ? 16 : 32)
                                  : 16;
+    if (BlkLen >= 64 && ComputeType == CompInt8)
+      SubBlkLen = 64;
 
     const size_t SubBlkDataSize = SubBlkLen / 2;
     const size_t SubBlkBytePairCount = SubBlkLen / 4;
@@ -85,6 +87,14 @@ SQ4BitGemmPackQuantBData(
     // src: | v0  v1  | v2  v3  | ... | v28 v29 | v30 v31 |
     //   =>
     // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
+    //
+
+    //
+    // For SubBlkLen == 64, pack 32 4-bit values (16 bytes) at a time like this:
+    //
+    // src: | v0  v1  | v2  v3  | ... | v28 v29 | v30 v31 | v32 v33 | v34 v33 |
+    //   =>
+    // dst: | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
     //
 
     MlasTrySimpleParallel(
@@ -196,7 +206,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
   constexpr size_t SubBlkStep8 = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, SubBlkLen16);
   static_assert(SubBlkStep8 == 8);  // 16 * 4 / 8
 
-  const __m256i lowMask = _mm256_set1_epi8(0xF);
+  const __m256i low_mask = _mm256_set1_epi8(0xF);
 
   __m256 acc[NCols];
   UnrolledLoop<NCols>([&](size_t i) {
@@ -977,7 +987,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
   assert(BlkLen == 16);
   constexpr size_t SubBlkLen = 16;
   const __m256i zero = _mm256_setzero_si256();
-  const __m128i lowMask = _mm_set1_epi8(0xF);
+  const __m128i low_mask = _mm_set1_epi8(0xF);
 
   constexpr size_t BlkBitWidth = 4;
   constexpr size_t SubBlkStep = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, SubBlkLen);
@@ -1035,8 +1045,8 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
     // expand 4b into byte array
     __m256i bv_epi16[NCols];
     UnrolledLoop<NCols>([&](size_t i) {
-      const __m128i lower = _mm_and_si128(bvi[i], lowMask);
-      const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi[i], 4), lowMask), 8);
+      const __m128i lower = _mm_and_si128(bvi[i], low_mask);
+      const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi[i], 4), low_mask), 8);
       bv_epi16[i] = _mm256_cvtepu8_epi16(_mm_add_epi8(upper, lower));
       });
 
@@ -1149,24 +1159,14 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen64(
       const __m256i a_byte_hi = _mm256_loadu_si256((const __m256i*)ablob);
       ablob += 32;
 
-      // Load 4 B column vectors (quantized to int4 blobs)
       UnrolledLoop<NCols>([&](size_t i) {
         __m256i bvi = _mm256_loadu_si256((__m256i const*)bptr[i]);
         bptr[i] += SubBlkStep;
 
-        const __m256i lower = _mm256_and_si256(bvi, low_mask);
-        const __m256i upper = _mm256_and_si256(_mm256_srli_epi16(bvi, 4), low_mask);
-
-        // TODO: change SQ4BitGemmPackQuantBData to pack for subblk len = 64 so not have to unpac here
-        const __m128i bv_lo0 = _mm256_extractf128_si256(lower, 0); // 0, 1, 2, 3,...
-        const __m128i bv_lo1 = _mm256_extractf128_si256(lower, 1); // 32, 33, 34, 45,...
-        const __m128i bv_hi0 = _mm256_extractf128_si256(upper, 0); // 16, 17, 18, 19,...
-        const __m128i bv_hi1 = _mm256_extractf128_si256(upper, 1); // 48, 49, 50, 51,...
-        // _mm256_castsi256_si128 shall not involve any compution
-        // but benchmarking shows this code is accually slower then using _mm256_extractf128_si256.
-        //__m256i bv_lo_epi8 = _mm256_set_m128i(_mm256_castsi256_si128(upper), _mm256_castsi256_si128(lower));
-        __m256i bv_lo_epi8 = _mm256_set_m128i(bv_hi0, bv_lo0);
-        __m256i bv_hi_epi8 = _mm256_set_m128i(bv_hi1, bv_lo1);
+        // Load B column vectors (quantized to int4 blobs)
+        // dst: | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
+        __m256i bv_lo_epi8 = _mm256_and_si256(bvi, low_mask);
+        __m256i bv_hi_epi8 = _mm256_and_si256(_mm256_srli_epi16(bvi, 4), low_mask);
 
         // Subtract zero-point from the integers
         if constexpr (HasZeroPoint) {
@@ -1185,6 +1185,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen64(
           /**/
           const __m256i summed_pairs_lo_epi32 = _mm256_dpbusd_epi32(
             zero, _mm256_sign_epi8(bv_lo_epi8, bv_lo_epi8), _mm256_sign_epi8(a_byte_lo, bv_lo_epi8));
+          // TODO: replace zero with summed_pairs_lo_epi32 and less one _mm256_add_epi32 below
           const __m256i summed_pairs_hi_epi32 = _mm256_dpbusd_epi32(
             zero, _mm256_sign_epi8(bv_hi_epi8, bv_hi_epi8), _mm256_sign_epi8(a_byte_hi, bv_hi_epi8));
           const __m256i sum_epi32 = _mm256_add_epi32(summed_pairs_lo_epi32, summed_pairs_hi_epi32);
@@ -1343,29 +1344,29 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
         __m128i bvi = _mm_loadu_si128((__m128i const*)bptr[i]);
         bptr[i] += SubBlkStep;
 
-        // expand 4b into byte array
-        __m128i lower = _mm_and_si128(bvi, low_mask);
-        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask);
-        __m256i bv_epi8 = _mm256_set_m128i(upper, lower);
+      // expand 4b into byte array
+      __m128i lower = _mm_and_si128(bvi, low_mask);
+      __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask);
+      __m256i bv_epi8 = _mm256_set_m128i(upper, lower);
 
-        // Subtract zero-point from the integers
-        if constexpr (HasZeroPoint) {
-          bv_epi8 = _mm256_sub_epi8(bv_epi8, _mm256_set1_epi8(offset[i]));
-        }
-        else {
-          const __m256i eight = _mm256_set1_epi8(8);
-          bv_epi8 = _mm256_sub_epi8(bv_epi8, eight);
-        }
+      // Subtract zero-point from the integers
+      if constexpr (HasZeroPoint) {
+        bv_epi8 = _mm256_sub_epi8(bv_epi8, _mm256_set1_epi8(offset[i]));
+      }
+      else {
+        const __m256i eight = _mm256_set1_epi8(8);
+        bv_epi8 = _mm256_sub_epi8(bv_epi8, eight);
+      }
 
-        // to use vnni unsigned x signed int, negate all negative
-        // b vals to make it all positive, and then also negate the
-        // corresponding a vals to compensate
-        const __m256i summed_pairs = _mm256_dpbusd_epi32(
-          zero, _mm256_sign_epi8(bv_epi8, bv_epi8), _mm256_sign_epi8(av_epi8, bv_epi8));
-        const __m256 sums = _mm256_cvtepi32_ps(summed_pairs);
-        acc[i] = _mm256_fmadd_ps(_mm256_set1_ps(scale_v[i]), sums, acc[i]);
+      // to use vnni unsigned x signed int, negate all negative
+      // b vals to make it all positive, and then also negate the
+      // corresponding a vals to compensate
+      const __m256i summed_pairs = _mm256_dpbusd_epi32(
+        zero, _mm256_sign_epi8(bv_epi8, bv_epi8), _mm256_sign_epi8(av_epi8, bv_epi8));
+      const __m256 sums = _mm256_cvtepi32_ps(summed_pairs);
+      acc[i] = _mm256_fmadd_ps(_mm256_set1_ps(scale_v[i]), sums, acc[i]);
 
-        //blk_sums[i] = _mm256_add_epi32(summed_pairs, blk_sums[i]);
+      //blk_sums[i] = _mm256_add_epi32(summed_pairs, blk_sums[i]);
       });
     } // kk
     b_blk_data_ptr += MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -1404,6 +1405,8 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
   }
 }
 
+#include "sqnbitgemm_kernel_NCols1_impl_avx2.h"
+
 template <bool HasZeroPoint>
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompInt8_DispatchOnBlkLen(
@@ -1419,47 +1422,89 @@ SQ4BitGemmM1Kernel_CompInt8_DispatchOnBlkLen(
   const float* Bias
 )
 {
-  if (BlkLen == 16) {
-    SQ4BitGemmM1Kernel_CompInt8_Impl<4, 16, HasZeroPoint>(
-      BlkLen,
-      QuantA,
-      QuantBData,
-      QuantBScale,
-      QuantBZeroPoint,
-      C,
-      CountN,
-      CountK,
-      BlockStrideQuantB,
-      Bias
-    );
-  }
-  else if (BlkLen == 32) {
-    SQ4BitGemmM1Kernel_CompInt8_Impl<4, 32, HasZeroPoint>(
-      BlkLen,
-      QuantA,
-      QuantBData,
-      QuantBScale,
-      QuantBZeroPoint,
-      C,
-      CountN,
-      CountK,
-      BlockStrideQuantB,
-      Bias
-    );
+  constexpr bool USE_NCOLs = true;
+  if constexpr (USE_NCOLs) {
+    if (BlkLen == 16) {
+      SQ4BitGemmM1Kernel_CompInt8_Impl<4, 16, HasZeroPoint>(
+        BlkLen,
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        CountK,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
+    else if (BlkLen == 32) {
+      SQ4BitGemmM1Kernel_CompInt8_Impl<4, 32, HasZeroPoint>(
+        BlkLen,
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        CountK,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
+    else {
+      SQ4BitGemmM1Kernel_CompInt8_Impl<4, 64, HasZeroPoint>(
+        BlkLen,
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        CountK,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
   }
   else {
-    SQ4BitGemmM1Kernel_CompInt8_Impl<4, 64, HasZeroPoint>(
-      BlkLen,
-      QuantA,
-      QuantBData,
-      QuantBScale,
-      QuantBZeroPoint,
-      C,
-      CountN,
-      CountK,
-      BlockStrideQuantB,
-      Bias
-    );
+    if (BlkLen == 16) {
+      SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen16<HasZeroPoint>(
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
+    else if (BlkLen == 32) {
+      SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen32<HasZeroPoint>(
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
+    else {
+      SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32<HasZeroPoint>(
+        BlkLen,
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
   }
 }
 
