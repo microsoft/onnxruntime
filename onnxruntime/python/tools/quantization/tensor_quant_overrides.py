@@ -24,6 +24,7 @@ class QuantTypeInfo:
     quant_type: QuantType
     symmetric: bool | None = None  # If None, assumes default is used.
     reduce_range: bool | None = None  # If None, assumes default is used.
+    axis: int | None = None  # If None, assumes per-tensor quantization
 
     def __eq__(self, other: object):
         if isinstance(other, QuantTypeInfo):
@@ -31,20 +32,22 @@ class QuantTypeInfo:
                 self.quant_type == other.quant_type
                 and (self.symmetric is None or other.symmetric is None or self.symmetric == other.symmetric)
                 and (self.reduce_range is None or other.reduce_range is None or self.reduce_range == other.reduce_range)
+                and (self.axis == other.axis)
             )
         return NotImplemented
 
     @staticmethod
     def load_from_dict(
         raw_dict: dict[str, Any],
-        default_activation_qtype: QuantType | None = None,
-        default_activation_symmetric: bool | None = None,
-        default_activation_reduce_range: bool | None = None,
+        default_qtype: QuantType | None = None,
+        default_symmetric: bool | None = None,
+        default_reduce_range: bool | None = None,
     ) -> QuantTypeInfo:
         return QuantTypeInfo(
-            raw_dict.get("quant_type", default_activation_qtype),
-            raw_dict.get("symmetric", default_activation_symmetric),
-            raw_dict.get("reduce_range", default_activation_reduce_range),
+            raw_dict.get("quant_type", default_qtype),
+            raw_dict.get("symmetric", default_symmetric),
+            raw_dict.get("reduce_range", default_reduce_range),
+            raw_dict.get("axis"),
         )
 
     def save_to_dict(self, raw_dict: dict[str, Any]):
@@ -53,6 +56,8 @@ class QuantTypeInfo:
             raw_dict["symmetric"] = self.symmetric
         if self.reduce_range is not None:
             raw_dict["reduce_range"] = self.reduce_range
+        if self.axis is not None:
+            raw_dict["axis"] = self.axis
 
 
 class TensorQuantOverridesHelper(MutableMapping):
@@ -428,11 +433,10 @@ class TensorQuantOverridesHelper(MutableMapping):
         default_qtype: QuantType | None,
         default_symmetric: bool | None = None,
     ) -> QuantTypeInfo:
+        # Outputs are activations, which do not support 'reduce_range' or 'axis'
         if output_name not in self.overrides:
             return QuantTypeInfo(default_qtype, default_symmetric)
 
-        # Get the first overrides dict in the list. This works for both per-tensor and per-channel
-        # quantization because all channels must use the same quant type.
         tensor_overrides = self.overrides[output_name][0]
 
         return QuantTypeInfo(
@@ -457,14 +461,19 @@ class TensorQuantOverridesHelper(MutableMapping):
         producer_type = tensor_overrides.get("quant_type", default_qtype)
 
         if "convert" not in tensor_overrides:
-            return QuantTypeInfo(producer_type, default_symmetric, default_reduce_range)
+            return QuantTypeInfo(
+                producer_type,
+                tensor_overrides.get("symmetric", default_symmetric),
+                tensor_overrides.get("reduce_range", default_reduce_range),
+                tensor_overrides.get("axis"),
+            )
 
         # This tensor is converted. Check if the node gets the original qtype or the converted qtype.
         convert_dict = tensor_overrides["convert"]
         qtype_info = QuantTypeInfo(
             producer_type,
             convert_dict.get("symmetric", default_symmetric),
-            convert_dict.get("reduce_range", default_reduce_range),
+            # Converted tensors are not initializers, so do not have 'axis' or 'reduce_range'.
         )
 
         # Check if all nodes receive the converted type (i.e., recv_nodes is None) or this node
