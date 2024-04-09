@@ -44,7 +44,7 @@ Status InsertSoftmaxCrossEntropyLossOutput::Apply(Graph& graph, Node& node, Rewr
     t.mutable_tensor_type()->mutable_shape()->CopyFrom(*X->Shape());  // log probability should have the same shape as logits.
   }
 
-  NodeArg& node_arg = graph.GetOrCreateNodeArg(X->Name() + "_log_prob", &t);
+  NodeArg& node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(X->Name() + "_log_prob"), &t);
 
   outputs.push_back(&node_arg);
 

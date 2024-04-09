@@ -30,6 +30,7 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         tokens,
         audio_features,
         past=None,
+        remove_hooks=False,
     ):
         # Create a kv_cache for past_values
         past_kv_cache = dict()
@@ -44,8 +45,9 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
                 past_kv_cache[block.cross_attn.key] = past[2 * idx + half_idx]
                 past_kv_cache[block.cross_attn.value] = past[2 * idx + half_idx + 1]
 
+        hooks = None
         if not self.kv_cache:
-            self.kv_cache, _ = self.whisper_model.install_kv_cache_hooks()
+            self.kv_cache, hooks = self.whisper_model.install_kv_cache_hooks()
 
         logits = self.whisper_decoder(tokens, audio_features, kv_cache=past_kv_cache)
 
@@ -73,4 +75,10 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         present_self = [
             present_val.reshape(present_val.shape[:2] + (-1, 64)).transpose(1, 2) for present_val in present_self
         ]
+
+        # Remove forward hooks to avoid model cloning step
+        if hooks is not None and remove_hooks:
+            self.kv_cache = {}
+            for hook in hooks:
+                hook.remove()
         return logits, present_self
