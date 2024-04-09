@@ -4,6 +4,8 @@
 #include "group_query_attention.h"
 #include "group_query_attention_helper.h"
 #include "attention_utils.h"
+#include "rotary_embedding.h"
+#include "rotary_embedding_helper.h"
 
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
@@ -44,51 +46,10 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info) : OpKernel
   kv_num_heads_ = static_cast<int>(kv_num_heads);
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
-  is_unidirectional_ = true; // info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+  local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+  do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
+  rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
 }
-
-// // Reshape Q/K/V from BxSxD to BxSxNxH
-// Status Reshape_BSD_to_BSNH(Tensor* qkv,
-//                            int batch_size,
-//                            int sequence_length,
-//                            int num_heads,
-//                            int head_size) {
-//   std::vector<int64_t> reshape_dims({batch_size, sequence_length, num_heads, head_size});
-//   gsl::span<const int64_t> reshape_dims_span{reshape_dims};
-//   TensorShape qkv_bsnh(reshape_dims_span);
-//   qkv->Reshape(qkv_bsnh);
-//   return Status::OK();
-// }
-
-// // Transpose Q/K/V from BxSxNxH to BxNxSxH
-// Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
-//                               OrtValue& qkv_transposed,
-//                               concurrency::ThreadPool* tp = nullptr) {
-//   std::vector<size_t> permutations({0, 2, 1, 3});
-//   gsl::span<const size_t> permutations_span{permutations};
-//   size_t from = 2, to = 1;
-//   SingleAxisTranspose(permutations_span, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to, nullptr, tp);
-//   return Status::OK();
-// }
-
-// template <typename T>
-// Status MaybeTransposeToBNSH(OpKernelContext* context, AllocatorPtr allocator,
-//                                       int batch_size, int num_heads, int sequence_length, int head_size,
-//                                       const Tensor* in, OrtValue& out) {
-//   auto element_type = DataTypeImpl::GetType<T>();
-//   std::vector<int64_t> new_dims({batch_size, num_heads, sequence_length, head_size});
-//   gsl::span<const int64_t> new_dims_span{new_dims};
-//   TensorShape v_BNLH(new_dims_span);
-//   Tensor::InitOrtValue(element_type, v_BNLH, allocator, out);
-//   std::unique_ptr<Tensor> reshaped;
-//   if (in->Shape().GetDims().size() == 3) {
-//     reshaped = std::make_unique<Tensor>(in->DataType(), in->Shape(), const_cast<void*>(in->DataRaw()), in->Location());
-//     ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(reshaped.get(), batch_size, sequence_length, num_heads, head_size));
-//   }
-//   ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((reshaped == nullptr) ? in : reshaped.get(), out));
-
-//   return Status::OK();
-// };
 
 template <typename T>
 Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
@@ -171,9 +132,54 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
       context, allocator, batch_size, kv_num_heads_, sequence_length, head_size, value, V));
 
+  if (do_rotary_) {
+    auto* tp = context->GetOperatorThreadPool();
+    rotary_embedding_helper::RotaryParameters rotary_params = {};
+    rotary_params.batch_size = batch_size;
+    rotary_params.sequence_length = sequence_length;
+    rotary_params.num_heads = num_heads_;
+    rotary_params.head_size = head_size;
+    rotary_params.rotary_embedding_dim = parameters.rotary_dim;
+    rotary_params.max_sequence_length = present_kv_seqlen;
+    rotary_params.transposed = true;
+    rotary_params.position_ids_format = 1;
+
+    OrtValue pos_ids;
+    auto element_type = DataTypeImpl::GetType<int64_t>();
+    std::vector<int64_t> pos_id_dim({batch_size, sequence_length});
+    gsl::span<const int64_t> pos_id_dim_span{pos_id_dim};
+    TensorShape pos_id_shape(pos_id_dim_span);
+    Tensor::InitOrtValue(element_type, pos_id_shape, allocator, pos_ids);
+    ORT_RETURN_IF_ERROR(group_query_attention_helper::GeneratePositionIds(seqlens_k->Data<int32_t>(), batch_size, sequence_length,
+                        pos_ids.GetMutable<Tensor>()->MutableData<int64_t>(), tp, context));
+
+    OrtValue rotary_q;
+    element_type = DataTypeImpl::GetType<T>();
+    std::vector<int64_t> q_dim({batch_size, num_heads_, sequence_length, head_size});
+    gsl::span<const int64_t> q_dim_span{q_dim};
+    TensorShape q_shape(q_dim_span);
+    Tensor::InitOrtValue(element_type, q_shape, allocator, rotary_q);
+    ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, Q.Get<Tensor>().Data<T>(),
+                        pos_ids.Get<Tensor>().Data<int64_t>(), cos_cache->Data<T>(),
+                        sin_cache->Data<T>(), rotary_q.GetMutable<Tensor>()->MutableData<T>(), rotary_interleaved_));
+
+    rotary_params.num_heads = kv_num_heads_;
+    OrtValue rotary_k;
+    std::vector<int64_t> k_dim({batch_size, num_heads_, sequence_length, head_size});
+    gsl::span<const int64_t> k_dim_span{k_dim};
+    TensorShape k_shape(k_dim_span);
+    Tensor::InitOrtValue(element_type, k_shape, allocator, rotary_k);
+    ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, K.Get<Tensor>().Data<T>(),
+                        pos_ids.Get<Tensor>().Data<int64_t>(),
+                        cos_cache->Data<T>(),
+                        sin_cache->Data<T>(), rotary_k.GetMutable<Tensor>()->MutableData<T>(), rotary_interleaved_));
+    Q = rotary_q;
+    K = rotary_k;
+  }
+
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(),
-                        V.GetMutable<Tensor>()->MutableData<T>(), past_key, past_value, output, present_k, present_v,
+  return ApplyAttention(Q.Get<Tensor>().Data<T>(), K.Get<Tensor>().Data<T>(),
+                        V.Get<Tensor>().Data<T>(), past_key, past_value, output, present_k, present_v,
                         seqlens_k, batch_size, sequence_length, head_size, q_hidden_size, context);
 }
 }  // namespace contrib

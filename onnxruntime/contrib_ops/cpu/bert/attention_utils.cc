@@ -228,8 +228,8 @@ template Status MaybeTransposeToBNSHAndAddBias<float>(OpKernelContext* context, 
 
 template <typename T>
 Status MaybeTransposeToBNSH(OpKernelContext* context, AllocatorPtr allocator,
-                                      int batch_size, int num_heads, int sequence_length, int head_size,
-                                      const Tensor* in, OrtValue& out) {
+                            int batch_size, int num_heads, int sequence_length, int head_size,
+                            const Tensor* in, OrtValue& out) {
   auto element_type = DataTypeImpl::GetType<T>();
   std::vector<int64_t> new_dims({batch_size, num_heads, sequence_length, head_size});
   gsl::span<const int64_t> new_dims_span{new_dims};

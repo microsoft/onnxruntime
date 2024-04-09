@@ -268,6 +268,28 @@ Status CheckInputs(const Tensor* query,
   return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, is_past_bsnh, scale);
 }
 
+Status GeneratePositionIds(const int32_t* seqlens_k, int batch_size, int sequence_length, int64_t* pos_ids, concurrency::ThreadPool* tp, OpKernelContext* context) {
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+  // TODO: parallelize this
+  if (sequence_length == 1) {
+    for (int b = 0; b < batch_size; b++) {
+      pos_ids[b] = static_cast<int64_t>(seqlens_k[b]);
+    }
+  } else {
+    for (int b = 0; b < batch_size; b++) {
+      for (int s = 0; s < sequence_length; s++) {
+        if (s < seqlens_k[b] + 1) {
+          pos_ids[b * sequence_length + s] = static_cast<int64_t>(s);
+        } else {
+          pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace multihead_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime

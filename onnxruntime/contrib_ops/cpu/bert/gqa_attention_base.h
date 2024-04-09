@@ -19,6 +19,10 @@ class GQAAttentionBase : public AttentionBase {
   GQAAttentionBase(const OpKernelInfo& info, bool require_same_hidden_size)
       : AttentionBase(info, require_same_hidden_size) {}
 
+  int local_window_size_;
+  bool do_rotary_;
+  bool rotary_interleaved_;
+
   template <typename T>
   Status ApplyAttention(const T* Q,                            // Q data with shape BxNxSxH
                         const T* K,                            // K data with shape BxN_kvxSxH
@@ -111,7 +115,7 @@ class GQAAttentionBase : public AttentionBase {
 
     // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
     if (mask_data != nullptr) {
-      PrepareMaskGQA(mask_data, batch_size, sequence_length, present_buffer_sequence_length, seqlens_k);
+      PrepareMaskGQA(mask_data, batch_size, sequence_length, present_buffer_sequence_length, local_window_size_, seqlens_k);
     }
 
     const int loop_len = batch_size * num_heads_;

@@ -160,6 +160,7 @@ void PrepareMaskGQA(T* mask_data,
                     int batch_size,
                     int sequence_length,
                     int buffer_sequence_length,
+                    int local_window_size,
                     const int32_t* seqlens_k) {
   // mask_data has been filled with 0, and its shape is BxSxT
   T* p_mask = mask_data;
@@ -167,6 +168,7 @@ void PrepareMaskGQA(T* mask_data,
   // std::cout << "sequence_length: " << sequence_length << std::endl;
   // std::cout << "batch_size: " << batch_size << std::endl;
   // std::cout << "mask_data: " << std::endl;
+  // TODO: try parallel for
   for (int b_i = 0; b_i < batch_size; b_i++) {
     // Broadcast mask from (Bx)T to (Bx)SxT
     for (ptrdiff_t s_i = 1; s_i < sequence_length; s_i++) {
@@ -175,12 +177,18 @@ void PrepareMaskGQA(T* mask_data,
 
     if (sequence_length > 1) {
       // std::cout << "sequence_length > 1" << std::endl;
-      // Apply unidirectional mask for prompt case.
+      // Apply causal/local mask for prompt case.
       for (int s_i = 0; s_i < sequence_length; s_i++) {
         // std::cout << "s_i: " << s_i << std::endl;
-        for (int m_i = /*past_sequence_length +*/ s_i + 1; m_i < buffer_sequence_length; m_i++) {
+        for (int m_i = s_i + 1; m_i < buffer_sequence_length; m_i++) {
           // std::cout << m_i << " ";
           p_mask[s_i * buffer_sequence_length + m_i] = std::numeric_limits<T>::lowest();
+        }
+        // Apply local mask.
+        if (local_window_size > 0) {
+          for (int m_i = 0; m_i < s_i - local_window_size; m_i++) {
+            p_mask[s_i * buffer_sequence_length + m_i] = std::numeric_limits<T>::lowest();
+          }
         }
       }
     } else if (sequence_length == 1) {
@@ -189,6 +197,12 @@ void PrepareMaskGQA(T* mask_data,
       int total_seqlen = seqlens_k[b_i] + 1;
       for (int m_i = total_seqlen; m_i < buffer_sequence_length; m_i++) {
         p_mask[m_i] = std::numeric_limits<T>::lowest();
+      }
+      // Apply local mask.
+      if (local_window_size > 0) {
+        for (int m_i = 0; m_i < total_seqlen - local_window_size - 1; m_i++) {
+          p_mask[m_i] = std::numeric_limits<T>::lowest();
+        }
       }
     }
     // for (int i = 0; i < sequence_length; i++) {
