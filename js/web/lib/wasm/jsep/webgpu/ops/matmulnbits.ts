@@ -281,23 +281,23 @@ export const createMatMulNBitsProgramInfo =
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
           var output_values: array<${output.type.value}, ${outputNumber}>;
           var output_indices = ${output.offsetToIndices('global_idx')};
-          var n = ${output.indicesGet('output_indices', outputRank - 1)};
-          var m = ${output.indicesGet('output_indices', outputRank - 2)};
+          var col = ${output.indicesGet('output_indices', outputRank - 1)};
+          var row = ${output.indicesGet('output_indices', outputRank - 2)};
           var a_indices: ${a.type.indices} = output_indices;
           // Two zero points are packed into one byte because uniforms.bits <= 4.
           // zero_point_offset is either 0 or 4. It is bit offset within one byte.
           // TODO support zero_point_offset for bits > 4
           ${
                 zeroPoints ? `
-          var zero_point_abs_offset = n * ${components} * ((${nBlocksPerCol} + 1) / 2);
+          var zero_point_abs_offset = col * ${components} * ((${nBlocksPerCol} + 1) / 2);
           var zero_point_index: u32 = zero_point_abs_offset / 4;
           var zero_point_word: u32 = ${zeroPoints.getByOffset('zero_point_index')};
           var zero_point_offset: u32 = (zero_point_abs_offset % 4) * 8;` :
                              ''}
-          var scale_index = n * ${nBlocksPerCol * components};
+          var scale_index = col * ${nBlocksPerCol * components};
           var b_indices: ${b.type.indices};
           for (var c: u32 = 0; c < ${components}; c++) {
-            ${b.indicesSet('b_indices', '0', `n * ${components} + c`)};
+            ${b.indicesSet('b_indices', '0', `col * ${components} + c`)};
             var block_offset: u32 = 0;
             for (var block: u32 = 0; block < ${nBlocksPerCol}; block++) {
               // The scale and zero points are computed per block.
@@ -318,7 +318,7 @@ export const createMatMulNBitsProgramInfo =
                   for (var j: u32 = 0; j < 8/${aComponents}; j++) {
                     ${a.indicesSet('a_indices', inputRank - 1, `offset/${aComponents}`)};
                     for (var k: u32 = 0; k < ${outputNumber}u; k++) {
-                      ${a.indicesSet('a_indices', inputRank - 2, `m * ${outputNumber} + k`)};
+                      ${a.indicesSet('a_indices', inputRank - 2, `row * ${outputNumber} + k`)};
                       let a_data = ${a.getByIndices('a_indices')};
                       output_values[k]${components > 1 ? '[c]' : ''} += ${
                 aComponents === 1 ? 'a_data * b_dequantized_values[j]' : 'dot(a_data, b_dequantized_values[j])'};
@@ -340,7 +340,7 @@ export const createMatMulNBitsProgramInfo =
                              ''}
             }
             for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
-              ${output.indicesSet('output_indices', outputRank - 2, `${outputNumber + ' * m + k'}`)};
+              ${output.indicesSet('output_indices', outputRank - 2, `${outputNumber + ' * row + k'}`)};
               ${output.setByIndices('output_indices', 'output_values[k]')}
             }
         }`;
