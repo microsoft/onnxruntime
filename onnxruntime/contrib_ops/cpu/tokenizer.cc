@@ -10,19 +10,23 @@
 #include "core/framework/tensor.h"
 #include "re2/re2.h"
 
-#if defined(__clang__) || defined(__GNUC__)
-#include <experimental/memory_resource>
-#else
+#ifdef _MSC_VER
 #include <memory_resource>
+#define ORT_PMR_ALLOCATOR_SUPPORTED
 #endif
 
+#include <optional>
 #include <type_traits>
 #include <vector>
 
+#ifdef ORT_PMR_ALLOCATOR_SUPPORTED
+using SlicesVector = std::pmr::vector<re2::StringPiece>;
+#else
+using SlicesVector = std::vector<re2::StringPiece>;
+#endif
+
 namespace onnxruntime {
 namespace contrib {
-
-using MonotonicBufferResource = std::pmr::monotonic_buffer_resource;
 
 class Tokenizer final : public OpKernel {
  public:
@@ -48,7 +52,7 @@ class Tokenizer final : public OpKernel {
                          size_t N, size_t C,
                          gsl::span<const int64_t> input_dims) const;
 
-  void OutputData(gsl::span<const std::pmr::vector<re2::StringPiece>> rows,
+  void OutputData(gsl::span<const SlicesVector> rows,
                   size_t max_tokens, size_t max_output_index, std::string* output_data) const;
 
   bool mark_{false};
@@ -233,41 +237,86 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
 
 namespace {
 
-/// <summary>
-/// Pre-allocate memory for the tokens to reduce a number of individual
-/// allocations and thus memory contention.
-/// Used in conjunction with PMR memory allocatior
-/// </summary>
-/// <typeparam name="T"></typeparam>
-/// <param name="num">number of objects of T</param>
-/// <param name="buf">buffer holder</param>
-/// <param name="allocated_size">aligned allocated size</param>
-/// <returns>pointer to the buffer</returns>
-template <typename T>
-inline void* AlignedAllocate(size_t num, std::unique_ptr<uint8_t[]>& buf, size_t& allocated_size) {
-  constexpr size_t alignment = alignof(T);
-  const size_t size_bytes = SafeInt<size_t>(num) * sizeof(T) + alignment;
-  buf = std::make_unique<uint8_t[]>(size_bytes);
-  void* ptr = buf.get();
-  allocated_size = size_bytes;
-  return std::align(alignment, size_bytes, ptr, allocated_size);
-}
+// We use std::vector in this case, because InlinedVector::clear() is incompatible
+// with std::vector. It also deallocates memory, which is not what we want.
 
+// The compiler we are using GCC on Linux and Clang on MacOS does not
+// have the library that support C++17 PMR. So we are only using it on Windows
+// since the problem is acute on the platform.
+
+#ifdef ORT_PMR_ALLOCATOR_SUPPORTED
 /// <summary>
 /// This class provides a thin abstraction over the std::pmr::monotonic_buffer_resource
 /// If the allocated buffer is not enough, additional allocations are done using
 /// new/delete.
 /// </summary>
-class MonotonicAllocatorWithDefault : public MonotonicBufferResource {
+class MonotonicAllocatorWithDefault : public std::pmr::monotonic_buffer_resource {
  public:
   MonotonicAllocatorWithDefault(void* ptr, size_t size_in_bytes)
       : monotonic_buffer_resource(ptr, size_in_bytes, std::pmr::get_default_resource()) {}
   MonotonicAllocatorWithDefault(void* ptr, size_t size_in_bytes, std::pmr::memory_resource* upstream)
       : monotonic_buffer_resource(ptr, size_in_bytes, upstream) {}
 };
+
+class MemoryAllocator {
+ public:
+  explicit MemoryAllocator(size_t num_of_slices) {
+    size_t allocated_size = 0;
+    void* ptr = AlignedAllocate(num_of_slices, allocated_size);
+    resource_.emplace(ptr, allocated_size);
+  }
+
+  SlicesVector CreateVectorWithAllocator() {
+    return SlicesVector(&resource_.value());
+  }
+
+  SlicesVector& EmplaceBack(std::vector<SlicesVector>& rows) {
+    return rows.emplace_back(&resource_.value());
+  }
+
+ private:
+  /// <summary>
+  /// Pre-allocate memory for the tokens to reduce a number of individual
+  /// allocations and thus memory contention.
+  /// Used in conjunction with PMR memory allocatior
+  /// </summary>
+  /// <param name="num">number of objects of T</param>
+  /// <param name="buf">buffer holder</param>
+  /// <param name="allocated_size">aligned allocated size</param>
+  /// <returns>pointer to the buffer</returns>
+  void* AlignedAllocate(size_t num, size_t& allocated_size) {
+    constexpr size_t alignment = alignof(re2::StringPiece);
+    const size_t size_bytes = SafeInt<size_t>(num) * sizeof(re2::StringPiece) + alignment;
+    buf_holder_ = std::make_unique<uint8_t[]>(size_bytes);
+    void* ptr = buf_holder_.get();
+    allocated_size = size_bytes;
+    return std::align(alignment, size_bytes, ptr, allocated_size);
+  }
+
+  std::unique_ptr<uint8_t[]> buf_holder_;
+  std::optional<MonotonicAllocatorWithDefault> resource_;
+};
+
+#else
+
+class MemoryAllocator {
+ public:
+  explicit MemoryAllocator(size_t /* num_of_slices */) {
+  }
+
+  SlicesVector CreateVectorWithAllocator() const {
+    return SlicesVector{};
+  }
+
+  SlicesVector& EmplaceBack(std::vector<SlicesVector>& rows) const {
+    return rows.emplace_back();
+  }
+};
+
+#endif
 }  // namespace
 
-void Tokenizer::OutputData(gsl::span<const std::pmr::vector<re2::StringPiece>> rows,
+void Tokenizer::OutputData(gsl::span<const SlicesVector> rows,
                            size_t max_tokens, [[maybe_unused]] size_t max_output_index, std::string* output_data) const {
   size_t output_index = 0;
   for (const auto& row : rows) {
@@ -302,30 +351,23 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   // Let's estimate maximum number of tokens
   // It is hard to estimate the number of separate characters that would not appear in the
   // output.
-  size_t max_tokens_per_row = 0;
   size_t total_tokens_estimate = 0;
+  size_t max_tokens_per_row = 0;
   ORT_RETURN_IF_ERROR(EstimateNumberOfTokens(input_span, max_tokens_per_row, total_tokens_estimate));
-
   // Add a scratch token vector allocation
   total_tokens_estimate += max_tokens_per_row;
 
   // Pre-allocate memory for all tokens (StringPieces)
-  std::unique_ptr<uint8_t[]> buf_holder;
-  size_t allocated_size = 0;
-  void* aligned_buf_ptr = AlignedAllocate<StringPiece>(total_tokens_estimate, buf_holder, allocated_size);
-
-  MonotonicAllocatorWithDefault monotonic_allocator(aligned_buf_ptr, allocated_size);
+  MemoryAllocator allocator(total_tokens_estimate);
 
   // Make sure the vectors below are destroyed before the allocator
   const size_t vector_num = SafeInt<size_t>(N) * C;
 
-  // We use std::vector in this case, because InlinedVector::clear() is incompatible
-  // with std::vector. It also deallocates memory, which is not what we want.
-  std::vector<std::pmr::vector<StringPiece>> rows;
-  rows.reserve(vector_num + 2);  // We allocate 2 scratch vectors
+  std::vector<SlicesVector> rows;
+  rows.reserve(vector_num);
 
   // Re-use the same vector for each tokenization round
-  std::pmr::vector<StringPiece> tokens(&monotonic_allocator);
+  SlicesVector tokens = allocator.CreateVectorWithAllocator();
   tokens.reserve(max_tokens_per_row);
 
   // We do not constraint the search to match
@@ -344,7 +386,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
     }
 
     const auto expected_tokens = std::max<size_t>(1, utf8_chars / mincharnum_);
-    auto& row = rows.emplace_back(&monotonic_allocator);
+    auto& row = allocator.EmplaceBack(rows);
     row.reserve(expected_tokens);
     row.emplace_back(s);
 
@@ -432,7 +474,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   auto output_tensor = ctx->Output(0, output_shape);
   auto const output_data = output_tensor->MutableData<std::string>();
 
-  OutputData(rows, max_tokens, output_shape.Size(), output_data);
+  OutputData(rows, max_tokens, narrow<size_t>(output_shape.Size()), output_data);
 
   return Status::OK();
 }
@@ -452,18 +494,14 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   ORT_RETURN_IF_ERROR(EstimateNumberOfTokens(input_span, max_tokens_per_row, total_tokens_estimate));
 
   // Pre-allocate memory for all tokens (StringPieces)
-  std::unique_ptr<uint8_t[]> buf_holder;
-  size_t allocated_size = 0;
-  void* aligned_buf_ptr = AlignedAllocate<StringPiece>(total_tokens_estimate, buf_holder, allocated_size);
-
-  MonotonicAllocatorWithDefault monotonic_allocator(aligned_buf_ptr, allocated_size);
+  MemoryAllocator allocator(total_tokens_estimate);
 
   // Make sure the vectors below are destroyed before the allocator
   const size_t vector_num = SafeInt<size_t>(N) * C;
 
   // We use std::vector in this case, because InlinedVector::clear() is incompatible
   // with std::vector. It also deallocates memory, which is not what we want.
-  std::vector<std::pmr::vector<StringPiece>> rows;
+  std::vector<SlicesVector> rows;
   rows.reserve(vector_num);
 
   // We do not constraint the search to match
@@ -471,7 +509,8 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   constexpr RE2::Anchor anchor = RE2::UNANCHORED;
 
   for (const auto& s : input_span) {
-    auto& row = rows.emplace_back(&monotonic_allocator);
+    auto& row = allocator.EmplaceBack(rows);
+    row.reserve(max_tokens_per_row);
 
     size_t utf8_chars = 0;
     utf8_len(reinterpret_cast<const unsigned char*>(s.data()), s.size(), utf8_chars);
@@ -533,7 +572,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   auto output_tensor = ctx->Output(0, output_shape);
   auto const output_data = output_tensor->MutableData<std::string>();
 
-  OutputData(rows, max_tokens, output_shape.Size(), output_data);
+  OutputData(rows, max_tokens, narrow<size_t>(output_shape.Size()), output_data);
 
   return Status::OK();
 }
