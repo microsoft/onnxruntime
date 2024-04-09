@@ -9,7 +9,7 @@
 
 #include "vision/impl/png_encoder_decoder.hpp"
 
-namespace ort_extensions {
+namespace onnxruntime {
 
 namespace {
 void EncodeJpg(uint8_t*& buffer, int64_t H, int64_t W, int64_t channels, unsigned long& num_bytes) {
@@ -90,4 +90,4 @@ void EncodeImage::Compute(OrtKernelContext* context) {
     EncodeJpg(missing_buffer, H, W, num_encoded_bytes);
   }
 }
-}  // namespace ort_extensions
+}  // namespace onnxruntime

@@ -1632,6 +1632,7 @@ def generate_build_tree(
                 "-DCMAKE_MODULE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
                 "-DCMAKE_SHARED_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
             ]
+        # import pdb; pdb.set_trace()
         run_subprocess(
             [
                 *temp_cmake_args,
@@ -2504,6 +2505,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
+    # import pdb; pdb.set_trace()
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))  # noqa: G001
 
     args = parse_arguments()
@@ -2803,6 +2805,8 @@ def main():
         if args.parallel < 0:
             raise BuildError(f"Invalid parallel job count: {args.parallel}")
         num_parallel_jobs = number_of_parallel_jobs(args)
+
+        # import pdb; pdb.set_trace()
         build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.target)
 
     if args.test:

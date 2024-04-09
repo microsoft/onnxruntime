@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace ort_extensions {
+namespace onnxruntime {
 class BaseImageDecoder {
  public:
   virtual ~BaseImageDecoder() {}
@@ -82,4 +82,4 @@ class BaseImageEncoder {
 
   std::vector<uint8_t> encoded_image_;
 };
-}  // namespace ort_extensions
+}  // namespace onnxruntime

@@ -45,12 +45,12 @@
 
 #pragma once
 
-#include "vision/impl/image_encoder_decoder.hpp"
+#include "core/providers/cpu/vision/impl/image_encoder_decoder.hpp"
 
 #include <cassert>
 #include <vector>
 
-namespace ort_extensions {
+namespace onnxruntime {
 
 class PngDecoder : public BaseImageDecoder {
  public:

@@ -17,7 +17,7 @@
 #pragma warning(disable : 4611)
 #endif
 
-namespace ort_extensions {
+namespace onnxruntime {
 
 bool PngDecoder::IsPng(const uint8_t* bytes, uint64_t num_bytes) {
   // '\0x89PGN\r\n<sub>\n'
@@ -247,4 +247,4 @@ bool PngEncoder::EncodeImpl() {
   return result;
 }
 
-}  // namespace ort_extensions
+}  // namespace onnxruntime

@@ -1,0 +1,32 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ad3f2427d..a53796e53 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -17,6 +17,27 @@
+ 
+ cmake_minimum_required(VERSION 3.6)
+ 
++# Replace install() to do-nothing macro. the libpng install step depends on zlib and the setup with FetchContent
++# doesn't support that nicely so you get an error like:
++#     CMake Error: install(EXPORT "libpng" ...) includes target "png" which requires target "zlib"
++#     that is not in any export set.
++macro(install)
++endmacro()
++
++include(FetchContent)
++FetchContent_Declare(
++    zlib
++    GIT_REPOSITORY  "https://github.com/madler/zlib.git"
++    GIT_TAG         v1.2.13
++    GIT_SHALLOW     TRUE
++)
++
++FetchContent_MakeAvailable(zlib)
++set(zlib_INCLUDE_DIRS ${zlib_SOURCE_DIR} ${zlib_BINARY_DIR})
++set(ZLIB_LIBRARIES zlibstatic)
++set(ZLIB_LIBRARY zlibstatic)
++set(ZLIB_INCLUDE_DIR ${zlib_SOURCE_DIR} ${zlib_BINARY_DIR})
++
+ set(PNGLIB_MAJOR 1)
+ set(PNGLIB_MINOR 6)
+ set(PNGLIB_REVISION 43)

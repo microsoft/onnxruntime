@@ -9,7 +9,7 @@ namespace onnxruntime {
 
 class DecodeImage final : public OpKernel {
  public:
-  DecodeImage(const OpKernelInfo& info) : OpKernel(info);
+  DecodeImage(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
 

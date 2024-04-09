@@ -8,7 +8,7 @@
 
 #include "impl/png_encoder_decoder.hpp"
 
-namespace ort_extensions {
+namespace onnxruntime {
 
 namespace {
 struct my_error_mgr {
@@ -126,7 +126,7 @@ DecodeImage::DecodeImage(const OpKernelInfo& info) : OpKernel(info) {
     pixel_format_ = info.GetAttrOrDefault<std::string>("pixel_format", "RGB");
 }
 
-void DecodeImage::Compute(OpKernelContext* context) {
+Status DecodeImage::Compute(OpKernelContext* context) const {
   const Tensor* encoded_stream = context->Input<Tensor>(0);
   const uint8_t* encoded_stream_data = encoded_stream->Data<uint8_t>();
   const auto& dims = encoded_stream->Shape().GetDims();
@@ -180,4 +180,4 @@ void DecodeImage::Compute(OpKernelContext* context) {
   // uint8_t* decoded_image_data = ort_.GetTensorMutableData<uint8_t>(output_value);
   // memcpy(decoded_image_data, decoded_image.data, decoded_image_size.height * decoded_image_size.width * colors);
 }
-}  // namespace ort_extensions
+}  // namespace onnxruntime

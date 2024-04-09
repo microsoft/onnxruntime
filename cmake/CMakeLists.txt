@@ -19,6 +19,28 @@ cmake_policy(SET CMP0141 NEW)
 # Project
 project(onnxruntime C CXX ASM)
 
+# Replace install() to do-nothing macro. the libpng install step depends on zlib and the setup with FetchContent
+# doesn't support that nicely so you get an error like:
+#     CMake Error: install(EXPORT "libpng" ...) includes target "png" which requires target "zlib"
+#     that is not in any export set.
+macro(install)
+endmacro()
+
+macro(install)
+endmacro()
+
+include(FetchContent)
+include(ExternalProject)
+
+message(STATUS "Fetch zlib")
+include(external/zlib.cmake)
+
+message(STATUS "Fetch libpng")
+include(external/libpng.cmake)
+
+message(STATUS "Fetch libjpeg-turbo")
+include(external/libjpeg-turbo.cmake)
+
 # Disable fast-math for Intel oneAPI compiler
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
   if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")

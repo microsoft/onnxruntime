@@ -60,7 +60,7 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op_executor.cc"
     )
   endif()
-  set(onnxruntime_cpu_neural_speed_srcs 
+  set(onnxruntime_cpu_neural_speed_srcs
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_wrapper.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_defs.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.cc"
@@ -193,6 +193,12 @@ endif()
 
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 onnxruntime_add_include_to_target(onnxruntime_providers re2::re2)
+
+target_include_directories(onnxruntime_providers PRIVATE ${libpng_INCLUDE_DIRS}
+                                                  ${libjpeg-turbo_INCLUDE_DIRS}
+                                                  ${zlib_INCLUDE_DIRS})
+add_dependencies(onnxruntime_providers libjpeg-turbo png_static zlibstatic)
+
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
