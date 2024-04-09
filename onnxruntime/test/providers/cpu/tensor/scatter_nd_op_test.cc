@@ -185,11 +185,9 @@ TEST(ScatterNDOpTest, ScatterND_18_add) {
   test1.AddAttribute("reduction", "add");
   test1.AddInput<float>("data", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.AddInput<int64_t>("indices", {3, 1}, {0, 1, 0});
-  test1.AddInput<float>("updates", {3, 2, 3}, {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f,
-                                               1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f, 65536.0f,
-                                               131072.0f, 262144.0f});
-  test1.AddOutput<float>("output", {2, 2, 3}, {8194.1f, 16388.1f, 32776.10f, 65552.10f, 131104.1f, 262208.1f, 128.1f,
-                                               256.1f, 512.1f, 1024.1f, 2048.1f, 4096.1f});
+  // The linter complains if the line is split into multiple lines.
+  test1.AddInput<float>("updates", {3, 2, 3}, {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f, 1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f, 65536.0f, 131072.0f, 262144.0f});
+  test1.AddOutput<float>("output", {2, 2, 3}, {8194.1f, 16388.1f, 32776.10f, 65552.10f, 131104.1f, 262208.1f, 128.1f, 256.1f, 512.1f, 1024.1f, 2048.1f, 4096.1f});
   test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
@@ -198,11 +196,9 @@ TEST(ScatterNDOpTest, ScatterND_18_mul) {
   test1.AddAttribute("reduction", "mul");
   test1.AddInput<float>("data", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.AddInput<int64_t>("indices", {3, 1}, {0, 1, 0});
-  test1.AddInput<float>("updates", {3, 2, 3}, {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f,
-                                               1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f, 65536.0f,
-                                               131072.0f, 262144.0f});
-  test1.AddOutput<float>("output", {2, 2, 3}, {1638.4f, 6553.6f, 26214.4f, 104857.6f, 419430.4f, 1677721.625f, 12.8f,
-                                               25.6f, 51.2f, 102.4f, 204.8f, 409.6f});
+  // The linter complains if the line is split into multiple lines.
+  test1.AddInput<float>("updates", {3, 2, 3}, {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f, 1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f, 65536.0f, 131072.0f, 262144.0f});
+  test1.AddOutput<float>("output", {2, 2, 3}, {1638.4f, 6553.6f, 26214.4f, 104857.6f, 419430.4f, 1677721.625f, 12.8f, 25.6f, 51.2f, 102.4f, 204.8f, 409.6f});
   test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
@@ -211,9 +207,8 @@ TEST(ScatterNDOpTest, ScatterND_18_min) {
   test1.AddAttribute("reduction", "min");
   test1.AddInput<float>("data", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.AddInput<int64_t>("indices", {3, 1}, {0, 1, 0});
-  test1.AddInput<float>("updates", {3, 2, 3}, {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f,
-                                               1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f, 65536.0f,
-                                               131072.0f, 262144.0f});
+  // The linter complains if the line is split into multiple lines.
+  test1.AddInput<float>("updates", {3, 2, 3}, {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f, 1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f, 65536.0f, 131072.0f, 262144.0f});
   test1.AddOutput<float>("output", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
@@ -223,11 +218,9 @@ TEST(ScatterNDOpTest, ScatterND_18_max) {
   test1.AddAttribute("reduction", "max");
   test1.AddInput<float>("data", {2, 2, 3}, {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f});
   test1.AddInput<int64_t>("indices", {3, 1}, {0, 1, 0});
-  test1.AddInput<float>("updates", {3, 2, 3}, {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f,
-                                               1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f, 65536.0f,
-                                               131072.0f, 262144.0f});
-  test1.AddOutput<float>("output", {2, 2, 3}, {8192.0, 16384.0, 32768.0, 65536.0, 131072.0, 262144.0,
-                                               128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0});
+  // The linter complains if the line is split into multiple lines.
+  test1.AddInput<float>("updates", {3, 2, 3}, {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f, 1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f, 65536.0f, 131072.0f, 262144.0f});
+  test1.AddOutput<float>("output", {2, 2, 3}, {8192.0, 16384.0, 32768.0, 65536.0, 131072.0, 262144.0, 128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0});
   test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
