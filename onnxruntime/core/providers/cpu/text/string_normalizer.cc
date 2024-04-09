@@ -14,9 +14,7 @@
 #include <functional>
 
 #if defined(__GNUC__)
-// Allow deprecated-declarations warning - std::wstring_convert is deprecated.
-// TODO find a suitable replacement
-// Note: GNU libiconv (e.g., on Apple platforms) is not suitable due to its LGPL license.
+// Allow deprecated-declarations warning - std::codecvt_utf8 is deprecatedd
 #if defined(HAS_DEPRECATED_DECLARATIONS)
 #pragma GCC diagnostic warning "-Wdeprecated-declarations"
 #endif  // defined(HAS_DEPRECATED_DECLARATIONS)
@@ -171,7 +169,7 @@ class Utf8ConverterGeneric {
   }
 
   // We assume the destination buffer is preallocated correctly
-  Status ConvertToWchar(const std::string& str, std::wstring& wstr) {
+  Status ConvertToWideChar(const std::string& str, std::wstring& wstr) {
     if (str.empty()) {
       // Preserve the buffer for re-use, just set size to 0
       wstr.clear();
@@ -215,7 +213,7 @@ class Utf8ConverterGeneric {
     ORT_THROW_IF_ERROR(ComputeRequiredSizeToWideChar(s, wchars));
 
     result.resize(wchars);
-    ORT_THROW_IF_ERROR(ConvertToWchar(s, result));
+    ORT_THROW_IF_ERROR(ConvertToWideChar(s, result));
     return result;
   }
 
@@ -340,7 +338,7 @@ class Utf8ConverterWindows {
     return Status::OK();
   }
 
-  Status ConvertToWchar(const std::string& str, std::wstring& wstr) {
+  Status ConvertToWideChar(const std::string& str, std::wstring& wstr) {
     if (str.empty()) {
       // Preserve the buffer for re-use, just set size to 0
       wstr.clear();
@@ -370,7 +368,7 @@ class Utf8ConverterWindows {
     ORT_THROW_IF_ERROR(ComputeRequiredSizeToWideChar(s, size_required));
     std::wstring result;
     result.resize(size_required);
-    ORT_THROW_IF_ERROR(ConvertToWchar(s, result));
+    ORT_THROW_IF_ERROR(ConvertToWideChar(s, result));
     return result;
   }
 };
@@ -461,8 +459,6 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
     ORT_ENFORCE(false, "attribute case_change_action has invalid value");
   }
 
-  // Set this to lower because some characters do not have capital case.
-  compare_caseaction_ = LOWER;
   locale_name_ = info.GetAttrOrDefault("locale", default_locale);
 
   std::vector<std::string> stop_words = info.GetAttrsOrDefault<std::string>("stopwords");
@@ -487,6 +483,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
 
   auto X = ctx->Input<Tensor>(0);
   auto input_dims = X->Shape().GetDims();
+  auto input_span = X->DataAsSpan<std::string>();
 
   TensorShapeVector output_shape;
   int64_t C = 0;
@@ -515,21 +512,21 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
     output_shape.push_back(C);
     auto output_tensor = ctx->Output(0, output_shape);
     auto const output_data = output_tensor->MutableData<std::string>();
-    std::copy(X->Data<std::string>(), X->Data<std::string>() + C, output_data);
+    std::copy(input_span.begin(), input_span.end(), output_data);
     return Status::OK();
   }
 
   // We need to know the result dimension, and for that we need to filter
-  // the words first. If we compare with stop words is case insensitive, we
-  // can go ahead and compare the input strings. Otherwise, we need
-  // Upper case or lowercase them to compare with wide stop words.
+  // the words first. If comparison mode is case sensitive, we just go ahead
+  // and compare with the original strings. Otherwise, we need to convert the string
+  // to widechar, lowercase it and then compare. Case-insensitive comparison is complicated
+  // for UTF-8 and requires additional dependency.
 
   Locale locale(locale_name_);
   Utf8Converter converter;
 
   // Compute the largest widestring buffer needed.
   size_t max_wide_buffer_len = 0;
-  auto input_span = X->DataAsSpan<std::string>();
   for (const auto& s : input_span) {
     size_t wchars = 0;
     // Checks for invalid UTF-8 characters on Windows
@@ -545,10 +542,10 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   auto output_no_filtering = [&](const TensorShape& output_shape) {
     auto output_tensor = ctx->Output(0, output_shape);
     auto const output_data = output_tensor->MutableData<std::string>();
-    for (size_t i = 0, lim = narrow<size_t>(C); i < lim; ++i) {
+    for (size_t i = 0, lim = input_span.size(); i < lim; ++i) {
       const std::string& s = input_span[i];
       wchar_buffer.resize(max_wide_buffer_len);
-      ORT_RETURN_IF_ERROR(converter.ConvertToWchar(s, wchar_buffer));
+      ORT_RETURN_IF_ERROR(converter.ConvertToWideChar(s, wchar_buffer));
       locale.ChangeCase(case_change_action_, wchar_buffer);
 
       auto& dest = output_data[i];
@@ -566,7 +563,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       const std::string& s = input_span[i];
       if (case_change_action_ != NONE) {
         wchar_buffer.resize(max_wide_buffer_len);
-        ORT_RETURN_IF_ERROR(converter.ConvertToWchar(s, wchar_buffer));
+        ORT_RETURN_IF_ERROR(converter.ConvertToWideChar(s, wchar_buffer));
         locale.ChangeCase(case_change_action_, wchar_buffer);
 
         auto& dest = *output_data++;
@@ -589,21 +586,21 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       status = output_no_filtering(output_shape);
     } else {
       // we need to filter
-      InlinedVector<size_t> filtered_strings_indecies;
-      filtered_strings_indecies.reserve(narrow<size_t>(C));
+      InlinedVector<size_t> filtered_strings_indices;
+      filtered_strings_indices.reserve(input_span.size());
 
-      for (size_t i = 0, lim = narrow<size_t>(C); i < lim; ++i) {
+      for (size_t i = 0, lim = input_span.size(); i < lim; ++i) {
         const std::string& s = input_span[i];
         if (stopwords_.count(s) == 0) {
-          filtered_strings_indecies.push_back(i);
+          filtered_strings_indices.push_back(i);
         }
       }
 
       // According to the spec, if all strings are filtered out
       // the output must have a shape of {1} with a single empty string.
-      const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indecies.size()));
+      const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indices.size()));
       output_shape.push_back(filtered_count);
-      status = output_filtered(output_shape, filtered_strings_indecies);
+      status = output_filtered(output_shape, filtered_strings_indices);
     }
   } else {
     if (wstopwords_.empty()) {
@@ -615,11 +612,11 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       // to compare_caseaction_. For that we convert to wchar_t UNICODE.
       // Otherwise, we need to pull ICU library on all platforms.
       InlinedVector<size_t> filtered_strings_indecies;
-      filtered_strings_indecies.reserve(narrow<size_t>(C));
-      for (size_t i = 0, lim = narrow<size_t>(C); i < lim; ++i) {
+      filtered_strings_indecies.reserve(input_span.size());
+      for (size_t i = 0, lim = input_span.size(); i < lim; ++i) {
         const std::string& s = input_span[i];
         wchar_buffer.resize(max_wide_buffer_len);
-        ORT_RETURN_IF_ERROR(converter.ConvertToWchar(s, wchar_buffer));
+        ORT_RETURN_IF_ERROR(converter.ConvertToWideChar(s, wchar_buffer));
         locale.ChangeCase(compare_caseaction_, wchar_buffer);
         if (wstopwords_.count(wchar_buffer) == 0) {
           filtered_strings_indecies.push_back(i);
