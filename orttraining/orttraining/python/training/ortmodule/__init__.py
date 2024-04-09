@@ -56,7 +56,7 @@ def _override_gradient_checkpoint(original_checkpoint):
 
     """
 
-    # Note: The original checkpoint function signature looks like below:
+    # Note: The `torch.utils.checkpoint` checkpoint function signature looks like below:
     #   `checkpoint(function, *args,
     #               use_reentrant = None,
     #               context_fn = noop_context_fn,
