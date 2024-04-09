@@ -3351,7 +3351,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Input tensors contains the hidden embedding of real tokens.
   Token_offset records the offset of token in the unpacked input.
-  cumulated_token_count records cumulated length of each sequnces length.
+  cumulated_token_count records cumulated length of each sequence length.
   
   The operator only supports BERT like model with padding on right now.
   
@@ -3425,7 +3425,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
   Token_offset records the offset of token in the unpacked input.
-  cumulative_sequence_length records cumulated length of each sequnces length.
+  cumulative_sequence_length records cumulated length of each sequence length.
   
   The operator only supports BERT like model with padding on right now.
 

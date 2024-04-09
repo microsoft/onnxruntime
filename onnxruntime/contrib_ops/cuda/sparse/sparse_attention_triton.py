@@ -12,60 +12,59 @@ import triton.language as tl
 
 @triton.jit
 def block_sparse_attention_kernel(
-    Out,  # [Z, H, M, D]. Note that Z is batch_size, H is num_heads, M is q_seq_len, N is k_seq_len, and D is head_size.
-    Q,    # [Z, H, M, D]
-    K,    # [Z, H, N, D]
-    V,    # [Z, H, N, D]
+    out,  # [B, H, M, D]. Note that B is batch_size, H is num_heads, M is q_seq_len, and D is head_size
+    query,  # [B, H, M, D]
+    key,  # [B, H, N, D]. Note that N is k_seq_len (i.e. total_seq_len), k_num_heads need to expand to num_heads
+    value,  # [B, H, N, D]
     layout_crow_ptr,
     layout_col_ptr,
     layout_crow_stride_h,
     layout_crow_stride_m,
     layout_col_stride_h,
     layout_col_stride_m,
-    softmax_scale,  # scaling factor for softmax
-    # TMP, L, M,  # NOTE: TMP is a scratchpad buffer to workaround a compiler bug. TMP, L, M are assumed to have contiguous layouts
-    stride_qz,
+    softmax_scale,
+    stride_qb,
     stride_qh,
     stride_qm,
-    stride_qd,
-    stride_kz,
+    stride_qd,  # TODO: remove strides for D since it is always 1
+    stride_kb,
     stride_kh,
     stride_kn,
     stride_kd,
-    stride_vz,
+    stride_vb,
     stride_vh,
     stride_vn,
     stride_vd,
-    stride_oz,
+    stride_ob,
     stride_oh,
     stride_om,
     stride_od,
-    H,  # number of heads
-    N_CTX,  # context length is past sequence length + current sequence length
-    PAST_LEN,  # past sequence length
-    BLOCK_M: tl.constexpr,  # block size for Q
-    BLOCK_DMODEL: tl.constexpr,  # block size for D
-    BLOCK_N: tl.constexpr,  # block size for K, V
-    EVEN_M_BLOCK: tl.constexpr,  # whether q_seq_len % BLOCK_M == 0
-    EVEN_N_BLOCK: tl.constexpr,  # whether k_seq_len % BLOCK_M == 0
-    NUM_DBLOCKS: tl.constexpr,  # number of data blocks =  D / BLOCK_DMODEL
+    num_heads,
+    total_seq_len,
+    past_seq_len,
+    BLOCK_M: tl.constexpr,  # block size for q_seq_len
+    BLOCK_D: tl.constexpr,  # block size for D
+    BLOCK_N: tl.constexpr,  # block size for k_seq_len
+    EVEN_M: tl.constexpr,  # whether q_seq_len % BLOCK_M == 0
+    EVEN_N: tl.constexpr,  # whether k_seq_len % BLOCK_M == 0
+    NUM_D_BLOCKS: tl.constexpr,  # number of data blocks =  D / BLOCK_D
 ):
-    Q_LEN = N_CTX - PAST_LEN
+    q_seq_len = total_seq_len - past_seq_len
 
-    # grid is [CDiv(q_seq_len, BLOCK_M), batch_size * num_heads]
+    # Grid is [CDiv(q_seq_len, BLOCK_M), batch_size * num_heads]
     start_m = tl.program_id(0)
-    off_hz = tl.program_id(1)
+    off_bh = tl.program_id(1)
 
-    off_h = off_hz % H
-    off_z = off_hz // H
-    Q += off_z * stride_qz + off_h * stride_qh
-    K += off_z * stride_kz + off_h * stride_kh
-    V += off_z * stride_vz + off_h * stride_vh
+    off_h = off_bh % num_heads
+    off_b = off_bh // num_heads
+    query += off_b * stride_qb + off_h * stride_qh
+    key += off_b * stride_kb + off_h * stride_kh
+    value += off_b * stride_vb + off_h * stride_vh
 
-    # initialize offsets
+    # Initialize offsets
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = tl.arange(0, BLOCK_N)
-    offs_d = tl.arange(0, BLOCK_DMODEL)
+    offs_d = tl.arange(0, BLOCK_D)
     off_q = offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qd
 
     # off_k = offs_n[:, None] * stride_kn + offs_d[None, :] * stride_kd
@@ -73,28 +72,28 @@ def block_sparse_attention_kernel(
     off_v = offs_n[:, None] * stride_vn + offs_d[None, :] * stride_vd
 
     # Initialize pointers to Q, K, V
-    q_ptrs = Q + off_q
-    k_ptrs = K + off_k
-    v_ptrs = V + off_v
+    q_ptrs = query + off_q
+    k_ptrs = key + off_k
+    v_ptrs = value + off_v
 
-    # initialize pointer to m and l
+    # Initialize pointer to m and l
     # TMP/L/M are float32 (batch_size * num_heads, CDiv(q_seq_len, BLOCK_M) * BLOCK_M)
-    # t_ptrs = TMP + off_hz * Q_ROUNDED_LEN + offs_m
+    # t_ptrs = TMP + off_bh * Q_ROUNDED_LEN + offs_m
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
-    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
-    if NUM_DBLOCKS >= 2:
-        acc2 = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, BLOCK_D], dtype=tl.float32)
+    if NUM_D_BLOCKS >= 2:
+        acc2 = tl.zeros([BLOCK_M, BLOCK_D], dtype=tl.float32)
 
-    # load q: it will stay in SRAM throughout
-    if EVEN_M_BLOCK:
+    # Load q: it will stay in SRAM throughout
+    if EVEN_M:
         q = tl.load(q_ptrs)
-        if NUM_DBLOCKS >= 2:
-            q2 = tl.load(q_ptrs + BLOCK_DMODEL * stride_qd)
+        if NUM_D_BLOCKS >= 2:
+            q2 = tl.load(q_ptrs + BLOCK_D * stride_qd)
     else:
-        q = tl.load(q_ptrs, mask=offs_m[:, None] < Q_LEN)
-        if NUM_DBLOCKS >= 2:
-            q2 = tl.load(q_ptrs + BLOCK_DMODEL * stride_qd, mask=offs_m[:, None] < Q_LEN)
+        q = tl.load(q_ptrs, mask=offs_m[:, None] < q_seq_len)
+        if NUM_D_BLOCKS >= 2:
+            q2 = tl.load(q_ptrs + BLOCK_D * stride_qd, mask=offs_m[:, None] < q_seq_len)
 
     layout_ptr = layout_crow_ptr + off_h * layout_crow_stride_h + start_m * layout_crow_stride_m
     start_l = tl.load(layout_ptr).to(tl.int32)
@@ -105,24 +104,24 @@ def block_sparse_attention_kernel(
         col_idx = tl.load(layout_col_ptr + off_h * layout_col_stride_h + col_idx_idx * layout_col_stride_m).to(tl.int32)
         start_n = col_idx * BLOCK_N
         # -- compute qk ----
-        if EVEN_N_BLOCK:
+        if EVEN_N:
             k = tl.load(k_ptrs + start_n * stride_kn)
         else:
-            k = tl.load(k_ptrs + start_n * stride_kn, mask=offs_n[None, :] + start_n < N_CTX)
+            k = tl.load(k_ptrs + start_n * stride_kn, mask=offs_n[None, :] + start_n < total_seq_len)
         qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
         qk += tl.dot(q, k)
 
-        if NUM_DBLOCKS >= 2:
-            if EVEN_N_BLOCK:
-                k = tl.load(k_ptrs + start_n * stride_kn + BLOCK_DMODEL * stride_kd)
+        if NUM_D_BLOCKS >= 2:
+            if EVEN_N:
+                k = tl.load(k_ptrs + start_n * stride_kn + BLOCK_D * stride_kd)
             else:
                 k = tl.load(
-                    k_ptrs + start_n * stride_kn + BLOCK_DMODEL * stride_kd, mask=offs_n[None, :] + start_n < N_CTX
+                    k_ptrs + start_n * stride_kn + BLOCK_D * stride_kd, mask=offs_n[None, :] + start_n < total_seq_len
                 )
             qk += tl.dot(q2, k)
 
         qk *= softmax_scale
-        qk += tl.where(offs_m[:, None] + PAST_LEN >= (start_n + offs_n[None, :]), 0, float("-inf"))
+        qk += tl.where(offs_m[:, None] + past_seq_len >= (start_n + offs_n[None, :]), 0, float("-inf"))
 
         # -- compute m_ij, p, l_ij
         m_ij = tl.max(qk, 1)
@@ -146,23 +145,23 @@ def block_sparse_attention_kernel(
         # tl.store(t_ptrs, acc_scale)
         # acc_scale = tl.load(t_ptrs)  # BUG: have to store and immediately load
         acc = acc * acc_scale[:, None]
-        if NUM_DBLOCKS >= 2:
+        if NUM_D_BLOCKS >= 2:
             acc2 = acc2 * acc_scale[:, None]
-        p = p.to(Q.dtype.element_ty)
+        p = p.to(query.dtype.element_ty)
 
         # update acc
-        if EVEN_N_BLOCK:
+        if EVEN_N:
             v = tl.load(v_ptrs + start_n * stride_vn)
         else:
-            v = tl.load(v_ptrs + start_n * stride_vn, mask=offs_n[:, None] + start_n < N_CTX)
+            v = tl.load(v_ptrs + start_n * stride_vn, mask=offs_n[:, None] + start_n < total_seq_len)
         acc += tl.dot(p, v)
 
-        if NUM_DBLOCKS >= 2:
-            if EVEN_N_BLOCK:
-                v = tl.load(v_ptrs + start_n * stride_vn + BLOCK_DMODEL * stride_vd)
+        if NUM_D_BLOCKS >= 2:
+            if EVEN_N:
+                v = tl.load(v_ptrs + start_n * stride_vn + BLOCK_D * stride_vd)
             else:
                 v = tl.load(
-                    v_ptrs + start_n * stride_vn + BLOCK_DMODEL * stride_vd, mask=offs_n[:, None] + start_n < N_CTX
+                    v_ptrs + start_n * stride_vn + BLOCK_D * stride_vd, mask=offs_n[:, None] + start_n < total_seq_len
                 )
             acc2 += tl.dot(p, v)
 
@@ -171,12 +170,12 @@ def block_sparse_attention_kernel(
         m_i = m_i_new
 
     # initialize pointers to output
-    # offs_n = tl.arange(0, BLOCK_DMODEL)
-    off_o = off_z * stride_oz + off_h * stride_oh + offs_m[:, None] * stride_om + offs_d[None, :] * stride_od
-    out_ptrs = Out + off_o
-    tl.store(out_ptrs, acc, mask=offs_m[:, None] < Q_LEN)
-    if NUM_DBLOCKS >= 2:
-        tl.store(out_ptrs + BLOCK_DMODEL * stride_od, acc2, mask=offs_m[:, None] < Q_LEN)
+    # offs_n = tl.arange(0, BLOCK_D)
+    off_o = off_b * stride_ob + off_h * stride_oh + offs_m[:, None] * stride_om + offs_d[None, :] * stride_od
+    out_ptrs = out + off_o
+    tl.store(out_ptrs, acc, mask=offs_m[:, None] < q_seq_len)
+    if NUM_D_BLOCKS >= 2:
+        tl.store(out_ptrs + BLOCK_D * stride_od, acc2, mask=offs_m[:, None] < q_seq_len)
 
 
 dtypes = ["fp16"]
@@ -186,7 +185,7 @@ num_block_d_values = [2]
 even_m_values = [True, False]  # TODO: shall we use padding to make it True always?
 even_n_values = [True, False]  # TODO: shall we use padding to make it True always?
 name_pattern = "BlockSparseAttentionTriton_{}_m{}_n{}_d{}_{}_em{}_en{}"
-sig_pattern = "*{},*{},*{},*{},*{},*fp32,*fp32,i32,i32,i32,fp32,i1,i1,i1"
+sig_pattern = "*{},*{},*{},*{},*i32,*i32,i32,i32,i32,i32,fp32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32"
 group_pattern = "BlockSparseAttentionTriton_{}"
 
 
@@ -197,22 +196,22 @@ def get_function_table():
         dtypes, block_n_values, block_d_values, num_block_d_values, even_m_values, even_n_values
     ):
         for block_m in [16, block_n]:
-            name = name_pattern.format(dtype, block_m, block_n, block_d, num_blocks_d, even_m, even_n)
+            name = name_pattern.format(dtype, block_m, block_n, block_d, num_blocks_d, int(even_m), int(even_n))
 
             # head_size = block_d * num_blocks_d
             # group = group_pattern.format(head_size, dtype)
             group = group_pattern.format(dtype)
 
-            sig = sig_pattern.format(dtype, dtype, dtype, dtype, dtype)
+            sig = sig_pattern.format(dtype, dtype, dtype, dtype)
             kwargs = {
                 "num_warps": max(1, 2 ** int(math.log2(min(block_m, block_n, block_d) / 16))),
                 "constants": {
                     "BLOCK_M": block_m,
-                    "BLOCK_DMODEL": block_d,
+                    "BLOCK_D": block_d,
                     "BLOCK_N": block_n,
-                    "EVEN_M_BLOCK": int(even_m),
-                    "EVEN_N_BLOCK": int(even_n),
-                    "NUM_DBLOCKS": num_blocks_d,
+                    "EVEN_M": int(even_m),
+                    "EVEN_N": int(even_n),
+                    "NUM_D_BLOCKS": num_blocks_d,
                 },
             }
 
