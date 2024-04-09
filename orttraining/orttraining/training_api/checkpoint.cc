@@ -73,7 +73,8 @@ Status FlatbufferTensorFromOrtValue(
  * @return Status of the operation.
  */
 Status OrtValueFromFlatbufferTensor(const fbs::Tensor& fbs_tensor,
-                                    std::string& tensor_name, OrtValue& ort_value) {
+                                    std::string& tensor_name, OrtValue& ort_value,
+                                    const fbs::utils::ExternalDataReader& external_reader) {
   // The assumption is that the flatbuffer buffer will be destructed once the checkpoint has been loaded.
   // And so, we must allocate a buffer where the tensor data can be copied using the cpu allocator.
   // This buffer is owned by the OrtValue.
@@ -82,7 +83,7 @@ Status OrtValueFromFlatbufferTensor(const fbs::Tensor& fbs_tensor,
   AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
 
   std::unique_ptr<Tensor> ort_tensor = std::make_unique<Tensor>();
-  ORT_RETURN_IF_ERROR(fbs::utils::LoadOrtTensorOrtFormat(fbs_tensor, cpu_allocator, tensor_name, *ort_tensor));
+  ORT_RETURN_IF_ERROR(fbs::utils::LoadOrtTensorOrtFormat(fbs_tensor, cpu_allocator, tensor_name, *ort_tensor, external_reader));
 
   ort_value.Init(ort_tensor.release(), DataTypeImpl::GetType<onnxruntime::Tensor>(),
                  DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
@@ -130,13 +131,13 @@ Status FlatbufferTensorsFromOrtValues(
  */
 Status OrtValuesFromFlatbufferTensors(
     const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>& flatbuffer_tensors,
-    InlinedHashMap<std::string, OrtValue>& name_to_ort_value) {
+    InlinedHashMap<std::string, OrtValue>& name_to_ort_value, const fbs::utils::ExternalDataReader& external_reader) {
   for (const auto* fbs_tensor : flatbuffer_tensors) {
     ORT_RETURN_IF_NOT(fbs_tensor, "Encountered a nullptr flatbuffer tensor. Checkpoint file is invalid.");
 
     std::string tensor_name;
     OrtValue ort_value;
-    ORT_RETURN_IF_ERROR(OrtValueFromFlatbufferTensor(*fbs_tensor, tensor_name, ort_value));
+    ORT_RETURN_IF_ERROR(OrtValueFromFlatbufferTensor(*fbs_tensor, tensor_name, ort_value, external_reader));
     name_to_ort_value.emplace(std::move(tensor_name), std::move(ort_value));
   }
 
@@ -203,6 +204,14 @@ Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_t
     auto bytes = tensor_proto.ByteSizeLong();
     fbs_buffer_size += bytes;
 
+    if (tensor_proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+      ORT_RETURN_IF_NOT(tensor_proto.external_data()[2].key() == "length",
+                        "Invalid external data for ", tensor_proto.name());
+      // external_data field is a dictionary of strings
+      // length is stored as a string
+      fbs_buffer_size += std::stoull(tensor_proto.external_data()[2].value());
+    }
+
     if (bytes > onnxruntime::fbs::utils::kMinimumSizeForExternalData) {  // assuming strings aren't trainable
       fbs_potential_external_buffer_size += bytes;
     }
@@ -212,21 +221,29 @@ Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_t
     auto bytes = tensor_proto.ByteSizeLong();
     fbs_buffer_size += bytes;
 
+    if (tensor_proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+      ORT_RETURN_IF_NOT(tensor_proto.external_data()[2].key() == "length",
+                        "Invalid external data for ", tensor_proto.name());
+      // external_data field is a dictionary of strings
+      // length is stored as a string
+      fbs_buffer_size += std::stoull(tensor_proto.external_data()[2].value());
+    }
+
     if (bytes > onnxruntime::fbs::utils::kMinimumSizeForExternalData &&
         tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
       fbs_potential_external_buffer_size += bytes;
     }
   }
 
+  // 2GB is the real limit, but fbs_buffer_size doesn't include space for initializer names and shapes.
+  // for now, arbitrarily use ~1.8GB as a conservative 'safe' value with a 10% buffer.
+  const bool use_external_data = fbs_buffer_size >= 1800 * m_bytes;
+
   // Align buffer size to 1MB.
   // TODO: This should probably also have an allowance for the other parts of the tensor if we're trying to avoid
   // all reallocs during serialization. e.g. name, shape, data type, offset if external data is used.
   fbs_buffer_size = std::max(fbs_buffer_size, m_bytes);
   fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
-
-  // 2GB is the real limit, but fbs_buffer_size doesn't include space for initializer names and shapes.
-  // for now, arbitrarily use ~1.8GB as a conservative 'safe' value with a 10% buffer.
-  const bool use_external_data = fbs_buffer_size >= 1800 * m_bytes;
 
   fbs::utils::ExternalDataWriter external_data_writer = nullptr;
   std::optional<std::ofstream> external_data_stream;
@@ -568,14 +585,15 @@ Status FromFile(const PathString& checkpoint_path, InlinedVector<uint8_t>& check
  * @return Status of the operation.
  */
 Status ToModuleState(
-    const onnxruntime::fbs::ModuleState& fbs_module_state, ModuleCheckpointState& module_state) {
+    const onnxruntime::fbs::ModuleState& fbs_module_state, ModuleCheckpointState& module_state,
+    const fbs::utils::ExternalDataReader& external_data_reader) {
   const auto* requires_grad_params = fbs_module_state.requires_grad_params();
   ORT_RETURN_IF_NOT(requires_grad_params, "Expected: Valid trainable tensors flatbuffer.",
                     " Actual: Encountered a nullptr. Checkpoint file is invalid");
   flatbuffers::uoffset_t trainable_params_size = requires_grad_params->size();
   InlinedHashMap<std::string, OrtValue> trainable_params;
   trainable_params.reserve(trainable_params_size);
-  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(*requires_grad_params, trainable_params));
+  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(*requires_grad_params, trainable_params, external_data_reader));
 
   for (auto& [name, value] : trainable_params) {
     auto param = std::make_shared<Parameter>(name, value, true);
@@ -588,7 +606,7 @@ Status ToModuleState(
   flatbuffers::uoffset_t non_trainable_params_size = frozen_params->size();
   InlinedHashMap<std::string, OrtValue> non_trainable_params;
   non_trainable_params.reserve(non_trainable_params_size);
-  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(*frozen_params, non_trainable_params));
+  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(*frozen_params, non_trainable_params, external_data_reader));
 
   for (auto& [name, value] : non_trainable_params) {
     auto param = std::make_shared<Parameter>(name, value, false);
@@ -609,7 +627,7 @@ Status ToModuleState(
  */
 Status ToOptimizerState(
     const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>& optimizer_groups,
-    OptimizerCheckpointState& optimizer_state) {
+    OptimizerCheckpointState& optimizer_state, const fbs::utils::ExternalDataReader& external_reader) {
   for (const auto* optimizer_group : optimizer_groups) {
     ORT_RETURN_IF_NOT(optimizer_group, "Expected: Valid optimizer groups flatbuffer.",
                       " Actual: Encountered a nullptr. Checkpoint file is invalid");
@@ -637,7 +655,7 @@ Status ToOptimizerState(
       ORT_RETURN_IF_NOT(momentums, "Expected: Valid optimizer momentum tensors flatbuffer.",
                         " Actual: Encountered a nullptr. Checkpoint file is invalid");
       ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(
-          *momentums, optimizer_state_it->second->param_named_optimizer_states[param_name]));
+          *momentums, optimizer_state_it->second->param_named_optimizer_states[param_name], external_reader));
     }
   }
 
@@ -741,7 +759,7 @@ Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
   if (module_state->has_external_data()) {
     auto data_path = ExternalCheckpointDataPath(checkpoint_path);
     external_data_stream = std::ifstream(data_path, std::ios::binary);
-    ORT_RETURN_IF_NOT(external_data_stream->fail(),
+    ORT_RETURN_IF(external_data_stream->fail(),
                       "Failed to open checkpoint's external data file: ", ToUTF8String(data_path));
 
     external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
@@ -798,7 +816,7 @@ Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
  * @param state Checkpoint state to be populated.
  * @return Status of the operation.
  */
-Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointState& state) {
+Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointState& state, std::optional<PathString> checkpoint_path) {
   flatbuffers::Verifier verifier(checkpoint_bytes.data(), checkpoint_bytes.size());
   ORT_RETURN_IF_NOT(fbs::VerifyCheckpointBuffer(verifier), "Checkpoint verification failed.");
 
@@ -810,13 +828,39 @@ Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointSt
                     "Checkpoint is invalid. Checkpoint version ", checkpoint_version, " is not supported.");
 
   const auto* fbs_module_state = fbs_checkpoint->module_state();
+
+  fbs::utils::ExternalDataReader external_data_reader = nullptr;
+  std::optional<std::ifstream> external_data_stream;
+
+  if (fbs_module_state->has_external_data()) {
+    ORT_RETURN_IF_NOT(checkpoint_path.has_value(),
+                      "External data is present in the checkpoint but the checkpoint path is not provided. External data with loading from buffer is not supported yet.");
+    auto data_path = ExternalCheckpointDataPath(checkpoint_path.value());
+    external_data_stream = std::ifstream(data_path, std::ios::binary);
+
+    char errbuf[256];
+    ORT_RETURN_IF(external_data_stream.value().fail(),
+                      "Failed to open checkpoint's external data file: ", ToUTF8String(data_path), strerror_s(errbuf, sizeof(errbuf), errno));
+
+    external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
+      external_data_stream->seekg(offset);
+      external_data_stream->read(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
+
+      // TODO: Add platform specific code to get reason for failure and include in error message.
+      ORT_RETURN_IF(external_data_stream->fail(),
+                    "Failed to read external checkpoint data. Offset:", offset, " Bytes:", output_buffer.size());
+
+      return Status::OK();
+    };
+  }
+
   if (nullptr != fbs_module_state) {
-    ORT_RETURN_IF_ERROR(ToModuleState(*fbs_module_state, state.module_checkpoint_state));
+    ORT_RETURN_IF_ERROR(ToModuleState(*fbs_module_state, state.module_checkpoint_state, external_data_reader));
   }
 
   const auto* fbs_optimizer_groups = fbs_checkpoint->optimizer_groups();
   if (nullptr != fbs_optimizer_groups) {
-    ORT_RETURN_IF_ERROR(ToOptimizerState(*fbs_optimizer_groups, state.optimizer_checkpoint_state));
+    ORT_RETURN_IF_ERROR(ToOptimizerState(*fbs_optimizer_groups, state.optimizer_checkpoint_state, external_data_reader));
   }
 
   const auto* fbs_property_bag = fbs_checkpoint->property_bag();
@@ -870,13 +914,16 @@ Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkp
 
   InlinedVector<uint8_t> checkpoint_bytes;
   ORT_RETURN_IF_ERROR(load::FromFile(checkpoint_path, checkpoint_bytes));
-  return load::ToCheckpointState(checkpoint_bytes, checkpoint_states);
+  std::optional<PathString> checkpoint_path_opt(checkpoint_path);
+  return load::ToCheckpointState(checkpoint_bytes, checkpoint_states, checkpoint_path);
 }
 
 Status LoadCheckpointFromBuffer(gsl::span<const uint8_t> checkpoint_bytes, CheckpointState& checkpoint_state) {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
 
-  return load::ToCheckpointState(checkpoint_bytes, checkpoint_state);
+  std::optional<PathString> checkpoint_path;
+
+  return load::ToCheckpointState(checkpoint_bytes, checkpoint_state, checkpoint_path);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

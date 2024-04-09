@@ -10,6 +10,7 @@
 #include "core/common/path.h"
 #include "core/graph/graph_flatbuffers_utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 
 #include "test/ir/flatbuffers_utils_test_generated.h"
 
@@ -201,7 +202,8 @@ std::vector<T> ConvertRawDataToTypedVector(ONNX_NAMESPACE::TensorProto initializ
 
 }  // namespace
 
-TEST(GraphUtilsTest, ExternalWriteReadBasic) {
+// tests method that loads to tensorproto protobuf (used when loading a checkpoint into an inference model)
+TEST(GraphUtilsTest, ExternalWriteReadWithLoadInitializers) {
   // create data
   auto initializers = CreateInitializers();
 
@@ -245,11 +247,18 @@ TEST(GraphUtilsTest, ExternalWriteReadBasic) {
     ONNX_NAMESPACE::TensorProto initializer;
     ASSERT_STATUS_OK(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader));
     loaded_initializers.emplace_back(std::move(initializer));
+    // also check that the loaded flatbuffer tensors have accurately written to the external_data_offset field
+    if (fbs_tensor->data_type() != fbs::TensorDataType::STRING && fbs_tensor->name()->str() != "tensor_32_small")
+    {
+      ASSERT_TRUE(fbs_tensor->external_data_offset() >= 0) << "external_data_offset is not set when we expect it to be set for tensor " << fbs_tensor->name()->str();
+    }
+    else
+    {
+      ASSERT_TRUE(fbs_tensor->external_data_offset() == -1) << "external_data_offset is set for string data when we expect it to not be set for tensor " << fbs_tensor->name()->str();
+      ASSERT_TRUE(fbs_tensor->raw_data() || fbs_tensor->string_data()) << "tensor has no data attached to it" << fbs_tensor->name()->str();
+    }
   }
 
-  //
-  // TODO: Validate the loaded data!
-  //
   bool data_validated = true;
 
   // initializers = expected, in the form of tensorproto
@@ -279,6 +288,96 @@ TEST(GraphUtilsTest, ExternalWriteReadBasic) {
       ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, string_data());
     }
   }
+  ASSERT_TRUE(data_validated);
+}
+
+// tests method that loads to OrtTensor (used when loading a checkpoint into a checkpoint state)
+TEST(GraphUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
+  // create data
+  auto initializers = CreateInitializers();
+
+  flatbuffers::FlatBufferBuilder builder(1024);
+
+  // write
+  std::ofstream output_stream;
+  ExternalDataWriter writer;
+  CreateWriter("ExternalWriteReadBasicTest.bin", output_stream, writer);
+
+  std::vector<flatbuffers::Offset<fbs::Tensor>> fbs_tensors;
+  for (const auto& initializer : initializers) {
+    flatbuffers::Offset<fbs::Tensor> fbs_tensor;
+    ASSERT_STATUS_OK(SaveInitializerOrtFormat(builder, initializer, Path(), fbs_tensor, writer));
+    fbs_tensors.push_back(fbs_tensor);
+  }
+
+  // TODO: might be 844 depending on whether it's 4 byte or 8 byte alignment
+  ASSERT_EQ(output_stream.tellp(), 840) << "Data written to the external file is incorrect.";
+  output_stream.close();
+  ASSERT_TRUE(output_stream.good()) << "Failed to close data file.";
+
+  auto fbs_tensors_offset = builder.CreateVector(fbs_tensors);
+  fbs::test::TestDataBuilder tdb(builder);
+  tdb.add_initializers(fbs_tensors_offset);
+  builder.Finish(tdb.Finish());
+  auto fb_data = builder.GetBufferSpan();
+
+  auto test_data = fbs::test::GetTestData(fb_data.data());
+  auto fbs_tensors2 = test_data->initializers();
+
+  // read
+  std::ifstream input_stream;
+  ExternalDataReader reader;
+  CreateReader("ExternalWriteReadBasicTest.bin", input_stream, reader);
+  static onnxruntime::CPUExecutionProviderInfo info;
+  static onnxruntime::CPUExecutionProvider cpu_provider(info);
+  AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
+
+  std::vector<Tensor> loaded_tensors;
+
+  for (const auto* fbs_tensor : *fbs_tensors2) {
+    Tensor ort_tensor;
+    std::string fbs_tensor_name = fbs_tensor->name()->str();
+    ASSERT_STATUS_OK(LoadOrtTensorOrtFormat(*fbs_tensor, cpu_allocator, fbs_tensor_name, ort_tensor, reader));
+    loaded_tensors.push_back(std::move(ort_tensor));
+  }
+
+
+
+  bool data_validated = true;
+
+  ASSERT_EQ(initializers.size(), loaded_tensors.size());
+
+  // for (int i = 0; i < initializers.size(); i++) {
+  //   const auto& expected_initializer = initializers[i];
+  //   const auto& loaded_tensor = loaded_tensors[i];
+  //   ASSERT_EQ(loaded_tensor.DataType().ToString(), expected_initializer.data_type().ToString());
+  //   ASSERT_EQ(loaded_tensor.Shape().ToString(), expected_initializer.dims().ToString());
+  //   if (expected_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+  //     std::vector<uint8_t> expected_data;
+
+  //   }
+  // }
+  //   const auto& loaded_initializer = loaded_initializers[i];
+  //   // validate the loaded initializer
+  //   ASSERT_EQ(expected_initializer.name(), loaded_initializer.name());
+  //   ASSERT_EQ(expected_initializer.data_type(), loaded_initializer.data_type());
+  //   ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, dims());
+  //   if (loaded_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+  //     // extract expected tensor raw data
+  //     std::vector<uint8_t> expected_data;
+  //     Path model_path;
+  //     ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(expected_initializer, model_path, expected_data));
+
+  //     ASSERT_EQ(expected_data.size(), loaded_initializer.raw_data().size()) << "expected initializer name " << expected_initializer.name() << " | loaded initializer name " << loaded_initializer.name();
+  //     std::vector<uint8_t> loaded_data(loaded_initializer.raw_data().begin(), loaded_initializer.raw_data().end());
+  //     for (int j = 0; j < expected_data.size(); ++j) {
+  //       ASSERT_EQ(expected_data[j], loaded_data[j]) << "expected initializer name " << expected_initializer.name() << " | loaded initializer name " << loaded_initializer.name();
+  //     }
+  //   } else {
+  //     // string type tensor
+  //     ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, string_data());
+  //   }
+  // }
   ASSERT_TRUE(data_validated);
 }
 }  // namespace test

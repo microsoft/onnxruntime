@@ -138,7 +138,8 @@ Status SaveOrtTensorOrtFormat(
 /// @param[out] ort_tensor ORT tensor to load the flatbuffer tensor into
 /// @return Status indicating success or providing error information
 Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr allocator,
-                              std::string& tensor_name, onnxruntime::Tensor& ort_tensor);
+                              std::string& tensor_name, onnxruntime::Tensor& ort_tensor,
+                              const ExternalDataReader& external_reader = nullptr);
 
 #endif
 

@@ -10,7 +10,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/float16.h"
 #include "core/framework/float8.h"
-// #include "core/common/safeint.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -323,7 +322,7 @@ SafeInt<size_t> GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor) {
   auto fbs_dims = tensor.dims();
 
   auto num_elements = std::accumulate(fbs_dims->cbegin(), fbs_dims->cend(), SafeInt<size_t>(1),
-                                       std::multiplies<size_t>());
+                                      std::multiplies<size_t>());
 
   size_t byte_size_of_one_element;
 
@@ -388,7 +387,6 @@ SafeInt<size_t> GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor) {
       ORT_THROW("Unsupported tensor data type for tensor ", tensor.name());
   }
   return num_elements * byte_size_of_one_element;
-
 }
 
 }  // namespace onnxruntime::fbs::utils
