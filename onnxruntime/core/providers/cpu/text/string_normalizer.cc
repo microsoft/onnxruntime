@@ -439,10 +439,7 @@ const std::string default_locale("en_US.UTF-8");  // All non-MS and not Apple
 
 using namespace string_normalizer;
 
-StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
-                                                               is_case_sensitive_(true),
-                                                               case_change_action_(NONE),
-                                                               compare_caseaction_(NONE) {
+StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info) {
   int64_t iscasesensitive = 0;
   Status status = info.GetAttr("is_case_sensitive", &iscasesensitive);
   ORT_ENFORCE(status.IsOK(), "attribute is_case_sensitive is not set");
@@ -472,6 +469,7 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
   } else {
     Locale locale(locale_name_);
     Utf8Converter converter;
+    wstopwords_.reserve(stop_words.size());
     for (std::string& s : stop_words) {
       std::wstring wstr = converter.from_bytes(s);
       locale.ChangeCase(compare_caseaction_, wstr);
@@ -613,23 +611,23 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       // Case insensitive filtering is performed by converting the input strings
       // to compare_caseaction_. For that we convert to wchar_t UNICODE.
       // Otherwise, we need to pull ICU library on all platforms.
-      InlinedVector<size_t> filtered_strings_indecies;
-      filtered_strings_indecies.reserve(input_span.size());
+      InlinedVector<size_t> filtered_strings_indices;
+      filtered_strings_indices.reserve(input_span.size());
       for (size_t i = 0, lim = input_span.size(); i < lim; ++i) {
         const std::string& s = input_span[i];
         wchar_buffer.resize(max_wide_buffer_len);
         ORT_RETURN_IF_ERROR(converter.ConvertToWideChar(s, wchar_buffer));
         locale.ChangeCase(compare_caseaction_, wchar_buffer);
         if (wstopwords_.count(wchar_buffer) == 0) {
-          filtered_strings_indecies.push_back(i);
+          filtered_strings_indices.push_back(i);
         }
       }
 
       // According to the spec, if all strings are filtered out
       // the output must have a shape of {1} with a single empty string.
-      const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indecies.size()));
+      const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indices.size()));
       output_shape.push_back(filtered_count);
-      status = output_filtered(output_shape, filtered_strings_indecies);
+      status = output_filtered(output_shape, filtered_strings_indices);
     }
   }
 
