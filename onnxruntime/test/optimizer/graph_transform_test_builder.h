@@ -11,6 +11,7 @@
 #include "core/framework/framework_common.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
@@ -202,6 +203,9 @@ class ModelTestBuilder {
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(utils::ToTensorProtoElementType<T>());
     tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
+    if constexpr (endian::native != endian::little) {
+       utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto);
+    }
 
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);

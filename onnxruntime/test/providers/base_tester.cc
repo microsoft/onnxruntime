@@ -74,6 +74,9 @@ void BaseTester::AddInitializers(onnxruntime::Graph& graph) {
     } else {
       auto buffer_size = tensor.DataType()->Size() * shape.Size();
       tensor_proto.set_raw_data(tensor.DataRaw(), buffer_size);
+      if constexpr (endian::native != endian::little) {
+        utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto *) &tensor_proto);
+      }
     }
 
     // 4. name

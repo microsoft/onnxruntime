@@ -894,7 +894,7 @@ MlasGemmQuantGetDispatch(
     if (!AIsSigned) {
         GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;
     }
-#elif defined(MLAS_TARGET_POWER) && defined(__linux__)  && defined(POWER10) && \
+#elif defined(MLAS_TARGET_POWER) && (defined(__linux__)  || defined(_AIX)) && defined(POWER10) && \
     ((defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12)))
     if (GetMlasPlatform().GemmU8X8Dispatch == &MlasGemm8X8DispatchPOWER10) {

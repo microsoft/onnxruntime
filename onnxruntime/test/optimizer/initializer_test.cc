@@ -165,6 +165,10 @@ void TestInitializerRawData() {
   tensor_proto.add_dims(4);
   tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
 
+  if constexpr (endian::native != endian::little) {
+    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto *) &tensor_proto);
+  }
+
   const Initializer init(tensor_proto, Path());
 
   for (size_t idx = 0; idx < data.size(); idx++) {

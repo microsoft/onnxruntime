@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import argparse
 import os
+import sys
 
 
 def parse_arguments():
@@ -41,8 +42,9 @@ with open(args.output, "w") as file:
     elif args.style == "xcode":
         pass  # xcode compile don't has any header.
     else:
-        file.write("VERS_%s {\n" % VERSION_STRING)
-        file.write(" global:\n")
+        if sys.platform != "aix":
+            file.write("VERS_%s {\n" % VERSION_STRING)
+            file.write(" global:\n")
 
     for symbol in symbols:
         if args.style == "vc":
@@ -53,7 +55,7 @@ with open(args.output, "w") as file:
             file.write("  %s;\n" % symbol)
         symbol_index += 1
 
-    if args.style == "gcc":
+    if args.style == "gcc" and  sys.platform != "aix":
         file.write(" local:\n")
         file.write("    *;\n")
         file.write("};   \n")

@@ -8,6 +8,8 @@
 #include <unordered_map>
 #ifdef _WIN32
 #include "getopt.h"
+#elif defined(_AIX)
+#include <thread>
 #else
 #include <getopt.h>
 #include <thread>

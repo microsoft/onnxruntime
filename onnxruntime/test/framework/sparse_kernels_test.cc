@@ -705,6 +705,9 @@ struct InsertIndices {
       // Conversion on the fly to the target data type
       std::vector<T> indices(indices_data.cbegin(), indices_data.cend());
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices.data()), indices.size() * sizeof(T));
+      if constexpr (endian::native != endian::little) {
+        utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&indices_tp);
+      }
     }
   }
 };
@@ -838,6 +841,9 @@ template <typename T>
 static void RawDataWriter(const std::vector<T>& values, TensorProto& tp, TensorProto_DataType datatype) {
   tp.set_data_type(datatype);
   tp.set_raw_data(values.data(), values.size() * sizeof(T));
+  if constexpr (endian::native != endian::little) {
+    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tp);
+  }
 }
 
 int64_t ActualSize(const TensorProto& actual) {

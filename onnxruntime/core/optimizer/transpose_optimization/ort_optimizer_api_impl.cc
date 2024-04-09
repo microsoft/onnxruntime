@@ -767,6 +767,9 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
   for (int64_t dim : shape) {
     tensor_proto.add_dims(dim);
   }
+  if constexpr (endian::native != endian::little) {
+    utils::ConvertRawDataInTensorProto((TensorProto*)&tensor_proto);
+  }
 
   const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
   return node_arg.Name();

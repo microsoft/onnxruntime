@@ -84,6 +84,9 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
     shape_constant.add_dims(clamped_slice_length);
     shape_constant.set_raw_data(dim_values.data() + start,
                                 clamped_slice_length * sizeof(int64_t));
+    if constexpr (endian::native != endian::little) {
+      utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto *)&shape_constant);
+    }
     ONNX_NAMESPACE::TensorShapeProto result_shape;
     result_shape.add_dim()->set_dim_value(clamped_slice_length);
     constant_arg_out->SetShape(result_shape);

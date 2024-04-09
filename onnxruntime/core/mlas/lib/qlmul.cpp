@@ -325,12 +325,20 @@ MlasQLinearMulKernel(
     }
 
     while (N >= 4) {
-        __vector int32_t IntegerAVector {InputA[0], InputA[1], InputA[2], InputA[3]};
+#if defined(_AIX) && defined(__clang__)
+        __vector int IntegerAVector {InputA[0], InputA[1], InputA[2], InputA[3]};
+#else
+        __vector int32_t  IntegerAVector {InputA[0], InputA[1], InputA[2], InputA[3]};
+#endif
         auto IntegerVector = vec_sub(IntegerAVector, ZeroPointAVector);
         auto ValueAVector = vec_mul(ScaleAVector, vec_ctf(IntegerVector, 0));
 
         if (!IsScalarB) {
-            __vector int32_t IntegerBVector {InputB[0], InputB[1], InputB[2], InputB[3]};
+#if defined(_AIX) && defined(__clang__)
+            __vector int  IntegerBVector {InputB[0], InputB[1], InputB[2], InputB[3]};
+#else
+            __vector int32_t  IntegerBVector {InputB[0], InputB[1], InputB[2], InputB[3]};
+#endif
             IntegerVector = vec_sub(IntegerBVector, ZeroPointBVector);
             ValueBVector = vec_mul(ScaleBVector, vec_ctf(IntegerVector, 0));
         }

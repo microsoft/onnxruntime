@@ -2450,7 +2450,11 @@ MlasReadTimeStampCounter(void)
 
 
 constexpr size_t ThreadedBufAlignment = 64;
+#if defined(_AIX)
+extern __thread size_t ThreadedBufSize;
+#else
 extern thread_local size_t ThreadedBufSize;
+#endif
 #ifdef _MSC_VER
 extern thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder;
 #else

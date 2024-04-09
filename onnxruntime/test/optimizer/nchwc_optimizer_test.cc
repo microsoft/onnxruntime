@@ -6,6 +6,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
@@ -63,6 +64,9 @@ struct NchwcTestHelper {
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(utils::ToTensorProtoElementType<T>());
     tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
+    if constexpr (endian::native != endian::little) {
+      utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto);
+	}
 
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);
