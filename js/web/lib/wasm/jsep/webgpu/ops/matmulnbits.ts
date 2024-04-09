@@ -286,9 +286,10 @@ export const createMatMulNBitsProgramInfo =
           // TODO support zero_point_offset for bits > 4
           ${
                 zeroPoints ? `
-          var zero_point_index: u32 = n * ${components} * ((${nBlocksPerCol} + 1) / 2) / 4;
+          var zero_point_abs_offset = n * ${components} * ((${nBlocksPerCol} + 1) / 2);
+          var zero_point_index: u32 = zero_point_abs_offset / 4;
           var zero_point_word: u32 = ${zeroPoints.getByOffset('zero_point_index')};
-          var zero_point_offset: u32 = 0;` :
+          var zero_point_offset: u32 = (zero_point_abs_offset % 4) * 8;` :
                              ''}
           var scale_index = n * ${nBlocksPerCol * components};
           var b_indices: ${b.type.indices};
