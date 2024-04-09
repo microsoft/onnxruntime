@@ -255,7 +255,11 @@
         "^test_reduce_prod_empty_set_cuda",
         "^test_reduce_sum_empty_set_cuda",
         "^test_reduce_sum_square_empty_set_cuda",
-        "^test_reduce_sum_square_empty_set_expanded_cuda"
+        "^test_reduce_sum_square_empty_set_expanded_cuda",
+        // ONNX 1.16.0 fixed a maxpool output size bug and added this test.
+        // Enable this test when ORT PR is merged: https://github.com/microsoft/onnxruntime/pull/18377
+        // See original ONNX 1.16.0 fix: https://github.com/onnx/onnx/pull/5741
+        "^test_maxpool_2d_ceil_output_size_reduce_by_one"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
