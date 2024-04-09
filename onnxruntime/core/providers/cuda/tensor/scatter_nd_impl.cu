@@ -208,29 +208,70 @@ __global__ void _ScatterNDKernelReduction(
   }
 }
 
-#define SCATTERND_TYPE_CASE(FuncReduction, T)                                           \
-  _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>( \
-      reinterpret_cast<T*>(output_data),                                                \
-      num_indices,                                                                      \
-      indices_data,                                                                     \
-      last_index_dimension,                                                             \
-      element_counts_and_input_dims,                                                    \
-      reinterpret_cast<const T*>(updates_data),                                         \
-      num_updates_elements,                                                             \
-      FuncReduction<T>());
+template <typename T>
+Status _ScatterNDType(
+    cudaStream_t stream,
+    T* output_data,
+    const size_t num_indices,
+    const int64_t* indices_data,
+    const int64_t last_index_dimension,
+    const int64_t* element_counts_and_input_dims,
+    const T* updates_data,
+    const size_t num_updates_elements,
+    ScatterNDReduction reduction) {
+  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(num_indices) / GridDim::maxThreadsPerBlock));
 
-#define SCATTERND_REDUCTION_CASE(FuncReduction)                                                                   \
-  switch (element_type) {                                                                                         \
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                                                              \
-      SCATTERND_TYPE_CASE(FuncReduction, float)                                                                   \
-      break;                                                                                                      \
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:                                                            \
-      SCATTERND_TYPE_CASE(FuncReduction, half)                                                                    \
-      break;                                                                                                      \
-    default:                                                                                                      \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type ", element_type, " not supported for ScatterND operator."); \
-  }                                                                                                               \
-  break;
+  switch (reduction) {
+    case ScatterNDReduction::Add:
+      _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          output_data,
+          num_indices,
+          indices_data,
+          last_index_dimension,
+          element_counts_and_input_dims,
+          updates_data,
+          num_updates_elements,
+          FuncAdd<T>());
+      break;
+    case ScatterNDReduction::Mul:
+      _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          output_data,
+          num_indices,
+          indices_data,
+          last_index_dimension,
+          element_counts_and_input_dims,
+          updates_data,
+          num_updates_elements,
+          FuncMul<T>());
+      break;
+    case ScatterNDReduction::Min:
+      _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          output_data,
+          num_indices,
+          indices_data,
+          last_index_dimension,
+          element_counts_and_input_dims,
+          updates_data,
+          num_updates_elements,
+          FuncMin<T>());
+      break;
+    case ScatterNDReduction::Max:
+      _ScatterNDKernelReduction<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          output_data,
+          num_indices,
+          indices_data,
+          last_index_dimension,
+          element_counts_and_input_dims,
+          updates_data,
+          num_updates_elements,
+          FuncMax<T>());
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reduction ", static_cast<int>(reduction), " not implemented for ScatterND operator.");
+  }
+
+  return Status::OK();
+}
 
 Status ScatterNDImplReduction(
     cudaStream_t stream,
@@ -249,24 +290,32 @@ Status ScatterNDImplReduction(
   // Parallelize on number of indices
   int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(num_indices) / GridDim::maxThreadsPerBlock));
 
-  switch (reduction) {
-    case ScatterNDReduction::Add:
-      SCATTERND_REDUCTION_CASE(FuncAdd)
-      break;
-    case ScatterNDReduction::Mul:
-      SCATTERND_REDUCTION_CASE(FuncMul)
-      break;
-    case ScatterNDReduction::Min:
-      SCATTERND_REDUCTION_CASE(FuncMin)
-      break;
-    case ScatterNDReduction::Max:
-      SCATTERND_REDUCTION_CASE(FuncMax)
-      break;
+  switch (element_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      return _ScatterNDType<float>(
+          stream,
+          reinterpret_cast<float*>(output_data),
+          num_indices,
+          indices_data,
+          last_index_dimension,
+          element_counts_and_input_dims,
+          reinterpret_cast<const float*>(updates_data),
+          num_updates_elements,
+          reduction);
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      return _ScatterNDType<half>(
+          stream,
+          reinterpret_cast<half*>(output_data),
+          num_indices,
+          indices_data,
+          last_index_dimension,
+          element_counts_and_input_dims,
+          reinterpret_cast<const half*>(updates_data),
+          num_updates_elements,
+          reduction);
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reduction ", static_cast<int>(reduction), " not implemented for ScatterND operator.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "element_type ", static_cast<int>(element_type), " not implemented for ScatterND operator.");
   }
-
-  return Status::OK();
 }
 
 }  // namespace cuda
