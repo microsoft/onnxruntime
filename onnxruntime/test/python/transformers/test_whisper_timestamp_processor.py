@@ -65,6 +65,66 @@ class TestTimestampProcessor(unittest.TestCase):
         ]
         self.assertEqual(ort_transcription, expected_transcription)
 
+        # Test Batched Timestamps:
+        input_data = input_features.repeat(3, 1, 1)
+        ort_inputs = {
+            "input_features": np.float32(input_data.cpu().numpy()),
+            "max_length": np.array([128], dtype=np.int32),
+            "min_length": np.array([0], dtype=np.int32),
+            "num_beams": np.array([1], dtype=np.int32),
+            "num_return_sequences": np.array([1], dtype=np.int32),
+            "length_penalty": np.array([1.0], dtype=np.float32),
+            "repetition_penalty": np.array([1.0], dtype=np.float32),
+            "logits_processor": np.array([1], dtype=np.int32),
+        }
+        ort_out = sess.run(None, ort_inputs)
+        ort_out_tensor = torch.from_numpy(ort_out[0])
+        ort_transcription = processor.batch_decode(
+            ort_out_tensor[0][0].view(1, -1), skip_special_tokens=True, output_offsets=True
+        )
+        expected_transcription = [
+            {
+                "text": " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.",
+                "offsets": [
+                    {
+                        "text": " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.",
+                        "timestamp": (0.0, 5.44),
+                    }
+                ],
+            }
+        ]
+        self.assertEqual(ort_transcription, expected_transcription)
+
+        # Test Batched Timestamps with num_beams > 1:
+        input_data = input_features.repeat(3, 1, 1)
+        ort_inputs = {
+            "input_features": np.float32(input_data.cpu().numpy()),
+            "max_length": np.array([128], dtype=np.int32),
+            "min_length": np.array([0], dtype=np.int32),
+            "num_beams": np.array([4], dtype=np.int32),
+            "num_return_sequences": np.array([1], dtype=np.int32),
+            "length_penalty": np.array([1.0], dtype=np.float32),
+            "repetition_penalty": np.array([1.0], dtype=np.float32),
+            "logits_processor": np.array([1], dtype=np.int32),
+        }
+        ort_out = sess.run(None, ort_inputs)
+        ort_out_tensor = torch.from_numpy(ort_out[0])
+        ort_transcription = processor.batch_decode(
+            ort_out_tensor[0][0].view(1, -1), skip_special_tokens=True, output_offsets=True
+        )
+        expected_transcription = [
+            {
+                "text": " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.",
+                "offsets": [
+                    {
+                        "text": " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.",
+                        "timestamp": (0.0, 5.44),
+                    }
+                ],
+            }
+        ]
+        self.assertEqual(ort_transcription, expected_transcription)
+
     @pytest.mark.slow
     def test_timestamp_cpu(self):
         provider = "CPUExecutionProvider"
