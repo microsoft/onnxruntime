@@ -730,7 +730,7 @@ class MemoryObserver:
             notes = []
             if details:
                 notes.append(
-                    "Use ORTMODULE_MEMORY_OPT_LEVEL=1/2 to enable all recomputable subgraphs per transformer layer."
+                    "Use ORTMODULE_MEMORY_OPT_LEVEL=1 or 2 to enable all recomputable subgraphs per transformer layer."
                 )
                 saving_recommendation = (
                     "Or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
