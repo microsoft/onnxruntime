@@ -801,11 +801,19 @@ class ONNXQuantizer(BaseQuantizer):
                 )
                 if qlinear_node is None:
                     input_name = node.input[input_index]
-                    assert input_name in self.value_infos, f"Cannot find {input_name!r} in value_infos."
-                    value_info = self.value_infos[input_name]
-                    assert value_info.HasField("type"), f"value_info={value_info} has no type."
-                    assert value_info.type.HasField("tensor_type"), f"value_info={value_info} is not a tensor."
-                    initial_type = value_info.type.tensor_type.elem_type
+                    if input_name in self.value_infos:
+                        value_info = self.value_infos[input_name]
+                        assert value_info.HasField("type"), f"value_info={value_info} has no type."
+                        assert value_info.type.HasField("tensor_type"), f"value_info={value_info} is not a tensor."
+                        initial_type = value_info.type.tensor_type.elem_type
+                    else:
+                        # Shape inference failed. Fallback to self.tensor_names.
+                        assert input_name in self.tensor_names, (
+                            f"shape inference failed for {input_name!r} and "
+                            f"attribute 'tensor_names' does not have any value for "
+                            f"this tensor."
+                        )
+                        initial_type = self.tensor_names[input_name]
                     quantize_input_nodes = self._get_quantize_input_nodes(
                         node, input_index, self.activation_qType, initial_type=initial_type
                     )
