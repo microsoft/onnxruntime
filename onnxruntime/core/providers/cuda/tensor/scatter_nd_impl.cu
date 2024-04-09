@@ -219,6 +219,7 @@ Status _ScatterNDType(
     const T* updates_data,
     const size_t num_updates_elements,
     ScatterNDReduction reduction) {
+  // Parallelize on number of indices
   int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(num_indices) / GridDim::maxThreadsPerBlock));
 
   switch (reduction) {
@@ -286,9 +287,6 @@ Status ScatterNDImplReduction(
     ScatterNDReduction reduction) {
   if (num_indices == 0)
     return Status::OK();
-
-  // Parallelize on number of indices
-  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(num_indices) / GridDim::maxThreadsPerBlock));
 
   switch (element_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:

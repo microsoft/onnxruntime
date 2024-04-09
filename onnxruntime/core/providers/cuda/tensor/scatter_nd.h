@@ -48,7 +48,7 @@ class ScatterNDWithAtomicReduction final : public CudaKernel {
       } else if (reduction == "max") {
         reduction_ = ScatterNDReduction::Max;
       } else if (reduction == "none") {
-        LOGS_DEFAULT(WARNING) << "ScatterND with reduction=='none' only garuantees "
+        LOGS_DEFAULT(WARNING) << "ScatterND with reduction=='none' only guarantees "
                               << "to be correct if indices are not duplicated.";
       } else {
         ORT_THROW("Reduction '", reduction, "' is not supported on CUDA and opset >= 13.");
