@@ -11,6 +11,7 @@ parameters:
   stage_name: ''
   SpecificArtifact: false
   BuildId: '0'
+  build_pool_name: ''
 
 stages:
   - stage: Build_${{ parameters.stage_name }}
@@ -30,12 +31,12 @@ stages:
       - name: PythonVersion
         value: ${{ parameters.python_version }}
       - name: Repository
-        value: onnxruntimetraininggpubuild_${{ replace(parameters.cuda_version, '.', '') }}_${{ replace(parameters.python_version, '.', '') }}
+        value: onnxruntimetraininggpubuild_cu${{ replace(parameters.cuda_version, '.', '') }}_py${{ replace(parameters.python_version, '.', '') }}
     dependsOn: []
 
     jobs:
     - job: Build
-      pool: onnxruntime-Ubuntu2204-AMD-CPU-48
+      pool: ${{ parameters.build_pool_name }}
       timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -137,7 +138,7 @@ stages:
       - name: PythonVersion
         value: ${{ parameters.python_version }}
       - name: Repository
-        value: onnxruntimetraininggpubuild_${{ replace(parameters.cuda_version, '.', '') }}_${{ replace(parameters.python_version, '.', '') }}
+        value: onnxruntimetraininggpubuild_cu${{ replace(parameters.cuda_version, '.', '') }}_py${{ replace(parameters.python_version, '.', '') }}
       - name: UploadWheel
         value: ${{ parameters.upload_wheel }}
     dependsOn: Build_${{ parameters.stage_name }}
