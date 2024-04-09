@@ -68,15 +68,8 @@ export const createMatMulNBitsProgramInfo =
       const bComponents = getMaxComponents(blobSizeInWords);
       const elementSize = getTensorElementSize(dataType)!;
       const workgroupOutputSize = dimAOuter * nBlocksPerCol * elementSize;
-      const maxNumberOfComponents = Math.floor(maxComputeWorkgroupStorageSize / workgroupOutputSize);
-      const componentsTmp = maxNumberOfComponents > 4 ?
-          getMaxComponents(dimBOuter, maxNumberOfComponents - maxNumberOfComponents % 4) :
-          maxNumberOfComponents > 2 ? getMaxComponents(dimBOuter, maxNumberOfComponents - maxNumberOfComponents % 2) :
-                                      1;
-      const components = (componentsTmp * workgroupOutputSize > maxComputeWorkgroupStorageSize) &&
-              (workgroupOutputSize <= maxComputeWorkgroupStorageSize) ?
-          1 :
-          componentsTmp;
+      const maxNumberOfComponents = Math.ceil(maxComputeWorkgroupStorageSize / workgroupOutputSize);
+      const components = getMaxComponents(dimBOuter, maxNumberOfComponents);
       const useBlockwiseMatMulNBits = (nBlocksPerCol <= maxComputeWorkgroupSizes[0]) &&
           (workgroupOutputSize * components) <= maxComputeWorkgroupStorageSize;
       const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
