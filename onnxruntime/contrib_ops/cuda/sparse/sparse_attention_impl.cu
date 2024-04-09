@@ -27,6 +27,13 @@ template Status QkvToContext<half>(
     contrib::SparseAttentionParameters& parameters,
     SparseAttentionData<half>& data);
 
+template Status QkvToContext<BFloat16>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    Stream* stream,
+    contrib::SparseAttentionParameters& parameters,
+    SparseAttentionData<BFloat16>& data);
+
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

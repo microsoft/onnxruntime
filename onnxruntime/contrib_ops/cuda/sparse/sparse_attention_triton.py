@@ -178,7 +178,7 @@ def block_sparse_attention_kernel(
         tl.store(out_ptrs + BLOCK_D * stride_od, acc2, mask=offs_m[:, None] < q_seq_len)
 
 
-dtypes = ["fp16"]
+dtypes = ["fp16", "bf16"]
 block_n_values = [16, 32, 64, 128]
 block_d_values = [64]  # support head_size = 128
 num_block_d_values = [2]
@@ -195,7 +195,8 @@ def get_function_table():
     for dtype, block_n, block_d, num_blocks_d, even_m, even_n in product(
         dtypes, block_n_values, block_d_values, num_block_d_values, even_m_values, even_n_values
     ):
-        for block_m in [16, block_n]:
+        block_m_values = [16, block_n] if block_n != 16 else [block_n]
+        for block_m in block_m_values:
             name = name_pattern.format(dtype, block_m, block_n, block_d, num_blocks_d, int(even_m), int(even_n))
 
             # head_size = block_d * num_blocks_d

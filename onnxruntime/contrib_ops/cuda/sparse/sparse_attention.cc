@@ -1,14 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
 #include "contrib_ops/cuda/sparse/sparse_attention.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_helper.h"
-
-using namespace ::onnxruntime::cuda;
-using namespace ::onnxruntime::common;
-using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace contrib {
@@ -29,7 +24,7 @@ namespace cuda {
       SparseAttention<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
-// REGISTER_KERNEL_TYPED(BFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
