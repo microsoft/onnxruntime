@@ -10,7 +10,7 @@ import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
 from hashlib import md5 as hash_fn
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import onnx
 import torch
