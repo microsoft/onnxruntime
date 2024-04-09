@@ -9,7 +9,6 @@ import io
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
-from contextlib import contextmanager
 from hashlib import md5 as hash_fn
 from typing import Dict, List, Optional, Tuple
 
@@ -22,7 +21,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.training.utils import ORTModelInputOutputSchemaType, PTable, onnx_dtype_to_pytorch_dtype
 
-from . import ORTMODULE_ONNX_EXPORT_CONTEXT, _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
+from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils, export_context
 from ._fallback import (
     ORTModuleDeviceException,
     ORTModuleONNXModelException,
@@ -34,6 +33,7 @@ from ._fallback import (
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo
+from ._logger import LogColor
 from ._runtime_inspector import RuntimeInspector
 from ._utils import check_function_has_param, get_rank
 from .options import DebugOptions, LogLevel, _MemoryOptimizationLevel, _RuntimeOptions
@@ -279,22 +279,6 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         return session_options, providers, provider_options
 
-    @contextmanager
-    def export_context(self):
-        """Context manager for model export."""
-        try:
-            ORTMODULE_ONNX_EXPORT_CONTEXT[0] = True
-            ORTMODULE_ONNX_EXPORT_CONTEXT[1] = self._runtime_options.memory_optimization_level
-            yield
-        finally:
-            ORTMODULE_ONNX_EXPORT_CONTEXT[0] = False
-
-            # If ORTMODULE_ONNX_EXPORT_CONTEXT[1] is changed during model export, use it to
-            # update the memory optimizer level.
-            if self._runtime_options.memory_optimization_level != ORTMODULE_ONNX_EXPORT_CONTEXT[1]:
-                self._runtime_options.memory_optimization_level = ORTMODULE_ONNX_EXPORT_CONTEXT[1]
-                self._runtime_options.layerwise_recompute_auto_enabled = True
-
     @_logger.TrackTime(_logger.ORTModuleInitPhase.EXPORT)
     @_logger.SuppressLogs(_logger.ORTModuleInitPhase.EXPORT, is_ort_filter=False)
     def _export_model(self, *inputs, **kwargs) -> bool:
@@ -325,7 +309,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
 
-        with self.export_context(), no_increase_global_step():
+        with export_context(), no_increase_global_step():
             self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(
@@ -458,12 +442,49 @@ class GraphExecutionManager(GraphExecutionInterface):
                     **self._export_extra_kwargs,
                 )
         except Exception as e:
+            message = _utils.get_exception_as_string(e)
+
+            # Special handling when Huggingface transformers gradient checkpoint usage pattern found.
+            # For new versions of PyTorch 2, tracing torch.utils.checkpoint.checkpoint will be failed like this:
+            #   File "microsoft/phi-2/b10c3eba545ad279e7208ee3a5d644566f001670/modeling_phi.py", line 919, in forward
+            #     layer_outputs = self._gradient_checkpointing_func(
+            #   File "/site-packages/torch/_compile.py", line 24, in inner
+            #     return torch._dynamo.disable(fn, recursive)(*args, **kwargs)
+            #   File "/site-packages/torch/_dynamo/eval_frame.py", line 470, in _fn
+            #     raise RuntimeError(
+            #   RuntimeError: Detected that you are using FX to torch.jit.trace a dynamo-optimized function. This is not supported at the moment.
+            if (
+                "_gradient_checkpointing_func" in message
+                and "Detected that you are using FX to torch.jit.trace a dynamo-optimized function" in message
+            ):
+                is_ckpt_activation_allowed = int(os.getenv("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", "0")) == 1
+                notes = (
+                    " Your model is running with gradient checkpointing, yet the PyTorch exporter\n"
+                    " failed during tracing the graph. Try to enable ORTModule's\n"
+                    " gradient checkpointing (a.k.a. Transformer layerwise subgraph recompute)\n"
+                    " using `export ORTMODULE_MEMORY_OPT_LEVEL=1` for similar or even better memory efficiency.\n"
+                )
+                if is_ckpt_activation_allowed:
+                    # If the user allows the gradient checkpointing export, we should inform the user to disable it,
+                    # to make layerwise recompute work.
+                    notes += (
+                        " We also notice your setting `export ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=1`,\n"
+                        " which enables gradient checkpointing torch.autograd.Functions(s) to export.\n"
+                        " To enable ORTModule's layerwise recompute, it needs to be turned OFF by\n"
+                        " `export ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=0`.\n"
+                    )
+
+                self._logger.error(
+                    f"{LogColor.RED}\n"
+                    "******************************** IMPORTANT NOTE *******************************\n"
+                    f"{notes}"
+                    "*******************************************************************************\n"
+                    f"{LogColor.ENDC}\n"
+                )
+
             raise wrap_exception(  # noqa: B904
                 ORTModuleONNXModelException,
-                RuntimeError(
-                    f"There was an error while exporting the PyTorch model to ONNX: "
-                    f"\n\n{_utils.get_exception_as_string(e)}"
-                ),
+                RuntimeError(f"There was an error while exporting the PyTorch model to ONNX: \n\n{message}"),
             )
         exported_model = onnx.load_model_from_string(f.getvalue())
 
@@ -792,8 +813,6 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         mem_infos = ""
         if self._runtime_options.memory_optimizer_is_enabled():
-            if self._runtime_options.layerwise_recompute_auto_enabled:
-                mem_infos = "[AUTO ENABLED] "
             mem_infos += (
                 f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
                 f"Optimization Config: [{opt_config_to_display}]"
@@ -818,14 +837,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             if mem_tbl is not None:
                 mem_row.append_annotation_table(mem_tbl)
                 notes.extend([f"[{mem_row._columns[0]}] {n}" for n in mem_notes])
-
-        if self._runtime_options.layerwise_recompute_auto_enabled:
-            notes.append(
-                f"[{mem_row._columns[0]}] Layer-wise recompute is enabled automatically upon detecting "
-                "torch.utils.checkpoint usage during model execution. \n  If this is not what you want, "
-                "using export ORTMODULE_MEMORY_OPT_LEVEL=0 can disable the auto enabling, but "
-                "in that case, it's mostly likely that the model export would be failed."
-            )
 
         compute_opt_row = _add_record(
             tbl,
