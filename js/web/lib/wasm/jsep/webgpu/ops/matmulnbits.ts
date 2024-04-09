@@ -68,9 +68,11 @@ export const createMatMulNBitsProgramInfo =
       const bComponents = getMaxComponents(blobSizeInWords);
       const elementSize = getTensorElementSize(dataType)!;
       const workgroupOutputCount = dimAOuter * nBlocksPerCol;
-      const storageRequiredPerComponent =
-          Math.ceil(maxComputeWorkgroupStorageSize / workgroupOutputCount / elementSize);
-      const componentsTmp = getMaxComponents(dimBOuter, storageRequiredPerComponent - storageRequiredPerComponent % 4);
+      const maxNumberOfComponents = Math.floor(maxComputeWorkgroupStorageSize / workgroupOutputCount / elementSize);
+      const componentsTmp = maxNumberOfComponents > 4 ?
+          getMaxComponents(dimBOuter, maxNumberOfComponents - maxNumberOfComponents % 4) :
+          maxNumberOfComponents > 2 ? getMaxComponents(dimBOuter, maxNumberOfComponents - maxNumberOfComponents % 2) :
+                                      1;
       const components = (componentsTmp * workgroupOutputCount * elementSize > maxComputeWorkgroupStorageSize) &&
               (workgroupOutputCount * elementSize <= maxComputeWorkgroupStorageSize) ?
           1 :
