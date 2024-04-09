@@ -99,7 +99,7 @@ ProcessRemainingCountLessThan16:
 ProcessRemainingCountBy1:
         vmaxss  xmm0,xmm0,DWORD PTR [rcx]
         add     rcx,4                           ; advance input by 1 element
-        dec     edi
+        dec     rdx
         jnz     ProcessRemainingCountBy1
 
 ExitKernel:

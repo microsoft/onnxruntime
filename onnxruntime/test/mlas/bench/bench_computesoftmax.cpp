@@ -215,7 +215,7 @@ static void ComputeSoftmaxInplaceArgs(benchmark::internal::Benchmark* b) {
       {64},     // Byte Aligned
       {240000}, // N
       {2000, 2001, 2002, 2016},  // D
-      {1},           // Threads
+      {8},           // Threads
   });
 }
 
@@ -236,16 +236,16 @@ BENCHMARK(COMPUTESOFTMAXINPLACE)->ArgNames({"N", "D", "Threads"})
 
 BENCHMARK(REDUCEMAXIMUMF32KERNELAVX)->ArgNames({"Byte Aligned", "D"})
     ->ArgsProduct({
-      {4, 8, 16, 32, 64, 128},   // Byte Aligned
-      {13, 15, 2000}, // D
+      {64},   // Byte Aligned
+      {1999, 2000, 2001, 2002}, // D
       })
     ->UseRealTime();
 
 BENCHMARK(REDUCEMAXIMUMF32KERNELAVX512F)->ArgNames({"Byte Aligned", "D"})
     ->ArgsProduct({
       {64},   // Byte Aligned
-      // {2000, 2001, 1999, 2016, 2002}, // D
-      {2001}, // D
+      {2000, 2001, 1999, 2016, 2002}, // D
+      // {2001}, // D
       })
     ->UseRealTime();
 
