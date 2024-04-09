@@ -85,7 +85,6 @@ stages:
                 --volume $(Build.BinariesDirectory):/build \
                 --volume /data/models:/build/models:ro \
                 --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-                -e NVIDIA_VISIBLE_DEVICES=all \
                 -e NIGHTLY_BUILD \
                 -e DEFAULT_TRAINING_PACKAGE_DEVICE \
                 -e BUILD_BUILDNUMBER \

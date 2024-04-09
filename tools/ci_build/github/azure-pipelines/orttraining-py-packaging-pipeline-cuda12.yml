@@ -20,4 +20,4 @@ stages:
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
     debug_build: false
-    build_pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU-48'
+    build_pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU'
