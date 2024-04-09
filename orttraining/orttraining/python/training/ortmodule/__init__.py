@@ -109,14 +109,14 @@ def _override_gradient_checkpoint(original_checkpoint):
 
 
 with contextlib.suppress(Exception):
+    from torch.utils.checkpoint import checkpoint as original_torch_checkpoint
+
+    torch.utils.checkpoint.checkpoint = _override_gradient_checkpoint(original_torch_checkpoint)
+
     import deepspeed
 
     original_deepspeed_checkpoint = deepspeed.checkpointing.checkpoint
     deepspeed.checkpointing.checkpoint = _override_gradient_checkpoint(original_deepspeed_checkpoint)
-
-    from torch.utils.checkpoint import checkpoint as original_torch_checkpoint
-
-    torch.utils.checkpoint.checkpoint = _override_gradient_checkpoint(original_torch_checkpoint)
 
 
 ################################################################################
