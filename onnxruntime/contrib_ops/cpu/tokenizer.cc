@@ -509,13 +509,15 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   constexpr RE2::Anchor anchor = RE2::UNANCHORED;
 
   for (const auto& s : input_span) {
-    auto& row = allocator.EmplaceBack(rows);
-    row.reserve(max_tokens_per_row);
-
     size_t utf8_chars = 0;
     utf8_len(reinterpret_cast<const unsigned char*>(s.data()), s.size(), utf8_chars);
 
+    auto& row = allocator.EmplaceBack(rows);
+
     if (utf8_chars >= mincharnum_) {
+      auto estimated_tokens = std::max<size_t>(1, utf8_chars / mincharnum_);
+      row.reserve(estimated_tokens);
+
       StringPiece text(s);
       const auto end_pos = s.length();
       size_t start_pos = 0;
