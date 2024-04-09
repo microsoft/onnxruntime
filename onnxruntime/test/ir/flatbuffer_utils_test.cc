@@ -381,7 +381,7 @@ TEST(GraphUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
   //   const auto& expected_initializer = initializers[i];
   //   const auto& loaded_tensor = loaded_tensors[i];
   //   ASSERT_EQ(loaded_tensor.DataType().ToString(), expected_initializer.data_type().ToString());
-  //   ASSERT_EQ(loaded_tensor.Shape().ToString(), expected_initializer.dims().ToString());
+  //   ASSERT_EQ(loaded_tensor.Shape().NumDimensions(), expected_initializer.dims().size());
   //   if (expected_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
   //     std::vector<uint8_t> expected_data;
 

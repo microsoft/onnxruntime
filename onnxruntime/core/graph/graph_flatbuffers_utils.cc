@@ -194,6 +194,80 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #endif
 
+// How much memory it will need for putting contents of this tensor into a plain array
+// complex64/complex128 tensors are not supported
+// doesn't handle alignment
+SafeInt<size_t> GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor) {
+  auto fbs_dims = tensor.dims();
+
+  auto num_elements = std::accumulate(fbs_dims->cbegin(), fbs_dims->cend(), SafeInt<size_t>(1),
+                                      std::multiplies<size_t>());
+
+  size_t byte_size_of_one_element;
+
+  switch (tensor.data_type()) {
+    case fbs::TensorDataType::FLOAT:
+      byte_size_of_one_element = sizeof(float);
+      break;
+    case fbs::TensorDataType::UINT8:
+      byte_size_of_one_element = sizeof(uint8_t);
+      break;
+    case fbs::TensorDataType::INT8:
+      byte_size_of_one_element = sizeof(int8_t);
+      break;
+    case fbs::TensorDataType::UINT16:
+      byte_size_of_one_element = sizeof(uint16_t);
+      break;
+    case fbs::TensorDataType::INT16:
+      byte_size_of_one_element = sizeof(int16_t);
+      break;
+    case fbs::TensorDataType::INT32:
+      byte_size_of_one_element = sizeof(int32_t);
+      break;
+    case fbs::TensorDataType::INT64:
+      byte_size_of_one_element = sizeof(int64_t);
+      break;
+    case fbs::TensorDataType::STRING:
+      byte_size_of_one_element = sizeof(std::string);
+      break;
+    case fbs::TensorDataType::BOOL:
+      byte_size_of_one_element = sizeof(bool);
+      break;
+    case fbs::TensorDataType::FLOAT16:
+      byte_size_of_one_element = sizeof(MLFloat16);
+      break;
+    case fbs::TensorDataType::DOUBLE:
+      byte_size_of_one_element = sizeof(double);
+      break;
+    case fbs::TensorDataType::UINT32:
+      byte_size_of_one_element = sizeof(uint32_t);
+      break;
+    case fbs::TensorDataType::UINT64:
+      byte_size_of_one_element = sizeof(uint64_t);
+      break;
+    case fbs::TensorDataType::BFLOAT16:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+#if !defined(DISABLE_FLOAT8_TYPES)
+    case fbs::TensorDataType::FLOAT8E4M3FN:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+    case fbs::TensorDataType::FLOAT8E4M3FNUZ:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+    case fbs::TensorDataType::FLOAT8E5M2:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+    case fbs::TensorDataType::FLOAT8E5M2FNUZ:
+      byte_size_of_one_element = sizeof(BFloat16);
+      break;
+#endif
+    default:
+      ORT_THROW("Unsupported tensor data type for tensor ", tensor.name());
+  }
+  return num_elements * byte_size_of_one_element;
+}
+
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& initializer,
                                 const OrtFormatLoadOptions& load_options,
                                 const ExternalDataReader& external_reader) {
@@ -253,7 +327,7 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
 
       // FUTURE: This could be setup similarly to can_use_flatbuffer_for_initializers above if the external data file
       // is memory mapped and guaranteed to remain valid. This would avoid the copy.
-      auto num_bytes = fbs::utils::GetSizeInBytesFromFbsTensor(fbs_tensor);
+      auto num_bytes = GetSizeInBytesFromFbsTensor(fbs_tensor);
 
       // pre-allocate so we can write directly to the string buffer
       std::string& raw_data = *initializer.mutable_raw_data();

@@ -10,8 +10,6 @@
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/common/status.h"
-#include "core/common/safeint.h"
-#include "core/flatbuffers/schema/ort.fbs.h"
 
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
@@ -57,11 +55,6 @@ bool IsOrtFormatModel(const PathString& filename);
 
 // check if bytes has the flatbuffer ORT identifier
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes);
-
-// How much memory it will need for putting contents of this tensor into a plain array
-// complex64/complex128 tensors are not supported
-// doesn't handle alignment
-SafeInt<size_t> GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor);
 
 }  // namespace utils
 }  // namespace fbs
