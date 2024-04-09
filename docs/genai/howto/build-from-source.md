@@ -34,7 +34,7 @@ These instructions are for the Linux GPU build of ONNX Runtime. Replace `linux-g
 
 ```bash
 cd <ORT_HOME>
-curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-x64-gpu-1.17.1.tgz
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-linux-x64-gpu-1.17.1.tgz
 tar xvzf onnxruntime-linux-x64-gpu-1.17.1.tgz 
 mv onnxruntime-linux-x64-gpu-1.17.1/include .
 mv onnxruntime-linux-x64-gpu-1.17.1/lib .
