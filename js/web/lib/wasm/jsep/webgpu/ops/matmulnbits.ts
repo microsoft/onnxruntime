@@ -16,6 +16,8 @@ export interface MatMulNBitsAttributes extends AttributeWithCacheKey {
   accuracyLevel: number;
   bits: number;
   blockSize: number;
+  blobSize: number;
+  nBlocksPerCol: number;
 }
 
 const validateInputs = (inputs: readonly TensorView[], attributes: MatMulNBitsAttributes): void => {
@@ -27,22 +29,20 @@ const validateInputs = (inputs: readonly TensorView[], attributes: MatMulNBitsAt
   if (a.dims[aRank - 1] !== attributes.k) {
     throw new Error('The last dim of input shape does not match the k value');
   }
-  const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
-  const blobSize = attributes.blockSize / 8 * attributes.bits;
   const b = inputs[1];
-  if (!ShapeUtil.areEqual(b.dims, [attributes.n, nBlocksPerCol, blobSize])) {
+  if (!ShapeUtil.areEqual(b.dims, [attributes.n, attributes.nBlocksPerCol, attributes.blobSize])) {
     throw new Error('The second inputs must be 3D tensor with shape N X nBlocksPerCol X blobSize');
   }
   const scales = inputs[2];
   const scalesShape = scales.dims;
-  if (ShapeUtil.size(scalesShape) !== attributes.n * nBlocksPerCol) {
+  if (ShapeUtil.size(scalesShape) !== attributes.n * attributes.nBlocksPerCol) {
     throw new Error('scales input size error.');
   }
   if (inputs.length === 4) {
     const zeroPoints = inputs[3];
     const zeroPointsShape = zeroPoints.dims;
-    const expectedZeroPointsSize =
-        attributes.bits > 4 ? (attributes.n * nBlocksPerCol) : attributes.n * Math.floor((nBlocksPerCol + 1) / 2);
+    const expectedZeroPointsSize = attributes.bits > 4 ? (attributes.n * attributes.nBlocksPerCol) :
+                                                         attributes.n * Math.floor((attributes.nBlocksPerCol + 1) / 2);
     if (ShapeUtil.size(zeroPointsShape) !== expectedZeroPointsSize) {
       throw new Error('zeroPoints input size error.');
     }
@@ -54,31 +54,31 @@ export const createMatMulNBitsProgramInfo =
      maxComputeWorkgroupSizes: [number, number, number], maxComputeWorkgroupStorageSize: number): ProgramInfo => {
       const inputShape = inputs[0].dims;
       const aRank = inputShape.length;
-      const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
+      const nBlocksPerCol = attributes.nBlocksPerCol;
       const dimAOuter = inputShape[aRank - 2];
       const dimInner = attributes.k;
       const dimBOuter = attributes.n;
       const batchDims = inputShape.slice(0, aRank - 2);
       const batchSize = ShapeUtil.size(batchDims);
-      const blobSize = attributes.blockSize / 8 * attributes.bits;
+      const blobSize = attributes.blobSize;
       const blobSizeInWords = blobSize / 4;
       const dataType = inputs[0].dataType;
       const outputNumber = getMaxComponents(dimAOuter);
       const aComponents = getMaxComponents(attributes.k);
       const bComponents = getMaxComponents(blobSizeInWords);
       const elementSize = getTensorElementSize(dataType)!;
-      const workgroupOutputCount = dimAOuter * nBlocksPerCol;
-      const maxNumberOfComponents = Math.floor(maxComputeWorkgroupStorageSize / workgroupOutputCount / elementSize);
+      const workgroupOutputSize = dimAOuter * nBlocksPerCol * elementSize;
+      const maxNumberOfComponents = Math.floor(maxComputeWorkgroupStorageSize / workgroupOutputSize);
       const componentsTmp = maxNumberOfComponents > 4 ?
           getMaxComponents(dimBOuter, maxNumberOfComponents - maxNumberOfComponents % 4) :
           maxNumberOfComponents > 2 ? getMaxComponents(dimBOuter, maxNumberOfComponents - maxNumberOfComponents % 2) :
                                       1;
-      const components = (componentsTmp * workgroupOutputCount * elementSize > maxComputeWorkgroupStorageSize) &&
-              (workgroupOutputCount * elementSize <= maxComputeWorkgroupStorageSize) ?
+      const components = (componentsTmp * workgroupOutputSize > maxComputeWorkgroupStorageSize) &&
+              (workgroupOutputSize <= maxComputeWorkgroupStorageSize) ?
           1 :
           componentsTmp;
       const useBlockwiseMatMulNBits = (nBlocksPerCol <= maxComputeWorkgroupSizes[0]) &&
-          (workgroupOutputCount * components * elementSize) <= maxComputeWorkgroupStorageSize;
+          (workgroupOutputSize * components) <= maxComputeWorkgroupStorageSize;
       const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
       const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
 
@@ -290,8 +290,7 @@ export const createMatMulNBitsProgramInfo =
       return {
         name: useBlockwiseMatMulNBits ? 'BlockwiseMatMulNBits' : 'MatMulNBits',
         shaderCache: {
-          hint: useBlockwiseMatMulNBits ? `${attributes.cacheKey};${dimAOuter};${dataType};${inputs.length}` :
-                                          `${attributes.cacheKey};${inputs.length}`,
+          hint: `${attributes.cacheKey};${dimAOuter};${dataType};${inputs.length}`,
           inputDependencies: Array(inputs.length).fill('rank')
         },
         getRunData: () => ({
@@ -313,5 +312,13 @@ export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttr
       context.inputs, attributes, maxComputeWorkgroupSizes, maxComputeWorkgroupStorageSize));
 };
 
-export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>): MatMulNBitsAttributes =>
-    createAttributeWithCacheKey(attributes as Omit<MatMulNBitsAttributes, keyof AttributeWithCacheKey>);
+export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>): MatMulNBitsAttributes => {
+  const k = attributes.k as number;
+  const n = attributes.n as number;
+  const accuracyLevel = attributes.accuracyLevel as number;
+  const bits = attributes.bits as number;
+  const blockSize = attributes.blockSize as number;
+  const blobSize = blockSize / 8 * bits;
+  const nBlocksPerCol = Math.floor((k + blockSize - 1) / blockSize);
+  return createAttributeWithCacheKey({k, n, accuracyLevel, bits, blockSize, blobSize, nBlocksPerCol});
+}
