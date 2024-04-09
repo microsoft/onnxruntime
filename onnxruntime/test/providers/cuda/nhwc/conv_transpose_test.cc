@@ -9,8 +9,8 @@ namespace test {
 
 template <typename T>
 struct ConvTransposeOp {
-  const std::vector<int64_t> input_dims;
-  const std::vector<int64_t> kernel_shape;
+  std::vector<int64_t> input_dims;
+  std::vector<int64_t> kernel_shape;
   int64_t channels;
   int64_t group = 1;
   bool bias = false;
@@ -60,15 +60,21 @@ struct ConvTransposeOp {
 };
 
 TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcGroupNoBias) {
-  auto op =
-      ConvTransposeOp<TypeParam>{.input_dims = {8, 8, 32, 32}, .kernel_shape = {3, 3}, .channels = 16, .group = 4};
+  auto op = ConvTransposeOp<TypeParam>{};
+  op.input_dims = {8, 8, 32, 32};
+  op.kernel_shape = {3, 3};
+  op.channels = 16;
+  op.group = 4;
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcBias) {
-  auto op =
-      ConvTransposeOp<TypeParam>{.input_dims = {1, 8, 80, 80}, .kernel_shape = {5, 5}, .channels = 16, .bias = true};
+  auto op = ConvTransposeOp<TypeParam>{};
+  op.input_dims = {1, 8, 80, 80};
+  op.kernel_shape = {5, 5};
+  op.channels = 16;
+  op.bias = true;
 
   if (HasCudaEnvironment(800)) {
     MAKE_PROVIDERS_EPS(1e-2)
@@ -78,21 +84,23 @@ TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcBias) {
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcPad) {
-  auto op = ConvTransposeOp<TypeParam>{.input_dims = {1, 16, 8, 8},
-                                       .kernel_shape = {3, 3},
-                                       .channels = 32,
-                                       .padding = {2, 2, 2, 2},
-                                       .output_padding = {}};
+  auto op = ConvTransposeOp<TypeParam>{};
+  op.input_dims = {1, 16, 8, 8};
+  op.kernel_shape = {3, 3};
+  op.channels = 32;
+  op.padding = {2, 2, 2, 2};
+  op.output_padding = {};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcOutPad) {
-  auto op = ConvTransposeOp<TypeParam>{.input_dims = {1, 32, 8, 8},
-                                       .kernel_shape = {3, 3},
-                                       .channels = 32,
-                                       .strides = {2, 2},
-                                       .output_padding = {1, 1, 1, 1}};
+  auto op = ConvTransposeOp<TypeParam>{};
+  op.input_dims = {1, 32, 8, 8};
+  op.kernel_shape = {3, 3};
+  op.channels = 32;
+  op.strides = {2, 2};
+  op.output_padding = {1, 1, 1, 1};
 
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }

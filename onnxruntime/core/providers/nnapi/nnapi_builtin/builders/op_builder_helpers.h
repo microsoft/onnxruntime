@@ -7,12 +7,12 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/framework/node_unit.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime::nnapi::op_builder_helpers {
 
@@ -180,9 +180,6 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
 
 Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                           const std::string& input, const std::vector<int32_t>& shape);
-
-bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
-                    size_t input_rank, size_t output_rank);
 
 Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                      std::vector<int32_t>& axes);

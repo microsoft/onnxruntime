@@ -8,6 +8,15 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   string(APPEND CMAKE_ASM_FLAGS_RELEASE " -O3")
 endif()
 
+# Suggested by https://gitlab.kitware.com/cmake/cmake/-/issues/20132
+# MacCatalyst is not well supported in CMake
+# The error that can emerge without this flag can look like:
+# "clang : error : overriding '-mmacosx-version-min=11.0' option with '-target x86_64-apple-ios14.0-macabi' [-Werror,-Woverriding-t-option]"
+if (PLATFORM_NAME STREQUAL "macabi")
+  add_compile_options(-Wno-overriding-t-option)
+  add_link_options(-Wno-overriding-t-option)
+endif()
+
 # Enable space optimization for gcc/clang
 # Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
 if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
@@ -92,13 +101,8 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 endif()
 
-# Enable stream for all the non-minimal build, except for DML. There's currently a bug
-# in the allocation planner when reusing buffers and more than one streams are used that
-# make it possible (although rarely) to reach a reference count of 0 for a buffer that is
-# still being used. Since DML doesn't benefit from multiple streams, disabling it is the
-# safest option for now.
-# https://github.com/microsoft/onnxruntime/issues/19480
-if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_USE_DML)
+# Enable stream for all the non-minimal build
+if (NOT onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_ENABLE_STREAM)
 endif()
 
@@ -210,7 +214,7 @@ endif()
 
 
 macro(check_nvcc_compiler_flag _FLAG _RESULT)
-    execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
+    execute_process(COMMAND ${CUDAToolkit_BIN_DIR}/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
     message("NVCC_ERROR = ${NVCC_ERROR}")
     message("NVCC_OUT = ${NVCC_OUT}")
     if ("${NVCC_OUT}" MATCHES "0")

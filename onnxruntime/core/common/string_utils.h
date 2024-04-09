@@ -65,5 +65,24 @@ inline std::string TrimString(std::string s) {
   return s;
 }
 
+/**
+ * @brief A consistent way to construct the full qualified op name.
+ */
+inline std::string GetFullQualifiedOpName(const std::string& op_type, const std::string& domain) {
+  return MakeString(domain, "::", op_type);
+}
+
+/**
+ * Use this simple hash to generate unique int by given string input.
+ */
+inline uint32_t GetHashFromString(const std::string& str_value) {
+  uint32_t hash = 0;
+  for (char const& c : str_value) {
+    hash = hash * 101 + c;
+  }
+
+  return hash;
+}
+
 }  // namespace utils
 }  // namespace onnxruntime

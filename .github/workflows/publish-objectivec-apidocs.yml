@@ -21,7 +21,7 @@ permissions:
 jobs:
   build:
     name: Generate Objective-C API docs
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
 

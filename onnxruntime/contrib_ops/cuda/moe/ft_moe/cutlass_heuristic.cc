@@ -151,8 +151,8 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
         const int ctas_for_problem = ctas_in_m_dim * ctas_in_n_dim * split_k_factor;
 
         const int num_waves_total = (ctas_for_problem + ctas_per_wave - 1) / ctas_per_wave;
-        const float num_waves_fractional = ctas_for_problem / float(ctas_per_wave);
-        const float current_score = float(num_waves_total) - num_waves_fractional;
+        const float num_waves_fractional = ctas_for_problem / static_cast<float>(ctas_per_wave);
+        const float current_score = static_cast<float>(num_waves_total) - num_waves_fractional;
 
         const float score_slack = 0.1f;
         if (current_score < config_score ||

@@ -82,8 +82,6 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
       interleaved,
       device_prop.maxThreadsPerBlock,
       parameters.transposed);
-
-  return Status::OK();
 }
 
 }  // namespace cuda

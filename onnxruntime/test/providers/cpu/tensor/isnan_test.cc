@@ -38,9 +38,23 @@ TEST(IsNaNOpTest, IsNaNFloat16_9) {
   run_is_nan_test(9, dims, input, output);
 }
 
+TEST(IsNaNOpTest, IsNaNFloat16_13) {
+  std::vector<int64_t> dims{2, 2};
+  std::initializer_list<MLFloat16> input = {MLFloat16::One, MLFloat16::NaN, MLFloat16(2.0f), MLFloat16::NaN};
+  std::initializer_list<bool> output = {false, true, false, true};
+  run_is_nan_test(13, dims, input, output);
+}
+
 TEST(IsNaNOpTest, IsNaNFloat16_20) {
   std::vector<int64_t> dims{2, 2};
-  std::initializer_list<MLFloat16> input = {MLFloat16(1.0f), MLFloat16::NaN, MLFloat16(2.0f), MLFloat16::NaN};
+  std::initializer_list<MLFloat16> input = {MLFloat16::One, MLFloat16::NaN, MLFloat16(2.0f), MLFloat16::NaN};
+  std::initializer_list<bool> output = {false, true, false, true};
+  run_is_nan_test(20, dims, input, output);
+}
+
+TEST(IsNaNOpTest, IsNaNBFloat16_20) {
+  std::vector<int64_t> dims{2, 2};
+  std::initializer_list<BFloat16> input = {BFloat16::One, BFloat16::NaN, BFloat16(2.0f), BFloat16::NaN};
   std::initializer_list<bool> output = {false, true, false, true};
   run_is_nan_test(20, dims, input, output);
 }

@@ -16,7 +16,8 @@ class DmlGraphFusionTransformer : public onnxruntime::GraphTransformer
 public:
     DmlGraphFusionTransformer(
         const std::string& name,
-        const onnxruntime::IExecutionProvider* provider
+        const onnxruntime::IExecutionProvider* provider,
+        const bool graphSerializationEnabled
     );
 
 public:
@@ -38,5 +39,6 @@ private:
 
 private:
     const ExecutionProviderImpl* m_providerImpl = nullptr;
+    const bool graphSerializationEnabled = false;
 };
 }

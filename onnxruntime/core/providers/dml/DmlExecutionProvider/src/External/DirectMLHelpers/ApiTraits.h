@@ -24,8 +24,8 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 161;
-    static constexpr size_t ActivationFunctionCount = 24;
+    static constexpr auto ValueCount = 168;
+    static constexpr size_t ActivationFunctionCount = 26;
 };
 
 template <>
@@ -62,7 +62,7 @@ struct EnumTraits<DML_CONVOLUTION_DIRECTION>
 template <>
 struct EnumTraits<DML_PADDING_MODE>
 {
-    static constexpr auto ValueCount = 4;
+    static constexpr auto ValueCount = 5;
 };
 
 template <>
@@ -86,7 +86,7 @@ struct EnumTraits<DML_FEATURE>
 template <>
 struct EnumTraits<DML_FEATURE_LEVEL>
 {
-    static constexpr auto ValueCount = 8;
+    static constexpr auto ValueCount = 13;
 };
 
 template <>
@@ -117,6 +117,12 @@ template <>
 struct EnumTraits<DML_RANDOM_GENERATOR_TYPE>
 {
     static constexpr auto ValueCount = 1;
+};
+
+template <>
+struct EnumTraits<DML_MULTIHEAD_ATTENTION_MASK_TYPE>
+{
+    static constexpr auto ValueCount = 5;
 };
 
 template <typename T>
@@ -493,12 +499,6 @@ template <>
 struct OperatorDescTraits<DML_ROI_POOLING_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ROI_POOLING;
-};
-
-template <>
-struct OperatorDescTraits<DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC>
-{
-    static constexpr DML_OPERATOR_TYPE Type = (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING;
 };
 
 template <>
@@ -880,6 +880,12 @@ struct OperatorDescTraits<DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT;
+};
+
+template <>
 struct OperatorDescTraits<DML_CONVOLUTION_INTEGER_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_CONVOLUTION_INTEGER;
@@ -1030,6 +1036,18 @@ struct OperatorDescTraits<DML_DIAGONAL_MATRIX1_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_MULTIHEAD_ATTENTION_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MULTIHEAD_ATTENTION;
+};
+
+template <>
+struct OperatorDescTraits<DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING;
+};
+
+template <>
 struct OperatorDescTraits<DML_ACTIVATION_ELU_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_ELU;
@@ -1174,9 +1192,15 @@ struct OperatorDescTraits<DML_ACTIVATION_GELU_OPERATOR_DESC>
 };
 
 template <>
-struct OperatorDescTraits<DML_MULTIHEAD_ATTENTION_OPERATOR_DESC>
+struct OperatorDescTraits<DML_ACTIVATION_SWISH_OPERATOR_DESC>
 {
-    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MULTIHEAD_ATTENTION;
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_SWISH;
+};
+
+template <>
+struct OperatorDescTraits<DML_ACTIVATION_HARD_SWISH_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_HARD_SWISH;
 };
 
 template <DML_OPERATOR_TYPE Type>
@@ -1500,12 +1524,6 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ROI_POOLING>
 {
     using DescType = DML_ROI_POOLING_OPERATOR_DESC;
-};
-
-template <>
-struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING>
-{
-    using DescType = DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC;
 };
 
 template <>
@@ -2037,6 +2055,24 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_DIAGONAL_MATRIX1>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MULTIHEAD_ATTENTION>
+{
+    using DescType = DML_MULTIHEAD_ATTENTION_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING>
+{
+    using DescType = DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT>
+{
+    using DescType = DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_ELU>
 {
     using DescType = DML_ACTIVATION_ELU_OPERATOR_DESC;
@@ -2181,14 +2217,20 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_GELU>
 };
 
 template <>
-struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MULTIHEAD_ATTENTION>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_SWISH>
 {
-    using DescType = DML_MULTIHEAD_ATTENTION_OPERATOR_DESC;
+    using DescType = DML_ACTIVATION_SWISH_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_HARD_SWISH>
+{
+    using DescType = DML_ACTIVATION_HARD_SWISH_OPERATOR_DESC;
 };
 
 // Calls a visitor functor, supplying an empty operator desc corresponding to the given DML_OPERATOR_TYPE as
 // the first argument.
-//
+// 
 // For example:
 //   Visit(DML_OPERATOR_ELEMENT_WISE_IDENTITY, [](auto tag) {
 //       using T = decltype(tag); // T is one of the DML_*_OPERATOR_DESC structs
@@ -2485,6 +2527,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_DIAGONAL_MATRIX1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MULTIHEAD_ATTENTION:
         return std::invoke(std::forward<Visitor>(visitor), DML_MULTIHEAD_ATTENTION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING:
+        return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
+        return std::invoke(std::forward<Visitor>(visitor), DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_ELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_ELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_CELU:
@@ -2533,13 +2579,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_SHRINK_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_GELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_GELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
-
-#pragma warning(push)
-#pragma warning(disable: 4063)
-    case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING:
-        return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
-#pragma warning(pop)
-
+    case DML_OPERATOR_ACTIVATION_SWISH:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_SWISH_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ACTIVATION_HARD_SWISH:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_HARD_SWISH_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     default:
         ORT_THROW_HR(E_INVALIDARG);
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_RELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
@@ -2547,7 +2590,55 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
 }
 #pragma warning(pop)
 
+namespace StringifyHelpers
+{
+template <typename T>
+inline gsl::czstring ToString(T value)
+{
+#ifndef WAI_BUILD_LINUX
+    // Clang will instantiate this template even if it isn't used,
+    // so this static_assert will always fire and break the build.
+    static_assert(false, "Not implemented for this type");
+#endif
+}
 
+template <>
+inline gsl::czstring ToString(DML_TENSOR_DATA_TYPE value)
+{
+    switch (value)
+    {
+    case DML_TENSOR_DATA_TYPE_UNKNOWN: return "DML_TENSOR_DATA_TYPE_UNKNOWN";
+    case DML_TENSOR_DATA_TYPE_FLOAT32: return "DML_TENSOR_DATA_TYPE_FLOAT32";
+    case DML_TENSOR_DATA_TYPE_FLOAT16: return "DML_TENSOR_DATA_TYPE_FLOAT16";
+    case DML_TENSOR_DATA_TYPE_UINT32: return "DML_TENSOR_DATA_TYPE_UINT32";
+    case DML_TENSOR_DATA_TYPE_UINT16: return "DML_TENSOR_DATA_TYPE_UINT16";
+    case DML_TENSOR_DATA_TYPE_UINT8: return "DML_TENSOR_DATA_TYPE_UINT8";
+    case DML_TENSOR_DATA_TYPE_INT32: return "DML_TENSOR_DATA_TYPE_INT32";
+    case DML_TENSOR_DATA_TYPE_INT16: return "DML_TENSOR_DATA_TYPE_INT16";
+    case DML_TENSOR_DATA_TYPE_INT8: return "DML_TENSOR_DATA_TYPE_INT8";
+    case DML_TENSOR_DATA_TYPE_FLOAT64: return "DML_TENSOR_DATA_TYPE_FLOAT64";
+    case DML_TENSOR_DATA_TYPE_UINT64: return "DML_TENSOR_DATA_TYPE_UINT64";
+    case DML_TENSOR_DATA_TYPE_INT64: return "DML_TENSOR_DATA_TYPE_INT64";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_TENSOR_TYPE value)
+{
+    switch (value)
+    {
+    case DML_TENSOR_TYPE_INVALID: return "DML_TENSOR_TYPE_INVALID";
+    case DML_TENSOR_TYPE_BUFFER: return "DML_TENSOR_TYPE_BUFFER";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
 inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
 {
     switch (value)
@@ -2561,9 +2652,6 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ELEMENT_WISE_ATAN: return "DML_OPERATOR_ELEMENT_WISE_ATAN";
     case DML_OPERATOR_ELEMENT_WISE_CEIL: return "DML_OPERATOR_ELEMENT_WISE_CEIL";
     case DML_OPERATOR_ELEMENT_WISE_CLIP: return "DML_OPERATOR_ELEMENT_WISE_CLIP";
-    case DML_OPERATOR_ELEMENT_WISE_CLIP1: return "DML_OPERATOR_ELEMENT_WISE_CLIP1";
-    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD: return "DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD";
-    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1: return "DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1";
     case DML_OPERATOR_ELEMENT_WISE_COS: return "DML_OPERATOR_ELEMENT_WISE_COS";
     case DML_OPERATOR_ELEMENT_WISE_DIVIDE: return "DML_OPERATOR_ELEMENT_WISE_DIVIDE";
     case DML_OPERATOR_ELEMENT_WISE_EXP: return "DML_OPERATOR_ELEMENT_WISE_EXP";
@@ -2587,24 +2675,41 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ELEMENT_WISE_RECIP: return "DML_OPERATOR_ELEMENT_WISE_RECIP";
     case DML_OPERATOR_ELEMENT_WISE_SIN: return "DML_OPERATOR_ELEMENT_WISE_SIN";
     case DML_OPERATOR_ELEMENT_WISE_SQRT: return "DML_OPERATOR_ELEMENT_WISE_SQRT";
-    case DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE: return "DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE";
-    case DML_OPERATOR_ELEMENT_WISE_ATAN_YX: return "DML_OPERATOR_ELEMENT_WISE_ATAN_YX";
     case DML_OPERATOR_ELEMENT_WISE_SUBTRACT: return "DML_OPERATOR_ELEMENT_WISE_SUBTRACT";
     case DML_OPERATOR_ELEMENT_WISE_TAN: return "DML_OPERATOR_ELEMENT_WISE_TAN";
     case DML_OPERATOR_ELEMENT_WISE_THRESHOLD: return "DML_OPERATOR_ELEMENT_WISE_THRESHOLD";
     case DML_OPERATOR_ELEMENT_WISE_QUANTIZE_LINEAR: return "DML_OPERATOR_ELEMENT_WISE_QUANTIZE_LINEAR";
     case DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR: return "DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR";
+    case DML_OPERATOR_ACTIVATION_ELU: return "DML_OPERATOR_ACTIVATION_ELU";
+    case DML_OPERATOR_ACTIVATION_CELU: return "DML_OPERATOR_ACTIVATION_CELU";
+    case DML_OPERATOR_ACTIVATION_HARDMAX: return "DML_OPERATOR_ACTIVATION_HARDMAX";
+    case DML_OPERATOR_ACTIVATION_HARDMAX1: return "DML_OPERATOR_ACTIVATION_HARDMAX1";
+    case DML_OPERATOR_ACTIVATION_HARD_SIGMOID: return "DML_OPERATOR_ACTIVATION_HARD_SIGMOID";
+    case DML_OPERATOR_ACTIVATION_IDENTITY: return "DML_OPERATOR_ACTIVATION_IDENTITY";
+    case DML_OPERATOR_ACTIVATION_LEAKY_RELU: return "DML_OPERATOR_ACTIVATION_LEAKY_RELU";
+    case DML_OPERATOR_ACTIVATION_LINEAR: return "DML_OPERATOR_ACTIVATION_LINEAR";
+    case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX: return "DML_OPERATOR_ACTIVATION_LOG_SOFTMAX";
+    case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1: return "DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1";
+    case DML_OPERATOR_ACTIVATION_PARAMETERIZED_RELU: return "DML_OPERATOR_ACTIVATION_PARAMETERIZED_RELU";
+    case DML_OPERATOR_ACTIVATION_PARAMETRIC_SOFTPLUS: return "DML_OPERATOR_ACTIVATION_PARAMETRIC_SOFTPLUS";
+    case DML_OPERATOR_ACTIVATION_RELU: return "DML_OPERATOR_ACTIVATION_RELU";
+    case DML_OPERATOR_ACTIVATION_SCALED_ELU: return "DML_OPERATOR_ACTIVATION_SCALED_ELU";
+    case DML_OPERATOR_ACTIVATION_SCALED_TANH: return "DML_OPERATOR_ACTIVATION_SCALED_TANH";
+    case DML_OPERATOR_ACTIVATION_SIGMOID: return "DML_OPERATOR_ACTIVATION_SIGMOID";
+    case DML_OPERATOR_ACTIVATION_SOFTMAX: return "DML_OPERATOR_ACTIVATION_SOFTMAX";
+    case DML_OPERATOR_ACTIVATION_SOFTMAX1: return "DML_OPERATOR_ACTIVATION_SOFTMAX1";
+    case DML_OPERATOR_ACTIVATION_SOFTPLUS: return "DML_OPERATOR_ACTIVATION_SOFTPLUS";
+    case DML_OPERATOR_ACTIVATION_SOFTSIGN: return "DML_OPERATOR_ACTIVATION_SOFTSIGN";
+    case DML_OPERATOR_ACTIVATION_TANH: return "DML_OPERATOR_ACTIVATION_TANH";
+    case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU: return "DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU";
     case DML_OPERATOR_CONVOLUTION: return "DML_OPERATOR_CONVOLUTION";
     case DML_OPERATOR_GEMM: return "DML_OPERATOR_GEMM";
     case DML_OPERATOR_REDUCE: return "DML_OPERATOR_REDUCE";
-    case DML_OPERATOR_ARGMIN: return "DML_OPERATOR_ARGMIN";
-    case DML_OPERATOR_ARGMAX: return "DML_OPERATOR_ARGMAX";
     case DML_OPERATOR_AVERAGE_POOLING: return "DML_OPERATOR_AVERAGE_POOLING";
     case DML_OPERATOR_AVERAGE_POOLING1: return "DML_OPERATOR_AVERAGE_POOLING1";
     case DML_OPERATOR_LP_POOLING: return "DML_OPERATOR_LP_POOLING";
     case DML_OPERATOR_LP_POOLING1: return "DML_OPERATOR_LP_POOLING1";
     case DML_OPERATOR_MAX_POOLING: return "DML_OPERATOR_MAX_POOLING";
-    case DML_OPERATOR_MAX_POOLING1: return "DML_OPERATOR_MAX_POOLING1";
     case DML_OPERATOR_ROI_POOLING: return "DML_OPERATOR_ROI_POOLING";
     case DML_OPERATOR_SLICE: return "DML_OPERATOR_SLICE";
     case DML_OPERATOR_CAST: return "DML_OPERATOR_CAST";
@@ -2620,18 +2725,15 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_TILE: return "DML_OPERATOR_TILE";
     case DML_OPERATOR_TOP_K: return "DML_OPERATOR_TOP_K";
     case DML_OPERATOR_BATCH_NORMALIZATION: return "DML_OPERATOR_BATCH_NORMALIZATION";
-    case DML_OPERATOR_BATCH_NORMALIZATION_GRAD: return "DML_OPERATOR_BATCH_NORMALIZATION_GRAD";
-    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD: return "DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD";
+    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING: return "DML_OPERATOR_BATCH_NORMALIZATION_TRAINING";
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION: return "DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION";
     case DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION: return "DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION";
-    case DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD: return "DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD";
     case DML_OPERATOR_LP_NORMALIZATION: return "DML_OPERATOR_LP_NORMALIZATION";
     case DML_OPERATOR_RNN: return "DML_OPERATOR_RNN";
     case DML_OPERATOR_LSTM: return "DML_OPERATOR_LSTM";
     case DML_OPERATOR_GRU: return "DML_OPERATOR_GRU";
     case DML_OPERATOR_ELEMENT_WISE_SIGN: return "DML_OPERATOR_ELEMENT_WISE_SIGN";
     case DML_OPERATOR_ELEMENT_WISE_IS_NAN: return "DML_OPERATOR_ELEMENT_WISE_IS_NAN";
-    case DML_OPERATOR_ELEMENT_WISE_NEGATE: return "DML_OPERATOR_ELEMENT_WISE_NEGATE";
     case DML_OPERATOR_ELEMENT_WISE_ERF: return "DML_OPERATOR_ELEMENT_WISE_ERF";
     case DML_OPERATOR_ELEMENT_WISE_SINH: return "DML_OPERATOR_ELEMENT_WISE_SINH";
     case DML_OPERATOR_ELEMENT_WISE_COSH: return "DML_OPERATOR_ELEMENT_WISE_COSH";
@@ -2641,6 +2743,8 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ELEMENT_WISE_ATANH: return "DML_OPERATOR_ELEMENT_WISE_ATANH";
     case DML_OPERATOR_ELEMENT_WISE_IF: return "DML_OPERATOR_ELEMENT_WISE_IF";
     case DML_OPERATOR_ELEMENT_WISE_ADD1: return "DML_OPERATOR_ELEMENT_WISE_ADD1";
+    case DML_OPERATOR_ACTIVATION_SHRINK: return "DML_OPERATOR_ACTIVATION_SHRINK";
+    case DML_OPERATOR_MAX_POOLING1: return "DML_OPERATOR_MAX_POOLING1";
     case DML_OPERATOR_MAX_UNPOOLING: return "DML_OPERATOR_MAX_UNPOOLING";
     case DML_OPERATOR_DIAGONAL_MATRIX: return "DML_OPERATOR_DIAGONAL_MATRIX";
     case DML_OPERATOR_SCATTER: return "DML_OPERATOR_SCATTER";
@@ -2652,10 +2756,9 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ELEMENT_WISE_IS_INFINITY: return "DML_OPERATOR_ELEMENT_WISE_IS_INFINITY";
     case DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE: return "DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE";
     case DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR: return "DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR";
-    case DML_OPERATOR_FILL_VALUE_CONSTANT: return "DML_OPERATOR_FILL_VALUE_CONSTANT";
     case DML_OPERATOR_FILL_VALUE_SEQUENCE: return "DML_OPERATOR_FILL_VALUE_SEQUENCE";
+    case DML_OPERATOR_FILL_VALUE_CONSTANT: return "DML_OPERATOR_FILL_VALUE_CONSTANT";
     case DML_OPERATOR_CUMULATIVE_SUMMATION: return "DML_OPERATOR_CUMULATIVE_SUMMATION";
-    case DML_OPERATOR_CUMULATIVE_PRODUCT: return "DML_OPERATOR_CUMULATIVE_PRODUCT";
     case DML_OPERATOR_REVERSE_SUBSEQUENCES: return "DML_OPERATOR_REVERSE_SUBSEQUENCES";
     case DML_OPERATOR_GATHER_ELEMENTS: return "DML_OPERATOR_GATHER_ELEMENTS";
     case DML_OPERATOR_GATHER_ND: return "DML_OPERATOR_GATHER_ND";
@@ -2684,20 +2787,278 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_RESAMPLE_GRAD: return "DML_OPERATOR_RESAMPLE_GRAD";
     case DML_OPERATOR_SLICE_GRAD: return "DML_OPERATOR_SLICE_GRAD";
     case DML_OPERATOR_ADAM_OPTIMIZER: return "DML_OPERATOR_ADAM_OPTIMIZER";
+    case DML_OPERATOR_ARGMIN: return "DML_OPERATOR_ARGMIN";
+    case DML_OPERATOR_ARGMAX: return "DML_OPERATOR_ARGMAX";
     case DML_OPERATOR_ROI_ALIGN: return "DML_OPERATOR_ROI_ALIGN";
-    case DML_OPERATOR_ROI_ALIGN1: return "DML_OPERATOR_ROI_ALIGN1";
     case DML_OPERATOR_GATHER_ND1: return "DML_OPERATOR_GATHER_ND1";
-    case DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR: return "DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR";
+    case DML_OPERATOR_ELEMENT_WISE_ATAN_YX: return "DML_OPERATOR_ELEMENT_WISE_ATAN_YX";
+    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD: return "DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD";
+    case DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE: return "DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE";
+    case DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD: return "DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD";
+    case DML_OPERATOR_CUMULATIVE_PRODUCT: return "DML_OPERATOR_CUMULATIVE_PRODUCT";
+    case DML_OPERATOR_BATCH_NORMALIZATION_GRAD: return "DML_OPERATOR_BATCH_NORMALIZATION_GRAD";
+    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD: return "DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD";
     case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD: return "DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD";
-    case DML_OPERATOR_ROI_ALIGN_GRAD: return "DML_OPERATOR_ROI_ALIGN_GRAD";
-    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING: return "DML_OPERATOR_BATCH_NORMALIZATION_TRAINING";
+    case DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR: return "DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR";
+    case DML_OPERATOR_ROI_ALIGN1: return "DML_OPERATOR_ROI_ALIGN1";
+    case DML_OPERATOR_ELEMENT_WISE_CLIP1: return "DML_OPERATOR_ELEMENT_WISE_CLIP1";
+    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1: return "DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1";
+    case DML_OPERATOR_ELEMENT_WISE_NEGATE: return "DML_OPERATOR_ELEMENT_WISE_NEGATE";
+    case DML_OPERATOR_ACTIVATION_GELU: return "DML_OPERATOR_ACTIVATION_GELU";
+    case DML_OPERATOR_ACTIVATION_SWISH: return "DML_OPERATOR_ACTIVATION_SWISH";
+    case DML_OPERATOR_ACTIVATION_HARD_SWISH: return "DML_OPERATOR_ACTIVATION_HARD_SWISH";
     case DML_OPERATOR_RESAMPLE2: return "DML_OPERATOR_RESAMPLE2";
     case DML_OPERATOR_RESAMPLE_GRAD1: return "DML_OPERATOR_RESAMPLE_GRAD1";
     case DML_OPERATOR_DIAGONAL_MATRIX1: return "DML_OPERATOR_DIAGONAL_MATRIX1";
     case DML_OPERATOR_MULTIHEAD_ATTENTION: return "DML_OPERATOR_MULTIHEAD_ATTENTION";
+    case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING: return "DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING";
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return "DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT";
     default:
         assert(false);
         return "<unknown>";
     }
+}
+
+template <>
+inline gsl::czstring ToString(DML_BINDING_TYPE value)
+{
+    switch (value)
+    {
+    case DML_BINDING_TYPE_NONE: return "DML_BINDING_TYPE_NONE";
+    case DML_BINDING_TYPE_BUFFER: return "DML_BINDING_TYPE_BUFFER";
+    case DML_BINDING_TYPE_BUFFER_ARRAY: return "DML_BINDING_TYPE_BUFFER_ARRAY";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_REDUCE_FUNCTION value)
+{
+    switch (value)
+    {
+    case DML_REDUCE_FUNCTION_ARGMAX: return "DML_REDUCE_FUNCTION_ARGMAX";
+    case DML_REDUCE_FUNCTION_ARGMIN: return "DML_REDUCE_FUNCTION_ARGMIN";
+    case DML_REDUCE_FUNCTION_AVERAGE: return "DML_REDUCE_FUNCTION_AVERAGE";
+    case DML_REDUCE_FUNCTION_L1: return "DML_REDUCE_FUNCTION_L1";
+    case DML_REDUCE_FUNCTION_L2: return "DML_REDUCE_FUNCTION_L2";
+    case DML_REDUCE_FUNCTION_LOG_SUM: return "DML_REDUCE_FUNCTION_LOG_SUM";
+    case DML_REDUCE_FUNCTION_LOG_SUM_EXP: return "DML_REDUCE_FUNCTION_LOG_SUM_EXP";
+    case DML_REDUCE_FUNCTION_MAX: return "DML_REDUCE_FUNCTION_MAX";
+    case DML_REDUCE_FUNCTION_MIN: return "DML_REDUCE_FUNCTION_MIN";
+    case DML_REDUCE_FUNCTION_MULTIPLY: return "DML_REDUCE_FUNCTION_MULTIPLY";
+    case DML_REDUCE_FUNCTION_SUM: return "DML_REDUCE_FUNCTION_SUM";
+    case DML_REDUCE_FUNCTION_SUM_SQUARE: return "DML_REDUCE_FUNCTION_SUM_SQUARE";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_MATRIX_TRANSFORM value)
+{
+    switch (value)
+    {
+    case DML_MATRIX_TRANSFORM_NONE: return "DML_MATRIX_TRANSFORM_NONE";
+    case DML_MATRIX_TRANSFORM_TRANSPOSE: return "DML_MATRIX_TRANSFORM_TRANSPOSE";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_CONVOLUTION_MODE value)
+{
+    switch (value)
+    {
+    case DML_CONVOLUTION_MODE_CONVOLUTION: return "DML_CONVOLUTION_MODE_CONVOLUTION";
+    case DML_CONVOLUTION_MODE_CROSS_CORRELATION: return "DML_CONVOLUTION_MODE_CROSS_CORRELATION";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_CONVOLUTION_DIRECTION value)
+{
+    switch (value)
+    {
+    case DML_CONVOLUTION_DIRECTION_FORWARD: return "DML_CONVOLUTION_DIRECTION_FORWARD";
+    case DML_CONVOLUTION_DIRECTION_BACKWARD: return "DML_CONVOLUTION_DIRECTION_BACKWARD";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_PADDING_MODE value)
+{
+    switch (value)
+    {
+    case DML_PADDING_MODE_CONSTANT: return "DML_PADDING_MODE_CONSTANT";
+    case DML_PADDING_MODE_EDGE: return "DML_PADDING_MODE_EDGE";
+    case DML_PADDING_MODE_REFLECTION: return "DML_PADDING_MODE_REFLECTION";
+    case DML_PADDING_MODE_SYMMETRIC: return "DML_PADDING_MODE_SYMMETRIC";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_INTERPOLATION_MODE value)
+{
+    switch (value)
+    {
+    case DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR: return "DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR";
+    case DML_INTERPOLATION_MODE_LINEAR: return "DML_INTERPOLATION_MODE_LINEAR";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_RECURRENT_NETWORK_DIRECTION value)
+{
+    switch (value)
+    {
+    case DML_RECURRENT_NETWORK_DIRECTION_FORWARD: return "DML_RECURRENT_NETWORK_DIRECTION_FORWARD";
+    case DML_RECURRENT_NETWORK_DIRECTION_BACKWARD: return "DML_RECURRENT_NETWORK_DIRECTION_BACKWARD";
+    case DML_RECURRENT_NETWORK_DIRECTION_BIDIRECTIONAL: return "DML_RECURRENT_NETWORK_DIRECTION_BIDIRECTIONAL";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_FEATURE value)
+{
+    switch (value)
+    {
+    case DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT: return "DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT";
+    case DML_FEATURE_FEATURE_LEVELS: return "DML_FEATURE_FEATURE_LEVELS";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_FEATURE_LEVEL value)
+{
+    switch (value)
+    {
+    case DML_FEATURE_LEVEL_1_0: return "DML_FEATURE_LEVEL_1_0";
+    case DML_FEATURE_LEVEL_2_0: return "DML_FEATURE_LEVEL_2_0";
+    case DML_FEATURE_LEVEL_2_1: return "DML_FEATURE_LEVEL_2_1";
+    case DML_FEATURE_LEVEL_3_0: return "DML_FEATURE_LEVEL_3_0";
+    case DML_FEATURE_LEVEL_3_1: return "DML_FEATURE_LEVEL_3_1";
+    case DML_FEATURE_LEVEL_4_0: return "DML_FEATURE_LEVEL_4_0";
+    case DML_FEATURE_LEVEL_4_1: return "DML_FEATURE_LEVEL_4_1";
+    case DML_FEATURE_LEVEL_5_0: return "DML_FEATURE_LEVEL_5_0";
+    case DML_FEATURE_LEVEL_5_1: return "DML_FEATURE_LEVEL_5_1";
+    case DML_FEATURE_LEVEL_5_2: return "DML_FEATURE_LEVEL_5_2";
+    case DML_FEATURE_LEVEL_6_0: return "DML_FEATURE_LEVEL_6_0";
+    case DML_FEATURE_LEVEL_6_1: return "DML_FEATURE_LEVEL_6_1";
+    case DML_FEATURE_LEVEL_6_2: return "DML_FEATURE_LEVEL_6_2";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_IS_INFINITY_MODE value)
+{
+    switch (value)
+    {
+    case DML_IS_INFINITY_MODE_EITHER: return "DML_IS_INFINITY_MODE_EITHER";
+    case DML_IS_INFINITY_MODE_POSITIVE: return "DML_IS_INFINITY_MODE_POSITIVE";
+    case DML_IS_INFINITY_MODE_NEGATIVE: return "DML_IS_INFINITY_MODE_NEGATIVE";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_DEPTH_SPACE_ORDER value)
+{
+    switch (value)
+    {
+    case DML_DEPTH_SPACE_ORDER_DEPTH_COLUMN_ROW: return "DML_DEPTH_SPACE_ORDER_DEPTH_COLUMN_ROW";
+    case DML_DEPTH_SPACE_ORDER_COLUMN_ROW_DEPTH: return "DML_DEPTH_SPACE_ORDER_COLUMN_ROW_DEPTH";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_AXIS_DIRECTION value)
+{
+    switch (value)
+    {
+    case DML_AXIS_DIRECTION_INCREASING: return "DML_AXIS_DIRECTION_INCREASING";
+    case DML_AXIS_DIRECTION_DECREASING: return "DML_AXIS_DIRECTION_DECREASING";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_ROUNDING_MODE value)
+{
+    switch (value)
+    {
+    case DML_ROUNDING_MODE_HALVES_TO_NEAREST_EVEN: return "DML_ROUNDING_MODE_HALVES_TO_NEAREST_EVEN";
+    case DML_ROUNDING_MODE_TOWARD_ZERO: return "DML_ROUNDING_MODE_TOWARD_ZERO";
+    case DML_ROUNDING_MODE_TOWARD_INFINITY: return "DML_ROUNDING_MODE_TOWARD_INFINITY";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_RANDOM_GENERATOR_TYPE value)
+{
+    switch (value)
+    {
+    case DML_RANDOM_GENERATOR_TYPE_PHILOX_4X32_10: return "DML_RANDOM_GENERATOR_TYPE_PHILOX_4X32_10";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_MULTIHEAD_ATTENTION_MASK_TYPE value)
+{
+    switch (value)
+    {
+    case DML_MULTIHEAD_ATTENTION_MASK_TYPE_NONE: return "DML_MULTIHEAD_ATTENTION_MASK_TYPE_NONE";
+    case DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH: return "DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_LENGTH";
+    case DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_END_START: return "DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_END_START";
+    case DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END: return "DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END";
+    case DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN: return "DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+
+template <typename T>
+T FromString(std::string_view value);
+
 }
 }

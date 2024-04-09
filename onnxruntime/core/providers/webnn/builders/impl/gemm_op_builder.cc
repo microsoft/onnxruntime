@@ -29,7 +29,7 @@ class GemmOpBuilder : public BaseOpBuilder {
 
 // Add operator related.
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                            const logging::Logger& /* logger */) const {
+                                            const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
   const size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
@@ -38,7 +38,58 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   emscripten::val b = model_builder.GetOperand(node.InputDefs()[b_idx]->Name());
   emscripten::val output = emscripten::val::object();
   if (op_type == "MatMul") {
-    output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b);
+    std::vector<int64_t> a_shape;
+    if (!GetShape(*input_defs[a_idx], a_shape, logger)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Can not get shape of A.");
+    }
+    std::vector<int64_t> b_shape;
+    if (!GetShape(*input_defs[b_idx], b_shape, logger)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Can not get shape of B.");
+    }
+    // If the first argument is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions.
+    bool extended_a_shape = false;
+    if (a_shape.size() == 1) {
+      extended_a_shape = true;
+      a_shape.insert(a_shape.begin(), 1);
+      a = model_builder.GetBuilder().call<emscripten::val>("reshape", a,
+                                                           emscripten::val::array(GetVecUint32FromVecInt64(a_shape)));
+    }
+    // If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
+    bool extended_b_shape = false;
+    if (b_shape.size() == 1) {
+      extended_b_shape = true;
+      b_shape.push_back(1);
+      b = model_builder.GetBuilder().call<emscripten::val>("reshape", b,
+                                                           emscripten::val::array(GetVecUint32FromVecInt64(b_shape)));
+    }
+    // The inputs of MatMul must be at least 3D for WebNN CPU backend. Use GEMM for 2D case.
+    // TODO: Remove this workaround when it is fixed in Chromium.
+    if (model_builder.GetWebnnDeviceType() == WebnnDeviceType::CPU && a_shape.size() == 2) {
+      output = model_builder.GetBuilder().call<emscripten::val>("gemm", a, b);
+    } else {
+      output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b);
+    }
+    // If the inputs are both 1D， reduce the output to a scalar.
+    if (extended_a_shape && extended_b_shape) {
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array());
+    }
+    // After matrix multiplication the prepended 1 is removed.
+    else if (extended_a_shape) {
+      std::vector<uint32_t> new_shape;
+      for (size_t i = 0; i < b_shape.size() - 2; i++) {
+        new_shape.push_back(narrow<uint32_t>(b_shape[i]));
+      }
+      new_shape.push_back(narrow<uint32_t>(b_shape.back()));
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array(new_shape));
+    }
+    // After matrix multiplication the appended 1 is removed.
+    else if (extended_b_shape) {
+      std::vector<uint32_t> new_shape;
+      for (size_t i = 0; i < a_shape.size() - 1; i++) {
+        new_shape.push_back(narrow<uint32_t>(a_shape[i]));
+      }
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array(new_shape));
+    }
   } else if (op_type == "MatMulInteger") {
     emscripten::val a_zero_point = emscripten::val::null();
     emscripten::val b_zero_point = emscripten::val::null();
@@ -81,44 +132,33 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                       const Node& node,
-                                      const WebnnDeviceType /* device_type */,
+                                      const WebnnDeviceType device_type,
                                       const logging::Logger& logger) const {
   (void)initializers;
   const auto& op_type = node.OpType();
   const auto& input_defs(node.InputDefs());
   const size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
 
+  std::vector<int64_t> a_shape;
+  if (!GetShape(*input_defs[a_idx], a_shape, logger))
+    return false;
+  if (Product(a_shape) == 0) {
+    LOGS(logger, VERBOSE) << "A must be non-empty";
+    return false;
+  }
+
+  std::vector<int64_t> b_shape;
+  if (!GetShape(*input_defs[b_idx], b_shape, logger))
+    return false;
+  if (Product(b_shape) == 0) {
+    LOGS(logger, VERBOSE) << "B must be non-empty";
+    return false;
+  }
+
   if (op_type == "Gemm") {
-    std::vector<int64_t> a_shape;
-    {
-      if (!GetShape(*input_defs[a_idx], a_shape, logger))
-        return false;
-
-      if (a_shape.size() != 2) {
-        LOGS(logger, VERBOSE) << "A must be 2D";
-        return false;
-      }
-
-      if (Product(a_shape) == 0) {
-        LOGS(logger, VERBOSE) << "A must be non-empty";
-        return false;
-      }
-    }
-
-    std::vector<int64_t> b_shape;
-    {
-      if (!GetShape(*input_defs[b_idx], b_shape, logger))
-        return false;
-
-      if (b_shape.size() != 2) {
-        LOGS(logger, VERBOSE) << "B must be 2D";
-        return false;
-      }
-
-      if (Product(b_shape) == 0) {
-        LOGS(logger, VERBOSE) << "B must be non-empty";
-        return false;
-      }
+    if (a_shape.size() != 2 || b_shape.size() != 2) {
+      LOGS(logger, VERBOSE) << "A and B must be 2D for Gemm";
+      return false;
     }
 
     // C of Gemm.
@@ -146,6 +186,30 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                 << " b_shape: [" << b_shape[0] << ", " << b_shape[1] << "]"
                                 << " c_size: " << c_size;
 
+          return false;
+        }
+      }
+    }
+  }
+
+  if (op_type == "MatMul") {
+    // If the first argument is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions.
+    // If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
+    if (a_shape.size() == 1) a_shape.insert(a_shape.begin(), 1);
+    if (b_shape.size() == 1) b_shape.push_back(1);
+
+    // WebNN CPU backend has two more constraints.
+    // https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/modules/ml/webnn/ml_graph_xnnpack.cc;l=1177
+    // TODO: Remove this workaround when Chromium enables broadcast for MatMul on WebNN CPU backend.
+    if (device_type == WebnnDeviceType::CPU) {
+      if (a_shape.size() != b_shape.size()) {
+        LOGS(logger, VERBOSE) << "The rank of two inputs for WebNN CPU backend MatMul must be the same.";
+        return false;
+      }
+
+      for (size_t i = 0; i < a_shape.size() - 2; i++) {
+        if (a_shape[i] != b_shape[i]) {
+          LOGS(logger, VERBOSE) << "WebNN CPU backend can't support broadcasting for MatMul.";
           return false;
         }
       }

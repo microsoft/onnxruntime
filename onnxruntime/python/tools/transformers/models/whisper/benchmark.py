@@ -145,10 +145,10 @@ def get_model(args: argparse.Namespace):
         start_time = time.time()
         model = ORTModelForSpeechSeq2Seq.from_pretrained(
             args.hf_ort_dir_path,
-            use_io_binding=(args.device != "cpu"),
             provider=provider,
             provider_options=provider_options,
             session_options=sess_options,
+            use_io_binding=True,  # Avoid memory copy overhead
         )
         end_time = time.time()
 
@@ -410,7 +410,8 @@ def run_ort_inference(args, inputs, model):
         actual_output = handle_output(ort_outputs[0][0])
         logger.info(f"Generated token length: {len(actual_output)} tokens")
         transcription = args.processor.batch_decode(ort_outputs[0], skip_special_tokens=True)[0]
-        logger.info(f"Transcription: {transcription}")
+        # print to stdout as the output for comparison
+        print(f"{transcription}")
 
     measure_fn(args, generate_fn, ort_inputs)
 

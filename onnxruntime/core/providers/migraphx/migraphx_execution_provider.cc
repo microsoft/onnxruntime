@@ -1383,11 +1383,11 @@ Status MIGraphXExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunStart() {
+Status MIGraphXExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunEnd(bool) {
+Status MIGraphXExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) {
   auto status = hipStreamQuery(stream_);
 
   if (status != hipSuccess) {

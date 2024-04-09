@@ -75,7 +75,7 @@ class AlgoIterator {
   Status TryAll(const CUDAExecutionProvider* provider, const AllocatorPtr& allocator,
                 std::function<Status(const T_Perf& perf)> f);
 
-  static Status OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_Perf>& perf_results);
+  static Status OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_Perf>& perf_results, bool use_tf32);
 
  private:
   const ConvArgs& args_;

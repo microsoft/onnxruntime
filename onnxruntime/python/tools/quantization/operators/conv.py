@@ -247,9 +247,10 @@ class QDQConv(QDQOperatorBase):
             self.quantizer.quantize_activation_tensor(node.output[0])
 
         if self.quantizer.is_per_channel():
-            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], 0)
+            axis = 0 if node.op_type == "Conv" else 1
+            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], axis)
         else:
             self.quantizer.quantize_weight_tensor(node.input[1])
 
         if len(node.input) == 3:
-            self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1])
+            self.quantizer.quantize_bias_tensor(node.name, node.input[2], node.input[0], node.input[1])
