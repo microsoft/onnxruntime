@@ -6609,9 +6609,13 @@ def test_overridden_softmax_export(softmax_compute_type):
 @pytest.mark.parametrize("fx", ["torch", "deepspeed"])
 def test_auto_enable_layerwise_recompute(memory_optimization_level, allow_gradient_checkpoint_export, fx, caplog):
     if fx == "deepspeed":
-        import deepspeed
+        try:
+            import deepspeed
 
-        checkpoint = deepspeed.checkpointing.checkpoint
+            checkpoint = deepspeed.checkpointing.checkpoint
+        except ImportError:
+            # skip if deepspeed is not installed (in amd CI)
+            pass
     elif fx == "torch":
         from torch.utils.checkpoint import checkpoint
 
