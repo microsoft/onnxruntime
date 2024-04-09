@@ -179,7 +179,6 @@ The output directory of the onnx models by default is set to the current working
 
 	> On the other hand, if the wrapped computation graph is small, it is reasonable to allow it.
 	> Overall users should be aware that ORT performance boost might be trivial when they explicitly allow it.
-	> A side effect enabling this, automatically layerwise recompute will be skipped.
 
 #### ORTMODULE_ENABLE_CUSTOM_AUTOGRAD
 
