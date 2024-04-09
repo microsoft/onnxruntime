@@ -312,6 +312,7 @@ class TestInferenceSession(unittest.TestCase):
             option["trt_engine_cache_path"] = engine_cache_path
             force_sequential_engine_build = "true"
             option["trt_force_sequential_engine_build"] = force_sequential_engine_build
+            option["user_compute_stream"] = "1"
             sess.set_providers(["TensorrtExecutionProvider"], [option])
 
             options = sess.get_provider_options()
@@ -326,6 +327,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_engine_cache_enable"], "1")
             self.assertEqual(option["trt_engine_cache_path"], str(engine_cache_path))
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
+            self.assertEqual(option["user_compute_stream"], "1")
 
             from onnxruntime.capi import _pybind_state as C
 
@@ -353,17 +355,6 @@ class TestInferenceSession(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 sess.set_providers(['TensorrtExecutionProvider'], [option])
             """
-
-            # test for user_compute_stream
-            option = options["TensorrtExecutionProvider"]
-            option["user_compute_stream"] = "1"
-            option["trt_engine_cache_enable"] = "false"
-            sess.set_providers(["TensorrtExecutionProvider"], [option])
-            new_options = sess.get_provider_options()
-            new_option = new_options["TensorrtExecutionProvider"]
-            self.assertEqual(new_option["user_compute_stream"], "1")
-            # set user_compute_stream will set has_user_compute_stream to 1 too
-            self.assertEqual(new_option["has_user_compute_stream"], "1")
 
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             cuda_success = 0
