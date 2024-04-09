@@ -68,7 +68,7 @@ MODEL_TYPES = {
 
 
 def optimize_by_onnxruntime(
-    onnx_model: Union[str, ModelProto],
+    onnx_model: Optional[Union[str, ModelProto]] = None,
     use_gpu: bool = False,
     optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = 99,
@@ -79,6 +79,7 @@ def optimize_by_onnxruntime(
     external_data_file_threshold: int = 1024,
     *,
     provider: Optional[str] = None,
+    **deprecated_kwargs,
 ) -> str:
     """
     Use onnxruntime to optimize model.
@@ -98,6 +99,10 @@ def optimize_by_onnxruntime(
     """
     assert opt_level in [1, 2, 99]
     from torch import version as torch_version
+
+    if onnx_model is None:
+        onnx_model = deprecated_kwargs.pop("onnx_model_path", None)
+    assert onnx_model is not None
 
     if (
         use_gpu
