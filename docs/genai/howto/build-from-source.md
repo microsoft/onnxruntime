@@ -90,6 +90,7 @@ On Windows
 build.bat --build_shared_lib --skip_tests --parallel [--use_cuda]
 copy include\onnxruntime\core\session\onnxruntime_c_api.h <ORT_HOME>\include
 copy build\Windows\Debug\Debug\*.dll <ORT_HOME>\lib
+copy build\Windows\Debug\Debug\onnxruntime.lib <ORTHOME>\lib
 ```
 
 On Linux
