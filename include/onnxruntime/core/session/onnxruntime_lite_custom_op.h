@@ -862,6 +862,11 @@ struct OrtLiteCustomOp : public OrtCustomOp {
       auto self = reinterpret_cast<const OrtLiteCustomOp*>(op);
       return self->end_ver_;
     };
+
+    OrtCustomOp::GetMayInplace = {};
+    OrtCustomOp::ReleaseMayInplace = {};
+    OrtCustomOp::GetAliasMap = {};
+    OrtCustomOp::ReleaseAliasMap = {};
   }
 
   const std::string op_name_;

@@ -322,6 +322,15 @@ class HQQWeightOnlyQuantizer:
         self.pack_on_row_fast_248bit(packed_torch, quant_weight_torch, self.config.bits)
         scales = scales_torch.cpu().numpy()
         zero_points = zero_points_torch.cpu().numpy()
+        # reshape to the predefined shape in MatmulNbits
+        scales = scales.reshape(-1)
+        zero_points = zero_points.reshape(-1)
+        rows, cols = b_array_torch.shape
+        block_size = self.config.block_size
+        blob_size = block_size // 2
+        k_blocks = (rows + block_size - 1) // block_size
+        packed_torch = packed_torch.reshape(cols, k_blocks, blob_size)
+
         b_quant = onnx.numpy_helper.from_array(packed_torch.cpu().numpy())
         b_quant.name = b_pb.name + "_Q4"
         for input in bs_graph.input:
@@ -440,7 +449,7 @@ class DefaultWeightOnlyQuantizer:
         kwargs["bits"] = 4
         kwargs["block_size"] = self.config.block_size
         if self.config.accuracy_level is not None:
-            kwargs["accuracy_level"] = self.accuracy_level
+            kwargs["accuracy_level"] = self.config.accuracy_level
 
         matmul_q4_node = onnx.helper.make_node(
             "MatMulNBits",
@@ -647,8 +656,8 @@ set of 4b integers with a scaling factor and an optional offset.
         "--quant_method",
         default="default",
         type=str,
-        choices=["default", "hqq"],
-        help="the algorithm used to quantize weight",
+        choices=["default", "hqq", "rtn", "gptq"],
+        help="the algorithm used to quantize weight, \nrtn and gptq leverage Intel® Neural Compressor",
     )
     parser.add_argument("--bits", default=4, type=int, help="the target bits to represent weight")
     parser.add_argument(
@@ -659,7 +668,7 @@ set of 4b integers with a scaling factor and an optional offset.
         nargs="?",
         type=ort_convert_str_to_bool,
         choices=[True, False],
-        help="Indicate whether to quantize the model symmetrically",
+        help="Indicate whether to quantize the model symmetrically, symmetric is not supported by hqq",
     )
     parser.add_argument(
         "--accuracy_level",
@@ -694,6 +703,10 @@ if __name__ == "__main__":
     if os.path.exists(output_model_path):
         logger.error(f"file {output_model_path} already exists")
         raise Exception(f"file {output_model_path} already exists")
+
+    if args.symmetric and args.quant_method == "hqq":
+        logger.warning("symmetric is not supportted by hqq, will force to symmetric=False")
+        args.symmetric = False
 
     model = onnx.load(input_model_path)
     if args.quant_method == "hqq":
