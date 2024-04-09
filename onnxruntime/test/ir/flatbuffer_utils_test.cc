@@ -186,6 +186,36 @@ std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializers() {
   return initializers;
 }
 
+std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializersNoString() {
+  std::vector<ONNX_NAMESPACE::TensorProto> initializers;
+  // create data of various sizes. order is chosen to require padding between most but not all
+  // assuming our writer aligns to 4 bytes unless it's 64-bit data (which is aligned to 8 bytes)
+  // buffer: <16-bit><pad 2><32-bit><8-bit><pad 7><64-bit>
+  // need 128 bytes to write to external data
+
+  // 16-bit. 81 elements so we're 2 bytes past 4 byte alignment
+  initializers.emplace_back(
+      CreateInitializer<int16_t>("tensor_16", ONNX_NAMESPACE::TensorProto_DataType_INT16, {9, 9}));
+
+  // 32-bit, 64 elements
+  initializers.emplace_back(
+      CreateInitializer<float>("tensor_f32", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {8, 8}));
+
+  // 8-bit. 129 elements so we're 1 byte past 4 or 8 byte alignment
+  initializers.emplace_back(
+      CreateInitializer<uint8_t>("tensor_8", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {3, 43}));
+
+  // 64-bit, 36 elements
+  initializers.emplace_back(
+      CreateInitializer<int64_t>("tensor_64", ONNX_NAMESPACE::TensorProto_DataType_INT64, {6, 6}));
+
+  // small (should not use external)
+  initializers.emplace_back(
+      CreateInitializer<int32_t>("tensor_32_small", ONNX_NAMESPACE::TensorProto_DataType_INT32, {2, 2}));
+
+  return initializers;
+}
+
 template <typename T>
 std::vector<T> ConvertRawDataToTypedVector(ONNX_NAMESPACE::TensorProto initializer) {
   std::vector<T> data;
@@ -294,7 +324,7 @@ TEST(GraphUtilsTest, ExternalWriteReadWithLoadInitializers) {
 // tests method that loads to OrtTensor (used when loading a checkpoint into a checkpoint state)
 TEST(GraphUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
   // create data
-  auto initializers = CreateInitializers();
+  auto initializers = CreateInitializersNoString();
 
   flatbuffers::FlatBufferBuilder builder(1024);
 

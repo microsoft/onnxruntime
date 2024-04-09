@@ -422,14 +422,25 @@ struct UnpackTensorWithType {
       raw_data_len = fbs::utils::GetSizeInBytesFromFbsTensor(fbs_tensor);
 
       // pre-allocate so we can write directly to the string buffer
-      std::vector<uint8_t> raw_buf(raw_data_len);
+      std::unique_ptr<uint8_t[]> raw_buf = std::make_unique<uint8_t[]>(raw_data_len);
+      gsl::span<uint8_t> raw_buf_span(raw_buf.get(), raw_data_len);
 
-      ORT_RETURN_IF_ERROR(external_reader(fbs_tensor_external_data_offset, raw_buf));
-      raw_data = raw_buf.data();
+      ORT_RETURN_IF_ERROR(external_reader(fbs_tensor_external_data_offset, raw_buf_span));
+      raw_data = raw_buf.get();
+      return onnxruntime::utils::UnpackTensor(
+        tensor_proto, raw_data,
+        raw_data_len,
+        ort_tensor.MutableData<T>(),
+        static_cast<size_t>(ort_tensor.Shape().Size()));
     }
     else if (fbs_tensor_raw_data) {
       raw_data = fbs_tensor.raw_data()->Data();
       raw_data_len = fbs_tensor.raw_data()->size();
+      return onnxruntime::utils::UnpackTensor(
+        tensor_proto, raw_data,
+        raw_data_len,
+        ort_tensor.MutableData<T>(),
+        static_cast<size_t>(ort_tensor.Shape().Size()));
     }
     else if (fbs_tensor_string_data) {
       ORT_RETURN_IF_NOT(false, "Invalid tensor. Expected: raw data or external data offset. Instead, this tensor has string data", tensor_name);
@@ -437,11 +448,6 @@ struct UnpackTensorWithType {
     else {
       ORT_RETURN_IF_NOT(false, "Invalid tensor. Expected: raw data or external data offset. Actual: nullptr", tensor_name);
     }
-    return onnxruntime::utils::UnpackTensor(
-        tensor_proto, raw_data,
-        raw_data_len,
-        ort_tensor.MutableData<T>(),
-        static_cast<size_t>(ort_tensor.Shape().Size()));
   }
 };
 
