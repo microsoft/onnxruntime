@@ -35,7 +35,7 @@ stages:
 
     jobs:
     - job: Build
-      pool: onnxruntime-Ubuntu2204-AMD-CPU
+      pool: onnxruntime-Ubuntu2204-AMD-CPU-48
       timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
