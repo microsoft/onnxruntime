@@ -2066,7 +2066,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   // if provider options already have the EP context configs provided, the configs in session options will be ignored
   // since provider options has higher priority than session options.
   if (!ep_context_cache_enabled_from_provider_options && ep_context_cache_enabled_from_sess_options) {
-
     // This function might need to update the "const" OrtTensorRTProviderOptionsV2 object which can't be modified.
     // Therefore, we need to create a new OrtTensorRTProviderOptionsV2 object and copy from tensorrt_options and use this new object to create the factory instead.
     // Note: No need to worry about new_tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
