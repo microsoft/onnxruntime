@@ -147,7 +147,7 @@ ORTMODULE_ONNX_EXPORT_CONTEXT = [False]
 
 
 @contextlib.contextmanager
-def export_context(self):
+def export_context():
     """Context manager for model export."""
     try:
         ORTMODULE_ONNX_EXPORT_CONTEXT[0] = True
