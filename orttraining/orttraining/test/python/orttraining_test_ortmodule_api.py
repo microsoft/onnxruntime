@@ -6607,7 +6607,15 @@ def test_overridden_softmax_export(softmax_compute_type):
 @pytest.mark.parametrize("memory_optimization_level", [None, 0, 1, 2])
 @pytest.mark.parametrize("allow_gradient_checkpoint_export", [None, 0, 1])
 @pytest.mark.parametrize("fx", ["torch", "deepspeed"])
-def test_auto_enable_layerwise_recompute(memory_optimization_level, allow_gradient_checkpoint_export, fx, caplog):
+def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_checkpoint_export, fx, caplog):
+    """Expected behaviors:
+    memory_optimization_level=0|None, allow_gradient_checkpoint_export=0|None => layerwise recompute is disabled
+    memory_optimization_level=1, allow_gradient_checkpoint_export=0|None => layerwise recompute is enabled
+    memory_optimization_level=2, allow_gradient_checkpoint_export=0|None => layerwise recompute is disabled
+    memory_optimization_level=0|None, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    memory_optimization_level=1, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    memory_optimization_level=2, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    """
     if fx == "deepspeed":
         try:
             import deepspeed
@@ -6618,6 +6626,8 @@ def test_auto_enable_layerwise_recompute(memory_optimization_level, allow_gradie
             pass
     elif fx == "torch":
         from torch.utils.checkpoint import checkpoint
+    else:
+        raise ValueError(f"unsupported fx value: {fx}. only torch and deepspeed are supported.")
 
     original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
     original_val_allow_gradient_checkpoint_export = os.environ.get("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", None)
