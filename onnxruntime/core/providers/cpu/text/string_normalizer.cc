@@ -4,6 +4,8 @@
 #include "string_normalizer.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+// Used below HAS_DEPRECATED_DECLARATIONS
+#include "onnxruntime_config.h"
 
 #ifdef _MSC_VER
 #include <locale.h>
