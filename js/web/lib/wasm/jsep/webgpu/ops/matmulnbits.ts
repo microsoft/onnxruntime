@@ -321,4 +321,4 @@ export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>):
   const blobSize = blockSize / 8 * bits;
   const nBlocksPerCol = Math.floor((k + blockSize - 1) / blockSize);
   return createAttributeWithCacheKey({k, n, accuracyLevel, bits, blockSize, blobSize, nBlocksPerCol});
-}
+};
