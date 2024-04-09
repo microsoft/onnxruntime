@@ -17,9 +17,12 @@
 #endif
 
 #include <type_traits>
+#include <vector>
 
 namespace onnxruntime {
 namespace contrib {
+
+using MonotonicBufferResource = std::pmr::monotonic_buffer_resource;
 
 class Tokenizer final : public OpKernel {
  public:
@@ -255,7 +258,7 @@ inline void* AlignedAllocate(size_t num, std::unique_ptr<uint8_t[]>& buf, size_t
 /// If the allocated buffer is not enough, additional allocations are done using
 /// new/delete.
 /// </summary>
-class MonotonicAllocatorWithDefault : public std::pmr::monotonic_buffer_resource {
+class MonotonicAllocatorWithDefault : public MonotonicBufferResource {
  public:
   MonotonicAllocatorWithDefault(void* ptr, size_t size_in_bytes)
       : monotonic_buffer_resource(ptr, size_in_bytes, std::pmr::get_default_resource()) {}
