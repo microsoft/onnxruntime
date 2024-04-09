@@ -354,21 +354,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
     ORT_RETURN_IF_ERROR(status);
 
-#ifdef DEBUG_GENERATION
-    for (int i = 0; i <= decoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
-      dumper->Print("decoder_fetches", i, true);
-      dumper->Print("", decoder_fetches[i]);
-    }
-#endif
-
-    const OrtValue& logits = decoder_fetches[0];
-    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
-                                                beam_next_tokens,
-                                                beam_indices,
-                                                beam_state,
-                                                cpu_state,
-                                                iteration_counter));
-
     if (decoder_subgraph_.output_cross_qk_) {
       int decoder_output_first_cross_qk = decoder_subgraph_.GetFirstPresentOutputIndex() + (2 * decoder_subgraph_.num_layers);
       ORT_RETURN_IF_ERROR(this->update_decoder_cross_qk_func_(
@@ -386,6 +371,21 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         cross_qk_buffer_value,
         parameters->num_beams));
     }
+
+#ifdef DEBUG_GENERATION
+    for (int i = 0; i <= decoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
+      dumper->Print("decoder_fetches", i, true);
+      dumper->Print("", decoder_fetches[i]);
+    }
+#endif
+
+    const OrtValue& logits = decoder_fetches[0];
+    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
+                                                beam_next_tokens,
+                                                beam_indices,
+                                                beam_state,
+                                                cpu_state,
+                                                iteration_counter));
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (this->beam_scorer_->IsDone()) {

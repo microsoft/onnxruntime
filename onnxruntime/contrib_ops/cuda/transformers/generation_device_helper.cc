@@ -1526,7 +1526,6 @@ Status UpdateDecoderCrossQK(
 
   
   // Shuffle according to new beam_indices
-  cudaStreamSynchronize(cuda_stream);
 
   const TensorShape& cross_qk_shape = cross_qk_buffer_value.Get<Tensor>().Shape(); // shape [batchxbeam, layer_head_pair_count, max_length, frame]
                                                                                    
