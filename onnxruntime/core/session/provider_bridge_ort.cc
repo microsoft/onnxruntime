@@ -2073,7 +2073,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
     // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
     OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
 
-    // Update provider options from session options.
+    // Update provider options from session options. Curretnly only EPContext related session options are supported.
     // Note: The string-based local variables will be kept accessible during the lifetime of this function,
     // therefore the "const char*" provider options can still be accessible when calling CreateExecutionProviderFactory() in TRT EP.
     bool context_cache_enabled = false;
