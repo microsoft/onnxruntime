@@ -34,7 +34,7 @@ These instructions are for the Linux GPU build of ONNX Runtime. Replace `linux-g
 
 ```bash
 cd <ORT_HOME>
-curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-x64-gpu-1.17.1.tgz
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-linux-x64-gpu-1.17.1.tgz
 tar xvzf onnxruntime-linux-x64-gpu-1.17.1.tgz 
 mv onnxruntime-linux-x64-gpu-1.17.1/include .
 mv onnxruntime-linux-x64-gpu-1.17.1/lib .
@@ -87,17 +87,18 @@ Build from source and copy the include and libraries into `ORT_HOME`
 On Windows
 
 ```cmd
-build.bat --build_shared_lib --skip_tests --parallel [--use_cuda]
+build.bat --build_shared_lib --skip_tests --parallel [--use_cuda] --config Release
 copy include\onnxruntime\core\session\onnxruntime_c_api.h <ORT_HOME>\include
-copy build\Windows\Debug\Debug\*.dll <ORT_HOME>\lib
+copy build\Windows\Release\Release\*.dll <ORT_HOME>\lib
+copy build\Windows\Release\Release\onnxruntime.lib <ORTHOME>\lib
 ```
 
 On Linux
 
 ```cmd
-./build.sh --build_shared_lib --skip_tests --parallel [--use_cuda]
+./build.sh --build_shared_lib --skip_tests --parallel [--use_cuda] --config Release
 cp include/onnxruntime/core/session/onnxruntime_c_api.h <ORT_HOME>/include
-cp build/Linux/RelWithDebInfo/libonnxruntime*.so* <ORT_HOME>/lib
+cp build/Linux/Release/libonnxruntime*.so* <ORT_HOME>/lib
 ```
 
 ## Build onnxruntime-genai
