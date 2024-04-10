@@ -93,6 +93,15 @@ static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimizatio
 static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimization.enable_memory_probe_recompute_config";
 #endif
 
+// This setting if set should contain a comma separated list of optimizers names that should be disabled.
+// Optimizers may take time to execute and affect model loading time. If you feel that a specific optimizer
+// does not provider runtime benefits, but affects your model loading time you may disable it using this config
+// entry. This option is not enabled in ORT_MINIMAL_BUILD build.
+// A list of optimizes is available in onnxruntime/core/optimizer/graph_transformer_utils.cc
+//
+// Default is an empty string which means no optimizers are disabled.
+static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
+
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
