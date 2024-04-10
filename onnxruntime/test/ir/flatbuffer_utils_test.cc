@@ -117,9 +117,7 @@ ONNX_NAMESPACE::TensorProto CreateInitializer(const std::string& name,
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-        for (auto val : data) {
-          tp.add_int32_data(val);
-        }
+        tp.set_raw_data(data.data(), data.size() * sizeof(T));
         break;
       }
       default:
