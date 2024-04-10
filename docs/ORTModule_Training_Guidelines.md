@@ -221,6 +221,17 @@ If you're not using optimum but want to implement a similar wrapper in your code
 	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=0 # Disable
 	```
 
+#### ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the embedding input
+data sparsity based performance optimizations.
+
+	```bash
+	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
+	```
+
 #### ORTMODULE_PRINT_INPUT_DENSITY
 
 - **Feature Area**: *ORTMODULE/RuntimeInspector*
@@ -241,17 +252,6 @@ to standard outputs.
 	```bash
 	export ORTMODULE_PRINT_MEMORY_STATS=1 # Enable
 	export ORTMODULE_PRINT_MEMORY_STATS=0 # Disable
-	```
-
-#### ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER
-
-- **Feature Area**: *ORTMODULE/Optimizations*
-- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the embedding input
-data sparsity based performance optimizations.
-
-	```bash
-	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=1 # Enable
-	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
 	```
 
 #### ORTMODULE_CACHE_DIR
@@ -299,7 +299,7 @@ A classical usage of disabling the deep copy: when the deep copy before module e
 #### ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT
 
 - **Feature Area**: *ORTMODULE/Optimizations*
-- **Description**: By default, the memory-efficient gradient management is turned off. The gradient after it is computed in ONNX Runtime, will trigger the corresponding parameter's backward function through `PythonOpGrad` operator. This would help release the gradient buffer managed in ONNX Runtime, which originally is released once all backward computation finishes.
+- **Description**: By default, the memory-efficient gradient management is turned ON. The gradient after it is computed in ONNX Runtime, will trigger the corresponding parameter's backward function through `PythonOpGrad` operator. This would help release the gradient buffer managed in ONNX Runtime, which originally is released once all backward computation finishes.
 
 	```bash
 	export ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=1 # Enable

@@ -10,6 +10,7 @@ from logging import Logger
 from packaging import version
 
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi._pybind_state import is_torch_interop_default_on
 from onnxruntime.training import ortmodule
 
 from ._fallback import _FallbackPolicy
@@ -314,8 +315,8 @@ class _RuntimeOptions:
         # Experimental features.
         self.enable_zero_stage3_support = False  # Once enabled, cannot be disabled.
 
-        # We disable memory efficient grad management by default, will enable once it's fully validated.
-        self.enable_mem_efficient_grad_management = False
+        # Enabled when PythonOp backend is enabled.
+        self.enable_mem_efficient_grad_management = is_torch_interop_default_on()
 
         self.deepcopy_before_model_export = True
 
@@ -413,11 +414,11 @@ class _RuntimeOptions:
 
         if "ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT" in os.environ:
             enable_grad_mgmt = int(os.getenv("ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT"))
-            self.enable_mem_efficient_grad_management = enable_grad_mgmt == 1 and self.enable_custom_autograd_function
-            if not self.enable_custom_autograd_function and enable_grad_mgmt == 1:
+            self.enable_mem_efficient_grad_management = enable_grad_mgmt == 1 and is_torch_interop_default_on()
+            if not is_torch_interop_default_on() and enable_grad_mgmt == 1:
                 self._logger.warning(
                     "ORTModule optimization for memory efficient gradient management cannot be enabled "
-                    "because PyTorch custom autograd function support is disabled."
+                    "because PythonOp backend support is disabled."
                 )
 
         if "ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT" in os.environ:
