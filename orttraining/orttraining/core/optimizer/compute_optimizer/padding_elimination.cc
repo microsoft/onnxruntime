@@ -18,7 +18,7 @@ namespace {
 
 // TODO(pengwa): remove this once customized PythonOp shape inference is supported.
 constexpr const char* kInspectActivationFuncName =
-    "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+    "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation";
 constexpr const char* kIncrementStepFuncName =
     "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
 constexpr const char* kFlagPaddingEliminationFuncName =
