@@ -475,7 +475,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
       // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
       // and TRT EP instance, so it won't be released.)
-      std::string stream, calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path;
+      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -488,8 +488,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             }
           } else if (option.first == "user_compute_stream") {
             if (!option.second.empty()) {
-              stream = option.second;
-              params.user_compute_stream = stream.c_str();
+              auto stream = std::stoull(option.second, nullptr, 0);
+              params.user_compute_stream = reinterpret_cast<void*>(stream);
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'user_compute_stream' should be a string to define the compute stream for the inference to run on.\n");
             }
