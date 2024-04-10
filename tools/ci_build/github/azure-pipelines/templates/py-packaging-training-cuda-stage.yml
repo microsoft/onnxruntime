@@ -57,6 +57,11 @@ parameters:
   type: string
   default: '0'
 
+- name: build_pool_name
+  displayName: >
+    build_pool_name.
+  type: string
+
 - name: PythonVersionList
   displayName: Python Version List
   type: object
@@ -86,3 +91,4 @@ stages:
       python_version: ${{ python_version.version }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
+      build_pool_name: ${{ parameters.build_pool_name }}
