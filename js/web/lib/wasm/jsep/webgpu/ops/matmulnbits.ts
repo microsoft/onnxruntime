@@ -269,7 +269,7 @@ export const createMatMulNBitsProgramInfo =
                                                           ''}
             }
             for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
-              ${output.indicesSet('output_indices', outputRank - 2, `${outputNumber + ' * row + k'}`)};
+              ${output.indicesSet('output_indices', outputRank - 2, `${outputNumber} * row + k`)};
               ${output.setByIndices('output_indices', 'output_values[k]')}
             }
         }`;
