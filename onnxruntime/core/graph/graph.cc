@@ -1971,7 +1971,7 @@ void PrepareToFindBranchGraph(const Graph* graph,
                               const InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
                               InlinedVector<const Node*>& branch_graph_input_nodes,
                               InlinedVector<size_t>& backward_node_in_degree,
-                              VisitorPriorityQueue<const Node*>& to_visit) {
+                              std::queue<const Node*>& to_visit) {
   for (auto& node : graph->Nodes()) {
     // Ignore forward.
     if (nodes_to_execute_before_yieldop.find(&node) != nodes_to_execute_before_yieldop.end()) {
@@ -2155,7 +2155,6 @@ void OutputGroupedNodes(const Graph* graph,
 
 void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
                                            const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
-                                           const std::function<bool(const Node*, const Node*)>& comp,
                                            std::vector<NodeIndex>& node_orders) const {
   /// Firstly, sort the forward nodes with customized ReverseDFS.
 
@@ -2181,7 +2180,7 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
   InlinedVector<size_t> backward_node_in_degree(MaxNodeIndex(), 0);
   InlinedVector<NodeIndex> topo_order;
   topo_order.reserve(num_of_backward_nodes);
-  VisitorPriorityQueue<const Node*> to_visit(comp);
+  std::queue<const Node*> to_visit;
 
   InlinedVector<const Node*> branch_graph_input_nodes;
   branch_graph_input_nodes.reserve(num_of_backward_nodes);
@@ -2212,7 +2211,7 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
   UpdateBackwardInDegree(backward_node_in_degree, branch_subgraph_consumers);
 
   while (!to_visit.empty()) {
-    const Node* current = to_visit.top();
+    const Node* current = to_visit.front();
     to_visit.pop();
 
     if (!current) continue;

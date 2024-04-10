@@ -107,7 +107,6 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     graph.MemoryEfficientTopologicalSort(
         yield_node,
         shape_size_parents,
-        NodeCompare(),
         node_orders);
     nodes_in_topological_order_ = std::move(node_orders);
     ORT_ENFORCE(nodes_in_topological_order_.size() == num_of_nodes,
