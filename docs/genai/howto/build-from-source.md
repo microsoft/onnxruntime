@@ -96,9 +96,9 @@ copy build\Windows\Release\Release\onnxruntime.lib <ORTHOME>\lib
 On Linux
 
 ```cmd
-./build.sh --build_shared_lib --skip_tests --parallel [--use_cuda] --config RelWithDebInfo
+./build.sh --build_shared_lib --skip_tests --parallel [--use_cuda] --config Release
 cp include/onnxruntime/core/session/onnxruntime_c_api.h <ORT_HOME>/include
-cp build/Linux/RelWithDebInfo/libonnxruntime*.so* <ORT_HOME>/lib
+cp build/Linux/Release/libonnxruntime*.so* <ORT_HOME>/lib
 ```
 
 ## Build onnxruntime-genai
