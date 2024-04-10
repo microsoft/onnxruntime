@@ -6623,7 +6623,8 @@ def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_ch
             checkpoint = deepspeed.checkpointing.checkpoint
         except ImportError:
             # skip if deepspeed is not installed (in amd CI)
-            pass
+            return
+
     elif fx == "torch":
         from torch.utils.checkpoint import checkpoint
     else:
