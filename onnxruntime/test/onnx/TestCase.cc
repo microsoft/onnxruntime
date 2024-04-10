@@ -1220,9 +1220,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"resnet50",
                           "TensorRT EP output tensor data type: 0 not supported)"});
 
-    broken_tests->insert({"resnet",
-                          "TensorRT EP output tensor data type: 0 not supported)"});
-
     // unsupported tests since opset16
     broken_tests->insert({"sequence_map_add_2_sequences", "not supported by TensorRT EP"});
     broken_tests->insert({"sequence_map_extract_shapes", "not supported by TensorRT EP."});
