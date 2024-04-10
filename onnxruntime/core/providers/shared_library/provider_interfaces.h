@@ -763,6 +763,9 @@ struct ProviderHost {
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                                   const logging::Logger& logger) = 0;
+  virtual std::unique_ptr<Model> Model__construct(const std::string& graph_name,
+                                                  bool is_onnx_domain_only,
+                                                  const logging::Logger& logger) = 0;
   virtual void Model__operator_delete(Model* p) = 0;
   virtual Graph& Model__MainGraph(Model* p) = 0;
   virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) = 0;

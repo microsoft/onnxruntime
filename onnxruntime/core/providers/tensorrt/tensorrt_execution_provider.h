@@ -245,6 +245,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override;
 
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
+
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
@@ -298,14 +300,17 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   // and should be kept for the lifetime of TRT EP object.
   OrtAllocator* alloc_ = nullptr;
 
-  // For create/dump EP context node model
+  // For create/dump EP context model
+  mutable bool is_whole_model_trt_eligible_ = false;
+  bool ep_context_model_enable_ = false;
   bool dump_ep_context_model_ = false;
   std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
   std::string ctx_model_path_;
   std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
+  std::unique_ptr<onnxruntime::Model> ep_context_model_;
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;

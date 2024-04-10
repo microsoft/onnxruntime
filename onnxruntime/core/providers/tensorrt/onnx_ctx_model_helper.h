@@ -17,9 +17,7 @@ static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
 static const std::string COMPUTE_CAPABILITY = "hardware_architecture";
 static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
 static const std::string EPCONTEXT_WARNING =
-    "It's suggested to set the ORT graph optimization level to 0 and  \
-                                              make \"embed_mode\" to 0 (\"ep_cache_context\" is the cache path)\
-                                              for the best model loading time";
+    "It's suggested to set the ORT graph optimization level to 0 and make \"embed_mode\" to 0 (\"ep_cache_context\" is the cache path) for the best model loading time";
 
 bool GraphHasCtxNode(const GraphViewer& graph_viewer);
 const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer);
@@ -31,6 +29,14 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            const int64_t embed_mode,
                                            std::string compute_capability,
                                            const logging::Logger* logger);
+Status UpdateCtxModel(onnxruntime::Model* model,
+                      const GraphViewer& graph_viewer,
+                      const std::string fused_node_name,
+                      const std::string engine_cache_path,
+                      char* engine_data,
+                      size_t size,
+                      const int64_t embed_mode,
+                      std::string compute_capability);
 std::string GetCtxModelPath(const std::string& ep_context_file_path,
                             const std::string& original_model_path);
 bool IsAbsolutePath(std::string& path_string);

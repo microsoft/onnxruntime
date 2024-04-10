@@ -129,6 +129,70 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
 }
 
 /*
+ * Update "EP context" model. TRT subgraph will be represented by a EPContext node and added into the model.
+ * 
+ * Note: TRT EP maintains this model and returns it when GetEpContextNodes() is being called by ORT graph partitioner.
+ */
+Status UpdateCtxModel(onnxruntime::Model* model,
+                      const GraphViewer& graph_viewer, // TRT subgraph
+                      const std::string fused_node_name,
+                      const std::string engine_cache_path,
+                      char* engine_data,
+                      size_t size,
+                      const int64_t embed_mode,
+                      std::string compute_capability) {
+  auto& graph_build = model->MainGraph();
+
+  // Get graph inputs and outputs
+  std::vector<onnxruntime::NodeArg*> inputs, outputs;
+  for (auto input : graph_viewer.GetInputs()) {
+    auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+    inputs.push_back(&n_input);
+  }
+
+  for (auto output : graph_viewer.GetOutputs()) {
+    auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+    outputs.push_back(&n_output);
+  }
+
+  // Create EP context node attributes
+  auto attr_0 = ONNX_NAMESPACE::AttributeProto::Create();  // embed_mode
+  auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();  // ep_cache_context
+  auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();  // hardware_architecture
+  std::string engine_data_str = "";
+  attr_0->set_name(EMBED_MODE);
+  attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
+  attr_0->set_i(embed_mode);
+  attr_1->set_name(EP_CACHE_CONTEXT);
+  attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
+  if (embed_mode) {
+    if (size > 0) {
+      engine_data_str.assign(engine_data, size);
+    }
+    attr_1->set_s(engine_data_str);
+    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
+  } else {
+    attr_1->set_s(engine_cache_path);
+  }
+  attr_2->set_name(COMPUTE_CAPABILITY);
+  attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_2->set_s(compute_capability);
+
+  auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
+  int num_attributes = 3;
+  node_attributes->reserve(num_attributes);
+  node_attributes->emplace(EMBED_MODE, *attr_0);
+  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
+  node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
+
+  // Create EP context node
+  graph_build.AddNode(fused_node_name, EPCONTEXT_OP, "TRT cache for graph partition: " + fused_node_name, inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
+  ORT_ENFORCE(graph_build.Resolve().IsOK());
+
+  return Status::OK();
+}
+
+/*
  * Return the directory where the ep context model locates
  */
 std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path) {

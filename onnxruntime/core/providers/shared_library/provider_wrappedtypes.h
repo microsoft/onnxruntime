@@ -774,6 +774,9 @@ struct Model final {
                                        const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
     return g_host->Model__construct(std::move(model_proto), model_path, local_registries, logger);
   }
+  static std::unique_ptr<Model> Create(const std::string& graph_name, bool is_onnx_domain_only, const logging::Logger& logger) {
+    return g_host->Model__construct(graph_name, is_onnx_domain_only, logger);
+  }
   static void operator delete(void* p) { g_host->Model__operator_delete(reinterpret_cast<Model*>(p)); }
   static Status Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) { return g_host->Model__Load(file_path, model_proto); }
 
