@@ -13,8 +13,7 @@ float* alloc_aligned_buffer(int D, int byte_aligned, void*& buffer) {
   buffer = malloc(D * sizeof(float) + max_byte_aligned * 2);
 
   float* ptr = reinterpret_cast<float*>(
-    ((reinterpret_cast<uintptr_t>(buffer) + (max_byte_aligned - 1)) & ~(max_byte_aligned - 1)) + byte_aligned
-  );
+    ((reinterpret_cast<uintptr_t>(buffer) + (max_byte_aligned - 1)) & ~(max_byte_aligned - 1)) + byte_aligned);
 
   switch (byte_aligned) {
     case 4:
@@ -50,9 +49,7 @@ void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
 
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
     onnxruntime::concurrency::CreateThreadPool(
-      &onnxruntime::Env::Default(), tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP
-    )
-  );
+      &onnxruntime::Env::Default(), tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   auto data = RandomVectorUniform<float>(static_cast<size_t>(N * D), -1.0f, 1.0f);
   void* buffer = nullptr;
@@ -166,7 +163,7 @@ void COMPUTESOFTMAXOUTPUTF32KERNELAVX(benchmark::State& state) {
 
   float Accumulation = MlasComputeSumExpF32KernelAvx512F(input, output, D, &NegativeMaximum);
 
-  float Parameters[] = { 1.0f / Accumulation };
+  float Parameters[] = {1.0f / Accumulation};
 
   // warming up run
   MlasComputeSoftmaxOutputF32KernelAvx(output, D, Parameters);
@@ -204,30 +201,26 @@ static void ComputeSoftmaxInplaceArgs(benchmark::internal::Benchmark* b) {
 
 BENCHMARK(COMPUTESOFTMAXINPLACE)->Apply(ComputeSoftmaxInplaceArgs)->UseRealTime();
 
-BENCHMARK(REDUCEMAXIMUMF32KERNELAVX)->ArgNames({"ByteAligned", "D"})
-  ->ArgsProduct({
-    {4, 8, 16, 32, 64, 128},                    // ByteAligned
-    {3, 4, 5, 7, 9, 11, 13, 15, 16, 500, 2000}, // D
-    })
+BENCHMARK(REDUCEMAXIMUMF32KERNELAVX)->ArgNames({"ByteAligned", "D"})->ArgsProduct({
+  {4, 8, 16, 32, 64, 128},                    // ByteAligned
+  {3, 4, 5, 7, 9, 11, 13, 15, 16, 500, 2000}, // D
+  })
   ->UseRealTime();
 
-BENCHMARK(REDUCEMAXIMUMF32KERNELAVX512F)->ArgNames({"ByteAligned", "D"})
-  ->ArgsProduct({
-    {4, 8, 16, 32, 64, 128},                    // ByteAligned
-    {3, 4, 5, 7, 9, 11, 13, 15, 16, 500, 2000}, // D
-    })
+BENCHMARK(REDUCEMAXIMUMF32KERNELAVX512F)->ArgNames({"ByteAligned", "D"})->ArgsProduct({
+  {4, 8, 16, 32, 64, 128},                    // ByteAligned
+  {3, 4, 5, 7, 9, 11, 13, 15, 16, 500, 2000}, // D
+  })
   ->UseRealTime();
 
-BENCHMARK(COMPUTESUMEXPF32KERNELAVX512F)->ArgNames({"ByteAligned", "D"})
-  ->ArgsProduct({
-    {4, 8, 16, 32, 64, 128},   // ByteAligned
-    {3, 4, 5, 7, 9, 11, 13, 15, 500, 2000}, // D
-    })
+BENCHMARK(COMPUTESUMEXPF32KERNELAVX512F)->ArgNames({"ByteAligned", "D"})->ArgsProduct({
+  {4, 8, 16, 32, 64, 128},   // ByteAligned
+  {3, 4, 5, 7, 9, 11, 13, 15, 500, 2000}, // D
+  })
   ->UseRealTime();
 
-BENCHMARK(COMPUTESOFTMAXOUTPUTF32KERNELAVX)->ArgNames({"ByteAligned", "D"})
-  ->ArgsProduct({
-    {4, 8, 16, 32, 64, 128},   // ByteAligned
-    {3, 4, 5, 7, 9, 11, 13, 15, 16, 500, 2000}, // D
-    })
+BENCHMARK(COMPUTESOFTMAXOUTPUTF32KERNELAVX)->ArgNames({"ByteAligned", "D"})->ArgsProduct({
+  {4, 8, 16, 32, 64, 128},   // ByteAligned
+  {3, 4, 5, 7, 9, 11, 13, 15, 16, 500, 2000}, // D
+  })
   ->UseRealTime();
