@@ -294,7 +294,7 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
 
   std::vector<size_t> nodes_in_topological_order;
   nodes_in_topological_order.reserve(bw_nodes_in_expected_order.size());
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();  // ExecutionOrder::PRIORITY_BASED
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
   size_t j = 0;
   for (auto node_index : node_topology_list) {
@@ -322,7 +322,7 @@ TEST(MemoryOptimizerTests, TransformerLayerDetectionTest) {
   GraphViewer graph_viewer(graph);
 
   InlinedHashMap<NodeIndex, ptrdiff_t> node_index_to_its_order_in_topological_sort_map;
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
   // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
   ptrdiff_t yield_op_order_in_topological_sort = -1;

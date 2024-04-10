@@ -39,19 +39,6 @@ struct PriorityNodeCompare {
       return n1_priority > n2_priority;
     }
 
-#ifdef ENABLE_TRAINING
-    // nodes of forward pass will be output first
-    auto n1_attrs = n1->GetAttributes();
-    auto n2_attrs = n2->GetAttributes();
-    int64_t n1_is_forward = static_cast<int64_t>(n1_attrs.find(kBackwardNodeAttributeName) == n1_attrs.cend()) ||
-                            (n1_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
-    int64_t n2_is_forward = static_cast<int64_t>(n2_attrs.find(kBackwardNodeAttributeName) == n2_attrs.cend()) ||
-                            (n2_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
-    if (n1_is_forward != n2_is_forward) {
-      return n2_is_forward > n1_is_forward;
-    }
-#endif
-
     // otherwise, nodes with lower index will be output first
     return n1->Index() > n2->Index();
   }
@@ -74,6 +61,10 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
                       : ConstGraphNodes::NodeFilterFunc(nullptr))},
       filter_info_{filter_info} {
   std::vector<const Node*> leaf_nodes;
+
+  // For training purpose, yield_node could only be non-nullptr in ENABLE_TRAINING build.
+  const Node* yield_node = nullptr;
+
 #ifdef ENABLE_TRAINING
   // Keep the info of shape and size nodes and their parents so that after topological sort, we can move them
   // right after their parents. This is to make sure the shape and size nodes are executed right after their parents
@@ -101,34 +92,56 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
         shape_size_parents[parent].push_back(node.Index());
       }
     }
+
+    if (node.OpType() == "YieldOp") {
+      yield_node = &node;
+    }
 #endif
   }
 
-  graph.ReverseDFSFrom(
-      leaf_nodes,
-      nullptr,
-      [this](const Node* n) {
-        nodes_in_topological_order_.push_back(n->Index());
-      },
-      NodeCompare());
+  if (yield_node) {
+    // This is ORTModule training specific branch.
+    std::vector<NodeIndex> node_orders;
+    const size_t num_of_nodes = NumberOfNodes();
+    node_orders.reserve(num_of_nodes);
+    graph.MemoryEfficientTopologicalSort(
+        yield_node,
+        shape_size_parents,
+        NodeCompare(),
+        node_orders);
+    nodes_in_topological_order_ = std::move(node_orders);
+    ORT_ENFORCE(nodes_in_topological_order_.size() == num_of_nodes,
+                "Topological sort failed.", nodes_in_topological_order_.size(), "!=", num_of_nodes);
+  } else {
+    graph.ReverseDFSFrom(
+        leaf_nodes,
+        nullptr,
+        [this](const Node* n) {
+          nodes_in_topological_order_.push_back(n->Index());
+        },
+        NodeCompare());
+
 #ifdef ENABLE_TRAINING
-  auto original = std::move(nodes_in_topological_order_);
-  nodes_in_topological_order_.reserve(original.size());
-  InlinedHashSet<NodeIndex> visited;
-  for (auto& node : original) {
-    if (visited.find(node) != visited.end()) {
-      continue;
-    }
-    nodes_in_topological_order_.push_back(node);
-    visited.insert(node);
-    if (shape_size_parents.find(node) != shape_size_parents.end()) {
-      for (auto& following_node : shape_size_parents[node]) {
-        nodes_in_topological_order_.push_back(following_node);
-        visited.insert(following_node);
+    auto original = std::move(nodes_in_topological_order_);
+    nodes_in_topological_order_.reserve(original.size());
+    InlinedHashSet<NodeIndex> visited;
+    for (auto& node : original) {
+      if (visited.find(node) != visited.end()) {
+        continue;
+      }
+      nodes_in_topological_order_.push_back(node);
+      visited.insert(node);
+      if (shape_size_parents.find(node) != shape_size_parents.end()) {
+        for (auto& following_node : shape_size_parents[node]) {
+          nodes_in_topological_order_.push_back(following_node);
+          visited.insert(following_node);
+        }
       }
     }
-  }
+
 #endif
+  }
+
 #if !defined(ORT_MINIMAL_BUILD)
   graph.KahnsTopologicalSort(
       [this](const Node* n) {

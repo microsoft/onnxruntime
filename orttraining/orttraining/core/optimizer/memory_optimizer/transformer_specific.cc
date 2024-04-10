@@ -110,7 +110,7 @@ void FindLayerBoundaryLayerNormNodes(
 
   layer_boundary_ln_nodes.clear();
 
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   for (auto node_index : node_topology_list) {
     auto& node = *graph_viewer.GetNode(node_index);
 

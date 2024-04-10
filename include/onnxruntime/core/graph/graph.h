@@ -1087,6 +1087,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
 #endif
 
+#ifdef ENABLE_TRAINING
+  /**
+   * @brief Performs topological sort with customized Kahn's algorithm on the graph/s.
+   *  This is a specialized version for training where need memory efficient topological sort.
+   * @param yield_op The YieldOp used in ORTModule training.
+   * @param shape_size_parents The shape size parents nodes.
+   * @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
+   * @param node_orders The output node orders.
+   */
+  void MemoryEfficientTopologicalSort(const Node* yield_op,
+                                      const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
+                                      const std::function<bool(const Node*, const Node*)>& comp,
+                                      std::vector<NodeIndex>& node_orders) const;
+#endif
+
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;
