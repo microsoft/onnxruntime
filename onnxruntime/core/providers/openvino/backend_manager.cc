@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include <fstream>
+#include <sstream>
 #include <utility>
 #include <exception>
 
@@ -21,8 +22,17 @@ GlobalContext& BackendManager::GetGlobalContext() {
 BackendManager::BackendManager(const GlobalContext& global_context,
                                const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
-                               const logging::Logger& logger) {
+                               const logging::Logger& logger,
+                               EPCtxHandler& ctx_handle) {
   global_context_ = global_context;
+  ep_ctx_handle_ = ctx_handle;
+
+  openvino_sdk_version_ = std::to_string(global_context_.OpenVINO_Version.at(0)) + "." +
+                          std::to_string(global_context_.OpenVINO_Version.at(1));
+  if (ep_ctx_handle_.CheckForOVEPCtxNode(subgraph, openvino_sdk_version_)) {
+    if (ep_ctx_handle_.ImportBlobFromEPCtxModel(subgraph) != Status::OK())
+      ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Import blob from model failed");
+  }
 
   auto prec_str = GetGlobalContext().precision_str;
 
@@ -66,7 +76,8 @@ BackendManager::BackendManager(const GlobalContext& global_context,
         try {
           concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
                                                           GetGlobalContext(),
-                                                          subgraph_context_);
+                                                          subgraph_context_,
+                                                          ep_ctx_handle_);
         } catch (std::string const& msg) {
           ORT_THROW(msg);
         }
@@ -85,7 +96,8 @@ BackendManager::BackendManager(const GlobalContext& global_context,
     try {
       concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
                                                       GetGlobalContext(),
-                                                      subgraph_context_);
+                                                      subgraph_context_,
+                                                      ep_ctx_handle_);
     } catch (const OnnxRuntimeException& ex) {
       if (device_type.find("NPU") != std::string::npos) {
         LOGS_DEFAULT(WARNING) << ex.what();
@@ -96,7 +108,8 @@ BackendManager::BackendManager(const GlobalContext& global_context,
         try {
           concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
                                                           GetGlobalContext(),
-                                                          subgraph_context_);
+                                                          subgraph_context_,
+                                                          ep_ctx_handle_);
         } catch (std::string const& msg) {
           ORT_THROW(msg);
         }
@@ -105,6 +118,39 @@ BackendManager::BackendManager(const GlobalContext& global_context,
       }
     }
   }
+}
+
+// Call EPContext model exporter here if the provider option for exporting
+// precompiled blob is set. If that's the case:
+// By default, create model in embed mode where the blob stream is exported as data within
+// the EPContext node.
+Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::Node& fused_node,
+                                                     const onnxruntime::GraphViewer& graph_body_viewer,
+                                                     const logging::Logger& logger) {
+  std::string model_blob_str;
+  auto compiled_model = concrete_backend_->GetOVCompiledModel();
+  // If embed_mode, then pass on the serialized blob
+  // If not embed_mode, dump the blob here and only pass on the path to the blob
+  if (global_context_.ep_context_embed_mode) {
+    std::ostringstream model_blob_stream;
+    compiled_model.export_model(model_blob_stream);
+    model_blob_str = model_blob_stream.str();
+    ORT_ENFORCE(model_blob_str.size() != 0);
+  } else {
+    const std::string& graph_name = fused_node.Name();
+    std::ofstream f(graph_name + ".blob", std::ios::out | std::ios::trunc | std::ios::binary);
+    compiled_model.export_model(f);
+    model_blob_str = graph_name + ".blob";
+  }
+
+  ORT_RETURN_IF_ERROR(ep_ctx_handle_.ExportEPCtxModel(graph_body_viewer,
+                                                      fused_node,
+                                                      logger,
+                                                      global_context_.ep_context_embed_mode,
+                                                      model_blob_str,
+                                                      openvino_sdk_version_));
+
+  return Status::OK();
 }
 
 bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
@@ -289,7 +335,8 @@ void BackendManager::Compute(OrtKernelContext* context) {
       try {
         dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
                                                       GetGlobalContext(),
-                                                      subgraph_context_);
+                                                      subgraph_context_,
+                                                      ep_ctx_handle_);
       } catch (const OnnxRuntimeException& ex) {
         if (GetGlobalContext().device_type.find("NPU") != std::string::npos) {
           LOGS_DEFAULT(WARNING) << ex.what();
@@ -301,7 +348,8 @@ void BackendManager::Compute(OrtKernelContext* context) {
           try {
             dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
                                                           GetGlobalContext(),
-                                                          subgraph_context_);
+                                                          subgraph_context_,
+                                                          ep_ctx_handle_);
           } catch (std::string const& msg) {
             ORT_THROW(msg);
           }

@@ -122,6 +122,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Dropout", V_2020_4, {"CPU", "GPU"}},
     {"Elu", V_2020_4, {"CPU", "GPU"}},
     {"Einsum", V_2023_1, {"CPU", "GPU"}},
+    {"EPContext", V_2024_0, {"CPU", "GPU", "NPU"}},
     {"Equal", V_2020_4, {"CPU", "GPU"}},
     {"Erf", V_2020_4, {"CPU", "GPU"}},
     {"Exp", V_2020_4, {"CPU", "GPU"}},
