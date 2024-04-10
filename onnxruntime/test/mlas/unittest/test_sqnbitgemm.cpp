@@ -397,7 +397,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 
     if constexpr (BlkLen == 64) {
       // SQNBitGemmBlkBitWidth4BlkLen64.SingleThread/isSymmetric1/M1xN1xK64/hasBias0/computeTypeInt8
-      tests_registered += RegisterSingleTest(1, 1, 64, CompInt8, true, true, false);
+      tests_registered += RegisterSingleTest(1, 4, 64, CompInt8, true, false, true);
     }
 
     if constexpr (BlkLen == 32) {
