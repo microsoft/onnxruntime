@@ -58,6 +58,7 @@ class RuntimeInspector:
 
         self.input_density_ob: Union[InputDensityObserver, None] = None
         self.memory_ob = MemoryObserver(module, self._logger, training)
+        self._embedding_module_to_padding_density_map = {}
 
     def enable_input_inspector(self, model: ModelProto, user_input_names: List[str]) -> None:
         """Initialize input inspector from the given ONNX model and user input names.
@@ -747,3 +748,33 @@ class MemoryObserver:
             return notes, mem_tbl
 
         return [], None
+
+
+class FlagPaddingElimination(torch.autograd.Function):
+    """
+    FlagPaddingElimination is a PyTorch autograd function that does nothing in forward pass and backward pass.
+    It is used as a flag to tell the GraphTransformer of PaddingElimination to modify the graph to eliminate
+    the embedding padding.
+    """
+
+    @staticmethod
+    def forward(ctx, input):
+        return input
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        return grad_output
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
+
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        fw_alias_map = [0]
+        bw_alias_map = [0]
+        return fw_alias_map, bw_alias_map
