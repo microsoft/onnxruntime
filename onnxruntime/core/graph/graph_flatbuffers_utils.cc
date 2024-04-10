@@ -502,24 +502,21 @@ struct UnpackTensorWithType {
       ORT_RETURN_IF_ERROR(external_reader(fbs_tensor_external_data_offset, raw_buf_span));
       raw_data = raw_buf.get();
       return onnxruntime::utils::UnpackTensor(
-        tensor_proto, raw_data,
-        raw_data_len,
-        ort_tensor.MutableData<T>(),
-        static_cast<size_t>(ort_tensor.Shape().Size()));
-    }
-    else if (fbs_tensor_raw_data) {
+          tensor_proto, raw_data,
+          raw_data_len,
+          ort_tensor.MutableData<T>(),
+          static_cast<size_t>(ort_tensor.Shape().Size()));
+    } else if (fbs_tensor_raw_data) {
       raw_data = fbs_tensor.raw_data()->Data();
       raw_data_len = fbs_tensor.raw_data()->size();
       return onnxruntime::utils::UnpackTensor(
-        tensor_proto, raw_data,
-        raw_data_len,
-        ort_tensor.MutableData<T>(),
-        static_cast<size_t>(ort_tensor.Shape().Size()));
-    }
-    else if (fbs_tensor_string_data) {
+          tensor_proto, raw_data,
+          raw_data_len,
+          ort_tensor.MutableData<T>(),
+          static_cast<size_t>(ort_tensor.Shape().Size()));
+    } else if (fbs_tensor_string_data) {
       ORT_RETURN_IF_NOT(false, "Invalid tensor. Expected: raw data or external data offset. Instead, this tensor has string data", tensor_name);
-    }
-    else {
+    } else {
       ORT_RETURN_IF_NOT(false, "Invalid tensor. Expected: raw data or external data offset. Actual: nullptr", tensor_name);
     }
   }

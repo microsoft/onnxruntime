@@ -145,7 +145,6 @@ Status OrtValuesFromFlatbufferTensors(
 }
 
 PathString ExternalCheckpointDataPath(const PathString& checkpoint_path) {
-  // TODO: Not sure this is valid or what the current checkpoint filename looks like. Adjust as needed.
   return checkpoint_path + ORT_TSTR(".data");
 }
 
@@ -760,7 +759,7 @@ Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
     auto data_path = ExternalCheckpointDataPath(checkpoint_path);
     external_data_stream = std::ifstream(data_path, std::ios::binary);
     ORT_RETURN_IF(external_data_stream->fail(),
-                      "Failed to open checkpoint's external data file: ", ToUTF8String(data_path));
+                  "Failed to open checkpoint's external data file: ", ToUTF8String(data_path));
 
     external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
       external_data_stream->seekg(offset);
@@ -840,7 +839,7 @@ Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointSt
 
     char errbuf[256];
     ORT_RETURN_IF(external_data_stream.value().fail(),
-                      "Failed to open checkpoint's external data file: ", ToUTF8String(data_path), strerror_s(errbuf, sizeof(errbuf), errno));
+                  "Failed to open checkpoint's external data file: ", ToUTF8String(data_path), strerror_s(errbuf, sizeof(errbuf), errno));
 
     external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
       external_data_stream->seekg(offset);
