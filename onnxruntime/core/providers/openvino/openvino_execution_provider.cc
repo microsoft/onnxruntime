@@ -1,10 +1,12 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
+#include <thread>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "openvino_execution_provider.h"
 #include "contexts.h"
 #include "backend_manager.h"
+#include "onnx_ctx_model_helper.h"
 #include "ov_versions/capability.h"
 #include "openvino/core/version.hpp"
 
@@ -98,6 +100,15 @@ std::vector<std::unique_ptr<ComputeCapability>>
 OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                          const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  std::string openvino_sdk_version = std::to_string(global_context_->OpenVINO_Version.at(0)) + "." +
+                                     std::to_string(global_context_->OpenVINO_Version.at(1));
+
+  // Check for valid ctx node and maintain state for validity
+  if (ep_ctx_handle_.CheckForOVEPCtxNode(graph_viewer, openvino_sdk_version))
+    ORT_ENFORCE(graph_viewer.NumberOfNodes() == 1,
+                "[Invalid Graph] EPContext Model with OpenVINO compiled blob should not have more than one node.");
+
   // Enable CI Logs
   if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
     std::cout << "In the OpenVINO EP" << std::endl;
@@ -135,8 +146,24 @@ common::Status OpenVINOExecutionProvider::Compile(
 
     global_context_->use_api_2 = true;
 
+    // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
+    // For precompiled blob, directly load the model instead of compiling the model
+    // For original model, check if the user wants to export a model with pre-compiled blob
+
     std::shared_ptr<openvino_ep::BackendManager> backend_manager =
-        std::make_shared<openvino_ep::BackendManager>(*global_context_, fused_node, graph_body_viewer, *GetLogger());
+        std::make_shared<openvino_ep::BackendManager>(*global_context_,
+                                                      fused_node,
+                                                      graph_body_viewer,
+                                                      *GetLogger(),
+                                                      ep_ctx_handle_);
+
+    bool EXPORT_PRECOMPILED_BLOB = false;
+
+    if (EXPORT_PRECOMPILED_BLOB && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
+      ORT_RETURN_IF_ERROR(backend_manager->ExportCompiledBlobAsEPCtxNode(fused_node,
+                                                                         graph_body_viewer,
+                                                                         *GetLogger()));
+    }
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {

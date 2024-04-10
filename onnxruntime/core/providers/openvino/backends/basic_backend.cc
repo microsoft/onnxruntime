@@ -11,6 +11,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "../backend_utils.h"
 #include "basic_backend.h"
+#include "../onnx_ctx_model_helper.h"
 #include "../backend_manager.h"
 
 namespace onnxruntime {
@@ -21,9 +22,13 @@ using namespace backend_utils;
 
 BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            GlobalContext& global_context,
-                           const SubGraphContext& subgraph_context)
+                           const SubGraphContext& subgraph_context,
+                           EPCtxHandler& ep_ctx_handle)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
   std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
+
+  is_ep_ctx_graph_ = ep_ctx_handle.IsValidOVEPCtxGraph();
+
   if (ValidateSubgraph(const_outputs_map_))
     return;
 
@@ -50,47 +55,62 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     model_proto.SerializeToOstream(outfile);
   }
 #endif
+
   try {
     std::string dev_prec = global_context.device_type + "_" + global_context_.precision_str;
-    if (global_context.is_wholly_supported_graph) {
+
+    if (global_context.is_wholly_supported_graph) {  // Full graph is supported
 #if defined(IO_BUFFER_ENABLED)
-      if ((global_context.device_type.find("GPU") != std::string::npos) &&
-          (global_context_.context != nullptr)) {
+      if (is_ep_ctx_graph_) {
+        std::istringstream model_stream(ep_ctx_handle.GetModelBlobString());
+        exe_network_ = global_context_.ie_core.ImportModel(model_stream,
+                                                           remote_context_,
+                                                           subgraph_context_.subgraph_name);
+        ie_cnn_network_ = exe_network_.Get().get_runtime_model();
+      } else if ((global_context.device_type.find("GPU") != std::string::npos) &&
+                 (global_context_.context != nullptr)) {
         LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
         cl_context ctx = static_cast<cl_context>(global_context_.context);
         remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-        exe_network_ = global_context_.ie_core.LoadNetwork(
+        exe_network_ = global_context_.ie_core.CompileModel(
             ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
-        LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+        ie_cnn_network_ = exe_network_.Get().get_runtime_model();
       } else {
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-        exe_network_ = global_context_.ie_core.LoadNetwork(
+        exe_network_ = global_context_.ie_core.CompileModel(
             ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
-        LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
-#else
-      if (!subgraph_context_.has_dynamic_input_shape &&
-          global_context_.onnx_model_path_name != "" &&
-          dev_prec != "CPU_FP16") {
-        exe_network_ = global_context_.ie_core.LoadNetwork(global_context_.onnx_model_path_name,
+#else  // !IO_BUFFER_ENABLED
+      if (is_ep_ctx_graph_) {
+        // If the blob is held in an EPContext node, then skip FE+Compile
+        // and directly move on to creating a backend with the executable blob
+        std::istringstream model_stream(ep_ctx_handle.GetModelBlobString());
+        exe_network_ = global_context_.ie_core.ImportModel(model_stream,
                                                            hw_target,
                                                            device_config,
                                                            subgraph_context_.subgraph_name);
-        LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-      } else {
+        ie_cnn_network_ = exe_network_.Get().get_runtime_model();
+      } else if (!subgraph_context_.has_dynamic_input_shape &&
+                 global_context_.onnx_model_path_name != "" &&
+                 dev_prec != "CPU_FP16") {  // Inputs with static dimenstions
+        exe_network_ = global_context_.ie_core.CompileModel(global_context_.onnx_model_path_name,
+                                                            hw_target,
+                                                            device_config,
+                                                            subgraph_context_.subgraph_name);
+        ie_cnn_network_ = exe_network_.Get().get_runtime_model();
+      } else {  // Inputs with dynamic dimensions
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, const_outputs_map_);
-        exe_network_ = global_context_.ie_core.LoadNetwork(
+        exe_network_ = global_context_.ie_core.CompileModel(
             ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
-        LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
 #endif
-    } else {
+    } else {  // Full graph is not supported
       ie_cnn_network_ = CreateOVModel(model_proto, global_context_, const_outputs_map_);
-      exe_network_ = global_context_.ie_core.LoadNetwork(
+      exe_network_ = global_context_.ie_core.CompileModel(
           ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
-      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
     }
+    LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   } catch (const char* msg) {
     ORT_THROW(msg);
   }
@@ -135,6 +155,9 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 }
 
 void BasicBackend::EnableCaching() {
+  // cache_dir argument has no effect when working with an embed-mode EPContext Graph
+  if (is_ep_ctx_graph_) return;
+
   if (!global_context_.cache_dir.empty()) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
     global_context_.ie_core.SetCache(global_context_.cache_dir);

@@ -10,6 +10,7 @@
 
 #include "ov_interface.h"
 #include "contexts.h"
+#include "onnx_ctx_model_helper.h"
 #include "ibackend.h"
 
 namespace onnxruntime {
@@ -21,11 +22,15 @@ class BackendManager {
   BackendManager(const GlobalContext& global_context,
                  const onnxruntime::Node& fused_node,
                  const onnxruntime::GraphViewer& subgraph,
-                 const logging::Logger& logger);
+                 const logging::Logger& logger,
+                 EPCtxHandler& ctx_handle);
   void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
   void SetGlobalCotext(const GlobalContext& global_context);
   GlobalContext& GetGlobalContext();
+  Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::Node& fused_node,
+                                       const onnxruntime::GraphViewer& subgraph,
+                                       const logging::Logger& logger);
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(
@@ -47,6 +52,8 @@ class BackendManager {
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   SubGraphContext subgraph_context_;
   GlobalContext global_context_;
+  EPCtxHandler ep_ctx_handle_{};
+  std::string openvino_sdk_version_{};
 };
 
 }  // namespace openvino_ep
