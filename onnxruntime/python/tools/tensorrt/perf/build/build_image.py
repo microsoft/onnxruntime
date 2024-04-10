@@ -19,7 +19,7 @@ TRT_DOCKER_FILES = {
     "8.6.cuda_11_8_cudnn_8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_6",
     "8.6.cuda_12_3_cudnn_9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_3_tensorrt8_6",
     "10.0.cuda_11_8_cudnn_8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt10_0",
-    "10.0.cuda_12_3_cudnn_9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_4_tensorrt10_0",
+    "10.0.cuda_12_4_cudnn_9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_4_tensorrt10_0",
     "BIN": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tensorrt_bin",
 }
 
