@@ -1193,6 +1193,7 @@ Graph::Graph(const Model& owning_model,
 
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     auto status = utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor);
+    if constexpr (endian::native != endian::little) {
     const AttributeProto& attrib = node.attribute(0);
     if (attrib.type() == AttributeProto_AttributeType_SPARSE_TENSOR)
     {
@@ -1201,6 +1202,7 @@ Graph::Graph(const Model& owning_model,
        {
           onnxruntime::utils::ConvertRawDataInTensorProto(tensor);
        }
+    }
     }
     ORT_ENFORCE(status.IsOK(), status.ToString());
     // Ensure initializers are also graph inputs.
@@ -3153,10 +3155,11 @@ SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std:
 
 common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Graph>& fbs_graph) const {
-  auto& tens = GetAllInitializedTensors();
-  for (auto& [name, tensor_p] : tens)
-  {
-    utils::ConvertRawDataInTensorProto((TensorProto*)tensor_p);
+  if constexpr (endian::native != endian::little) {
+     auto& tens = GetAllInitializedTensors();
+     for (auto& [name, tensor_p] : tens){
+       utils::ConvertRawDataInTensorProto((TensorProto*)tensor_p);
+     }
   }
   auto inputs = SaveInputsOutputsToOrtFormat(builder, graph_inputs_including_initializers_);
   auto outputs = SaveInputsOutputsToOrtFormat(builder, graph_outputs_);
