@@ -110,14 +110,11 @@ ONNX_NAMESPACE::TensorProto CreateInitializer(const std::string& name,
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-        for (auto val : data) {
+        for (int32_t val : data) {
           tp.add_int32_data(val);
         }
-        break;
-      }
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-        tp.set_raw_data(data.data(), data.size() * sizeof(T));
         break;
       }
       default:
@@ -184,6 +181,7 @@ std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializers() {
   return initializers;
 }
 
+#ifdef ENABLE_TRAINING_APIS
 std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializersNoString() {
   std::vector<ONNX_NAMESPACE::TensorProto> initializers;
   // create data of various sizes. order is chosen to require padding between most but not all
@@ -213,6 +211,7 @@ std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializersNoString() {
 
   return initializers;
 }
+#endif // ENABLE_TRAINING_APIS
 
 template <typename T>
 std::vector<T> ConvertRawDataToTypedVector(ONNX_NAMESPACE::TensorProto initializer) {
@@ -220,22 +219,6 @@ std::vector<T> ConvertRawDataToTypedVector(ONNX_NAMESPACE::TensorProto initializ
   data.resize(initializer.raw_data().size() / sizeof(T));
   memcpy(data.data(), initializer.raw_data().data(), initializer.raw_data().size());
   return data;
-}
-
-std::string DataTypeToString(ONNX_NAMESPACE::TensorProto::DataType dataType) {
-  switch (dataType) {
-    case ONNX_NAMESPACE::TensorProto::FLOAT: return "FLOAT";
-    case ONNX_NAMESPACE::TensorProto::UINT8: return "UINT8";
-    case ONNX_NAMESPACE::TensorProto::INT8: return "INT8";
-    case ONNX_NAMESPACE::TensorProto::UINT16: return "UINT16";
-    case ONNX_NAMESPACE::TensorProto::INT16: return "INT16";
-    case ONNX_NAMESPACE::TensorProto::INT32: return "INT32";
-    case ONNX_NAMESPACE::TensorProto::INT64: return "INT64";
-    case ONNX_NAMESPACE::TensorProto::STRING: return "STRING";
-    case ONNX_NAMESPACE::TensorProto::BOOL: return "BOOL";
-    case ONNX_NAMESPACE::TensorProto::FLOAT16: return "FLOAT16";
-    default: return "UNDEFINED";
-  }
 }
 
 #define ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(EXPECTED, ACTUAL, FIELD) \
