@@ -1214,6 +1214,50 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
+constexpr const char* GemmaRotaryEmbedding_ver1_doc = R"DOC(
+GemmaRotaryEmbedding is the implementation of rotary positional embeddings (RoPE). It includes sin and cos in GemmaRotaryEmbedding forward and apply_rotary_pos_emb
+)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GemmaRotaryEmbedding, 1,
+    OpSchema()
+        .SetDoc(GemmaRotaryEmbedding_ver1_doc)
+        .Input(0,
+               "emb",
+               "embeddding - 3D tensor with shape (batch_size, seq_len, dim)",
+               "U")
+        .Input(1,
+               "q",
+               "q state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+               "T")
+        .Input(2,
+               "q_rot",
+               "half rotated q state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+               "T")
+        .Input(3,
+               "k",
+               "k state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+               "T")
+        .Input(4,
+               "k_rot",
+               "k state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+               "T")
+        .Output(0,
+                "output1",
+                "4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+                "T")
+        .Output(1,
+                "output2",
+                "4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+                "T")
+        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float16 tensors.")
+        .TypeConstraint("U", {"tensor(float)"}, "Constrain input 0 type to float tensors")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+          propagateElemTypeFromInputToOutput(ctx, 1, 1);
+          propagateShapeFromInputToOutput(ctx, 1, 0);
+          propagateShapeFromInputToOutput(ctx, 1, 1);
+        }));
+
 constexpr const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
