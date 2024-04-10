@@ -428,9 +428,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                     # From some PyTorch version, autograd_inlining is a valid argument.
                     # We allow it to be True if custom autograd function is disabled (where autograd.Function
                     # anyway is not supported in ONNX until it can be inlined).
-                    required_export_kwargs[
-                        "autograd_inlining"
-                    ] = not self._runtime_options.enable_custom_autograd_function
+                    required_export_kwargs["autograd_inlining"] = (
+                        not self._runtime_options.enable_custom_autograd_function
+                    )
 
                 invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
 
@@ -639,6 +639,16 @@ class GraphExecutionManager(GraphExecutionInterface):
         _utils.reinitialize_graph_execution_manager(self)
 
     def _add_check_embedding_sparsity_hook(self):
+        """
+        Add hook to check embedding sparsity and enable padding elimination if applicable.
+        1. Iterate through all modules to find Embedding modules with padding_idx >= 0.
+        2. Register forward hook to the Embedding module and the hook will check sparsity of the embedding input.
+        3. If the sparsity is below a threshold, enable padding elimination by adding FlagPaddingElimination after the
+           output. GraphTransformer of PaddingElimination will check the FlagPaddingElimination and do the actual
+           padding elimination graph modification.
+        4. Return the hook handles for later removal.
+
+        """
         if (
             not self._runtime_options.enable_sparse_optimizer
             or not self._runtime_options.enable_embedding_sparse_optimizer
@@ -660,10 +670,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 if module not in self._runtime_inspector._embedding_module_to_padding_density_map:
                     self._logger.warning("Found Embedding module not in the map. %s", module)
                     return None
-                if (
-                    module in self._runtime_inspector._embedding_module_to_padding_density_map
-                    and self._runtime_inspector._embedding_module_to_padding_density_map[module][1] != -1
-                ):
+                if self._runtime_inspector._embedding_module_to_padding_density_map[module][1] != -1:
                     self._logger.warning(
                         "Found duplicate Embedding module. %s",
                         self._runtime_inspector._embedding_module_to_padding_density_map[module][0],

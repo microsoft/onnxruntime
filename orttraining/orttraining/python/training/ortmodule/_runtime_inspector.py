@@ -750,10 +750,13 @@ class MemoryObserver:
         return [], None
 
 
-# When sparsity of embedding padding is more than 10%, this class will added as a PythonOp after the Embedding Node
-# in the ONNX graph.
-# It will be used as a flag to tell the graph transformer to modify the graph to eliminate the embedding padding.
 class FlagPaddingElimination(torch.autograd.Function):
+    """
+    FlagPaddingElimination is a PyTorch autograd function that does nothing in forward pass and backward pass.
+    It is used as a flag to tell the GraphTransformer of PaddingElimination to modify the graph to eliminate
+    the embedding padding.
+    """
+
     @staticmethod
     def forward(ctx, input):
         return input
