@@ -366,7 +366,7 @@ class MinMaxCalibrater(CalibraterBase):
             self.intermediate_outputs.append(self.infer_session.run(None, inputs))
             if (
                 self.max_intermediate_outputs is not None
-                and len(self.intermediate_outputs) == self.max_intermediate_outputs
+                and len(self.intermediate_outputs) >= self.max_intermediate_outputs
             ):
                 self.compute_data()
                 self.clear_collected_data()
