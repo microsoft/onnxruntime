@@ -1886,7 +1886,7 @@ namespace {
 /**
  * @brief The data struct to store the group of nodes.
  *
- * The group containes a set of nodes, its execution depends on either of backward input leaf nodes,
+ * The group contains a set of nodes, its execution depends on either of backward input leaf nodes,
  * graph inputs/initializers or other group node's output.
  */
 struct GroupNode {
@@ -1916,7 +1916,7 @@ struct GroupNode {
     }
   }
 
-  bool is_outputed{false};
+  bool is_outputted{false};
 
   InlinedVector<const NodeArg*> input_args;
   InlinedVector<const NodeArg*> output_args;
@@ -1929,7 +1929,7 @@ void SortForwardNodesByReverseDFS(const Graph* graph,
                                   const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
                                   InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
                                   std::vector<NodeIndex>& node_orders) {
-  // Note 1: YieldOp is the seperator of forward and backward nodes.
+  // Note 1: YieldOp is the separator of forward and backward nodes.
   // Note 2: While it is also possible some nodes not contributing to the forward output nodes will be
   //   executed before YieldOp, for example, if one forward node's output is used by Shape/Size, then
   //   the Shape/Size node should be executed before YieldOp to release the memory as soon as possible.
@@ -2128,7 +2128,7 @@ void OutputGroupedNodes(const Graph* graph,
 
   GroupNode* grouped_node = output_arg_to_grouped_node.at(output_arg);
 
-  if (grouped_node->is_outputed) {
+  if (grouped_node->is_outputted) {
     return;
   }
 
@@ -2138,7 +2138,7 @@ void OutputGroupedNodes(const Graph* graph,
     }
 
     auto it = output_arg_to_grouped_node.find(input_arg);
-    if (it != output_arg_to_grouped_node.end() && !it->second->is_outputed) {
+    if (it != output_arg_to_grouped_node.end() && !it->second->is_outputted) {
       OutputGroupedNodes(graph, input_arg, output_arg_to_grouped_node, node_orders, topo_order);
     }
   }
@@ -2148,7 +2148,7 @@ void OutputGroupedNodes(const Graph* graph,
     topo_order.push_back(n->Index());
   }
 
-  grouped_node->is_outputed = true;
+  grouped_node->is_outputted = true;
 }
 
 }  // namespace
@@ -2224,7 +2224,7 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
       }
 
       auto it = output_arg_to_grouped_node.find(input_arg);
-      if (it != output_arg_to_grouped_node.end() && !it->second->is_outputed) {
+      if (it != output_arg_to_grouped_node.end() && !it->second->is_outputted) {
         OutputGroupedNodes(this, input_arg, output_arg_to_grouped_node, node_orders, topo_order);
       }
     }
@@ -2244,11 +2244,11 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
     topo_order.push_back(current->Index());
   }
 
-  // For the group nodes that are not outputed, we need to output them.
-  // Hitting this code path means some nodes are consuming outputs of foward nodes, and their outputs
+  // For the group nodes that are not outputted, we need to output them.
+  // Hitting this code path means some nodes are consuming outputs of forward nodes, and their outputs
   // are not used by main branch backward nodes.
   for (const auto& [output_arg, grouped_node] : output_arg_to_grouped_node) {
-    if (!grouped_node->is_outputed) {
+    if (!grouped_node->is_outputted) {
       OutputGroupedNodes(this, output_arg, output_arg_to_grouped_node, node_orders, topo_order);
     }
   }
