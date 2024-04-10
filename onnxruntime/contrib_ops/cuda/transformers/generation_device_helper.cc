@@ -1488,7 +1488,7 @@ Status UpdateDecoderCrossQK(
     int max_length,
     AllocatorPtr allocator,
     gsl::span<const int32_t> beam_indices_gpu,
-    OrtValue cross_qk_buffer_value,
+    OrtValue& cross_qk_buffer_value,
     int num_beams) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
@@ -1524,6 +1524,9 @@ Status UpdateDecoderCrossQK(
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
+  cudaDeviceSynchronize();
+  /*
+
   
   // Shuffle according to new beam_indices
 
@@ -1554,7 +1557,9 @@ Status UpdateDecoderCrossQK(
                                         cudaMemcpyDeviceToDevice, cuda_stream));
   }
 
-  cross_qk_buffer_data = new_cross_qk_span.data();
+  cross_qk_buffer_value = std::move(shuffled_cross_qk);
+  cudaStreamSynchronize(cuda_stream);
+  */
   return Status::OK();
 }
 

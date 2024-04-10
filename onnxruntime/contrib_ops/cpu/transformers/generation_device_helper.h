@@ -208,7 +208,7 @@ using UpdateDecoderCrossQKFunc = std::function<Status(
     int max_length,
     AllocatorPtr allocator,
     gsl::span<const int32_t> beam_indices_gpu,
-    OrtValue cross_qk_buffer_value,
+    OrtValue& cross_qk_buffer_value,
     int num_beams)>;
 
 
@@ -403,7 +403,7 @@ Status UpdateDecoderCrossQK(
     int max_length,
     AllocatorPtr allocator,
     gsl::span<const int32_t> beam_indices_gpu,
-    OrtValue cross_qk_buffer_value,
+    OrtValue& cross_qk_buffer_value,
     int num_beams
 );
 
