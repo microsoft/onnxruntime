@@ -65,7 +65,6 @@ Return Value:
         #prefetcht0 [rdi+64*4*64+16*4]
         #prefetcht0 [rdi+64*4*64+32*4]
         #prefetcht0 [rdi+64*4*64+48*4]
-        #sub     rsi,64
         add     rdi,64*4                        # advance input by 64 elements
         cmp     rsi,64
         jae     .LReduceMaximum.ProcessRemainingCountBy64
