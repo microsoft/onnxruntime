@@ -274,11 +274,11 @@ export const createTensorShapeVariables = (...dims: ReadonlyArray<readonly numbe
  * A helper function to get maximum vector size for specified data length
  * @param size
  */
-export const getMaxComponents = (size: number, max = 4) => {
+export const getMaxComponents = (size: number) => {
   // we cannot use vec3 type since it has alignment of 16 bytes
-  if (max >= 4 && size % 4 === 0) {
+  if (size % 4 === 0) {
     return 4;
-  } else if (max >= 2 && size % 2 === 0) {
+  } else if (size % 2 === 0) {
     return 2;
   }
 
