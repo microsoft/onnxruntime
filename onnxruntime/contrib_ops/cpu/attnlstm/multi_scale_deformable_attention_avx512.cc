@@ -37,8 +37,6 @@ namespace contrib {
     int64_t Q,
     concurrency::ThreadPool* thread_pool,
     AllocatorPtr alloc) const {
-    memset(output, 0, sizeof(float) * Q * M * D);
-
     constexpr size_t AVX512Alignment = 64;
     constexpr int64_t fp32step = static_cast<int64_t>(AVX512Alignment / sizeof(float));
     constexpr int64_t int64step = static_cast<int64_t>(AVX512Alignment / sizeof(int64_t));
@@ -456,10 +454,10 @@ namespace contrib {
                   const int64_t weight_index = (offset >> 1) + location_index;
                   __m512 weight = _mm512_set1_ps(attention_weights[weight_index]);
 
-                  __m512 data_tl = _mm512_load_ps(reinterpret_cast<float*>(addr_tl[location_index]));
-                  __m512 data_tr = _mm512_load_ps(reinterpret_cast<float*>(addr_tr[location_index]));
-                  __m512 data_bl = _mm512_load_ps(reinterpret_cast<float*>(addr_bl[location_index]));
-                  __m512 data_br = _mm512_load_ps(reinterpret_cast<float*>(addr_br[location_index]));
+                  __m512 data_tl = _mm512_loadu_ps(reinterpret_cast<float*>(addr_tl[location_index]));
+                  __m512 data_tr = _mm512_loadu_ps(reinterpret_cast<float*>(addr_tr[location_index]));
+                  __m512 data_bl = _mm512_loadu_ps(reinterpret_cast<float*>(addr_bl[location_index]));
+                  __m512 data_br = _mm512_loadu_ps(reinterpret_cast<float*>(addr_br[location_index]));
 
                   __m512 coeff1 = _mm512_set1_ps(diff_w_low[location_index]);
                   __m512 coeff2 = _mm512_sub_ps(one_f, coeff1);
