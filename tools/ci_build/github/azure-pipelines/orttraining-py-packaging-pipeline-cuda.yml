@@ -33,3 +33,4 @@ stages:
     debug_build: false
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+    build_pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU'
