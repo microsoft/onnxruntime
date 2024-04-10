@@ -99,6 +99,7 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
 #endif
   }
 
+#ifdef ENABLE_TRAINING
   if (yield_node) {
     // This is ORTModule training specific branch.
     std::vector<NodeIndex> node_orders;
@@ -111,7 +112,10 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     nodes_in_topological_order_ = std::move(node_orders);
     ORT_ENFORCE(nodes_in_topological_order_.size() == num_of_nodes,
                 "Topological sort failed.", nodes_in_topological_order_.size(), "!=", num_of_nodes);
-  } else {
+  }
+#endif
+
+  if (!yield_node) {
     graph.ReverseDFSFrom(
         leaf_nodes,
         nullptr,
