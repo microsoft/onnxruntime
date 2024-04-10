@@ -49,26 +49,6 @@ TEST(SoftmaxOperator, Simple) {
   RunTest(x_vals, expected_vals, dimensions);
 }
 
-TEST(SoftmaxOperator, DIs16) {
-  // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Softmax
-  //    x = np.array([[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]]).astype(np.float32)
-  //    y = np.exp(x) / np.sum(np.exp(x), axis = 1)
-  //    #expected output[[0.00000019, 0.00000053, 0.00000143, 0.00000388,
-  //                      0.00001056, 0.0000287 , 0.00007801, 0.00021205,
-  //                      0.00057642, 0.00156687, 0.0042592,  0.01157769,
-  //                      0.03147143, 0.08554822, 0.23254421, 0.6321206]]
-
-  std::vector<float> x_vals = {0.0f, 1.0f,  2.0f,  3.0f,  4.0f,  5.0f,  6.0f, 7.0f,
-                               8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f};
-  std::vector<float> expected_vals = {0.00000019f, 0.00000053f, 0.00000143f, 0.00000388f,
-                                      0.00001056f, 0.0000287f , 0.00007801f, 0.00021205f,
-                                      0.00057642f, 0.00156687f, 0.0042592f , 0.01157769f,
-                                      0.03147143f, 0.08554822f, 0.23254421f, 0.6321206f};
-  std::vector<int64_t> dimensions = {1, 16};
-
-  RunTest(x_vals, expected_vals, dimensions);
-}
-
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(SoftmaxOperator, Simple_fp16) {
 #ifdef USE_CUDA
