@@ -731,16 +731,16 @@ class MemoryObserver:
             notes = []
             if details:
                 notes.append(
-                    "[Memory Optimizer] Use ORTMODULE_MEMORY_OPT_LEVEL=1/2 to enable all recomputable subgraphs per transformer layer."
+                    "Use ORTMODULE_MEMORY_OPT_LEVEL=1 or 2 to enable all recomputable subgraphs per transformer layer."
                 )
-                saving_recommendation = "[Memory Optimizer] Or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
+                saving_recommendation = (
+                    "Or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
+                )
                 saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
 
                 notes.append(saving_recommendation)
 
-                saving_recommendation = (
-                    "[Memory Optimizer] Memory saving is calculated based on the 1st batch symbolic dim values:\n"
-                )
+                saving_recommendation = "Memory saving is calculated based on the 1st batch symbolic dim values:\n"
                 for dim_param, dim_value in self.symbolic_dim_name_to_value_map.items():
                     saving_recommendation += f"  {dim_param}={dim_value},"
                 notes.append(saving_recommendation)
