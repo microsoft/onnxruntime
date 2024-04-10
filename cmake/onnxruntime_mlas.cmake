@@ -52,7 +52,6 @@ if (NOT onnxruntime_ORT_MINIMAL_BUILD)
   target_sources(onnxruntime_mlas PRIVATE
     ${MLAS_SRC_DIR}/q4_dq.cpp
     ${MLAS_SRC_DIR}/q4gemm.cpp
-    ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
     ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
   )
 endif()
