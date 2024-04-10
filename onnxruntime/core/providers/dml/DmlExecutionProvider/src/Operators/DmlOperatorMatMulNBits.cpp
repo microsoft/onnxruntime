@@ -11,7 +11,7 @@ public:
     DmlOperatorMatMulNBits(const MLOperatorKernelCreationContext& kernelInfo)
     :   DmlOperator(kernelInfo)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 4);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 3 && kernelInfo.GetInputCount() <= 4);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
         DmlOperator::Initialize(kernelInfo);
 
@@ -39,10 +39,12 @@ public:
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
 
         std::vector<DimensionType> inputShape2 = inputShape1;
-        inputShape2[inputShape2.size() - 1] = m_inputTensorDescs[2].GetSizes().back();
 
-        std::vector<DimensionType> broadcastedInputShape2 = inputShape2;
-        broadcastedInputShape2[broadcastedInputShape2.size() - 1] = m_inputTensorDescs[2].GetSizes().back();
+        uint32_t scaleElementCount = ComputeElementCountFromDimensions(m_inputTensorDescs[2].GetSizes());
+        inputShape2[inputShape2.size() - 1] = scaleElementCount / bRowCount;
+
+        std::vector<DimensionType> broadcastedInputShape2 = broadcastedInputShape1;
+        broadcastedInputShape2.back() = inputShape2.back();
 
         // The quantized input and zero point to MatMulNBits always comes as uint8, but DML will expect the real data type (int4 or int8)
         m_inputTensorDescs[0] = TensorDesc::ConstructDefaultTensorDesc(mlDataType, inputShape0);
