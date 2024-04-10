@@ -224,6 +224,22 @@ std::vector<T> ConvertRawDataToTypedVector(ONNX_NAMESPACE::TensorProto initializ
   return data;
 }
 
+std::string DataTypeToString(ONNX_NAMESPACE::TensorProto::DataType dataType) {
+  switch (dataType) {
+    case ONNX_NAMESPACE::TensorProto::FLOAT: return "FLOAT";
+    case ONNX_NAMESPACE::TensorProto::UINT8: return "UINT8";
+    case ONNX_NAMESPACE::TensorProto::INT8: return "INT8";
+    case ONNX_NAMESPACE::TensorProto::UINT16: return "UINT16";
+    case ONNX_NAMESPACE::TensorProto::INT16: return "INT16";
+    case ONNX_NAMESPACE::TensorProto::INT32: return "INT32";
+    case ONNX_NAMESPACE::TensorProto::INT64: return "INT64";
+    case ONNX_NAMESPACE::TensorProto::STRING: return "STRING";
+    case ONNX_NAMESPACE::TensorProto::BOOL: return "BOOL";
+    case ONNX_NAMESPACE::TensorProto::FLOAT16: return "FLOAT16";
+    default: return "UNDEFINED";
+  }
+}
+
 #define ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(EXPECTED, ACTUAL, FIELD) \
   ASSERT_EQ(EXPECTED.FIELD.size(), ACTUAL.FIELD.size());              \
   for (int j = 0; j < EXPECTED.FIELD.size(); ++j) {                   \
@@ -321,6 +337,7 @@ TEST(GraphUtilsTest, ExternalWriteReadWithLoadInitializers) {
   ASSERT_TRUE(data_validated);
 }
 
+#ifdef ENABLE_TRAINING_APIS
 // tests method that loads to OrtTensor (used when loading a checkpoint into a checkpoint state)
 TEST(GraphUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
   // create data
@@ -371,44 +388,41 @@ TEST(GraphUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
     loaded_tensors.push_back(std::move(ort_tensor));
   }
 
-
-
   bool data_validated = true;
 
   ASSERT_EQ(initializers.size(), loaded_tensors.size());
 
-  // for (int i = 0; i < initializers.size(); i++) {
-  //   const auto& expected_initializer = initializers[i];
-  //   const auto& loaded_tensor = loaded_tensors[i];
-  //   ASSERT_EQ(loaded_tensor.DataType().ToString(), expected_initializer.data_type().ToString());
-  //   ASSERT_EQ(loaded_tensor.Shape().NumDimensions(), expected_initializer.dims().size());
-  //   if (expected_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-  //     std::vector<uint8_t> expected_data;
+  // convert expected initializers (TensorProtos) to Tensors for easier comparison
+  std::vector<Tensor> expected_tensors;
+  const Env& env = Env::Default();
+  const wchar_t* placeholder_model_path = L"placeholder_model_path";
 
-  //   }
-  // }
-  //   const auto& loaded_initializer = loaded_initializers[i];
-  //   // validate the loaded initializer
-  //   ASSERT_EQ(expected_initializer.name(), loaded_initializer.name());
-  //   ASSERT_EQ(expected_initializer.data_type(), loaded_initializer.data_type());
-  //   ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, dims());
-  //   if (loaded_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-  //     // extract expected tensor raw data
-  //     std::vector<uint8_t> expected_data;
-  //     Path model_path;
-  //     ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(expected_initializer, model_path, expected_data));
+  for (int i = 0; i < initializers.size(); i++) {
+    auto expected_proto = initializers[i];
+    TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(expected_proto);
+    const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(expected_proto.data_type())->GetElementType();
+    Tensor expected_tensor(type, tensor_shape, cpu_allocator);
+    ASSERT_STATUS_OK(utils::TensorProtoToTensor(env, placeholder_model_path, initializers[i], expected_tensor));
+    expected_tensors.push_back(std::move(expected_tensor));
+  }
 
-  //     ASSERT_EQ(expected_data.size(), loaded_initializer.raw_data().size()) << "expected initializer name " << expected_initializer.name() << " | loaded initializer name " << loaded_initializer.name();
-  //     std::vector<uint8_t> loaded_data(loaded_initializer.raw_data().begin(), loaded_initializer.raw_data().end());
-  //     for (int j = 0; j < expected_data.size(); ++j) {
-  //       ASSERT_EQ(expected_data[j], loaded_data[j]) << "expected initializer name " << expected_initializer.name() << " | loaded initializer name " << loaded_initializer.name();
-  //     }
-  //   } else {
-  //     // string type tensor
-  //     ASSERT_EQ_FB_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, string_data());
-  //   }
-  // }
+  // validate data
+  for (int i = 0; i < expected_tensors.size(); i++) {
+    auto& expected_tensor = expected_tensors[i];
+    auto& loaded_tensor = loaded_tensors[i];
+    ASSERT_EQ(expected_tensor.DataType(), loaded_tensor.DataType());
+    ASSERT_EQ(expected_tensor.Shape(), loaded_tensor.Shape());
+    ASSERT_EQ(expected_tensor.SizeInBytes(), loaded_tensor.SizeInBytes());
+    std::vector<uint8_t> expected_data(static_cast<uint8_t*>(expected_tensor.MutableDataRaw()),
+                                        static_cast<uint8_t*>(expected_tensor.MutableDataRaw()) + expected_tensor.SizeInBytes());
+    std::vector<uint8_t> loaded_data(static_cast<uint8_t*>(loaded_tensor.MutableDataRaw()),
+                                        static_cast<uint8_t*>(loaded_tensor.MutableDataRaw()) + loaded_tensor.SizeInBytes());
+    for (int j = 0; j < expected_data.size(); ++j) {
+      ASSERT_EQ(expected_data[j], loaded_data[j]);
+    }
+  }
   ASSERT_TRUE(data_validated);
 }
+#endif // ENABLE_TRAINING_APIS
 }  // namespace test
 }  // namespace onnxruntime
