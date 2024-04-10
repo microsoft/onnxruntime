@@ -161,7 +161,7 @@ CMD ["/bin/bash"]
 #Build manylinux docker image end
 
 # Install cudnn9
-dnf -y install cudnn9
+RUN dnf -y install cudnn9
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
