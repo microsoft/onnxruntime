@@ -9,15 +9,11 @@
 
 #include "core/providers/cuda/triton_kernel.h"
 
-using namespace onnxruntime::cuda;
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 #ifdef USE_TRITON_KERNEL
-
-namespace {
 
 template <typename T>
 std::string GetBlockSparseAttentionTritonGroupName() {
@@ -25,8 +21,6 @@ std::string GetBlockSparseAttentionTritonGroupName() {
   ret += GetDataTypeName<T>();
   return ret;
 }
-
-}  // namespace
 
 template <typename T>
 auto GetTritonBlockSparseAttentionTypeStringAndOps() {
@@ -128,7 +122,7 @@ auto GetTritonBlockSparseAttentionTypeStringAndOps() {
 
       int grid_0 = (params->sequence_length + block_m - 1) / block_m;
       int grid_1 = params->batch_size * params->num_heads;
-      return LaunchTritonKernel(params->StreamHandle(), i, grid_0, grid_1, 1, &args, sizeof(args));
+      return onnxruntime::cuda::LaunchTritonKernel(params->StreamHandle(), i, grid_0, grid_1, 1, &args, sizeof(args));
     };
 
     ret.emplace_back(std::make_pair(metadata->name, std::move(impl)));
