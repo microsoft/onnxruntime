@@ -1694,6 +1694,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
 
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
+  ov_options_converted_map["export_ep_ctx_blob"] = "false";
   return ov_options_converted_map;
 }
 
@@ -1703,7 +1704,6 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
 }
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions* provider_options_map) {
-  // std::cout << provider_options_map.at("num_streams") << std::endl;
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
 }
 

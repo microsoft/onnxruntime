@@ -29,6 +29,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_->disable_dynamic_shapes = info.disable_dynamic_shapes_;
   global_context_->num_of_threads = info.num_of_threads_;
   global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
+  global_context_->export_ep_ctx_blob = info.export_ep_ctx_blob_;
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
@@ -157,9 +158,8 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                       *GetLogger(),
                                                       ep_ctx_handle_);
 
-    bool EXPORT_PRECOMPILED_BLOB = false;
 
-    if (EXPORT_PRECOMPILED_BLOB && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
+    if (global_context_->export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
       ORT_RETURN_IF_ERROR(backend_manager->ExportCompiledBlobAsEPCtxNode(fused_node,
                                                                          graph_body_viewer,
                                                                          *GetLogger()));

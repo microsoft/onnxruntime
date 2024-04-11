@@ -19,6 +19,7 @@ struct GlobalContext {
   bool enable_opencl_throttling = false;
   bool disable_dynamic_shapes = false;
   bool ep_context_embed_mode = true;
+  bool export_ep_ctx_blob = false;
   size_t num_of_threads;
   std::string device_type;
   std::string precision_str;
