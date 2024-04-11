@@ -8,6 +8,7 @@
 #include "attention_helper.h"
 
 #include "core/common/common.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 
@@ -33,11 +34,15 @@ class GQAAttentionBase : public AttentionBase {
                         Tensor* present_key,                   // present K output tensor (if separating present KV)
                         Tensor* present_value,                 // present V output tensor (if separating present KV)
                         const Tensor* seqlens_k,                     // past sequence lengths tensor
-                        int batch_size,                        // batch size (B)
-                        int sequence_length,                   // sequence length of Q (S)
-                        int head_size,                      // head size of Q or K (H)
-                        int hidden_size,                     // hidden size of output (O)
+                        GroupQueryAttentionParameters& parameters,  // attention parameters
                         OpKernelContext* context) const {
+
+    const int batch_size = parameters.batch_size;
+    const int sequence_length = parameters.sequence_length;
+    const int head_size = parameters.head_size;
+    const int hidden_size = parameters.hidden_size;
+    const bool packed_qkv = parameters.is_packed_qkv;
+
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -67,19 +72,21 @@ class GQAAttentionBase : public AttentionBase {
 
     bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
 
-    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
+    const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
+    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, k,
                              seqlens_k->Data<int32_t>(), static_cast<T*>(mask_data),
                              batch_size, sequence_length, seqlen_past_kv_cache,
-                             head_size, past_key_data, present_key_data, past_present_share_buffer, tp);
+                             head_size, past_key_data, present_key_data, past_present_share_buffer, packed_qkv, tp);
 
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     auto out_tmp_data =
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
+    const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs),
-                            V, seqlens_k->Data<int32_t>(), batch_size, sequence_length, seqlen_past_kv_cache, head_size, hidden_size,
-                            past_value_data, present_value_data, past_present_share_buffer, tp);
+                            v, seqlens_k->Data<int32_t>(), batch_size, sequence_length, seqlen_past_kv_cache, head_size, hidden_size,
+                            past_value_data, present_value_data, past_present_share_buffer, packed_qkv, tp);
 
     return Status::OK();
   }
@@ -102,8 +109,10 @@ class GQAAttentionBase : public AttentionBase {
                              const T* past_key,                         // past key only (if not using past state)
                              T* present_key,                            // present key only (if not using present state)
                              bool past_present_share_buffer,            // whether present key and value share the same buffer
+                             bool packed_qkv,                           // whether Q, K, V are packed
                              ThreadPool* tp) const {                             // thread pool
     const bool is_prompt = sequence_length != 1;
+    const int packed_batch_stride = packed_qkv ? (num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size : 0;
     const int kv_num_heads_factor = num_heads_ / kv_num_heads_;
     const int present_buffer_sequence_length = past_present_share_buffer ?
                                                past_buffer_sequence_length :
@@ -142,6 +151,7 @@ class GQAAttentionBase : public AttentionBase {
     ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>(i) / num_heads_;
+        const int head_index = static_cast<int>(i) % num_heads_;
         const int past_seqlen = static_cast<int>(seqlens_k[batch_index]); // TODO: rename to past sequence length
         const size_t past_chunk_length = static_cast<size_t>(past_seqlen) * head_size;
 
@@ -157,7 +167,12 @@ class GQAAttentionBase : public AttentionBase {
                  probs_matrix_bytes);
         }
 
-        const T* k = K + kv_input_chunk_length * (i / kv_num_heads_factor);
+        const T* k;
+        if (packed_qkv) {
+          k = K + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
+        } else {
+          k = K + kv_input_chunk_length * (i / kv_num_heads_factor);
+        }
         if (nullptr != present_key) {
           k = ConcatStateChunkGQA(past_key, k, present_key, present_buff_chunk_length, past_buff_chunk_length,
                                   past_chunk_length, kv_input_chunk_length, is_prompt, past_present_share_buffer,
@@ -172,9 +187,14 @@ class GQAAttentionBase : public AttentionBase {
         // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
         // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
         // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
-        // std::cout << "present_sequence_length: " << present_sequence_length << std::endl;
+        const T* q;
+        if (packed_qkv) {
+          q = Q + packed_batch_stride * batch_index + q_input_chunk_length * head_index;
+        } else {
+          q = Q + q_input_chunk_length * i;
+        }
         math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, present_buffer_sequence_length, head_size, alpha,
-                                  Q + q_input_chunk_length * i, k, mask_data != nullptr ? 1.0f : 0.0f, output, nullptr);
+                                  q, k, mask_data != nullptr ? 1.0f : 0.0f, output, nullptr);
       }
     });
 
@@ -198,8 +218,10 @@ class GQAAttentionBase : public AttentionBase {
                                const T* past_value,       // past value only (if not using past state)
                                T* present_value,          // present value only (if not using present state)
                                bool past_present_share_buffer,   // whether present key and value share the same buffer
+                               bool packed_qkv,          // whether Q, K, V are packed
                                ThreadPool* tp) const {
     const bool is_prompt = sequence_length != 1;
+    const int packed_batch_stride = packed_qkv ? (num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size : 0;
     const int kv_num_heads_factor = num_heads_ / kv_num_heads_;
     const int present_buffer_sequence_length = past_present_share_buffer ?
                                                past_buffer_sequence_length :
@@ -230,10 +252,16 @@ class GQAAttentionBase : public AttentionBase {
     ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>(i / num_heads_);
+        const int head_index = static_cast<int>(i % num_heads_);
         const int past_seqlen = static_cast<int>(seqlens_k[batch_index]); // TODO: rename to past sequence length
         const size_t past_chunk_length = static_cast<size_t>(past_seqlen) * head_size;
 
-        const T* v = V + kv_input_chunk_length * (i / kv_num_heads_factor);
+        const T* v;
+        if (packed_qkv) {
+          v = V + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
+        } else {
+          v = V + kv_input_chunk_length * (i / kv_num_heads_factor);
+        }
         if (nullptr != present_value) {
           v = ConcatStateChunkGQA(past_value, v, present_value, present_buff_chunk_length, past_buff_chunk_length,
                                   past_chunk_length, kv_input_chunk_length, is_prompt, past_present_share_buffer,
@@ -247,7 +275,6 @@ class GQAAttentionBase : public AttentionBase {
                         v, current_tmp_data, nullptr);
 
         // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
-        const int head_index = static_cast<int>(i % num_heads_);
         T* src = current_tmp_data;
         ptrdiff_t dest_offset = (SafeInt<ptrdiff_t>(batch_index) * sequence_length * num_heads_ + head_index) * head_size;
         T* dest = output + dest_offset;

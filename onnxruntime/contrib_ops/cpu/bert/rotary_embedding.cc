@@ -105,9 +105,9 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   return Status::OK();
 }
 
-template Status RunRotaryEmbedding<float>(concurrency::ThreadPool* tp, RotaryParameters parameters, const float* input,
-                                          const int64_t* position_ids, const float* cos_cache, const float* sin_cache,
-                                          float* output, bool interleaved);
+// template Status RunRotaryEmbedding<float>(concurrency::ThreadPool* tp, RotaryParameters parameters, const float* input,
+//                                           const int64_t* position_ids, const float* cos_cache, const float* sin_cache,
+//                                           float* output, bool interleaved);
 
 template <typename T>
 Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
