@@ -275,23 +275,11 @@
         "^test_cast_INT4_to_INT8_cuda",
         "^test_cast_UINT4_to_FLOAT_cuda",
         "^test_cast_UINT4_to_UINT8_cuda",
-        // ConstantOfShape(21) from ONNX 1.16.0 is not implemented in ORT yet. Also needs int4 support.
-        "^test_constantofshape_float_ones_cpu",
-        "^test_constantofshape_int_shape_zero_cpu",
-        "^test_constantofshape_int_zeros_cpu",
+        // ConstantOfShape(21) from ONNX 1.16.0 is not implemented for cuda.
         "^test_constantofshape_float_ones_cuda",
         "^test_constantofshape_int_shape_zero_cuda",
         "^test_constantofshape_int_zeros_cuda",
-        // Flatten(21) from ONNX 1.16.0 is not implemented in ORT yet. Also needs int4 support.
-        "^test_flatten_axis0_cpu",
-        "^test_flatten_axis1_cpu",
-        "^test_flatten_axis2_cpu",
-        "^test_flatten_axis3_cpu",
-        "^test_flatten_default_axis_cpu",
-        "^test_flatten_negative_axis1_cpu",
-        "^test_flatten_negative_axis2_cpu",
-        "^test_flatten_negative_axis3_cpu",
-        "^test_flatten_negative_axis4_cpu",
+        // Flatten(21) from ONNX 1.16.0 is not implemented for cuda.
         "^test_flatten_axis0_cuda",
         "^test_flatten_axis1_cuda",
         "^test_flatten_axis2_cuda",
@@ -318,9 +306,7 @@
         "^test_qlinearmatmul_3D_int8_float32_cuda",
         "^test_qlinearmatmul_3D_uint8_float16_cuda",
         "^test_qlinearmatmul_3D_uint8_float32_cuda",
-        // Size(21) from ONNX 1.16.0 is not implemented in ORT yet. Also needs int4 support.
-        "^test_size_cpu",
-        "^test_size_example_cpu",
+        // Size(21) from ONNX 1.16.0 is not implemented in cuda.
         "^test_size_cuda",
         "^test_size_example_cuda",
         // DequantizeLinear(21) blocked quantization from ONNX 1.16.0 is not implemented in ORT yet.
