@@ -25,9 +25,9 @@ const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& nod
   }
   const Node* next_node = &*node.OutputNodesBegin();
   // ensure that the target node also has only one input that is not an initializer
-  const int input_edges_total = next_node->GetInputEdgesCount();
+  const size_t input_edges_total = next_node->GetInputEdgesCount();
   int non_const_edges = 0;
-  for (int edge_idx = 0; edge_idx < input_edges_total; ++edge_idx) {
+  for (size_t edge_idx = 0; edge_idx < input_edges_total; ++edge_idx) {
       if(!graph_utils::NodeArgIsConstant(graph_viewer.GetGraph(), *next_node->InputDefs()[edge_idx]))
       {
           ++non_const_edges;
