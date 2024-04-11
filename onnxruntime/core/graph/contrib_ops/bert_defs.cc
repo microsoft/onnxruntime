@@ -1215,7 +1215,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* GemmaRotaryEmbedding_ver1_doc = R"DOC(
-GemmaRotaryEmbedding is the implementation of rotary positional embeddings (RoPE). It includes sin and cos in GemmaRotaryEmbedding forward and apply_rotary_pos_emb
+GemmaRotaryEmbedding is the implementation of below part of rotary positional embeddings (RoPE). It implements below from modeling_gemma.py.
+- Only support fp16, other types are not support
+- rotate_half is not included
+
+class LlamaRotaryEmbedding(nn.Module):
+  def forward():
+    ...
+    cos = emb.cos()
+    sin = emb.sin()
+    return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
+    cos = cos.unsqueeze(unsqueeze_dim)
+    sin = sin.unsqueeze(unsqueeze_dim)
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
 )DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(
     GemmaRotaryEmbedding, 1,
