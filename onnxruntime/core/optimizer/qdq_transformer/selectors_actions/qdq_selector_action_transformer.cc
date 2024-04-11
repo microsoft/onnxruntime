@@ -216,8 +216,7 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when QLinearMatMul and MatMulInteger support 16-bit.
-  std::vector<const char*> providers = {kCpuExecutionProvider};
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::MatMulSelector>(providers, is_int8_allowed);
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::MatMulSelector>(is_int8_allowed);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"MatMul", {}}},
                                                          std::move(selector),

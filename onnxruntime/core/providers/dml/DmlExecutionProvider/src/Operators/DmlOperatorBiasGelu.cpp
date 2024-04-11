@@ -12,7 +12,7 @@ public:
     DmlOperatorBiasGelu(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 2);
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 1 || kernelCreationContext.GetInputCount() == 2);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1);
 
         // Broadcast bias to have the same dimensions as the input
@@ -20,7 +20,7 @@ public:
         DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, inputTensorShape);
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
-        ML_CHECK_VALID_ARGUMENT(inputDescs.size() == 2);
+        ML_CHECK_VALID_ARGUMENT(inputDescs.size() == kernelCreationContext.GetInputCount());
         ML_CHECK_VALID_ARGUMENT(outputDescs.size() == 1);
 
         if (kernelCreationContext.IsInputValid(1))
