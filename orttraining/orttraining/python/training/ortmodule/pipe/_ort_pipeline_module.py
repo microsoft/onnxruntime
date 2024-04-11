@@ -13,7 +13,7 @@ from packaging.version import Version
 from onnxruntime.training.ortmodule import DebugOptions, ORTModule
 
 # Check if DeepSpeed is installed and meets the minimum version requirement
-minimum_version = Version("0.12.6")
+minimum_version = Version("0.9.0")
 installed_version = Version(importlib.metadata.version("deepspeed"))
 
 if installed_version < minimum_version:
