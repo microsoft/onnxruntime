@@ -391,7 +391,7 @@ static GetTestModelFn F32BuildAdd3Tensors(const TestInputDef<float>& input0_def,
 }
 
 // Tests running a single session in multiple threads on the CPU backend.
-TEST_F(QnnCPUBackendTests, DISABLED_MultithreadSessionRun) {
+TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
@@ -471,7 +471,7 @@ static GetTestModelFn QDQBuildAdd3Tensors(const TestInputDef<float>& input0_def,
 }
 
 // Tests running a single session in multiple threads on the HTP backend.
-TEST_F(QnnHTPBackendTests, DISABLED_MultithreadSessionRun) {
+TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
@@ -523,7 +523,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_MultithreadSessionRun) {
 }
 
 // Tests running a single session in multiple threads on the HTP backend with run option to set power config
-TEST_F(QnnHTPBackendTests, DISABLED_MultithreadHtpPowerCfgSessionRunOption) {
+TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
@@ -585,7 +585,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_MultithreadHtpPowerCfgSessionRunOption) {
 }
 
 // Tests running a single session in multiple threads on the HTP backend with EP option to set default power config
-TEST_F(QnnHTPBackendTests, DISABLED_MultithreadDefaultHtpPowerCfgFromEpOption) {
+TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
@@ -639,7 +639,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_MultithreadDefaultHtpPowerCfgFromEpOption) {
 
 // Tests running a single session in multiple threads on the HTP backend with
 // EP option to set default power config + run option to set power config for each run
-TEST_F(QnnHTPBackendTests, DISABLED_MultithreadHtpPowerCfgDefaultAndRunOption) {
+TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
