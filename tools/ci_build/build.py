@@ -1019,6 +1019,7 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_OBJC=" + ("ON" if args.build_objc else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
+        "-DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER", #PACO
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
@@ -1792,7 +1793,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         if args.android:
             env["ANDROID_SDK_ROOT"] = args.android_sdk_path
             env["ANDROID_NDK_HOME"] = args.android_ndk_path
-        cmd_args += ['--verbose']
+        # cmd_args += ['--verbose']
         print(cmd_args)
         print(env)
         run_subprocess(cmd_args, env=env)
