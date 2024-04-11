@@ -568,7 +568,7 @@ Status FlashAttention(
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
-  bool is_causal = true;
+  bool is_causal = parameters.is_unidirectional;
   bool is_bf16 = std::is_same<T, BFloat16>::value;
 
   void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
