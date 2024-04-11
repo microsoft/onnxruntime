@@ -58,7 +58,7 @@ Status ShapeInputMerge::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     for (size_t i = 1; i < kv.second.size(); ++i) {
       Node* p_node = kv.second[i];
       const NodeArg* input_arg = p_node->InputDefs()[0];
-      if (p_node->InputDefs()[0]->Name() == first_input_arg->Name()) continue;
+      if (input_arg->Name() == first_input_arg->Name() || !p_node->GetInputEdgesCount()) continue;
       if (!graph.IsInputsIncludingInitializers(input_arg)) {
         const Node::EdgeEnd& input_edge = *p_node->InputEdgesBegin();
         graph.RemoveEdge(input_edge.GetNode().Index(), p_node->Index(), input_edge.GetSrcArgIndex(), 0);
