@@ -4,7 +4,7 @@ import deepspeed
 import torch
 from torch import nn
 
-from onnxruntime.training.ortmodule import ORTPipelineModule
+from onnxruntime.training.ortmodule.pipe import ORTPipelineModule
 
 # USAGE:
 # pip install deepspeed
@@ -51,16 +51,15 @@ deepspeed.init_distributed(dist_backend=args.backend)
 torch.manual_seed(args.seed)
 # Model.
 
-if args.run_without_ort:
-    model = nn.Sequential(
-        nn.Linear(d_in, d_hidden),  # Stage 1
-        nn.ReLU(),  # Stage 1
-        nn.Linear(d_hidden, d_hidden),  # Stage 1
-        nn.ReLU(),  # Stage 1
-        nn.Linear(d_hidden, d_hidden),  # Stage 2
-        nn.ReLU(),  # Stage 2
-        nn.Linear(d_hidden, d_out),  # Stage 2
-    )
+model = nn.Sequential(
+    nn.Linear(d_in, d_hidden),  # Stage 1
+    nn.ReLU(),  # Stage 1
+    nn.Linear(d_hidden, d_hidden),  # Stage 1
+    nn.ReLU(),  # Stage 1
+    nn.Linear(d_hidden, d_hidden),  # Stage 2
+    nn.ReLU(),  # Stage 2
+    nn.Linear(d_hidden, d_out),  # Stage 2
+)
 
 model = ORTPipelineModule(
     layers=model,

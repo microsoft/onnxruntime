@@ -17,7 +17,7 @@ from onnxruntime.capi import build_and_package_info as ort_info
 from onnxruntime.capi._pybind_state import is_ortmodule_available
 
 from ._fallback import ORTModuleFallbackException, ORTModuleInitException, _FallbackPolicy, wrap_exception
-from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
+from .torch_cpp_extensions import is _installed as is_torch_cpp_extensions_installed
 
 if not is_ortmodule_available():
     raise ImportError("ORTModule is not supported on this platform.")
@@ -234,6 +234,3 @@ from .options import DebugOptions, LogLevel  # noqa: E402, F401
 
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule  # noqa: E402, F401
-
-# Import ORTPipelineModule after ORTModule to avoid circular import
-from .pipe import ORTPipelineModule  # noqa: E402, F401

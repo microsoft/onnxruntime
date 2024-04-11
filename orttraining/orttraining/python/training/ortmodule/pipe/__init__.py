@@ -3,4 +3,4 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from _ort_pipeline_module import ORTPipelineModule
+from ._ort_pipeline_module import ORTPipelineModule
