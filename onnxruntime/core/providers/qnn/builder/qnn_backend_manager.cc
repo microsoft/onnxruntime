@@ -933,16 +933,19 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
         tracelogging_provider_ep_enabled = true;
       }
     }
+
+    ORT_RETURN_IF(!tracelogging_provider_ep_enabled && profiling_file_path_.empty(),
+                  "Need to specify a cvs file via provider option profiling_file_path if ETW not enabled.");
+
     std::ofstream outfile;
     if (!tracelogging_provider_ep_enabled) {
       // Write to CSV in append mode
-      const char* profilingCsvFilename = "qnn-profiling-data.csv";
-      std::ifstream infile(profilingCsvFilename);
+      std::ifstream infile(profiling_file_path_.c_str());
       bool exists = infile.good();
       infile.close();
 
-      outfile.open(profilingCsvFilename, std::ios_base::app);
-      ORT_RETURN_IF(!outfile.is_open(), "Failed to open qnn-profiling-data.csv");
+      outfile.open(profiling_file_path_, std::ios_base::app);
+      ORT_RETURN_IF(!outfile.is_open(), "Failed to open profiling file: ", profiling_file_path_);
       // If file didn't exist before, write the header
       if (!exists) {
         outfile << "Msg Timestamp,Message,Time,Unit of Measurement,Timing Source,Event Level,Event Identifier\n";

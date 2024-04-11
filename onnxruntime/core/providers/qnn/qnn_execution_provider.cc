@@ -192,6 +192,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(ERROR) << "No backend path provided.";
   }
 
+  std::string profiling_file_path;
   static const std::string PROFILING_LEVEL = "profiling_level";
   qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
   const Env& env = Env::Default();
@@ -218,6 +219,12 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     if (profiling_level_pos != provider_options_map.end()) {
       ParseProfilingLevel(profiling_level_pos->second, profiling_level);
     }
+    static const std::string PROFILING_FILE = "profiling_file_path";
+    auto profiling_file_pos = provider_options_map.find(PROFILING_FILE);
+    if (profiling_file_pos != provider_options_map.end()) {
+      profiling_file_path = profiling_file_pos->second;
+    }
+    LOGS_DEFAULT(VERBOSE) << "Profiling file path: " << profiling_file_path;
   }
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
@@ -316,6 +323,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level,
+      std::move(profiling_file_path),
       context_priority,
       std::move(qnn_saver_path),
       device_id_,

@@ -33,6 +33,7 @@ class QnnBackendManager {
  public:
   QnnBackendManager(std::string&& backend_path,
                     ProfilingLevel profiling_level,
+                    std::string&& profiling_file_path,
                     ContextPriority context_priority,
                     std::string&& qnn_saver_path,
                     uint32_t device_id,
@@ -40,6 +41,7 @@ class QnnBackendManager {
                     uint32_t soc_model)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
+        profiling_file_path_(profiling_file_path),
         context_priority_(context_priority),
         qnn_saver_path_(qnn_saver_path),
         device_id_(device_id),
@@ -226,6 +228,7 @@ class QnnBackendManager {
   Qnn_DeviceHandle_t device_handle_ = nullptr;
   Qnn_ContextHandle_t context_ = nullptr;
   ProfilingLevel profiling_level_;
+  const std::string profiling_file_path_;
   bool backend_initialized_ = false;
   bool device_created_ = false;
   bool context_created_ = false;
