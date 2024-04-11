@@ -2,7 +2,15 @@
 # Licensed under the MIT license.
 
 import importlib.metadata
+from functools import partial
+
+import torch.nn as nn
+from deepspeed.pipe import LayerSpec, PipelineModule, TiedLayerSpec
+from deepspeed.runtime import utils as ds_utils
+from deepspeed.runtime.activation_checkpointing import checkpointing
 from packaging.version import Version
+
+from onnxruntime.training.ortmodule import DebugOptions, ORTModule
 
 # Check if DeepSpeed is installed and meets the minimum version requirement
 minimum_version = Version("0.12.6")
@@ -10,13 +18,6 @@ installed_version = Version(importlib.metadata.version("deepspeed"))
 
 if installed_version < minimum_version:
     raise ImportError(f"DeepSpeed >= {minimum_version} is required, but {installed_version} is installed.")
-
-from typing import List, Union
-
-import torch.nn as nn
-from deepspeed.pipe import LayerSpec, TiedLayerSpec, PipelineModule
-from onnxruntime.training.ortmodule import DebugOptions, ORTModule
-from deepspeed.runtime.activation_checkpointing import checkpointing
 
 
 class ORTPipelineModule(PipelineModule):
