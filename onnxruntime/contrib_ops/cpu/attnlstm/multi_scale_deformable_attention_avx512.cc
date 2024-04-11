@@ -154,19 +154,19 @@ namespace contrib {
 
           __m256 loc_w_1stquarter_compressed = _mm256_castsi256_ps(_mm512_cvtepi64_epi32(_mm512_castps_si512(loc_w_1stquarter)));
           __m256 loc_w_2ndquarter_compressed = _mm256_castsi256_ps(_mm512_cvtepi64_epi32(_mm512_castps_si512(loc_w_2ndquarter)));
-          __m512 loc_w_1sthalf = _mm512_insertf32x8(_mm512_zextps256_ps512(loc_w_1stquarter_compressed), loc_w_2ndquarter_compressed, 1);
+          __m512 loc_w_1sthalf = _mm512_insertf32x8(_mm512_castps256_ps512(loc_w_1stquarter_compressed), loc_w_2ndquarter_compressed, 1);
 
           __m256 loc_w_3rdquarter_compressed = _mm256_castsi256_ps(_mm512_cvtepi64_epi32(_mm512_castps_si512(loc_w_3rdquarter)));
           __m256 loc_w_4thquarter_compressed = _mm256_castsi256_ps(_mm512_cvtepi64_epi32(_mm512_castps_si512(loc_w_4thquarter)));
-          __m512 loc_w_2ndhalf = _mm512_insertf32x8(_mm512_zextps256_ps512(loc_w_3rdquarter_compressed), loc_w_4thquarter_compressed, 1);
+          __m512 loc_w_2ndhalf = _mm512_insertf32x8(_mm512_castps256_ps512(loc_w_3rdquarter_compressed), loc_w_4thquarter_compressed, 1);
 
           __m256 loc_h_1stquarter_compressed = _mm256_castsi256_ps(_mm512_cvtepi64_epi32(_mm512_ror_epi64(_mm512_castps_si512(loc_h_1stquarter), 32)));
           __m256 loc_h_2ndquarter_compressed = _mm256_castsi256_ps(_mm512_cvtepi64_epi32(_mm512_ror_epi64(_mm512_castps_si512(loc_h_2ndquarter), 32)));
-          __m512 loc_h_1sthalf = _mm512_insertf32x8(_mm512_zextps256_ps512(loc_h_1stquarter_compressed), loc_h_2ndquarter_compressed, 1);
+          __m512 loc_h_1sthalf = _mm512_insertf32x8(_mm512_castps256_ps512(loc_h_1stquarter_compressed), loc_h_2ndquarter_compressed, 1);
 
           __m256 loc_h_3rdquarter_compressed = _mm256_castsi256_ps(_mm512_cvtepi64_epi32(_mm512_ror_epi64(_mm512_castps_si512(loc_h_3rdquarter), 32)));
           __m256 loc_h_4thquarter_compressed = _mm256_castsi256_ps(_mm512_cvtepi64_epi32(_mm512_ror_epi64(_mm512_castps_si512(loc_h_4thquarter), 32)));
-          __m512 loc_h_2ndhalf = _mm512_insertf32x8(_mm512_zextps256_ps512(loc_h_3rdquarter_compressed), loc_h_4thquarter_compressed, 1);
+          __m512 loc_h_2ndhalf = _mm512_insertf32x8(_mm512_castps256_ps512(loc_h_3rdquarter_compressed), loc_h_4thquarter_compressed, 1);
 
           // align_corners = False
           // [0, H] => [-0.5, H - 0.5]
