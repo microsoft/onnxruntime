@@ -248,7 +248,7 @@ namespace Dml
 
             // When we are capturing a graph, we don't pool the command list and instead transfer it to the execution provider. Captured graph
             // have the same bindings for their entire lifetime.
-            if (providerImpl->GraphCaptureEnabled() && !providerImpl->GraphCaptured(providerImpl->GetCurrentGraphAnnotationId()))
+            if (providerImpl->GraphCaptureEnabled() && providerImpl->GetCurrentGraphAnnotationId() != -1 && !providerImpl->GraphCaptured(providerImpl->GetCurrentGraphAnnotationId()))
             {
                 auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(
                     m_provider.Get(),
