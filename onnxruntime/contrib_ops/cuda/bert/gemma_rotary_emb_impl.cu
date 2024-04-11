@@ -33,6 +33,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
+constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
+
 template <typename T, typename U>
 __global__ void GemmaRotaryEmb( T* output1,
                                 T* output2,
@@ -45,19 +48,15 @@ __global__ void GemmaRotaryEmb( T* output1,
                                 const int num_heads,
                                 const int seq_len,
                                 const int dim) {
-    const int t = blockIdx.x;
-    const int x = blockIdx.y;
-    const int y = blockIdx.z;
-    const int z = threadIdx.x;
 
-    if (t < batch_size && x < num_heads && y < seq_len && z < dim) {
-        // Calculate linear indices for accessing elements in the flattened tensors
-        int emb_idx = t * num_heads * dim + y * dim + z;
-        int qk_idx = t * num_heads * seq_len * dim + x * seq_len * dim + y * dim + z;
-        T sin_val = static_cast<T>(sin(emb[emb_idx])); 
-        T cos_val = static_cast<T>(cos(emb[emb_idx]));
-        output1[qk_idx] = q[qk_idx] * cos_val + q_rot[qk_idx] * sin_val;
-        output2[qk_idx] = k[qk_idx] * cos_val + k_rot[qk_idx] * sin_val;
+    const int qk_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    // index [i, j, k, l] -> [i, k, l]
+    const int emb_idx = qk_idx / (num_heads * seq_len * dim) * (seq_len * dim) + qk_idx %  (seq_len * dim);
+    if (qk_idx < batch_size * num_heads * seq_len * dim) {
+      T sin_val = static_cast<T>(sin(emb[emb_idx])); 
+      T cos_val = static_cast<T>(cos(emb[emb_idx]));
+      output1[qk_idx] = q[qk_idx] * cos_val + q_rot[qk_idx] * sin_val;
+      output2[qk_idx] = k[qk_idx] * cos_val + k_rot[qk_idx] * sin_val;
     }
 }
 
@@ -76,11 +75,9 @@ Status LaunchGemmaRotaryEmbeddingKernel(
     const int seq_len,
     const int dim
     ) {
+  int blocksPerGrid = static_cast<int>(ceil(float(batch_size * num_heads * seq_len * dim) / kThreadsPerBlock));
 
-  const dim3 block(dim);
-  const dim3 grid(batch_size, num_heads, seq_len);
-
-  GemmaRotaryEmb<<<grid, block, 0, stream>>>(
+  GemmaRotaryEmb<<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(
     output1, output2,
     emb, q, q_rot, k, k_rot,
     batch_size, num_heads, seq_len, dim

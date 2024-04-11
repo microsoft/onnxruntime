@@ -33,10 +33,6 @@ static void calculateExpectedOutput(const std::vector<float>& emb_data,
                                     const std::vector<int64_t>& mul_dim,
                                     std::vector<MLFloat16>& output1,
                                     std::vector<MLFloat16>& output2) {
-  std::cout << "q_data elements: ";
-  std::copy(q_data.begin(), q_data.end(), std::ostream_iterator<MLFloat16>(std::cout, " "));
-  std::cout << std::endl;
-
   for (size_t i = 0; i < mul_dim[0]; ++i) {
     for (size_t j = 0; j < mul_dim[1]; ++j) {
       for (size_t k = 0; k < mul_dim[2]; ++k) {
