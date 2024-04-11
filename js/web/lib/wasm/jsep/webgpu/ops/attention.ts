@@ -474,37 +474,37 @@ const computeVxAttentionScore =
           TILE_SIZE, TILE_SIZE, 1
         ])}
    let headIdx = workgroup_id.z;
-let m = global_id.y;
-let n = global_id.x;
+   let m = global_id.y;
+   let n = global_id.x;
 
-let offsetA = headIdx * (uniforms.M * uniforms.K) + m * uniforms.K;
-let offsetB = headIdx * (uniforms.N * uniforms.K) + n;
+   let offsetA = headIdx * (uniforms.M * uniforms.K) + m * uniforms.K;
+   let offsetB = headIdx * (uniforms.N * uniforms.K) + n;
 
    var value = ${probsHelper.type.storage}(0);
-for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-  if (m < uniforms.M && w + local_id.x < uniforms.K) {
-    tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
-  }
-  if (n < uniforms.N && w + local_id.y < uniforms.K) {
-    tileK[TILE_SIZE * local_id.y + local_id.x] = v[offsetB + (w + local_id.y) * uniforms.N];
-  }
-  workgroupBarrier();
+   for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
+     if (m < uniforms.M && w + local_id.x < uniforms.K) {
+       tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
+     }
+     if (n < uniforms.N && w + local_id.y < uniforms.K) {
+       tileK[TILE_SIZE * local_id.y + local_id.x] = v[offsetB + (w + local_id.y) * uniforms.N];
+     }
+     workgroupBarrier();
      for (var k: u32 = 0u; k<TILE_SIZE && w+k < uniforms.K; k++) {
-    value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * k + local_id.x];
-  }
-  workgroupBarrier();
-}
+       value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * k + local_id.x];
+     }
+     workgroupBarrier();
+   }
 
-// we need to transpose output from BNSH_v to BSND_v
-let batchIdx = workgroup_id.z / uniforms.num_heads;
-let currentBatchHeadNumber = workgroup_id.z % uniforms.num_heads;
-let headOffset = (batchIdx * uniforms.M * uniforms.num_heads + currentBatchHeadNumber) * uniforms.N;
-if (m < uniforms.M && n < uniforms.N) {
+   // we need to transpose output from BNSH_v to BSND_v
+   let batchIdx = workgroup_id.z / uniforms.num_heads;
+   let currentBatchHeadNumber = workgroup_id.z % uniforms.num_heads;
+   let headOffset = (batchIdx * uniforms.M * uniforms.num_heads + currentBatchHeadNumber) * uniforms.N;
+   if (m < uniforms.M && n < uniforms.N) {
      let outputIdx = batchIdx * uniforms.M *uniforms.v_hidden_size + m * uniforms.v_hidden_size
        + currentBatchHeadNumber * uniforms.N + n;
-  output[outputIdx] = value;
-}
-}`;
+     output[outputIdx] = value;
+   }
+  }`;
       };
 
       return context.compute(
@@ -578,54 +578,53 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
       TILE_SIZE, TILE_SIZE, 1
     ])}
     let batchIndex = workgroup_id.z / uniforms.num_heads;
-let headNumber = workgroup_id.z % uniforms.num_heads;
-let m = global_id.y;
-let n = global_id.x;
+    let headNumber = workgroup_id.z % uniforms.num_heads;
+    let m = global_id.y;
+    let n = global_id.x;
 
-let inputOffset = batchIndex * (uniforms.M * uniforms.K) + m * uniforms.K;
-let biasOffsetQ = headNumber * uniforms.head_size;
-let biasOffsetK = uniforms.hidden_size + biasOffsetQ;
-let biasOffsetV = uniforms.hidden_size + biasOffsetK;
+    let inputOffset = batchIndex * (uniforms.M * uniforms.K) + m * uniforms.K;
+    let biasOffsetQ = headNumber * uniforms.head_size;
+    let biasOffsetK = uniforms.hidden_size + biasOffsetQ;
+    let biasOffsetV = uniforms.hidden_size + biasOffsetK;
 
-var valueQ = ${dataType}(0);
-var valueK = ${dataType}(0);
-var valueV = ${dataType}(0);
-for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-  if (m < uniforms.M && w + local_id.x < uniforms.K) {
-    tileInput[TILE_SIZE * local_id.y + local_id.x] = input[inputOffset + w + local_id.x];
-  }
-  if (n < uniforms.N && w + local_id.y < uniforms.K) {
-    let offset = n + (w + local_id.y) * uniforms.ldb;
-    tileWeightQ[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetQ + offset];
-    tileWeightK[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetK + offset];
-    tileWeightV[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetV + offset];
-  }
-  workgroupBarrier();
-  for (var k: u32 = 0u; k < TILE_SIZE && w + k < uniforms.K; k++) {
-    let inputTileOffset = TILE_SIZE * local_id.y + k;
-    let weightTileOffset = TILE_SIZE * k + local_id.x;
-    valueQ += tileInput[inputTileOffset] * tileWeightQ[weightTileOffset];
-    valueK += tileInput[inputTileOffset] * tileWeightK[weightTileOffset];
-    valueV += tileInput[inputTileOffset] * tileWeightV[weightTileOffset];
-  }
+    var valueQ = ${dataType}(0);
+    var valueK = ${dataType}(0);
+    var valueV = ${dataType}(0);
+    for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
+      if (m < uniforms.M && w + local_id.x < uniforms.K) {
+        tileInput[TILE_SIZE * local_id.y + local_id.x] = input[inputOffset + w + local_id.x];
+      }
+      if (n < uniforms.N && w + local_id.y < uniforms.K) {
+        let offset = n + (w + local_id.y) * uniforms.ldb;
+        tileWeightQ[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetQ + offset];
+        tileWeightK[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetK + offset];
+        tileWeightV[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetV + offset];
+      }
+      workgroupBarrier();
+      for (var k: u32 = 0u; k<TILE_SIZE && w+k < uniforms.K; k++) {
+        let inputTileOffset = TILE_SIZE * local_id.y + k;
+        let weightTileOffset = TILE_SIZE * k + local_id.x;
+        valueQ += tileInput[inputTileOffset] * tileWeightQ[weightTileOffset];
+        valueK += tileInput[inputTileOffset] * tileWeightK[weightTileOffset];
+        valueV += tileInput[inputTileOffset] * tileWeightV[weightTileOffset];
+      }
 
-  workgroupBarrier();
-}
+      workgroupBarrier();
+    }
 
-let headOffset = (m * uniforms.N + n) % uniforms.head_size;
-valueQ += bias[headOffset + biasOffsetQ];
-valueK += bias[headOffset + biasOffsetK];
-valueV += bias[headOffset + biasOffsetV];
+    let headOffset = (m * uniforms.N + n) % uniforms.head_size;
+    valueQ += bias[headOffset + biasOffsetQ];
+    valueK += bias[headOffset + biasOffsetK];
+    valueV += bias[headOffset + biasOffsetV];
 
-let offset = workgroup_id.z * uniforms.M * uniforms.N;
-if (m < uniforms.M && n < uniforms.N) {
-  let outputIdx = offset + m * uniforms.N + n;
-  output_q[outputIdx] = valueQ;
-  output_k[outputIdx] = valueK;
-  output_v[outputIdx] = valueV;
-}
-}
-`;
+    let offset = workgroup_id.z * uniforms.M * uniforms.N;
+    if (m < uniforms.M && n < uniforms.N) {
+      let outputIdx = offset + m * uniforms.N + n;
+      output_q[outputIdx] = valueQ;
+      output_k[outputIdx] = valueK;
+      output_v[outputIdx] = valueV;
+    }
+  }`;
   };
 
   return context.compute(

@@ -12,7 +12,7 @@ import {inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './
 import {createTransposeProgramInfo, TransposeAttributes} from './transpose';
 
 const getInput = (inputs: readonly TensorView[], i: number) =>
-    inputs[i].dims.length > 0 && ShapeUtil.size(inputs[i].dims) > 0 ? inputs[i] : undefined;
+    (inputs.length > i) && (inputs[i].dims.length > 0) && (ShapeUtil.size(inputs[i].dims)) > 0 ? inputs[i] : undefined;
 
 const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttrs): AttentionParameters => {
   const query = inputs[0];
@@ -318,7 +318,6 @@ const maybeTransposeToBNSHAndAddBias =
 
 export const multiHeadAttention = (context: ComputeContext, attributes: AttentionAttrs): void => {
   const params = validateInputs(context.inputs, attributes);
-  undefined;
   const query = context.inputs[0];
   const key = getInput(context.inputs, 1);
   const value = getInput(context.inputs, 2);
