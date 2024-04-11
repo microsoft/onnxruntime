@@ -19,6 +19,7 @@
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/platform/env.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
@@ -287,6 +288,14 @@ NS_ASSUME_NONNULL_BEGIN
     compiled_model_path_ = nil;
   }
 
+#if !defined(NDEBUG)
+  std::string path_override = Env::Default().GetEnvironmentVar(util::kOverrideModelOutputDirectoryEnvVar);
+  if (!path_override.empty()) {
+    // don't cleanup
+    coreml_model_path_ = nil;
+  }
+#endif
+
   if (coreml_model_path_ != nil) {
     error = nil;
     [[NSFileManager defaultManager] removeItemAtPath:coreml_model_path_ error:&error];
@@ -487,12 +496,16 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
 }
 
 Model::Model(const std::string& path,
+             std::vector<std::string>&& model_input_names,
+             std::vector<std::string>&& model_output_names,
              std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
              std::unordered_set<std::string>&& scalar_outputs,
              std::unordered_set<std::string>&& int64_outputs,
              const logging::Logger& logger,
              uint32_t coreml_flags)
     : execution_(std::make_unique<Execution>(path, logger, coreml_flags)),
+      model_input_names_(std::move(model_input_names)),
+      model_output_names_(std::move(model_output_names)),
       input_output_info_(std::move(input_output_info)),
       scalar_outputs_(std::move(scalar_outputs)),
       int64_outputs_(std::move(int64_outputs)) {

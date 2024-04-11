@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unordered_set>
+
 #include "core/framework/provider_options.h"
 #include "tensorrt_execution_provider_custom_ops.h"
 #include "tensorrt_execution_provider.h"
-#include <NvInferRuntime.h>
-#include <NvInferPlugin.h>
-#include <unordered_set>
 
 namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger();
@@ -29,6 +28,8 @@ extern TensorrtLogger& GetTensorrtLogger();
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
   static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+  static OrtMutex mutex;
+  std::lock_guard<OrtMutex> lock(mutex);
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
     domain_list.push_back(custom_op_domain.get());
     return Status::OK();

@@ -55,40 +55,66 @@ struct MemoryBlock {
 };
 
 struct SymbolHelper {
-  SymbolHelper() noexcept {
-    SymSetOptions(SymGetOptions() | SYMOPT_DEFERRED_LOADS);
-    SymInitialize(GetCurrentProcess(), nullptr, true);
+  HANDLE process_handle_ = GetCurrentProcess();
+  bool initialized_ = false;
+
+  bool InitializeWhenNeeded() {
+    // We try only once
+    if (!initialized_) {
+      SymSetOptions(SymGetOptions() | SYMOPT_DEFERRED_LOADS);
+      // We use GetCurrentProcess() because other libs are likely to use it
+      if (!SymInitialize(process_handle_, nullptr, true)) {
+        const unsigned long long error{GetLastError()};
+        std::cerr << "SymInitialize() failed: " << error << std::endl;
+        return false;
+      }
+      initialized_ = true;
+    }
+    return true;
+  }
+
+  SymbolHelper() = default;
+
+  static constexpr size_t kInitialBufferSize = sizeof(SYMBOL_INFO) + MAX_SYM_NAME;
+
+  bool LoookupSymAndInitialize(const ULONG_PTR address, char* buffer, size_t buffer_size, SYMBOL_INFO* symbol) {
+    if (SymFromAddr(process_handle_, address, 0, symbol) != TRUE) {
+      if (GetLastError() == ERROR_INVALID_HANDLE) {
+        // Try to initialize first
+        if (!InitializeWhenNeeded() || SymFromAddr(process_handle_, address, 0, symbol) != TRUE) {
+          _snprintf_s(buffer, buffer_size, _TRUNCATE, "0x%08IX (Unknown symbol)", address);
+          return false;
+        }
+      } else {
+        _snprintf_s(buffer, buffer_size, _TRUNCATE, "0x%08IX (Unknown symbol)", address);
+        return false;
+      }
+    }
+    return true;
   }
 
   void Lookup(std::string& string, const ULONG_PTR address) {
-    char buffer[2048] = {0};
-    Symbol symbol;
-    if (SymFromAddr(GetCurrentProcess(), address, 0, &symbol) == false) {
-      _snprintf_s(buffer, _TRUNCATE, "0x%08IX (Unknown symbol)", address);
+    alignas(SYMBOL_INFO) char buffer[kInitialBufferSize] = {0};
+    SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(buffer);
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    symbol->MaxNameLen = MAX_SYM_NAME;
+
+    if (!LoookupSymAndInitialize(address, buffer, kInitialBufferSize, symbol)) {
       string.append(buffer);
       return;
     }
 
     Line line;
     DWORD displacement;
-    if (SymGetLineFromAddr(GetCurrentProcess(), address, &displacement, &line) == false) {
-      _snprintf_s(buffer, _TRUNCATE, "(unknown file & line number): %s", symbol.Name);
+    if (SymGetLineFromAddr(process_handle_, address, &displacement, &line) == false) {
+      _snprintf_s(buffer, _TRUNCATE, "(unknown file & line number): %s", symbol->Name);
       string.append(buffer);
       return;
     }
 
-    _snprintf_s(buffer, _TRUNCATE, "%s(%d): %s", line.FileName, static_cast<int>(line.LineNumber), symbol.Name);
+    _snprintf_s(buffer, _TRUNCATE, "%s(%d): %s", line.FileName, static_cast<int>(line.LineNumber), symbol->Name);
     string.append(buffer);
   }
-
-  struct Symbol : SYMBOL_INFO {
-    Symbol() noexcept {
-      SizeOfStruct = sizeof(SYMBOL_INFO);
-      MaxNameLen = _countof(buffer);
-    }
-
-    char buffer[1024] = {0};
-  };
 
   struct Line : IMAGEHLP_LINE {
     Line() noexcept {

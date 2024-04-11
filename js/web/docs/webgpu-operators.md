@@ -34,6 +34,7 @@ Do not modify directly.*
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | CumSum | ai.onnx(11-13,14+) |  |
+| DepthToSpace | ai.onnx(11-12,13+); com.ms.internal.nhwc(11-12,13+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
 | Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
@@ -87,6 +88,7 @@ Do not modify directly.*
 | Relu | ai.onnx(6-12,13,14+) |  |
 | Reshape | ai.onnx(5-12,13,14+) | no GPU kernel |
 | Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
+| RotaryEmbedding | com.microsoft(1+) |  |
 | Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | Sin | ai.onnx(7+) |  |

@@ -168,6 +168,26 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
   }
 }
 
+// Conv node `Conv` is not supported: GetFileLength for conv_qdq_external_ini.bin failed:open file conv_qdq_external_ini.bin fail,
+// errcode = 2 - The system cannot find the file specified.
+TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
+  Ort::SessionOptions so;
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  so.AppendExecutionProvider("QNN", options);
+
+  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_external_ini.onnx";
+
+  Ort::Session session(*ort_env, ort_model_path, so);
+}
+
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
 // Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
@@ -813,6 +833,25 @@ TEST_F(QnnHTPBackendTests, DISABLED_CastAddHTPAccuracyTest) {
                   provider_options,
                   13,  // opset
                   ExpectedEPNodeAssignment::All);
+}
+
+// Test float32 model with FP16 precision
+TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["enable_htp_fp16_precision"] = "1";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

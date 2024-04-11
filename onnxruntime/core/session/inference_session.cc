@@ -15,6 +15,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
+#include "core/common/string_utils.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/framework/bfc_arena.h"
@@ -60,6 +61,7 @@
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
 #include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
+#include "core/optimizer/stft_decomposition.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/user_logging_sink.h"
@@ -400,7 +402,21 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
-  ORT_ENFORCE(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
+  ORT_THROW_IF_ERROR(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps));
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  {
+    auto disabled_string = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsDisableSpecifiedOptimizers, "");
+    if (!disabled_string.empty()) {
+      const auto disabled_list = utils::SplitString(disabled_string, ";");
+      InlinedHashSet<std::string> disabled_rules_and_transformers;
+      disabled_rules_and_transformers.reserve(disabled_list.size());
+      disabled_rules_and_transformers.insert(disabled_list.cbegin(), disabled_list.cend());
+      ORT_THROW_IF_ERROR(FilterEnabledOptimizers(std::move(disabled_rules_and_transformers)));
+    }
+  }
 #endif
 
   bool set_denormal_as_zero =
@@ -1761,6 +1777,14 @@ common::Status InferenceSession::Initialize() {
           }
           ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
         }
+
+        const auto dml_ep_impl = static_cast<const Dml::ExecutionProvider*>(dmlExecutionProvider);
+        auto is_mcdm_device = dml_ep_impl->GetImpl()->IsMcdmDevice();
+        if (is_mcdm_device) {
+          const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
+          auto stft_decomposition_transformer = std::make_unique<STFTDecomposition>(dml_ep);
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(stft_decomposition_transformer), onnxruntime::TransformerLevel::Level1));
+        }
       }
 #endif
 
@@ -2383,21 +2407,32 @@ Status InferenceSession::Run(const RunOptions& run_options,
   Status retval = Status::OK();
   const Env& env = Env::Default();
 
+  int graph_annotation_id = 0;
+  const std::string& graph_annotation_str =
+      run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "");
+  if (!graph_annotation_str.empty()) {
+    if (!TryParseStringWithClassicLocale<int>(graph_annotation_str, graph_annotation_id)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to parse the cuda graph annotation id: ",
+                             graph_annotation_str);
+    }
+  }
+
   // Increment/decrement concurrent_num_runs_ and control
   // session threads spinning as configured. Do nothing for graph replay except the counter.
   const bool control_spinning = use_per_session_threads_ &&
                                 force_spinning_stop_between_runs_ &&
-                                !cached_execution_provider_for_graph_replay_.IsGraphCaptured();
+                                !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id);
   auto* intra_tp = (control_spinning) ? thread_pool_.get() : nullptr;
   auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
   ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
 
   // Check if this Run() is simply going to be a CUDA Graph replay.
-  if (cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
+  if (cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Replaying the captured "
                                  << cached_execution_provider_for_graph_replay_.Type()
-                                 << " CUDA Graph for this model with tag: " << run_options.run_tag;
-    ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph());
+                                 << " CUDA Graph for this model with tag: " << run_options.run_tag
+                                 << " with graph annotation id: " << graph_annotation_id;
+    ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id));
   } else {
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -2559,7 +2594,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
   // N is defined in min_num_runs_before_hip_graph_capture_ for ROCM EP,
   // and the value could be different for other EP.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
-      !cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
+      cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
+      !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }

@@ -305,7 +305,6 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (!weight_cached_) {
     const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
     const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
-    const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
     ORT_RETURN_IF_ERROR(ReorganizeWeights(&W, &R, B, w_data_size_in_bytes, w_data, w_desc,
                                           rnn_desc, ctx->GetComputeStream()));
   }

@@ -8,6 +8,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
+
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
@@ -70,7 +74,9 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
 
   Ort::SessionOptions session_options;
 #ifdef USE_CUDA
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.use_tf32 = false;
+  session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
 #endif
 
 #ifdef USE_ROCM
@@ -161,7 +167,9 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
   if (enable_cuda || enable_rocm) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    OrtCUDAProviderOptionsV2 cuda_options;
+    cuda_options.use_tf32 = false;
+    session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
 #endif
 
 #ifdef USE_ROCM
@@ -254,7 +262,9 @@ TEST(BeamSearchTest, GptBeamSearchWithInitDecoderFp16) {
   if (enable_cuda || enable_rocm) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    OrtCUDAProviderOptionsV2 cuda_options;
+    cuda_options.use_tf32 = false;
+    session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
 #endif
 
 #ifdef USE_ROCM
@@ -346,7 +356,9 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
   if (enable_cuda || enable_rocm) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    OrtCUDAProviderOptionsV2 cuda_options;
+    cuda_options.use_tf32 = false;
+    session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
 #endif
 
 #ifdef USE_ROCM

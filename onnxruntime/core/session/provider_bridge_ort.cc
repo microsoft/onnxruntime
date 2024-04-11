@@ -14,6 +14,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/provider_shutdown.h"
+#include "core/framework/run_options.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/provider_options.h"
@@ -527,6 +528,7 @@ struct ProviderHostImpl : ProviderHost {
   void TensorProto__add_dims(ONNX_NAMESPACE::TensorProto* p, int64_t value) override { p->add_dims(value); }
   bool TensorProto__has_data_location(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_data_location(); }
   int TensorProto__data_location(const ONNX_NAMESPACE::TensorProto* p) override { return p->data_location(); }
+  void TensorProto__set_data_location(ONNX_NAMESPACE::TensorProto* p, ONNX_NAMESPACE::TensorProto_DataLocation data_location) override { return p->set_data_location(data_location); }
   bool TensorProto__has_raw_data(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_raw_data(); }
   const std::string& TensorProto__raw_data(const ONNX_NAMESPACE::TensorProto* p) override { return p->raw_data(); }
   std::string* TensorProto__mutable_raw_data(ONNX_NAMESPACE::TensorProto* p) override { return p->mutable_raw_data(); }
@@ -675,6 +677,9 @@ struct ProviderHostImpl : ProviderHost {
   std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) override {
     return p->GetConfigEntry(config_key);
   }
+
+  // OrtRunOptions (wrapped)
+  const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) override { return p->config_options; }
 
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
@@ -962,8 +967,9 @@ struct ProviderHostImpl : ProviderHost {
 
   // Model (wrapped)
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
+                                          const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                           const logging::Logger& logger) override {
-    return std::make_unique<Model>(model_proto, model_path, nullptr, logger);
+    return std::make_unique<Model>(model_proto, model_path, local_registries, logger);
   }
   void Model__operator_delete(Model* p) override { delete p; }
   Graph& Model__MainGraph(Model* p) override { return p->MainGraph(); }
@@ -1043,6 +1049,7 @@ struct ProviderHostImpl : ProviderHost {
   Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept override { return p->GetNode(node_index); }
   const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const override { return p->GetNode(node_index); }
   const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const override { return p->GetNodeArg(name); }
+  IOnnxRuntimeOpSchemaCollectionPtr Graph__GetSchemaRegistry(const Graph* p) const override { return p->GetSchemaRegistry(); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
@@ -1633,32 +1640,6 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   return trt_options_converted;
 }
 
-#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
-// Apply configs from session options to TensorRT provider options V2 that are needed for TensorRT EP.
-// For example, EP context configs.
-void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptions* session_options, OrtTensorRTProviderOptionsV2* tensorrt_options) {
-  if (session_options) {
-    auto context_cache_enabled = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
-    tensorrt_options->trt_dump_ep_context_model = context_cache_enabled;
-    LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
-
-    auto context_cache_path = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-    tensorrt_options->trt_ep_context_file_path = context_cache_path.c_str();
-    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << tensorrt_options->trt_ep_context_file_path;
-
-    auto embed_mode = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
-    if ("1" == embed_mode) {
-      tensorrt_options->trt_ep_context_embed_mode = 1;
-    } else if ("0" == embed_mode) {
-      tensorrt_options->trt_ep_context_embed_mode = 0;
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
-    }
-    LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << tensorrt_options->trt_ep_context_embed_mode;
-  }
-}
-#endif
-
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
 }
@@ -2090,7 +2071,32 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
     // Note: No need to worry about new_tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
     // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
     OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
-    onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, &new_tensorrt_options);
+
+    // Update provider options from session options. Curretnly only EPContext related session options are supported.
+    // Note: The string-based local variables will be kept accessible during the lifetime of this function,
+    // therefore the "const char*" provider options can still be accessible when calling CreateExecutionProviderFactory() in TRT EP.
+    bool context_cache_enabled = false;
+    std::string context_cache_path = "";
+    std::string embed_mode = "";
+    if (options) {
+      context_cache_enabled = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
+      new_tensorrt_options.trt_dump_ep_context_model = context_cache_enabled;
+      LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
+
+      context_cache_path = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+      new_tensorrt_options.trt_ep_context_file_path = (context_cache_path.size() == 0) ? nullptr : context_cache_path.c_str();
+      LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path;
+
+      embed_mode = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
+      if ("1" == embed_mode) {
+        new_tensorrt_options.trt_ep_context_embed_mode = 1;
+      } else if ("0" == embed_mode) {
+        new_tensorrt_options.trt_ep_context_embed_mode = 0;
+      } else {
+        LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
+      }
+      LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << embed_mode;
+    }
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
   } else {
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
@@ -2396,6 +2402,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProvider
   options->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
   options->enable_cann_graph = 1;
   options->dump_graphs = 0;
+  options->dump_om_model = 1;
   options->default_memory_arena_cfg = nullptr;
   *out = options.release();
   return nullptr;

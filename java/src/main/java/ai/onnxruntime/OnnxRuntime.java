@@ -54,19 +54,25 @@ final class OnnxRuntime {
 
   /** The short name of the ONNX runtime shared library */
   static final String ONNXRUNTIME_LIBRARY_NAME = "onnxruntime";
+
   /** The short name of the ONNX runtime JNI shared library */
   static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
 
   /** The short name of the ONNX runtime shared provider library */
   static final String ONNXRUNTIME_LIBRARY_SHARED_NAME = "onnxruntime_providers_shared";
+
   /** The short name of the ONNX runtime CUDA provider library */
   static final String ONNXRUNTIME_LIBRARY_CUDA_NAME = "onnxruntime_providers_cuda";
+
   /** The short name of the ONNX runtime ROCM provider library */
   static final String ONNXRUNTIME_LIBRARY_ROCM_NAME = "onnxruntime_providers_rocm";
+
   /** The short name of the ONNX runtime DNNL provider library */
   static final String ONNXRUNTIME_LIBRARY_DNNL_NAME = "onnxruntime_providers_dnnl";
+
   /** The short name of the ONNX runtime OpenVINO provider library */
   static final String ONNXRUNTIME_LIBRARY_OPENVINO_NAME = "onnxruntime_providers_openvino";
+
   /** The short name of the ONNX runtime TensorRT provider library */
   static final String ONNXRUNTIME_LIBRARY_TENSORRT_NAME = "onnxruntime_providers_tensorrt";
 

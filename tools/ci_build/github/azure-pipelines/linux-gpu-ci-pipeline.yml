@@ -150,7 +150,9 @@ stages:
               --enable_cuda_profiling --enable_cuda_nhwc_ops \
               --enable_pybind --build_java \
               --use_cache \
-              --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=86; \
+              --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75 \
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON \
+              --cmake_extra_defines  onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON; \
                 ccache -sv; \
                 ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
@@ -183,7 +185,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-A10
+    pool: onnxruntime-Linux-GPU-T4
     steps:
     - checkout: self
       clean: true
@@ -241,7 +243,7 @@ stages:
         script: |
           set -e -x
           mkdir -p $HOME/.onnx
-          docker run --gpus all --rm \
+          docker run --gpus all --shm-size=1g --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 --rm \
             --volume  $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory)/Release:/build/Release \
             --volume /data/models:/build/models:ro \
@@ -264,5 +266,9 @@ stages:
                 --enable_pybind --build_java --ctest_path "" ; \
               '
       displayName: 'Run Tests'
+
+    - template: templates/check_test_result.yml
+      parameters:
+        FileName: '$(Build.BinariesDirectory)/Release/onnxruntime_test_all.Release.results.xml'
 
     - template: templates/clean-agent-build-directory-step.yml

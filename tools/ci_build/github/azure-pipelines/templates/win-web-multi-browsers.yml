@@ -68,15 +68,30 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
   - script: |
-      npm test -- suite0 -b=wasm,webgl --wasm-init-timeout=30000 --file-cache
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+      mkdir $(Agent.TempDirectory)\web\test_multi_browsers\01
+      npm test -- suite0 -e=chrome -b=wasm,webgl --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\01
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Chrome)'
   - script: |
-      npm test -- suite0 -b=wasm,webgl --env=firefox --wasm-init-timeout=30000 --file-cache
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'firefox.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Firefox processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+      mkdir $(Agent.TempDirectory)\web\test_multi_browsers\02
+      npm test -- suite0 -b=wasm,webgl -e=firefox --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\02
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Firefox)'
   - script: |
-      npm test -- suite0 -b=wasm,webgl --env=edge --wasm-init-timeout=30000 --file-cache
+      powershell "Get-WmiObject Win32_Process -Filter \"name = 'msedge.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Edge processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+      mkdir $(Agent.TempDirectory)\web\test_multi_browsers\03
+      npm test -- suite0 -b=wasm,webgl -e=edge --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\03
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Edge)'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
