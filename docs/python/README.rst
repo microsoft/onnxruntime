@@ -18,7 +18,6 @@ Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.17.3
 
 Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.17.2
 
-
 1.17.1
 ^^^^^^
 
