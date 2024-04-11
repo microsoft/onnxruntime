@@ -80,7 +80,7 @@ class LlamaMSRotaryEmbedding(torch.nn.Module):
         x: torch.Tensor,  # BxSxNxH
         cos: torch.Tensor,  # 1xSx1x(H/2)
         sin: torch.Tensor,  # 1xSx1x(H/2)
-        pos: int,
+        pos: torch.Tensor,
         interleaved: bool,
     ):
         # Dimension of x is [batch_size, seq_len, n_heads, head_dim]
@@ -98,21 +98,35 @@ class LlamaMSRotaryEmbedding(torch.nn.Module):
             x2 = x[:, :, :, half : 2 * half]
 
         seq_len = x.shape[1]
-        cos_x = cos[:, pos : pos + seq_len, :, :]
-        sin_x = sin[:, pos : pos + seq_len, :, :]
 
         # cos_x: (1, S, 1, H/2)
         # sin_x: (1, S, 1, H/2)
         # x1: (B, S, N, H/2)
         # x2: (B, S, N, H/2)
-        real = cos_x * x1 - sin_x * x2
-        imag = sin_x * x1 + cos_x * x2
-
-        if interleaved:
-            x_rot[:, :, :, 0::2] = real
-            x_rot[:, :, :, 1::2] = imag
+        if seq_len == 1:
+            batch_size = x.shape[0]
+            pos_i = pos.unsqueeze(1).unsqueeze(2).unsqueeze(3).long()
+            cos_x = cos.expand(batch_size, -1, -1, -1)
+            sin_x = sin.expand(batch_size, -1, -1, -1)
+            cos_x = cos_x.gather(1, pos_i.expand(-1, -1, cos.shape[2], cos.shape[3]))
+            sin_x = sin_x.gather(1, pos_i.expand(-1, -1, sin.shape[2], sin.shape[3]))
+            real = cos_x * x1 - sin_x * x2
+            imag = sin_x * x1 + cos_x * x2
+            if interleaved:
+                x_rot[:, :, :, 0::2] = real
+                x_rot[:, :, :, 1::2] = imag
+            else:
+                x_rot = torch.cat((real, imag), dim=-1)
         else:
-            x_rot = torch.cat((real, imag), dim=-1)
+            cos_x = cos[:, 0:seq_len, :, :]
+            sin_x = sin[:, 0:seq_len, :, :]
+            real = cos_x * x1 - sin_x * x2
+            imag = sin_x * x1 + cos_x * x2
+            if interleaved:
+                x_rot[:, :, :, 0::2] = real
+                x_rot[:, :, :, 1::2] = imag
+            else:
+                x_rot = torch.cat((real, imag), dim=-1)
 
         return torch.cat((x_rot, x[:, :, :, rot_dim:]), dim=-1)
 
@@ -1514,7 +1528,7 @@ def parity_check_gqa_past(
     out = out.detach().cpu().numpy()
 
     # print(cache_seqlens[0])
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[0, 0, :, 0])
+    # print((present_k - k_cache_ref.detach().cpu().numpy())[:, 0, :, 0])
 
     # Make sure past-present buffer updating correctly
     assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
@@ -1776,7 +1790,7 @@ class TestGQA(unittest.TestCase):
     def test_gqa_no_past(self):
         torch.manual_seed(69)
         print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
-        batches = [1] if pipeline_mode else [1, 3, 5]
+        batches = [1, 3] if pipeline_mode else [1, 3, 5]
         seqs = (
             [
                 (127, 127),
@@ -1842,7 +1856,7 @@ class TestGQA(unittest.TestCase):
 
     def test_gqa_past(self):
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
-        batches = [1] if pipeline_mode else [1, 3, 5]
+        batches = [1, 3] if pipeline_mode else [1, 3, 5]
         seqs = (
             [(1, 128), (1, 1024), (1, 2048)]
             if pipeline_mode
@@ -1863,14 +1877,14 @@ class TestGQA(unittest.TestCase):
         num_h = [(16, 16), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 64, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
-        # b, s, s2, n, n2, h = 1, 1, 128, 16, 16, 16
+        # b, s, s2, n, n2, h = 3, 1, 128, 16, 16, 16
         # sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
         # config = Config(b, s, s2, sp, n, n2, h)
         # local = False
         # rotary = True
         # rotary_interleaved = False
         # past_kv_format = Formats.BNSH
-        # packed = True
+        # packed = False
         # parity_check_gqa_past(
         #     config,
         #     local=local,
