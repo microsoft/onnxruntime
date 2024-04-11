@@ -51,6 +51,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>()),
     Reshape);
 
+// Opset 21 added support for int4 and uint4.
+// TODO(adrianlizarraga): Implement int4 and uint4 support.
 ONNX_CPU_OPERATOR_KERNEL(
     Reshape,
     21,

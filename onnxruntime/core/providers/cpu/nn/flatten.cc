@@ -42,7 +42,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Flatten);
 
 // Opset 21 added support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
-// TODO: Add support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
+// TODO(adrianlizarraga): Add support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
 ONNX_CPU_OPERATOR_KERNEL(
     Flatten,
     21,

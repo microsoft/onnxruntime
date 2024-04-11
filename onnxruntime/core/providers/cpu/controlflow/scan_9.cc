@@ -528,17 +528,17 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
                                    19, 20,
                                    KernelDefBuilder()
                                        // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
-                                       //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                                    Scan<9>);
 
 // Opset 21 starts to support 4-bit int types for the type constraint "V"
-// TODO: Actually support int4 and uint4 types.
+// TODO(adrianlizarraga): Implement int4 and uint4 support.
 ONNX_CPU_OPERATOR_KERNEL(Scan,
                          21,
                          KernelDefBuilder()
                              // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
-                             //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                             // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                          Scan<9>);
 }  // namespace onnxruntime

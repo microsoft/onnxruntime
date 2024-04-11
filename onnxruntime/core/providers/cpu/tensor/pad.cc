@@ -94,7 +94,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     bool);
 
 // Opset 21 added int4 and uint4.
-// TODO: Actually add int4 and uint4 support.
+// TODO(adrianlizarraga): Implement int4 and uint4 support.
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 21, Input, 0,
     float,

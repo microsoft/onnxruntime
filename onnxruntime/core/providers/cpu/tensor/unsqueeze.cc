@@ -37,6 +37,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Unsqueeze);
 
+// Opset 21 added support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
+// TODO(adrianlizarraga): Implement support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
 ONNX_CPU_OPERATOR_KERNEL(
     Unsqueeze,
     21,

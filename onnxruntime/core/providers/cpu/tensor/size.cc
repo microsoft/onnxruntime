@@ -83,8 +83,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Size);
 
-// Opset 21 added int4 and uint4 types.
-// TODO: Actually support int4 and uint4 types.
+// Opset 21 added the int4 and uint4 types.
+// TODO(adrianlizarraga): Implement support for int4 and uint4.
 ONNX_CPU_OPERATOR_KERNEL(
     Size,
     21,

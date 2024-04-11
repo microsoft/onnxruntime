@@ -120,7 +120,7 @@ static void PrepareForQDQ(const TensorShape& input_shape,
       DequantizeLinear<T>);
 
 // Opset 21 added 16-bit and 4-bit int to DQ.
-// TODO: Also support 4-bit int types and 'block' quantization.
+// TODO(adrianlizarraga): Also support 4-bit int types and 'block' quantization.
 REGISTER_DEQUANTIZELINEAR(int8_t)
 REGISTER_DEQUANTIZELINEAR(uint8_t)
 REGISTER_DEQUANTIZELINEAR(int16_t)
@@ -336,7 +336,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
       QuantizeLinear<T>);
 
 // Opset 21 added 16-bit and 4-bit int support to Q ops.
-// TODO: Support int4 and block quantization.
+// TODO(adrianlizarraga): Support int4 and block quantization.
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
 REGISTER_QUANTIZELINEAR(int16_t)

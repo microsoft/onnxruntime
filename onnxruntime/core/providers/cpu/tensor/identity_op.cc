@@ -57,7 +57,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()).Alias(0, 0),
     IdentityOp<false>);
 
-// TODO: Opset 21 supported int4 and uint4 types.
+// TODO(liqunfu): Opset 21 supported int4 and uint4 types.
 ONNX_CPU_OPERATOR_KERNEL(
     Identity,
     21,

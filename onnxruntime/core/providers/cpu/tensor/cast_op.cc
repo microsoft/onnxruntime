@@ -444,6 +444,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
+// TODO(adrianlizarraga): Implement support for int4 and uint4.
 ONNX_CPU_OPERATOR_KERNEL(
     Cast,
     21,

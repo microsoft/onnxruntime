@@ -36,7 +36,7 @@ using ConstantOfShapeDefaultOutputTypesOpset20 =
         bool>;
 
 // Opset 21 added int4 and uint4
-// TODO: Actually support int4 and uint4
+// TODO(adrianlizarraga): Implement int4 and uint4 support.
 using ConstantOfShapeDefaultOutputTypesOpset21 =
     TypeList<
         BFloat16,
