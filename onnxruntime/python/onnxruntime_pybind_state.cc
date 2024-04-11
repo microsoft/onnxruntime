@@ -490,6 +490,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             if (!option.second.empty()) {
               auto stream = std::stoull(option.second, nullptr, 0);
               params.user_compute_stream = reinterpret_cast<void*>(stream);
+              params.has_user_compute_stream = true;
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'user_compute_stream' should be a string to define the compute stream for the inference to run on.\n");
             }

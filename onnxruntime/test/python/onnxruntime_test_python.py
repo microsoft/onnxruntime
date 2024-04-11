@@ -328,6 +328,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_engine_cache_path"], str(engine_cache_path))
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
             self.assertEqual(option["user_compute_stream"], "1")
+            self.assertEqual(option["has_user_compute_stream"], "1")
 
             from onnxruntime.capi import _pybind_state as C
 
