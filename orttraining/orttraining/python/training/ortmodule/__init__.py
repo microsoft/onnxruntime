@@ -234,3 +234,6 @@ from .options import DebugOptions, LogLevel  # noqa: E402, F401
 
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule  # noqa: E402, F401
+
+# Import ORTPipelineModule after ORTModule to avoid circular import
+from .pipe import ORTPipelineModule  # noqa: E402, F401
