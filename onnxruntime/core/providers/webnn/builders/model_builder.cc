@@ -197,14 +197,10 @@ Status ModelBuilder::RegisterInitializers() {
         default:
           break;
       }
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-      // Workaround for WebAssembly multi-threads enabled since WebNN API only accepts non-shared ArrayBufferView.
-      // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
-      operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
-#else
-      operand = wnn_builder_.call<emscripten::val>("constant", desc, view);
-#endif
 
+      // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
+      // buffers in JS side. Simply create a copy to fix it.
+      operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
     } else {
       // TODO: support other type.
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -360,13 +356,10 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 
   desc.set("dimensions", emscripten::val::array(shape));
   emscripten::val operand = emscripten::val::object();
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // Workaround for WebAssembly multi-threads enabled since WebNN API only accepts non-shared ArrayBufferView.
-  // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
+  // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
+  // buffers in JS side. Simply create a copy to fix it.
   operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
-#else
-  operand = wnn_builder_.call<emscripten::val>("constant", desc, view);
-#endif
+
   AddOperand(name, operand);
   mem_persist_buffers_.push_back(std::move(persist_buffer));
   return Status::OK();
