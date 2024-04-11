@@ -240,7 +240,7 @@ Status CheckInputs(const Tensor* query,
   }
 
   bool is_prompt = (sequence_length == total_sequence_length);
-  if (!is_prompt && sequence_length != 1){
+  if (!is_prompt && sequence_length != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "sequence_length shall be 1 when it is not prompt.");
   }
@@ -258,7 +258,6 @@ Status CheckInputs(const Tensor* query,
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->rotary_dim = rotary_dim;
     output_parameters->is_packed_qkv = is_packed_qkv;
-    output_parameters->is_unidirectional = true;
     output_parameters->is_prompt = is_prompt;
     output_parameters->scale = scale;
     output_parameters->qkv_format = qkv_format;
