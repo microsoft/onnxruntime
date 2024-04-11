@@ -891,7 +891,8 @@ TEST(QDQTransformerTests, Gemm_S8S8U8) {
 template <typename QuantType>
 static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
                                      const std::vector<int64_t>& weights_shape,
-                                     bool use_contrib_qdq = false) {
+                                     bool use_contrib_qdq = false,
+                                     int opset = 12) {
   auto build_test_case = [input1_shape, weights_shape, use_contrib_qdq](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<int64_t>(input1_shape, 0, weights_shape[0] - 1);
     auto* output_arg = builder.MakeOutput();
@@ -916,14 +917,15 @@ static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
     EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
   };
 
-  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, {opset});
 }
 
 // Checks that Q/DQ nodes are dropped from DQ -> Gather -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, Gather) {
-  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12});
-  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12}, true);   // Use com.microsoft QDQ ops
-  RunGatherDropQDQTestCase<int16_t>({12, 37}, {24, 12}, true);  // Use int16 com.microsoft QDQ ops
+  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12});              // Use ONNX int8 QDQ ops
+  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12}, true);        // Use com.microsoft QDQ ops
+  RunGatherDropQDQTestCase<int16_t>({12, 37}, {24, 12}, true);       // Use int16 com.microsoft QDQ ops
+  RunGatherDropQDQTestCase<int16_t>({12, 37}, {24, 12}, false, 21);  // Use ONNX int16 QDQ ops
 }
 
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Reshape -> Q.

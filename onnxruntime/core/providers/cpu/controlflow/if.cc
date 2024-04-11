@@ -104,8 +104,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
                                    If);
 
 // float 8 support was added.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
+                                   19,
+                                   20,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
+                                   If);
+
+// uint4 and int4 support was added.
+// TODO: Actually add int4 support.
 ONNX_CPU_OPERATOR_KERNEL(If,
-                         19,
+                         21,
                          KernelDefBuilder()
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
