@@ -83,13 +83,6 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initi
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
 
-  if (node.OpType() == "Gelu") {
-    NodeAttrHelper helper(node);
-    if (helper.Get("approximate", "none") != "none") {
-      LOGS(logger, VERBOSE) << "Gelu with approximate mode is not supported";
-      return false;
-    }
-  }
   return true;
 }
 
