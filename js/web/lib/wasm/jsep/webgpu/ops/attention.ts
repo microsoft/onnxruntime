@@ -3,9 +3,9 @@
 
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
-import {ComputeContext, GpuDataType, ProgramUniform} from '../types';
+import {ComputeContext, GpuDataType, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType, tensorTypeToWsglValueType, UniformDataElementType, UniformsArrayType} from './common';
+import {castToF32, createTensorShapeVariables, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType, tensorTypeToWsglValueType, UniformDataElementType, UniformsArrayType} from './common';
 
 export const enum AttentionQkvFormat {
   unknown,          // enum value not set, or depends on qkv projection implementation details
@@ -320,7 +320,7 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
 };
 
 const computeAttentionProbs =
-    (context: ComputeContext, q: TensorView, key: TensorView, _bias: TensorView|undefined,
+    (context: ComputeContext, q: TensorView, key: TensorView, relativePositionBias: TensorView|undefined,
      parameters: AttentionParameters, attributes: AttentionAttrs) => {
       const probsShape = [
         parameters.batchSize, parameters.numHeads, parameters.sequenceLength,
@@ -340,20 +340,35 @@ const computeAttentionProbs =
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: parameters.sequenceLength}, {type: DataType.uint32, data: vectorizedHeadSize},
         {type: DataType.uint32, data: parameters.totalSequenceLength},
-        {type: DataType.uint32, data: parameters.kvSequenceLength}, {type: q.dataType, data: alpha}
+        {type: DataType.uint32, data: parameters.numHeads}, {type: DataType.uint32, data: parameters.kvSequenceLength},
+        {type: q.dataType, data: alpha}
       ];
 
       const inputs = [q, key];
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
+      if (relativePositionBias) {
+        inputDependencies.push('rank');
+        inputs.push(relativePositionBias);
+        programUniforms.push(...createTensorShapeVariables(relativePositionBias.dims));
+      }
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const qInput = inputVariable('q', q.dataType, q.dims, components);
         const kInput = inputVariable('key', key.dataType, key.dims, components);
+        const inputVars = [qInput, kInput];
+        const relativePositionBiasInput = relativePositionBias ?
+            inputVariable('relative_position_bias', relativePositionBias.dataType, relativePositionBias.dims.length) :
+            undefined;
+        if (relativePositionBiasInput) {
+          inputVars.push(relativePositionBiasInput);
+        }
         const output = outputVariable('output', q.dataType, probsShape);
         const dataType = tensorTypeToWsglStorageType(q.dataType);
 
         const uniforms: UniformsArrayType = [
           {name: 'M', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
-          {name: 'kv_sequence_length', type: 'u32'}, {name: 'alpha', type: dataType as UniformDataElementType}
+          {name: 'num_heads', type: 'u32'}, {name: 'kv_sequence_length', type: 'u32'},
+          {name: 'alpha', type: dataType as UniformDataElementType}
         ];
         return `
   const beta: ${dataType} = 1.0;
@@ -361,7 +376,7 @@ const computeAttentionProbs =
 
   var<workgroup> tileQ: array<${qInput.type.storage}, ${TILE_SIZE * TILE_SIZE}>;
   var<workgroup> tileK: array<${qInput.type.storage}, ${TILE_SIZE * TILE_SIZE}>;
-  ${shaderHelper.registerUniforms(uniforms).declareVariables(qInput, kInput, output)}
+  ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVars, output)}
   ${shaderHelper.mainStart([
           TILE_SIZE, TILE_SIZE, 1
         ])}
@@ -393,6 +408,16 @@ const computeAttentionProbs =
     if (global_id.y < uniforms.M && global_id.x < uniforms.N) {
       let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;
       output[outputIdx] = ${sumVector('value', components)} * uniforms.alpha;
+  ${(() => {
+          if (relativePositionBiasInput) {
+            return `
+      let batch = workgroup_id.z / uniforms.num_heads;
+      let head = workgroup_id.z % uniforms.num_heads;
+      var indices = ${relativePositionBiasInput.type.indices}(batch, head, global_id.y, global_id.x);
+      output[outputIdx] += ${relativePositionBiasInput.getByIndices('indices')};`;
+          }
+          return '';
+        })()}
     }
   }`;
       };
@@ -400,7 +425,7 @@ const computeAttentionProbs =
       const probs = context.compute(
           {
             name: 'AttentionProbs',
-            shaderCache: {hint: `${components}`, inputDependencies: ['type', 'type']},
+            shaderCache: {hint: `${components}`, inputDependencies},
             getRunData: () => ({
               outputs: [{dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default}],
               dispatchGroup: dispatch,
@@ -449,37 +474,37 @@ const computeVxAttentionScore =
           TILE_SIZE, TILE_SIZE, 1
         ])}
    let headIdx = workgroup_id.z;
-   let m = global_id.y;
-   let n = global_id.x;
+let m = global_id.y;
+let n = global_id.x;
 
-   let offsetA = headIdx * (uniforms.M * uniforms.K) + m * uniforms.K;
-   let offsetB = headIdx * (uniforms.N * uniforms.K) + n;
+let offsetA = headIdx * (uniforms.M * uniforms.K) + m * uniforms.K;
+let offsetB = headIdx * (uniforms.N * uniforms.K) + n;
 
    var value = ${probsHelper.type.storage}(0);
-   for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-     if (m < uniforms.M && w + local_id.x < uniforms.K) {
-       tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
-     }
-     if (n < uniforms.N && w + local_id.y < uniforms.K) {
-       tileK[TILE_SIZE * local_id.y + local_id.x] = v[offsetB + (w + local_id.y) * uniforms.N];
-     }
-     workgroupBarrier();
+for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
+  if (m < uniforms.M && w + local_id.x < uniforms.K) {
+    tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
+  }
+  if (n < uniforms.N && w + local_id.y < uniforms.K) {
+    tileK[TILE_SIZE * local_id.y + local_id.x] = v[offsetB + (w + local_id.y) * uniforms.N];
+  }
+  workgroupBarrier();
      for (var k: u32 = 0u; k<TILE_SIZE && w+k < uniforms.K; k++) {
-       value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * k + local_id.x];
-     }
-     workgroupBarrier();
-   }
+    value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * k + local_id.x];
+  }
+  workgroupBarrier();
+}
 
-   // we need to transpose output from BNSH_v to BSND_v
-   let batchIdx = workgroup_id.z / uniforms.num_heads;
-   let currentBatchHeadNumber = workgroup_id.z % uniforms.num_heads;
-   let headOffset = (batchIdx * uniforms.M * uniforms.num_heads + currentBatchHeadNumber) * uniforms.N;
-   if (m < uniforms.M && n < uniforms.N) {
+// we need to transpose output from BNSH_v to BSND_v
+let batchIdx = workgroup_id.z / uniforms.num_heads;
+let currentBatchHeadNumber = workgroup_id.z % uniforms.num_heads;
+let headOffset = (batchIdx * uniforms.M * uniforms.num_heads + currentBatchHeadNumber) * uniforms.N;
+if (m < uniforms.M && n < uniforms.N) {
      let outputIdx = batchIdx * uniforms.M *uniforms.v_hidden_size + m * uniforms.v_hidden_size
        + currentBatchHeadNumber * uniforms.N + n;
-     output[outputIdx] = value;
-   }
-  }`;
+  output[outputIdx] = value;
+}
+}`;
       };
 
       return context.compute(
@@ -553,53 +578,54 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
       TILE_SIZE, TILE_SIZE, 1
     ])}
     let batchIndex = workgroup_id.z / uniforms.num_heads;
-    let headNumber = workgroup_id.z % uniforms.num_heads;
-    let m = global_id.y;
-    let n = global_id.x;
+let headNumber = workgroup_id.z % uniforms.num_heads;
+let m = global_id.y;
+let n = global_id.x;
 
-    let inputOffset = batchIndex * (uniforms.M * uniforms.K) + m * uniforms.K;
-    let biasOffsetQ = headNumber * uniforms.head_size;
-    let biasOffsetK = uniforms.hidden_size + biasOffsetQ;
-    let biasOffsetV = uniforms.hidden_size + biasOffsetK;
+let inputOffset = batchIndex * (uniforms.M * uniforms.K) + m * uniforms.K;
+let biasOffsetQ = headNumber * uniforms.head_size;
+let biasOffsetK = uniforms.hidden_size + biasOffsetQ;
+let biasOffsetV = uniforms.hidden_size + biasOffsetK;
 
-    var valueQ = ${dataType}(0);
-    var valueK = ${dataType}(0);
-    var valueV = ${dataType}(0);
-    for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
-      if (m < uniforms.M && w + local_id.x < uniforms.K) {
-        tileInput[TILE_SIZE * local_id.y + local_id.x] = input[inputOffset + w + local_id.x];
-      }
-      if (n < uniforms.N && w + local_id.y < uniforms.K) {
-        let offset = n + (w + local_id.y) * uniforms.ldb;
-        tileWeightQ[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetQ + offset];
-        tileWeightK[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetK + offset];
-        tileWeightV[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetV + offset];
-      }
-      workgroupBarrier();
-      for (var k: u32 = 0u; k<TILE_SIZE && w+k < uniforms.K; k++) {
-        let inputTileOffset = TILE_SIZE * local_id.y + k;
-        let weightTileOffset = TILE_SIZE * k + local_id.x;
-        valueQ += tileInput[inputTileOffset] * tileWeightQ[weightTileOffset];
-        valueK += tileInput[inputTileOffset] * tileWeightK[weightTileOffset];
-        valueV += tileInput[inputTileOffset] * tileWeightV[weightTileOffset];
-      }
+var valueQ = ${dataType}(0);
+var valueK = ${dataType}(0);
+var valueV = ${dataType}(0);
+for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
+  if (m < uniforms.M && w + local_id.x < uniforms.K) {
+    tileInput[TILE_SIZE * local_id.y + local_id.x] = input[inputOffset + w + local_id.x];
+  }
+  if (n < uniforms.N && w + local_id.y < uniforms.K) {
+    let offset = n + (w + local_id.y) * uniforms.ldb;
+    tileWeightQ[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetQ + offset];
+    tileWeightK[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetK + offset];
+    tileWeightV[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetV + offset];
+  }
+  workgroupBarrier();
+  for (var k: u32 = 0u; k < TILE_SIZE && w + k < uniforms.K; k++) {
+    let inputTileOffset = TILE_SIZE * local_id.y + k;
+    let weightTileOffset = TILE_SIZE * k + local_id.x;
+    valueQ += tileInput[inputTileOffset] * tileWeightQ[weightTileOffset];
+    valueK += tileInput[inputTileOffset] * tileWeightK[weightTileOffset];
+    valueV += tileInput[inputTileOffset] * tileWeightV[weightTileOffset];
+  }
 
-      workgroupBarrier();
-    }
+  workgroupBarrier();
+}
 
-    let headOffset = (m * uniforms.N + n) % uniforms.head_size;
-    valueQ += bias[headOffset + biasOffsetQ];
-    valueK += bias[headOffset + biasOffsetK];
-    valueV += bias[headOffset + biasOffsetV];
+let headOffset = (m * uniforms.N + n) % uniforms.head_size;
+valueQ += bias[headOffset + biasOffsetQ];
+valueK += bias[headOffset + biasOffsetK];
+valueV += bias[headOffset + biasOffsetV];
 
-    let offset = workgroup_id.z * uniforms.M * uniforms.N;
-    if (m < uniforms.M && n < uniforms.N) {
-      let outputIdx = offset + m * uniforms.N + n;
-      output_q[outputIdx] = valueQ;
-      output_k[outputIdx] = valueK;
-      output_v[outputIdx] = valueV;
-    }
-  }`;
+let offset = workgroup_id.z * uniforms.M * uniforms.N;
+if (m < uniforms.M && n < uniforms.N) {
+  let outputIdx = offset + m * uniforms.N + n;
+  output_q[outputIdx] = valueQ;
+  output_k[outputIdx] = valueK;
+  output_v[outputIdx] = valueV;
+}
+}
+`;
   };
 
   return context.compute(
