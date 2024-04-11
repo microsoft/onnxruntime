@@ -322,7 +322,11 @@
         "^test_size_cpu",
         "^test_size_example_cpu",
         "^test_size_cuda",
-        "^test_size_example_cuda"
+        "^test_size_example_cuda",
+        // DequantizeLinear(21) blocked quantization from ONNX 1.16.0 is not implemented in ORT yet.
+        "^test_dequantizelinear_blocked",
+        "^test_quantizelinear_blocked_asymmetric",
+        "^test_quantizelinear_blocked_symmetric"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
