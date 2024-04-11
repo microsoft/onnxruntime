@@ -41,13 +41,13 @@ class OVCore {
  public:
   std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream, const std::string& model_path) const;
   OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
-                           std::string& hw_target,
-                           ov::AnyMap& device_config,
-                           std::string name);
+                            std::string& hw_target,
+                            ov::AnyMap& device_config,
+                            std::string name);
   OVExeNetwork CompileModel(const std::string model_path,
-                           std::string& hw_target,
-                           ov::AnyMap& device_config,
-                           std::string name);
+                            std::string& hw_target,
+                            ov::AnyMap& device_config,
+                            std::string name);
   OVExeNetwork ImportModel(std::istringstream& model_stream,
                            std::string& hw_target,
                            ov::AnyMap& device_config,
@@ -58,7 +58,7 @@ class OVCore {
 #endif
   std::vector<std::string> GetAvailableDevices();
   void SetCache(std::string cache_dir_path);
-  ov::Core& Get() {return oe;}
+  ov::Core& Get() { return oe; }
   void SetStreams(const std::string& device_type, int num_streams);
 };
 
@@ -66,8 +66,8 @@ class OVExeNetwork {
   ov::CompiledModel obj;
 
  public:
-  explicit OVExeNetwork(ov::CompiledModel md): obj(md) {}
-  OVExeNetwork(): obj(ov::CompiledModel()) {}
+  explicit OVExeNetwork(ov::CompiledModel md) : obj(md) {}
+  OVExeNetwork() : obj(ov::CompiledModel()) {}
   ov::CompiledModel& Get() { return obj; }
   OVInferRequest CreateInferRequest();
 };
@@ -82,8 +82,8 @@ class OVInferRequest {
   void Infer();
   void WaitRequest();
   void QueryStatus();
-  explicit OVInferRequest(ov::InferRequest obj): ovInfReq(obj) {}
-  OVInferRequest(): ovInfReq(ov::InferRequest()) {}
+  explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(obj) {}
+  OVInferRequest() : ovInfReq(ov::InferRequest()) {}
   ov::InferRequest& GetNewObj() {
     return ovInfReq;
   }

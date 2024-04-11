@@ -158,7 +158,6 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                       *GetLogger(),
                                                       ep_ctx_handle_);
 
-
     if (global_context_->export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
       ORT_RETURN_IF_ERROR(backend_manager->ExportCompiledBlobAsEPCtxNode(fused_node,
                                                                          graph_body_viewer,

@@ -81,7 +81,7 @@ struct OpenVINO_Provider : Provider {
                                             // with this value at runtime.
     bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                             // device (Reduces CPU Utilization when using GPU)
-    bool export_ep_ctx_blob = false;       // Whether to export the pre-compiled blob as an EPContext model.
+    bool export_ep_ctx_blob = false;        // Whether to export the pre-compiled blob as an EPContext model.
 
     void* context = nullptr;
 
