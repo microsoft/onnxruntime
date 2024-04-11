@@ -23,7 +23,22 @@ const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& nod
   if (!optimizer_utils::CheckOutputEdges(graph_viewer.GetGraph(), node, 1)) {
     return nullptr;
   }
-  return &*node.OutputNodesBegin();
+  const Node* next_node = &*node.OutputNodesBegin();
+  // ensure that the target node also has only one input that is not an initializer
+  const int input_edges_total = next_node->GetInputEdgesCount();
+  int non_const_edges = 0;
+  for (int edge_idx = 0; edge_idx < input_edges_total; ++edge_idx) {
+      if(!graph_utils::NodeArgIsConstant(graph_viewer.GetGraph(), *next_node->InputDefs()[edge_idx]))
+      {
+          ++non_const_edges;
+      }
+  }
+  if (non_const_edges > 1)
+  {
+      return nullptr;
+  } else {
+      return next_node;
+  }
 }
 
 bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
@@ -138,6 +153,10 @@ class ConvAddRelu : public NodeSelector {
     // only for CUDA EP
     if (node_ep != kCudaExecutionProvider) {
       return std::nullopt;
+    }
+    if (node.Name() == "Conv_3009")
+    {
+        [[maybe_unused]] int x = 0;
     }
 
     if (!ConvFusionDataTypeCheck(node)) {
