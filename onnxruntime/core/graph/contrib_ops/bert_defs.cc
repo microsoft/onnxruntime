@@ -1139,9 +1139,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* SparseAttention_ver1_doc = R"DOC(
 Block Sparse Attention used in Sparse Transformers (https://arxiv.org/pdf/1904.10509) and BigBird (https://arxiv.org/pdf/2007.14062).
-It supports cache of past key and value in linear buffers.
+
+block_mask can be used to configure sparse layout for different head.
+When number of sparse layout is 1, all heads have same sparse layout. Otherwise, different layouts are used cyclically.
+For example, given 4 layouts (S0, S1, S2, S3), 8 heads will have layouts like (S0, S1, S2, S3, S0, S1, S2, S3).
+
 Padding shall be on the right side.
-For performance, it is recommended that past_key and present_key share same memory buffer, and past_value and present_value too.
+
+It supports cache of past key and value in linear buffers.
+For performance, past_key and present_key share same memory buffer, and past_value and present_value too.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1187,23 +1193,26 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(5,
                "block_mask",
                "block mask. 1 indicates attention and 0 no attention. "
-               "Its shape is (num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks), "
-               "where the later means all heads use same sparse pattern, "
-               "and max_blocks is max_sequence_length / block_size.",
+               "Its shape is (num_layout, max_blocks, max_blocks), "
+               "where num_layout is divisible by num_layout, and max_blocks is max_sequence_length / block_size.",
                "M")
         .Input(6,
-               "total_key_sequence_lengths",
-               "Total length (past_sequence_length + sequence_length) of each key sequence excluding paddings. "
-               "Its shape is (batch_size).",
-               "M")
+               "key_total_sequence_lengths",
+               "1D tensor with shape (batch_size) where each value is total sequence length of key excluding paddings.",
+               "M",
+               OpSchema::Optional)
         .Input(7,
+               "total_sequence_length",
+               "Scalar tensor of maximum total sequence length (past_sequence_length + sequence_length) among keys.",
+               "M")
+        .Input(8,
                "cos_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2).",
+               "Cos cache of rotary with shape (max_sequence_length, head_size / 2).",
                "T",
                OpSchema::Optional)
-        .Input(8,
+        .Input(9,
                "sin_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2).",
+               "Sin cache of rotary with shape (max_sequence_length, head_size / 2).",
                "T",
                OpSchema::Optional)
         .Output(0,

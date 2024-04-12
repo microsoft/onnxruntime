@@ -825,6 +825,16 @@ template Status QkvToContext<BFloat16>(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<BFloat16>& data);
 
+template Status LaunchUnpackQKV<half>(
+    const half* packed_qkv, half* unpacked_q, half* unpacked_k, half* unpacked_v, const int num_heads,
+    const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
+    cudaStream_t stream, const int max_threads_per_block);
+
+template Status LaunchUnpackQKV<BFloat16>(
+    const BFloat16* packed_qkv, BFloat16* unpacked_q, BFloat16* unpacked_k, BFloat16* unpacked_v, const int num_heads,
+    const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
+    cudaStream_t stream, const int max_threads_per_block);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

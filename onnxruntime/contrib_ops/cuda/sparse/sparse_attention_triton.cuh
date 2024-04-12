@@ -16,24 +16,27 @@ namespace cuda {
 #ifdef USE_TRITON_KERNEL
 
 template <typename T>
+struct SparseAttentionTunableParams;  // Defined in sparse_attention_tunable.h
+
+template <typename T>
 std::string GetBlockSparseAttentionTritonGroupName() {
   std::string ret = "BlockSparseAttentionTriton_";
-  ret += GetDataTypeName<T>();
+  ret += ::onnxruntime::cuda::GetDataTypeName<T>();
   return ret;
 }
 
 template <typename T>
 auto GetTritonBlockSparseAttentionTypeStringAndOps() {
-  std::vector<std::pair<std::string, tunable::Op<SparseAttentionTunableParams<T>>>> ret;
+  std::vector<std::pair<std::string, ::onnxruntime::cuda::tunable::Op<SparseAttentionTunableParams<T>>>> ret;
 
   auto group_name = GetBlockSparseAttentionTritonGroupName<T>();
-  auto* kernel_list = GetOrtTritonKernelByGroup(group_name);
+  auto* kernel_list = ::onnxruntime::cuda::GetOrtTritonKernelByGroup(group_name);
   if (kernel_list == nullptr) {
     return ret;
   }
 
   for (auto i : *kernel_list) {
-    auto* metadata = GetOrtTritonKernelMetadata(i);
+    auto* metadata = ::onnxruntime::cuda::GetOrtTritonKernelMetadata(i);
     auto block_m = metadata->constants.at("BLOCK_M");
     auto block_d = metadata->constants.at("BLOCK_D");
     auto block_n = metadata->constants.at("BLOCK_N");
@@ -43,18 +46,18 @@ auto GetTritonBlockSparseAttentionTypeStringAndOps() {
 
     auto impl = [i, block_m, block_n, even_m, even_n, block_d, num_blocks_d](
                     const SparseAttentionTunableParams<T>* params) -> Status {
-      // Validate input parameters are compatible with the kernel.
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          even_m != static_cast<int>(params->sequence_length % block_m == 0),
-          "sequence_length (", params->sequence_length, "), block_m (", block_m, "), even_m (", even_m, ") mismatch.");
+      // Exclude kernels that are not compatible with the parameters.
+      if (even_m != static_cast<int>(params->sequence_length % block_m == 0) ||
+          even_n != static_cast<int>(params->total_sequence_length % block_n == 0) ||
+          block_d * num_blocks_d != params->head_size ||
+          (block_m > 16 && params->sequence_length <= 16) ||
+          block_n != params->kernel_block_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Invalid input parameters for Triton kernel");
+      }
 
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          even_n != static_cast<int>(params->total_sequence_length % block_n == 0),
-          "k_seq_len (", params->total_sequence_length, "), block_n (", block_n, "), even_n (", even_n, ") mismatch.");
-
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          block_d * num_blocks_d != params->head_size,
-          "head_size (", params->head_size, "), block_d (", block_d, "), num_blocks_d (", num_blocks_d, ") mismatch.");
+      int num_rows = (params->sequence_length + block_m - 1) / block_m;
+      int num_cols = (params->total_sequence_length + block_n - 1) / block_n;
 
       // Construct args for launch kernel
       struct {
@@ -68,6 +71,7 @@ auto GetTritonBlockSparseAttentionTypeStringAndOps() {
         int layout_crow_stride_m;
         int layout_col_stride_h;
         int layout_col_stride_m;
+        int num_layout;
         float softmax_scale;
         int stride_qz;
         int stride_qh;
@@ -96,9 +100,10 @@ auto GetTritonBlockSparseAttentionTypeStringAndOps() {
           params->layout_crow,
           params->layout_col,
           params->layout_crow_stride_h,
-          params->layout_crow_stride_m,
+          1,
           params->layout_col_stride_h,
-          params->layout_col_stride_m,
+          1,
+          params->num_layout,
           params->softmax_scale,
           params->num_heads * params->sequence_length * params->head_size,
           params->sequence_length * params->head_size,

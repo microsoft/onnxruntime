@@ -8,45 +8,53 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// Expand block mask from (num_heads, max_blocks, max_blocks) to (num_heads, max_blocks * splits, max_blocks * splits),
-__global__ void ExpandMask(int* expanded_mask, const int* mask, int max_blocks, int splits, bool causal) {
-  if (threadIdx.x >= max_blocks * splits) {
+__global__ void ExpandMask(int* expanded_mask, const int* mask, int max_blocks,
+                           int row_splits, int col_splits, bool causal) {
+  const int output_cols = max_blocks * col_splits;
+  if (threadIdx.x >= output_cols) {
     return;
   }
 
   int expanded_col = threadIdx.x;
   int expanded_row = blockIdx.x;
-  int h = blockIdx.y;
+
+  int layout_id = blockIdx.y;
+
+  // Let mask and expanded_mask point to the start of current layout.
+  mask += layout_id * max_blocks * max_blocks;
+  const int output_rows = max_blocks * row_splits;
+  expanded_mask += layout_id * output_rows * output_cols;
 
   // Get mask value from the original mask.
-  const int row = expanded_row / splits;
-  const int col = expanded_col / splits;
+  const int row = expanded_row / row_splits;
+  const int col = expanded_col / col_splits;
   int value = mask[row * max_blocks + col];
 
   // Apply causal constraint.
-  if (causal && expanded_col > expanded_row) {
+  if (causal && expanded_col * row_splits > expanded_row * col_splits) {
     value = 0;
   }
 
-  int offset = h * (max_blocks * splits) * (max_blocks * splits) + expanded_row * (max_blocks * splits) + expanded_col;
-  expanded_mask[offset] = value;
+  expanded_mask[expanded_row * output_cols + expanded_col] = value;
 }
 
 void ExpandBlockMask(cudaStream_t stream, int* expanded_mask, const int* mask,
-                     int num_heads, int max_blocks, int splits, bool causal, int max_threads_per_block) {
-  // Each block handle one row. For example, max_blocks=64, splits=2, then each block handle 128 elements.
-  int num_cols = max_blocks * splits;
-  int threads_per_block = (num_cols + 31) / 32 * 32;
+                     int num_layout, int max_blocks, int row_splits, int col_splits,
+                     bool causal, int max_threads_per_block) {
+  // Each block handle one row. For example, max_blocks=64, col_splits=2, then each block handle 128 elements.
+  int output_cols = max_blocks * col_splits;
+  int threads_per_block = (output_cols + 31) / 32 * 32;
 
   // Each thread handle one row. The kernel assumes that all rows can be handled in one block.
   if (threads_per_block > max_threads_per_block) {
-    ORT_THROW("Threads per block is too large: max_blocks=", max_blocks, ", splits=", splits,
+    ORT_THROW("Threads per block is too large: max_blocks=", max_blocks, ", col_splits=", col_splits,
               ", max_threads_per_block=", max_threads_per_block);
   }
 
-  const int num_rows = max_blocks * splits;
-  dim3 gridSize(num_rows, num_heads, 1);
-  ExpandMask<<<gridSize, threads_per_block, 0, stream>>>(expanded_mask, mask, max_blocks, splits, causal);
+  const int output_rows = max_blocks * row_splits;
+  dim3 gridSize(output_rows, num_layout, 1);
+  ExpandMask<<<gridSize, threads_per_block, 0, stream>>>(
+      expanded_mask, mask, max_blocks, row_splits, col_splits, causal);
 }
 
 __global__ void MaskToCSR(const int* mask, int* csr_row_indices, int* csr_col_indices, int num_rows, int num_cols) {
@@ -102,12 +110,12 @@ __global__ void MaskToCSR(const int* mask, int* csr_row_indices, int* csr_col_in
 }
 
 void ConvertMaskToCSR(cudaStream_t stream,
-                      const int* mask,       // mask with shape (num_rows, num_cols)
-                      int num_heads,         // number of heads
-                      int num_rows,          // number of rows of block_mask
-                      int num_cols,          // number of cols of block_mask
+                      const int* mask,       // input mask with shape (num_layout, num_rows, num_cols)
+                      int num_layout,        // number of layouts
+                      int num_rows,          // number of rows
+                      int num_cols,          // number of columns
                       int* csr_row_indices,  // output CSR row indices
-                      int* csr_col_indices,  // output CSR col indices
+                      int* csr_col_indices,  // output CSR column indices
                       int max_threads_per_block) {
   int threads_per_block = (num_rows + 31) / 32 * 32;
 
@@ -116,7 +124,7 @@ void ConvertMaskToCSR(cudaStream_t stream,
     ORT_THROW("num_rows is too large: num_rows=", num_rows, ", max_threads_per_block=", max_threads_per_block);
   }
 
-  MaskToCSR<<<num_heads, threads_per_block, threads_per_block * sizeof(int), stream>>>(
+  MaskToCSR<<<num_layout, threads_per_block, threads_per_block * sizeof(int), stream>>>(
       mask, csr_row_indices, csr_col_indices, num_rows, num_cols);
 }
 

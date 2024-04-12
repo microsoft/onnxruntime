@@ -16,29 +16,30 @@ def block_sparse_attention_kernel(
     query,  # [B, H, M, D]
     key,  # [B, H, N, D]. Note that N is k_seq_len (i.e. total_seq_len), k_num_heads need to expand to num_heads
     value,  # [B, H, N, D]
-    layout_crow_ptr,
-    layout_col_ptr,
-    layout_crow_stride_h,
-    layout_crow_stride_m,
-    layout_col_stride_h,
-    layout_col_stride_m,
+    csr_row_indices,  # block mask CSR format. Shape is [H, num_rows + 1] where num_rows = max_seq_len / BLOCK_M
+    csr_col_indices,  # block mask CSR format. Shape is [H, num_rows * num_cols] where num_cols = max_seq_len / BLOCK_N
+    csr_row_stride_h,  # stride per head for csr_row_indices, i.e. num_rows + 1
+    csr_row_stride_m,  # TODO: always 1
+    csr_col_stride_h,  # stride per head for csr_col_indices, i.e. num_rows * num_cols
+    csr_col_stride_m,  # TODO: always 1
+    num_layout,  # number of sparse layout
     softmax_scale,
     stride_qb,
     stride_qh,
     stride_qm,
-    stride_qd,  # TODO: remove strides for D since it is always 1
+    stride_qd,  # TODO: always 1
     stride_kb,
     stride_kh,
     stride_kn,
-    stride_kd,
+    stride_kd,  # TODO: always 1
     stride_vb,
     stride_vh,
     stride_vn,
-    stride_vd,
+    stride_vd,  # TODO: always 1
     stride_ob,
     stride_oh,
     stride_om,
-    stride_od,
+    stride_od,  # TODO: always 1
     num_heads,
     total_seq_len,
     past_seq_len,
@@ -46,7 +47,7 @@ def block_sparse_attention_kernel(
     BLOCK_D: tl.constexpr,  # block size for D
     BLOCK_N: tl.constexpr,  # block size for k_seq_len
     EVEN_M: tl.constexpr,  # whether q_seq_len % BLOCK_M == 0
-    EVEN_N: tl.constexpr,  # whether k_seq_len % BLOCK_M == 0
+    EVEN_N: tl.constexpr,  # whether k_seq_len % BLOCK_N == 0
     NUM_D_BLOCKS: tl.constexpr,  # number of data blocks =  D / BLOCK_D
 ):
     q_seq_len = total_seq_len - past_seq_len
@@ -65,9 +66,8 @@ def block_sparse_attention_kernel(
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_D)
-    off_q = offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qd
 
-    # off_k = offs_n[:, None] * stride_kn + offs_d[None, :] * stride_kd
+    off_q = offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qd
     off_k = offs_n[None, :] * stride_kn + offs_d[:, None] * stride_kd
     off_v = offs_n[:, None] * stride_vn + offs_d[None, :] * stride_vd
 
@@ -95,13 +95,14 @@ def block_sparse_attention_kernel(
         if NUM_D_BLOCKS >= 2:
             q2 = tl.load(q_ptrs + BLOCK_D * stride_qd, mask=offs_m[:, None] < q_seq_len)
 
-    layout_ptr = layout_crow_ptr + off_h * layout_crow_stride_h + start_m * layout_crow_stride_m
+    layout_h = off_h % num_layout
+    layout_ptr = csr_row_indices + layout_h * csr_row_stride_h + start_m * csr_row_stride_m
     start_l = tl.load(layout_ptr).to(tl.int32)
-    end_l = tl.load(layout_ptr + layout_crow_stride_m).to(tl.int32)
+    end_l = tl.load(layout_ptr + csr_row_stride_m).to(tl.int32)
 
     # loop over k, v and update accumulator
     for col_idx_idx in range(start_l, end_l):
-        col_idx = tl.load(layout_col_ptr + off_h * layout_col_stride_h + col_idx_idx * layout_col_stride_m).to(tl.int32)
+        col_idx = tl.load(csr_col_indices + layout_h * csr_col_stride_h + col_idx_idx * csr_col_stride_m).to(tl.int32)
         start_n = col_idx * BLOCK_N
         # -- compute qk ----
         if EVEN_N:
@@ -185,7 +186,7 @@ num_block_d_values = [2]
 even_m_values = [True, False]  # TODO: shall we use padding to make it True always?
 even_n_values = [True, False]  # TODO: shall we use padding to make it True always?
 name_pattern = "BlockSparseAttentionTriton_{}_m{}_n{}_d{}_{}_em{}_en{}"
-sig_pattern = "*{},*{},*{},*{},*i32,*i32,i32,i32,i32,i32,fp32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32"
+sig_pattern = "*{},*{},*{},*{},*i32,*i32,i32,i32,i32,i32,i32,fp32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32,i32"
 group_pattern = "BlockSparseAttentionTriton_{}"
 
 
@@ -200,7 +201,7 @@ def get_function_table():
             name = name_pattern.format(dtype, block_m, block_n, block_d, num_blocks_d, int(even_m), int(even_n))
 
             # head_size = block_d * num_blocks_d
-            # group = group_pattern.format(head_size, dtype)
+            # group = group_pattern.format(dtype, head_size)
             group = group_pattern.format(dtype)
 
             sig = sig_pattern.format(dtype, dtype, dtype, dtype)

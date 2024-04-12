@@ -20,7 +20,8 @@ Status CheckInputs(void* params,
                    const Tensor* cos_cache,
                    const Tensor* sin_cache,
                    const Tensor* block_mask,
-                   const Tensor* total_key_seq_len) {
+                   const Tensor* seqlens_k_total,
+                   const Tensor* total_seq_len) {
   // No packing for q/k/v:
   //   query                (batch_size, sequence_length, num_heads * head_size)
   //   key                  (batch_size, kv_sequence_length, kv_num_heads * head_size)
@@ -34,7 +35,8 @@ Status CheckInputs(void* params,
   //   past_value           (batch_size, kv_num_heads, max_sequence_length, head_size) or nullptr
   //   block_mask           (num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks)
   //                                    where max_blocks = max_sequence_length / sparse_block_size
-  //   total_key_seq_len    (batch_size)
+  //   seqlens_k_total      (batch_size)
+  //   total_seq_len        (1)
   //   cos_cache            (max_sequence_length, rotary_dim / 2) when do_rotary is true.
   //   sin_cache            (max_sequence_length, rotary_dim / 2) when do_rotary is true.
 
@@ -121,10 +123,10 @@ Status CheckInputs(void* params,
 
   const auto& block_mask_dim = block_mask->Shape().GetDims();
   if (!(block_mask_dim.size() == 3 && block_mask_dim[1] == block_mask_dim[2] &&
-        (block_mask_dim[0] == static_cast<int64_t>(num_heads) || block_mask_dim[0] == 1L))) {
+        (static_cast<int64_t>(num_heads) % block_mask_dim[0] != 0L))) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
-        "block_mask must have shape (num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks).");
+        "block_mask must have shape (num_layout, max_blocks, max_blocks) where num_heads is divisible by num_layout.");
   }
 
   int max_blocks = static_cast<int>(block_mask_dim[1]);
@@ -173,11 +175,17 @@ Status CheckInputs(void* params,
   }
 
   // Check the shape of total_key_sequence_lengths. We do not check the values here.
-  const auto& k_len_dim = total_key_seq_len->Shape().GetDims();
+  const auto& k_len_dim = seqlens_k_total->Shape().GetDims();
   if (k_len_dim.size() != 1 && k_len_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "total_key_sequence_lengths must have shape (batch_size).");
+                           "key_total_sequence_lengths must have shape (batch_size).");
   }
+
+  if (!onnxruntime::IsScalarOr1ElementVector(total_seq_len)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "total_sequence_length tensor must be of one element.");
+  }
+  int total_sequence_length = *((*total_seq_len).template Data<int32_t>());
 
   int rotary_dim = 0;
   if (do_rotary) {
@@ -219,8 +227,8 @@ Status CheckInputs(void* params,
 
   parameters->batch_size = batch_size;
   parameters->sequence_length = sequence_length;
+  parameters->total_sequence_length = total_sequence_length;
   parameters->max_sequence_length = max_sequence_length;
-  parameters->max_blocks = max_blocks;
   parameters->hidden_size = q_hidden_size;
   parameters->head_size = head_size;
   parameters->kv_hidden_size = kv_hidden_size;
@@ -228,6 +236,7 @@ Status CheckInputs(void* params,
   parameters->is_packed_qkv = is_packed_qkv;
   parameters->qkv_format = Q_K_V_BSNH;
   parameters->past_kv_format = Q_K_V_BNSH;
+  parameters->num_sparse_layout = static_cast<int>(block_mask_dim[0]);
 
   return Status::OK();
 }

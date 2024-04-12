@@ -9,9 +9,26 @@
 #include "core/framework/allocator.h"
 #include "core/providers/cuda/tunable/cuda_tunable.h"
 
+using onnxruntime::cuda::tunable::CudaTuningContext;
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+struct BlockLayout {
+  // When block_size != sparse_block_size, mask is an expanded version of input block_mask.
+  const int32_t* mask;  // shape (num_layout, num_rows, num_cols) [num_layout, max_seq_len / block_size, max_seq_len / block_size]
+  int num_layout;
+  int block_size;  // kernel block size, which is <= sparse_block_size
+
+  const int* csr_col_indices;
+  const int* csr_row_indices;
+  int num_rows;
+  int num_cols;
+
+  // In decoding phrase, q_seq_len < total_seq_len. This is the row for current query token.
+  int start_row;
+};
 
 template <typename T>
 struct SparseAttentionData {
@@ -27,6 +44,15 @@ struct SparseAttentionData {
   const int32_t* block_mask = nullptr;
   const int32_t* seqlens_k_total = nullptr;
 
+  // Temporary buffers
+  T* rotary_buffer = nullptr;
+  T* k = nullptr;
+  T* v = nullptr;
+  T* unpacked_qkv_buffer = nullptr;
+
+  // This is sparse layout used in kernel.
+  BlockLayout kernel_layout;
+
   // Output Tensors
   T* output = nullptr;
   T* present_key = nullptr;
@@ -37,9 +63,10 @@ template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
-    Stream* stream,
+    Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
-    SparseAttentionData<T>& data);
+    SparseAttentionData<T>& data,
+    CudaTuningContext* tuning_ctx);
 
 }  // namespace cuda
 }  // namespace contrib
