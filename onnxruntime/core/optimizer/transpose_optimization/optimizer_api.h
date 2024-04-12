@@ -455,7 +455,7 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 20;
+constexpr int64_t kMaxSupportedOpset = 21;
 
 // enum of results that a CostCheckFn can return.
 enum class CostCheckResult {
