@@ -8,7 +8,7 @@
 #include "tensorrt_execution_provider.h"
 
 namespace onnxruntime {
-extern TensorrtLogger& GetTensorrtLogger();
+extern TensorrtLogger& GetTensorrtLogger(bool verbose);
 
 /*
  * Create custom op domain list for TRT plugins.
@@ -28,6 +28,8 @@ extern TensorrtLogger& GetTensorrtLogger();
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
   static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+  static OrtMutex mutex;
+  std::lock_guard<OrtMutex> lock(mutex);
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
     domain_list.push_back(custom_op_domain.get());
     return Status::OK();
@@ -55,7 +57,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   try {
     // Get all registered TRT plugins from registry
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
-    TensorrtLogger trt_logger = GetTensorrtLogger();
+    TensorrtLogger trt_logger = GetTensorrtLogger(false);
     initLibNvInferPlugins(&trt_logger, "");
 
     int num_plugin_creator = 0;

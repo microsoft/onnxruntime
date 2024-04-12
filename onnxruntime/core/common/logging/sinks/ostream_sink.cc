@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/common/logging/sinks/ostream_sink.h"
-#include "date/date.h"
 
 namespace onnxruntime {
 namespace logging {
@@ -24,7 +23,7 @@ struct Color {
 
 void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
   // operator for formatting of timestamp in ISO8601 format including microseconds
-  using date::operator<<;
+  using timestamp_ns::operator<<;
 
   // Two options as there may be multiple calls attempting to write to the same sink at once:
   // 1) Use mutex to synchronize access to the stream.

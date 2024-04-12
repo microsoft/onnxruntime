@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN Windows SDK path
   type: string
-  default: qnn-v2.18.0.240101_win
+  default: qnn-v2.19.2.240210_win
 
 - name: PYTHON_VERSION
   type: string
@@ -15,7 +15,7 @@ parameters:
 
 - name: NUMPY_VERSION
   type: string
-  default: '1.25.2'
+  default: '1.26.4'
 
 - name: ENV_SETUP_SCRIPT
   type: string

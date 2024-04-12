@@ -46,11 +46,19 @@ class RuntimeInspector:
     Runtime inspector for ORTModule.
     """
 
-    def __init__(self, logger: Logger, module: torch.nn.Module):
+    def __init__(self, logger: Logger, module: torch.nn.Module, training: bool):
+        """Initialize runtime inspector.
+
+        Args:
+            logger: Logger.
+            module: Torch module.
+            training: a boolean indicating whether the module is in training mode.
+        """
         self._logger = logger
 
         self.input_density_ob: Union[InputDensityObserver, None] = None
-        self.memory_ob = MemoryObserver(module, self._logger)
+        self.memory_ob = MemoryObserver(module, self._logger, training)
+        self._embedding_module_to_padding_density_map = {}
 
     def enable_input_inspector(self, model: ModelProto, user_input_names: List[str]) -> None:
         """Initialize input inspector from the given ONNX model and user input names.
@@ -479,7 +487,14 @@ class MemoryObserver:
     NORMALIZER_FACTOR = float(1024 * 1024)
     NORMALIZER_UNIT = "MiB"
 
-    def __init__(self, m: torch.nn.Module, logger: Logger):
+    def __init__(self, m: torch.nn.Module, logger: Logger, training: bool):
+        """Initialize memory observer.
+
+        Args:
+            m: Torch module.
+            logger: Logger.
+            training: a boolean indicating whether the module is in training mode.
+        """
         self._logger = logger
         self._is_enabled = True
 
@@ -503,7 +518,10 @@ class MemoryObserver:
 
         self._rank_info = f"[{self._rank}/{self._world_size}]"
         self._pre_phase = Phase.INVALID
-        self._last_phase = Phase.POST_BACKWARD if m.training else Phase.POST_FORWARD
+
+        # Cannot infer it is for training or inferencing purpose from module.training,
+        # because it probabbly is not set correctly when this happens.
+        self._last_phase = Phase.POST_BACKWARD if training else Phase.POST_FORWARD
 
         self._is_first_inspect = True
 
@@ -713,16 +731,16 @@ class MemoryObserver:
             notes = []
             if details:
                 notes.append(
-                    "[Memory Optimizer] Use ORTMODULE_MEMORY_OPT_LEVEL=1/2 to enable all recomputable subgraphs per transformer layer."
+                    "Use ORTMODULE_MEMORY_OPT_LEVEL=1 or 2 to enable all recomputable subgraphs per transformer layer."
                 )
-                saving_recommendation = "[Memory Optimizer] Or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
+                saving_recommendation = (
+                    "Or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
+                )
                 saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
 
                 notes.append(saving_recommendation)
 
-                saving_recommendation = (
-                    "[Memory Optimizer] memory saving is calculated based on the 1st batch symbolic dim values:\n"
-                )
+                saving_recommendation = "Memory saving is calculated based on the 1st batch symbolic dim values:\n"
                 for dim_param, dim_value in self.symbolic_dim_name_to_value_map.items():
                     saving_recommendation += f"  {dim_param}={dim_value},"
                 notes.append(saving_recommendation)
@@ -730,3 +748,33 @@ class MemoryObserver:
             return notes, mem_tbl
 
         return [], None
+
+
+class FlagPaddingElimination(torch.autograd.Function):
+    """
+    FlagPaddingElimination is a PyTorch autograd function that does nothing in forward pass and backward pass.
+    It is used as a flag to tell the GraphTransformer of PaddingElimination to modify the graph to eliminate
+    the embedding padding.
+    """
+
+    @staticmethod
+    def forward(ctx, input):
+        return input
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        return grad_output
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
+
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        fw_alias_map = [0]
+        bw_alias_map = [0]
+        return fw_alias_map, bw_alias_map

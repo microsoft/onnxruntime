@@ -45,6 +45,7 @@
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
+#include "core/optimizer/label_encoder_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
@@ -133,6 +134,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<MatmulBNFusion>());
       rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
+      rules.push_back(std::make_unique<LabelEncoderFusion>());
       break;
 
     case TransformerLevel::Level2:
@@ -316,7 +318,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_cuda_dml_rocm_eps));
 
-      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_cuda_dml_rocm_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
