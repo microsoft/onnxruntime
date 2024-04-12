@@ -49,7 +49,7 @@ INCLUDE mlasi.inc
         jz      ExitKernel
         cmp     rdx,16
         jb      ProcessRemainingCountBy1
-        cmp     rdx,16
+        cmp     rdx,64
         jb      ProcessRemainingCountBy16
         vmovaps zmm1,zmm0
         vmovaps zmm2,zmm0
