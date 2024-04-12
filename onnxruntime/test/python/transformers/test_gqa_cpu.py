@@ -1053,8 +1053,6 @@ def parity_check_gqa_prompt(
         dtype=torch.float32,
         requires_grad=False,
     )
-    # print(k.shape)
-    # print(new_k.shape)
 
     window_size = (-1, -1)
     left_window_size = -1
@@ -1072,14 +1070,6 @@ def parity_check_gqa_prompt(
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
     cache_seqlens = torch.tensor([config.kv_sequence_length], device="cpu").repeat(config.batch_size)
-    # cache_seqlens = torch.randint(
-    #     0,
-    #     config.kv_sequence_length,
-    #     (config.batch_size,),
-    #     dtype=torch.int32,
-    #     device="cpu",
-    # )
-    # cache_seqlens[random.randint(0, cache_seqlens.size(dim=0) - 1)] = config.kv_sequence_length
     rotary_seqlens = torch.tensor([0], device="cpu").repeat(config.batch_size)
 
     if rotary:
@@ -1089,8 +1079,8 @@ def parity_check_gqa_prompt(
         cos = torch.cos(angle).to(dtype=torch.float32)
         sin = torch.sin(angle).to(dtype=torch.float32)
         rot = LlamaMSRotaryEmbedding()
-        q_ro = rot(q, cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
-        k_ro = rot(new_k, cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
+        q_ro = rot(q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
+        k_ro = rot(new_k.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1151,10 +1141,6 @@ def parity_check_gqa_prompt(
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
-
-    # print(cache_seqlens[0])
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[:, 0, :, 0])
-    # print((out - out_ref)[0, :, 0, 0])
 
     # Make sure past-present buffer updating correctly
     assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
@@ -1241,7 +1227,7 @@ def parity_check_gqa_prompt_no_buff(
     window_size = (-1, -1)
     left_window_size = -1
     if local:
-        left_window_size = 4# random.randint(0, config.kv_sequence_length)
+        left_window_size = random.randint(0, config.kv_sequence_length)
         window_size = (left_window_size, 0)
     elif causal:
         left_window_size = -1
@@ -1250,18 +1236,7 @@ def parity_check_gqa_prompt_no_buff(
     # Pytorch to compare
     k_cache_ref = new_k.clone()
     v_cache_ref = new_v.clone()
-    # if past_format == Formats.BNSH:
-    #     k_cache_ref = k_cache_ref.transpose(1, 2)
-    #     v_cache_ref = v_cache_ref.transpose(1, 2)
     cache_seqlens = torch.tensor([config.kv_sequence_length], device="cpu").repeat(config.batch_size)
-    # cache_seqlens = torch.randint(
-    #     0,
-    #     config.kv_sequence_length,
-    #     (config.batch_size,),
-    #     dtype=torch.int32,
-    #     device="cpu",
-    # )
-    # cache_seqlens[random.randint(0, cache_seqlens.size(dim=0) - 1)] = config.kv_sequence_length
     rotary_seqlens = torch.tensor([0], device="cpu").repeat(config.batch_size)
 
     if rotary:
@@ -1271,8 +1246,8 @@ def parity_check_gqa_prompt_no_buff(
         cos = torch.cos(angle).to(dtype=torch.float32)
         sin = torch.sin(angle).to(dtype=torch.float32)
         rot = LlamaMSRotaryEmbedding()
-        q_ro = rot(q, cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
-        k_ro = rot(k_cache_ref, cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
+        q_ro = rot(q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
+        k_ro = rot(k_cache_ref.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, k_cache_ref
@@ -1332,11 +1307,6 @@ def parity_check_gqa_prompt_no_buff(
     # Make sure past-present buffer updating correctly
     assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
     assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-
-    # print((out - out_ref)[0, :, 0, 0])
-    # print(left_window_size)
-    # print(cache_seqlens[0])
-    # print(cache_seqlens[0] - left_window_size)
 
     # Compare results
     print(
@@ -1465,8 +1435,8 @@ def parity_check_gqa_past(
         cos = torch.cos(angle).to(dtype=torch.float32)
         sin = torch.sin(angle).to(dtype=torch.float32)
         rot = LlamaMSRotaryEmbedding()
-        q_ro = rot(q, cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
-        k_ro = rot(new_k, cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
+        q_ro = rot(q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
+        k_ro = rot(new_k.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1526,9 +1496,6 @@ def parity_check_gqa_past(
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
-
-    # print(cache_seqlens[0])
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[:, 0, :, 0])
 
     # Make sure past-present buffer updating correctly
     assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
@@ -1665,8 +1632,8 @@ def parity_check_gqa_past_no_buff(
         cos = torch.cos(angle).to(dtype=torch.float32)
         sin = torch.sin(angle).to(dtype=torch.float32)
         rot = LlamaMSRotaryEmbedding()
-        q_ro = rot(q, cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
-        k_ro = rot(new_k, cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
+        q_ro = rot(q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
+        k_ro = rot(new_k.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1726,26 +1693,6 @@ def parity_check_gqa_past_no_buff(
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
-
-    # print((out - out_ref)[0, :, 0, 0])
-    # print(out - out_ref)
-    # print(left_window_size)
-    # print(cache_seqlens[0])
-
-    # print(cache_seqlens[0])
-    # print((out - out_ref)[0])
-    # print((present_v - v_cache_ref.detach().cpu().numpy())[2, 0, :, 0])
-    # print(cache_seqlens[2])
-
-    # Make sure past-present buffer updating correctly
-    # assert numpy.allclose(
-    #     present_k[:, :, :-1, :], k_cache_ref.detach().cpu().numpy()[:, :, :-1, :], rtol=rtol, atol=atol, equal_nan=True
-    # )
-    # assert numpy.allclose(
-    #     present_v[:, :, :-1, :], v_cache_ref.detach().cpu().numpy()[:, :, :-1, :], rtol=rtol, atol=atol, equal_nan=True
-    # )
-
-    # print(out - out_ref)
 
     # Compare results
     print(
@@ -1810,30 +1757,12 @@ class TestGQA(unittest.TestCase):
         )
         num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        # b, s, s2, n, n2, h = 1, 127, 127, 4, 4, 16
-        # sp = s + s2 + 8
-        # config = PromptConfig(b, s, s2, sp, n, n2, h)
-        # local = False
-        # rotary = True
-        # rotary_interleaved = False
-        # past_kv_format = Formats.BNSH
-        # packed = True
-        # parity_check_gqa_prompt_no_buff(
-        #     config,
-        #     local=local,
-        #     past_format=past_kv_format,
-        #     rtol=1e-3,
-        #     atol=1e-3,
-        #     rotary=rotary,
-        #     rotary_interleaved=rotary_interleaved,
-        #     packed=packed,
-        # )
         for b in batches:
             for sq, skv in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
                         for local in [False, True]:
-                            for rotary, rotary_interleaved in [(True, False), (False, False)]:
+                            for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
                                 for packed in [False, True]:
                                     config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
                                     past_kv_format = Formats.BNSH
@@ -1877,30 +1806,12 @@ class TestGQA(unittest.TestCase):
         num_h = [(16, 16), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 64, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
-        # b, s, s2, n, n2, h = 3, 1, 128, 16, 16, 16
-        # sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-        # config = Config(b, s, s2, sp, n, n2, h)
-        # local = False
-        # rotary = True
-        # rotary_interleaved = False
-        # past_kv_format = Formats.BNSH
-        # packed = False
-        # parity_check_gqa_past(
-        #     config,
-        #     local=local,
-        #     past_format=past_kv_format,
-        #     rtol=1e-3,
-        #     atol=1e-3,
-        #     rotary=rotary,
-        #     rotary_interleaved=rotary_interleaved,
-        #     packed=packed,
-        # )
         for b in batches:
             for s, s2 in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
                         for local in [False, True]:
-                            for rotary, rotary_interleaved in [(True, False), (False, False)]:
+                            for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
                                 for packed in [False, True]:
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                     config = Config(b, s, s2, sp, n, n2, h)

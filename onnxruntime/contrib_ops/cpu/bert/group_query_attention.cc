@@ -188,6 +188,13 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                           pos_ids.Get<Tensor>().Data<int64_t>(), cos_cache->Data<T>(),
                           sin_cache->Data<T>(), RotaryQ.GetMutable<Tensor>()->MutableData<T>(), rotary_interleaved_, true));
 
+      // print RotaryQ last dimension
+      // std::cout << "RotaryQ: " << std::endl;
+      // for (int i = 0; i < head_size; i++) {
+      //   std::cout << RotaryQ.Get<Tensor>().Data<T>()[i] << " ";
+      // }
+      // std::cout << std::endl;
+
       OrtValue RotaryK;
       std::vector<int64_t> k_dim({batch_size, num_heads_, sequence_length, head_size});
       gsl::span<const int64_t> k_dim_span{k_dim};

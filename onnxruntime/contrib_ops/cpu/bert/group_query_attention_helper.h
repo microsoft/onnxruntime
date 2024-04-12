@@ -350,6 +350,9 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, GroupQueryAttentionParame
           sign = (i < half_rotary_emb_dim) ? static_cast<T>(-1) : static_cast<T>(1);
           j = (i + half_rotary_emb_dim) % rotary_emb_dim;
         }
+        // if (b == 0 && s == 0 && n == 0) {
+          // std::cout << "input_data[" << i << "] " << input_data[i] << " cos_data[" << cache_idx << "] " << cos_data[cache_idx] << " sign " << sign << " input_data[" << j << "] " << input_data[j] << " sin_data[" << cache_idx << "] " << sin_data[cache_idx] << std::endl;
+        // }
         output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
       }
       for (int i = rotary_emb_dim; i < head_size; i++) {
