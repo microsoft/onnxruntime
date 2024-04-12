@@ -223,7 +223,7 @@ struct TestInputDef {
     return range;
   }
 
-  std::vector<std::pair<T, T>> GetRangePerAxis(size_t axis) const {
+  std::vector<std::pair<T, T>> GetRangePerChannel(size_t axis) const {
     auto which_type = data_info_.index();
     const size_t num_ranges = static_cast<size_t>(shape_.at(axis));
 
@@ -274,9 +274,9 @@ inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& inp
 }
 
 template <typename QType>
-static void GetTestInputQuantParamsPerAxis(const TestInputDef<float>& input_def, std::vector<float>& scales,
-                                           std::vector<QType>& zero_points, size_t axis, bool symmetric = false) {
-  const auto f32_ranges = input_def.GetRangePerAxis(axis);
+static void GetTestInputQuantParamsPerChannel(const TestInputDef<float>& input_def, std::vector<float>& scales,
+                                              std::vector<QType>& zero_points, size_t axis, bool symmetric = false) {
+  const auto f32_ranges = input_def.GetRangePerChannel(axis);
 
   scales.reserve(f32_ranges.size());
   zero_points.reserve(f32_ranges.size());
