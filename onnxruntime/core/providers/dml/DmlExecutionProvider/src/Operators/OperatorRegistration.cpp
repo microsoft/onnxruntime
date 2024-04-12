@@ -509,7 +509,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(MatMulIntegerToFloat);
 DML_OP_EXTERN_CREATION_FUNCTION(ConvInteger);
 DML_OP_EXTERN_CREATION_FUNCTION(Trilu);
 
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
 DML_OP_EXTERN_CREATION_FUNCTION(Col2Im);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize18);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize19);
@@ -772,7 +772,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 13,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO_VER( 18,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
 
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
     {REG_INFO_VER( 19,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
 #endif
 
@@ -806,7 +806,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  EyeLike,                            typeNameListEyeLike,            supportedTypeListEyeLike,               DmlGraphSupport::Supported)},
     {REG_INFO(     14,  Trilu,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
 
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
     {REG_INFO(     18,  Col2Im,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1, 2))},
 #endif
 
@@ -996,7 +996,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 10,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported,      requiredConstantCpuInputs(1) /*scales*/)},
     {REG_INFO_VER( 11,  Resize,                             typeNameListTwo,                supportedTypeListResize11,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
     {REG_INFO_VER( 13,  Resize,                             typeNameListTwo,                supportedTypeListResize13,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
     {REG_INFO_VER( 18,  Resize,                             typeNameListTwo,                supportedTypeListResize18,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
     {REG_INFO_VER( 19,  Resize,                             typeNameListTwo,                supportedTypeListResize18,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
 #endif
