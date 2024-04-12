@@ -21,12 +21,6 @@ from .mixed_precision_overrides_utils import MixedPrecisionTensorQuantOverridesF
 
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
 Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
-SIGNED_TYPE_MAP = {
-    QuantType.QUInt8: QuantType.QInt8,
-    QuantType.QInt8: QuantType.QInt8,
-    QuantType.QUInt16: QuantType.QInt16,
-    QuantType.QInt16: QuantType.QInt16,
-}
 OP_TYPES_TO_EXCLUDE = {"Cast"}
 MODEL_SIZE_THRESHOLD = 2147483648  # Quant model should use external data if >= 2GB
 
@@ -78,8 +72,6 @@ def get_qnn_qdq_config(
                 - ConvTranspose:
                     - input[1] on axis 1
                     - input[2] (bias) on axis 0
-                - MatMul:
-                    - initializer input on axis -1 (last)
         init_overrides: Initial tensor-level quantization overrides. Defaults to None. This function updates of a copy
             of these overrides with any necessary adjustments and includes them in the returned
             configuration object (i.e., config.extra_options['TensorQuantOverrides']).
@@ -289,24 +281,17 @@ class QnnCompatibilityOverrides:
             self._make_static_inputs_use_default_weight_type(node)
             return
 
-        # Handle global per_channel option if initializer inputs have no overrides.
-        input0_weight_no_overrides = node.input[0] in self.initializer and node.input[0] not in self.overrides
-        input1_weight_no_overrides = node.input[1] in self.initializer and node.input[1] not in self.overrides
-
-        # QNN doesn't support per-channel on input[0] (only input1). Make it a per-tensor weight explicitly.
-        if input0_weight_no_overrides:
-            self.overrides.update_tensor_overrides(
-                node.input[0],
-                {"quant_type": self.default_weight_qtype, "symmetric": self.weight_symmetric},
-            )
-
-        # QNN only supports per-channel on input[1] if axis is -1 (last dim). Must be signed type and symmetric.
-        if input1_weight_no_overrides:
-            signed_quant_type = SIGNED_TYPE_MAP[self.default_weight_qtype]
-            self.overrides.update_tensor_overrides(
-                node.input[1],
-                {"axis": -1, "quant_type": signed_quant_type, "symmetric": True},
-            )
+        # QNN does not support per-channel MatMul. However, the ORT quantization tool attempts to use per-channel
+        # quantization for MatMul by default *if* the global per_channel setting is enabled. So, we need to
+        # provide explicit per-tensor quantization overrides for MatMul if per_channel is enabled and
+        # the user did not provide any other overrides.
+        for input_name in node.input:
+            is_weight_no_overrides = input_name in self.initializers and input_name not in self.overrides
+            if is_weight_no_overrides:
+                self.overrides.update_tensor_overrides(
+                    input_name,
+                    {"quant_type": self.default_weight_qtype, "symmetric": self.weight_symmetric},
+                )
 
     def _process_layernorm(self, node: onnx.NodeProto):
         assert node.op_type == "LayerNormalization", f"Expected LayerNormalization, but got {node.op_type}"
@@ -315,11 +300,11 @@ class QnnCompatibilityOverrides:
             self._make_static_inputs_use_default_weight_type(node)
             return
 
-        has_weight_no_overrides = node.input[1] in self.initializer and node.input[1] not in self.overrides
+        has_weight_no_overrides = node.input[1] in self.initializers and node.input[1] not in self.overrides
         has_bias_no_overrides = (
             len(node.input) > 2
             and node.input[2]
-            and node.input[2] in self.initializer
+            and node.input[2] in self.initializers
             and node.input[2] not in self.overrides
         )
 

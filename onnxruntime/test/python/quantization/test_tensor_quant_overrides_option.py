@@ -878,6 +878,86 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
                 self.assertEqual(weight_is_symmetric, qnn_config.extra_options["WeightSymmetric"])
 
+    def test_get_qnn_qdq_config_matmul_per_channel(self):
+        """
+        When per_channel is enabled, test that the QNN-specific configs explicitly override MatMul's
+        initializer inputs to use per-tensor quantization (QNN does not support per-channel MatMul).
+        """
+        # Create float model with a Abs --> MatMul
+        graph = onnx.helper.make_graph(
+            [
+                onnx.helper.make_node("Abs", ["input_0"], ["abs_0_out"], name="Abs_0"),
+                onnx.helper.make_node("MatMul", ["abs_0_out", "weight"], ["matmul_0_out"], name="MatMul_0"),
+                onnx.helper.make_node("Abs", ["matmul_0_out"], ["output_0"], name="Abs_1"),
+            ],
+            "matmul_graph",
+            [onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, (2, 3))],
+            [onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, (2, 2))],
+            initializer=[onnx.numpy_helper.from_array(np.random.random((3, 2)).astype(np.float32), "weight")],
+        )
+        opset_imports = [
+            onnx.helper.make_opsetid("", 18),
+        ]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        float_model_path = "model.onnx"
+        onnx.save_model(model, float_model_path)
+
+        symmetric_wgt_qtypes = {QuantType.QInt8, QuantType.QInt16}
+        weight_override_16bit = {"weight": [{"quant_type": QuantType.QInt16, "symmetric": True}]}
+
+        # Enumerate subtests (default_wgt_qtype, default_wgt_symmetric, other_override)
+        subtest_configs = [
+            (QuantType.QUInt8, False, {}),
+            (QuantType.QInt8, True, {}),
+            (QuantType.QUInt8, None, {}),
+            (QuantType.QInt8, None, {}),
+            (QuantType.QInt8, None, weight_override_16bit),
+        ]
+
+        # Test if MatMul's weight input is overridden to per-tensor correctly.
+        for default_wgt_qtype, default_wgt_symmetric, other_override in subtest_configs:
+            with self.subTest(
+                default_wgt_qtype=default_wgt_qtype,
+                default_wgt_symmetric=default_wgt_symmetric,
+                other_override=other_override,
+            ):
+                init_overrides = {}
+                init_overrides.update(other_override)
+
+                qnn_config = get_qnn_qdq_config(
+                    float_model_path,
+                    DummyDataReader([]),
+                    weight_type=default_wgt_qtype,
+                    weight_symmetric=default_wgt_symmetric,
+                    init_overrides=(init_overrides if init_overrides else None),
+                    per_channel=True,
+                )
+
+                self.assertEqual(set(qnn_config.op_types_to_quantize), {"Abs", "MatMul"})
+                weight_is_symmetric = default_wgt_symmetric or default_wgt_qtype in symmetric_wgt_qtypes
+
+                # User did not provide overrides for weight, so get_qnn_qdq_config() should set per-tensor overrides.
+                if not init_overrides:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("weight", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["weight"],
+                        [
+                            {
+                                "quant_type": default_wgt_qtype,
+                                "symmetric": weight_is_symmetric,
+                            }
+                        ],
+                    )
+                else:
+                    # Should retain user's overrides.
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("weight", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["weight"], weight_override_16bit["weight"]
+                    )
+
     def test_get_qnn_qdq_config_layernorm(self):
         """
         Test that the QNN-specific configs override LayerNorm's initializer input type to 8-bit if
