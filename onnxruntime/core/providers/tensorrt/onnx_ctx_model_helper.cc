@@ -72,7 +72,6 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            const std::string compute_capability,
                                            const std::string onnx_model_path,
                                            const logging::Logger* logger) {
-  LOGS_DEFAULT(VERBOSE) << "--------- Inside CreateCtxModel";
   auto model_build = graph_viewer.CreateModel(*logger);
   auto& graph_build = model_build->MainGraph();
 
@@ -309,16 +308,16 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
     if(!parser_refitter->refitFromFile(onnx_model_filename.c_str())) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                          "TensorRT EP could not refit deserialized weightless engine with weights contained in: "
-                          + onnx_model_filename);
+          "TensorRT EP's IParserRefitter could not refit deserialized weightless engine with weights contained in: "
+          + onnx_model_filename);
     }
     if(refitter->refitCudaEngine()) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weightless engine.";
     }
     else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                          "TensorRT EP could not refit deserialized weightless engine with weights contained in: "
-                          + onnx_model_filename);
+          "TensorRT EP's IRefitter could not refit deserialized weightless engine with weights contained in: "
+          + onnx_model_filename);
     }
   }
   return Status::OK();
