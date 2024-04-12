@@ -179,6 +179,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Flatten", {"reshape", true}},
     {"Floor", {"floor", true}},
     {"Gather", {"gather", false}},
+    {"Gelu", {"gelu", false}},
     {"Gemm", {"gemm", true}},
     {"GlobalAveragePool", {"averagePool2d", true}},
     {"GlobalMaxPool", {"maxPool2d", true}},
