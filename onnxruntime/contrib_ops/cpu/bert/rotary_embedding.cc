@@ -5,7 +5,6 @@
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
 
 #include "core/platform/threadpool.h"
-#include <iostream>
 
 using onnxruntime::concurrency::ThreadPool;
 using namespace onnxruntime::contrib::rotary_embedding_helper;
@@ -37,6 +36,7 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   }
 }
 
+// TODO: rotary embedding in place
 template <typename T>
 Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters parameters, const T* input,
                           const int64_t* position_ids, const T* cos_cache, const T* sin_cache, T* output,
@@ -45,20 +45,12 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int sequence_length = parameters.sequence_length;
   const int n_heads = parameters.num_heads;
   const int head_size = parameters.head_size;
+  const int head_stride = parameters.head_stride;
+  const int seq_stride = parameters.seq_stride;
+  const int batch_stride = parameters.batch_stride;
   const int position_ids_format = parameters.position_ids_format;
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
-
-  // Default input tensor shape is [batch, seq_len, hidden_size]
-  int head_stride = head_size;
-  int seq_stride = n_heads * head_stride;
-  int batch_stride = sequence_length * seq_stride;
-  if (parameters.transposed) {
-    // Transposed input tensor shape is [batch, n_heads, seq_len, head_size]
-    seq_stride = head_size;
-    head_stride = sequence_length * seq_stride;
-    batch_stride = n_heads * head_stride;
-  }
 
   const int loop_len = batch_size * sequence_length * n_heads;
   const double cost = static_cast<double>(rotary_emb_dim);
@@ -104,6 +96,10 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
 
   return Status::OK();
 }
+
+template Status RunRotaryEmbedding<float>(concurrency::ThreadPool* tp, RotaryParameters parameters, const float* input,
+                                          const int64_t* position_ids, const float* cos_cache, const float* sin_cache, float* output,
+                                          bool interleaved);
 
 template <typename T>
 Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {

@@ -4,7 +4,6 @@
 #include "core/framework/transpose_helper.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include <iostream>
 
 using onnxruntime::concurrency::ThreadPool;
 

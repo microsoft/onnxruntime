@@ -11,7 +11,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace group_query_attention_helper {
 
-// TODO: this is exactly the same as the cuda version... should be moved to a common location
 Status CheckInputs(const Tensor* query,
                    const Tensor* key,
                    const Tensor* value,
@@ -26,10 +25,9 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* total_seqlen,
                    bool is_past_bsnh,
                    float scale) {
-  // TODO: Verify these comments for correctness
-  // Note: Here S* is past_cache_sequence_length, S- is past_sequence_length, S+ is sequence_length
-  //     past_key                   : (B, N_k, S*, H) or (B, N_k, S-, H) or nullptr
-  //     past_value                 : (B, N_k, S*, H) or (B, N_k, S-, H) or nullptr
+  // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
+  //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
+  //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   // no packing for q/k/v:
   //     query            (Q)       : (B, S, D) or (B, S, (D_q + 2 D_kv))
   //     key              (K)       : (B, S, D_kv) or nullptr
@@ -140,17 +138,17 @@ Status CheckInputs(const Tensor* query,
 
     if (past_key_dims[2] != past_value_dims[2]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "BNSH Input 'past_key' and 'past_value' should have same dimension 2 (max sequence"
-                              "length or past sequence length), got ",
-                              past_key_dims[1]);
+                             "BNSH Input 'past_key' and 'past_value' should have same dimension 2 (max sequence"
+                             "length or past sequence length), got ",
+                             past_key_dims[1]);
     }
     if (past_key_dims[1] != kv_num_heads) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "Input 'past_key' shall have kv_num_heads");
+                             "Input 'past_key' shall have kv_num_heads");
     }
     if (past_value_dims[1] != kv_num_heads) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "Input 'past_value' shall have kv_num_heads");
+                             "Input 'past_value' shall have kv_num_heads");
     }
     // We assume all sequence in past kv are right-padded to max or past sequence length
     past_sequence_length = static_cast<int>(past_key_dims[2]);
@@ -291,82 +289,9 @@ Status GeneratePositionIds(const int32_t* seqlens_k, int batch_size, int sequenc
   return Status::OK();
 }
 
-// TODO: investigate doing rotary embedding in place
-template <typename T>
-Status RunRotaryEmbedding(concurrency::ThreadPool* tp, GroupQueryAttentionParameters parameters, const T* input,
-                          const int64_t* position_ids, const T* cos_cache, const T* sin_cache, T* output,
-                          bool interleaved, bool is_q = true /*otherwise is k...*/) {
-  const int batch_size = parameters.batch_size;
-  const int sequence_length = parameters.sequence_length;
-  int n_heads = parameters.num_heads;
-  const int kv_n_heads = parameters.kv_num_heads;
-  const int head_size = parameters.head_size;
-  const int rotary_emb_dim = parameters.rotary_dim;
-  const int half_rotary_emb_dim = rotary_emb_dim / 2;
-
-  // Default input tensor shape is [batch, seq_len, hidden_size]
-  // int head_stride = head_size;
-  // int seq_stride = n_heads * head_stride;
-  // int batch_stride = sequence_length * seq_stride;
-
-  // Transposed input tensor shape is [batch, n_heads, seq_len, head_size]
-  int seq_stride = head_size;
-  int head_stride = sequence_length * seq_stride;
-  int batch_stride = is_q ? n_heads * head_stride : kv_n_heads * head_stride;
-  if (parameters.is_packed_qkv) {
-    batch_stride = (n_heads + 2 * kv_n_heads) * head_stride;
-  }
-
-  if (!is_q) n_heads = kv_n_heads; // need to use kv num heads for k
-  const int loop_len = batch_size * sequence_length * n_heads;
-  const double cost = static_cast<double>(rotary_emb_dim);
-  ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
-      const int b = static_cast<int>((ptr / n_heads) / sequence_length);
-      const int s = static_cast<int>((ptr / n_heads) % sequence_length);
-      const int n = static_cast<int>(ptr % n_heads);
-
-      const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
-
-      const T* input_data = input + block_offset;
-      T* output_data = output + block_offset;
-
-      // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
-      const int position_id = static_cast<int>(position_ids[b * sequence_length + s]);
-      const int cache_offset = position_id * half_rotary_emb_dim;
-      const T* cos_data = cos_cache + cache_offset;
-      const T* sin_data = sin_cache + cache_offset;
-
-      int cache_idx = 0;
-      T sign = 0;
-      int j = 0;
-      for (int i = 0; i < rotary_emb_dim; i++) {
-        if (interleaved) {
-          cache_idx = (i / 2) % half_rotary_emb_dim;
-          sign = (i % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
-          j = (i % 2 == 0) ? i + 1 : i - 1;  // i - sign
-        } else {
-          cache_idx = i % half_rotary_emb_dim;
-          sign = (i < half_rotary_emb_dim) ? static_cast<T>(-1) : static_cast<T>(1);
-          j = (i + half_rotary_emb_dim) % rotary_emb_dim;
-        }
-        // if (b == 0 && s == 0 && n == 0) {
-          // std::cout << "input_data[" << i << "] " << input_data[i] << " cos_data[" << cache_idx << "] " << cos_data[cache_idx] << " sign " << sign << " input_data[" << j << "] " << input_data[j] << " sin_data[" << cache_idx << "] " << sin_data[cache_idx] << std::endl;
-        // }
-        output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
-      }
-      for (int i = rotary_emb_dim; i < head_size; i++) {
-        output_data[i] = input_data[i];
-      }
-    }
-  });
-
-  return Status::OK();
-}
-
 template <typename T>
 Status PackVIntoRotaryQKV(concurrency::ThreadPool* tp, GroupQueryAttentionParameters parameters, const T* input,
-                             T* output) {
+                          T* output) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   int n_heads = parameters.num_heads;

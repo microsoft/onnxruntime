@@ -4,7 +4,6 @@
 #pragma once
 
 #include <limits>
-#include <iostream>
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
@@ -164,11 +163,7 @@ void PrepareMaskGQA(T* mask_data,
                     const int32_t* seqlens_k) {
   // mask_data has been filled with 0, and its shape is BxSxT
   T* p_mask = mask_data;
-  // std::cout << "buffer_sequence_length: " << buffer_sequence_length << std::endl;
-  // std::cout << "sequence_length: " << sequence_length << std::endl;
-  // std::cout << "batch_size: " << batch_size << std::endl;
-  // std::cout << "mask_data: " << std::endl;
-  // TODO: try parallel for
+  // TODO: parallelize this
   for (int b_i = 0; b_i < batch_size; b_i++) {
     // Broadcast mask from (Bx)T to (Bx)SxT
     for (ptrdiff_t s_i = 1; s_i < sequence_length; s_i++) {
@@ -176,10 +171,8 @@ void PrepareMaskGQA(T* mask_data,
     }
 
     if (sequence_length > 1) {
-      // std::cout << "sequence_length > 1" << std::endl;
       // Apply causal/local mask for prompt case.
       for (int s_i = 0; s_i < sequence_length; s_i++) {
-        // std::cout << "s_i: " << s_i << std::endl;
         for (int m_i = s_i + 1; m_i < buffer_sequence_length; m_i++) {
           // std::cout << m_i << " ";
           p_mask[s_i * buffer_sequence_length + m_i] = std::numeric_limits<T>::lowest();
@@ -192,7 +185,6 @@ void PrepareMaskGQA(T* mask_data,
         }
       }
     } else if (sequence_length == 1) {
-      // std::cout << "sequence_length == 1" << std::endl;
       // Apply right padding to mask for token gen case.
       int total_seqlen = seqlens_k[b_i] + 1;
       for (int m_i = total_seqlen; m_i < buffer_sequence_length; m_i++) {
@@ -205,14 +197,6 @@ void PrepareMaskGQA(T* mask_data,
         }
       }
     }
-    // for (int i = 0; i < sequence_length; i++) {
-    //   for (int j = 0; j < buffer_sequence_length; j++) {
-    //     std::cout << p_mask[i * buffer_sequence_length + j] << " ";
-    //   }
-    //   std::cout << std::endl;
-    // }
-    // std::cout << std::endl;
-
     ptrdiff_t mask_to_advance = SafeInt<ptrdiff_t>(sequence_length) * buffer_sequence_length;
     p_mask += mask_to_advance;
   }
@@ -243,22 +227,15 @@ T* ConcatStateChunk(const T* past,
 // GQA version of ConcatStateChunk
 template <typename T>
 T* ConcatStateChunkGQA(const T* past,
-                    const T* chunk,
-                    T* present,
-                    size_t present_buff_chunk_length,
-                    size_t past_buff_chunk_length,
-                    size_t past_chunk_length,
-                    size_t new_chunk_length,
-                    bool is_prompt,
-                    bool past_present_share_buffer,
-                    std::ptrdiff_t i) {
-
-  // std::cout << "present_buff_chunk_length: " << present_buff_chunk_length << std::endl;
-  // std::cout << "past_buff_chunk_length: " << past_buff_chunk_length << std::endl;
-  // std::cout << "past_chunk_length: " << past_chunk_length << std::endl;
-  // std::cout << "new_chunk_length: " << new_chunk_length << std::endl;
-  // std::cout << "past_present_share_buffer: " << past_present_share_buffer << std::endl;
-
+                       const T* chunk,
+                       T* present,
+                       size_t present_buff_chunk_length,
+                       size_t past_buff_chunk_length,
+                       size_t past_chunk_length,
+                       size_t new_chunk_length,
+                       bool is_prompt,
+                       bool past_present_share_buffer,
+                       std::ptrdiff_t i) {
   T* start = present + i * present_buff_chunk_length;
 
   T* p = start;

@@ -15,10 +15,6 @@ class GroupQueryAttention final : public OpKernel, public GQAAttentionBase {
  public:
   GroupQueryAttention(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
-
- protected:
-  // int num_heads_;     // number of attention heads
-  // int kv_num_heads_;  // different for k and v for group query attention
 };
 
 }  // namespace contrib

@@ -10,8 +10,6 @@
 # license information.
 # -------------------------------------------------------------------------
 import math
-import os
-import platform
 import random
 import unittest
 
@@ -69,6 +67,7 @@ class PromptConfig:
         self.num_heads = n
         self.kv_num_heads = n2
         self.head_size = h
+
 
 # LLaMA Microsoft model
 class LlamaMSRotaryEmbedding(torch.nn.Module):
@@ -1079,8 +1078,16 @@ def parity_check_gqa_prompt(
         cos = torch.cos(angle).to(dtype=torch.float32)
         sin = torch.sin(angle).to(dtype=torch.float32)
         rot = LlamaMSRotaryEmbedding()
-        q_ro = rot(q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
-        k_ro = rot(new_k.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
+        q_ro = rot(
+            q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved
+        )
+        k_ro = rot(
+            new_k.clone(),
+            cos.unsqueeze(0).unsqueeze(2),
+            sin.unsqueeze(0).unsqueeze(2),
+            rotary_seqlens,
+            rotary_interleaved,
+        )
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1246,8 +1253,16 @@ def parity_check_gqa_prompt_no_buff(
         cos = torch.cos(angle).to(dtype=torch.float32)
         sin = torch.sin(angle).to(dtype=torch.float32)
         rot = LlamaMSRotaryEmbedding()
-        q_ro = rot(q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
-        k_ro = rot(k_cache_ref.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved)
+        q_ro = rot(
+            q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), rotary_seqlens, rotary_interleaved
+        )
+        k_ro = rot(
+            k_cache_ref.clone(),
+            cos.unsqueeze(0).unsqueeze(2),
+            sin.unsqueeze(0).unsqueeze(2),
+            rotary_seqlens,
+            rotary_interleaved,
+        )
     else:
         cos, sin = None, None
         q_ro, k_ro = q, k_cache_ref
@@ -1435,8 +1450,16 @@ def parity_check_gqa_past(
         cos = torch.cos(angle).to(dtype=torch.float32)
         sin = torch.sin(angle).to(dtype=torch.float32)
         rot = LlamaMSRotaryEmbedding()
-        q_ro = rot(q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
-        k_ro = rot(new_k.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
+        q_ro = rot(
+            q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved
+        )
+        k_ro = rot(
+            new_k.clone(),
+            cos.unsqueeze(0).unsqueeze(2),
+            sin.unsqueeze(0).unsqueeze(2),
+            cache_seqlens,
+            rotary_interleaved,
+        )
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1628,12 +1651,22 @@ def parity_check_gqa_past_no_buff(
     if rotary:
         rotary_fraction = 1.0
         rotary_dim = math.floor(int(rotary_fraction * config.head_size) / 16) * 16
-        angle = torch.rand(config.kv_sequence_length + config.sequence_length, rotary_dim // 2, device="cpu") * 2 * math.pi
+        angle = (
+            torch.rand(config.kv_sequence_length + config.sequence_length, rotary_dim // 2, device="cpu") * 2 * math.pi
+        )
         cos = torch.cos(angle).to(dtype=torch.float32)
         sin = torch.sin(angle).to(dtype=torch.float32)
         rot = LlamaMSRotaryEmbedding()
-        q_ro = rot(q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
-        k_ro = rot(new_k.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved)
+        q_ro = rot(
+            q.clone(), cos.unsqueeze(0).unsqueeze(2), sin.unsqueeze(0).unsqueeze(2), cache_seqlens, rotary_interleaved
+        )
+        k_ro = rot(
+            new_k.clone(),
+            cos.unsqueeze(0).unsqueeze(2),
+            sin.unsqueeze(0).unsqueeze(2),
+            cache_seqlens,
+            rotary_interleaved,
+        )
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
