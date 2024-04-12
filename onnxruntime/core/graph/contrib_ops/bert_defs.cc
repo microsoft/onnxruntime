@@ -1217,16 +1217,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GemmaRotaryEmbedding_ver1_doc = R"DOC(
 GemmaRotaryEmbedding is the implementation of below part of rotary positional embeddings (RoPE). It implements below from modeling_gemma.py.
 
-def gemma_rotary_embedding(emb, q, q_rot, k, k_rot):
-  sin_val = Sin(emb)
-  casted_sin = Cast(sin_val, to=fp16) # for fp16 mix-precision training. Other types are not supported.
-  cos_val = Cos(emb)
-  casted_cos = Cast(cos_val, to=fp16)
-  unsqueezed_sin = Unsqueeze(casted_sin)
-  unsqueezed_cos = Unsqueeze(casted_cos)
+Here's onnxscript that was tested
+
+from onnxscript import FLOAT, FLOAT16, script
+from onnxscript import opset18 as op
+
+@script()
+def gemma_rotary_embedding(emb: FLOAT["bs", "seq_len", "dim"], q: FLOAT16["bs", "num_heads", "seq_len", "dim"], q_rot: FLOAT16["bs", "num_heads", "seq_len", "dim"], k: FLOAT16["bs", "num_heads", "seq_len", "dim"], k_rot: FLOAT16["bs", "num_heads", "seq_len", "dim"]):
+  sin_val = op.Sin(emb)
+  casted_sin = op.Cast(sin_val, to=10) # for fp16 mix-precision training. Other types are not supported.
+  cos_val = op.Cos(emb)
+  casted_cos = op.Cast(cos_val, to=10)
+  unsqueezed_sin = op.Unsqueeze(casted_sin, [1])
+  unsqueezed_cos = op.Unsqueeze(casted_cos, [1])
   q_embed = (q * casted_cos) + (q_rot * casted_sin)
   k_embed = (k * casted_cos) + (k_rot * casted_sin)
   return q_embed, k_embed
+
+onnx_model = gemma_rotary_embedding.to_model_proto()
+
 
 )DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(
