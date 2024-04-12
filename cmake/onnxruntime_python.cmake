@@ -1001,6 +1001,15 @@ if (onnxruntime_USE_COREML)
   )
 endif()
 
+if (onnxruntime_USE_QNN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_qnn>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
 endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)

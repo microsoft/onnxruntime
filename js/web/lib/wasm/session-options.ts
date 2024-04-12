@@ -114,6 +114,15 @@ const setExecutionProviders =
               }
             }
             break;
+          case 'qnn':
+            epName = 'QNN';
+            if (typeof ep !== 'string') {
+              const qnnOptions = ep as InferenceSession.QnnExecutionProviderOption;
+              if (qnnOptions?.preferredLayout) {
+                // TODO implement me
+              }
+            }
+            break;
           case 'wasm':
           case 'cpu':
             continue;

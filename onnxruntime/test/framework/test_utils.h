@@ -23,6 +23,9 @@
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_execution_provider.h"
 #endif
+#ifdef USE_QNN
+#include "core/providers/qnn/qnn_execution_provider.h"
+#endif
 
 namespace onnxruntime {
 class Graph;

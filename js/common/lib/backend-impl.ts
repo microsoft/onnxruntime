@@ -29,7 +29,9 @@ const backendsSortedByPriority: string[] = [];
  */
 export const registerBackend = (name: string, backend: Backend, priority: number): void => {
   if (backend && typeof backend.init === 'function' && typeof backend.createInferenceSessionHandler === 'function') {
+    console.warn(`backends: ${JSON.stringify(backends)}`);
     const currentBackend = backends.get(name);
+    console.warn(`registerBackend: ${name}, ${priority}`);
     if (currentBackend === undefined) {
       backends.set(name, {backend, priority});
     } else if (currentBackend.priority > priority) {
@@ -68,9 +70,10 @@ export const registerBackend = (name: string, backend: Backend, priority: number
  * @returns the backend instance if resolved and initialized successfully, or an error message if failed.
  */
 const tryResolveAndInitializeBackend = async(backendName: string): Promise<Backend|string> => {
+  console.log(`tryResolveAndInitializeBackend: ${backendName} backends: ${JSON.stringify(backends)}`);
   const backendInfo = backends.get(backendName);
   if (!backendInfo) {
-    return 'backend not found.';
+    return `backend ${backendName} not found.`;
   }
 
   if (backendInfo.initialized) {
@@ -111,21 +114,28 @@ export const resolveBackendAndExecutionProviders = async(options: InferenceSessi
     Promise<[backend: Backend, options: InferenceSession.SessionOptions]> => {
       // extract backend hints from session options
       const eps = options.executionProviders || [];
+      console.warn(`eps: ${JSON.stringify(eps)}`);
+
       const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
       const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
+
+      console.warn(`backendNames: ${JSON.stringify(backendNames)}`);
 
       // try to resolve and initialize all requested backends
       let backend: Backend|undefined;
       const errors = [];
       const availableBackendNames = new Set<string>();
+      console.log(`backendNames: ${JSON.stringify(backendNames)}`);
       for (const backendName of backendNames) {
         const resolveResult = await tryResolveAndInitializeBackend(backendName);
         if (typeof resolveResult === 'string') {
+          console.log(`resolveResult: ${resolveResult}`);
           errors.push({name: backendName, err: resolveResult});
         } else {
           if (!backend) {
             backend = resolveResult;
           }
+          console.log(`backend: ${backend}`);
           if (backend === resolveResult) {
             availableBackendNames.add(backendName);
           }

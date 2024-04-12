@@ -167,6 +167,7 @@ async function main() {
       cpuOptions: args.cpuOptions,
       webglOptions: args.webglOptions,
       webnnOptions: args.webnnOptions,
+      qnnOptions: args.qnnOptions,
       wasmOptions: args.wasmOptions,
       globalEnvFlags: args.globalEnvFlags
     }

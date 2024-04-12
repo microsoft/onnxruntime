@@ -652,6 +652,12 @@ public class InferenceTest {
   }
 
   @Test
+  @EnabledIfSystemProperty(named = "USE_QNN", matches = "1")
+  public void testCoreML() throws OrtException {
+    runProvider(OrtProvider.QNN);
+  }
+
+  @Test
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {
     runProvider(OrtProvider.DIRECT_ML);

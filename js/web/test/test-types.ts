@@ -145,6 +145,7 @@ export declare namespace Test {
     wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
     webglOptions?: InferenceSession.WebGLExecutionProviderOption;
     webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
+    qnnOptions?: InferenceSession.QnnExecutionProviderOption;
     globalEnvFlags?: EnvOptions;
   }
 

@@ -21,6 +21,9 @@
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
+#ifdef USE_QNN
+#include "core/providers/qnn/qnn_provider_factory.h"
+#endif
 
 const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NAME_TO_ID_MAP = {
     {"disabled", ORT_DISABLE_ALL},
@@ -80,6 +83,10 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
 #ifdef USE_COREML
     } else if (name == "coreml") {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, coreMlFlags));
+#endif
+#ifdef USE_QNN
+    } else if (name == "qnn") {
+      // TODO add QNN EP options
 #endif
     } else {
       ORT_NAPI_THROW_ERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,

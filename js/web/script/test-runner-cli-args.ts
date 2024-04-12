@@ -194,6 +194,7 @@ export interface TestRunnerCliArgs {
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
   webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
+  qnnOptions?: InferenceSession.QnnExecutionProviderOption;
   globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
   userDataDir?: string;
@@ -349,12 +350,17 @@ function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   return webgpu;
 }
 
-function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.WebNNExecutionProviderOption {
+function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.Option {
   const deviceType = args['webnn-device-type'];
   if (deviceType !== undefined && deviceType !== 'cpu' && deviceType !== 'gpu') {
     throw new Error('Flag "webnn-device-type" is invalid');
   }
   return {name: 'webnn', deviceType};
+}
+
+function parseQNNOptions(_args: minimist.ParsedArgs): InferenceSession.QnnExecutionProviderOption {
+  // TODO implement me
+  return {name: 'qnn'};
 }
 
 function parseGlobalEnvFlags(args: minimist.ParsedArgs) {
@@ -475,6 +481,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   const webglOptions = parseWebglOptions(args);
   const webnnOptions = parseWebNNOptions(args);
+  const qnnOptions = parseQNNOptions(args);
 
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
@@ -517,6 +524,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     cpuOptions,
     webglOptions,
     webnnOptions,
+    qnnOptions,
     wasmOptions,
     globalEnvFlags,
     noSandbox,
