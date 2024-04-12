@@ -750,40 +750,4 @@ std::string GetCacheSuffix(const std::string& fused_node_name, const std::string
   }
   return "";
 }
-
-/*
- * Fill cache paths that will be utilized both to determine if quick loading an engine is possible
- * (if it exists) and to serialize an engine
- *
- */
-void FillCachePaths(std::string& cache_suffix,
-                    const std::string& cache_prefix,
-                    const std::string& fused_node_name,
-                    const std::string& trt_node_name_with_precision,
-                    const std::string& cache_path,
-                    const std::string& compute_capability,
-                    std::string& cache_path_prefix,
-                    std::string& engine_cache_path,
-                    std::string& encrypted_engine_cache_path,
-                    std::string& weightless_engine_cache_path,
-                    std::string& profile_cache_path) {
-  std::string generated_cache_path;
-  // Customize cache prefix if assigned
-  if (!cache_prefix.empty()) {
-    // Generate cache suffix in case user would like to customize cache prefix
-    cache_suffix = "_" + GetCacheSuffix(fused_node_name, trt_node_name_with_precision);
-    generated_cache_path = GetCachePath(cache_path, cache_prefix) + cache_suffix;
-  } else {
-    generated_cache_path = GetCachePath(cache_path, trt_node_name_with_precision);
-  }
-
-  // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
-  // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory,
-  // even if they share the same compute capacity
-  cache_path_prefix = generated_cache_path + "_sm" + compute_capability;
-  engine_cache_path = cache_path_prefix + ".engine";
-  encrypted_engine_cache_path = engine_cache_path + ".encrypted";
-  weightless_engine_cache_path = engine_cache_path + ".wtlsengine";
-  profile_cache_path = cache_path_prefix + ".profile";
-}
 }  // namespace onnxruntime

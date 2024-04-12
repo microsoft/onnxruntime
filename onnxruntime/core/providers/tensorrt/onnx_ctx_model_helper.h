@@ -15,6 +15,7 @@ static const std::string EPCONTEXT_OP = "EPContext";
 static const std::string EMBED_MODE = "embed_mode";
 static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
 static const std::string COMPUTE_CAPABILITY = "hardware_architecture";
+static const std::string ONNX_MODEL_FILENAME = "onnx_model_filename";
 static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
 static const std::string EPCONTEXT_WARNING =
     "It's suggested to set the ORT graph optimization level to 0 and  \
@@ -29,7 +30,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            char* engine_data,
                                            size_t size,
                                            const int64_t embed_mode,
-                                           std::string compute_capability,
+                                           const std::string compute_capability,
+                                           const std::string onnx_model_path,
                                            const logging::Logger* logger);
 std::string GetCtxModelPath(const std::string& ep_context_file_path,
                             const std::string& original_model_path);
@@ -46,7 +48,13 @@ class TensorRTCacheModelHandler {
   TensorRTCacheModelHandler(std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine,
                             nvinfer1::IRuntime* trt_runtime,
                             std::string ep_context_model_path,
-                            std::string compute_capability) : trt_engine_(trt_engine), trt_runtime_(trt_runtime), ep_context_model_path_(ep_context_model_path), compute_capability_(compute_capability) {
+                            std::string compute_capability,
+                            bool weightless_engine_refit)
+    : trt_engine_(trt_engine),
+      trt_runtime_(trt_runtime),
+      ep_context_model_path_(ep_context_model_path),
+      compute_capability_(compute_capability),
+      weightless_engine_refit_(weightless_engine_refit) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
 
@@ -59,5 +67,6 @@ class TensorRTCacheModelHandler {
   nvinfer1::IRuntime* trt_runtime_;
   std::string ep_context_model_path_;  // If using context model, it implies context model and engine cache is in the same directory
   std::string compute_capability_;
+  bool weightless_engine_refit_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime

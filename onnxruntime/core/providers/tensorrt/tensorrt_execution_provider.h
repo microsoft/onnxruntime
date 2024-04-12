@@ -282,8 +282,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int auxiliary_streams_ = -1;
   std::string tactic_sources_;
   std::string global_cache_path_, cache_path_, engine_decryption_lib_path_;
-  mutable bool single_serialized_weightless_engine_exists_ = false;
-  mutable std::string serialized_weightless_engine_cache_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
@@ -529,17 +527,14 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsLocalValue(const Graph& graph, const std::string& name) const;
 
   /**
-   * Create a vector of NodeComputeInfo instances directly from a precompiled engine without
+   * Create a vector of NodeComputeInfo instances directly from "TRT engine" wrapped onnx model without
    * going through the time-consuming processes of model parsing and engine building.
-   * If the flag |engine_within_onnx_model| is on, use the "TRT engine" wrapped within the ONNX model,
-   * otherwise use the weightless engine and refit it.
    */
   Status CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                     const Node& fused_node,
                                                     std::unordered_map<std::string, size_t>& input_map,
                                                     std::unordered_map<std::string, size_t>& output_map,
-                                                    std::vector<NodeComputeInfo>& node_compute_funcs,
-                                                    bool engine_within_onnx_model);
+                                                    std::vector<NodeComputeInfo>& node_compute_funcs);
 
   /**
    * Create a vector of NodeComputeInfo instances from graph.
@@ -560,12 +555,5 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder() const;
-
-  /**
-   * Check if a cached weightless engine is present on disk, to avoid creating a TRT Builder instance.
-   * The cached engine must correspond to the entire graph being TRT eligible.
-   * Currently, TRT eligibility is determined by taking into account the cached engine filename's suffix only.
-   */
-  bool IsSingleCachedWeightlessEnginePresent(const std::string& sub_graph_metadef_name) const;
 };
 }  // namespace onnxruntime

@@ -3233,9 +3233,14 @@ void RegisterContribSchemas() {
           "The path is relative to this Onnx file. Default is 1.",
           AttributeProto::INT,
           static_cast<int64_t>(1))
-      .Attr(
+              .Attr(
           "ep_sdk_version",
           "(Optional) SDK version used to convert the model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
+          "onnx_model_filename",
+          "(Optional) Filename of the original ONNX model.",
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
