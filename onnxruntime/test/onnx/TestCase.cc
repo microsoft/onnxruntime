@@ -1012,7 +1012,16 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
 #endif
-      {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}});
+      {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}},
+      // ONNX 1.16.0 fix: https://github.com/onnx/onnx/pull/5741
+      // ORT pending PR: https://github.com/microsoft/onnxruntime/pull/18377
+      {"maxpool_2d_ceil_output_size_reduce_by_one",
+       "ONNX 1.16.0 fixed maxpool output size bug and added this test. "
+       "Enable when merge: https://github.com/microsoft/onnxruntime/pull/18377",
+       {}},
+      {"dequantizelinear_blocked", "blocked quantization (onnx 1.16.0) not supported", {}},
+      {"quantizelinear_blocked_asymmetric", "blocked quantization (onnx 1.16.0) not supported", {}},
+      {"quantizelinear_blocked_symmetric", "blocked quantization (onnx 1.16.0) not supported", {}}});
 
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
