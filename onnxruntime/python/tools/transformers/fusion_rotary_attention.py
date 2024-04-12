@@ -1326,8 +1326,7 @@ class FusionRotaryEmbeddings(Fusion):
                 [1, 0, 0, 0, 0],
             )
 
-            rotate_half_x2_path_1 = rotate_half_x2_path_1_1 if rotate_half_x2_path_1_1\
-                                    else rotate_half_x2_path_1_2 if rotate_half_x2_path_1_2 else None
+            rotate_half_x2_path_1 = rotate_half_x2_path_1_1 or rotate_half_x2_path_1_2
 
             rotate_half_x2_path_2_1 = self.model.match_parent_path(
                 node,
@@ -1341,8 +1340,7 @@ class FusionRotaryEmbeddings(Fusion):
                 [1, 0, 0, 0, 1, 0, 0, 0, 0],
             )
 
-            rotate_half_x2_path_2 = rotate_half_x2_path_2_1 if rotate_half_x2_path_2_1 \
-                                    else rotate_half_x2_path_2_2 if rotate_half_x2_path_2_2 else None
+            rotate_half_x2_path_2 = rotate_half_x2_path_2_1 or rotate_half_x2_path_2_2
 
             if rotate_half_x2_path_1 is None or rotate_half_x2_path_2 is None:
                 logger.debug("fuse_rotary_embeddings: failed to match x2 in rotate_half")
@@ -1360,8 +1358,7 @@ class FusionRotaryEmbeddings(Fusion):
                 [1, 0, 1, 0],
             )
 
-            rotate_half_x1_path_1 = rotate_half_x1_path_1_1 if rotate_half_x1_path_1_1 \
-                                    else rotate_half_x1_path_1_2 if rotate_half_x1_path_1_2 else None
+            rotate_half_x1_path_1 = rotate_half_x1_path_1_1 or rotate_half_x1_path_1_2
 
             rotate_half_x1_path_2_1 = self.model.match_parent_path(
                 node,
@@ -1375,8 +1372,7 @@ class FusionRotaryEmbeddings(Fusion):
                 [1, 0, 1, 2, 0, 0, 0, 0],
             )
 
-            rotate_half_x1_path_2 = rotate_half_x1_path_2_1 if rotate_half_x1_path_2_1 \
-                                    else rotate_half_x1_path_2_2 if rotate_half_x1_path_2_2 else None
+            rotate_half_x1_path_2 = rotate_half_x1_path_2_1 or rotate_half_x1_path_2_2
 
             if rotate_half_x1_path_1 is None or rotate_half_x1_path_2 is None:
                 logger.debug("fuse_rotary_embeddings: failed to match x1 in rotate_half")
@@ -1404,7 +1400,7 @@ class FusionRotaryEmbeddings(Fusion):
                 [0, 0],
             )
 
-            x_path = x_path_1 if x_path_1 else x_path_2 if x_path_2 else None
+            x_path = x_path_1 or x_path_2
 
             if x_path is None:
                 logger.debug("fuse_rotary_embeddings: failed to match x in rotate_half")
