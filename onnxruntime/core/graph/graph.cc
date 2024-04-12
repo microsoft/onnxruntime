@@ -2997,6 +2997,61 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
   }
   return Status::OK();
 }
+
+Status Graph::InjectExternalInitializersFromFile(
+    const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<const void*, size_t>>& external_initializer_files) {
+  for (auto ini : name_to_initial_tensor_) {
+    if (ini.second->data_location() == TensorProto_DataLocation_EXTERNAL) {
+      auto tensor_name = ini.first;
+
+      std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+      ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(ini.second->external_data(), external_data_info));
+
+      // TODO: ignore "./" if it has
+      const auto& external_file = external_data_info->GetRelPath();
+      onnxruntime::FileOffsetType file_offset = external_data_info->GetOffset();
+      const size_t external_data_length = external_data_info->GetLength();
+      SafeInt<size_t> tensor_byte_size;
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(*ini.second, &tensor_byte_size));
+      ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
+                        "TensorProto: ", tensor_name, " external data size mismatch. Computed size: ",
+                        *&tensor_byte_size, ", external_data.length: ", external_data_length);
+
+      SafeInt<FileOffsetType> end_of_read(file_offset);
+      end_of_read += tensor_byte_size;
+
+      auto external_file_pos = external_initializer_files.find(external_file);
+      ORT_RETURN_IF(external_file_pos == external_initializer_files.end(), "External file not provided: ", external_file.c_str());
+      auto external_file_length = external_file_pos->second.second;
+
+      ORT_RETURN_IF(file_offset < 0 || end_of_read > narrow<FileOffsetType>(external_file_length),
+                    "External initializer: ", tensor_name,
+                    " offset: ", file_offset, " size to read: ", external_data_length,
+                    " given file_length: ", external_file_length, " are out of bounds or can not be read in full.");
+      const char* external_file_buffer = static_cast<const char*>(external_file_pos->second.first);
+      const char* tensor_buffer = external_file_buffer + file_offset;
+
+      const auto& old_initializer = *(ini.second);
+      auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+      // use cheaper pointer comparison to find old entry
+      auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
+                                      &old_initializer);
+
+      // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
+      ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
+                  "graph_proto_ is not in sync with name_to_initial_tensor_");
+      (**existing_entry).clear_data_location();
+      (tensor_buffer);
+      const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
+      TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
+      auto tensor = Tensor(type, tensor_shape, static_cast<void*>(const_cast<char*>(tensor_buffer)), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+      auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
+      **existing_entry = std::move(tensor_proto);
+    }
+  }
+
+  return Status::OK();
+}
 #endif  // DISABLE_EXTERNAL_INITIALIZERS
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

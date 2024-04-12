@@ -300,6 +300,43 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* op
 #endif
 }
 
+ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializerFiles, _In_ OrtSessionOptions* options,
+                    _In_reads_(initializers_num) const ORTCHAR_T* const* file_names,
+                    _In_reads_(initializers_num) const void* const* buffer_array,
+                    _In_reads_(initializers_num) const size_t* file_lengths, size_t initializers_num) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  API_IMPL_BEGIN
+  onnxruntime::InlinedVector<std::basic_string<ORTCHAR_T>> names;
+  onnxruntime::InlinedVector<const void*> buffers;
+  onnxruntime::InlinedVector<size_t> lengths;
+  buffers.reserve(initializers_num);
+  lengths.reserve(initializers_num);
+  for (size_t i = 0; i < initializers_num; ++i) {
+    if (file_names[i] == nullptr || buffer_array[i] == nullptr) {
+      auto message = onnxruntime::MakeString("Input index: ", i, " contains null pointers");
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+    }
+    names.emplace_back(file_names[i]);
+    buffers.emplace_back(buffer_array[i]);
+    lengths.emplace_back(file_lengths[i]);
+  }
+
+  auto st = options->value.AddExternalInitializerFiles(names, buffers, lengths);
+  if (!st.IsOK()) {
+    return onnxruntime::ToOrtStatus(st);
+  }
+  return nullptr;
+  API_IMPL_END
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(file_names);
+  ORT_UNUSED_PARAMETER(buffer_array);
+  ORT_UNUSED_PARAMETER(file_lengths);
+  ORT_UNUSED_PARAMETER(initializers_num);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "AddExternalInitializerFiles is not supported in this build");
+#endif
+}
+
 ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value) {
   API_IMPL_BEGIN
   options->value.use_deterministic_compute = value;

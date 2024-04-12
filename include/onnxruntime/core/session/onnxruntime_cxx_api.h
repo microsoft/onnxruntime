@@ -874,6 +874,9 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
+  SessionOptionsImpl& AddExternalInitializerFiles(const std::vector<std::basic_string<ORTCHAR_T>>& file_names,
+                                                  const std::vector<void*>& buffer_array,
+                                                  const std::vector<size_t>& length);  ///< Wraps OrtApi::AddExternalInitializerFiles
 
   SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
   SessionOptionsImpl& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2

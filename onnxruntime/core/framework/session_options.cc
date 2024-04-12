@@ -56,6 +56,22 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
   }
   return Status::OK();
 }
+Status SessionOptions::AddExternalInitializerFiles(gsl::span<const std::basic_string<ORTCHAR_T>> file_names,
+                                                   gsl::span<const void*> array_buffer,
+                                                   gsl::span<const size_t> file_lengths) {
+  const auto init_num = file_names.size();
+  ORT_ENFORCE(init_num == array_buffer.size(), "Expecting same size spans");
+  ORT_ENFORCE(init_num == file_lengths.size(), "Expecting same size spans");
+  external_initializer_files.reserve(external_initializer_files.size() + init_num);
+  for (size_t i = 0; i < init_num; ++i) {
+    // TODO: ignore "./" from file name if it has
+    bool result = external_initializer_files.emplace(file_names[i], std::make_pair(array_buffer[i], file_lengths[i])).second;
+    if (!result) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An entry for this name has already been added: ", file_names[i].c_str());
+    }
+  }
+  return Status::OK();
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)

@@ -158,6 +158,10 @@ struct SessionOptions {
   // Customer supplied pre-processed data for external initializers
   InlinedHashMap<std::string, OrtValue> external_initializers;
   Status AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values);
+  InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<const void*, size_t>> external_initializer_files;
+  Status AddExternalInitializerFiles(gsl::span<const std::basic_string<ORTCHAR_T>> file_names,
+                                     gsl::span<const void*> array_buffer,
+                                     gsl::span<const size_t> file_lengths);
 #endif
 
   // custom function callback to create a thread
