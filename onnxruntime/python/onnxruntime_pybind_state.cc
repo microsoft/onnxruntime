@@ -492,6 +492,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.user_compute_stream = reinterpret_cast<void*>(stream);
               params.has_user_compute_stream = true;
             } else {
+              params.has_user_compute_stream = false;
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'user_compute_stream' should be a string to define the compute stream for the inference to run on.\n");
             }
           } else if (option.first == "trt_max_partition_iterations") {
