@@ -977,7 +977,7 @@ class FusionRotaryAttention(FusionAttention):
                     hidden_size_initilizer,
                 ],
                 outputs=[hidden_size_reshape_node_name + "output_0"],
-                name=hidden_size_reshape_node_name
+                name=hidden_size_reshape_node_name,
             )
             hidden_size_concat_node.attribute.extend([helper.make_attribute("axis", 0)])
 
@@ -988,18 +988,26 @@ class FusionRotaryAttention(FusionAttention):
             # Transpose the key output of rotary Embedding
             k_transpose_node_name = self.model.create_node_name("Transpose")
             k_tranpose_output_name = k_transpose_node_name + "_output_0"
-            k_transpose_node = helper.make_node("Transpose", inputs=[concat_k_half.output[0]], outputs=[k_tranpose_output_name],
-                                                name=k_transpose_node_name)
-            k_transpose_node.attribute.extend([helper.make_attribute("perm", [0, 2, 1, 3])])
+            k_transpose_node = helper.make_node(
+                "Transpose",
+                inputs=[concat_k_half.output[0]],
+                outputs=[k_tranpose_output_name],
+                name=k_transpose_node_name,
+            )
 
+            k_transpose_node.attribute.extend([helper.make_attribute("perm", [0, 2, 1, 3])])
 
             # Transpose the query output of rotary Embedding
             q_transpose_node_name = self.model.create_node_name("Transpose")
             q_tranpose_output_name = q_transpose_node_name + "_output_0"
-            q_transpose_node = helper.make_node("Transpose", inputs=[concat_q_half.output[0]], outputs=[q_tranpose_output_name],
-                                                name=q_transpose_node_name)
-            q_transpose_node.attribute.extend([helper.make_attribute("perm", [0, 2, 1, 3])])
+            q_transpose_node = helper.make_node(
+                "Transpose",
+                inputs=[concat_q_half.output[0]],
+                outputs=[q_tranpose_output_name],
+                name=q_transpose_node_name,
+            )
 
+            q_transpose_node.attribute.extend([helper.make_attribute("perm", [0, 2, 1, 3])])
 
             hidden_size_concat_node = create_hidden_size_concat_node(reshape_k)
             if hidden_size_concat_node is None:
