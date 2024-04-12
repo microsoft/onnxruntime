@@ -1211,9 +1211,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"conv_with_autopad_same",
                           "Internal Error (node_of_y: Cannot set more than one input unless network has Q/DQ layers.)"});
 
-    broken_tests->insert({"ResNet50-fp32",
-                          "TensorRT EP output tensor data type: 0 not supported)"});
-
     broken_tests->insert({"resnet50-v1-12",
                           "TensorRT EP output tensor data type: 0 not supported)"});
 
