@@ -71,7 +71,8 @@ namespace Dml
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands,
-        bool enableGraphCapture) :
+        bool enableGraphCapture,
+        bool enableSyncSpinning) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
@@ -84,7 +85,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableGraphCapture);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableGraphCapture, enableSyncSpinning);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -110,7 +111,7 @@ namespace Dml
     void ExecutionProviderImpl::WaitForOutstandingWork()
     {
         Flush();
-        m_context->GetCurrentCompletionEvent().WaitForSignal();
+        m_context->GetCurrentCompletionEvent().WaitForSignal(m_cpuSyncSpinningEnabled);
     }
 
     HRESULT __stdcall ExecutionProviderImpl::AllocatePooledResource(
@@ -148,11 +149,12 @@ namespace Dml
         }
     }
 
-ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableGraphCapture)
+ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableGraphCapture, bool enableCpuSyncSpinning)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
-          m_graphCaptureEnabled(enableGraphCapture)
+          m_graphCaptureEnabled(enableGraphCapture),
+          m_cpuSyncSpinningEnabled(enableCpuSyncSpinning)
     {
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
@@ -212,7 +214,7 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
             m_areCustomHeapsSupported = options19.ComputeOnlyCustomHeapSupported;
         }
 
-        m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
+        m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue, m_cpuSyncSpinningEnabled);
 
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get());
@@ -1148,6 +1150,11 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
         return m_graphCaptureEnabled;
     }
 
+    bool ExecutionProviderImpl::CpuSyncSpinningEnabled() const noexcept
+    {
+        return m_cpuSyncSpinningEnabled;
+    }
+
     bool ExecutionProviderImpl::GraphCaptured(int graph_annotation_id) const
     {
         return m_graphCapturingDone.find(graph_annotation_id) != m_graphCapturingDone.end();
@@ -1175,7 +1182,7 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
         // This reduces memory usage immediately after session creation, and avoids
         // performance impact of deallocation during first evaluation.
         Flush();
-        m_context->GetCurrentCompletionEvent().WaitForSignal();
+        m_context->GetCurrentCompletionEvent().WaitForSignal(m_cpuSyncSpinningEnabled);
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
 
@@ -1239,9 +1246,10 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands,
-        bool enableGraphCapture)
+        bool enableGraphCapture,
+        bool enableCpuSyncSpinning)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableGraphCapture);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableGraphCapture, enableCpuSyncSpinning);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)

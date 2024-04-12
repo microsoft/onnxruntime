@@ -90,7 +90,7 @@ namespace Dml
 
         // Wait for completion and map the result
         executionContext->Flush();
-        executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        executionContext->GetCurrentCompletionEvent().WaitForSignal(executionContext->CpuSyncSpinningEnabled());
         executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination
@@ -141,7 +141,7 @@ namespace Dml
 
         // Wait for completion and map the result
         executionContext->Flush();
-        executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        executionContext->GetCurrentCompletionEvent().WaitForSignal(executionContext->CpuSyncSpinningEnabled());
         executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination

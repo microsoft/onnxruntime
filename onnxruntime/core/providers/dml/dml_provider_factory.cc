@@ -37,6 +37,12 @@ using Microsoft::WRL::ComPtr;
 
 namespace onnxruntime {
 
+static bool ConfigValueIsTrue(std::string&& config_value)
+{
+  std::transform(config_value.begin(), config_value.end(), config_value.begin(), [](char ch) { return static_cast<char>(std::tolower(ch)); });
+  return config_value == "true" || config_value == "1";
+}
+
 struct DMLProviderFactory : IExecutionProviderFactory {
   DMLProviderFactory(const ConfigOptions& config_options,
                      IDMLDevice* dml_device,
@@ -44,12 +50,8 @@ struct DMLProviderFactory : IExecutionProviderFactory {
                      bool disable_metacommands) : dml_device_(dml_device),
                                                          cmd_queue_(cmd_queue),
                                                          metacommands_enabled_(!disable_metacommands) {
-    std::string dml_graph_capture_enabled_config_val = config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableGraphCapture, "0");
-    std::transform(dml_graph_capture_enabled_config_val.begin(),
-                   dml_graph_capture_enabled_config_val.end(),
-                   dml_graph_capture_enabled_config_val.begin(),
-                   [](char ch) { return static_cast<char>(std::tolower(ch)); });
-    graph_capture_enabled_ = dml_graph_capture_enabled_config_val == "true" || dml_graph_capture_enabled_config_val == "1";
+    graph_capture_enabled_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableGraphCapture, "0"));
+    cpu_sync_spinning_enabled_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableCpuSyncSpinning, "0"));
   }
   ~DMLProviderFactory() override {}
 
@@ -62,10 +64,11 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
   bool metacommands_enabled_ = true;
   bool graph_capture_enabled_ = false;
+  bool cpu_sync_spinning_enabled_ = false;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
-  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_, graph_capture_enabled_);
+  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_, graph_capture_enabled_, cpu_sync_spinning_enabled_);
   return provider;
 }
 

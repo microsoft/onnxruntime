@@ -22,7 +22,8 @@ namespace Dml
         ExecutionContext(
             ID3D12Device* d3d12Device,
             IDMLDevice* dmlDevice,
-            ID3D12CommandQueue* queue);
+            ID3D12CommandQueue* queue,
+            bool cpuSyncSpinningEnabled);
 
         void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
 
@@ -84,6 +85,7 @@ namespace Dml
         void ReleaseCompletedReferences();
 
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;
+        bool CpuSyncSpinningEnabled() const { return m_cpuSyncSpinningEnabled; }
 
     private:
         ComPtr<ID3D12Device> m_d3dDevice;
@@ -98,6 +100,7 @@ namespace Dml
         DmlCommandRecorder m_dmlRecorder;
 
         bool m_closed = false;
+        bool m_cpuSyncSpinningEnabled = false;
     };
 
 } // namespace Dml

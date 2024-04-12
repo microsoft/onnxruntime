@@ -37,7 +37,8 @@ namespace Dml
             ID3D12Device* d3d12Device,
             ID3D12CommandQueue* queue,
             bool enableMetacommands,
-            bool enableGraphCapture);
+            bool enableGraphCapture,
+            bool enableCpuSyncSpinning);
 
         void ReleaseCompletedReferences();
 
@@ -155,6 +156,7 @@ namespace Dml
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
         bool GraphCaptureEnabled() const noexcept;
+        bool CpuSyncSpinningEnabled() const noexcept;
         bool GraphCaptured(int graph_annotation_id) const;
         Status ReplayGraph(int graph_annotation_id);
         Status OnRunStart(const onnxruntime::RunOptions& run_options);
@@ -201,6 +203,7 @@ namespace Dml
         bool m_sessionInitialized = false;
         bool m_graphCaptured = false;
         bool m_graphCaptureEnabled = false;
+        bool m_cpuSyncSpinningEnabled = false;
 
         std::unordered_map<int, std::vector<std::unique_ptr<DmlReusedCommandListState>>> m_capturedGraphs;
         std::unordered_set<int> m_graphCapturingDone;
@@ -256,7 +259,8 @@ namespace Dml
             IDMLDevice* dmlDevice,
             ID3D12CommandQueue* commandQueue,
             bool enableMetacommands,
-            bool enableGraphCapture
+            bool enableGraphCapture,
+            bool enableCpuSyncSpinning
         );
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override

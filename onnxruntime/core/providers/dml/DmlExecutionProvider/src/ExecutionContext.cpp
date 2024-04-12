@@ -10,10 +10,12 @@ namespace Dml
     ExecutionContext::ExecutionContext(
         ID3D12Device* d3d12Device,
         IDMLDevice* dmlDevice,
-        ID3D12CommandQueue* queue
+        ID3D12CommandQueue* queue,
+        bool cpuSyncSpinningEnabled
         )
-        : m_queue(std::make_shared<CommandQueue>(queue))
+        : m_queue(std::make_shared<CommandQueue>(queue, cpuSyncSpinningEnabled))
         , m_dmlRecorder(d3d12Device, dmlDevice, m_queue)
+        , m_cpuSyncSpinningEnabled(cpuSyncSpinningEnabled)
     {
         ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
     }

@@ -227,7 +227,7 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
       ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_command_queue_guid, sizeof(cmd_queue.Get()), cmd_queue.GetAddressOf()));
     }
 
-    auto context = std::make_shared<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get());
+    auto context = std::make_shared<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get(), true);
 
     // We leak the upload and readback heaps to keep them alive, just like the map
     Dml::PooledUploadHeap* upload_heap_dummy = nullptr;
