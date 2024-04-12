@@ -357,6 +357,18 @@ class TestInferenceSession(unittest.TestCase):
                 sess.set_providers(['TensorrtExecutionProvider'], [option])
             """
 
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    s = torch.cuda.Stream()
+                    option["user_compute_stream"] = str(s.cuda_stream)
+                    sess.set_providers(["TensorrtExecutionProvider"], [option])
+                    options = sess.get_provider_options()
+                    self.assertEqual(options["TensorrtExecutionProvider"]["user_compute_stream"], str(s.cuda_stream))
+                    self.assertEqual(options["TensorrtExecutionProvider"]["has_user_compute_stream"], "1")
+            except ImportError:
+                print("torch is not installed, skip testing setting user_compute_stream from torch cuda stream")
+
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             cuda_success = 0
 
