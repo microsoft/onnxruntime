@@ -3,6 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <optional>
 #include <string>
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"

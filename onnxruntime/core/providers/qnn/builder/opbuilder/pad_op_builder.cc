@@ -77,7 +77,7 @@ Status ProcessConstantValue(QnnModelWrapper& qnn_model_wrapper,
   if (input.quant_param.has_value()) {
     // QNN prefers pad_constant_value quantized with quantization params same as in[0], and data stored as 32-bit signed integer
     // Onnx doesn't guarantee it has same quantization parameter as in[0], so get back the float32 value and use non-quantized data directly
-    ORT_RETURN_IF_NOT(input_info.quant_param.IsPerTensorQuantization(),
+    ORT_RETURN_IF_NOT(input_info.quant_param.IsPerTensor(),
                       "Pad's constant value must use per-tensor quantization");
     const Qnn_QuantizeParams_t& quant_param = input_info.quant_param.Get();
     constant_value_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;

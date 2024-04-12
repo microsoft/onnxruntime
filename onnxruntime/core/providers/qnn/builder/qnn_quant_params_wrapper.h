@@ -42,23 +42,23 @@ class QnnQuantParamsWrapper {
     return params_.encodingDefinition == QNN_DEFINITION_DEFINED;
   }
 
-  bool IsPerTensorQuantization(bool include_bw = false) const {
+  bool IsPerTensor(bool include_bw = false) const {
     return params_.encodingDefinition == QNN_DEFINITION_DEFINED &&
            (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET ||
             (include_bw && params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET));
   }
 
-  bool IsPerAxisQuantization(bool include_bw = false) const {
+  bool IsPerChannel(bool include_bw = false) const {
     return params_.encodingDefinition == QNN_DEFINITION_DEFINED &&
            (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET ||
             (include_bw && params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET));
   }
 
-  // Handle transposing of a per-axis quantized tensor. The quantization parameter's axis
+  // Handle transposing of a per-channel quantized tensor. The quantization parameter's axis
   // must be transposed using the inverse permutation of the Transpose.
   template <typename IntType>
   Status HandleTranspose(gsl::span<const IntType> perm) {
-    if (!IsPerAxisQuantization(true)) {
+    if (!IsPerChannel(true)) {
       return Status::OK();
     }
 
@@ -77,12 +77,12 @@ class QnnQuantParamsWrapper {
     return Status::OK();
   }
 
-  // Handle "unsqueeze" of a per-axis quantized tensor. The quantization parameter's axis
+  // Handle "unsqueeze" of a per-channel quantized tensor. The quantization parameter's axis
   // may need to be shifted if the unsqueeze inserted 1s before the quantization axis.
   template <typename IntType>
   Status HandleUnsqueeze(gsl::span<const IntType> orig_shape,
                          gsl::span<const IntType> new_shape) {
-    if (!IsPerAxisQuantization(true)) {
+    if (!IsPerChannel(true)) {
       return Status::OK();
     }
 
@@ -134,7 +134,7 @@ class QnnQuantParamsWrapper {
 
  private:
   Qnn_QuantizeParams_t params_;
-  std::unique_ptr<Qnn_ScaleOffset_t[]> scale_offset_data_;  // Stores per-axis scales and offsets
+  std::unique_ptr<Qnn_ScaleOffset_t[]> scale_offset_data_;  // Stores per-channel scales and offsets
 };
 
 }  // namespace qnn

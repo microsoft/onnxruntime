@@ -114,7 +114,7 @@ Status SimpleOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (!input0_info.is_initializer && !input1_info.is_initializer &&
         input0_info.qnn_data_type == input1_info.qnn_data_type &&
         input0_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
-      ORT_RETURN_IF_NOT(input1_info.quant_param.IsPerTensorQuantization(),
+      ORT_RETURN_IF_NOT(input1_info.quant_param.IsPerTensor(),
                         "MatMul's activation inputs only support per-tensor quantization");
       const Qnn_QuantizeParams_t& quant_param = input1_info.quant_param.Get();
       // insert Convert op after input1
@@ -459,7 +459,7 @@ Status SimpleOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrap
     const auto& output = node_unit.Outputs()[0];
     const std::string& output_name = output.node_arg.Name();
 
-    if (quant_param.IsPerTensorQuantization(/*include_bw*/ false)) {
+    if (quant_param.IsPerTensor(/*include_bw*/ false)) {
       if (OverrideQuantParams(op_type, qnn_data_type, quant_param.Get().scaleOffsetEncoding)) {
         const int32_t offset = quant_param.Get().scaleOffsetEncoding.offset;
         const float scale = quant_param.Get().scaleOffsetEncoding.scale;

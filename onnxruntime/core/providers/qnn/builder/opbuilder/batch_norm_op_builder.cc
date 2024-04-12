@@ -260,7 +260,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     uint32_t channel = mean_info.shape[0];
     mean_out.resize(channel);
     ORT_RETURN_IF_ERROR(AssertUnpackedTensorSize(mean_info.qnn_data_type, channel, mean_raw_ptr_length));
-    ORT_RETURN_IF_NOT(!is_npu_backend || mean_info.quant_param.IsPerTensorQuantization(),
+    ORT_RETURN_IF_NOT(!is_npu_backend || mean_info.quant_param.IsPerTensor(),
                       "BatchNormalization's input_mean does not support per-channel quantization");
     int i = 0;
     int offset = 0;
@@ -286,7 +286,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     uint32_t channel = var_info.shape[0];
     std_out.resize(channel);
     ORT_RETURN_IF_ERROR(AssertUnpackedTensorSize(var_info.qnn_data_type, channel, var_raw_ptr_length));
-    ORT_RETURN_IF_NOT(!is_npu_backend || var_info.quant_param.IsPerTensorQuantization(),
+    ORT_RETURN_IF_NOT(!is_npu_backend || var_info.quant_param.IsPerTensor(),
                       "BatchNormalization's input_var does not support per-channel quantization");
     int i = 0;
     int offset = 0;
@@ -315,7 +315,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     uint32_t channel = scale_info.shape[0];
     scale_out.resize(channel);
     ORT_RETURN_IF_ERROR(AssertUnpackedTensorSize(scale_info.qnn_data_type, channel, scale_raw_ptr_length));
-    ORT_RETURN_IF_NOT(!is_npu_backend || scale_info.quant_param.IsPerTensorQuantization(),
+    ORT_RETURN_IF_NOT(!is_npu_backend || scale_info.quant_param.IsPerTensor(),
                       "BatchNormalization's scale input does not support per-channel quantization");
     int i = 0;
     int offset = 0;
@@ -347,7 +347,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     uint32_t channel = bias_info.shape[0];
     bias_out.resize(channel);
     ORT_RETURN_IF_ERROR(AssertUnpackedTensorSize(bias_info.qnn_data_type, channel, bias_raw_ptr_length));
-    ORT_RETURN_IF_NOT(!is_npu_backend || bias_info.quant_param.IsPerTensorQuantization(),
+    ORT_RETURN_IF_NOT(!is_npu_backend || bias_info.quant_param.IsPerTensor(),
                       "BatchNormalization's bias input does not support per-channel quantization");
     int i = 0;
     int offset = 0;

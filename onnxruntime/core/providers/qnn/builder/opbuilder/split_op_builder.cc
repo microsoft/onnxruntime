@@ -151,7 +151,7 @@ Status SplitOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapp
                                                 size_t output_index,
                                                 Qnn_DataType_t qnn_data_type,
                                                 QnnQuantParamsWrapper& quant_param) const {
-  if (!quant_param.IsPerTensorQuantization()) {
+  if (!quant_param.IsPerTensor()) {
     return Status::OK();
   }
 

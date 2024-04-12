@@ -374,8 +374,9 @@ Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::v
   return Status::OK();
 }
 
-// Checks if a tensor in the ONNX graph is per-axis quantized.
-Status QnnModelWrapper::IsPerAxisQuantized(const onnxruntime::NodeUnitIODef& io_def, /*out*/ bool& is_per_axis) const {
+// Checks if a tensor in the ONNX graph is per-channel quantized.
+Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
+                                              /*out*/ bool& is_per_axis) const {
   if (!io_def.quant_param) {
     is_per_axis = false;
     return Status::OK();
@@ -389,9 +390,9 @@ Status QnnModelWrapper::IsPerAxisQuantized(const onnxruntime::NodeUnitIODef& io_
   gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
   TensorShape scale_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(*scale_tensor_proto);
 
-  // Check the number of scale values to determine if the tensor is per-axis.
+  // Check the number of scale values to determine if the tensor is per-channel.
   // This is consistent with CPU EP's Quant/Dequant logic. We can't use the presence of an axis because even a
-  // per-axis DQ/Q op may not have an explicit axis attribute (assumed to default to 1 if missing).
+  // per-channel DQ/Q op may not have an explicit axis attribute (assumed to default to 1 if missing).
   const bool is_scalar_or_1_elem_vector = scale_shape.NumDimensions() == 0 ||
                                           (scale_shape.NumDimensions() == 1 && scale_shape.Size() == 1);
 
@@ -431,11 +432,11 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
                                        bool do_op_validation,
                                        bool is_for_input,
                                        bool is_for_output) {
-  // Do not allow QNN EP to insert Reshape nodes with per-axis quantization on dynamic tensors.
+  // Do not allow QNN EP to insert Reshape nodes with per-channel quantization on dynamic tensors.
   // We could technically support this by shifting the quantization param's axis value, but
   // we don't need this right now.
-  ORT_RETURN_IF(quantize_param.IsPerAxisQuantization(),
-                "Do not support inserted Reshape nodes with per-axis quantization");
+  ORT_RETURN_IF(quantize_param.IsPerChannel(),
+                "Do not support inserted Reshape nodes with per-channel quantization");
   QnnTensorWrapper input_tensorwrapper(input_name,
                                        is_for_input ? QNN_TENSOR_TYPE_APP_WRITE : QNN_TENSOR_TYPE_NATIVE,
                                        tensor_data_type,
@@ -476,11 +477,11 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          bool do_op_validation,
                                          bool is_for_input,
                                          bool is_for_output) {
-  // Do not allow QNN EP to insert transpose nodes with per-axis quantization on dynamic tensors.
+  // Do not allow QNN EP to insert transpose nodes with per-channel quantization on dynamic tensors.
   // We could technically support this by transposing the quantization param's axis value, but
   // we don't need this right now.
-  ORT_RETURN_IF(quantize_param.IsPerAxisQuantization(),
-                "Do not support inserted Transpose nodes with per-axis quantization");
+  ORT_RETURN_IF(quantize_param.IsPerChannel(),
+                "Do not support inserted Transpose nodes with per-channel quantization");
   // No need to add this for output nodes as it is added as output tensor for previous node
   if (is_for_input) {
     Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_APP_WRITE;

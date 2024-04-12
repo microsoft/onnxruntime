@@ -120,7 +120,7 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   if (is_npu_backend) {
     const auto& input_1 = inputs[1];  // weight
     bool is_per_axis_quant = false;
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerAxisQuantized(input_1, is_per_axis_quant));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(input_1, is_per_axis_quant));
 
     if (is_per_axis_quant) {
       int32_t elem_data_type = 0;
@@ -221,7 +221,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
 
       // Transpose quantization parameter's axis if this is using per-channel quantization.
-      if (input_info.quant_param.IsPerAxisQuantization()) {
+      if (input_info.quant_param.IsPerChannel()) {
         const std::vector<size_t>& perm = conv_type == OnnxConvType::kConv ? nchw2hwcn_perm : cnhw2hwcn_perm;
         std::vector<size_t> perm_inv(perm.size());
         ORT_RETURN_IF_ERROR(utils::InvertPerm<size_t>(perm, perm_inv));
@@ -229,7 +229,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
     } else {
       // Add transpose node above weight input.
-      ORT_RETURN_IF(input_info.quant_param.IsPerAxisQuantization(),
+      ORT_RETURN_IF(input_info.quant_param.IsPerChannel(),
                     "Non-constant Conv inputs only support per-tensor quantization");
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
       LOGS(logger, VERBOSE) << "Add HWCN Transpose node after input: " << input1_name;
@@ -315,7 +315,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       };
 
       if (!input0_info.is_initializer) {
-        ORT_RETURN_IF(input0_info.quant_param.IsPerAxisQuantization(),
+        ORT_RETURN_IF(input0_info.quant_param.IsPerChannel(),
                       "Non-constant Conv inputs only support per-tensor quantization");
 
         // Add Reshape node to transform 1D input to 2D (i.e., set height to 1).
@@ -330,11 +330,9 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
                                                              input0_info.quant_param,
                                                              do_op_validation,
                                                              is_graph_input));
-      } else {
+      } else if (input0_info.quant_param.IsPerChannel()) {
         // The reshape (unsqueeze) may require us to shift the quant parameter's axis.
-        if (input0_info.quant_param.IsPerAxisQuantization()) {
-          ORT_RETURN_IF_ERROR(input0_info.quant_param.HandleUnsqueeze<uint32_t>(input0_info.shape, shape));
-        }
+        ORT_RETURN_IF_ERROR(input0_info.quant_param.HandleUnsqueeze<uint32_t>(input0_info.shape, shape));
       }
 
       Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, conv_input0_name);
@@ -407,7 +405,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
                                                                                                  reshape_output);
 
       // The reshape (unsqueeze) may require us to shift the quant parameter's axis.
-      if (input_info.quant_param.IsPerAxisQuantization()) {
+      if (input_info.quant_param.IsPerChannel()) {
         ORT_RETURN_IF_ERROR(input_info.quant_param.HandleUnsqueeze<uint32_t>(input_info.shape, shape_2d));
       }
 
@@ -423,7 +421,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
 
       // Transpose quantization parameter's axis if this is using per-channel quantization.
-      if (input_info.quant_param.IsPerAxisQuantization()) {
+      if (input_info.quant_param.IsPerChannel()) {
         const std::vector<size_t>& perm = conv_type == OnnxConvType::kConv ? nchw2hwcn_perm : cnhw2hwcn_perm;
         std::vector<size_t> perm_inv(perm.size());
         ORT_RETURN_IF_ERROR(utils::InvertPerm<size_t>(perm, perm_inv));
@@ -431,7 +429,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
     } else {
       // Dynamic weight: Add nodes to reshape to 2D, and then transpose.
-      ORT_RETURN_IF(input_info.quant_param.IsPerAxisQuantization(),
+      ORT_RETURN_IF(input_info.quant_param.IsPerChannel(),
                     "Non-constant Conv inputs only support per-tensor quantization");
 
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);

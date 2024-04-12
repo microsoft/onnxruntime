@@ -102,7 +102,7 @@ Status TileOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrappe
                                                size_t output_index,
                                                Qnn_DataType_t qnn_data_type,
                                                QnnQuantParamsWrapper& quant_param) const {
-  if (!quant_param.IsPerTensorQuantization()) {
+  if (!quant_param.IsPerTensor()) {
     return Status::OK();
   }
 

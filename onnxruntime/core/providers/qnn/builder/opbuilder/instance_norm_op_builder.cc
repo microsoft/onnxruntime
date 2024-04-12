@@ -119,7 +119,7 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     };
 
     if (!input0_info.is_initializer) {
-      ORT_RETURN_IF(input0_info.quant_param.IsPerAxisQuantization(),
+      ORT_RETURN_IF(input0_info.quant_param.IsPerChannel(),
                     "Non-constant InstanceNormalization inputs only support per-tensor quantization");
 
       // Add Reshape node to transform 1D input to 2D (i.e., set height to 1).
@@ -134,11 +134,9 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                            input0_info.quant_param,
                                                            do_op_validation,
                                                            is_graph_input));
-    } else {
+    } else if (input0_info.quant_param.IsPerChannel()) {
       // The reshape (unsqueeze) may require us to shift the quant parameter's axis.
-      if (input0_info.quant_param.IsPerAxisQuantization()) {
-        ORT_RETURN_IF_ERROR(input0_info.quant_param.HandleUnsqueeze<uint32_t>(input0_info.shape, op_shape));
-      }
+      ORT_RETURN_IF_ERROR(input0_info.quant_param.HandleUnsqueeze<uint32_t>(input0_info.shape, op_shape));
     }
 
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, op_input0_name);
