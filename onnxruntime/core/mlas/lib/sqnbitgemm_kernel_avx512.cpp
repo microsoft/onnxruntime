@@ -667,6 +667,11 @@ namespace
         const float& scale_a0 = Q8BlkScale(QuantABlk0);
         const float& scale_a1 = Q8BlkScale(QuantABlk1);
 
+        //// assume a scale as continuous in memory so we load 2 at a time
+        //const __m256 scale_a = _mm256_loadu_ps(&Q8BlkScale(QuantABlk0));
+        //// load 2 b scales and shuffler to get |a0b0, a0b1, a1b0, a1b1 pattern to match data
+        //__mm256 b_scale_0_1 = _mm256_loadu_ps(QuantBScalePtr);
+
         // Col0
         const float& scale_00 = scale_a0 * QuantBScalePtr[0];
         const float& scale_01 = scale_a1 * QuantBScalePtr[1];

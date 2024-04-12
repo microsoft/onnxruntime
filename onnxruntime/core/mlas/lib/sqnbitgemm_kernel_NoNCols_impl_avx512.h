@@ -177,9 +177,18 @@ static MLAS_FORCEINLINE void load_and_mul_sum_s8_quads_with_zp_avx512(
   // | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
   // | v32 v48 | v33 v49 | ... | v46 v62 | v47 v63 |
   const __m128i bv_packed0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(QuantBDataPtr));
+
+  // supprisingly this code that works with __m128i is 2-3% faster than the blobk below with __m256i
+  // to unpack bv_packed0. Also passing in low_mask is faster than creating it here by 2%.
+  //const __m128i low_mask = _mm_set1_epi8(15);
   const __m128i bv_lo0 = _mm_and_si128(bv_packed0, low_mask);                    // 0, 1, 2, 3,...
   const __m128i bv_hi0 = _mm_and_si128(_mm_srli_epi16(bv_packed0, 4), low_mask); // 16, 17, 18, 19,...
   __m256i bv_0_epi8 = _mm256_set_m128i(bv_hi0, bv_lo0);
+
+  //__m256i bv_0_epi8 = _mm256_set_m128i(_mm_srli_epi16(bv_packed0, 4), bv_packed0);
+  //const __m256i low_mask = _mm256_set1_epi8(15);
+  //bv_0_epi8 = _mm256_and_si256(low_mask, bv_0_epi8);
+
   const __m256i bzp0 = _mm256_set1_epi8(zp);
   bv_0_epi8 = _mm256_sub_epi8(bv_0_epi8, bzp0);
   // quantized dot product
