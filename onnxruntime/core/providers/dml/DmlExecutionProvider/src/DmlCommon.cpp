@@ -93,15 +93,15 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
 }
 #pragma warning(pop)
 
+size_t ComputeBitSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType)
+{
+    auto bitSize = ComputeElementCountFromDimensions(dimensions) * GetBitSizeFromMlDataType(tensorDataType);
+    return bitSize;
+}
+
 size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType)
 {
-    auto byteSize = ComputeElementCountFromDimensions(dimensions) * GetByteSizeFromMlDataType(tensorDataType);
-
-    if (tensorDataType == MLOperatorTensorDataType::Int4 || tensorDataType == MLOperatorTensorDataType::UInt4)
-    {
-        byteSize = (byteSize + 1) / 2;
-    }
-
+    auto byteSize = (ComputeBitSizeFromDimensions(dimensions, tensorDataType) + 7) / 8;
     return byteSize;
 }
 

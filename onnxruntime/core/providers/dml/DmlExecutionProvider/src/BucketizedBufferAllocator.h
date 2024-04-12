@@ -93,7 +93,6 @@ namespace Dml
 
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
-        bool m_logAllocs = false;
 
     #ifndef NDEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet

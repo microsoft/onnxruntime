@@ -16,7 +16,7 @@ namespace Dml
     public:
         DmlCommandRecorder(
             ID3D12Device* d3dDevice,
-            IDMLDevice* device,
+            IDMLDevice* device, 
             std::shared_ptr<CommandQueue> commandQueue);
 
         void InitializeOperator(
@@ -47,13 +47,13 @@ namespace Dml
             _Out_ uint64_t* completionValue);
 
         ComPtr<ID3D12GraphicsCommandList> GetCommandList();
-
+        
         void ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers);
         void AddUAVBarrier();
 
         void Open() final;
         void CloseAndExecute() final;
-
+        
         void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
 
         bool HasUnsubmittedWork() override
@@ -69,7 +69,7 @@ namespace Dml
 
     private:
         void CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList);
-
+    
         std::shared_ptr<CommandQueue> m_queue;
         ComPtr<ID3D12Device> m_d3dDevice;
         ComPtr<IDMLDevice> m_dmlDevice;

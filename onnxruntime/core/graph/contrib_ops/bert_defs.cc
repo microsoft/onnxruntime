@@ -283,8 +283,6 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       }
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
-      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, past_key_index, 1);
-      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
       // TODO(aciddelgado): propagate output shapes depending if kv-share buffer is on or not
     }
   }
@@ -1095,7 +1093,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);

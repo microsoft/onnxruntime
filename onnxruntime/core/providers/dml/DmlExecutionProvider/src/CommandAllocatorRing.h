@@ -14,8 +14,8 @@ namespace Dml
     {
     public:
         CommandAllocatorRing(
-            ID3D12Device* device,
-            D3D12_COMMAND_LIST_TYPE commandListType,
+            ID3D12Device* device, 
+            D3D12_COMMAND_LIST_TYPE commandListType, 
             GpuEvent initialEvent)
         {
             for (auto& info : m_commandAllocators)
@@ -48,7 +48,7 @@ namespace Dml
         }
 
         // Updates the completion event of the current allocator to a different value.  This is used when the caller
-        // decides to issue an unrelated call to the queue such as ExecuteCommandLists which updates its fence between calling
+        // decides to issue an unrelated call to the queue such as ExecuteCommandLists which updates its fence between calling 
         // GetNextAllocator and executing the work which it recorded using the allocator it received.
         void UpdateCurrentAllocatorCompletionEvent(GpuEvent nextCompletionEvent)
         {

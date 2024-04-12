@@ -338,7 +338,7 @@ void DmlCommandRecorder::CloseAndExecute()
 }
 
 void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList)
-{
+{   
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
     ID3D12GraphicsCommandList* commandListsToExecute[2] = {};
@@ -359,7 +359,7 @@ void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* com
         m_queue->ExecuteCommandLists(
                 gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(commandListsToExecute), commandListsToExecuteCount));
     }
-
+    
     m_cachedCommandList = m_currentCommandList;
     m_currentCommandList = nullptr;
     m_operationsRecordedInCurrentCommandList = false;
