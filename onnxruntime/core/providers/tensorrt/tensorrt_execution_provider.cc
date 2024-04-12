@@ -382,8 +382,12 @@ std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() c
 }
 
 // Per TensorRT documentation, logger needs to be a singleton.
-TensorrtLogger& GetTensorrtLogger() {
-  static TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
+  const auto log_level = verbose_log ? nvinfer1::ILogger::Severity::kVERBOSE : nvinfer1::ILogger::Severity::kWARNING;
+  static TensorrtLogger trt_logger(log_level);
+  if (log_level != trt_logger.get_level()) {
+    trt_logger.set_level(verbose_log ? nvinfer1::ILogger::Severity::kVERBOSE : nvinfer1::ILogger::Severity::kWARNING);
+  }
   return trt_logger;
 }
 
@@ -1582,7 +1586,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   {
     auto lock = GetApiLock();
-    runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
+    runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
   }
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
@@ -1719,9 +1723,8 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::
 // Get the pointer to the IBuilder instance.
 // Note: This function is not thread safe. Calls to this function from different threads must be serialized
 // even though it doesn't make sense to have multiple threads initializing the same inference session.
-nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder() const {
+nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder(TensorrtLogger& trt_logger) const {
   if (!builder_) {
-    TensorrtLogger& trt_logger = GetTensorrtLogger();
     {
       auto lock = GetApiLock();
       builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
@@ -2098,10 +2101,14 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
-        TensorrtLogger& trt_logger = GetTensorrtLogger();
-        auto trt_builder = GetBuilder();
-        const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-        auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+        TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
+        auto trt_builder = GetBuilder(trt_logger);
+        auto network_flags = 0;
+#if NV_TENSORRT_MAJOR > 8
+        network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#endif
+        network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+        auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
@@ -2487,10 +2494,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     model_proto->SerializeToOstream(dump);
   }
 
-  TensorrtLogger& trt_logger = GetTensorrtLogger();
-  auto trt_builder = GetBuilder();
-  const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-  auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+  TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
+  auto trt_builder = GetBuilder(trt_logger);
+  auto network_flags = 0;
+#if NV_TENSORRT_MAJOR > 8
+  network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#endif
+  network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+  auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
   trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);

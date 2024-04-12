@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <type_traits>
 #include "core/framework/compute_capability.h"
 #include "core/framework/node_unit.h"
 #include "core/graph/model.h"
@@ -891,7 +892,8 @@ TEST(QDQTransformerTests, Gemm_S8S8U8) {
 template <typename QuantType>
 static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
                                      const std::vector<int64_t>& weights_shape,
-                                     bool use_contrib_qdq = false) {
+                                     bool use_contrib_qdq = false,
+                                     int opset = 12) {
   auto build_test_case = [input1_shape, weights_shape, use_contrib_qdq](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<int64_t>(input1_shape, 0, weights_shape[0] - 1);
     auto* output_arg = builder.MakeOutput();
@@ -916,21 +918,23 @@ static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
     EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
   };
 
-  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
 }
 
 // Checks that Q/DQ nodes are dropped from DQ -> Gather -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, Gather) {
-  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12});
-  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12}, true);   // Use com.microsoft QDQ ops
-  RunGatherDropQDQTestCase<int16_t>({12, 37}, {24, 12}, true);  // Use int16 com.microsoft QDQ ops
+  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12});              // Use ONNX int8 QDQ ops
+  RunGatherDropQDQTestCase<int8_t>({12, 37}, {24, 12}, true);        // Use com.microsoft QDQ ops
+  RunGatherDropQDQTestCase<int16_t>({12, 37}, {24, 12}, true);       // Use int16 com.microsoft QDQ ops
+  RunGatherDropQDQTestCase<int16_t>({12, 37}, {24, 12}, false, 21);  // Use ONNX int16 QDQ ops
 }
 
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Reshape -> Q.
 template <typename QuantType>
 static void RunReshapeDropQDQTestCase(const std::vector<int64_t>& input_shape,
                                       const std::vector<int64_t>& new_shape,
-                                      bool use_contrib_qdq = false) {
+                                      bool use_contrib_qdq = false,
+                                      int opset = 12) {
   auto build_test_case = [input_shape, new_shape, use_contrib_qdq](ModelTestBuilder& builder) {
     constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
     constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
@@ -958,15 +962,17 @@ static void RunReshapeDropQDQTestCase(const std::vector<int64_t>& input_shape,
     EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
   };
 
-  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
 }
 
 // Checks that Q/DQ nodes are dropped from DQ -> Reshape -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, ReshapeDropQDQ) {
   RunReshapeDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 12});
-  RunReshapeDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 12}, true);    // Use com.microsoft QDQ ops
-  RunReshapeDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 12}, true);   // Use int16 com.microsoft QDQ ops
-  RunReshapeDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 12}, true);  // Use int16 com.microsoft QDQ ops
+  RunReshapeDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 12}, true);         // Use com.microsoft QDQ ops
+  RunReshapeDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 12}, true);        // Use int16 com.microsoft QDQ ops
+  RunReshapeDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 12}, true);       // Use int16 com.microsoft QDQ ops
+  RunReshapeDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 12}, false, 21);   // Use int16 ONNX QDQ ops
+  RunReshapeDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 12}, false, 21);  // Use int16 ONNX QDQ ops
 }
 
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> (Un)Squeeze -> Q.
@@ -974,7 +980,8 @@ template <typename QuantType>
 static void RunSqueezeUnsqueezeDropQDQTestCase(const std::string& squeeze_type,
                                                const std::vector<int64_t>& input_shape,
                                                const std::vector<int64_t>& axes,
-                                               bool use_contrib_qdq = false) {
+                                               bool use_contrib_qdq = false,
+                                               int opset = 13) {
   auto build_test_case = [squeeze_type, input_shape, axes, use_contrib_qdq](ModelTestBuilder& builder) {
     constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
     constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
@@ -1002,8 +1009,7 @@ static void RunSqueezeUnsqueezeDropQDQTestCase(const std::string& squeeze_type,
     EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
   };
 
-  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2,
-                    13 /* opset_version */);
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
 }
 
 // Checks that Q/DQ nodes are dropped from DQ -> Squeeze -> Q. Uses 8-bit and 16-bit Q/DQ ops.
@@ -1012,6 +1018,10 @@ TEST(QDQTransformerTests, SqueezeDropQDQ) {
   RunSqueezeUnsqueezeDropQDQTestCase<int8_t>("Squeeze", {1, 3, 2, 2}, {0}, true);    // Use MS domain QDQ ops
   RunSqueezeUnsqueezeDropQDQTestCase<int16_t>("Squeeze", {1, 3, 2, 2}, {0}, true);   // Use int16 MS domain QDQ ops
   RunSqueezeUnsqueezeDropQDQTestCase<uint16_t>("Squeeze", {1, 3, 2, 2}, {0}, true);  // Use int16 MS domain QDQ ops
+
+  // With 16-bit ONNX QDQ ops.
+  RunSqueezeUnsqueezeDropQDQTestCase<int16_t>("Squeeze", {1, 3, 2, 2}, {0}, false, 21);
+  RunSqueezeUnsqueezeDropQDQTestCase<uint16_t>("Squeeze", {1, 3, 2, 2}, {0}, false, 21);
 }
 
 // Checks that Q/DQ nodes are dropped from DQ -> Unsqueeze -> Q. Uses 8-bit and 16-bit Q/DQ ops.
@@ -1020,6 +1030,10 @@ TEST(QDQTransformerTests, UnsqueezeDropQDQ) {
   RunSqueezeUnsqueezeDropQDQTestCase<int8_t>("Unsqueeze", {1, 3, 2, 2}, {0}, true);    // Use MS domain QDQ ops
   RunSqueezeUnsqueezeDropQDQTestCase<int16_t>("Unsqueeze", {1, 3, 2, 2}, {0}, true);   // Use int16 MS domain QDQ ops
   RunSqueezeUnsqueezeDropQDQTestCase<uint16_t>("Unsqueeze", {1, 3, 2, 2}, {0}, true);  // Use int16 MS domain QDQ ops
+
+  // With 16-bit ONNX QDQ ops.
+  RunSqueezeUnsqueezeDropQDQTestCase<int16_t>("Unsqueeze", {1, 3, 2, 2}, {0}, false, 21);
+  RunSqueezeUnsqueezeDropQDQTestCase<uint16_t>("Unsqueeze", {1, 3, 2, 2}, {0}, false, 21);
 }
 
 TEST(QDQTransformerTests, DoubleQDQ) {
@@ -1166,7 +1180,7 @@ TEST(QDQTransformerTests, DoubleQDQ) {
 
 template <typename QuantType>
 static void RunDoubleQDQWithoutLastNodeBeingOutput(int output_index, int expected_Q_count, int expected_DQ_count,
-                                                   bool use_contrib_qdq = false) {
+                                                   bool use_contrib_qdq = false, int opset = 12) {
   auto graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
@@ -1177,20 +1191,21 @@ static void RunDoubleQDQWithoutLastNodeBeingOutput(int output_index, int expecte
       BuildDoubleQDQWithoutLastOutput<QuantType>(output_index, use_contrib_qdq),
       graph,
       TransformerLevel::Default,
-      TransformerLevel::Level1);
+      TransformerLevel::Level1,
+      opset);
 }
 
 TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
-  constexpr bool use_contrib_qdq = true;  // For readability.
+  constexpr bool use_ms_qdq = true;  // For readability.
 
   // the first node being a graph output doesn't prevent the DQ -> Q in the middle from being removed
   // if they have matching type/scale/zp
   // Q -> DQ -> Q -> DQ
   //  `-> graph output
   RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(0, 1, 1);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(0, 1, 1, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(0, 1, 1, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(0, 1, 1, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(0, 1, 1, use_ms_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(0, 1, 1, use_ms_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(0, 1, 1, use_ms_qdq);
 
   // EnsureUniqueDQForNodeUnit will duplicate first DQ, but after that the DQ -> Q in the middle can still be removed
   // leaveing one Q and 2 DQ.
@@ -1200,22 +1215,26 @@ TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
   // Q -> DQ -> Q -> DQ
   //  `-> DQ -> graph output
   RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(1, 1, 2);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(1, 1, 2, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(1, 1, 2, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(1, 1, 2, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(1, 1, 2, use_ms_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(1, 1, 2, use_ms_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(1, 1, 2, use_ms_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(1, 1, 2, !use_ms_qdq, 21);
+  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(1, 1, 2, !use_ms_qdq, 21);
 
   RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(2, 2, 2);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(2, 2, 2, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(2, 2, 2, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(2, 2, 2, use_ms_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(2, 2, 2, use_ms_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(2, 2, 2, !use_ms_qdq, 21);
 
   // last node being a graph output doesn't prevent the DQ -> Q in the middle from being removed
   RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(3, 1, 1);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(3, 1, 1, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(3, 1, 1, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(3, 1, 1, use_ms_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(3, 1, 1, use_ms_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(3, 1, 1, !use_ms_qdq, 21);
 }
 
 // Runs a test that checks if DQ -> Split -> Q (many) is replaced with just Split.
-template <typename InputQType, typename OutputQType>
+template <typename QuantType>
 static void RunDropSplitQDQTestCase(const std::vector<int64_t>& input_shape, int64_t axis,
                                     bool all_same_quant_params, bool use_contrib_qdq = false) {
   auto check_graph = [all_same_quant_params, use_contrib_qdq](InferenceSessionWrapper& session) {
@@ -1227,16 +1246,21 @@ static void RunDropSplitQDQTestCase(const std::vector<int64_t>& input_shape, int
     EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], expected_q_ops);
     EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expected_dq_ops);
   };
-  TransformerTester(BuildQDQSplitTestCase<InputQType, OutputQType>(input_shape, axis, !all_same_quant_params,
-                                                                   use_contrib_qdq),
+
+  std::vector<int> opsets = {12, 13, 18, 19, 21};
+  if constexpr (std::is_same_v<QuantType, uint16_t> || std::is_same_v<QuantType, int16_t>) {
+    opsets = std::vector<int>{21};
+  }
+
+  TransformerTester(BuildQDQSplitTestCase<QuantType, QuantType>(input_shape, axis, !all_same_quant_params,
+                                                                use_contrib_qdq),
                     check_graph,
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
-                    {12, 13, 18, 19});  // Test different ways to specify the split in each opset:
-                                        // 12 - split into equal parts without explicit 'split' attribute
-                                        // 13 - use optional 'split' input to split into 3 parts
-                                        // 18 - use 'num_outputs' attribute to split into 3 parts
-                                        // 19 - use 'num_outputs' attribute to split into 3 parts
+                    opsets);  // Test different ways to specify the split in each opset:
+                              // 12 - split into equal parts without explicit 'split' attribute
+                              // 13 - use optional 'split' input to split into 3 parts
+                              // >= 18 - use 'num_outputs' attribute to split into 3 parts
 }
 
 // Test that DQ -> Split -> Q (many) is replaced with just Split for various quantization types.
@@ -1246,10 +1270,12 @@ TEST(QDQTransformerTests, Split) {
   {
     constexpr bool ALL_SAME_QUANT_PARAMS = true;
     constexpr bool USE_CONTRIB_QDQ_OPS = true;
-    RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS);
-    RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
-    RunDropSplitQDQTestCase<int16_t, int16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
-    RunDropSplitQDQTestCase<uint16_t, uint16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<int8_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS);
+    RunDropSplitQDQTestCase<int8_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<int16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<uint16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<int16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, !USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<uint16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, !USE_CONTRIB_QDQ_OPS);
   }
 
   // Test cases that DO NOT drop Q/DQ ops from DQ -> Split -> Q (many)
@@ -1257,10 +1283,12 @@ TEST(QDQTransformerTests, Split) {
   {
     constexpr bool DIFF_QUANT_PARAMS = false;
     constexpr bool USE_CONTRIB_QDQ_OPS = true;
-    RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS);
-    RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
-    RunDropSplitQDQTestCase<int16_t, int16_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
-    RunDropSplitQDQTestCase<uint16_t, uint16_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<int8_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS);
+    RunDropSplitQDQTestCase<int8_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<int16_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<uint16_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<int16_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, !USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<uint16_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, !USE_CONTRIB_QDQ_OPS);
   }
 }
 
@@ -1326,7 +1354,8 @@ TEST(QDQTransformerTests, Where) {
 
 template <typename QuantType>
 static void RunDropQDQTransposeTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms,
-                                        bool use_contrib_qdq = false) {
+                                        bool use_contrib_qdq = false,
+                                        int opset = 12) {
   // model has DQ -> Mul -> Q -> DQ -> Transpose -> Q -> output
   // post transform and optimization it should be DQ -> Mul -> Q -> Transpose(uint8) -> output
   auto check_graph = [&](InferenceSessionWrapper& session) {
@@ -1341,7 +1370,8 @@ static void RunDropQDQTransposeTestCase(const std::vector<int64_t>& input_shape,
   TransformerTester(BuildQDQTransposeTestCase<QuantType, QuantType>(input_shape, perms, use_contrib_qdq),
                     check_graph,
                     TransformerLevel::Level1,
-                    TransformerLevel::Level2);
+                    TransformerLevel::Level2,
+                    opset);
 }
 
 TEST(QDQTransformerTests, Transpose) {
@@ -1349,11 +1379,13 @@ TEST(QDQTransformerTests, Transpose) {
   RunDropQDQTransposeTestCase<uint8_t>({2, 13, 12, 37}, {0, 3, 1, 2}, true /*use_contrib_qdq*/);
   RunDropQDQTransposeTestCase<uint16_t>({2, 13, 12, 37}, {0, 3, 1, 2}, true /*use_contrib_qdq*/);
   RunDropQDQTransposeTestCase<int16_t>({2, 13, 12, 37}, {0, 3, 1, 2}, true /*use_contrib_qdq*/);
+  RunDropQDQTransposeTestCase<uint16_t>({2, 13, 12, 37}, {0, 3, 1, 2}, false /*use_contrib_qdq*/, 21 /*opset*/);
+  RunDropQDQTransposeTestCase<int16_t>({2, 13, 12, 37}, {0, 3, 1, 2}, false /*use_contrib_qdq*/, 21 /*opset*/);
 }
 
 template <typename QuantType>
 static void RunQDQTransposeNoFusionTestCase(const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& perms,
-                                            bool use_contrib_qdq = false) {
+                                            bool use_contrib_qdq = false, int opset = 12) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<QuantType>(input1_shape, std::numeric_limits<QuantType>::min(),
                                                     std::numeric_limits<QuantType>::max());
@@ -1379,7 +1411,7 @@ static void RunQDQTransposeNoFusionTestCase(const std::vector<int64_t>& input1_s
     EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
   };
 
-  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
 }
 
 TEST(QDQTransformerTests, Transpose_No_Fusion) {
@@ -1387,6 +1419,8 @@ TEST(QDQTransformerTests, Transpose_No_Fusion) {
   RunQDQTransposeNoFusionTestCase<int8_t>({2, 13, 12, 37}, {0, 3, 1, 2}, true /*use_contrib_qdq*/);
   RunQDQTransposeNoFusionTestCase<int16_t>({2, 13, 12, 37}, {0, 3, 1, 2}, true /*use_contrib_qdq*/);
   RunQDQTransposeNoFusionTestCase<uint16_t>({2, 13, 12, 37}, {0, 3, 1, 2}, true /*use_contrib_qdq*/);
+  RunQDQTransposeNoFusionTestCase<int16_t>({2, 13, 12, 37}, {0, 3, 1, 2}, false /*use_contrib_qdq*/, 21 /*opset*/);
+  RunQDQTransposeNoFusionTestCase<uint16_t>({2, 13, 12, 37}, {0, 3, 1, 2}, false /*use_contrib_qdq*/, 21 /*opset*/);
 }
 
 TEST(QDQTransformerTests, Resize) {
@@ -1568,14 +1602,18 @@ static void RunArgMaxDropDQTestCase(const std::vector<int64_t>& input_shape,
     EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expect_drop_dq ? 0 : 1);
   };
 
+  std::vector<int> opsets = {13, 19, 21};
+
+  if constexpr (std::is_same_v<QuantType, uint16_t> || std::is_same_v<QuantType, int16_t>) {
+    if (!use_contrib_qdq) {
+      opsets = std::vector<int>{21};  // Only ONNX opset 21 supports 16-bit ints.
+    }
+  }
+
   TransformerTester(build_test_case, check_graph,
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
-                    /* opset_version */ 13);
-  TransformerTester(build_test_case, check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    /* opset_version */ 19);
+                    opsets);
 }
 
 // Checks that the DQ node is dropped from DQ -> ArgMax. Uses 8-bit and 16-bit Q/DQ ops.
@@ -1586,6 +1624,8 @@ TEST(QDQTransformerTests, ArgMax) {
   // Should *not* drop DQ for 16-bit DQ -> ArgMax (because ORT does not support 16-bit input types for ArgMax).
   RunArgMaxDropDQTestCase<uint16_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/);
   RunArgMaxDropDQTestCase<int16_t>({2, 13, 12, 37}, 1, 0, 0, true /*use_contrib_qdq*/, false /*expect_drop_dq*/);
+  RunArgMaxDropDQTestCase<uint16_t>({2, 13, 12, 37}, 1, 0, 0, false /*use_contrib_qdq*/, false /*expect_drop_dq*/);
+  RunArgMaxDropDQTestCase<int16_t>({2, 13, 12, 37}, 1, 0, 0, false /*use_contrib_qdq*/, false /*expect_drop_dq*/);
 
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 0, 1, 0, false);
   RunArgMaxDropDQTestCase<uint8_t>({2, 13, 12, 37}, 0, 0, 1, false);

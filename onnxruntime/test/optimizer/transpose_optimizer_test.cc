@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <random>
+#include <type_traits>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -3552,11 +3553,19 @@ static void RunQuantizeLinearTestCase(const std::optional<std::vector<int64_t>>&
     EXPECT_EQ(transpose_cost, 0);
   };
 
+  std::vector<int> opsets = {15, 18, 21};
+
+  if constexpr (std::is_same_v<QuantType, uint16_t> || std::is_same_v<QuantType, int16_t>) {
+    if (q_domain == kOnnxDomain) {
+      opsets = std::vector<int>{21};  // Only ONNX opset 21 supports 16-bit ints.
+    }
+  }
+
   TransformerTester(build_test_case,
                     check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    opsets);
 }
 
 TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
@@ -3565,6 +3574,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
   std::optional<ONNX_NAMESPACE::AttributeProto> empty_axis;  // No axis value.
 
   RunQuantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, empty_axis, kOnnxDomain);
+  RunQuantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, empty_axis, kOnnxDomain);
+  RunQuantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, empty_axis, kOnnxDomain);
 
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use com.microsoft.QuantizeLinear op.
@@ -3580,6 +3591,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
   auto ignored_axis = utils::MakeAttribute("axis", static_cast<int64_t>(10));  // Should be ignored for per-tensor Q
 
   RunQuantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, ignored_axis, kOnnxDomain);
+  RunQuantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, ignored_axis, kOnnxDomain);
+  RunQuantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, ignored_axis, kOnnxDomain);
 
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use com.microsoft.QuantizeLinear op.
@@ -3595,6 +3608,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
   auto axis = utils::MakeAttribute("axis", static_cast<int64_t>(0));
 
   RunQuantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, axis, kOnnxDomain);
+  RunQuantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, axis, kOnnxDomain);
+  RunQuantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, axis, kOnnxDomain);
 
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use com.microsoft.QuantizeLinear op.
@@ -3610,6 +3625,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearVectorUnknownRank) {
   auto axis = utils::MakeAttribute("axis", static_cast<int64_t>(1));
 
   RunQuantizeLinearTestCase<uint8_t>(zp_unknown_shape, zp_value_shape, axis, kOnnxDomain);
+  RunQuantizeLinearTestCase<uint16_t>(zp_unknown_shape, zp_value_shape, axis, kOnnxDomain);
+  RunQuantizeLinearTestCase<int16_t>(zp_unknown_shape, zp_value_shape, axis, kOnnxDomain);
 
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use com.microsoft.QuantizeLinear op.
@@ -3693,11 +3710,19 @@ static void RunDequantizeLinearTestCase(const std::optional<std::vector<int64_t>
     EXPECT_EQ(transpose_cost, 0);
   };
 
+  std::vector<int> opsets = {15, 18, 21};
+
+  if constexpr (std::is_same_v<QuantType, uint16_t> || std::is_same_v<QuantType, int16_t>) {
+    if (q_domain == kOnnxDomain) {
+      opsets = std::vector<int>{21};  // Only ONNX opset 21 supports 16-bit ints.
+    }
+  }
+
   TransformerTester(build_test_case,
                     check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    opsets);
 }
 
 TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
@@ -3706,6 +3731,8 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
   auto ignored_axis = utils::MakeAttribute("axis", static_cast<int64_t>(10));  // Should be ignored for per-tensor Q
 
   RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, ignored_axis, kOnnxDomain);
+  RunDequantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, ignored_axis, kOnnxDomain);
+  RunDequantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, ignored_axis, kOnnxDomain);
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use com.microsoft.DequantizeLinear ops
   RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, ignored_axis, kMSDomain);
@@ -3720,6 +3747,8 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearVector) {
   auto axis = utils::MakeAttribute("axis", static_cast<int64_t>(-4));
 
   RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, axis, kOnnxDomain);
+  RunDequantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, axis, kOnnxDomain);
+  RunDequantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, axis, kOnnxDomain);
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use com.microsoft.DequantizeLinear ops
   RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, axis, kMSDomain);
@@ -3734,6 +3763,8 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
   std::optional<ONNX_NAMESPACE::AttributeProto> no_axis;  // Empty axis value will not be set.
 
   RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, no_axis, kOnnxDomain);
+  RunDequantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, no_axis, kOnnxDomain);
+  RunDequantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, no_axis, kOnnxDomain);
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use com.microsoft.DequantizeLinear ops
   RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, no_axis, kMSDomain);
