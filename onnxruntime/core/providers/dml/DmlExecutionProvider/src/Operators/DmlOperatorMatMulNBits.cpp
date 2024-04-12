@@ -65,19 +65,19 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        std::vector<DML_TENSOR_DESC> quantizationParametersTensors;
-        quantizationParametersTensors.push_back(inputDescs[2]);
+        std::vector<DML_TENSOR_DESC> quantizationTensors;
+        quantizationTensors.push_back(inputDescs[2]);
 
         if (hasZeroPoint)
         {
-            quantizationParametersTensors.push_back(inputDescs[3]);
+            quantizationTensors.push_back(inputDescs[3]);
         }
 
         DML_DEQUANTIZE_OPERATOR_DESC dequantizeDesc = {};
         dequantizeDesc.InputTensor = &inputDescs[1];
-        dequantizeDesc.QuantizationParametersType = hasZeroPoint ? DML_QUANTIZATION_PARAMETERS_TYPE_SCALE_ZEROPOINT : DML_QUANTIZATION_PARAMETERS_TYPE_SCALE;
-        dequantizeDesc.QuantizationParametersTensorCount = gsl::narrow_cast<uint32_t>(quantizationParametersTensors.size());
-        dequantizeDesc.QuantizationParametersTensors = quantizationParametersTensors.data();
+        dequantizeDesc.QuantizationType = hasZeroPoint ? DML_QUANTIZATION_TYPE_SCALE_ZERO_POINT : DML_QUANTIZATION_TYPE_SCALE;
+        dequantizeDesc.QuantizationTensorCount = gsl::narrow_cast<uint32_t>(quantizationTensors.size());
+        dequantizeDesc.QuantizationTensors = quantizationTensors.data();
         dequantizeDesc.OutputTensor = &dequantizedInputDmlTensorDesc;
         DML_OPERATOR_DESC dequantizeOpDesc = { DML_OPERATOR_DEQUANTIZE, &dequantizeDesc };
 

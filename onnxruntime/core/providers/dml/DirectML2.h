@@ -21,7 +21,7 @@
 #ifndef DML_TARGET_VERSION
 
 #if !defined(NTDDI_VERSION) || defined(DML_TARGET_VERSION_USE_LATEST) // Use the latest if using redist or no Windows target set.
-#define DML_TARGET_VERSION 0x6300
+#define DML_TARGET_VERSION 0x6400
 #elif defined(NTDDI_WIN10_ZN) && NTDDI_VERSION >= NTDDI_WIN10_ZN
 #define DML_TARGET_VERSION 0x6000
 #elif defined(NTDDI_WIN10_NI) && NTDDI_VERSION >= NTDDI_WIN10_NI
@@ -106,7 +106,7 @@ enum DML_TENSOR_FLAGS
     DML_TENSOR_FLAG_OWNED_BY_DML = 0x1,
 };
 
-DEFINE_ENUM_FLAG_OPERATORS(DML_TENSOR_FLAGS);
+DEFINE_ENUM_FLAG_OPERATORS(DML_TENSOR_FLAGS)
 
 struct DML_BUFFER_TENSOR_DESC
 {
@@ -337,14 +337,17 @@ enum DML_OPERATOR_TYPE
 #endif // DML_TARGET_VERSION >= 0x6200
 
 #if DML_TARGET_VERSION >= 0x6300
-    DML_OPERATOR_RESAMPLE3,
-    DML_OPERATOR_FOLD,
-    DML_OPERATOR_UNFOLD,
     DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2,
     DML_OPERATOR_MULTIHEAD_ATTENTION1,
     DML_OPERATOR_QUANTIZE,
     DML_OPERATOR_DEQUANTIZE,
 #endif // DML_TARGET_VERSION >= 0x6300
+
+#if DML_TARGET_VERSION >= 0x6400
+    DML_OPERATOR_RESAMPLE3,
+    DML_OPERATOR_FOLD,
+    DML_OPERATOR_UNFOLD,
+#endif // DML_TARGET_VERSION >= 0x6400
 };
 
 // ===================================================================================================================
@@ -395,7 +398,7 @@ enum DML_PADDING_MODE
     DML_PADDING_MODE_SYMMETRIC,
 #endif
 
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
     DML_PADDING_MODE_WRAP,
 #endif
 };
@@ -490,15 +493,15 @@ enum DML_MULTIHEAD_ATTENTION_MASK_TYPE
     DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN,
 };
 
-#endif // DML_TARGET_VERSION >= 0x6300
+#endif // DML_TARGET_VERSION >= 0x6100
 
 #if DML_TARGET_VERSION >= 0x6300
 
-enum DML_QUANTIZATION_PARAMETERS_TYPE
+enum DML_QUANTIZATION_TYPE
 {
-    DML_QUANTIZATION_PARAMETERS_TYPE_NONE,
-    DML_QUANTIZATION_PARAMETERS_TYPE_SCALE,
-    DML_QUANTIZATION_PARAMETERS_TYPE_SCALE_ZEROPOINT,
+    DML_QUANTIZATION_TYPE_NONE,
+    DML_QUANTIZATION_TYPE_SCALE,
+    DML_QUANTIZATION_TYPE_SCALE_ZERO_POINT,
 };
 
 #endif // DML_TARGET_VERSION >= 0x6300
@@ -2091,19 +2094,6 @@ struct DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC
 
 #if DML_TARGET_VERSION >= 0x6300
 
-struct DML_RESAMPLE3_OPERATOR_DESC
-{
-    const DML_TENSOR_DESC* InputTensor;
-    const DML_TENSOR_DESC* OutputTensor;
-    DML_INTERPOLATION_MODE InterpolationMode;
-    DML_AXIS_DIRECTION RoundingDirection;
-    UINT DimensionCount;
-    _Field_size_(DimensionCount) const FLOAT* Scales;
-    _Field_size_(DimensionCount) const FLOAT* InputPixelOffsets;
-    _Field_size_(DimensionCount) const FLOAT* OutputPixelOffsets;
-    BOOL Antialiased;
-};
-
 struct DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
@@ -2116,30 +2106,6 @@ struct DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC
     BOOL UseVariance;
     FLOAT Epsilon;
     _Maybenull_ const DML_OPERATOR_DESC* FusedActivation;
-};
-
-struct DML_FOLD_OPERATOR_DESC
-{
-    const DML_TENSOR_DESC* InputTensor;
-    const DML_TENSOR_DESC* OutputTensor;
-    UINT DimensionCount;
-    _Field_size_(DimensionCount) const UINT* WindowSizes; // Size of the extracted patch
-    _Field_size_(DimensionCount) const UINT* Strides; // Step size of the extracted patches
-    _Field_size_(DimensionCount) const UINT* Dilations; // Dialations of the extracted patch
-    _Field_size_(DimensionCount) const UINT* StartPadding; // Start padding of the "source tensor"
-    _Field_size_(DimensionCount) const UINT* EndPadding; // End padding of the "source tensor"
-};
-
-struct DML_UNFOLD_OPERATOR_DESC
-{
-    const DML_TENSOR_DESC* InputTensor;
-    const DML_TENSOR_DESC* OutputTensor;
-    UINT DimensionCount;
-    _Field_size_(DimensionCount) const UINT* WindowSizes; // Size of the extracted patch
-    _Field_size_(DimensionCount) const UINT* Strides; // Step size of the extracted patches
-    _Field_size_(DimensionCount) const UINT* Dilations; // Dialations of the extracted patch
-    _Field_size_(DimensionCount) const UINT* StartPadding; // Start padding of the "source tensor"
-    _Field_size_(DimensionCount) const UINT* EndPadding; // End padding of the "source tensor"
 };
 
 struct DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC
@@ -2169,22 +2135,63 @@ struct DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC
 struct DML_QUANTIZE_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
-    DML_QUANTIZATION_PARAMETERS_TYPE QuantizationParametersType;
-    UINT QuantizationParametersTensorCount;
-    _Field_size_(QuantizationParametersTensorCount) const DML_TENSOR_DESC* QuantizationParametersTensors;
+    DML_QUANTIZATION_TYPE QuantizationType;
+    UINT QuantizationTensorCount;
+    _Field_size_(QuantizationTensorCount) const DML_TENSOR_DESC* QuantizationTensors;
     const DML_TENSOR_DESC* OutputTensor;
 };
 
 struct DML_DEQUANTIZE_OPERATOR_DESC
 {
     const DML_TENSOR_DESC* InputTensor;
-    DML_QUANTIZATION_PARAMETERS_TYPE QuantizationParametersType;
-    UINT QuantizationParametersTensorCount;
-    _Field_size_(QuantizationParametersTensorCount) const DML_TENSOR_DESC* QuantizationParametersTensors;
+    DML_QUANTIZATION_TYPE QuantizationType;
+    UINT QuantizationTensorCount;
+    _Field_size_(QuantizationTensorCount) const DML_TENSOR_DESC* QuantizationTensors;
     const DML_TENSOR_DESC* OutputTensor;
 };
 
 #endif // DML_TARGET_VERSION >= 0x6300
+
+#if DML_TARGET_VERSION >= 0x6400
+
+struct DML_RESAMPLE3_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+    DML_INTERPOLATION_MODE InterpolationMode;
+    DML_AXIS_DIRECTION RoundingDirection;
+    UINT DimensionCount;
+    _Field_size_(DimensionCount) const FLOAT* Scales;
+    _Field_size_(DimensionCount) const FLOAT* InputPixelOffsets;
+    _Field_size_(DimensionCount) const FLOAT* OutputPixelOffsets;
+    BOOL Antialiased;
+};
+
+struct DML_FOLD_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+    UINT DimensionCount;
+    _Field_size_(DimensionCount) const UINT* WindowSizes; // Size of the extracted patch
+    _Field_size_(DimensionCount) const UINT* Strides; // Step size of the extracted patches
+    _Field_size_(DimensionCount) const UINT* Dilations; // Dialations of the extracted patch
+    _Field_size_(DimensionCount) const UINT* StartPadding; // Start padding of the "source tensor"
+    _Field_size_(DimensionCount) const UINT* EndPadding; // End padding of the "source tensor"
+};
+
+struct DML_UNFOLD_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+    UINT DimensionCount;
+    _Field_size_(DimensionCount) const UINT* WindowSizes; // Size of the extracted patch
+    _Field_size_(DimensionCount) const UINT* Strides; // Step size of the extracted patches
+    _Field_size_(DimensionCount) const UINT* Dilations; // Dialations of the extracted patch
+    _Field_size_(DimensionCount) const UINT* StartPadding; // Start padding of the "source tensor"
+    _Field_size_(DimensionCount) const UINT* EndPadding; // End padding of the "source tensor"
+};
+
+#endif // DML_TARGET_VERSION >= 0x6400
 
 // ===================================================================================================================
 //   DML feature support queries
@@ -2208,6 +2215,7 @@ enum DML_FEATURE_LEVEL
     DML_FEATURE_LEVEL_6_1 = 0x6100,
     DML_FEATURE_LEVEL_6_2 = 0x6200,
     DML_FEATURE_LEVEL_6_3 = 0x6300,
+    DML_FEATURE_LEVEL_6_4 = 0x6400,
 };
 
 #endif // DML_TARGET_VERSION >= 0x2000
@@ -2266,7 +2274,7 @@ enum DML_EXECUTION_FLAGS
     DML_EXECUTION_FLAG_DESCRIPTORS_VOLATILE = 0x4,
 };
 
-DEFINE_ENUM_FLAG_OPERATORS(DML_EXECUTION_FLAGS);
+DEFINE_ENUM_FLAG_OPERATORS(DML_EXECUTION_FLAGS)
 
 enum DML_CREATE_DEVICE_FLAGS
 {
@@ -2274,7 +2282,7 @@ enum DML_CREATE_DEVICE_FLAGS
     DML_CREATE_DEVICE_FLAG_DEBUG = 0x1,
 };
 
-DEFINE_ENUM_FLAG_OPERATORS(DML_CREATE_DEVICE_FLAGS);
+DEFINE_ENUM_FLAG_OPERATORS(DML_CREATE_DEVICE_FLAGS)
 
 STDAPI DMLCreateDevice(
     ID3D12Device* d3d12Device,
@@ -2583,7 +2591,9 @@ enum DML_GRAPH_NODE_TYPE
 {
     DML_GRAPH_NODE_TYPE_INVALID,
     DML_GRAPH_NODE_TYPE_OPERATOR,
+#if DML_TARGET_VERSION >= 0x6200
     DML_GRAPH_NODE_TYPE_CONSTANT
+#endif // DML_TARGET_VERSION >= 0x6200
 };
 
 struct DML_GRAPH_NODE_DESC
@@ -2598,12 +2608,14 @@ struct DML_OPERATOR_GRAPH_NODE_DESC
     _Field_z_ _Maybenull_ const char* Name;
 };
 
+#if DML_TARGET_VERSION >= 0x6200
 struct DML_CONSTANT_DATA_GRAPH_NODE_DESC
 {
     _Field_size_bytes_(DataSize) const void* Data;
     SIZE_T DataSize;
     _Field_z_ _Maybenull_ const char* Name;
 };
+#endif // DML_TARGET_VERSION >= 0x6200
 
 struct DML_GRAPH_DESC
 {

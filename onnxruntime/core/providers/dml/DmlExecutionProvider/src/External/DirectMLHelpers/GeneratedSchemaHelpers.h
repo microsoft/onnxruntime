@@ -1526,9 +1526,9 @@ inline std::vector<OperatorField> GetFields(const DML_QUANTIZE_OPERATOR_DESC& de
 {
     return {
         OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
-        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationParametersType))),
-        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationParametersTensorCount))),
-        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QuantizationParametersTensors), desc.QuantizationParametersTensorCount)),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationType))),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationTensorCount))),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QuantizationTensors), desc.QuantizationTensorCount)),
         OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
     };
 }
@@ -1536,9 +1536,9 @@ inline std::vector<OperatorField> GetFields(const DML_DEQUANTIZE_OPERATOR_DESC& 
 {
     return {
         OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
-        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationParametersType))),
-        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationParametersTensorCount))),
-        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QuantizationParametersTensors), desc.QuantizationParametersTensorCount)),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationType))),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationTensorCount))),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QuantizationTensors), desc.QuantizationTensorCount)),
         OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
     };
 }
