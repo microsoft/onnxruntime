@@ -11,6 +11,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/cast_sce_loss_fusion.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
@@ -516,6 +517,22 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
                                           pre_graph_checker, post_graph_checker));
   }
+}
+
+TEST_F(GraphTransformationTests, CastSceLossFusion) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "computation_reduction/reshape/mlm_bert_e2e.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, *logger_).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Cast"] == 10);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CastSceLossFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Cast"] == 9);
 }
 
 Node* GetNodeByName(Graph& graph, std::string node_name) {

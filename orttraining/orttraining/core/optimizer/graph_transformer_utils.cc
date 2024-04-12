@@ -9,6 +9,7 @@
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/cast_sce_loss_fusion.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
@@ -169,6 +170,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // potentially will optimize out some nodes defined in the subgraph patterns. So we put it after ReshapeFusion.
       transformers.emplace_back(std::make_unique<ShapeOptimizer>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
+      transformers.emplace_back(std::make_unique<CastSceLossFusion>(compatible_eps));
 
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
