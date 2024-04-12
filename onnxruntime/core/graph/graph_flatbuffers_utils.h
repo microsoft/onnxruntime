@@ -136,6 +136,7 @@ Status SaveOrtTensorOrtFormat(
 /// @param[in] allocator Allocator to use for creating the ORT tensor
 /// @param[out] tensor_name Name of the tensor
 /// @param[out] ort_tensor ORT tensor to load the flatbuffer tensor into
+/// @param[in] external_reader Optional delegate to read from an external data file
 /// @return Status indicating success or providing error information
 Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr allocator,
                               std::string& tensor_name, onnxruntime::Tensor& ort_tensor,

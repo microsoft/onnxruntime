@@ -7,6 +7,7 @@
 #include "core/flatbuffers/schema/ort_training_checkpoint.fbs.h"
 #include "core/framework/framework_common.h"
 #include "core/graph/graph_flatbuffers_utils.h"
+#include "core/framework/tensor_external_data_info.h"
 
 namespace onnxruntime::training::api {
 
@@ -70,6 +71,7 @@ Status FlatbufferTensorFromOrtValue(
  * @param fbs_tensor Flatbuffer tensor.
  * @param tensor_name Name of the tensor.
  * @param ort_value OrtValue object to be populated.
+ * @param external_reader delegate to read initializer data from an external file or buffer
  * @return Status of the operation.
  */
 Status OrtValueFromFlatbufferTensor(const fbs::Tensor& fbs_tensor,
@@ -127,6 +129,7 @@ Status FlatbufferTensorsFromOrtValues(
  *
  * @param flatbuffer_tensors Flatbuffer tensors.
  * @param name_to_ort_value Name to OrtValue map to be populated.
+ * @param external_reader delegate to read initializer data from an external file or buffer
  * @return Status of the operation.
  */
 Status OrtValuesFromFlatbufferTensors(
@@ -204,11 +207,9 @@ Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_t
     fbs_buffer_size += bytes;
 
     if (tensor_proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      ORT_RETURN_IF_NOT(tensor_proto.external_data()[2].key() == "length",
-                        "Invalid external data for ", tensor_proto.name());
-      // external_data field is a dictionary of strings
-      // length is stored as a string
-      fbs_buffer_size += std::stoull(tensor_proto.external_data()[2].value());
+      std::unique_ptr<ExternalDataInfo> external_data_info;
+      ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+      fbs_buffer_size += external_data_info->GetLength();
     }
 
     if (bytes > onnxruntime::fbs::utils::kMinimumSizeForExternalData) {  // assuming strings aren't trainable
@@ -581,6 +582,7 @@ Status FromFile(const PathString& checkpoint_path, InlinedVector<uint8_t>& check
  *
  * @param fbs_module_state Flatbuffer module state.
  * @param module_state Module state to be populated.
+ * @param external_reader delegate to read initializer data from an external file or buffer
  * @return Status of the operation.
  */
 Status ToModuleState(
@@ -622,6 +624,7 @@ Status ToModuleState(
  *
  * @param optimizer_groups Flatbuffer optimizer groups.
  * @param optimizer_state Optimizer state to be populated.
+ * @param external_reader delegate to read initializer data from an external file or buffer
  * @return Status of the operation.
  */
 Status ToOptimizerState(
@@ -811,8 +814,9 @@ Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
 /**
  * @brief Load checkpoint from a checkpoint file to a checkpoint state.
  *
- * @param checkpoint_path Path to the checkpoint file.
+ * @param checkpoint_bytes Buffer with checkpoint.
  * @param state Checkpoint state to be populated.
+ * @param checkpoint_path Path to the checkpoint file. Optional to support loading from buffer.
  * @return Status of the operation.
  */
 Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointState& state, std::optional<PathString> checkpoint_path) {
@@ -834,12 +838,13 @@ Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointSt
   if (fbs_module_state->has_external_data()) {
     ORT_RETURN_IF_NOT(checkpoint_path.has_value(),
                       "External data is present in the checkpoint but the checkpoint path is not provided. External data with loading from buffer is not supported yet.");
-    auto data_path = ExternalCheckpointDataPath(checkpoint_path.value());
+    auto data_path = ExternalCheckpointDataPath(*checkpoint_path);
     external_data_stream = std::ifstream(data_path, std::ios::binary);
 
     char errbuf[256];
     ORT_RETURN_IF(external_data_stream.value().fail(),
-                  "Failed to open checkpoint's external data file: ", ToUTF8String(data_path), strerror_s(errbuf, sizeof(errbuf), errno));
+                  "Failed to open checkpoint's external data file: ", ToUTF8String(data_path),
+                  " error: ", strerror_s(errbuf, sizeof(errbuf), errno));
 
     external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
       external_data_stream->seekg(offset);
@@ -913,16 +918,13 @@ Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkp
 
   InlinedVector<uint8_t> checkpoint_bytes;
   ORT_RETURN_IF_ERROR(load::FromFile(checkpoint_path, checkpoint_bytes));
-  std::optional<PathString> checkpoint_path_opt(checkpoint_path);
   return load::ToCheckpointState(checkpoint_bytes, checkpoint_states, checkpoint_path);
 }
 
 Status LoadCheckpointFromBuffer(gsl::span<const uint8_t> checkpoint_bytes, CheckpointState& checkpoint_state) {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
 
-  std::optional<PathString> checkpoint_path;
-
-  return load::ToCheckpointState(checkpoint_bytes, checkpoint_state, checkpoint_path);
+  return load::ToCheckpointState(checkpoint_bytes, checkpoint_state, std::nullopt);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
