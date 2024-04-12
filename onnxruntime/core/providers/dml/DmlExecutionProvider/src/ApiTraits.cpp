@@ -22,6 +22,7 @@ T ApiTraits::StringifyHelpers::FromString(std::string_view value)
 #endif
 }
 
+
 template <>
 DML_TENSOR_DATA_TYPE ApiTraits::StringifyHelpers::FromString(std::string_view value)
 {
@@ -245,9 +246,6 @@ DML_OPERATOR_TYPE ApiTraits::StringifyHelpers::FromString(std::string_view value
         {"DML_OPERATOR_MULTIHEAD_ATTENTION", DML_OPERATOR_MULTIHEAD_ATTENTION},
         {"DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING", DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING},
         {"DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT", DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT},
-        {"DML_OPERATOR_RESAMPLE3", DML_OPERATOR_RESAMPLE3},
-        {"DML_OPERATOR_FOLD", DML_OPERATOR_FOLD},
-        {"DML_OPERATOR_UNFOLD", DML_OPERATOR_UNFOLD},
         {"DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2", DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2},
         {"DML_OPERATOR_MULTIHEAD_ATTENTION1", DML_OPERATOR_MULTIHEAD_ATTENTION1},
         {"DML_OPERATOR_QUANTIZE", DML_OPERATOR_QUANTIZE},
@@ -455,6 +453,7 @@ DML_FEATURE_LEVEL ApiTraits::StringifyHelpers::FromString(std::string_view value
         {"DML_FEATURE_LEVEL_6_0", DML_FEATURE_LEVEL_6_0},
         {"DML_FEATURE_LEVEL_6_1", DML_FEATURE_LEVEL_6_1},
         {"DML_FEATURE_LEVEL_6_2", DML_FEATURE_LEVEL_6_2},
+        {"DML_FEATURE_LEVEL_6_3", DML_FEATURE_LEVEL_6_3},
     };
     auto index = StringUtil::MapToIndex(value, mapping);
     if (!index)
@@ -575,4 +574,23 @@ DML_MULTIHEAD_ATTENTION_MASK_TYPE ApiTraits::StringifyHelpers::FromString(std::s
         return static_cast<DML_MULTIHEAD_ATTENTION_MASK_TYPE>(0);
     }
     return static_cast<DML_MULTIHEAD_ATTENTION_MASK_TYPE>(*index);
+}
+
+
+template <>
+DML_QUANTIZATION_TYPE ApiTraits::StringifyHelpers::FromString(std::string_view value)
+{
+    constexpr StringUtil::NameAndIndex mapping[] =
+    {
+        {"DML_QUANTIZATION_TYPE_NONE", DML_QUANTIZATION_TYPE_NONE},
+        {"DML_QUANTIZATION_TYPE_SCALE", DML_QUANTIZATION_TYPE_SCALE},
+        {"DML_QUANTIZATION_TYPE_SCALE_ZERO_POINT", DML_QUANTIZATION_TYPE_SCALE_ZERO_POINT},
+    };
+    auto index = StringUtil::MapToIndex(value, mapping);
+    if (!index)
+    {
+        assert(false);
+        return static_cast<DML_QUANTIZATION_TYPE>(0);
+    }
+    return static_cast<DML_QUANTIZATION_TYPE>(*index);
 }

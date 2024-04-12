@@ -252,7 +252,7 @@ DML_TENSOR_DESC TensorDesc::GetDmlDesc()
 // requires coercion by the caller.
 void TensorDesc::ForceUnsignedDataType()
 {
-    static_assert(ApiTraits::EnumValueCount<DML_TENSOR_DATA_TYPE> == 13, "New tensor data type.  Update cases.");
+    static_assert(ApiTraits::EnumValueCount<DML_TENSOR_DATA_TYPE> == 14, "New tensor data type.  Update cases.");
 
     switch (m_bufferTensorDesc.DataType)
     {
