@@ -7,30 +7,29 @@
 
 using onnxruntime::narrow;
 
-float* alloc_aligned_buffer(int D, int byte_aligned, void*& buffer) {
-  constexpr int max_byte_aligned = 128;
+struct RestrictAlignedPtr {
+  float* ptr;
+  void* underlying_buffer;
+};
 
-  buffer = malloc(D * sizeof(float) + max_byte_aligned * 2);
-
-  float* ptr = reinterpret_cast<float*>(
-      ((reinterpret_cast<uintptr_t>(buffer) + (max_byte_aligned - 1)) & ~(max_byte_aligned - 1)) + byte_aligned);
-
-  switch (byte_aligned) {
-    case 4:
-    case 8:
-    case 16:
-    case 32:
-    case 64:
-      ORT_ENFORCE(((uintptr_t)(ptr) % byte_aligned == 0) && ((uintptr_t)(ptr) % (byte_aligned << 1) != 0));
-      break;
-    case max_byte_aligned:
-      ORT_ENFORCE((uintptr_t)(ptr) % max_byte_aligned == 0);
-      break;
-    default:
-      throw std::invalid_argument("byte_aligned must be 4, 8, 16, 32, 64, or 128!");
-      break;
+RestrictAlignedPtr restrict_aligned_alloc(int D, int byte_aligned) {
+  if (byte_aligned <= 0 || (byte_aligned & (byte_aligned - 1)) != 0) {
+    throw std::invalid_argument("Alignment must be a power of 2");
   }
-  return ptr;
+
+  const int byte_alignedx2 = byte_aligned << 1;
+
+  void* buffer = malloc(D * sizeof(float) + byte_alignedx2 * 2);
+  if (buffer == nullptr) {
+    ORT_THROW_EX(std::bad_alloc);
+  }
+
+  uintptr_t address = reinterpret_cast<uintptr_t>(buffer);
+  uintptr_t aligned_address = ((address + byte_alignedx2 - 1) & ~(byte_alignedx2 - 1)) + byte_aligned;
+  ORT_ENFORCE((aligned_address % byte_aligned == 0) && (aligned_address % byte_alignedx2 != 0));
+  float* aligned_ptr = reinterpret_cast<float*>(aligned_address);
+
+  return {aligned_ptr, buffer};
 }
 
 void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
@@ -52,8 +51,8 @@ void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
           &onnxruntime::Env::Default(), tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   auto data = RandomVectorUniform<float>(static_cast<size_t>(N * D), -1.0f, 1.0f);
-  void* buffer = nullptr;
-  float* input = alloc_aligned_buffer(N * D, byte_aligned, buffer);
+  RestrictAlignedPtr ptr = restrict_aligned_alloc(N * D, byte_aligned);
+  float* input = ptr.ptr;
   float* output = input;
   std::copy(data.begin(), data.end(), input);  // Copy the data to the aligned memory
 
@@ -64,7 +63,7 @@ void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
     MlasComputeSoftmax(input, output, N, D, false, tp.get());
   }
 
-  free(buffer);
+  free(ptr.underlying_buffer);
 }
 
 void REDUCEMAXIMUMF32KERNELAVX(benchmark::State& state) {
@@ -76,8 +75,8 @@ void REDUCEMAXIMUMF32KERNELAVX(benchmark::State& state) {
   }
 
   auto data = RandomVectorUniform<float>(static_cast<size_t>(D), -1.0f, 1.0f);
-  void* buffer = nullptr;
-  float* input = alloc_aligned_buffer(D, byte_aligned, buffer);
+  RestrictAlignedPtr ptr = restrict_aligned_alloc(D, byte_aligned);
+  float* input = ptr.ptr;
   std::copy(data.begin(), data.end(), input);  // Copy the data to the aligned memory
 
   // warming up run
@@ -87,7 +86,7 @@ void REDUCEMAXIMUMF32KERNELAVX(benchmark::State& state) {
     Maximum = MlasReduceMaximumF32KernelAvx(input, D);
   }
 
-  free(buffer);
+  free(ptr.underlying_buffer);
   (void)Maximum;
 }
 
@@ -100,8 +99,8 @@ void REDUCEMAXIMUMF32KERNELAVX512F(benchmark::State& state) {
   }
 
   auto data = RandomVectorUniform<float>(static_cast<size_t>(D), -1.0f, 1.0f);
-  void* buffer = nullptr;
-  float* input = alloc_aligned_buffer(D, byte_aligned, buffer);
+  RestrictAlignedPtr ptr = restrict_aligned_alloc(D, byte_aligned);
+  float* input = ptr.ptr;
   std::copy(data.begin(), data.end(), input);  // Copy the data to the aligned memory
 
   // warming up run
@@ -111,7 +110,7 @@ void REDUCEMAXIMUMF32KERNELAVX512F(benchmark::State& state) {
     Maximum = MlasReduceMaximumF32KernelAvx512F(input, D);
   }
 
-  free(buffer);
+  free(ptr.underlying_buffer);
   (void)Maximum;
 }
 
@@ -124,9 +123,8 @@ void COMPUTESUMEXPF32KERNELAVX512F(benchmark::State& state) {
   }
 
   auto data = RandomVectorUniform<float>(static_cast<size_t>(D), -1.0f, 1.0f);
-
-  void* buffer = nullptr;
-  float* input = alloc_aligned_buffer(D, byte_aligned, buffer);
+  RestrictAlignedPtr ptr = restrict_aligned_alloc(D, byte_aligned);
+  float* input = ptr.ptr;
   float* output = input;
   std::copy(data.begin(), data.end(), input);  // Copy the data to the aligned memory
 
@@ -140,7 +138,7 @@ void COMPUTESUMEXPF32KERNELAVX512F(benchmark::State& state) {
     Accumulation = MlasComputeSumExpF32KernelAvx512F(input, output, D, &NegativeMaximum);
   }
 
-  free(buffer);
+  free(ptr.underlying_buffer);
   (void)Accumulation;
 }
 
@@ -153,8 +151,8 @@ void COMPUTESOFTMAXOUTPUTF32KERNELAVX(benchmark::State& state) {
   }
 
   auto data = RandomVectorUniform<float>(static_cast<size_t>(D), -1.0f, 1.0f);
-  void* buffer = nullptr;
-  float* input = alloc_aligned_buffer(D, byte_aligned, buffer);
+  RestrictAlignedPtr ptr = restrict_aligned_alloc(D, byte_aligned);
+  float* input = ptr.ptr;
   float* output = input;
   std::copy(data.begin(), data.end(), input);  // Copy the data to the aligned memory
 
@@ -172,13 +170,13 @@ void COMPUTESOFTMAXOUTPUTF32KERNELAVX(benchmark::State& state) {
     MlasComputeSoftmaxOutputF32KernelAvx(output, D, Parameters);
   }
 
-  free(buffer);
+  free(ptr.underlying_buffer);
 }
 
 static void ComputeSoftmaxInplaceArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"ByteAligned", "N", "D", "Threads"});
   for (int threads : {1, 8}) {
-    for (int byte_aligned : {4, 8, 16, 32, 64, 128}) {
+    for (int byte_aligned : {64}) {  // MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT is 64
       b->Args({byte_aligned, 16000, 4, threads});
       b->Args({byte_aligned, 16000, 500, threads});
       b->Args({byte_aligned, 48000, 3, threads});
