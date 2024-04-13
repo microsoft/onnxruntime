@@ -220,8 +220,6 @@ namespace Dml
 
                 m_isInputsUploadedByDmlEP.resize(fusedNodeInputCount, 0);
                 m_nonOwnedGraphInputsFromInitializers.resize(fusedNodeInputCount);
-
-                // TODO (pavignol): Handle not reusing the command list and baking the bindings into operator initialization
                 graphDesc.reuseCommandList = true;
 
                 // Compile the operator
