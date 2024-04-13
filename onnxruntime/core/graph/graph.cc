@@ -3041,10 +3041,10 @@ Status Graph::InjectExternalInitializersFromFile(
       ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
                   "graph_proto_ is not in sync with name_to_initial_tensor_");
       (**existing_entry).clear_data_location();
-      (tensor_buffer);
       const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
       TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
-      auto tensor = Tensor(type, tensor_shape, static_cast<void*>(const_cast<char*>(tensor_buffer)), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+      auto tensor = Tensor(type, tensor_shape, static_cast<void*>(const_cast<char*>(tensor_buffer)),
+                           OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
       auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
       **existing_entry = std::move(tensor_proto);
     }

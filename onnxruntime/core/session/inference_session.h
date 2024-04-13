@@ -530,8 +530,6 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
-  void SetExternalDataPath(const PathString& external_data_path);
-
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 

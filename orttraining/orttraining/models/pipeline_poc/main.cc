@@ -90,7 +90,6 @@ int main(int argc, char* argv[]) {
     ExecutionOrder::DEFAULT,           // execution_order
     false,                             // enable_profiling
     ORT_TSTR(""),                      // optimized_model_filepath
-    ORT_TSTR(""),                      // external_data_path
     true,                              // enable_mem_pattern
     true,                              // enable_mem_reuse
     true,                              // enable_cpu_mem_arena
@@ -110,6 +109,7 @@ int main(int argc, char* argv[]) {
     {},                                // initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     {},  // external_initializers
+    {},  // external_initializer_files
 #endif
     nullptr,  // custom_create_thread_fn
     nullptr,  // custom_thread_creation_options

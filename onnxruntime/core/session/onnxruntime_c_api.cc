@@ -732,11 +732,6 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     }
   }
 
-  // External data path only works for loading model from memory
-  if (options != nullptr && !options->value.external_data_path.empty() && model_data != nullptr) {
-    sess->SetExternalDataPath(options->value.external_data_path);
-  }
-
   return nullptr;
 }
 
@@ -2731,7 +2726,6 @@ static constexpr OrtApi ort_api_1_to_18 = {
     &OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
     &OrtApis::KernelContext_GetScratchBuffer,
     &OrtApis::KernelInfoGetAllocator,
-    &OrtApis::SetExternalDataPath,
     &OrtApis::AddExternalInitializerFiles};
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

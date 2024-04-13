@@ -87,9 +87,6 @@ struct SessionOptions {
   // unless the filepath ends in '.ort' (case insensitive).
   std::basic_string<ORTCHAR_T> optimized_model_filepath;
 
-  // external data folder path if the model is loaded from memory buffer
-  std::basic_string<ORTCHAR_T> external_data_path;
-
   // enable the memory pattern optimization.
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation
@@ -191,7 +188,6 @@ inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_
      << " execution_order:" << session_options.execution_order
      << " enable_profiling:" << session_options.enable_profiling
      << " optimized_model_filepath:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.optimized_model_filepath)
-     << " external_data_path:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.external_data_path)
      << " enable_mem_pattern:" << session_options.enable_mem_pattern
      << " enable_mem_reuse:" << session_options.enable_mem_reuse
      << " enable_cpu_mem_arena:" << session_options.enable_cpu_mem_arena
@@ -211,6 +207,7 @@ inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_
   //<< " initializers_to_share_map:"          << session_options.initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   //<< " external_initializers:"             << session_options.external_initializers
+  //<< " external_initializer_files:"        << session_options.external_initializer_files
 #endif
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   //<< " custom_op_libs:" << session_options.custom_op_libs

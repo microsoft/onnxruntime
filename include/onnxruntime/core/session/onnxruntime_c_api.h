@@ -4631,16 +4631,16 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
 
-  /** \brief Set external data folder path if the model loaded from memory
+  /** \brief Set external initializer file buffer
    *
-   * \param[in] options
-   * \param[in] external_data_path
+   * \param[in] session options
+   * \param[in] external_file_names Array of null terminated UTF-8 encoded strings of the external initializer file names.
+   * \param[in] array_buffer Array of pointers to the buffer of the file context
+   * \param[in] file_lengths Array of size_t to indicate the length of file context
+   * \param[in] initializers_num Number of elements in the initializer_names and initializers
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(SetExternalDataPath, _Inout_ OrtSessionOptions* options,
-                  _In_ const ORTCHAR_T* external_data_path);
-
   ORT_API2_STATUS(AddExternalInitializerFiles, _In_ OrtSessionOptions* options,
                   _In_reads_(input_len) const ORTCHAR_T* const* external_file_names,
                   _In_reads_(input_len) const void* const* array_buffer,
