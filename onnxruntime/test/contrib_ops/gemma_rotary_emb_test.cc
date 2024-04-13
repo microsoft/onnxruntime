@@ -12,7 +12,6 @@
 namespace onnxruntime {
 namespace test {
 
-constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -1.0f;
 constexpr auto k_random_data_max = 1.0f;
 
