@@ -205,6 +205,26 @@ LoadFloatData(const float* src, size_t count, float32x4_t (&dst)[Capacity / 4])
 namespace
 {
 
+namespace fp32_conversion
+{
+
+// Manual conversion to float takes place in two steps:
+// 1. Map 4-bit values from [0, 15] to float values from [16.0f, 31.0f].
+//    This target float range is convenient because the 4-bit source values can be placed directly into the
+//    target float bits.
+// 2. Subtract the conversion offset of 16 from the float result.
+
+// The high 16 bits of an IEEE 754 32-bit float used as a template for creating float values.
+constexpr uint16_t float_high_half_template = 0b0'10000011'0000000;
+//                                           sign|exponent|partial mantissa
+//                                              +|131: 2^4|~~~~ <- 4 bits go here
+
+const uint16x8_t float_high_half_template_v = vdupq_n_u16(float_high_half_template);
+
+constexpr float offset = 16.0f;
+
+}
+
 template <size_t NCols, bool HasZeroPoint>
 MLAS_FORCEINLINE void
 ComputeDotProducts_BlkBitWidth4_CompFp32(
@@ -230,19 +250,6 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
 
     const uint8x8_t LowMask = vdup_n_u8(0x0F);
 
-    // Manual conversion to float takes place in two steps:
-    // 1. Map 4-bit values from [0, 15] to float values from [16.0f, 31.0f].
-    //    This target float range is convenient because the 4-bit source values can be placed directly into the
-    //    target float bits.
-    // 2. Subtract the conversion offset of 16 from the float result.
-
-    // The high 16 bits of an IEEE 754 32-bit float used as a template for creating float values.
-    constexpr uint16_t float_high_half_template = 0b0'10000011'0000000;
-    //                                           sign|exponent|partial mantissa
-    //                                              +|131: 2^4|~~~~ <- 4 bits go here
-
-    const uint16x8_t float_high_half_template_v = vdupq_n_u16(float_high_half_template);
-
     float32x4_t acc[NCols]{};
 
     const std::byte* QuantBData = QuantBDataColPtr;
@@ -258,7 +265,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
             [&](size_t i) { scale[i] = QuantBScale[i * StrideQuantBScale]; }
         );
 
-        [[maybe_unused]] float offset[NCols];  // Includes zero point and float conversion offset of 16.
+        [[maybe_unused]] float offset[NCols];  // Includes zero point and float conversion offset.
                                                // only used if HasZeroPoint == true
         if constexpr (HasZeroPoint) {
             UnrolledLoop<NCols>([&](size_t i) {
@@ -267,7 +274,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
                 const std::byte zp = ((QuantBZeroPointIdx & 1) == 1)
                                          ? (zp_packed >> 4)
                                          : (zp_packed & std::byte{0x0F});
-                offset[i] = 16.0f + std::to_integer<uint8_t>(zp);
+                offset[i] = fp32_conversion::offset + std::to_integer<uint8_t>(zp);
             });
         }
 
@@ -304,8 +311,8 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
 
             // combine 4 bits with float high half template
             UnrolledLoop<NCols>([&](size_t i) {
-                bv_u16[i][0] = vorrq_u16(bv_u16[i][0], float_high_half_template_v);
-                bv_u16[i][1] = vorrq_u16(bv_u16[i][1], float_high_half_template_v);
+                bv_u16[i][0] = vorrq_u16(bv_u16[i][0], fp32_conversion::float_high_half_template_v);
+                bv_u16[i][1] = vorrq_u16(bv_u16[i][1], fp32_conversion::float_high_half_template_v);
             });
 
             // `SubBlkLen` floats of B
@@ -321,14 +328,14 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
                 bv[i][3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][1], shift));
             });
 
-            // subtract float conversion offset (16) and zero point
+            // subtract float conversion offset and zero point
             if constexpr (HasZeroPoint) {
                 UnrolledLoop<NCols>([&](size_t i) {
                     const float32x4_t offset_v = vdupq_n_f32(offset[i]);
                     UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
                 });
             } else {
-                const float32x4_t offset_v = vdupq_n_f32(16.0f + 8.0f);
+                const float32x4_t offset_v = vdupq_n_f32(fp32_conversion::offset + 8.0f);
                 UnrolledLoop<NCols>([&](size_t i) {
                     UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
                 });
@@ -570,7 +577,242 @@ Q4BitBlkDequantBForSgemm_CompFp32(
         }
     };
 
-    impl0_reference();
+    auto impl1 = [&] {
+        constexpr size_t BlkBitWidth = 4;
+        //constexpr size_t SubBlkLen = 16;
+
+        float* Dst = FpData;
+
+        const std::byte* QuantBDataCol = QuantBData;
+        const float* QuantBScaleCol = QuantBScale;
+        const std::byte* QuantBZeroPointCol = QuantBZeroPoint;
+
+        const size_t StrideQuantBData = BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
+
+        // plan: dequantize 16x16 block from QuantBData at a time, transpose and write into Dst
+
+        uint8x8_t LowMask = vdup_n_u8(0x0F);
+
+        float scale[16];
+        float offset[16];
+
+        constexpr size_t NCols = 4;
+
+        size_t n_cols_remaining = CountN;
+        while (n_cols_remaining > 15) {
+
+            for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, ++k_blk_idx) {
+                for (size_t nn = 0; nn < 16; ++nn) {
+                    scale[nn] = QuantBScaleCol[nn * BlockStrideQuantB + k_blk_idx];
+
+                    if (QuantBZeroPointCol != nullptr) {
+                        const std::byte zp_packed =
+                            QuantBZeroPointCol[nn * StrideQuantBZeroPoint + k_blk_idx / 2];
+                        const std::byte zp = ((k_blk_idx & 1) == 1)
+                                                 ? (zp_packed >> 4)
+                                                 : (zp_packed & std::byte{0x0F});
+                        offset[nn] = fp32_conversion::offset + std::to_integer<uint8_t>(zp);
+                    }
+                }
+
+                const size_t kklen = std::min(CountK - k, BlkLen);
+
+                for (size_t kk = 0; kk < kklen; kk += 16) {
+
+                    float* DstColPtr = Dst;
+                    for (size_t nn = 0; nn < 16; nn += NCols) {
+
+                        const std::byte* QuantBDataPtr = QuantBDataCol + nn * StrideQuantBData + (k + kk) * BlkBitWidth / 8;
+
+                        // load B column vectors
+                        uint8x8_t bv_packed[NCols];
+                        UnrolledLoop<NCols>([&](size_t i) {
+                            bv_packed[i] = vld1_u8(
+                                reinterpret_cast<const uint8_t*>(QuantBDataPtr) + i * StrideQuantBData
+                            );
+                        });
+
+                        uint8x8_t bv_u8[NCols][2];
+                        UnrolledLoop<NCols>([&](size_t i) {
+                            bv_u8[i][0] = vand_u8(bv_packed[i], LowMask);
+                            bv_u8[i][1] = vshr_n_u8(bv_packed[i], 4);
+                        });
+
+                        // shift left 3 and widen to 16 bits
+                        uint16x8_t bv_u16[NCols][2];
+                        UnrolledLoop<NCols>([&](size_t i) {
+                            constexpr int shift = 3;
+                            bv_u16[i][0] = vshll_n_u8(bv_u8[i][0], shift);
+                            bv_u16[i][1] = vshll_n_u8(bv_u8[i][1], shift);
+                        });
+
+                        // combine 4 bits with float high half template
+                        UnrolledLoop<NCols>([&](size_t i) {
+                            bv_u16[i][0] = vorrq_u16(bv_u16[i][0], fp32_conversion::float_high_half_template_v);
+                            bv_u16[i][1] = vorrq_u16(bv_u16[i][1], fp32_conversion::float_high_half_template_v);
+                        });
+
+                        // `SubBlkLen` floats of B
+                        float32x4_t bv[NCols][4];
+
+                        // shift left 16, widen to 32 bits, and reinterpret as float
+                        UnrolledLoop<NCols>([&](size_t i) {
+                            constexpr int shift = 16;
+                            bv[i][0] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][0]), shift));
+                            bv[i][1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][0], shift));
+
+                            bv[i][2] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][1]), shift));
+                            bv[i][3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][1], shift));
+                        });
+
+                        // subtract float conversion offset and zero point
+                        if (QuantBZeroPoint != nullptr) {  // TODO constexpr
+                            UnrolledLoop<NCols>([&](size_t i) {
+                                const float32x4_t offset_v = vdupq_n_f32(offset[nn + i]);
+                                UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
+                            });
+                        } else {
+                            const float32x4_t offset_v = vdupq_n_f32(fp32_conversion::offset + 8.0f);
+                            UnrolledLoop<NCols>([&](size_t i) {
+                                UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
+                            });
+                        }
+
+                        // multiply by scale
+                        UnrolledLoop<NCols>([&](size_t i) {
+                            const float32x4_t scale_v = vdupq_n_f32(scale[nn + i]);
+                            UnrolledLoop<4>([&](size_t j) { bv[i][j] = vmulq_f32(bv[i][j], scale_v); });
+                        });
+
+                        // write, transposed, 16 x NCols values
+                        UnrolledLoop<NCols>([&](size_t i) {
+                            UnrolledLoop<4>([&](size_t j) {
+                                DstColPtr[(j * 4 + 0) * 16 + i] = vgetq_lane_f32(bv[i][j], 0);
+                                DstColPtr[(j * 4 + 1) * 16 + i] = vgetq_lane_f32(bv[i][j], 1);
+                                DstColPtr[(j * 4 + 2) * 16 + i] = vgetq_lane_f32(bv[i][j], 2);
+                                DstColPtr[(j * 4 + 3) * 16 + i] = vgetq_lane_f32(bv[i][j], 3);
+                            });
+                        });
+
+                        DstColPtr += NCols;
+                    }
+
+                    Dst += 16 * std::min(kklen - kk, size_t{16});
+                }
+            }
+
+            n_cols_remaining -= 16;
+
+            QuantBDataCol += 16 * StrideQuantBData;
+            QuantBScaleCol += 16 * BlockStrideQuantB;
+            if (QuantBZeroPointCol != nullptr) {
+                QuantBZeroPointCol += 16 * StrideQuantBZeroPoint;
+            }
+        }
+
+        if (n_cols_remaining > 0) {
+
+            for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, ++k_blk_idx) {
+                for (size_t nn = 0; nn < n_cols_remaining; ++nn) {
+                    scale[nn] = QuantBScaleCol[nn * BlockStrideQuantB + k_blk_idx];
+
+                    if (QuantBZeroPointCol != nullptr) {
+                        const std::byte zp_packed =
+                            QuantBZeroPointCol[nn * StrideQuantBZeroPoint + k_blk_idx / 2];
+                        const std::byte zp = ((k_blk_idx & 1) == 1)
+                                                 ? (zp_packed >> 4)
+                                                 : (zp_packed & std::byte{0x0F});
+                        offset[nn] = fp32_conversion::offset + std::to_integer<uint8_t>(zp);
+                    }
+                }
+
+                const size_t kklen = std::min(CountK - k, BlkLen);
+
+                for (size_t kk = 0; kk < kklen; kk += 16) {
+
+                    // zero out the 16x16 block in Dst first to ensure zero padding
+                    const float32x4_t zero_v = vdupq_n_f32(0.0f);
+                    UnrolledLoop<16>([&](size_t i) {
+                        vst1q_f32(Dst + 16 * i + 0, zero_v);
+                        vst1q_f32(Dst + 16 * i + 1, zero_v);
+                        vst1q_f32(Dst + 16 * i + 2, zero_v);
+                        vst1q_f32(Dst + 16 * i + 3, zero_v);
+                    });
+
+                    float* DstColPtr = Dst;
+
+                    for (size_t nn = 0; nn < n_cols_remaining; ++nn) {
+
+                        const std::byte* QuantBDataPtr = QuantBDataCol + nn * StrideQuantBData + (k + kk) * BlkBitWidth / 8;
+
+                        uint8x8_t bv_packed;
+                        bv_packed = vld1_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
+
+                        uint8x8_t bv_u8[2];
+                        bv_u8[0] = vand_u8(bv_packed, LowMask);
+                        bv_u8[1] = vshr_n_u8(bv_packed, 4);
+
+                        // shift left 3 and widen to 16 bits
+                        uint16x8_t bv_u16[2];
+                        {
+                            constexpr int shift = 3;
+                            bv_u16[0] = vshll_n_u8(bv_u8[0], shift);
+                            bv_u16[1] = vshll_n_u8(bv_u8[1], shift);
+                        }
+
+                        // combine 4 bits with float high half template
+                        bv_u16[0] = vorrq_u16(bv_u16[0], fp32_conversion::float_high_half_template_v);
+                        bv_u16[1] = vorrq_u16(bv_u16[1], fp32_conversion::float_high_half_template_v);
+
+                        // `SubBlkLen` floats of B
+                        float32x4_t bv[4];
+
+                        // shift left 16, widen to 32 bits, and reinterpret as float
+                        {
+                            constexpr int shift = 16;
+                            bv[0] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[0]), shift));
+                            bv[1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[0], shift));
+
+                            bv[2] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[1]), shift));
+                            bv[3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[1], shift));
+                        }
+
+                        // subtract float conversion offset and zero point
+                        if (QuantBZeroPoint != nullptr) {  // TODO constexpr
+                            const float32x4_t offset_v = vdupq_n_f32(offset[nn]);
+                            UnrolledLoop<4>([&](size_t j) { bv[j] = vsubq_f32(bv[j], offset_v); });
+                        } else {
+                            const float32x4_t offset_v = vdupq_n_f32(fp32_conversion::offset + 8.0f);
+                            UnrolledLoop<4>([&](size_t j) { bv[j] = vsubq_f32(bv[j], offset_v); });
+                        }
+
+                        // multiply by scale
+                        {
+                            const float32x4_t scale_v = vdupq_n_f32(scale[nn]);
+                            UnrolledLoop<4>([&](size_t j) { bv[j] = vmulq_f32(bv[j], scale_v); });
+                        }
+
+                        // write, transposed, 16 x 1 values
+                        UnrolledLoop<4>([&](size_t j) {
+                            DstColPtr[(j * 4 + 0) * 16] = vgetq_lane_f32(bv[j], 0);
+                            DstColPtr[(j * 4 + 1) * 16] = vgetq_lane_f32(bv[j], 1);
+                            DstColPtr[(j * 4 + 2) * 16] = vgetq_lane_f32(bv[j], 2);
+                            DstColPtr[(j * 4 + 3) * 16] = vgetq_lane_f32(bv[j], 3);
+                        });
+
+                        DstColPtr += 1;
+                    }
+
+                    Dst += 16 * std::min(kklen - kk, size_t{16});
+                }
+            }
+
+        }
+    };
+
+    //impl0_reference();
+    impl1();
 }
 
 //
