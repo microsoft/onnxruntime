@@ -158,8 +158,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileArray(const std::strin
 
   std::string generated_bin_path = test_folder + opt_bin_file_name;
   // If there are multiple initializers in the external bin file
-  // It's hard to guarantee the generated bin for optimized model is exactly same with orignial one
-  // TODO: may need to re-generate that model
+  // It's hard to guarantee the generated bin for optimized model is exactly same with original one for some cases
   if (compare_external_bin_file) {
     std::vector<char> generated_bin_buffer;
     ReadFileToBuffer(generated_bin_path.c_str(), generated_bin_buffer);
@@ -179,11 +178,11 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializerFromFileArray) {
 }
 
 // Several external initializers from same file
-// Use offset from tensor protoco to locate the buffer location 
+// Use offset from tensor proto to locate the buffer location 
 TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArray) {
   std::string model_file_name = "conv_qdq_external_ini.onnx";
   std::string external_bin_name = "conv_qdq_external_ini.bin";
-  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name, "3", false);
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
 }
 
 #endif
