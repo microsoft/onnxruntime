@@ -8,10 +8,11 @@
 using onnxruntime::narrow;
 
 struct RestrictAlignedPtr {
-  float* ptr;
-  void* underlying_buffer;
+  float* ptr;               // Aligned pointer within the underlying buffer
+  void* underlying_buffer;  // Underlying buffer (including extra space for alignment)
 };
 
+// Return a RestrictAlignedPtr where the ptr is aligned to byte_aligned, but not to byte_aligned * 2
 RestrictAlignedPtr restrict_aligned_alloc(int D, int byte_aligned) {
   if (byte_aligned <= 0 || (byte_aligned & (byte_aligned - 1)) != 0) {
     throw std::invalid_argument("Alignment must be a power of 2");
