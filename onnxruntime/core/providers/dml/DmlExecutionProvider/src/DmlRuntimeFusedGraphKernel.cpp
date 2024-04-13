@@ -210,7 +210,7 @@ namespace Dml
                 m_outputShapes = graphDesc.outputShapes;
 
                 // Walk through each graph edge and mark used inputs
-                m_inputsUsed.resize(fusedNodeInputCount, false);
+                m_inputsUsed = std::vector<bool>(fusedNodeInputCount);
                 for (auto it = serializedGraphInputIndexToSubgraphInputIndex.begin(); it != serializedGraphInputIndexToSubgraphInputIndex.end(); it++) {
                     m_inputsUsed[it->second] = true;
                 }
@@ -242,6 +242,8 @@ namespace Dml
 
                 std::vector<DML_BUFFER_BINDING> inputBindings(kernelContext->InputCount());
                 std::vector<DML_BINDING_DESC> inputBindingDescs(kernelContext->InputCount());
+
+                m_reusedCommandLists.clear();
             }
 
             auto providerImpl = static_cast<ExecutionProviderImpl*>(m_provider.Get());
