@@ -55,7 +55,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
 
     # For past_present_share_buffer:
     # Set max_seq_len to 2048 for Microsoft LLaMA-2 model since that is the max value currently supported
-    # Set max_seq_len to config value for other models (finetuned variant of LLaMA-2)
+    # Set max_seq_len to config value for other models
     max_seq_len = 2048 if args.benchmark_type == "ort-msft" else args.config.max_position_embeddings
 
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
