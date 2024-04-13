@@ -176,10 +176,6 @@ class Model {
   // Gets the path from which the model was loaded, if any.
   const Path& ModelPath() const noexcept { return model_path_; }
 
-  void SetModelPath(const PathString& model_path) {
-    model_path_ = Path::Parse(model_path);
-  }
-
   // Get model's main graph.
   Graph& MainGraph() noexcept;
   const Graph& MainGraph() const noexcept;
@@ -345,7 +341,7 @@ class Model {
   ModelMetaData model_metadata_;
 
   // Path to model file. May be empty.
-  Path model_path_;
+  const Path model_path_;
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;
