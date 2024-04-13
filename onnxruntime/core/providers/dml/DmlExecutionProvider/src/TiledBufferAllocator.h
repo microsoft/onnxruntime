@@ -1,15 +1,15 @@
 #pragma once
-#include "core/framework/allocator.h"
 #include "ExecutionContext.h"
 #include "ExecutionProvider.h"
 #include "DmlResourceWrapper.h"
-#include "AllocationInfo.h"
+#include "HeapAllocator.h"
+#include "DmlBufferAllocator.h"
 
 namespace Dml
 {
   class DmlSubAllocator;
 
-  class TiledBufferAllocator : public onnxruntime::IAllocator
+  class TiledBufferAllocator : public DmlBufferAllocator
   {
     struct BackingHeap
     {
@@ -26,15 +26,10 @@ namespace Dml
       D3D12_RESOURCE_STATES initialState,
       std::unique_ptr<DmlSubAllocator>&& subAllocator);
         
-    const AllocationInfo* DecodeDataHandle(const void* opaqueHandle);
+    virtual void SetResidency(bool value) override;
 
-    void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
-        
-    void SetResidency(bool value);
-
-    void* Alloc(size_t size) final;
-    void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
-    void Free(void* p) final;
+    using DmlBufferAllocator::Alloc;
+    virtual void* Alloc(size_t size, AllocatorRoundingMode roundingMode) override;
 
   private:
     ComPtr<ID3D12Device> m_device;
@@ -45,8 +40,10 @@ namespace Dml
     std::shared_ptr<ExecutionContext> m_context;
     std::unique_ptr<DmlSubAllocator> m_subAllocator;
 
-    AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Disabled;
+    HeapAllocator m_heapAllocator;
+    uint64_t m_currentAllocationId = 0;
+    std::unordered_map<uintptr_t, uint64_t> m_resourceIds;
 
-
+    virtual void FreeResource(void* p, uint64_t resourceId) override;
   };
 }

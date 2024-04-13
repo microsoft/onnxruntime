@@ -24,7 +24,7 @@ namespace Dml
             IDMLDevice* dmlDevice, 
             ID3D12CommandQueue* queue);
 
-        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
+        void SetAllocator(std::weak_ptr<DmlBufferAllocator> allocator);
 
         // Waits for flushed work, discards unflushed work, and discards associated references to 
         // prevent circular references.  Must be the last call on the object before destruction.
@@ -84,6 +84,8 @@ namespace Dml
         void ReleaseCompletedReferences();
 
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;
+
+        ID3D12CommandQueue* Queue() const;
 
     private:
         ComPtr<ID3D12Device> m_d3dDevice;

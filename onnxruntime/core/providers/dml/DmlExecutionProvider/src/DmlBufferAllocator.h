@@ -1,0 +1,41 @@
+#pragma once
+#include "core/framework/allocator.h"
+#include "AllocationInfo.h"
+
+namespace Dml
+{
+    class CPUAllocator : public onnxruntime::IAllocator
+    {
+    public:
+        explicit CPUAllocator(OrtMemType memType);
+
+        void* Alloc(size_t size) override;
+        void Free(void* p) override;
+    };
+
+    class DmlBufferAllocator : public onnxruntime::IAllocator
+    {
+    public:
+        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
+
+        // Returns the information associated with an opaque allocation handle returned by IAllocator::Alloc.
+        const AllocationInfo* DecodeDataHandle(const void* opaqueHandle);
+
+        virtual void SetResidency(bool value) = 0;
+
+        void* Alloc(size_t size) final;
+        virtual void* Alloc(size_t size, AllocatorRoundingMode roundingMode) = 0;
+        void Free(void* p) final;
+
+    protected:
+        using onnxruntime::IAllocator::IAllocator;
+
+        // Unless specifically requested, allocation sizes are not rounded to enable pooling
+        // until SetDefaultRoundingMode is called.  This should be done at completion of session
+        // initialization.
+        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Disabled;
+
+        friend class AllocationInfo;
+        virtual void FreeResource(void* p, uint64_t resourceId) = 0;
+    };
+}

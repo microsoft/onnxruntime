@@ -18,7 +18,7 @@ namespace Dml
         ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));        
     }
 
-    void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
+    void ExecutionContext::SetAllocator(std::weak_ptr<DmlBufferAllocator> allocator)
     {
         m_dmlRecorder.SetAllocator(allocator);
     }
@@ -221,6 +221,11 @@ namespace Dml
     {
         assert(!m_closed);
         return m_queue->GetType();
+    }
+
+    ID3D12CommandQueue * ExecutionContext::Queue() const
+    {
+        return m_queue->Queue();
     }
 
 } // namespace Dml

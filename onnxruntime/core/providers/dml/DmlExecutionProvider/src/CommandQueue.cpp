@@ -47,12 +47,12 @@ namespace Dml
         return GpuEvent{ m_lastFenceValue + 1, m_fence };
     }
 
-    void CommandQueue::QueueReference(IUnknown* object, bool waitForUnsubmittedWork) 
+    void CommandQueue::QueueReference(IUnknown* object, bool waitForUnsubmittedWork)
     {
-        // If the CommandQueue is closing, then m_queuedReferences is being cleared -- it is not OK 
-        // to queue additional references at this time, since those references would be leaked. This 
-        // affects any objects in m_queuedReferences whose destructors indirectly call QueueReference; 
-        // for example, an allocation from BucketizedBufferAllocator attempts to queue a reference 
+        // If the CommandQueue is closing, then m_queuedReferences is being cleared -- it is not OK
+        // to queue additional references at this time, since those references would be leaked. This
+        // affects any objects in m_queuedReferences whose destructors indirectly call QueueReference;
+        // for example, an allocation from DmlBufferAllocator attempts to queue a reference
         // to its underlying D3D resource when freed. Furthermore, these references are unnecessary
         // since Close() already blocks for scheduled GPU work before clearing m_queuedReferences.
         if (!m_closing)
@@ -69,7 +69,7 @@ namespace Dml
             m_queuedReferences.push_back(queuedReference);
         }
     }
-    
+
     void CommandQueue::Close()
     {
         // Wait for flushed work:
@@ -80,7 +80,7 @@ namespace Dml
         m_queuedReferences.clear();
         m_closing = false;
     }
-    
+
     void CommandQueue::ReleaseCompletedReferences()
     {
         uint64_t completedValue = GetFence()->GetCompletedValue();
@@ -90,5 +90,9 @@ namespace Dml
         }
     }
 
+    ID3D12CommandQueue * CommandQueue::Queue() const
+    {
+      return m_queue.Get();
+    }
 
 } // namespace Dml

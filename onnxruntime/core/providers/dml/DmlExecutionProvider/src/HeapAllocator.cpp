@@ -30,13 +30,23 @@ namespace Dml
     EnsureHeapSpace(allocationSize);
 
     //Allocate resource
-    return AllocateResource(allocationSize);
+    auto x = AllocateResource(allocationSize);
+    if (!x)
+    {
+      __nop();
+      EnsureHeapSpace(allocationSize);
+    }
+    return x;
   }
 
-  void HeapAllocator::ReleaseBuffer(ComPtr<ID3D12Resource>&& buffer)
+  bool HeapAllocator::TryReleaseBuffer(const ComPtr<ID3D12Resource>& buffer)
   {
+    //Check if we own this resource
+    auto it = m_usedResources.find(buffer);
+    if (it == m_usedResources.end()) return false;
+
     //Unregister used resource
-    auto heapMappings{ m_usedResources.extract(buffer).mapped() };
+    auto heapMappings{ m_usedResources.extract(it).mapped() };
     
     //Deallocate all mappings
     uint64_t heapOffset = 0;
@@ -53,12 +63,35 @@ namespace Dml
       //Deallocate all segments in heap
       for (auto& segment : mapping.HeapSegments)
       {
-        m_allocator.Deallocate({ segment.Start + heapOffset, segment.Size });
+        m_allocator.TryDeallocate({ segment.Start + heapOffset, segment.Size });
       }
     }
     
     //Register as free resource
-    m_freeResources[std::move(heapMappings)] = std::move(buffer);    
+    m_freeResources[heapMappings].push_back(buffer);
+    return true;
+  }
+
+  void HeapAllocator::SetResidency(bool value)
+  {
+    std::vector<ID3D12Pageable*> pageables;
+    pageables.reserve(m_heaps.size());
+
+    for (auto& heap : m_heaps)
+    {
+      ComPtr<ID3D12Pageable> pageable;
+      ORT_THROW_IF_FAILED(heap.Heap.As(&pageable));
+      pageables.push_back(pageable.Get());
+    }
+
+    if (value)
+    {
+      ORT_THROW_IF_FAILED(m_device->MakeResident(UINT(pageables.size()), pageables.data()));
+    }
+    else
+    {
+      ORT_THROW_IF_FAILED(m_device->Evict(UINT(pageables.size()), pageables.data()));
+    }
   }
 
   void HeapAllocator::EnsureHeapSpace(uint64_t size)
@@ -91,10 +124,15 @@ namespace Dml
 
     //Map segments to heaps
     auto heapMappings = CalculateHeapMappings(segments);
+    if (heapMappings.size() > 1 && heapMappings.back().HeapSegments.back().Start > 1000000000000)
+    {
+      __nop();
+      return nullptr;
+    }
 
     //Check if we need a new resource
-    auto it = m_freeResources.find(heapMappings);
-    if (it == m_freeResources.end())
+    auto& reusableResources = m_freeResources[heapMappings];
+    if (reusableResources.empty())
     {
       auto resource = CreateResource(size);
       UpdateTileMappings(resource.Get(), heapMappings);
@@ -105,9 +143,10 @@ namespace Dml
     //Or can reuse an existing one
     else
     {
-      auto keyValuePair = m_freeResources.extract(it);
-      m_usedResources[keyValuePair.mapped()] = keyValuePair.key();
-      return keyValuePair.mapped();
+      auto resource = std::move(reusableResources.back());
+      m_usedResources[resource] = heapMappings;
+      reusableResources.pop_back();
+      return resource;
     }
   }
 
@@ -119,19 +158,15 @@ namespace Dml
     auto segment = segments.begin();
     uint64_t heapOffset = 0;
     uint64_t resourceOffset = 0;
+    uint64_t segmentOffset = 0;
     while (segment != segments.end())
     {
       //Search for the heap containing the current segment start
-      while (segment->Start > heapOffset + heap->Size)
+      while (segment->Start >= heapOffset + heap->Size)
       {
         heapOffset += heap++->Size;
       }
             
-      //Define mapping in heap
-      MemorySegment heapSegment;
-      heapSegment.Start = segment->Start - heapOffset;
-      heapSegment.Size = std::min(segment->End() - heapOffset, heap->Size) - heapSegment.Start;
-
       //Create new or get current resource mapping
       if (results.empty() || results.back().Heap != heap->Heap.Get())
       {
@@ -139,15 +174,22 @@ namespace Dml
       }
       auto& mapping = results.back();
 
+      //Define mapping in heap
+      MemorySegment heapSegment;
+      heapSegment.Start = segment->Start + segmentOffset - heapOffset;
+      heapSegment.Size = std::min(segment->End() - heapOffset, heap->Size) - heapSegment.Start;
+      segmentOffset += heapSegment.Size;
+
       //Extend mapping
       mapping.HeapSegments.push_back(heapSegment);
       mapping.ResourceSegment.Size += heapSegment.Size;
       resourceOffset += heapSegment.Size;
 
       //Advance segment if we reached its end
-      if (segment->End() - heapOffset >= heapOffset + heap->Size)
+      if (segmentOffset >= segment->Size)
       {
         segment++;
+        segmentOffset = 0;
       }
       //Alternatively advance the heap
       else

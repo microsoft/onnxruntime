@@ -9,8 +9,12 @@ namespace Dml
 
     uint64_t End() const noexcept;
 
+    bool OverlapsWith(const MemorySegment& other) const noexcept;
+
     explicit operator bool() const noexcept;
+
     bool operator==(const MemorySegment&) const noexcept;
+    bool operator<(const MemorySegment&) const noexcept;
   };
 
   class MemoryAllocator
@@ -25,7 +29,7 @@ namespace Dml
     uint64_t Capacity() const;
 
     MemorySegment TryAllocate(uint64_t size);
-    void Deallocate(MemorySegment segment);
+    bool TryDeallocate(MemorySegment segment);
 
     std::vector<MemorySegment> TryMultipartAllocate(uint64_t size);
 
@@ -37,5 +41,8 @@ namespace Dml
 
     MemorySegment* SmallestFreeSegment(uint64_t minSize = 0);
     MemorySegment* LargestFreeSegment();
+
+    void AssertIntegrity() const;
+    bool TestIntegrity() const;
   };
 }

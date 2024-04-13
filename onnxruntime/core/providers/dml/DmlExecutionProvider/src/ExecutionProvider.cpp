@@ -9,6 +9,7 @@
 #include "ReadbackHeap.h"
 #include "ExecutionContext.h"
 #include "BucketizedBufferAllocator.h"
+#include "TiledBufferAllocator.h"
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
@@ -198,7 +199,7 @@ namespace Dml
         {
             // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
             // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
-            m_allocator = std::make_shared<BucketizedBufferAllocator>(m_d3d12Device.Get(),
+            m_allocator = std::make_shared<TiledBufferAllocator>(m_d3d12Device.Get(),
                 m_context,  // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
                 CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
                 D3D12_HEAP_FLAG_NONE,
@@ -1153,7 +1154,7 @@ namespace Dml
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
     {
-        Dml::BucketizedBufferAllocator* pAllocationInfo = static_cast<Dml::BucketizedBufferAllocator*>(allocator);
+        Dml::DmlBufferAllocator* pAllocationInfo = static_cast<Dml::DmlBufferAllocator*>(allocator);
         return pAllocationInfo->DecodeDataHandle(ptr)->GetResource();
     }
 

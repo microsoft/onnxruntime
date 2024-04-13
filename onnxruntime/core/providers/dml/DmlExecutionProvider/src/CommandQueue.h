@@ -47,6 +47,8 @@ namespace Dml
         void Close();
         void ReleaseCompletedReferences();
 
+        ID3D12CommandQueue* Queue() const;
+
     private:
         struct QueuedReference
         {

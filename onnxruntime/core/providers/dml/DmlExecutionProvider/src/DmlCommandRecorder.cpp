@@ -4,7 +4,7 @@
 #include "precomp.h"
 #include "DmlCommandRecorder.h"
 #include "CommandQueue.h"
-#include "BucketizedBufferAllocator.h"
+#include "DmlBufferAllocator.h"
 
 using namespace Dml;
 
@@ -22,7 +22,7 @@ DmlCommandRecorder::DmlCommandRecorder(
     ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
 }
 
-void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
+void DmlCommandRecorder::SetAllocator(std::weak_ptr<DmlBufferAllocator> allocator)
 {
     m_bufferAllocator = allocator;
 }

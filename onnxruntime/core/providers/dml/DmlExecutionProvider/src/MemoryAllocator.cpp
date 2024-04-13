@@ -29,6 +29,9 @@ namespace Dml
 
     //Set new capacity
     m_capacity = newCapacity;
+
+    //Integrity check
+    AssertIntegrity();
   }
 
   uint64_t MemoryAllocator::FreeSpace() const
@@ -61,8 +64,19 @@ namespace Dml
     return TryAllocateFrom(segment, size);
   }
 
-  void MemoryAllocator::Deallocate(MemorySegment segment)
+  bool MemoryAllocator::TryDeallocate(MemorySegment segment)
   {
+    //Check if the data is allocated
+    for (auto& slot : m_freeSpace)
+    {
+      if (slot.OverlapsWith(segment)) 
+      {
+        return false;
+      }
+    }
+
+    auto copy = *this;
+
     //Find neighboring slots
     MemorySegment* previousSlot = nullptr;
     MemorySegment* nextSlot = nullptr;
@@ -76,24 +90,47 @@ namespace Dml
       if (currentEnd == segment.Start) previousSlot = &slot;
     }
 
-    //Add neighboring segments to current one
-    if (previousSlot)
-    {
-      segment.Start = previousSlot->Start;
-      segment.Size += previousSlot->Size;
-      swap(m_freeSpace.back(), *previousSlot);
-      m_freeSpace.pop_back();
-    }
+    auto freeSegment = segment;
 
+    //Add neighboring segments to current one
     if (nextSlot)
     {
-      segment.Size += nextSlot->Size;
-      swap(m_freeSpace.back(), *nextSlot);
-      m_freeSpace.pop_back();
+      freeSegment.Size += nextSlot->Size;
+      m_freeSpace.erase(m_freeSpace.begin() + (nextSlot - m_freeSpace.data()));
+      /*swap(m_freeSpace.back(), *nextSlot);
+      m_freeSpace.pop_back();*/
+    }
+
+    if (previousSlot)
+    {
+      freeSegment.Start = previousSlot->Start;
+      freeSegment.Size += previousSlot->Size;
+      m_freeSpace.erase(m_freeSpace.begin() + (previousSlot - m_freeSpace.data()));
+      /*swap(m_freeSpace.back(), *previousSlot);
+      m_freeSpace.pop_back();*/
+    }
+
+    MemorySegment* afterSlot = nullptr;
+    for (auto& slot : m_freeSpace)
+    {
+      if (slot.Start >= freeSegment.End())
+      {
+        afterSlot = &slot;
+        break;
+      }
     }
 
     //Add reclaimed segment
-    m_freeSpace.push_back(segment);
+    m_freeSpace.emplace(afterSlot ? m_freeSpace.begin() + (afterSlot - m_freeSpace.data()) : m_freeSpace.end(), freeSegment);
+
+    //Integrity check
+    if (!TestIntegrity())
+    {
+      __nop();
+      copy.TryDeallocate(segment);
+    }
+
+    return true;
   }
 
   std::vector<MemorySegment> MemoryAllocator::TryMultipartAllocate(uint64_t size)
@@ -115,6 +152,9 @@ namespace Dml
       remainingSize -= allocation.Size;
       allocations.push_back(allocation);
     }
+
+    std::sort(allocations.begin(), allocations.end());
+
     return allocations;
   }
 
@@ -122,6 +162,8 @@ namespace Dml
   {
     //Validate inputs
     if (!segment || m_freeSpace.empty() || segment < &m_freeSpace.front() || segment > &m_freeSpace.back() || segment->Size < size) return {};
+
+    auto copy = *this;
 
     //Decrease free space
     auto allocationStart = segment->Start;
@@ -131,8 +173,17 @@ namespace Dml
     //Remove empty slot if needed
     if (segment->Size == 0)
     {
-      swap(m_freeSpace.back(), *segment);
-      m_freeSpace.pop_back();
+      m_freeSpace.erase(m_freeSpace.begin() + (segment - m_freeSpace.data()));
+      /*swap(m_freeSpace.back(), *segment);
+      m_freeSpace.pop_back();*/
+    }
+
+    //Integrity check
+    if (!TestIntegrity())
+    {
+      __nop();
+      auto copySegment = copy.m_freeSpace.data() + (segment-m_freeSpace.data());
+      return copy.TryAllocateFrom(copySegment, size);
     }
 
     //Return allocated segment
@@ -165,9 +216,39 @@ namespace Dml
     return selectedSlot;
   }
 
+  void MemoryAllocator::AssertIntegrity() const
+  {
+    auto isValid = TestIntegrity();
+    if (!isValid)
+    {
+      __nop();
+    }
+    assert(isValid);
+  }
+
+  bool MemoryAllocator::TestIntegrity() const
+  {
+    uint64_t position = 0u;
+
+    for (auto segment : m_freeSpace)
+    {
+      if (segment.Start < position) return false;
+      if (segment.End() > m_capacity) return false;
+
+      position = segment.End();
+    }
+
+    return true;
+  }
+
   uint64_t MemorySegment::End() const noexcept
   {
     return Start + Size;
+  }
+
+  bool MemorySegment::OverlapsWith(const MemorySegment & other) const noexcept
+  {
+    return (Start <= other.Start && other.Start < End()) || (other.Start <= Start && Start < other.End());
   }
 
   MemorySegment::operator bool() const noexcept
@@ -178,6 +259,11 @@ namespace Dml
   bool MemorySegment::operator==(const MemorySegment& other) const noexcept
   {
     return Start == other.Start && Size == other.Size;
+  }
+
+  bool MemorySegment::operator<(const MemorySegment& other) const noexcept
+  {
+    return Start < other.Start;
   }
 
   uint64_t AlignMemoryOffset(uint64_t offset, uint64_t alignment)

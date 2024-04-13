@@ -2,30 +2,20 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include "core/framework/allocator.h"
+#include "DmlBufferAllocator.h"
 #include "ExecutionContext.h"
 #include "DmlResourceWrapper.h"
-#include "AllocationInfo.h"
+#include "DmlBufferAllocator.h"
 
 namespace Dml
 {
     class DmlSubAllocator;
-
-    class CPUAllocator : public onnxruntime::IAllocator
-    {
-    public:
-        explicit CPUAllocator(OrtMemType memType);
-
-        void* Alloc(size_t size) override;
-        void Free(void* p) override;
-    };
-
+    
     // Implements a Lotus allocator for D3D12 heap buffers, using a bucket allocation strategy. The allocator
     // maintains a set of fixed-size buckets, with each bucket containing one or more D3D12 buffers of that fixed size.
     // All requested allocation sizes are rounded up to the nearest bucket size, which ensures minimal fragmentation
     // while providing an upper bound on the amount of memory "wasted" with each allocation.
-    class BucketizedBufferAllocator : public onnxruntime::IAllocator
+    class BucketizedBufferAllocator : public DmlBufferAllocator
     {
     public:
         ~BucketizedBufferAllocator();
@@ -41,18 +31,12 @@ namespace Dml
             D3D12_RESOURCE_STATES initialState,
             std::unique_ptr<DmlSubAllocator>&& subAllocator);
 
-        // Returns the information associated with an opaque allocation handle returned by IAllocator::Alloc.
-        const AllocationInfo* DecodeDataHandle(const void* opaqueHandle);
-
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
-
         // Sets the residency of allocated GPU memory
-        void SetResidency(bool value);
+        virtual void SetResidency(bool value) override;
 
     public: // onnxruntime::IAllocator
-        void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
-        void* Alloc(size_t size) final;
-        void Free(void* p) final;
+        using DmlBufferAllocator::Alloc;
+        virtual void* Alloc(size_t size, AllocatorRoundingMode roundingMode) override;
 
     private:
         static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB
@@ -74,8 +58,7 @@ namespace Dml
         static gsl::index GetBucketIndexFromSize(uint64_t size);
         static uint64_t GetBucketSizeFromIndex(gsl::index index);
 
-        friend class AllocationInfo;
-        void FreeResource(void* p, uint64_t resourceId);
+        virtual void FreeResource(void* p, uint64_t resourceId) override;
 
         ComPtr<ID3D12Device> m_device;
         D3D12_HEAP_PROPERTIES m_heapProperties;
@@ -86,11 +69,6 @@ namespace Dml
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
-
-        // Unless specifically requested, allocation sizes are not rounded to enable pooling
-        // until SetDefaultRoundingMode is called.  This should be done at completion of session
-        // initialization.
-        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Disabled;
 
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
