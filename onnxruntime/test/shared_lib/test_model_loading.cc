@@ -143,7 +143,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileArray(const std::strin
   Ort::SessionOptions so;
   std::string optimized_model_file_name(model_file_name);
   auto length = optimized_model_file_name.length();
-  optimized_model_file_name.insert(length-5, "_opt");
+  optimized_model_file_name.insert(length - 5, "_opt");
   std::string optimized_file_path(test_folder + optimized_model_file_name);
   std::basic_string<ORTCHAR_T> optimized_file_path_t(optimized_file_path.begin(), optimized_file_path.end());
 
@@ -156,7 +156,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileArray(const std::strin
   so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, external_ini_min_size_bytes.c_str());
 
   std::basic_string<ORTCHAR_T> external_file_name(external_data_file_name.begin(), external_data_file_name.end());
-  std::vector<std::basic_string<ORTCHAR_T>> file_names{external_file_name};
+  std::vector<std::basic_string<ORTCHAR_T> > file_names{external_file_name};
   std::vector<void*> file_buffers{static_cast<void*>(external_bin_buffer.data())};
   std::vector<size_t> lengths{external_bin_buffer.size()};
   so.AddExternalInitializerFiles(file_names, file_buffers, lengths);
@@ -186,7 +186,7 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializerFromFileArray) {
 }
 
 // Several external initializers from same file
-// Use offset from tensor proto to locate the buffer location 
+// Use offset from tensor proto to locate the buffer location
 TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArray) {
   std::string model_file_name = "conv_qdq_external_ini.onnx";
   std::string external_bin_name = "conv_qdq_external_ini.bin";
@@ -194,7 +194,6 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArray) {
 }
 
 void FileMmap(const ORTCHAR_T* file_path, void*& mapped_base) {
-
 
 #ifdef _WIN32
   wil::unique_hfile file_handle{CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
