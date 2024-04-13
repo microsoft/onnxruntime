@@ -11,7 +11,12 @@
 
 #include "gmock/gmock.h"
 
+#ifdef _WIN32
 #include <wil/Resource.h>
+#else
+#include <sys/mman.h>
+#include <sys/stat.h>
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -189,6 +194,9 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArray) {
 }
 
 void FileMmap(const ORTCHAR_T* file_path, void*& mapped_base) {
+
+
+#ifdef _WIN32
   wil::unique_hfile file_handle{CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
   ASSERT_TRUE(file_handle.get() != INVALID_HANDLE_VALUE);
 
@@ -205,6 +213,12 @@ void FileMmap(const ORTCHAR_T* file_path, void*& mapped_base) {
                               0,
                               0,
                               0);
+#else
+  ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
+  ASSERT_TRUE(file_descriptor.IsValid());
+  struct stat sb;
+  mapped_base = mmap(nullptr, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), 0);
+#endif
   return;
 }
 
@@ -251,8 +265,13 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string
 
   Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), so);
 
+#ifdef _WIN32
   bool ret = UnmapViewOfFile(mapped_base);
   ASSERT_TRUE(ret);
+#else
+  int ret = munmap(p->addr, p->len);
+  ASSERT_TRUE(ret == 0);
+#endif
 
   std::string generated_bin_path = test_folder + opt_bin_file_name;
   // If there are multiple initializers in the external bin file
@@ -272,6 +291,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string
   ASSERT_EQ(std::remove(generated_bin_path.c_str()), 0);
 }
 
+// Load external bin file using mmap
 // Several external initializers from same file
 // Use offset from tensor proto to locate the buffer location
 TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileMmap) {
