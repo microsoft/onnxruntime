@@ -34,6 +34,7 @@ using Microsoft::WRL::ComPtr;
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ExecutionContext.h"
 
 namespace onnxruntime {
 
@@ -47,9 +48,11 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   DMLProviderFactory(const ConfigOptions& config_options,
                      IDMLDevice* dml_device,
                      ID3D12CommandQueue* cmd_queue,
-                     bool disable_metacommands) : dml_device_(dml_device),
-                                                         cmd_queue_(cmd_queue),
-                                                         metacommands_enabled_(!disable_metacommands) {
+                     bool disable_metacommands,
+                     bool python_api) : dml_device_(dml_device),
+                                        cmd_queue_(cmd_queue),
+                                        metacommands_enabled_(!disable_metacommands),
+                                        python_api_(python_api) {
     graph_capture_enabled_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableGraphCapture, "0"));
     cpu_sync_spinning_enabled_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableCpuSyncSpinning, "0"));
   }
@@ -65,10 +68,28 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   bool metacommands_enabled_ = true;
   bool graph_capture_enabled_ = false;
   bool cpu_sync_spinning_enabled_ = false;
+  bool python_api_ = false;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
-  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_, graph_capture_enabled_, cpu_sync_spinning_enabled_);
+  ComPtr<Dml::ExecutionContext> execution_context;
+
+  ComPtr<ID3D12Device> d3d12_device;
+  ORT_THROW_IF_FAILED(cmd_queue_->GetDevice(IID_PPV_ARGS(&d3d12_device)));
+
+  if (python_api_) {
+    uint32_t execution_context_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(execution_context.GetAddressOf()));
+
+    // First, check if an I/O binding API that was used before this session or another session has already created a queue
+    if (FAILED(d3d12_device->GetPrivateData(dml_execution_context_guid, &execution_context_ptr_size, execution_context.GetAddressOf()))) {
+      execution_context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), true, true);
+      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_execution_context_guid, execution_context.Get()));
+    }
+  } else {
+    execution_context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), cpu_sync_spinning_enabled_, false);
+  }
+
+  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), execution_context.Get(), metacommands_enabled_, graph_capture_enabled_, cpu_sync_spinning_enabled_);
   return provider;
 }
 
@@ -79,10 +100,10 @@ void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(const ConfigOptions& config_options,
                                                                               IDMLDevice* dml_device,
                                                                               ID3D12CommandQueue* cmd_queue,
-                                                                              bool disable_metacommands) {
+                                                                              bool disable_metacommands,
+                                                                              bool python_api) {
   ComPtr<IDMLDevice> ownedDmlDevice;
-  if (dml_device == nullptr)
-  {
+  if (dml_device == nullptr) {
     ComPtr<ID3D12Device> d3d12_device;
     ORT_THROW_IF_FAILED(cmd_queue->GetDevice(IID_PPV_ARGS(&d3d12_device)));
 
@@ -108,7 +129,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(co
   const Env& env = Env::Default();
   auto luid = d3d12_device->GetAdapterLuid();
   env.GetTelemetryProvider().LogExecutionProviderEvent(&luid);
-  return std::make_shared<onnxruntime::DMLProviderFactory>(config_options, dml_device, cmd_queue, disable_metacommands);
+  return std::make_shared<onnxruntime::DMLProviderFactory>(config_options, dml_device, cmd_queue, disable_metacommands, python_api);
 }
 
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled) {
@@ -547,19 +568,21 @@ std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(
   cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 
   ComPtr<ID3D12CommandQueue> cmd_queue;
-  uint32_t cmd_queue_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(cmd_queue.GetAddressOf()));
+  ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
 
-  // First, check if an I/O binding API that was used before this session or another session has already created a queue
-  if (FAILED(d3d12_device->GetPrivateData(dml_command_queue_guid, &cmd_queue_ptr_size, cmd_queue.GetAddressOf()))) {
-    ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_GRAPHICS_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
+  ComPtr<IDMLDevice> dml_device;
+  if (python_api) {
+    uint32_t dml_device_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(dml_device.GetAddressOf()));
 
-    if (python_api) {
-      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_command_queue_guid, sizeof(cmd_queue.Get()), cmd_queue.GetAddressOf()));
+    if (FAILED(d3d12_device->GetPrivateData(dml_device_guid, &dml_device_ptr_size, dml_device.GetAddressOf()))) {
+      dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device);
+      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_device_guid, dml_device.Get()));
     }
+  } else {
+    dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device);
   }
 
-  auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device);
-  return CreateExecutionProviderFactory_DML(config_options, dml_device.Get(), cmd_queue.Get(), disable_metacommands);
+  return CreateExecutionProviderFactory_DML(config_options, dml_device.Get(), cmd_queue.Get(), disable_metacommands, python_api);
 }
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(
@@ -621,6 +644,7 @@ API_IMPL_BEGIN
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(options->value.config_options,
                                                                                         dml_device,
                                                                                         cmd_queue,
+                                                                                        false,
                                                                                         false));
 API_IMPL_END
   return nullptr;

@@ -69,13 +69,13 @@ namespace Dml
 
     ExecutionProvider::ExecutionProvider(
         IDMLDevice* dmlDevice,
-        ID3D12CommandQueue* commandQueue,
+        Dml::ExecutionContext* execution_context,
         bool enableMetacommands,
         bool enableGraphCapture,
         bool enableSyncSpinning) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
-        D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
+        D3D12_COMMAND_LIST_TYPE queueType = execution_context->GetCommandListTypeForQueue();
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
         {
             // DML requires either DIRECT or COMPUTE command queues.
@@ -83,9 +83,9 @@ namespace Dml
         }
 
         ComPtr<ID3D12Device> device;
-        GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
+        GRAPHICS_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableGraphCapture, enableSyncSpinning);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), execution_context, enableMetacommands, enableGraphCapture, enableSyncSpinning);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -149,12 +149,20 @@ namespace Dml
         }
     }
 
-ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableGraphCapture, bool enableCpuSyncSpinning)
+    ExecutionProviderImpl::ExecutionProviderImpl(
+        IDMLDevice* dmlDevice,
+        ID3D12Device* d3d12Device,
+        Dml::ExecutionContext* execution_context,
+        bool enableMetacommands,
+        bool enableGraphCapture,
+        bool enableCpuSyncSpinning
+        )
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
           m_graphCaptureEnabled(enableGraphCapture),
-          m_cpuSyncSpinningEnabled(enableCpuSyncSpinning)
+          m_cpuSyncSpinningEnabled(enableCpuSyncSpinning),
+          m_context(execution_context)
     {
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
@@ -214,14 +222,8 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
             m_areCustomHeapsSupported = options19.ComputeOnlyCustomHeapSupported;
         }
 
-        m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue, m_cpuSyncSpinningEnabled);
-
-        m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
+        m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context.Get());
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get());
-
-        // Set the upload heap on the D3D12 device to allow the python API to use the same queue
-        auto uploadHeapPointer = m_uploadHeap.get();
-        m_d3d12Device->SetPrivateData(dml_upload_heap_guid, sizeof(uploadHeapPointer), &uploadHeapPointer);
 
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
 
@@ -234,7 +236,7 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
             // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
             // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
             m_allocator = std::make_shared<BucketizedBufferAllocator>(m_d3d12Device.Get(),
-                m_context,  // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
+                m_context.Get(),  // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
                 CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
                 D3D12_HEAP_FLAG_NONE,
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
@@ -505,7 +507,7 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
             const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-            m_readbackHeap->ReadbackFromGpu(m_context.get(), AsByteSpan(dstData, dataSizeInBytes), srcData, srcOffset, srcState);
+            m_readbackHeap->ReadbackFromGpu(m_context.Get(), AsByteSpan(dstData, dataSizeInBytes), srcData, srcOffset, srcState);
         }
         else if (!src->IsCpuData() && !dst->IsCpuData())
         {
@@ -574,7 +576,7 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-        m_readbackHeap->ReadbackFromGpu(m_context.get(), dstDatas, dataSizesInBytes, srcDatas, srcState);
+        m_readbackHeap->ReadbackFromGpu(m_context.Get(), dstDatas, dataSizesInBytes, srcDatas, srcState);
 
         return S_OK;
         }
@@ -998,7 +1000,7 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-        m_readbackHeap->ReadbackFromGpu(m_context.get(), dstDatas, dataSizesInBytes, srcDatas, srcState);
+        m_readbackHeap->ReadbackFromGpu(m_context.Get(), dstDatas, dataSizesInBytes, srcDatas, srcState);
 
         return onnxruntime::common::Status::OK();
     }
@@ -1244,12 +1246,12 @@ ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device
 
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
-        ID3D12CommandQueue* commandQueue,
+        Dml::ExecutionContext* execution_context,
         bool enableMetacommands,
         bool enableGraphCapture,
         bool enableCpuSyncSpinning)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableGraphCapture, enableCpuSyncSpinning);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, execution_context, enableMetacommands, enableGraphCapture, enableCpuSyncSpinning);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)

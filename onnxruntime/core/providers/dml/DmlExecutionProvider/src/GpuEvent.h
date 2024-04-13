@@ -3,13 +3,16 @@
 
 #pragma once
 
+#include <wil/wrl.h>
+#include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
+
 namespace Dml
 {
     // Represents a fence which will be signaled at some point (usually by the GPU).
     struct GpuEvent
     {
         uint64_t fenceValue;
-        ComPtr<ID3D12Fence> fence;
+        Microsoft::WRL::ComPtr<ID3D12Fence> fence;
 
         bool IsSignaled() const
         {

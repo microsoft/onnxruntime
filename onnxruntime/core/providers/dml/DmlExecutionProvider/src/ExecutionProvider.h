@@ -35,7 +35,7 @@ namespace Dml
         ExecutionProviderImpl(
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
-            ID3D12CommandQueue* queue,
+            Dml::ExecutionContext* execution_context,
             bool enableMetacommands,
             bool enableGraphCapture,
             bool enableCpuSyncSpinning);
@@ -183,8 +183,6 @@ namespace Dml
         std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators();
 
     private:
-        void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
-
         bool IsNodeSupportedByDml(
             const onnxruntime::Node& node,
             const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
@@ -207,7 +205,7 @@ namespace Dml
 
         std::unordered_map<int, std::vector<std::unique_ptr<DmlReusedCommandListState>>> m_capturedGraphs;
         std::unordered_set<int> m_graphCapturingDone;
-        std::shared_ptr<ExecutionContext> m_context;
+        ComPtr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
@@ -257,7 +255,7 @@ namespace Dml
 
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
-            ID3D12CommandQueue* commandQueue,
+            Dml::ExecutionContext* execution_context,
             bool enableMetacommands,
             bool enableGraphCapture,
             bool enableCpuSyncSpinning

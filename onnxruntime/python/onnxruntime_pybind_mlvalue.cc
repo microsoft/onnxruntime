@@ -199,6 +199,7 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
 #ifdef USE_DML
 
 constexpr GUID dml_readback_heap_guid = {0x00d32df8, 0xea2d, 0x40bf, {0xa4, 0x47, 0x9c, 0xb4, 0xbc, 0xf1, 0x1d, 0x5e}};
+constexpr GUID dml_upload_heap_guid = {0x125235f9, 0xef41, 0x4043, {0xa4, 0x9d, 0xdd, 0xc9, 0x61, 0xe7, 0xdb, 0xee}};
 
 AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
@@ -212,36 +213,33 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
   if (hit == id_to_allocator_map->end()) {
     constexpr uint32_t device_id = 0;
     auto d3d12_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);
-    auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device.Get());
 
-    D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
-    cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
+    ComPtr<Dml::ExecutionContext> context;
+    uint32_t execution_context_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(context.GetAddressOf()));
 
-    ComPtr<ID3D12CommandQueue> cmd_queue;
-    uint32_t cmd_queue_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(cmd_queue.GetAddressOf()));
+    // First, check if an I/O binding API that was used before this session or another session has already created a queue
+    if (FAILED(d3d12_device->GetPrivateData(dml_execution_context_guid, &execution_context_ptr_size, context.GetAddressOf()))) {
+      D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
+      cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+      cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 
-    // First, check if one of the sessions has already created a queue
-    if (FAILED(d3d12_device->GetPrivateData(dml_command_queue_guid, &cmd_queue_ptr_size, cmd_queue.GetAddressOf()))) {
+      ComPtr<ID3D12CommandQueue> cmd_queue;
       ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(cmd_queue.ReleaseAndGetAddressOf())));
-      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_command_queue_guid, sizeof(cmd_queue.Get()), cmd_queue.GetAddressOf()));
+
+      auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device.Get());
+      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_device_guid, dml_device.Get()));
+
+      context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get(), true, true);
+      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_execution_context_guid, context.Get()));
     }
 
-    auto context = std::make_shared<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get(), true);
-
-    // We leak the upload and readback heaps to keep them alive, just like the map
-    Dml::PooledUploadHeap* upload_heap_dummy = nullptr;
-    uint32_t upload_heap_ptr_size = gsl::narrow_cast<uint32_t>(sizeof(upload_heap_dummy));
-    if (FAILED(d3d12_device->GetPrivateData(dml_upload_heap_guid, &upload_heap_ptr_size, &upload_heap_dummy))) {
-      auto upload_heap = std::make_unique<Dml::PooledUploadHeap>(d3d12_device.Get(), context).release();
-      ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_upload_heap_guid, sizeof(upload_heap), &upload_heap));
-    }
-
+    // We leak the readback and upload heap to keep them alive, just like the map
     auto readback_heap = std::make_unique<Dml::ReadbackHeap>(d3d12_device.Get()).release();
+    auto upload_heap = std::make_unique<Dml::PooledUploadHeap>(d3d12_device.Get(), context.Get()).release();
 
     auto dml_allocator = std::make_shared<Dml::BucketizedBufferAllocator>(
         d3d12_device.Get(),
-        context,
+        context.Get(),
         CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
@@ -251,6 +249,7 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
     context->SetAllocator(dml_allocator);
 
     ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_readback_heap_guid, sizeof(readback_heap), &readback_heap));
+    ORT_THROW_IF_FAILED(d3d12_device->SetPrivateData(dml_upload_heap_guid, sizeof(upload_heap), &upload_heap));
 
     hit = id_to_allocator_map->emplace(id, std::move(dml_allocator)).first;
   }

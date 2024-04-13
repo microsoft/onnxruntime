@@ -34,7 +34,7 @@ namespace Dml
         // resource flags, and initial resource state.
         BucketizedBufferAllocator(
             ID3D12Device* device,
-            std::shared_ptr<ExecutionContext> context,
+            ExecutionContext* context,
             const D3D12_HEAP_PROPERTIES& heapProps,
             D3D12_HEAP_FLAGS heapFlags,
             D3D12_RESOURCE_FLAGS resourceFlags,
@@ -46,7 +46,7 @@ namespace Dml
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
-        ExecutionContext* GetContext() { return m_context.get(); }
+        ExecutionContext* GetContext() { return m_context.Get(); }
 
     public: // onnxruntime::IAllocator
         void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
@@ -91,7 +91,7 @@ namespace Dml
         // initialization.
         AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Disabled;
 
-        std::shared_ptr<ExecutionContext> m_context;
+        ComPtr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
 
     #ifndef NDEBUG

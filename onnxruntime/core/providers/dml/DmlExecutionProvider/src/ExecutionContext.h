@@ -4,7 +4,6 @@
 #pragma once
 
 #include "GpuEvent.h"
-#include "ICommandRecorder.h"
 #include "DmlCommandRecorder.h"
 
 namespace Dml
@@ -15,7 +14,7 @@ namespace Dml
     // Work submitted to the ExecutionContext is typically recorded onto a command list and may not immediately begin
     // execution on the GPU. Call Flush() to force all recorded work to be submitted to the command queue for execution
     // on the GPU.
-    class ExecutionContext
+    class ExecutionContext : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IUnknown>
     {
     public:
         // Constructs an ExecutionContext that executes on the supplied queue.
@@ -23,7 +22,8 @@ namespace Dml
             ID3D12Device* d3d12Device,
             IDMLDevice* dmlDevice,
             ID3D12CommandQueue* queue,
-            bool cpuSyncSpinningEnabled);
+            bool cpuSyncSpinningEnabled,
+            bool keepOpen);
 
         void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
 
@@ -45,7 +45,7 @@ namespace Dml
 
         void FillBufferWithPattern(
             ID3D12Resource* dstBuffer,
-            gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */);
+            gsl::span<const std::byte> pattern /* Data type agnostic value, treated as raw bits */);
 
         void InitializeOperator(
             IDMLCompiledOperator* op,
@@ -88,7 +88,7 @@ namespace Dml
         bool CpuSyncSpinningEnabled() const { return m_cpuSyncSpinningEnabled; }
 
     private:
-        ComPtr<ID3D12Device> m_d3dDevice;
+        Microsoft::WRL::ComPtr<ID3D12Device> m_d3dDevice;
 
         void SetCommandRecorder(ICommandRecorder* newRecorder);
 
@@ -101,6 +101,10 @@ namespace Dml
 
         bool m_closed = false;
         bool m_cpuSyncSpinningEnabled = false;
+
+        // The python API has a global state used for I/O binding where the execution context is shared between session,
+        // so we don't want to close the context when one of the sessions is destroyed
+        bool m_keepOpen = false;
     };
 
 } // namespace Dml
