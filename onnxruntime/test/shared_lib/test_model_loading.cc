@@ -269,7 +269,8 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string
   bool ret = UnmapViewOfFile(mapped_base);
   ASSERT_TRUE(ret);
 #else
-  int ret = munmap(p->addr, p->len);
+  struct stat sb;
+  int ret = munmap(mapped_base, sb.st_size);
   ASSERT_TRUE(ret == 0);
 #endif
 
