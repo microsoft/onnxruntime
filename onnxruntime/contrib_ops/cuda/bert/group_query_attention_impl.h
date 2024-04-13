@@ -56,6 +56,22 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
                        const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
                        cudaStream_t stream, const int max_threads_per_block);
 
+template <typename T>
+Status LaunchConcatKVInPlace(int batch_size,
+                             int kv_num_heads,
+                             int head_size,
+                             int max_sequence_length,     // max sequence length of present_key or present_value.
+                             const int* past_seqlens_k,   // it is not used when total_seqlens_k is available.
+                             const int* total_seqlens_k,  // optional, nullptr means it is not available.
+                             int new_seq_len,
+                             const T* new_key,
+                             const T* new_value,
+                             T* present_key,
+                             T* present_value,
+                             AttentionQkvFormat past_kv_format,
+                             cudaStream_t stream,
+                             const int max_threads_per_block);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

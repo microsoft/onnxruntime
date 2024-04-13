@@ -71,75 +71,6 @@ Status FillPositionIds(contrib::SparseAttentionParameters& parameters,
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Kernel to append new kv to kv buffer in place
-template <typename T>
-__global__ void ConcatKVInPlace(const int max_sequence_length,
-                                T* kv_buff,
-                                const T* new_kv,
-                                const int* total_seq_len_k,
-                                const bool is_bsnh) {  // refers to kv buff; otherwise bnsh
-  const int h = threadIdx.x;
-  const int n = threadIdx.y;
-  const int s = blockIdx.x;
-  const int b = blockIdx.y;
-
-  const int new_seqlen = gridDim.x;
-  const int num_heads = blockDim.y;
-  const int H = blockDim.x;
-
-  const int present_batch_stride = max_sequence_length * num_heads * H;
-  const int present_row_stride = is_bsnh ? num_heads * H : H;
-  const int present_head_stride = is_bsnh ? H : max_sequence_length * H;
-
-  // kv_buff:     BTNH or BNTH with buffered memory for new
-  // new_kv:      BLNH
-
-  const int past_seq_len = total_seq_len_k[b] - new_seqlen;
-
-  int out_offset = b * present_batch_stride + (s + past_seq_len) * present_row_stride + n * present_head_stride + h;
-  // Note: new KV always BSNH
-  const int new_batch_stride = new_seqlen * num_heads * H;
-  const int new_row_stride = num_heads * H;
-  const int new_head_stride = H;
-  const int in_offset = b * new_batch_stride + s * new_row_stride + n * new_head_stride + h;
-  kv_buff[out_offset] = new_kv[in_offset];
-}
-
-template <typename T>
-__global__ void ConcatKVInPlaceLarge(const int max_sequence_length,
-                                     const int H,
-                                     const int num_heads,
-                                     T* kv_buff,
-                                     const T* new_kv,
-                                     const int* total_seq_len_k,
-                                     const bool is_bsnh) {  // refers to kv buff; otherwise bnsh
-  int i = threadIdx.x + (blockDim.x * blockIdx.x);
-  if (i < H * num_heads) {
-    const int h = i % H;
-    const int n = i / H;
-    const int s = blockIdx.y;
-    const int b = blockIdx.z;
-    const int new_seqlen = gridDim.y;
-
-    const int present_batch_stride = max_sequence_length * num_heads * H;
-    const int present_row_stride = is_bsnh ? num_heads * H : H;
-    const int present_head_stride = is_bsnh ? H : max_sequence_length * H;
-
-    // kv_buff:     BTNH or BNTH with buffered memory for new
-    // new_kv:      BLNH
-
-    const int past_seq_len = total_seq_len_k[b] - new_seqlen;
-
-    int out_offset = b * present_batch_stride + (s + past_seq_len) * present_row_stride + n * present_head_stride + h;
-    // Note: new KV always BSNH
-    const int new_batch_stride = new_seqlen * num_heads * H;
-    const int new_row_stride = num_heads * H;
-    const int new_head_stride = H;
-    const int in_offset = b * new_batch_stride + s * new_row_stride + n * new_head_stride + h;
-    kv_buff[out_offset] = new_kv[in_offset];
-  }
-}
-
 // Concat new to kv buffer in place
 template <typename T>
 Status LaunchConcatKVInPlace(contrib::SparseAttentionParameters& parameters,
@@ -148,48 +79,20 @@ Status LaunchConcatKVInPlace(contrib::SparseAttentionParameters& parameters,
                              const void* new_value,
                              cudaStream_t stream,
                              const int max_threads_per_block) {
-  const int batch_size = parameters.batch_size;
-  const int sequence_length = parameters.sequence_length;
-  const int max_sequence_length = parameters.max_sequence_length;
-  const int kv_num_heads = parameters.kv_num_heads;
-  const int head_size = parameters.head_size;
-
-  AttentionQkvFormat past_kv_format = parameters.past_kv_format;
-  assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
-  const int H = head_size / 4;
-  if (H * kv_num_heads <= max_threads_per_block) {
-    const dim3 grid(sequence_length, batch_size, 1);
-    const dim3 block(H, kv_num_heads, 1);
-    ConcatKVInPlace<float2><<<grid, block, 0, stream>>>(max_sequence_length,
-                                                        reinterpret_cast<float2*>(data.present_key),
-                                                        reinterpret_cast<const float2*>(new_key),
-                                                        data.seqlens_k_total,
-                                                        past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-    ConcatKVInPlace<float2><<<grid, block, 0, stream>>>(max_sequence_length,
-                                                        reinterpret_cast<float2*>(data.present_value),
-                                                        reinterpret_cast<const float2*>(new_value),
-                                                        data.seqlens_k_total,
-                                                        past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-  } else {
-    int steps = int(ceil(float(H * kv_num_heads) / 256.0));
-    const dim3 grid(steps, sequence_length, batch_size);
-    const dim3 block(256, 1, 1);
-    ConcatKVInPlaceLarge<float2><<<grid, block, 0, stream>>>(max_sequence_length,
-                                                             H,
-                                                             kv_num_heads,
-                                                             reinterpret_cast<float2*>(data.present_key),
-                                                             reinterpret_cast<const float2*>(new_key),
-                                                             data.seqlens_k_total,
-                                                             past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-    ConcatKVInPlaceLarge<float2><<<grid, block, 0, stream>>>(max_sequence_length,
-                                                             H,
-                                                             kv_num_heads,
-                                                             reinterpret_cast<float2*>(data.present_value),
-                                                             reinterpret_cast<const float2*>(new_value),
-                                                             data.seqlens_k_total,
-                                                             past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
-  }
-  return CUDA_CALL(cudaGetLastError());
+  return LaunchConcatKVInPlace(parameters.batch_size,
+                               parameters.kv_num_heads,
+                               parameters.head_size,
+                               parameters.max_sequence_length,
+                               nullptr,
+                               data.seqlens_k_total,
+                               parameters.sequence_length,
+                               reinterpret_cast<const T*>(new_key),
+                               reinterpret_cast<const T*>(new_value),
+                               data.present_key,
+                               data.present_value,
+                               parameters.past_kv_format,
+                               stream,
+                               max_threads_per_block);
 }
 
 template <typename T>
