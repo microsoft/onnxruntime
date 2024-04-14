@@ -137,7 +137,7 @@ namespace Dml
         // Allocate a resource from pools.  Releasing pooledResource returns it to the pool.
         STDMETHOD(AllocatePooledResource)(
             size_t size,
-            AllocatorRoundingMode roundingMode,
+            AllocatorPoolingMode poolingMode,
             ID3D12Resource **d3dResource,
             IUnknown* *pooledResource
         ) const noexcept final;

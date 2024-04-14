@@ -16,7 +16,7 @@ namespace Dml
     class DmlBufferAllocator : public onnxruntime::IAllocator
     {
     public:
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
+        void SetDefaultRoundingMode(AllocatorPoolingMode poolingMode);
 
         // Returns the information associated with an opaque allocation handle returned by IAllocator::Alloc.
         const AllocationInfo* DecodeDataHandle(const void* opaqueHandle);
@@ -24,7 +24,7 @@ namespace Dml
         virtual void SetResidency(bool value) = 0;
 
         void* Alloc(size_t size) final;
-        virtual void* Alloc(size_t size, AllocatorRoundingMode roundingMode) = 0;
+        virtual void* Alloc(size_t size, AllocatorPoolingMode poolingMode) = 0;
         void Free(void* p) final;
 
     protected:
@@ -33,7 +33,7 @@ namespace Dml
         // Unless specifically requested, allocation sizes are not rounded to enable pooling
         // until SetDefaultRoundingMode is called.  This should be done at completion of session
         // initialization.
-        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Disabled;
+        AllocatorPoolingMode m_defaultPoolingMode = AllocatorPoolingMode::Disabled;
 
         friend class AllocationInfo;
         virtual void FreeResource(void* p, uint64_t resourceId) = 0;

@@ -325,7 +325,7 @@ public:
             {
                 ORT_THROW_IF_FAILED(m_dmlProvider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
+                    AllocatorPoolingMode::Enabled,
                     m_framingOperator.persistentResource.GetAddressOf(),
                     m_framingOperator.persistentResourcePoolingUnk.GetAddressOf()));
 

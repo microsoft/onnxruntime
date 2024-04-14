@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "DmlBufferAllocator.h"
 #include "ExecutionContext.h"
 #include "DmlResourceWrapper.h"
 #include "DmlBufferAllocator.h"
@@ -36,7 +35,7 @@ namespace Dml
 
     public: // onnxruntime::IAllocator
         using DmlBufferAllocator::Alloc;
-        virtual void* Alloc(size_t size, AllocatorRoundingMode roundingMode) override;
+        virtual void* Alloc(size_t size, AllocatorPoolingMode poolingMode) override;
 
     private:
         static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB
@@ -72,9 +71,6 @@ namespace Dml
 
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
-
-        uint64_t m_tiledAllocationSize = 0, m_untiledAllocationSize = 0;
-
 
     #ifndef NDEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet

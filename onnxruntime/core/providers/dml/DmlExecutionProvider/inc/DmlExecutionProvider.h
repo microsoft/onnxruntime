@@ -20,7 +20,7 @@ namespace onnxruntime
     class KernelRegistry;
 }
 
-enum class AllocatorRoundingMode
+enum class AllocatorPoolingMode
 {
     Disabled = 0,
     Enabled = 1,

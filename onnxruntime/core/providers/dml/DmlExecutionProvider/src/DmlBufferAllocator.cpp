@@ -35,9 +35,9 @@ namespace Dml
         return onnxruntime::AllocatorDefaultFree(p);
     }
 
-    void DmlBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
+    void DmlBufferAllocator::SetDefaultRoundingMode(AllocatorPoolingMode poolingMode)
     {
-        m_defaultRoundingMode = roundingMode;
+        m_defaultPoolingMode = poolingMode;
     }
 
     const AllocationInfo* DmlBufferAllocator::DecodeDataHandle(const void* opaqueHandle)
@@ -53,7 +53,7 @@ namespace Dml
 
     void* DmlBufferAllocator::Alloc(size_t size)
     {
-        return Alloc(size, m_defaultRoundingMode);
+        return Alloc(size, m_defaultPoolingMode);
     }
 
     void DmlBufferAllocator::Free(void* p)
