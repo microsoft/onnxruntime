@@ -13,5 +13,6 @@ namespace onnxruntime {
 namespace contrib {
 void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index);
 void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& ctx);
+void SkipLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& ctx);
 }  // namespace contrib
 }  // namespace onnxruntime

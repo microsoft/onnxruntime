@@ -60,7 +60,7 @@ auto GetSoftmaxTritonOps() {
       } args = {(void*)params->output, (const void*)params->input, params->input_stride, params->output_stride, params->softmax_elements};
 
       // grid dim is (batch_count, 1, 1)
-      return LaunchTritonKernel(params->stream, i, params->batch_count, 1, 1, &args, sizeof(args));
+      return LaunchTritonKernel(params->StreamHandle(), i, params->batch_count, 1, 1, &args, sizeof(args));
     };
     ret.emplace_back(std::make_pair(metadata->name, std::move(impl)));
   }

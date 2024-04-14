@@ -181,7 +181,7 @@ class SessionScope {
     }
 
     auto& logger = session_state_.Logger();
-    LOGS(logger, VERBOSE) << "Begin execution";
+    VLOGS(logger, 0) << "Begin execution";
     const SequentialExecutionPlan& seq_exec_plan = *session_state_.GetExecutionPlan();
     const auto& exec_plan_vec = seq_exec_plan.execution_plan;
     VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
@@ -306,18 +306,20 @@ class KernelScope {
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-    auto& node = kernel_.Node();
-    profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
-    profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
-    if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
-      // Start timing forward pass when encountering the first forward node.
-      forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() &&
-               forward_range.IsBeginCalled()) {
-      // Start timing backward pass when encountering the first backward node.
-      // In the meanwhile, forward range ends.
-      forward_range.End();
-      backward_range.Begin();
+    {
+      auto& node = kernel_.Node();
+      profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
+      profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
+      if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+        // Start timing forward pass when encountering the first forward node.
+        forward_range.Begin();
+      } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() &&
+                 forward_range.IsBeginCalled()) {
+        // Start timing backward pass when encountering the first backward node.
+        // In the meanwhile, forward range ends.
+        forward_range.End();
+        backward_range.Begin();
+      }
     }
 #endif
 
@@ -515,7 +517,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     return Status(status.Category(), status.Code(), msg_string);
   }
   ctx.RecycleNodeInputs(idx);
-  LOGS(logger, VERBOSE) << "stream " << stream_idx << " launch kernel with idx " << idx;
+  VLOGS(logger, 0) << "stream " << stream_idx << " launch kernel with idx " << idx;
   return Status::OK();
 }
 
@@ -531,7 +533,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
-  LOGS(logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
+  VLOGS(logger, 0) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
   for (auto& stream : execution_plan->execution_plan) {
     if (stream && stream->steps_.size() > 0)

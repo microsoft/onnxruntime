@@ -22,6 +22,12 @@ struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
   bool is_cross_attention = false;
   bool is_packed_qkv = false;
 
+  // Useful to better use global memory bandwidth on certain CUDA architectures.
+  // Turned off by default for now until we fully understand performance implications
+  // for all types of workloads.
+  // Can be turned on by appropriate environment variable (see attention_common.h).
+  bool kv_data_in_flight = false;
+
   void* q = nullptr;
   void* q_bias = nullptr;
 

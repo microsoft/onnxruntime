@@ -32,7 +32,7 @@ class FusionGemmFastGelu(Fusion):
             return self.get_dimensions_from_tensor_proto(graph_input)
 
         if not self.shape_infer_done:
-            self.shape_infer = self.model.infer_runtime_shape({}, update=True)
+            self.shape_infer = self.model.infer_runtime_shape(update=True)
             self.shape_infer_done = True
 
         if self.shape_infer is not None:

@@ -175,8 +175,8 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   {
     const std::string& input1_name = inputs[1].node_arg.Name();
-    OnnxInputInfo input_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], input_info));
+    TensorInfo input_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input_info));
 
     std::string actual_name = input_info.is_initializer ? input1_name : input1_name + "_ort_qnn_ep_transpose";
     input_names.push_back(actual_name);
@@ -267,8 +267,8 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
 
   {
     const std::string& input0_name = inputs[0].node_arg.Name();
-    OnnxInputInfo input0_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], input0_info));
+    TensorInfo input0_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
 
     const std::string conv_input0_name = input0_info.is_initializer ? input0_name
                                                                     : input0_name + "_ort_qnn_ep_reshape";
@@ -318,8 +318,8 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   {
     const std::string& input1_name = inputs[1].node_arg.Name();
-    OnnxInputInfo input_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], input_info));
+    TensorInfo input_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input_info));
 
     std::string conv_weight_input_name = input_info.is_initializer ? input1_name : input1_name + "_ort_qnn_ep_transpose";
     input_names.push_back(conv_weight_input_name);

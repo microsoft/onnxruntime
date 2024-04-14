@@ -86,6 +86,8 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.cc"
   )
 endif()
 
@@ -127,4 +129,8 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+if (onnxruntime_USE_ROCM)
+  add_dependencies(onnxruntime_optimizer generate_hipified_files)
 endif()

@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 import argparse
 import datetime
 import gc
@@ -11,21 +16,22 @@ import numpy as np
 import onnx
 import psutil
 import torch
-from benchmark_helper import setup_logger
+from benchmark_helper import measure_memory, setup_logger
+from dist_settings import get_rank, get_size
 from llama_inputs import (
-    convert_inputs_for_ort,
+    add_io_bindings_as_ortvalues,
     get_merged_sample_with_past_kv_inputs,
     get_msft_sample_inputs,
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
+    verify_ort_inputs,
 )
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
 from tqdm import trange
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 import onnxruntime as ort
-from onnxruntime.transformers.benchmark_helper import measure_memory
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +54,15 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
     init_inputs, iter_inputs = None, None
 
     # For past_present_share_buffer:
-    # Set max_seq_len to 2048 for Hugging Face model since that is the default value
-    # Set max_seq_len to 2048 for Microsoft model since that is the max value currently supported
-    max_seq_len = 2048
+    # Set max_seq_len to 16384 for CodeLLaMA (finetuned variant of LLaMA-2)
+    # Set max_seq_len to 4096 for Hugging Face LLaMA-2 model since that is the default value
+    # Set max_seq_len to 2048 for Microsoft LLaMA-2 model since that is the max value currently supported
+    temp_name = args.model_name.lower().replace("-", "").replace("_", "")
+    max_seq_len = (
+        2048
+        if args.benchmark_type == "ort-msft"
+        else 16384 if "codellama" in temp_name else 4096 if "llama2" in temp_name else 2048
+    )
 
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
         init_inputs = get_sample_inputs(
@@ -69,7 +81,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             return_dict=True,
         )
 
-    elif args.benchmark_type == "hf-ort":
+    elif args.benchmark_type in {"hf-ort"}:
         if ort_model_inputs_len == 3:  # [input_ids, attention_mask, position_ids]
             # Using split models in Optimum (e.g. created by Optimum export)
             init_inputs = get_sample_inputs(
@@ -95,7 +107,10 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 args.batch_size,
                 seq_len=args.sequence_length,
                 past_seq_len=0,
+                max_seq_len=max_seq_len,
                 use_fp16=args.use_fp16,
+                use_gqa=args.use_gqa,
+                engine="pt",
                 return_dict=True,
             )
             iter_inputs = get_merged_sample_with_past_kv_inputs(
@@ -104,7 +119,10 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 args.batch_size,
                 seq_len=1,
                 past_seq_len=args.sequence_length,
+                max_seq_len=max_seq_len,
                 use_fp16=args.use_fp16,
+                use_gqa=args.use_gqa,
+                engine="pt",
                 return_dict=True,
             )
 
@@ -116,8 +134,12 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.batch_size,
             seq_len=args.sequence_length,
             past_seq_len=0,
+            max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
+            use_gqa=args.use_gqa,
+            engine="ort",
             return_dict=True,
+            world_size=args.world_size,
         )
         iter_inputs = get_merged_sample_with_past_kv_inputs(
             args.config,
@@ -125,26 +147,12 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.batch_size,
             seq_len=1,
             past_seq_len=args.sequence_length,
+            max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
+            use_gqa=args.use_gqa,
+            engine="ort",
             return_dict=True,
-        )
-        init_inputs = convert_inputs_for_ort(
-            init_inputs,
-            use_fp16=args.use_fp16,
-            use_buffer_share=args.past_present_share_buffer,
-            past_seq_len=0,
-            max_seq_len=max_seq_len,
-            device=args.device,
-            device_id=args.device_id,
-        )
-        iter_inputs = convert_inputs_for_ort(
-            iter_inputs,
-            use_fp16=args.use_fp16,
-            use_buffer_share=args.past_present_share_buffer,
-            past_seq_len=args.sequence_length,
-            max_seq_len=max_seq_len,
-            device=args.device,
-            device_id=args.device_id,
+            world_size=args.world_size,
         )
 
     elif args.benchmark_type == "ort-msft":
@@ -156,7 +164,9 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.batch_size,
             past_seq_len=0,
             seq_len=args.sequence_length,
+            max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
+            use_gqa=args.use_gqa,
             split_kv=split_kv,
         )
         iter_inputs = get_msft_sample_inputs(
@@ -164,26 +174,10 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             args.batch_size,
             past_seq_len=args.sequence_length,
             seq_len=1,
+            max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
+            use_gqa=args.use_gqa,
             split_kv=split_kv,
-        )
-        init_inputs = convert_inputs_for_ort(
-            init_inputs,
-            use_fp16=args.use_fp16,
-            use_buffer_share=args.past_present_share_buffer,
-            past_seq_len=0,
-            max_seq_len=max_seq_len,
-            device=args.device,
-            device_id=args.device_id,
-        )
-        iter_inputs = convert_inputs_for_ort(
-            iter_inputs,
-            use_fp16=args.use_fp16,
-            use_buffer_share=args.past_present_share_buffer,
-            past_seq_len=args.sequence_length,
-            max_seq_len=max_seq_len,
-            device=args.device,
-            device_id=args.device_id,
         )
 
     else:
@@ -206,11 +200,12 @@ def get_model(args: argparse.Namespace):
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
         source = args.hf_pt_dir_path if args.hf_pt_dir_path else args.model_name
         start_time = time.time()
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             source,
             torch_dtype=torch.float16 if args.use_fp16 else torch.float32,
             use_auth_token=args.auth,
             use_cache=True,
+            cache_dir=args.cache_dir,
         ).to(args.target_device)
         end_time = time.time()
 
@@ -251,7 +246,7 @@ def get_model(args: argparse.Namespace):
             decoder_file_name=decoder_file_name,
             decoder_with_past_file_name=decoder_with_past_file_name,
             use_auth_token=args.auth,
-            use_io_binding=(args.device != "cpu"),
+            use_io_binding=True,  # Large perf gain even for cpu due to avoiding output copy.
             use_merged=(True if decoder_file_name == "model.onnx" else None),
             provider=provider,
             provider_options=provider_options,
@@ -261,10 +256,10 @@ def get_model(args: argparse.Namespace):
 
     if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
         # Ex: Microsoft export from https://github.com/microsoft/Llama-2-Onnx
-        logger.info(f"Loading model from {args.ort_model_path}")
+        logger.info(f"Loading model from {args.ort_model_path.format(args.rank)}")
         start_time = time.time()
         model = ort.InferenceSession(
-            args.ort_model_path,
+            args.ort_model_path.format(args.rank),
             sess_options,
             providers=[args.execution_provider],
         )
@@ -286,21 +281,25 @@ def time_fn(args, fn, inputs):
         outputs = fn(inputs)
         logger.info(outputs)
 
-    input_sync = (  # noqa: E731
-        lambda *kwargs: args.io_binding.synchronize_inputs()
+    input_sync = lambda *kwargs: (  # noqa: E731
+        args.io_binding.synchronize_inputs()
         if args.device != "cpu" and args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}  # ORT synchronize
-        else lambda *kwargs: torch.cuda.synchronize()
-        if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
-        else lambda *kwargs: None  # no-op function
-    )
+        else lambda *kwargs: (
+            torch.cuda.synchronize()
+            if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
+            else lambda *kwargs: None
+        )
+    )  # no-op function
 
-    output_sync = (  # noqa: E731
-        lambda *kwargs: args.io_binding.synchronize_outputs()
+    output_sync = lambda *kwargs: (  # noqa: E731
+        args.io_binding.synchronize_outputs()
         if args.device != "cpu" and args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}  # ORT synchronize
-        else lambda *kwargs: torch.cuda.synchronize()
-        if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
-        else lambda *kwargs: None  # no-op function
-    )
+        else lambda *kwargs: (
+            torch.cuda.synchronize()
+            if args.device != "cpu" and torch.cuda.is_available()  # PyTorch synchronize
+            else lambda *kwargs: None
+        )
+    )  # no-op function
 
     for _ in warmup_range:
         input_sync()
@@ -332,10 +331,11 @@ def time_fn(args, fn, inputs):
     latency = total_time / args.num_runs
     throughput = args.batch_size / latency
 
-    logger.info(f"Batch Size: {args.batch_size}")
-    logger.info(f"Sequence Length: {args.sequence_length}")
-    logger.info(f"Latency: {latency} s")
-    logger.info(f"Throughput: {throughput} tps")
+    if args.rank == 0:
+        logger.info(f"Batch Size: {args.batch_size}")
+        logger.info(f"Sequence Length: {args.sequence_length}")
+        logger.info(f"Latency: {latency} s")
+        logger.info(f"Throughput: {throughput} tps")
     return
 
 
@@ -375,7 +375,8 @@ def measure_fn(args, fn, inputs):
     process.cpu_percent(interval=0.1)
 
     fn(inputs)
-    logger.info(f"CPU usage: {process.cpu_percent(interval=None)}%")
+    if args.rank == 0:
+        logger.info(f"CPU usage: {process.cpu_percent(interval=None) / psutil.cpu_count(logical=False)}%")
 
     # Measure memory usage
     gc.collect()
@@ -449,47 +450,19 @@ def run_hf_inference(args, init_inputs, iter_inputs, model):
 
 
 def run_ort_inference(args, init_inputs, iter_inputs, model):
-    def prepare_ort_inputs(inputs):
-        # Check that all model inputs will be provided
-        model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
-        user_inputs = set(inputs.keys())
-        missing_inputs = model_inputs - user_inputs
-        if len(missing_inputs):
-            logger.error(f"The following model inputs are missing: {missing_inputs}")
-            raise Exception("There are missing inputs to the model. Please add them and try again.")
-
-        # Remove unnecessary inputs from model inputs
-        unnecessary_inputs = user_inputs - model_inputs
-        if len(unnecessary_inputs):
-            for unnecessary_input in unnecessary_inputs:
-                logger.info(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
-                del inputs[unnecessary_input]
+    def prepare_ort_inputs(inputs, kv_cache_ortvalues):
+        # Verify model inputs
+        inputs = verify_ort_inputs(model, inputs)
 
         # Add IO bindings for non-CPU execution providers
         if args.device != "cpu":
-            io_binding = model.io_binding()
-
-            for k, v in inputs.items():
-                if args.past_present_share_buffer:
-                    # Bind all OrtValue inputs to device
-                    io_binding.bind_ortvalue_input(k, v)
-                else:
-                    io_binding.bind_cpu_input(k, v)
-
-            for output in model.get_outputs():
-                name = output.name
-                if args.past_present_share_buffer and ("out" in name or "present" in name):
-                    # Bind present KV cache outputs to OrtValue with buffer sharing
-                    io_binding.bind_ortvalue_output(
-                        name, inputs[name.replace("out", "cache").replace("present", "past_key_values")]
-                    )
-                else:
-                    io_binding.bind_output(name, device_type=args.device, device_id=args.device_id)
-
+            io_binding, kv_cache_ortvalues = add_io_bindings_as_ortvalues(
+                model, inputs, args.device, int(args.rank), args.use_gqa, kv_cache_ortvalues
+            )
             setattr(args, "io_binding", io_binding)  # noqa: B010
-            return io_binding
+            return io_binding, kv_cache_ortvalues
 
-        return inputs
+        return inputs, kv_cache_ortvalues
 
     def with_io_binding(io_binding):
         # Inference pass with IO binding
@@ -501,9 +474,10 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
         return outputs
 
     generate_fn = with_io_binding if args.device != "cpu" else without_io_binding
+    kv_cache_ortvalues = {}
 
     if args.profile:
-        ort_init_inputs = prepare_ort_inputs(init_inputs)
+        ort_init_inputs, kv_cache_ortvalues = prepare_ort_inputs(init_inputs, kv_cache_ortvalues)
         new_logname = profile_fn(args, generate_fn, ort_init_inputs, "prompt")
 
         # Turn profiling off to stop appending to log file
@@ -513,7 +487,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
 
         # Re-initialize model for new log file instead of appending to old log file
         model = get_model(args)
-        ort_iter_inputs = prepare_ort_inputs(iter_inputs)
+        ort_iter_inputs, kv_cache_ortvalues = prepare_ort_inputs(iter_inputs, kv_cache_ortvalues)
         new_logname = profile_fn(args, generate_fn, ort_iter_inputs, "token")
 
         # Turn profiling off to stop appending to log
@@ -524,12 +498,12 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
 
     # ORT evaluations
     logger.info("\nEvaluating `model(inputs)` step to get past_key_values")
-    ort_init_inputs = prepare_ort_inputs(init_inputs)
+    ort_init_inputs, kv_cache_ortvalues = prepare_ort_inputs(init_inputs, kv_cache_ortvalues)
     time_fn(args, generate_fn, ort_init_inputs)
     measure_fn(args, generate_fn, ort_init_inputs)
 
     logger.info("\nEvaluating `model(inputs)` step with past_key_values")
-    ort_iter_inputs = prepare_ort_inputs(iter_inputs)
+    ort_iter_inputs, kv_cache_ortvalues = prepare_ort_inputs(iter_inputs, kv_cache_ortvalues)
     time_fn(args, generate_fn, ort_iter_inputs)
     measure_fn(args, generate_fn, ort_iter_inputs)
 
@@ -543,14 +517,20 @@ def run_inference(args, init_inputs, iter_inputs, model):
         raise Exception(f"Cannot recognize {args.benchmark_type}")
 
 
-def get_args():
+def get_args(rank=0):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-bt",
         "--benchmark-type",
         type=str,
         required=True,
-        choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx"],
+        choices=[
+            "hf-pt-eager",
+            "hf-pt-compile",
+            "hf-ort",
+            "ort-msft",
+            "ort-convert-to-onnx",
+        ],
     )
     parser.add_argument(
         "-m",
@@ -601,7 +581,7 @@ def get_args():
     parser.add_argument(
         "-s",
         "--sequence-lengths",
-        default="8 16 32 64 128 256 512",
+        default="32 64 128 256 512",
     )
     parser.add_argument(
         "-d",
@@ -627,6 +607,13 @@ def get_args():
     parser.add_argument("--pt-num-rows", type=int, default=1000, help="Number of rows for PyTorch profiler to display")
     parser.add_argument("--verbose", default=False, action="store_true")
     parser.add_argument("--log-folder", type=str, default=os.path.join("."), help="Folder to cache log files")
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        required=True,
+        default="./model_cache",
+        help="Cache dir where Hugging Face files are stored",
+    )
 
     args = parser.parse_args()
 
@@ -638,9 +625,9 @@ def get_args():
     if "ort" in args.benchmark_type:
         setattr(args, "execution_provider", f"{args.device.upper()}ExecutionProvider")  # noqa: B010
         if args.execution_provider == "CUDAExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
+            args.execution_provider = (args.execution_provider, {"device_id": rank})
         elif args.execution_provider == "ROCMExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
+            args.execution_provider = (args.execution_provider, {"device_id": rank})
             args.device = "cuda"
 
     # Check that paths have been specified for any benchmarking with ORT
@@ -667,14 +654,19 @@ def get_args():
 
 
 def main():
-    args = get_args()
+    rank = get_rank()
+    world_size = get_size()
+
+    args = get_args(rank)
     setup_logger(args.verbose)
     logger.info(args.__dict__)
     torch.backends.cudnn.benchmark = True
 
-    tokenizer = LlamaTokenizer.from_pretrained(args.model_name)
-    config = LlamaConfig.from_pretrained(args.model_name)
-    target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
+    args.rank = rank
+    args.world_size = world_size
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir)
+    config = AutoConfig.from_pretrained(args.model_name, cache_dir=args.cache_dir)
+    target_device = f"cuda:{args.rank}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
 
     setattr(args, "tokenizer", tokenizer)  # noqa: B010
@@ -688,17 +680,18 @@ def main():
 
     # Check if past_present_share_buffer can be enabled (only for FP16 models with GQA)
     if args.benchmark_type in {"ort-convert-to-onnx", "ort-msft"}:
-        onnx_model = onnx.load_model(args.ort_model_path, load_external_data=False)
+        onnx_model = onnx.load_model(args.ort_model_path.format(args.rank), load_external_data=False)
         gqa_nodes = list(filter(lambda node: node.op_type == "GroupQueryAttention", onnx_model.graph.node))
 
         use_buffer_share = use_fp16 and len(gqa_nodes) > 0 and args.device != "cpu"
-        setattr(args, "past_present_share_buffer", use_buffer_share)  # noqa: B010
+        setattr(args, "use_gqa", use_buffer_share)  # noqa: B010
     else:
-        setattr(args, "past_present_share_buffer", False)  # noqa: B010
+        setattr(args, "use_gqa", False)  # noqa: B010
 
     # Measure prompt cost (init_inputs) and generated token cost (iter_inputs)
     for batch_size, sequence_length in itertools.product(args.batch_sizes, args.sequence_lengths):
-        logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
+        if args.rank == 0:
+            logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
         setattr(args, "batch_size", int(batch_size))  # noqa: B010
         setattr(args, "sequence_length", int(sequence_length))  # noqa: B010
 

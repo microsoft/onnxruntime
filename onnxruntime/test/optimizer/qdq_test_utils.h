@@ -466,11 +466,11 @@ GetQDQTestCaseFn BuildDoubleQDQWithoutLastOutput(int output_index, bool use_cont
 }
 
 template <typename InputType, typename OutputType>
-GetQDQTestCaseFn BuildQDQSplitTestCase(
-    const std::vector<int64_t>& input_shape,
-    const int64_t& axis,
-    bool use_contrib_qdq = false) {
-  return [input_shape, axis, use_contrib_qdq](ModelTestBuilder& builder) {
+GetQDQTestCaseFn BuildQDQSplitTestCase(const std::vector<int64_t>& input_shape,
+                                       const int64_t& axis,
+                                       bool use_diff_output_scale,
+                                       bool use_contrib_qdq = false) {
+  return [input_shape, axis, use_diff_output_scale, use_contrib_qdq](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<InputType>(input_shape,
                                                    std::numeric_limits<InputType>::min(),
                                                    std::numeric_limits<InputType>::max());
@@ -478,16 +478,30 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
     OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
     auto* dq_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output, use_contrib_qdq);
+    constexpr float input_scale = 0.003f;
+    builder.AddDequantizeLinearNode<InputType>(input_arg, input_scale, dq_zp, dq_output, use_contrib_qdq);
 
     // add Split
+    std::vector<NodeArg*> split_inputs;
+    split_inputs.push_back(dq_output);
+
+    // Use the optional 'split' input when testing Split 13
+    int opset = builder.DomainToVersionMap().find(kOnnxDomain)->second;
+    if (opset >= 13 && opset < 18) {
+      int64_t dim = input_shape[axis];
+      int64_t split_size = dim / 3;
+      split_inputs.push_back(builder.Make1DInitializer(std::vector<int64_t>{split_size,
+                                                                            split_size, dim - (2 * split_size)}));
+    }
 
     auto* split_output_1 = builder.MakeIntermediate();
     auto* split_output_2 = builder.MakeIntermediate();
     auto* split_output_3 = builder.MakeIntermediate();
-    Node& split_node = builder.AddNode("Split", {dq_output}, {split_output_1, split_output_2, split_output_3});
+    Node& split_node = builder.AddNode("Split", split_inputs, {split_output_1, split_output_2, split_output_3});
     split_node.AddAttribute("axis", axis);
-    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+
+    // Use the 'num_outputs' attribute when testing Split >= 18
+    if (opset >= 18) {
       split_node.AddAttribute("num_outputs", static_cast<int64_t>(3));
     }
 
@@ -495,11 +509,12 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     auto* q_split_output_1 = builder.MakeOutput();
     auto* q_split_output_2 = builder.MakeOutput();
     auto* q_split_output_3 = builder.MakeOutput();
-    builder.AddQuantizeLinearNode<OutputType>(split_output_1, .003f, q_zp, q_split_output_1,
+    float output_scale = use_diff_output_scale ? input_scale + 0.001f : input_scale;
+    builder.AddQuantizeLinearNode<OutputType>(split_output_1, output_scale, q_zp, q_split_output_1,
                                               use_contrib_qdq);  // Model input (node_token_1)
-    builder.AddQuantizeLinearNode<OutputType>(split_output_2, .003f, q_zp, q_split_output_2,
+    builder.AddQuantizeLinearNode<OutputType>(split_output_2, output_scale, q_zp, q_split_output_2,
                                               use_contrib_qdq);  // Model input (node_token_2)
-    builder.AddQuantizeLinearNode<OutputType>(split_output_3, .003f, q_zp, q_split_output_3,
+    builder.AddQuantizeLinearNode<OutputType>(split_output_3, output_scale, q_zp, q_split_output_3,
                                               use_contrib_qdq);
   };
 }
@@ -549,13 +564,30 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
     OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
 
-    // add DQ
-    auto* dq_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output, use_contrib_qdq);
+    // In order to test additional EPs that are more sensitive to whether the Transpose is in a QDQ node unit or not,
+    // we need a QDQ node unit prior to DQ -> Transpose -> Q -> graph output.
+    // The transpose optimizer will push the transpose, convert its input to uint8, and drop the empty DQ -> Q.
+    // If there's a QDQ node unit prior, the scale and zp info can be read from the Q node feeding the standalone
+    // Transpose node, so we add a DQ -> Mul -> Q to provide that.
+    // Essentially eveything has worked correctly if the DQ -> Transpose -> Q becomes a single Transpose and the
+    // extra QDQ node unit simply allows some additional functionality to be tested.
+
+    // add DQ -> Mul -> Q
+    auto* dq_output_0 = builder.MakeIntermediate();
+    auto* mul_output = builder.MakeIntermediate();
+    auto* q_output_0 = builder.MakeIntermediate();
+    auto mul_by = builder.MakeInitializer<float>({1}, 2.f, 3.f);
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output_0, use_contrib_qdq);
+    builder.AddNode("Mul", {dq_output_0, mul_by}, {mul_output});
+    builder.AddQuantizeLinearNode<OutputType>(mul_output, .003f, q_zp, q_output_0, use_contrib_qdq);
+
+    // add DQ -> Transpose -> Q
+    auto* dq_output_1 = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(q_output_0, .003f, dq_zp, dq_output_1, use_contrib_qdq);
 
     // add Transpose
     auto* transpose_output = builder.MakeIntermediate();
-    Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+    Node& transpose_node = builder.AddNode("Transpose", {dq_output_1}, {transpose_output});
     transpose_node.AddAttribute("perm", perms);
 
     // add Q

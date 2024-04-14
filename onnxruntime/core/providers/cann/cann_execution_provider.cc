@@ -9,7 +9,6 @@
 #include <map>
 #include <unordered_set>
 
-#include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/cann/cann_execution_provider.h"
@@ -1029,13 +1028,14 @@ Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
 }  // namespace cann
 
 CANNExecutionProvider::CANNExecutionProvider(const CANNExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCannExecutionProvider, OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, info_{info} {
+    : IExecutionProvider{onnxruntime::kCannExecutionProvider, OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info.device_id)}, info_{info} {
   InitProviderOrtApi();
 
   CANN_CALL_THROW(aclrtSetDevice(info_.device_id));
 
   soc_name_ = aclrtGetSocName();
   ORT_ENFORCE(soc_name_ != nullptr, "aclrtGetSocName return nullptr");
+  metadef_id_generator_ = ModelMetadefIdGenerator::Create();
 }
 
 CANNExecutionProvider::~CANNExecutionProvider() {
@@ -1045,7 +1045,7 @@ CANNExecutionProvider::~CANNExecutionProvider() {
 }
 
 // All threads share the same context and stream
-Status CANNExecutionProvider::OnRunStart() {
+Status CANNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   CANN_RETURN_IF_ERROR(aclrtSetDevice(info_.device_id));
 
   return Status::OK();
@@ -1197,7 +1197,7 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
 
   // Generate unique kernel name for CANN subgraph
   HashValue model_hash = 0;
-  int id = GenerateMetaDefId(graph_viewer, model_hash);
+  int id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   meta_def->name() = graph_viewer.Name() + "_" + std::to_string(model_hash) + "_" + std::to_string(id);
 

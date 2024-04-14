@@ -367,6 +367,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
 
   for (auto& node : graph.Nodes()) {
     const KernelCreateInfo& kci = session_state.GetNodeKernelCreateInfo(node.Index());
+    int stream_index = static_cast<int>(exec_plan->node_stream_map_[node.Index()]);
 
     ORT_RETURN_IF_ERROR(
         onnxruntime::Node::ForEachWithIndex(
@@ -379,8 +380,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
               int arg_index;
               ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
               const auto& device = exec_plan->GetLocation(arg_index);
-
-              SessionState::NodeInfo node_info(index, &node, &kci, device);
+              SessionState::NodeInfo node_info(index, &node, &kci, device, stream_index);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
                 ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
@@ -419,7 +419,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
         int arg_index;
         ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));
         auto& device = exec_plan->GetLocation(arg_index);
-        SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, &kci, device);
+        SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, &kci, device, stream_index);
         ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
     }
@@ -455,11 +455,10 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
   // utils::CopyOneInputAcrossDevices is happy.
 
   auto& input_map = session_state.GetInputNodeInfoMap();
-  auto end_map = input_map.cend();
 
   for (const auto& graph_input : graph_inputs) {
     const auto& name = graph_input->Name();
-    if (input_map.find(name) == end_map) {
+    if (input_map.find(name) == input_map.cend()) {
       // dummy entry for an input that we didn't find a use of in the graph. log it in case that's a bug.
       // utils::CopyOneInputAcrossDevices will use the input OrtValue as is given we don't believe it's used anywhere.
       LOGS(session_state.Logger(), INFO) << (graph.IsSubgraph() ? "Subgraph" : "Graph") << " input with name "

@@ -7,6 +7,10 @@
 #include <algorithm>
 #include <limits>
 
+#if defined(__wasm__)
+#include <emscripten.h>
+#endif
+
 #include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
@@ -769,6 +773,7 @@ static void DeleteCharArray(void* param) noexcept {
   delete[] arr;
 }
 
+#if !defined(__wasm__)
 static Status GetFileContent(
     const Env& env, const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
     void*& raw_buffer, OrtCallback& deleter) {
@@ -797,6 +802,7 @@ static Status GetFileContent(
   raw_buffer = buffer.release();
   return Status::OK();
 }
+#endif
 
 Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
@@ -819,6 +825,69 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
     ext_data_len = raw_data_safe_len;
     ext_data_deleter = OrtCallback{nullptr, nullptr};
   } else {
+#if defined(__wasm__)
+    ORT_RETURN_IF(file_offset < 0 || file_offset + raw_data_safe_len >= 4294967296,
+                  "External initializer: ", tensor_proto.name(),
+                  " offset: ", file_offset, " size to read: ", static_cast<size_t>(raw_data_safe_len),
+                  " are out of bounds or can not be read in full (>4GB).");
+
+    auto buffer = std::make_unique<char[]>(raw_data_safe_len);
+    ext_data_deleter = OrtCallback{DeleteCharArray, buffer.get()};
+    ext_data_buf = buffer.release();
+    ext_data_len = raw_data_safe_len;
+
+    // In WebAssembly, try use a simplified preloaded file map in WebAssembly when available.
+    auto err_code = EM_ASM_INT(({
+                                 // If available, "Module.MountedFiles" is a Map for all preloaded files.
+                                 if (typeof Module == 'undefined' || !Module.MountedFiles) {
+                                   return 1;  // "Module.MountedFiles" is not available.
+                                 }
+                                 let fileName = UTF8ToString($0 >>> 0);
+                                 if (fileName.startsWith('./')) {
+                                   fileName = fileName.substring(2);
+                                 }
+                                 const fileData = Module.MountedFiles.get(fileName);
+                                 if (!fileData) {
+                                   return 2;  // File not found in preloaded files.
+                                 }
+                                 const offset = $1 >>> 0;
+                                 const length = $2 >>> 0;
+                                 const buffer = $3 >>> 0;
+
+                                 if (offset + length > fileData.byteLength) {
+                                   return 3;  // Out of bounds.
+                                 }
+
+                                 try {
+                                   // Copy the file data (fileData,offset,length) into WebAssembly memory (HEAPU8,buffer,length).
+                                   HEAPU8.set(fileData.subarray(offset, offset + length), buffer);
+                                   return 0;
+                                 } catch {
+                                   return 4;
+                                 }
+                               }),
+                               external_data_file_path.c_str(),
+                               static_cast<int32_t>(file_offset),
+                               static_cast<int32_t>(raw_data_safe_len),
+                               ext_data_buf);
+    const char* err_msg;
+    switch (err_code) {
+      case 0:
+        return Status::OK();
+      case 1:
+        err_msg = "Module.MountedFiles is not available.";
+        break;
+      case 2:
+        err_msg = "File not found in preloaded files.";
+        break;
+      case 3:
+        err_msg = "Out of bounds.";
+        break;
+      default:
+        err_msg = "Unknown error occurred in memory copy.";
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load external data file \"", external_data_file_path, "\", error: ", err_msg);
+#else
     size_t file_length;
     // error reporting is inconsistent across platforms. Make sure the full path we attempted to open is included.
     auto status = env.GetFileLength(external_data_file_path.c_str(), file_length);
@@ -836,6 +905,7 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
     ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
                                        ext_data_buf, ext_data_deleter));
     ext_data_len = raw_data_safe_len;
+#endif
   }
 
   return Status::OK();

@@ -1,11 +1,10 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "module": "Node16",
     "downlevelIteration": true,
     "declaration": true,
     "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types", "../node_modules/@types"]
   },
   "include": ["lib", "test"],
-  "exclude": ["lib/wasm/proxy-worker"]
+  "exclude": ["lib/wasm/proxy-worker", "test/ort.test.js", "test/ort.test.min.js"]
 }

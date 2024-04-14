@@ -421,7 +421,7 @@ TEST(SoftmaxOperator, GH15949_regression_test) {
                           {0.00032932f, 0.01798029f, 0.9816904f});
 
   // disable TRT as it does not support axis=0 as used by the model
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

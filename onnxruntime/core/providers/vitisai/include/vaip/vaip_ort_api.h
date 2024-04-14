@@ -13,6 +13,7 @@ struct OrtApi;
 namespace vaip_core {
 
 struct OrtApiForVaip {
+  onnxruntime::ProviderHost* host_;
   const OrtApi* ort_api_;
   // model
   Model* (*model_load)(const std::string& file);  // [0]
@@ -49,7 +50,7 @@ struct OrtApiForVaip {
                           const std::string& description,
                           const std::vector<const NodeArg*>& input_args,
                           const std::vector<const NodeArg*>& output_args,
-                          NodeAttributes& attributes,
+                          const NodeAttributes& attributes,
                           const std::string& domain);  // [18]
   void (*graph_save)(const Graph& graph, const std::string& filename,
                      const std::string& dat_filename,
@@ -119,8 +120,8 @@ struct OrtApiForVaip {
   NodeAttributes* (*node_attributes_new)();                               // [46]
   void (*node_attributes_delete)(NodeAttributes* p);                      // [47]
   void (*node_attributes_add)(NodeAttributes& p, AttributeProto&& attr);  // [48]
-  AttributeProto* (*node_attributes_get)(NodeAttributes& p,
-                                         const std::string& name);  // [49]
+  const AttributeProto* (*node_attributes_get)(const NodeAttributes& p,
+                                               const std::string& name);  // [49]
   DllSafe<std::vector<std::string>> (*node_attributes_get_keys)(
       NodeAttributes& p);  // [50]
   /// attr proto
@@ -194,5 +195,4 @@ VAIP_DLL_SPEC const OrtApiForVaip* api();
        ? ::vaip_core::api()->name      \
        : (assert(false && #name " is not set"), nullptr))
 #endif
-VAIP_DLL_SPEC void initialize_ort();
 }  // namespace vaip_core

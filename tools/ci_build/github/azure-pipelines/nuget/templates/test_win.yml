@@ -3,14 +3,19 @@ parameters:
   NugetPackageName : ''
   ArtifactSuffix: ''
   StageSuffix: 'CPU'
-  # For inference packages, the test data artifact name is drop-nuget and no suffix is required.
+  # More Suffix is used to differentiate testing for GPU and GPU-Windows/GPU-Linux packages
+  MoreSuffix: ''
+  # For inference packages, the test data artifact name is drop-extra and no suffix is required.
   # For training packages, to differentiate the artifact name we add '-training' suffix. This needs to be passed from
   # the parent pipeline.
   TestDataArtifactSuffix: ''
   Skipx86Tests: 'false'
+  CudaVersion: ''
+  SpecificArtifact: false
+  BuildId: ''
 
 stages:
-- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
+- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
@@ -27,6 +32,10 @@ stages:
       value: 'ON'
     - name: runCodesignValidationInjection
       value: false
+    - name: CUDA_MODULE_LOADINGL
+      value: 'LAZY'
+    - name: GRADLE_OPTS
+      value: '-Dorg.gradle.daemon=false'
 
     steps:
     - task: UsePythonVersion@0
@@ -39,13 +48,12 @@ stages:
       displayName: Use Nuget 5.7.0
       inputs:
         versionSpec: 5.7.0
-
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_gpu.bat'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
+    - ${{ if ne( parameters.CudaVersion, '') }}:
+      - template: ../../templates/jobs/download_win_gpu_library.yml
+        parameters:
+          DownloadCUDA: true
+          DownloadTRT: true
+          CudaVersion: ${{ parameters.CudaVersion }}
 
     - task: BatchScript@1
       displayName: 'Setup Visual Studio env vars'
@@ -54,17 +62,13 @@ stages:
         arguments: 'amd64'
         modifyEnvironment: true
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact'
-      inputs:
-        artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - testdata'
-      inputs:
-        artifactName: 'drop-nuget${{ parameters.TestDataArtifactSuffix }}'
-        targetPath: '$(Build.BinariesDirectory)\testdata'
+    - template: ../../templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact'
+        ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+        TargetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:

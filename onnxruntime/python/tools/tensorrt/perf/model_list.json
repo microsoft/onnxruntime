@@ -1,236 +1,236 @@
 [
-    {
-        "model_name": "FasterRCNN-10",
-        "working_directory": "./onnx-zoo-models/FasterRCNN-10",
-        "model_path": "./faster_rcnn_R_50_FPN_1x.onnx",
-        "test_data_path": "./"
-    },
-    {
-        "model_name": "MaskRCNN-10",
-        "working_directory": "./onnx-zoo-models/MaskRCNN-10/",
-        "model_path": "./mask_rcnn_R_50_FPN_1x.onnx",
-        "test_data_path": "./"
-    },
-    {
-        "model_name": "mobilenetv2-7",
-        "working_directory": "./onnx-zoo-models/mobilenetv2-7/",
-        "model_path": "./mobilenetv2-7/mobilenetv2-7.onnx",
-        "test_data_path": "./mobilenetv2-7/"
-    },
-    {
-        "model_name": "resnet50-v1-7",
-        "working_directory": "./onnx-zoo-models/resnet50-v1-7/",
-        "model_path": "./resnet50v1/resnet50-v1-7.onnx",
-        "test_data_path": "./resnet50v1/"
-    },
-    {
-        "model_name": "resnet101-v1-7",
-        "working_directory": "./onnx-zoo-models/resnet101-v1-7/",
-        "model_path": "./resnet101v1/resnet101-v1-7.onnx",
-        "test_data_path": "./resnet101v1/"
-    },
-    {
-        "model_name": "resnet152-v1-7",
-        "working_directory": "./onnx-zoo-models/resnet152-v1-7/",
-        "model_path": "./resnet152v1/resnet152-v1-7.onnx",
-        "test_data_path": "./resnet152v1/"
-    },
-    {
-        "model_name": "resnet18-v2-7",
-        "working_directory": "./onnx-zoo-models/resnet18-v2-7/",
-        "model_path": "./resnet18v2/resnet18-v2-7.onnx",
-        "test_data_path": "./resnet18v2/"
-    },
-    {
-        "model_name": "resnet34-v2-7",
-        "working_directory": "./onnx-zoo-models/resnet34-v2-7/",
-        "model_path": "./resnet34v2/resnet34-v2-7.onnx",
-        "test_data_path": "./resnet34v2/"
-    },
-    {
-        "model_name": "resnet50-v2-7",
-        "working_directory": "./onnx-zoo-models/resnet50-v2-7/",
-        "model_path": "./resnet50v2/resnet50-v2-7.onnx",
-        "test_data_path": "./resnet50v2/"
-    },
-    {
-        "model_name": "resnet101-v2-7",
-        "working_directory": "./onnx-zoo-models/resnet101-v2-7/",
-        "model_path": "./resnet101v2/resnet101-v2-7.onnx",
-        "test_data_path": "./resnet101v2/"
-    },
-    {
-        "model_name": "resnet152-v2-7",
-        "working_directory": "./onnx-zoo-models/resnet152-v2-7/",
-        "model_path": "./resnet152v2/resnet152-v2-7.onnx",
-        "test_data_path": "./resnet152v2/"
-    },
-    {
-        "model_name": "squeezenet1.1-7",
-        "working_directory": "./onnx-zoo-models/squeezenet1.1-7/",
-        "model_path": "./squeezenet1.1/squeezenet1.1.onnx",
-        "test_data_path": "./squeezenet1.1/"
-    },
-    {
-        "model_name": "vgg16-7",
-        "working_directory": "./onnx-zoo-models/vgg16-7/",
-        "model_path": "./vgg16/vgg16.onnx",
-        "test_data_path": "./vgg16/"
-    },
-    {
-        "model_name": "vgg19-bn-7",
-        "working_directory": "./onnx-zoo-models/vgg19-bn-7/",
-        "model_path": "./vgg19-bn/vgg19-bn.onnx",
-        "test_data_path": "./vgg19-bn/"
-    },
-    {
-        "model_name": "bvlcalexnet-9",
-        "working_directory": "./onnx-zoo-models/bvlcalexnet-9/",
-        "model_path": "./bvlc_alexnet/model.onnx",
-        "test_data_path": "./bvlc_alexnet/"
-    },
-    {
-        "model_name": "googlenet-9",
-        "working_directory": "./onnx-zoo-models/googlenet-9/",
-        "model_path": "./bvlc_googlenet/model.onnx",
-        "test_data_path": "./bvlc_googlenet/"
-    },
-    {
-        "model_name": "caffenet-9",
-        "working_directory": "./onnx-zoo-models/caffenet-9/",
-        "model_path": "./bvlc_reference_caffenet/model.onnx",
-        "test_data_path": "./bvlc_reference_caffenet/"
-    },
-    {
-        "model_name": "rcnn-ilsvrc13-9",
-        "working_directory": "./onnx-zoo-models/rcnn-ilsvrc13-9/",
-        "model_path": "./bvlc_reference_rcnn_ilsvrc13/model.onnx",
-        "test_data_path": "./bvlc_reference_rcnn_ilsvrc13/"
-    },
-    {
-        "model_name": "densenet-9",
-        "working_directory": "./onnx-zoo-models/densenet-9/",
-        "model_path": "./densenet121/model.onnx",
-        "test_data_path": "./densenet121/"
-    },
-    {
-        "model_name": "inception-v1-9",
-        "working_directory": "./onnx-zoo-models/inception-v1-9/",
-        "model_path": "./inception_v1/model.onnx",
-        "test_data_path": "./inception_v1/"
-    },
-    {
-        "model_name": "inception-v2-9",
-        "working_directory": "./onnx-zoo-models/inception-v2-9/",
-        "model_path": "./inception_v2/model.onnx",
-        "test_data_path": "./inception_v2/"
-    },
-    {
-        "model_name": "shufflenet-9",
-        "working_directory": "./onnx-zoo-models/shufflenet-9/",
-        "model_path": "./shufflenet/model.onnx",
-        "test_data_path": "./shufflenet/"
-    },
-    {
-        "model_name": "shufflenet-v2-10",
-        "working_directory": "./onnx-zoo-models/shufflenet-v2-10/",
-        "model_path": "./model/test_shufflenetv2/model.onnx",
-        "test_data_path": "./model/test_shufflenetv2/"
-    },
-    {
-        "model_name": "mnist-8",
-        "working_directory": "./onnx-zoo-models/mnist-8/",
-        "model_path": "./mnist/model.onnx",
-        "test_data_path": "./mnist/"
-    },
-    {
-        "model_name": "tinyyolov2-8",
-        "working_directory": "./onnx-zoo-models/tinyyolov2-8/",
-        "model_path": "./tiny_yolov2/Model.onnx",
-        "test_data_path": "./tiny_yolov2/"
-    },
-    {
-        "model_name": "ssd-10",
-        "working_directory": "./onnx-zoo-models/ssd-10/",
-        "model_path": "./model.onnx",
-        "test_data_path": "./"
-    },
-    {
-        "model_name": "ssd_mobilenet_v1_10",
-        "working_directory": "./onnx-zoo-models/ssd_mobilenet_v1_10/",
-        "model_path": "./ssd_mobilenet_v1/ssd_mobilenet_v1.onnx",
-        "test_data_path": "./ssd_mobilenet_v1/"
-    },
-    {
-        "model_name": "retinanet-9",
-        "working_directory": "./onnx-zoo-models/retinanet-9/",
-        "model_path": "./test_retinanet_resnet101/retinanet-9.onnx",
-        "test_data_path": "./test_retinanet_resnet101/"
-    },
-    {
-        "model_name": "yolov3-10",
-        "working_directory": "./onnx-zoo-models/yolov3-10/",
-        "model_path": "./yolov3/yolov3.onnx",
-        "test_data_path": "./yolov3/"
-    },
-    {
-        "model_name": "tiny-yolov3-11",
-        "working_directory": "./onnx-zoo-models/tiny-yolov3-11/",
-        "model_path": "./yolov3-tiny.onnx",
-        "test_data_path": "./"
-    },
-    {
-        "model_name": "yolov4",
-        "working_directory": "./onnx-zoo-models/yolov4/",
-        "model_path": "./yolov4/yolov4_shape.onnx",
-        "test_data_path": "./yolov4/"
-    },
-    {
-        "model_name": "ResNet101-DUC-7",
-        "working_directory": "./onnx-zoo-models/ResNet101-DUC-7/",
-        "model_path": "./ResNet101_DUC_HDC/ResNet101_DUC_HDC.onnx",
-        "test_data_path": "./ResNet101_DUC_HDC/"
-    },
-    {
-        "model_name": "emotion-ferplus-8",
-        "working_directory": "./onnx-zoo-models/emotion-ferplus-8/",
-        "model_path": "./emotion_ferplus/model.onnx",
-        "test_data_path": "./emotion_ferplus/"
-    },
-    {
-        "model_name": "bertsquad-10",
-        "working_directory": "./onnx-zoo-models/bertsquad-10/",
-        "model_path": "./bertsquad-10/bertsquad10.onnx",
-        "test_data_path": "./bertsquad-10/"
-    },
-    {
-        "model_name": "gpt2-lm-head-10",
-        "working_directory": "./onnx-zoo-models/gpt2-lm-head-10/",
-        "model_path": "./GPT-2-LM-HEAD/model.onnx",
-        "test_data_path": "./GPT-2-LM-HEAD/"
-    },
-    {
-        "model_name": "gpt2-10",
-        "working_directory": "./onnx-zoo-models/gpt2-10/",
-        "model_path": "./GPT2/model.onnx",
-        "test_data_path": "./GPT2/"
-    },
-    {
-        "model_name": "zfnet512-9",
-        "working_directory": "./onnx-zoo-models/zfnet512-9/",
-        "model_path": "./zfnet512/model.onnx",
-        "test_data_path": "./zfnet512/"
-    },
-    {
-        "model_name": "arcfaceresnet100-8",
-        "working_directory": "./onnx-zoo-models/arcfaceresnet100-8/",
-        "model_path": "./resnet100/resnet100.onnx",
-        "test_data_path": "./resnet100/"
-    },
-    {
-        "model_name": "mosaic-9",
-        "working_directory": "./onnx-zoo-models/mosaic-9/",
-        "model_path": "./mosaic/mosaic.onnx",
-        "test_data_path": "./mosaic/"
-    }
+  {
+    "model_name": "FasterRCNN-10",
+    "working_directory": "./onnx-zoo-models/FasterRCNN-10",
+    "model_path": "./faster_rcnn_R_50_FPN_1x.onnx",
+    "test_data_path": "./"
+  },
+  {
+    "model_name": "MaskRCNN-10",
+    "working_directory": "./onnx-zoo-models/MaskRCNN-10/",
+    "model_path": "./mask_rcnn_R_50_FPN_1x.onnx",
+    "test_data_path": "./"
+  },
+  {
+    "model_name": "mobilenetv2-7",
+    "working_directory": "./onnx-zoo-models/mobilenetv2-7/",
+    "model_path": "./mobilenetv2-7/mobilenetv2-7.onnx",
+    "test_data_path": "./mobilenetv2-7/"
+  },
+  {
+    "model_name": "resnet50-v1-7",
+    "working_directory": "./onnx-zoo-models/resnet50-v1-7/",
+    "model_path": "./resnet50v1/resnet50-v1-7.onnx",
+    "test_data_path": "./resnet50v1/"
+  },
+  {
+    "model_name": "resnet101-v1-7",
+    "working_directory": "./onnx-zoo-models/resnet101-v1-7/",
+    "model_path": "./resnet101v1/resnet101-v1-7.onnx",
+    "test_data_path": "./resnet101v1/"
+  },
+  {
+    "model_name": "resnet152-v1-7",
+    "working_directory": "./onnx-zoo-models/resnet152-v1-7/",
+    "model_path": "./resnet152v1/resnet152-v1-7.onnx",
+    "test_data_path": "./resnet152v1/"
+  },
+  {
+    "model_name": "resnet18-v2-7",
+    "working_directory": "./onnx-zoo-models/resnet18-v2-7/",
+    "model_path": "./resnet18v2/resnet18-v2-7.onnx",
+    "test_data_path": "./resnet18v2/"
+  },
+  {
+    "model_name": "resnet34-v2-7",
+    "working_directory": "./onnx-zoo-models/resnet34-v2-7/",
+    "model_path": "./resnet34v2/resnet34-v2-7.onnx",
+    "test_data_path": "./resnet34v2/"
+  },
+  {
+    "model_name": "resnet50-v2-7",
+    "working_directory": "./onnx-zoo-models/resnet50-v2-7/",
+    "model_path": "./resnet50v2/resnet50-v2-7.onnx",
+    "test_data_path": "./resnet50v2/"
+  },
+  {
+    "model_name": "resnet101-v2-7",
+    "working_directory": "./onnx-zoo-models/resnet101-v2-7/",
+    "model_path": "./resnet101v2/resnet101-v2-7.onnx",
+    "test_data_path": "./resnet101v2/"
+  },
+  {
+    "model_name": "resnet152-v2-7",
+    "working_directory": "./onnx-zoo-models/resnet152-v2-7/",
+    "model_path": "./resnet152v2/resnet152-v2-7.onnx",
+    "test_data_path": "./resnet152v2/"
+  },
+  {
+    "model_name": "squeezenet1.1-7",
+    "working_directory": "./onnx-zoo-models/squeezenet1.1-7/",
+    "model_path": "./squeezenet1.1/squeezenet1.1.onnx",
+    "test_data_path": "./squeezenet1.1/"
+  },
+  {
+    "model_name": "vgg16-7",
+    "working_directory": "./onnx-zoo-models/vgg16-7/",
+    "model_path": "./vgg16/vgg16.onnx",
+    "test_data_path": "./vgg16/"
+  },
+  {
+    "model_name": "vgg19-bn-7",
+    "working_directory": "./onnx-zoo-models/vgg19-bn-7/",
+    "model_path": "./vgg19-bn/vgg19-bn.onnx",
+    "test_data_path": "./vgg19-bn/"
+  },
+  {
+    "model_name": "bvlcalexnet-9",
+    "working_directory": "./onnx-zoo-models/bvlcalexnet-9/",
+    "model_path": "./bvlc_alexnet/model.onnx",
+    "test_data_path": "./bvlc_alexnet/"
+  },
+  {
+    "model_name": "googlenet-9",
+    "working_directory": "./onnx-zoo-models/googlenet-9/",
+    "model_path": "./bvlc_googlenet/model.onnx",
+    "test_data_path": "./bvlc_googlenet/"
+  },
+  {
+    "model_name": "caffenet-9",
+    "working_directory": "./onnx-zoo-models/caffenet-9/",
+    "model_path": "./bvlc_reference_caffenet/model.onnx",
+    "test_data_path": "./bvlc_reference_caffenet/"
+  },
+  {
+    "model_name": "rcnn-ilsvrc13-9",
+    "working_directory": "./onnx-zoo-models/rcnn-ilsvrc13-9/",
+    "model_path": "./bvlc_reference_rcnn_ilsvrc13/model.onnx",
+    "test_data_path": "./bvlc_reference_rcnn_ilsvrc13/"
+  },
+  {
+    "model_name": "densenet-9",
+    "working_directory": "./onnx-zoo-models/densenet-9/",
+    "model_path": "./densenet121/model.onnx",
+    "test_data_path": "./densenet121/"
+  },
+  {
+    "model_name": "inception-v1-9",
+    "working_directory": "./onnx-zoo-models/inception-v1-9/",
+    "model_path": "./inception_v1/model.onnx",
+    "test_data_path": "./inception_v1/"
+  },
+  {
+    "model_name": "inception-v2-9",
+    "working_directory": "./onnx-zoo-models/inception-v2-9/",
+    "model_path": "./inception_v2/model.onnx",
+    "test_data_path": "./inception_v2/"
+  },
+  {
+    "model_name": "shufflenet-9",
+    "working_directory": "./onnx-zoo-models/shufflenet-9/",
+    "model_path": "./shufflenet/model.onnx",
+    "test_data_path": "./shufflenet/"
+  },
+  {
+    "model_name": "shufflenet-v2-10",
+    "working_directory": "./onnx-zoo-models/shufflenet-v2-10/",
+    "model_path": "./model/test_shufflenetv2/model.onnx",
+    "test_data_path": "./model/test_shufflenetv2/"
+  },
+  {
+    "model_name": "mnist-8",
+    "working_directory": "./onnx-zoo-models/mnist-8/",
+    "model_path": "./mnist/model.onnx",
+    "test_data_path": "./mnist/"
+  },
+  {
+    "model_name": "tinyyolov2-8",
+    "working_directory": "./onnx-zoo-models/tinyyolov2-8/",
+    "model_path": "./tiny_yolov2/Model.onnx",
+    "test_data_path": "./tiny_yolov2/"
+  },
+  {
+    "model_name": "ssd-10",
+    "working_directory": "./onnx-zoo-models/ssd-10/",
+    "model_path": "./model.onnx",
+    "test_data_path": "./"
+  },
+  {
+    "model_name": "ssd_mobilenet_v1_10",
+    "working_directory": "./onnx-zoo-models/ssd_mobilenet_v1_10/",
+    "model_path": "./ssd_mobilenet_v1/ssd_mobilenet_v1.onnx",
+    "test_data_path": "./ssd_mobilenet_v1/"
+  },
+  {
+    "model_name": "retinanet-9",
+    "working_directory": "./onnx-zoo-models/retinanet-9/",
+    "model_path": "./test_retinanet_resnet101/retinanet-9.onnx",
+    "test_data_path": "./test_retinanet_resnet101/"
+  },
+  {
+    "model_name": "yolov3-10",
+    "working_directory": "./onnx-zoo-models/yolov3-10/",
+    "model_path": "./yolov3/yolov3.onnx",
+    "test_data_path": "./yolov3/"
+  },
+  {
+    "model_name": "tiny-yolov3-11",
+    "working_directory": "./onnx-zoo-models/tiny-yolov3-11/",
+    "model_path": "./yolov3-tiny.onnx",
+    "test_data_path": "./"
+  },
+  {
+    "model_name": "yolov4",
+    "working_directory": "./onnx-zoo-models/yolov4/",
+    "model_path": "./yolov4/yolov4_shape.onnx",
+    "test_data_path": "./yolov4/"
+  },
+  {
+    "model_name": "ResNet101-DUC-7",
+    "working_directory": "./onnx-zoo-models/ResNet101-DUC-7/",
+    "model_path": "./ResNet101_DUC_HDC/ResNet101_DUC_HDC.onnx",
+    "test_data_path": "./ResNet101_DUC_HDC/"
+  },
+  {
+    "model_name": "emotion-ferplus-8",
+    "working_directory": "./onnx-zoo-models/emotion-ferplus-8/",
+    "model_path": "./emotion_ferplus/model.onnx",
+    "test_data_path": "./emotion_ferplus/"
+  },
+  {
+    "model_name": "bertsquad-10",
+    "working_directory": "./onnx-zoo-models/bertsquad-10/",
+    "model_path": "./bertsquad-10/bertsquad10.onnx",
+    "test_data_path": "./bertsquad-10/"
+  },
+  {
+    "model_name": "gpt2-lm-head-10",
+    "working_directory": "./onnx-zoo-models/gpt2-lm-head-10/",
+    "model_path": "./GPT-2-LM-HEAD/model.onnx",
+    "test_data_path": "./GPT-2-LM-HEAD/"
+  },
+  {
+    "model_name": "gpt2-10",
+    "working_directory": "./onnx-zoo-models/gpt2-10/",
+    "model_path": "./GPT2/model.onnx",
+    "test_data_path": "./GPT2/"
+  },
+  {
+    "model_name": "zfnet512-9",
+    "working_directory": "./onnx-zoo-models/zfnet512-9/",
+    "model_path": "./zfnet512/model.onnx",
+    "test_data_path": "./zfnet512/"
+  },
+  {
+    "model_name": "arcfaceresnet100-8",
+    "working_directory": "./onnx-zoo-models/arcfaceresnet100-8/",
+    "model_path": "./resnet100/resnet100.onnx",
+    "test_data_path": "./resnet100/"
+  },
+  {
+    "model_name": "mosaic-9",
+    "working_directory": "./onnx-zoo-models/mosaic-9/",
+    "model_path": "./mosaic/mosaic.onnx",
+    "test_data_path": "./mosaic/"
+  }
 ]

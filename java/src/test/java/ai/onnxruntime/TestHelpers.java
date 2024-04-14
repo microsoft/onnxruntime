@@ -22,6 +22,8 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Assertions;
 
@@ -256,6 +258,16 @@ public class TestHelpers {
 
   static void flattenStringBase(String[] input, List<String> output) {
     output.addAll(Arrays.asList(input));
+  }
+
+  static void loudLogger(Class<?> loggerClass) {
+    Logger l = Logger.getLogger(loggerClass.getName());
+    l.setLevel(Level.INFO);
+  }
+
+  static void quietLogger(Class<?> loggerClass) {
+    Logger l = Logger.getLogger(loggerClass.getName());
+    l.setLevel(Level.OFF);
   }
 
   public static Path getResourcePath(String path) {

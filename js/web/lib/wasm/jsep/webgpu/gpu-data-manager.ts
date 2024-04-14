@@ -60,9 +60,15 @@ export interface GpuDataManager {
   unregisterExternalBuffer(buffer: GPUBuffer): void;
 
   /**
-   * destroy all gpu buffers. Call this when the session.release is called.
+   * destroy all gpu buffers.
    */
   dispose(): void;
+
+  /**
+   * release session related data.
+   * @param sessionId - specify the session ID.
+   */
+  onReleaseSession(sessionId: number): void;
 }
 
 interface StorageCacheValue {
@@ -139,6 +145,10 @@ class GpuDataManagerImpl implements GpuDataManager {
   // The external buffers registered users for IO Binding.
   private externalBuffers: Map<GPUBuffer, GpuDataId>;
 
+  // The pendingBuffers for capture graph.
+  // a SessionID -> GPUBuffer[] mapping.
+  private capturedPendingBuffers: Map<number, GPUBuffer[]>;
+
   constructor(private backend: WebGpuBackend) {
     this.storageCache = new Map();
     this.freeBuffers = new Map();
@@ -146,6 +156,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.buffersForUploadingPending = [];
     this.buffersPending = [];
     this.externalBuffers = new Map();
+    this.capturedPendingBuffers = new Map();
   }
 
   upload(id: GpuDataId, data: Uint8Array): void {
@@ -220,6 +231,9 @@ class GpuDataManagerImpl implements GpuDataManager {
             () => `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${
                 id}, buffer is the same, skip.`);
         return id;
+      } else if (this.backend.capturedCommandList.has(this.backend.currentSessionId!)) {
+        throw new Error(`Registering a different external buffer under graph capture mode is not supported yet.
+             Please use the previous external buffer!`);
       }
       this.externalBuffers.delete(previousBuffer);
     } else {
@@ -312,20 +326,39 @@ class GpuDataManagerImpl implements GpuDataManager {
       buffer.destroy();
     }
     this.buffersForUploadingPending = [];
-    for (const buffer of this.buffersPending) {
-      // eslint-disable-next-line no-bitwise
-      if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
-        // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
-        this.freeBuffers.get(buffer.size)!.push(buffer);
-        // eslint-disable-next-line no-bitwise
-      } else if ((buffer.usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM) {
-        // Put the pending buffer to freeUniformBuffers list instead of really destroying it for buffer reusing.
-        this.freeUniformBuffers.get(buffer.size)!.push(buffer);
-      } else {
-        buffer.destroy();
-      }
+
+    if (this.buffersPending.length === 0) {
+      return;
     }
-    this.buffersPending = [];
+
+    if (this.backend.sessionStatus === 'default') {
+      for (const buffer of this.buffersPending) {
+        // eslint-disable-next-line no-bitwise
+        if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
+          // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
+          this.freeBuffers.get(buffer.size)!.push(buffer);
+          // eslint-disable-next-line no-bitwise
+        } else if ((buffer.usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM) {
+          // Put the pending buffer to freeUniformBuffers list instead of really destroying it for buffer reusing.
+          this.freeUniformBuffers.get(buffer.size)!.push(buffer);
+        } else {
+          buffer.destroy();
+        }
+      }
+      this.buffersPending = [];
+    } else {
+      // Don't release intermediate tensors in non-default mode.
+      // TODO: reuse the storage buffers in non-default mode.
+      let capturedBuffers = this.capturedPendingBuffers.get(this.backend.currentSessionId!);
+      if (!capturedBuffers) {
+        capturedBuffers = [];
+        this.capturedPendingBuffers.set(this.backend.currentSessionId!, capturedBuffers);
+      }
+      for (const buffer of this.buffersPending) {
+        capturedBuffers.push(buffer);
+      }
+      this.buffersPending = [];
+    }
   }
 
   dispose() {
@@ -344,9 +377,26 @@ class GpuDataManagerImpl implements GpuDataManager {
       storage.gpuData.buffer.destroy();
     });
 
+    this.capturedPendingBuffers.forEach((buffers) => {
+      buffers.forEach(buffer => {
+        buffer.destroy();
+      });
+    });
     this.storageCache = new Map();
     this.freeBuffers = new Map();
     this.freeUniformBuffers = new Map();
+    this.capturedPendingBuffers = new Map();
+  }
+
+  onReleaseSession(sessionId: number) {
+    // release the captured pending buffers.
+    const pendingBuffers = this.capturedPendingBuffers.get(sessionId);
+    if (pendingBuffers) {
+      pendingBuffers.forEach(buffer => {
+        buffer.destroy();
+      });
+      this.capturedPendingBuffers.delete(sessionId);
+    }
   }
 }
 

@@ -1,3 +1,9 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+
 import argparse
 import ast
 import datetime
@@ -54,6 +60,8 @@ def get_inputs(args: argparse.Namespace):
             inputs["decoder_input_ids"] = np.array([args.decoder_input_ids], dtype=np.int32)
         if args.has_logits_processor:
             inputs["logits_processor"] = np.array([args.logits_processor], dtype=np.int32)
+        if args.has_temperature:
+            inputs["temperature"] = np.array([args.temperature], dtype=np.float32)
 
     # Measure time taken to load audio file
     logger.info(f"Load audio: {args.audio_path}")
@@ -137,10 +145,10 @@ def get_model(args: argparse.Namespace):
         start_time = time.time()
         model = ORTModelForSpeechSeq2Seq.from_pretrained(
             args.hf_ort_dir_path,
-            use_io_binding=(args.device != "cpu"),
             provider=provider,
             provider_options=provider_options,
             session_options=sess_options,
+            use_io_binding=True,  # Avoid memory copy overhead
         )
         end_time = time.time()
 
@@ -163,6 +171,7 @@ def get_model(args: argparse.Namespace):
 def time_fn(args, fn, inputs):
     warmup_inputs = inputs[0] if type(inputs) is tuple else inputs
     benchmark_inputs = inputs[1] if type(inputs) is tuple else inputs
+    torch_device = torch.device(args.target_device)
 
     # Warm up
     warmup_range = (
@@ -180,7 +189,7 @@ def time_fn(args, fn, inputs):
 
     # Benchmark
     if args.device != "cpu":
-        torch.cuda.synchronize()
+        torch.cuda.synchronize(torch_device)
     start_time = time.time()
 
     bench_range = (
@@ -192,7 +201,7 @@ def time_fn(args, fn, inputs):
         fn(benchmark_inputs)
 
     if args.device != "cpu":
-        torch.cuda.synchronize()
+        torch.cuda.synchronize(torch_device)
     end_time = time.time()
 
     # Newline print after trange in order to print metrics on new lines without progress bar on same line
@@ -401,7 +410,8 @@ def run_ort_inference(args, inputs, model):
         actual_output = handle_output(ort_outputs[0][0])
         logger.info(f"Generated token length: {len(actual_output)} tokens")
         transcription = args.processor.batch_decode(ort_outputs[0], skip_special_tokens=True)[0]
-        logger.info(f"Transcription: {transcription}")
+        # print to stdout as the output for comparison
+        print(f"{transcription}")
 
     measure_fn(args, generate_fn, ort_inputs)
 
@@ -500,7 +510,13 @@ def parse_args():
         "--logits-processor",
         type=int,
         default=1,
-        help="Type of logits processor to use. See `BeamSearch` in https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc for details.",
+        help="Whether to use timestamps logits processor or not (0 for false, 1 for true).",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Temperature value for generation.",
     )
 
     # Args for accessing detailed info
@@ -581,6 +597,7 @@ def main():
         args.has_audio_stream = "audio_stream" in ort_model_inputs
         setattr(args, "has_decoder_input_ids", "decoder_input_ids" in ort_model_inputs)  # noqa: B010
         setattr(args, "has_logits_processor", "logits_processor" in ort_model_inputs)  # noqa: B010
+        setattr(args, "has_temperature", "temperature" in ort_model_inputs)  # noqa: B010
 
         if args.decoder_input_ids == []:
             args.decoder_input_ids = [config.decoder_start_token_id]

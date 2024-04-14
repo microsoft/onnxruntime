@@ -11,16 +11,16 @@
 #include "QnnInterface.h"
 #include "qnn_def.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace qnn {
 
-// POD struct that stores information about an ONNX input.
-// Filled out by QnnModelWrapper::GetOnnxInputInfo()
-struct OnnxInputInfo {
+// Stores information about an ONNX input or output tensor.
+// Filled out by QnnModelWrapper::GetTensorInfo()
+struct TensorInfo {
   std::vector<uint32_t> shape;
   Qnn_DataType_t qnn_data_type;
   Qnn_QuantizeParams_t quant_param;
@@ -117,8 +117,7 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
-  // TODO(hecli) rename to GetTensorInfo
-  Status GetOnnxInputInfo(const NodeUnitIODef& input, OnnxInputInfo& input_info) const;
+  Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,
@@ -179,7 +178,7 @@ class QnnModelWrapper {
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                std::vector<uint8_t>& unpacked_tensor) const;
 
-  QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
+  QnnBackendType GetQnnBackendType() const { return qnn_backend_type_; }
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 

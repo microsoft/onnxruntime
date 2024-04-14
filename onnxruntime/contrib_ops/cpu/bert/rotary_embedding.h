@@ -16,6 +16,8 @@ class RotaryEmbedding final : public OpKernel {
 
  protected:
   float scale;
+  int num_heads;
+  int rotary_embedding_dim;
   bool interleaved;
 };
 

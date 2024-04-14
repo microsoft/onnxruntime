@@ -114,7 +114,7 @@ export class ExecutionPlan {
 
         // resolve downstream nodes
         const downstreamNodes = new Set<number>();
-        outputList.forEach((output, i) => {
+        outputList.forEach((_output, i) => {
           const j = thisOp.node.outputs[i];
           for (const currentDownstreamNodeIndex of graphValues[j].to) {
             const currentDownstreamNode = graphNodes[currentDownstreamNodeIndex];

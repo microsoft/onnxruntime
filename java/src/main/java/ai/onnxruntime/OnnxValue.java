@@ -64,7 +64,14 @@ public interface OnnxValue extends AutoCloseable {
    */
   public ValueInfo getInfo();
 
-  /** Closes the OnnxValue, freeing it's native memory. */
+  /**
+   * Checks if this value is closed (i.e., the native object has been released).
+   *
+   * @return True if the value is closed and the native object has been released.
+   */
+  public boolean isClosed();
+
+  /** Closes the OnnxValue, freeing its native memory. */
   @Override
   public void close();
 

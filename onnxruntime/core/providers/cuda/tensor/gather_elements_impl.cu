@@ -95,7 +95,37 @@ struct OffsetCalculatorFor2D {
 
 template <class T>
 struct FuncAssignment {
-  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const { start_addr[index] = value; }
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    start_addr[index] = value;
+  }
+};
+
+template <class T>
+struct FuncAdd {
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_add(start_addr + index, value);
+  }
+};
+
+template <class T>
+struct FuncMul {
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_mul(start_addr + index, value);
+  }
+};
+
+template <class T>
+struct FuncMax {
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_max(start_addr + index, value);
+  }
+};
+
+template <class T>
+struct FuncMin {
+  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
+    atomic_min(start_addr + index, value);
+  }
 };
 
 template <typename T, typename TIndex, bool IsGather, typename OffsetCalcT, typename TFunc>
@@ -238,8 +268,24 @@ Status ScatterElementsImplInternal(cudaStream_t stream, const T* input_data, con
 template <typename T, typename TIndex>
 Status ScatterElementsImpl(cudaStream_t stream, const T* input_data, const TIndex* indices_data, const T* updates_data,
                            T* output_data, const GatherScatterElementsArgs& args) {
-  return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
-                                     FuncAssignment<T>());
+  if (args.operation == GatherScatterElementsArgs::Operation::NONE) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncAssignment<T>());
+  } else if (args.operation == GatherScatterElementsArgs::Operation::ADD) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncAdd<T>());
+  } else if (args.operation == GatherScatterElementsArgs::Operation::MUL) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncMul<T>());
+  } else if (args.operation == GatherScatterElementsArgs::Operation::MAX) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncMax<T>());
+  } else if (args.operation == GatherScatterElementsArgs::Operation::MIN) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                        FuncMin<T>());
+  } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported reduction operator.");
+  }
 }
 
 #define GATHER_SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                                     \

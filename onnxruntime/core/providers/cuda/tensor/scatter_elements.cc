@@ -27,7 +27,23 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterElements, kOnnxDomain, 11, 12, kCudaExe
                                                                               DataTypeImpl::GetTensorType<int64_t>()}),
                                   ScatterElements);
 
-ONNX_OPERATOR_KERNEL_EX(ScatterElements, kOnnxDomain, 13, kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterElements, kOnnxDomain, 13, 15, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .TypeConstraint("Tind",
+                                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                                              DataTypeImpl::GetTensorType<int64_t>()}),
+                                  ScatterElements);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterElements, kOnnxDomain, 16, 17, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .TypeConstraint("Tind",
+                                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                                              DataTypeImpl::GetTensorType<int64_t>()}),
+                                  ScatterElements);
+
+ONNX_OPERATOR_KERNEL_EX(ScatterElements, kOnnxDomain, 18, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
                             .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
@@ -105,6 +121,20 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector input_shape_vec = input_shape.AsShapeVector();
   TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
   CoalesceDimensions(input_shape_vec, indices_shape_vec, nullptr, axis, args);
+
+  if (reduction_ == "none") {
+    args.operation = GatherScatterElementsArgs::Operation::NONE;
+  } else if (reduction_ == "add") {
+    args.operation = GatherScatterElementsArgs::Operation::ADD;
+  } else if (reduction_ == "mul") {
+    args.operation = GatherScatterElementsArgs::Operation::MUL;
+  } else if (reduction_ == "min") {
+    args.operation = GatherScatterElementsArgs::Operation::MIN;
+  } else if (reduction_ == "max") {
+    args.operation = GatherScatterElementsArgs::Operation::MAX;
+  } else {
+    ORT_THROW("Unsupported reduction type");
+  }
 
   // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.
   int dtype = GetElementType(input_tensor->DataType()->Size());

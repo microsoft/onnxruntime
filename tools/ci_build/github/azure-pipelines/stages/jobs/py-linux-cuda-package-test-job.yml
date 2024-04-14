@@ -1,0 +1,118 @@
+parameters:
+  - name: CudaVersion
+    displayName: 'CUDA version'
+    type: string
+    default: '11.8'
+    values:
+      - 11.8
+      - 12.2
+  - name: machine_pool
+    type: string
+
+  - name: timeout
+    type: number
+    default: 120
+  - name: build_id
+    type: string
+    default: 'latest'
+  - name: project
+    type: string
+    default: 'Lotus'
+  - name: pipeline
+    type: string
+    default: 'Python-CUDA-Packaging-Pipeline'
+  - name: dependencies
+    type: string
+    default: 'none'
+  # TODO: Ideally it should fetch information from the build that triggers it
+  - name: cmake_build_type
+    type: string
+    default: 'Release'
+    values:
+      - Debug
+      - Release
+      - RelWithDebInfo
+      - MinSizeRel
+
+jobs:
+  - job: Linux_Python_CUDA_Package_Test
+    ${{ if ne(parameters.dependencies, 'none') }}:
+      dependsOn: ${{ parameters.dependencies }}
+    ${{ if eq(parameters.dependencies, 'none') }}:
+      dependsOn: [ ]
+    timeoutInMinutes: ${{ parameters.timeout }}
+    variables:
+      - name: docker_base_image
+        ${{ if eq(parameters.CudaVersion, '11.8') }}:
+          value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+          value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+      - name: linux_trt_version
+        ${{ if eq(parameters.CudaVersion, '11.8') }}:
+          value: 8.6.1.6-1.cuda11.8
+        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+          value: 8.6.1.6-1.cuda12.0
+    pool: ${{ parameters.machine_pool }}
+    steps:
+      - checkout: self
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop-linux-gpu-x86_64'
+          targetPath: '$(Build.SourcesDirectory)/drop-linux-gpu-x86_64'
+          ${{ if ne(parameters.build_id, 'latest') }}:
+            buildType: 'specific'
+            project: '${{ parameters.project }}'
+            pipeline: '${{ parameters.pipeline }}'
+            buildVersionToDownload: 'specific'
+            buildId: '${{ parameters.build_id }}'
+        displayName: 'Download Build Artifacts - drop-linux-gpu-x86_64'
+
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'onnxruntime_gpu'
+          targetPath: '$(Build.SourcesDirectory)/onnxruntime_gpu'
+          ${{ if ne(parameters.build_id, 'latest') }}:
+            buildType: 'specific'
+            project: '${{ parameters.project }}'
+            pipeline: '${{ parameters.pipeline }}'
+            buildVersionToDownload: 'specific'
+            buildId: '${{ parameters.build_id }}'
+        displayName: 'Download Build Artifacts - onnxruntime_gpu'
+
+      - bash: |
+          set -e -x
+          ls $(Build.SourcesDirectory)
+          mv "$(Build.SourcesDirectory)/drop-linux-gpu-x86_64" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+          mv "$(Build.SourcesDirectory)/onnxruntime_gpu" "$(Build.BinariesDirectory)/whl"
+          cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
+          find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
+        displayName: 'Prepare artifacts'
+
+      - task: BinSkim@4
+        displayName: 'Run BinSkim'
+        inputs:
+          AnalyzeTargetGlob: '$(Build.BinariesDirectory)/tmp/**/*.so'
+          continueOnError: true
+
+      - template: ../../templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "
+          --network=host 
+          --build-arg BASEIMAGE=${{ variables.docker_base_image }}
+          --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
+          --build-arg BUILD_UID=$( id -u )
+          --build-arg PLATFORM=x86_64
+          "
+          Repository: onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64
+
+      - task: Bash@3
+        displayName: 'Run Python Docker Test'
+        inputs:
+          targetType: filePath
+          filePath: tools/ci_build/github/linux/run_python_dockertest.sh
+          arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64 -u 12.2
+      - template: ../../templates/component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
