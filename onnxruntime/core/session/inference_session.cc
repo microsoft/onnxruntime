@@ -15,6 +15,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
+#include "core/common/string_utils.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/framework/bfc_arena.h"
@@ -401,7 +402,21 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
-  ORT_ENFORCE(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
+  ORT_THROW_IF_ERROR(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps));
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  {
+    auto disabled_string = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsDisableSpecifiedOptimizers, "");
+    if (!disabled_string.empty()) {
+      const auto disabled_list = utils::SplitString(disabled_string, ";");
+      InlinedHashSet<std::string> disabled_rules_and_transformers;
+      disabled_rules_and_transformers.reserve(disabled_list.size());
+      disabled_rules_and_transformers.insert(disabled_list.cbegin(), disabled_list.cend());
+      ORT_THROW_IF_ERROR(FilterEnabledOptimizers(std::move(disabled_rules_and_transformers)));
+    }
+  }
 #endif
 
   bool set_denormal_as_zero =

@@ -11,7 +11,8 @@ resources:
 stages:
 - template: templates/py-packaging-training-cuda-stage.yml
   parameters:
-    build_py_parameters: --enable_training --update --build
+    # set the paralle count to reduce memory/build_threads to avoid OOM
+    build_py_parameters: --enable_training --update --build --parallel 8
     torch_version: '2.1.0'
     opset_version: '17'
     cuda_version: '12.2'
@@ -20,3 +21,4 @@ stages:
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
     debug_build: false
+    build_pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU'
