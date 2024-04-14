@@ -23,7 +23,7 @@ class EPCtxHandler {
   EPCtxHandler() = default;
   EPCtxHandler(const EPCtxHandler&) = default;
   Status ExportEPCtxModel(const GraphViewer& graph_viewer,
-                          const onnxruntime::Node& fused_node,
+                          const std::string& graph_name,
                           const logging::Logger& logger,
                           const bool& ep_context_embed_mode,
                           const std::string& model_blob_str,

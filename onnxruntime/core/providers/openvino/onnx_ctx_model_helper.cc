@@ -14,14 +14,13 @@ namespace openvino_ep {
  */
 
 Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
-                                      const onnxruntime::Node& fused_node,
+                                      const std::string& graph_name,
                                       const logging::Logger& logger,
                                       const bool& ep_context_embed_mode,
                                       const std::string& model_blob_str,
                                       const std::string& openvino_sdk_version) const {
   auto model_build = graph_viewer.CreateModel(logger);
   auto& graph_build = model_build->MainGraph();
-  std::string graph_name = fused_node.Name();
 
   // Get graph inputs and outputs
   std::vector<onnxruntime::NodeArg*> inputs, outputs;

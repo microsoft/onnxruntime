@@ -1,6 +1,6 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
-#include <thread>
+#include <filesystem>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "openvino_execution_provider.h"
@@ -114,7 +114,6 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
     std::cout << "In the OpenVINO EP" << std::endl;
   }
-  global_context_->onnx_model_name = graph_viewer.Name();
 #ifdef _WIN32
   std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
   global_context_->onnx_model_path_name =
@@ -123,6 +122,8 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   global_context_->onnx_model_path_name =
       graph_viewer.ModelPath().ToPathString();
 #endif
+  std::filesystem::path onnx_model_wd = graph_viewer.ModelPath().GetComponents().back();
+  global_context_->onnx_model_name = onnx_model_wd.replace_extension();
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
@@ -159,8 +160,7 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                       ep_ctx_handle_);
 
     if (global_context_->export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
-      ORT_RETURN_IF_ERROR(backend_manager->ExportCompiledBlobAsEPCtxNode(fused_node,
-                                                                         graph_body_viewer,
+      ORT_RETURN_IF_ERROR(backend_manager->ExportCompiledBlobAsEPCtxNode(graph_body_viewer,
                                                                          *GetLogger()));
     }
 

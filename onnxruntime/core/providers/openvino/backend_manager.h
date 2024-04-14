@@ -28,8 +28,7 @@ class BackendManager {
   void ShutdownBackendManager();
   void SetGlobalCotext(const GlobalContext& global_context);
   GlobalContext& GetGlobalContext();
-  Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::Node& fused_node,
-                                       const onnxruntime::GraphViewer& subgraph,
+  Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph,
                                        const logging::Logger& logger);
 
  private:

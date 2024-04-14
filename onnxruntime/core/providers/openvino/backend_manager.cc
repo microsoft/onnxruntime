@@ -4,7 +4,6 @@
 #include <fstream>
 #include <sstream>
 #include <utility>
-#include <exception>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "contexts.h"
@@ -124,11 +123,11 @@ BackendManager::BackendManager(const GlobalContext& global_context,
 // precompiled blob is set. If that's the case:
 // By default, create model in embed mode where the blob stream is exported as data within
 // the EPContext node.
-Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::Node& fused_node,
-                                                     const onnxruntime::GraphViewer& graph_body_viewer,
+Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& graph_body_viewer,
                                                      const logging::Logger& logger) {
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
+  const std::string& graph_name = global_context_.onnx_model_name;
   // If embed_mode, then pass on the serialized blob
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   if (global_context_.ep_context_embed_mode) {
@@ -137,14 +136,13 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::Node& fu
     model_blob_str = model_blob_stream.str();
     ORT_ENFORCE(model_blob_str.size() != 0);
   } else {
-    const std::string& graph_name = fused_node.Name();
     std::ofstream f(graph_name + ".blob", std::ios::out | std::ios::trunc | std::ios::binary);
     compiled_model.export_model(f);
     model_blob_str = graph_name + ".blob";
   }
 
   ORT_RETURN_IF_ERROR(ep_ctx_handle_.ExportEPCtxModel(graph_body_viewer,
-                                                      fused_node,
+                                                      graph_name,
                                                       logger,
                                                       global_context_.ep_context_embed_mode,
                                                       model_blob_str,
