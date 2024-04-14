@@ -2,10 +2,12 @@
 
 BasedOnStyle: Google
 IndentWidth: 4
-ColumnLimit: 100
+# Setting ColumnLimit to 0 so developer choices about where to break lines are maintained.
+# Developers are responsible for adhering to the 120 character maximum.
+ColumnLimit: 0
+AlignAfterOpenBracket: BlockIndent
 AlwaysBreakAfterReturnType: TopLevel
 AlwaysBreakTemplateDeclarations: Yes
 BinPackParameters: false
 BreakBeforeBraces: Linux
 ...
-

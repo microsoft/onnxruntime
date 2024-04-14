@@ -29,6 +29,13 @@ class PoolOpBuilder : public BaseOpBuilder {
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
   Status SetCommonPoolParams(const NodeAttrHelper& node_helper, std::vector<uint32_t>& filter_size,
@@ -233,6 +240,23 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                      logger,
                                      do_op_validation,
                                      GetQnnOpType(op_type)));
+
+  return Status::OK();
+}
+
+Status PoolOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                               const NodeUnit& node_unit,
+                                               const logging::Logger& logger,
+                                               const std::vector<std::string>& input_names,
+                                               size_t output_index,
+                                               Qnn_DataType_t qnn_data_type,
+                                               Qnn_QuantizeParams_t& quant_param) const {
+  // Force MaxPool outputs to use the same quantization parameters as the input if they are nearly equal.
+  // This helps the HTP backend employ certain optimizations.
+  if (node_unit.OpType() == "MaxPool") {
+    return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                    0 /*input_index*/, output_index, qnn_data_type, quant_param);
+  }
 
   return Status::OK();
 }

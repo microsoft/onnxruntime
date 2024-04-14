@@ -14,8 +14,8 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 struct PriorityNodeCompare {
   inline bool IsHighPri(const Node* n) const {
     // local statics so we can compare std::strings in the checks
-    static const std::string shape_op("Shape");
-    static const std::string size_op("Size");
+    static constexpr std::string_view shape_op("Shape");
+    static constexpr std::string_view size_op("Size");
 
     const auto& op_type = n->OpType();
     return op_type == shape_op || op_type == size_op;
@@ -26,14 +26,31 @@ struct PriorityNodeCompare {
   // If return true, n2 will be output first
   bool operator()(const Node* n1, const Node* n2) const {
     // nodes in global high priority list will be output first
-    if (IsHighPri(n1) != IsHighPri(n2)) {
-      return IsHighPri(n2);
+    const bool isN1HighPri = IsHighPri(n1);
+    const bool isN2HighPri = IsHighPri(n2);
+    if (isN1HighPri != isN2HighPri) {
+      return isN2HighPri;
     }
 
     // nodes with lower priority value will be output first
-    if (n1->Priority() != n2->Priority()) {
-      return n1->Priority() > n2->Priority();
+    const auto n1_priority = n1->Priority();
+    const auto n2_priority = n2->Priority();
+    if (n1_priority != n2_priority) {
+      return n1_priority > n2_priority;
     }
+
+#ifdef ENABLE_TRAINING
+    // nodes of forward pass will be output first
+    auto n1_attrs = n1->GetAttributes();
+    auto n2_attrs = n2->GetAttributes();
+    int64_t n1_is_forward = static_cast<int64_t>(n1_attrs.find(kBackwardNodeAttributeName) == n1_attrs.cend()) ||
+                            (n1_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
+    int64_t n2_is_forward = static_cast<int64_t>(n2_attrs.find(kBackwardNodeAttributeName) == n2_attrs.cend()) ||
+                            (n2_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
+    if (n1_is_forward != n2_is_forward) {
+      return n2_is_forward > n1_is_forward;
+    }
+#endif
 
     // otherwise, nodes with lower index will be output first
     return n1->Index() > n2->Index();
@@ -57,6 +74,14 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
                       : ConstGraphNodes::NodeFilterFunc(nullptr))},
       filter_info_{filter_info} {
   std::vector<const Node*> leaf_nodes;
+#ifdef ENABLE_TRAINING
+  // Keep the info of shape and size nodes and their parents so that after topological sort, we can move them
+  // right after their parents. This is to make sure the shape and size nodes are executed right after their parents
+  // so it's possible the input tensor memory can be released as soon as possible. This is especially important
+  // for non-CPU devices or for training case where some gradient graphs use only shape/size of tensors from forward.
+  InlinedHashSet<NodeIndex> shape_size_nodes;
+  InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>> shape_size_parents;
+#endif
   for (auto& node : graph_->Nodes()) {
     // This is a leaf node (without any output node)
     if (node.OutputNodesBegin() == node.OutputNodesEnd()) {
@@ -66,6 +91,17 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
       root_nodes_.push_back(node.Index());
     }
+#ifdef ENABLE_TRAINING
+    if ((node.OpType() == "Shape" || node.OpType() == "Size") && node.InputEdgesBegin() != node.InputEdgesEnd()) {
+      shape_size_nodes.insert(node.Index());
+      NodeIndex parent = node.InputNodesBegin()->Index();
+      if (shape_size_parents.find(parent) == shape_size_parents.end()) {
+        shape_size_parents[parent] = InlinedVector<NodeIndex>{node.Index()};
+      } else {
+        shape_size_parents[parent].push_back(node.Index());
+      }
+    }
+#endif
   }
 
   graph.ReverseDFSFrom(
@@ -75,7 +111,24 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
         nodes_in_topological_order_.push_back(n->Index());
       },
       NodeCompare());
-
+#ifdef ENABLE_TRAINING
+  auto original = std::move(nodes_in_topological_order_);
+  nodes_in_topological_order_.reserve(original.size());
+  InlinedHashSet<NodeIndex> visited;
+  for (auto& node : original) {
+    if (visited.find(node) != visited.end()) {
+      continue;
+    }
+    nodes_in_topological_order_.push_back(node);
+    visited.insert(node);
+    if (shape_size_parents.find(node) != shape_size_parents.end()) {
+      for (auto& following_node : shape_size_parents[node]) {
+        nodes_in_topological_order_.push_back(following_node);
+        visited.insert(following_node);
+      }
+    }
+  }
+#endif
 #if !defined(ORT_MINIMAL_BUILD)
   graph.KahnsTopologicalSort(
       [this](const Node* n) {
@@ -165,6 +218,8 @@ const std::string& GraphViewer::Description() const noexcept {
 
 bool GraphViewer::GetInitializedTensor(const std::string& tensor_name,
                                        const ONNX_NAMESPACE::TensorProto*& value) const {
+  value = nullptr;
+
   // if we are using filtered subgraph, the initializer has to be part of the subgraph
   if (filter_info_ != nullptr && filtered_initializers_.find(tensor_name) == filtered_initializers_.cend())
     return false;

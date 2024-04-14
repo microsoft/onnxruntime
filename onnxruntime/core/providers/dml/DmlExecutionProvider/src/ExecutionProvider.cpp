@@ -142,13 +142,7 @@ namespace Dml
         }
     }
 
-// ORT release pipelines agent pools do not have 19H1 SDK installed which defines D3D_FEATURE_LEVEL_1_0_CORE.
-// Once ORT/WinML github project can be built with VS2019, we can update these pools to use install the 19H1 SDK
-// using the command line installer tool with VS2019
-// Task 24384515: Update ORT AIInfra release agent pool to install 19H1 SDK on VM bootstrap
-#define D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE ((D3D_FEATURE_LEVEL)0x1000)
-
-    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableDynamicGraphFusion)
+ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands, bool enableDynamicGraphFusion)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
@@ -157,7 +151,10 @@ namespace Dml
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {
-            D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE,
+  #ifndef _GAMING_XBOX
+            D3D_FEATURE_LEVEL_1_0_GENERIC,
+  #endif
+            D3D_FEATURE_LEVEL_1_0_CORE,
             D3D_FEATURE_LEVEL_11_0,
             D3D_FEATURE_LEVEL_11_1,
             D3D_FEATURE_LEVEL_12_0,
@@ -181,7 +178,33 @@ namespace Dml
             m_native16BitShaderOpsSupported = featureOptions.Native16BitShaderOpsSupported;
         }
 
-        m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE);
+        m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel <= D3D_FEATURE_LEVEL_1_0_CORE);
+        m_areCustomHeapsSupported = !m_isMcdmDevice;
+
+        if (m_isMcdmDevice)
+        {
+
+            // TODO: Ingest updated header file
+            typedef struct D3D12_FEATURE_DATA_D3D12_OPTIONS19
+            {
+                BOOL MismatchingOutputDimensionsSupported;
+                UINT SupportedSampleCountsWithNoOutputs;
+                BOOL PointSamplingAddressesNeverRoundUp;
+                BOOL RasterizerDesc2Supported;
+                BOOL NarrowQuadrilateralLinesSupported;
+                BOOL AnisoFilterWithPointMipSupported;
+                UINT MaxSamplerDescriptorHeapSize;
+                UINT MaxSamplerDescriptorHeapSizeWithStaticSamplers;
+                UINT MaxViewDescriptorHeapSize;
+                _Out_  BOOL ComputeOnlyCustomHeapSupported;
+            } 	D3D12_FEATURE_DATA_D3D12_OPTIONS19;
+
+            D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19 = {};
+
+            // The call may fail in which case the default value is false
+            d3d12Device->CheckFeatureSupport(static_cast<D3D12_FEATURE>(48) /*D3D12_FEATURE_D3D12_OPTIONS19*/, &options19, sizeof(options19));
+            m_areCustomHeapsSupported = options19.ComputeOnlyCustomHeapSupported;
+        }
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
@@ -755,8 +778,14 @@ namespace Dml
                 !native16BitShaderOpsSupported &&
                 IsCustomOpShader(node))
             {
-                nodeContainsSupportedDataTypes = false;
-                return;
+                // STFT is a special case since it has a dml ep registered
+                // graph transformation that will decompose fp16 STFT into convolution
+                // and so it is OK to register for fp16.
+                if (strcmp("STFT", node.OpType().c_str()) != 0)
+                {
+                    nodeContainsSupportedDataTypes = false;
+                    return;
+                }
             }
 
             // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
@@ -1097,6 +1126,11 @@ namespace Dml
     bool __stdcall ExecutionProviderImpl::IsMcdmDevice() const noexcept
     {
         return m_isMcdmDevice;
+    }
+
+    bool __stdcall ExecutionProviderImpl::CustomHeapsSupported() const noexcept
+    {
+        return m_areCustomHeapsSupported;
     }
 
     bool __stdcall ExecutionProviderImpl::MetacommandsEnabled() const noexcept

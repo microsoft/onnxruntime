@@ -82,7 +82,7 @@ export class RedFloat32DataEncoder implements DataEncoder {
   }
   decode(buffer: Encoder.DataArrayType, dataSize: number): Float32Array {
     if (this.channelSize === 1) {
-      const filteredData = (buffer as Float32Array).filter((value, index) => index % 4 === 0).subarray(0, dataSize);
+      const filteredData = (buffer as Float32Array).filter((_value, index) => index % 4 === 0).subarray(0, dataSize);
       return filteredData;
     }
     return buffer.subarray(0, dataSize) as Float32Array;
@@ -119,7 +119,7 @@ export class RGBAFloatDataEncoder implements DataEncoder {
   }
   decode(buffer: Encoder.DataArrayType, dataSize: number): Float32Array {
     if (this.channelSize === 1) {
-      const filteredData = (buffer as Float32Array).filter((value, index) => index % 4 === 0).subarray(0, dataSize);
+      const filteredData = (buffer as Float32Array).filter((_value, index) => index % 4 === 0).subarray(0, dataSize);
       return filteredData;
     }
     return buffer.subarray(0, dataSize) as Float32Array;

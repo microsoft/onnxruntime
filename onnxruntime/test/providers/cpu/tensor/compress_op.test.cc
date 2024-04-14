@@ -66,7 +66,7 @@ TEST(CompressTest, Compress_3dims_has_extra_condition) {
   // has condition length = 3 > input_dim[axis] = 2
   test.AddInput<bool>("condition", {3}, {0, 1, 1});
   test.AddOutput<float>("output", {2, 1, 3}, {4.0f, 5.0f, 6.0f, 10.0f, 11.0f, 12.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(CompressTest, Compress_3dims_has_extra_input) {

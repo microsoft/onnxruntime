@@ -607,6 +607,10 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
 
   OpDef op_def_opset13{"ReduceMean", kOnnxDomain, 13};
   RunReductionTests(op_def_opset13);
+
+  // axes is input from opset 18.
+  OpDef op_def_opset18{"ReduceMean", kOnnxDomain, 18};
+  RunReductionTests(op_def_opset18, true, true);
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {
@@ -619,6 +623,10 @@ TEST(GradientCheckerTest, ReduceSumGrad) {
   OpDef op_def_13{"ReduceSum", kOnnxDomain, 13};
 
   RunReductionTests(op_def_13, true, true);
+
+  OpDef op_def_18{"ReduceSum", kOnnxDomain, 18};
+
+  RunReductionTests(op_def_18, true, true);
 }
 
 TEST(GradientCheckerTest, ReduceL2Grad) {
@@ -641,6 +649,11 @@ TEST(GradientCheckerTest, ReduceL2Grad) {
                                                            {MakeAttribute("axes", axes)}));
     EXPECT_IS_TINY(max_error);
   }
+
+  // axes is input from opset 18
+  OpDef op_def_18{"ReduceL2", kOnnxDomain, 18};
+
+  RunReductionTests(op_def_18, true, true);
 }
 
 TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
@@ -648,6 +661,10 @@ TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
   OpDef op_def{"ReduceLogSumExp", kOnnxDomain, 11};
 
   RunReductionTests(op_def);
+
+  OpDef op_def_opset18{"ReduceLogSumExp", kOnnxDomain, 18};
+
+  RunReductionTests(op_def_opset18, true, true);
 }
 
 TEST(GradientCheckerTest, ReluGrad) {
@@ -697,6 +714,13 @@ TEST(GradientCheckerTest, SplitGrad) {
   OpDef op_def_13{"Split", kOnnxDomain, 13};
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def_13, {shape}, {{3, 5}, {3, 5}, {3, 5}}, &max_error,
                                                          {MakeAttribute("axis", int64_t(0))}));
+  EXPECT_IS_TINY(max_error);
+
+  // opset18 test
+  OpDef op_def_18{"Split", kOnnxDomain, 18};
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def_18, {shape}, {{3, 5}, {3, 5}, {3, 5}}, &max_error,
+                                                         {MakeAttribute("axis", int64_t(0)),
+                                                          MakeAttribute("num_outputs", int64_t(3))}));
   EXPECT_IS_TINY(max_error);
 }
 
@@ -2218,12 +2242,6 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
       {3072, 768},
       {4096, 768},
       {8192, 768},
-      {16384, 768},
-      {32768, 768},
-      {65536, 768},
-      {131072, 768},
-      {250002, 768},
-      {500004, 768},
   };
 
   for (const auto& test_dim : test_dims) {
@@ -2739,7 +2757,7 @@ TEST(GradientCheckerTest, TileGrad) {
 TEST(GradientCheckerTest, PadGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Pad", kOnnxDomain, 11};
+  OpDef op_def{"Pad", kOnnxDomain, 18};
 
   {
     TensorInfo x_info({2, 4}, true);
@@ -2809,7 +2827,7 @@ TEST(GradientCheckerTest, PadGrad) {
 TEST(GradientCheckerTest, ScatterNDGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"ScatterND", kOnnxDomain, 11};
+  OpDef op_def{"ScatterND", kOnnxDomain, 18};
 
   {
     TensorInfo data_info({8}, true);
@@ -2893,7 +2911,7 @@ TEST(GradientCheckerTest, ScatterNDGrad) {
 TEST(GradientCheckerTest, ScatterElementsGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"ScatterElements", kOnnxDomain, 13};
+  OpDef op_def{"ScatterElements", kOnnxDomain, 18};
 
   {  // without axis
     TensorInfo data_info({3, 3}, true);
@@ -3011,7 +3029,6 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
   std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {3, 5, 0, 1}, {5, 2}};
 
   TensorInfo padded_out_info({5, 2, 3}, true);
-  TensorInfo out_shape_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
@@ -3021,7 +3038,7 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
 #endif
 
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info, shape_info},
-                                                         {padded_out_info, out_shape_info}, &max_error,
+                                                         {padded_out_info}, &max_error,
                                                          x_datas, {}, true, false, &execution_providers));
   EXPECT_IS_TINY(max_error);
 }

@@ -99,7 +99,7 @@
     <PackageReference Include="xunit">
       <Version>2.4.1</Version>
     </PackageReference>
-    <PackageReference Include="Google.Protobuf" Version="3.17.3" />
+    <PackageReference Include="Google.Protobuf" Version="3.21.12" />
     <PackageReference Include="Xamarin.Forms">
       <Version>5.0.0.2083</Version>
     </PackageReference>

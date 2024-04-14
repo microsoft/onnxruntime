@@ -518,7 +518,7 @@ TEST(NhwcTransformerTests, ConvMixTensorRanks) {
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 
-std::vector<MLFloat16> randomfp16(const std::vector<int64_t>& shape, MLFloat16 min, MLFloat16 max) {
+static std::vector<MLFloat16> ARangeOfFP16Values(const std::vector<int64_t>& shape, MLFloat16 min, MLFloat16 max) {
   std::vector<MLFloat16> val(detail::SizeFromDims(shape));
   float start = min.ToFloat();
   float end = max.ToFloat();
@@ -534,22 +534,22 @@ std::vector<MLFloat16> randomfp16(const std::vector<int64_t>& shape, MLFloat16 m
   return val;
 }
 
-template <>
-NodeArg* ModelTestBuilder::MakeInput<MLFloat16>(const std::vector<int64_t>& shape, MLFloat16 min, MLFloat16 max) {
-  return MakeInput<MLFloat16>(shape, randomfp16(shape, min, max));
+static NodeArg* MakeInputARangeFP16(ModelTestBuilder& builder, const std::vector<int64_t>& shape,
+                                    MLFloat16 min, MLFloat16 max) {
+  return builder.MakeInput<MLFloat16>(shape, ARangeOfFP16Values(shape, min, max));
 }
 
-template <>
-NodeArg* ModelTestBuilder::MakeInitializer(const std::vector<int64_t>& shape, MLFloat16 min, MLFloat16 max) {
-  return MakeInitializer(shape, randomfp16(shape, min, max));
+static NodeArg* MakeInitializerARangeFP16(ModelTestBuilder& builder, const std::vector<int64_t>& shape,
+                                          MLFloat16 min, MLFloat16 max) {
+  return builder.MakeInitializer<MLFloat16>(shape, ARangeOfFP16Values(shape, min, max));
 }
 
 TEST(NhwcTransformerTests, ConvFp16) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<MLFloat16>(input_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
+      auto* input_arg = MakeInputARangeFP16(builder, input_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
       auto* output_arg = builder.MakeOutput();
-      auto* weight_arg = builder.MakeInitializer(weights_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
+      auto* weight_arg = MakeInitializerARangeFP16(builder, weights_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
 
       builder.AddConvNode(input_arg, weight_arg, output_arg);
     };
@@ -575,10 +575,10 @@ TEST(NhwcTransformerTests, ConvFp16) {
 TEST(NhwcTransformerTests, ConvMaxPoolFp16) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<MLFloat16>(input_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
+      auto* input_arg = MakeInputARangeFP16(builder, input_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
       auto* conv_output_arg = builder.MakeIntermediate();
       auto* output_arg = builder.MakeOutput();
-      auto* conv_weight_arg = builder.MakeInitializer(weights_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
+      auto* conv_weight_arg = MakeInitializerARangeFP16(builder, weights_shape, MLFloat16(-1.5f), MLFloat16(1.5f));
 
       builder.AddConvNode(input_arg, conv_weight_arg, conv_output_arg);
       Node& pool_node = builder.AddNode("MaxPool", {conv_output_arg}, {output_arg});
@@ -609,13 +609,13 @@ TEST(NhwcTransformerTests, ConvMaxPoolFp16) {
 
 TEST(NhwcTransformerTests, ConvGlobalAveragePoolFp16) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<MLFloat16>({1, 23, 13, 13}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* input_arg = MakeInputARangeFP16(builder, {1, 23, 13, 13}, MLFloat16(-1.5f), MLFloat16(1.5f));
     auto* conv1_output_arg = builder.MakeIntermediate();
     auto* conv2_output_arg = builder.MakeIntermediate();
     auto* gavgpool1_output_arg = builder.MakeIntermediate();
     auto* output_arg = builder.MakeOutput();
-    auto* conv1_weight_arg = builder.MakeInitializer<MLFloat16>({30, 23, 3, 3}, MLFloat16(-1.5f), MLFloat16(1.5f));
-    auto* conv2_weight_arg = builder.MakeInitializer<MLFloat16>({16, 30, 1, 1}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* conv1_weight_arg = MakeInitializerARangeFP16(builder, {30, 23, 3, 3}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* conv2_weight_arg = MakeInitializerARangeFP16(builder, {16, 30, 1, 1}, MLFloat16(-1.5f), MLFloat16(1.5f));
 
     Node& conv1_node = builder.AddConvNode(input_arg, conv1_weight_arg, conv1_output_arg);
     conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
@@ -640,13 +640,13 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePoolFp16) {
 
 TEST(NhwcTransformerTests, ConvAveragePoolFp16) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<MLFloat16>({1, 23, 13, 13}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* input_arg = MakeInputARangeFP16(builder, {1, 23, 13, 13}, MLFloat16(-1.5f), MLFloat16(1.5f));
     auto* conv1_output_arg = builder.MakeIntermediate();
     auto* conv2_output_arg = builder.MakeIntermediate();
     auto* avgpool1_output_arg = builder.MakeIntermediate();
     auto* output_arg = builder.MakeOutput();
-    auto* conv1_weight_arg = builder.MakeInitializer<MLFloat16>({30, 23, 3, 3}, MLFloat16(-1.5f), MLFloat16(1.5f));
-    auto* conv2_weight_arg = builder.MakeInitializer<MLFloat16>({16, 30, 3, 3}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* conv1_weight_arg = MakeInitializerARangeFP16(builder, {30, 23, 3, 3}, MLFloat16(-1.5f), MLFloat16(1.5f));
+    auto* conv2_weight_arg = MakeInitializerARangeFP16(builder, {16, 30, 3, 3}, MLFloat16(-1.5f), MLFloat16(1.5f));
 
     Node& conv1_node = builder.AddConvNode(input_arg, conv1_weight_arg, conv1_output_arg);
     conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});

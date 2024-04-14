@@ -89,7 +89,7 @@ The limitation of `GlobalSubscriberManager` is, only 'nn.Module's forward output
 dump the intermediate tensors in a `nn.Module`'s forward function, refer to the following example:
 
 ```diff
-+   from onnxruntime.training.utils import inspect_activation
++   from onnxruntime.training.utils.hooks import inspect_activation
 class BloomForCausalLM(BloomPreTrainedModel):
   def __init__(self, config: BloomConfig):
     ...

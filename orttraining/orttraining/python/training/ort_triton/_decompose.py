@@ -58,7 +58,7 @@ class DecomposeDispatch:
         arg_info = node_arg_infos[arg_name]
         return arg_info.dtype, arg_info.shape
 
-    def _decompose_elementwise_precision(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def _decompose_elementwise_precision(self, node: NodeProto, **kwargs):
         x = node.input[0]
         dtype, _ = self._get_dtype_and_shape(x, **kwargs)
         if not _is_half_dtype(dtype):
@@ -79,15 +79,19 @@ class DecomposeDispatch:
         return [*cast_nodes, op_node, cast_node1]
 
     def Exp(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
-        return self._decompose_elementwise_precision(node, graph, **kwargs)
+        # pylint: disable=unused-argument
+        return self._decompose_elementwise_precision(node, **kwargs)
 
     def Pow(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
-        return self._decompose_elementwise_precision(node, graph, **kwargs)
+        # pylint: disable=unused-argument
+        return self._decompose_elementwise_precision(node, **kwargs)
 
     def Sqrt(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
-        return self._decompose_elementwise_precision(node, graph, **kwargs)
+        # pylint: disable=unused-argument
+        return self._decompose_elementwise_precision(node, **kwargs)
 
     def LayerNormalization(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
+        # pylint: disable=unused-argument
         node_name = node.name
         x = node.input[0]
         w = node.input[1]
@@ -153,6 +157,7 @@ class DecomposeDispatch:
         ]
 
     def LayerNormalizationGrad(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
+        # pylint: disable=unused-argument
         node_name = node.name
         dy = node.input[0]
         x = node.input[1]
@@ -241,6 +246,7 @@ class DecomposeDispatch:
         return decomposed_nodes
 
     def Softmax(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
+        # pylint: disable=unused-argument
         node_name = node.name
         x = node.input[0]
         y = node.output[0]
@@ -259,6 +265,7 @@ class DecomposeDispatch:
         return [max_node, sub_node, exp_node, sum_node, div_node]
 
     def SoftmaxGrad_13(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
+        # pylint: disable=unused-argument
         node_name = node.name
         dy = node.input[0]
         y = node.input[1]

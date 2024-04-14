@@ -114,6 +114,14 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()), \
       x<uint8_t>);
 
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_BOOL_ONLY(x, sinceVersion)               \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+      x,                                                                           \
+      sinceVersion,                                                                \
+      bool,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()), \
+      x<bool>);
+
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceL1, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 11, 12);
@@ -173,11 +181,18 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMax, 13, 17);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(ReduceMax, 13, 17);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT8_ONLY(ReduceMax, 13, 17);
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 18);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 18);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMax, 18);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMax, 18);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMax, 18);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMax, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMax, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(ReduceMax, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT8_ONLY(ReduceMax, 18, 19);
+
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMax, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMax, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMax, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_BOOL_ONLY(ReduceMax, 20);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 11, 12);
@@ -207,11 +222,18 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMin, 13, 17);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(ReduceMin, 13, 17);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT8_ONLY(ReduceMin, 13, 17);
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 18);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMin, 18);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMin, 18);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMin, 18);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMin, 18);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMin, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMin, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(ReduceMin, 18, 19);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT8_ONLY(ReduceMin, 18, 19);
+
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMin, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMin, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMin, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMin, 20);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_BOOL_ONLY(ReduceMin, 20);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceProd, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceProd, 1, 10);
@@ -688,21 +710,23 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
   return FastReduceKind::kNone;
 }
 
-void ValidateCommonFastReduce(const Tensor* axes_tensor) {
-  ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-  ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
-              "An axes tensor must be a vector tensor.");
-}
-
 // template <typename T, typename TVAL>
 bool CommonFastReduceCopy(OpKernelContext* ctx, TensorShapeVector& input_axes, bool noop_with_empty_axes) {
   if (ctx->InputCount() == 2) {
     // second input holds the axes.
+    // the argument is optional
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ValidateCommonFastReduce(axes_tensor);
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->Data<int64_t>();
-    input_axes.insert(input_axes.begin(), data, data + nDims);
+
+    if (axes_tensor != nullptr) {
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
+                  "An axes tensor must be a vector tensor.");
+
+      const auto data_span = axes_tensor->DataAsSpan<int64_t>();
+      input_axes.assign(data_span.begin(), data_span.end());
+    } else {
+      input_axes.clear();
+    }
+
     if (input_axes.empty() && noop_with_empty_axes) {
       const Tensor* input = ctx->Input<Tensor>(0);
       auto* output = ctx->Output(0, input->Shape());
@@ -821,9 +845,56 @@ static void ValidateKeepDims(const Tensor* input, int64_t keepdims) {
 }
 
 template <typename AGG>
+bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<const int64_t> axes, bool keepdims) {
+  const Tensor* input = ctx->Input<Tensor>(0);
+  const TensorShape& input_shape = input->Shape();
+  if (input_shape.Size() != 0) {
+    return false;
+  }
+
+  // input is an empty set
+  std::vector<int64_t> input_axes;
+  if (ctx->InputCount() == 2) {
+    ORT_ENFORCE(axes.empty(), "Axes input and attribute should not both be present for reduction.");
+    // second input holds the axes.
+    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
+    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+    const auto* data = axes_tensor->Data<int64_t>();
+    input_axes.insert(input_axes.begin(), data, data + nDims);
+  } else {
+    input_axes.resize(axes.size());
+    std::copy(axes.begin(), axes.end(), input_axes.begin());
+  }
+
+  gsl::span<const int64_t> shape_dims = input_shape.GetDims();
+  const int64_t input_shape_size = narrow<int64_t>(shape_dims.size());
+  TensorShapeVector output_shape_vector;
+  for (int64_t i = 0; i < input_shape_size; ++i) {
+    if (input_axes.empty() || std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end()) {
+      if (keepdims) {
+        output_shape_vector.push_back(1);
+      }
+    } else {
+      output_shape_vector.push_back(input_shape[onnxruntime::narrow<size_t>(i)]);
+    }
+  }
+
+  TensorShape output_shape(output_shape_vector);
+  Tensor* output = ctx->Output(0, output_shape);
+  if (output_shape.Size() != 0) {
+    AGG::fill_for_empty_set(*output);
+  }
+  return true;
+}
+
+template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
                        const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                        bool noop_with_empty_axes) {
+  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
+    return;
+  }
+
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape;
   TensorShapeVector output_shape;
@@ -836,8 +907,8 @@ void CommonReduce1Loop(OpKernelContext* ctx,
   const Tensor* input = ctx->Input<Tensor>(0);
   Tensor* output = ctx->Output(0, output_shape);
   if (fast_kind == FastReduceKind::kEmpty) {
-    const TensorShape& new_input_shape = input->Shape();
-    if (new_input_shape.Size() == 1) {
+    const TensorShape& input_shape = input->Shape();
+    if (input_shape.Size() == 1) {
       const typename AGG::input_type* from_data = input->Data<typename AGG::input_type>();
       typename AGG::value_type* to_data = output->MutableData<typename AGG::value_type>();
       AGG agg(1, *from_data);
@@ -857,6 +928,10 @@ template <typename AGG>
 void CommonReduce2Loops(OpKernelContext* ctx,
                         const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                         bool noop_with_empty_axes) {
+  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
+    return;
+  }
+
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape, output_shape, fast_axes;
   if (CommonFastReduce<AGG>(ctx, axes_, keepdims_, noop_with_empty_axes,
@@ -867,8 +942,8 @@ void CommonReduce2Loops(OpKernelContext* ctx,
   const Tensor* input = ctx->Input<Tensor>(0);
   Tensor* output = ctx->Output(0, output_shape);
   if (fast_kind == FastReduceKind::kEmpty) {
-    const TensorShape& new_input_shape = input->Shape();
-    if (new_input_shape.Size() == 1) {
+    const TensorShape& input_shape = input->Shape();
+    if (input_shape.Size() == 1) {
       const typename AGG::input_type* from_data = input->Data<typename AGG::input_type>();
       typename AGG::value_type* to_data = output->MutableData<typename AGG::value_type>();
       AGG agg(1, *from_data);

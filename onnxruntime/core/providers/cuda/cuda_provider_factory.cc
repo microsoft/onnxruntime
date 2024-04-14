@@ -225,6 +225,7 @@ struct CUDA_Provider : Provider {
     info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;
     info.enable_skip_layer_norm_strict_mode = params->enable_skip_layer_norm_strict_mode != 0;
     info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
+    info.use_tf32 = params->use_tf32 != 0;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -258,6 +259,7 @@ struct CUDA_Provider : Provider {
     cuda_options.enable_skip_layer_norm_strict_mode = internal_options.enable_skip_layer_norm_strict_mode;
     cuda_options.prefer_nhwc = internal_options.prefer_nhwc;
     cuda_options.use_ep_level_unified_stream = internal_options.use_ep_level_unified_stream;
+    cuda_options.use_tf32 = internal_options.use_tf32;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

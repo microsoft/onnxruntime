@@ -49,7 +49,7 @@ jobs:
           mkdir -p _site/docs/api/
           mv build/docs/html _site/docs/api/python
       - name: Upload docs artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: onnxruntime-python-apidocs
           path: _site

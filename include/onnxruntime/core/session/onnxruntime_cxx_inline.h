@@ -7,16 +7,26 @@
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
 
-#include <cstring>
+#include <algorithm>
 #include <functional>
+#include <iterator>
+#include <type_traits>
 
-#define RETURN_ON_API_FAIL(expression) \
-  {                                    \
-    auto err = (expression);           \
-    if (err) {                         \
-      return Status(err);              \
-    }                                  \
+// Convert OrtStatus to Ort::Status and return
+// instead of throwing
+#define ORT_CXX_RETURN_ON_API_FAIL(expression) \
+  {                                            \
+    auto ort_status = (expression);            \
+    if (ort_status) {                          \
+      return Ort::Status(ort_status);          \
+    }                                          \
   }
+
+#ifdef __cpp_if_constexpr
+#define ORT_CXX_IF_CONSTEXPR if constexpr
+#else
+#define ORT_CXX_IF_CONSTEXPR if
+#endif
 
 namespace Ort {
 
@@ -657,6 +667,12 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetGraphOptimizationLevel(G
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetDeterministicCompute(bool value) {
+  ThrowOnError(GetApi().SetDeterministicCompute(this->p_, value));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_filepath) {
   ThrowOnError(GetApi().SetOptimizedModelFilePath(this->p_, optimized_model_filepath));
   return *this;
@@ -856,6 +872,45 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetCustomJoinThreadFn(OrtCu
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO(this->p_, &provider_options));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_OpenVINO_V2(const std::unordered_map<std::string, std::string>& provider_options) {
+  auto num_entries = provider_options.size();
+  std::vector<const char*> keys, values;
+  if (num_entries > 0) {
+    keys.reserve(num_entries);
+    values.reserve(num_entries);
+
+    for (const auto& entry : provider_options) {
+      keys.push_back(entry.first.c_str());
+      values.push_back(entry.second.c_str());
+    }
+  }
+
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO_V2(this->p_,
+                                                                          keys.data(), values.data(), num_entries));
+
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_VitisAI(const std::unordered_map<std::string, std::string>& provider_options) {
+  auto num_entries = provider_options.size();
+  std::vector<const char*> keys, values;
+  if (num_entries > 0) {
+    keys.reserve(num_entries);
+    values.reserve(num_entries);
+
+    for (const auto& entry : provider_options) {
+      keys.push_back(entry.first.c_str());
+      values.push_back(entry.second.c_str());
+    }
+  }
+
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_VitisAI(this->p_, keys.data(), values.data(), num_entries));
+
   return *this;
 }
 
@@ -1656,6 +1711,10 @@ inline Logger KernelContext::GetLogger() const {
   return Logger{out};
 }
 
+inline void KernelContext::ParallelFor(void (*fn)(void*, size_t), size_t total, size_t num_batch, void* usr_data) const {
+  ThrowOnError(GetApi().KernelContext_ParallelFor(ctx_, fn, total, num_batch, usr_data));
+}
+
 inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {
   Ort::ThrowOnError(GetApi().CreateOpAttr(name, data, len, type, &p_));
 }
@@ -1922,7 +1981,7 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
 
 inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shape) {
   OrtTensorTypeAndShapeInfo* info = {};
-  RETURN_ON_API_FAIL(ort_api_->CreateTensorTypeAndShapeInfo(&info));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->CreateTensorTypeAndShapeInfo(&info));
 
   using InfoPtr = std::unique_ptr<OrtTensorTypeAndShapeInfo, std::function<void(OrtTensorTypeAndShapeInfo*)>>;
 
@@ -1946,9 +2005,9 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
     }
   }
 
-  RETURN_ON_API_FAIL(ort_api_->SetDimensions(info, integer_dims.data(), integer_dims.size()));
-  RETURN_ON_API_FAIL(ort_api_->SetSymbolicDimensions(info, symbolic_dims.data(), symbolic_dims.size()));
-  RETURN_ON_API_FAIL(ort_api_->ShapeInferContext_SetOutputTypeShape(ctx_, indice, info));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->SetDimensions(info, integer_dims.data(), integer_dims.size()));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->SetSymbolicDimensions(info, symbolic_dims.data(), symbolic_dims.size()));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->ShapeInferContext_SetOutputTypeShape(ctx_, indice, info));
   return Status{nullptr};
 }
 

@@ -83,19 +83,6 @@ class Q4GemmShortExecuteTest : public MlasTestFixture<MlasQ4GemmTest<QType, Thre
   bool hasBias_;
 };
 
-template <>
-MlasQ4GemmTest<BlkQ4Sym, false>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Sym, false>>::mlas_tester(nullptr);
-template <>
-MlasQ4GemmTest<BlkQ4Sym, true>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Sym, true>>::mlas_tester(nullptr);
-template <>
-MlasQ4GemmTest<BlkQ4Zp8, false>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Zp8, false>>::mlas_tester(nullptr);
-template <>
-MlasQ4GemmTest<BlkQ4Zp8, true>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Zp8, true>>::mlas_tester(nullptr);
-template <>
-MlasQ4GemmTest<BlkQ4Sym128, false>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Sym128, false>>::mlas_tester(nullptr);
-template <>
-MlasQ4GemmTest<BlkQ4Sym128, true>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Sym128, true>>::mlas_tester(nullptr);
-
 static size_t Q4GemmRegistShortExecute() {
   size_t count = 0;
 

@@ -52,4 +52,11 @@ Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_
   return Status::OK();
 }
 
+std::ostream& operator<<(std::ostream& os, const ConfigOptions& config_options) {
+  for (const auto& [key, value] : config_options.configurations) {
+    os << "  " << key << ": " << value;
+  }
+  return os;
+}
+
 }  // namespace onnxruntime

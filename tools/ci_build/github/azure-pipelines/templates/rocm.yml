@@ -14,7 +14,7 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes: 180
-  pool: Ubuntu-2004-rocm-aiinfra
+  pool: Ubuntu-2204-rocm-aiinfra
   variables:
     - name: PythonVersion
       value: ${{ parameters.PythonVersion }}
@@ -79,6 +79,7 @@ jobs:
             /onnxruntime_src/tools/ci_build/build.py \
               --config ${{ parameters.BuildConfig }} \
               --use_rocm \
+              --use_migraphx \
               --rocm_version=${{ parameters.RocmVersion }} \
               --rocm_home=/opt/rocm \
               --nccl_home=/opt/rocm \

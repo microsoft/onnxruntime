@@ -30,13 +30,13 @@ export const concat: OperatorImplementation<ConcatAttributes> =
 
 const createUnpackedConcatProgramMetadata = (inputCount: number, cacheHint: string) => ({
   name: 'Concat',
-  inputNames: Array.from({length: inputCount}, (v, i) => `X${i}`),
+  inputNames: Array.from({length: inputCount}, (_v, i) => `X${i}`),
   inputTypes: Array(inputCount).fill(TextureType.unpacked),
   cacheHint
 });
 
 const createUnpackedConcatProgramInfo =
-    (handler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[], axis: number): ProgramInfo => {
+    (_handler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[], axis: number): ProgramInfo => {
       const inputShape = inputs[0].dims.slice();
       if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
         throw new Error('axis specified for concat doesn\'t match input dimensionality');

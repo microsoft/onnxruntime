@@ -34,6 +34,8 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Shape|Attribute `start` with non-default value is not supported.<br/>Attribute `end` is not supported.|
 |ai.onnx:Sigmoid||
 |ai.onnx:Slice|Inputs `starts`, `ends`, `axes`, and `steps` should be constant. Empty slice is not supported.|
+|ai.onnx:Softmax||
+|ai.onnx:Split|If provided, `splits` should be constant. num of outputs supported is at least 2.|
 |ai.onnx:Squeeze||
 |ai.onnx:Sqrt||
 |ai.onnx:Sub||

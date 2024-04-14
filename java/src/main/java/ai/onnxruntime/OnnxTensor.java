@@ -14,12 +14,14 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.util.Optional;
+import java.util.logging.Logger;
 
 /**
  * A Java object wrapping an OnnxTensor. Tensors are the main input to the library, and can also be
  * returned as outputs.
  */
 public class OnnxTensor extends OnnxTensorLike {
+  private static final Logger logger = Logger.getLogger(OnnxTensor.class.getName());
 
   /**
    * This reference is held for OnnxTensors backed by a java.nio.Buffer to ensure the buffer does
@@ -97,6 +99,7 @@ public class OnnxTensor extends OnnxTensorLike {
    */
   @Override
   public Object getValue() throws OrtException {
+    checkClosed();
     if (info.isScalar()) {
       switch (info.type) {
         case FLOAT:
@@ -144,16 +147,21 @@ public class OnnxTensor extends OnnxTensorLike {
 
   @Override
   public String toString() {
-    return "OnnxTensor(info=" + info.toString() + ")";
+    return "OnnxTensor(info=" + info.toString() + ",closed=" + closed + ")";
   }
 
   /**
-   * Closes the tensor, releasing it's underlying memory (if it's not backed by an NIO buffer). If
-   * it is backed by a buffer then the memory is released when the buffer is GC'd.
+   * Closes the tensor, releasing its underlying memory (if it's not backed by an NIO buffer). If it
+   * is backed by a buffer then the memory is released when the buffer is GC'd.
    */
   @Override
-  public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+  public synchronized void close() {
+    if (!closed) {
+      close(OnnxRuntime.ortApiHandle, nativeHandle);
+      closed = true;
+    } else {
+      logger.warning("Closing an already closed tensor.");
+    }
   }
 
   /**
@@ -165,6 +173,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @return A ByteBuffer copy of the OnnxTensor.
    */
   public ByteBuffer getByteBuffer() {
+    checkClosed();
     if (info.type != OnnxJavaType.STRING) {
       ByteBuffer buffer = getBuffer(OnnxRuntime.ortApiHandle, nativeHandle);
       ByteBuffer output = ByteBuffer.allocate(buffer.capacity());
@@ -183,6 +192,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @return A FloatBuffer copy of the OnnxTensor.
    */
   public FloatBuffer getFloatBuffer() {
+    checkClosed();
     if (info.type == OnnxJavaType.FLOAT) {
       // if it's fp32 use the efficient copy.
       FloatBuffer buffer = getBuffer().asFloatBuffer();
@@ -212,6 +222,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @return A DoubleBuffer copy of the OnnxTensor.
    */
   public DoubleBuffer getDoubleBuffer() {
+    checkClosed();
     if (info.type == OnnxJavaType.DOUBLE) {
       DoubleBuffer buffer = getBuffer().asDoubleBuffer();
       DoubleBuffer output = DoubleBuffer.allocate(buffer.capacity());
@@ -230,6 +241,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @return A ShortBuffer copy of the OnnxTensor.
    */
   public ShortBuffer getShortBuffer() {
+    checkClosed();
     if ((info.type == OnnxJavaType.INT16)
         || (info.type == OnnxJavaType.FLOAT16)
         || (info.type == OnnxJavaType.BFLOAT16)) {
@@ -250,6 +262,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @return An IntBuffer copy of the OnnxTensor.
    */
   public IntBuffer getIntBuffer() {
+    checkClosed();
     if (info.type == OnnxJavaType.INT32) {
       IntBuffer buffer = getBuffer().asIntBuffer();
       IntBuffer output = IntBuffer.allocate(buffer.capacity());
@@ -268,6 +281,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @return A LongBuffer copy of the OnnxTensor.
    */
   public LongBuffer getLongBuffer() {
+    checkClosed();
     if (info.type == OnnxJavaType.INT64) {
       LongBuffer buffer = getBuffer().asLongBuffer();
       LongBuffer output = LongBuffer.allocate(buffer.capacity());

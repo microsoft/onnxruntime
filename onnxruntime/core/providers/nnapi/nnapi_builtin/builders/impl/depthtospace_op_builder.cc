@@ -29,7 +29,7 @@ class DepthToSpaceOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
 
@@ -66,7 +66,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const GraphViewer& /* graph_viewer */, const NodeUnit& node_unit,
                                               const OpSupportCheckParams& params) const {
   NodeAttrHelper helper(node_unit);
 

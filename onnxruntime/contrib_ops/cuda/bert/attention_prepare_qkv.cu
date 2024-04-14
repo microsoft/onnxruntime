@@ -65,7 +65,8 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
     LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
                            batch_size, sequence_length, num_heads, qk_head_size,
                            data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
-                           3, parameters.do_rotary, parameters.past_sequence_length);
+                           3, parameters.do_rotary, parameters.rotary_embedding,
+                           parameters.past_sequence_length);
   }
   return Status::OK();
 }
@@ -230,7 +231,7 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
                                 AttentionData<T>& data,
                                 cudaStream_t stream,
                                 int max_threads_per_block,
-                                T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+                                T* /*q*/, T* /*k*/, T* /*v*/, AttentionQkvFormat& qkv_format) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int num_heads = parameters.num_heads;
@@ -278,7 +279,7 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
                                AttentionData<T>& data,
                                cudaStream_t stream,
                                int max_threads_per_block,
-                               T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+                               T* /*q*/, T* k, T* /*v*/, AttentionQkvFormat& qkv_format) {
   const int batch_size = parameters.batch_size;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int num_heads = parameters.num_heads;

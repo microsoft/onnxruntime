@@ -15,6 +15,39 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
+// Returns a function that creates a graph with a QDQ Gather operator.
+template <typename QuantType, typename IndicesType>
+GetTestQDQModelFn<QuantType> BuildQDQGatherTestCase(const TestInputDef<float>& input_def,
+                                                    const TestInputDef<IndicesType>& indices_def,
+                                                    const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                                    bool use_contrib_qdq = false) {
+  return [input_def, indices_def, attrs, use_contrib_qdq](ModelTestBuilder& builder,
+                                                          std::vector<QuantParams<QuantType>>& output_qparams) {
+    // input -> Q -> DQ ->
+    NodeArg* input = MakeTestInput(builder, input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point,
+                                                   use_contrib_qdq);
+
+    // indices input
+    NodeArg* indices_input = MakeTestInput(builder, indices_def);
+
+    // Gather op
+    NodeArg* gather_output = builder.MakeIntermediate();
+    Node& gather_node = builder.AddNode("Gather", {input_qdq, indices_input}, {gather_output});
+
+    for (const auto& attr : attrs) {
+      gather_node.AddAttributeProto(attr);
+    }
+
+    // op_output -> Q -> DQ -> output
+    // NOTE: Input and output quantization parameters must be equal for Gather.
+    output_qparams[0] = input_qparams;  // Overwrite!
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, gather_output, input_qparams.scale,
+                                                     input_qparams.zero_point, use_contrib_qdq);
+  };
+}
+
 // Test the accuracy of a QDQ Gather model on QNN EP. Checks if the QDQ model on QNN EP as accurate as the QDQ model on CPU EP
 // (compared to float32 model).
 template <typename QuantType, typename IndicesType>
@@ -22,7 +55,8 @@ static void RunQDQGatherOpTest(const TestInputDef<float>& input_def,
                                const TestInputDef<IndicesType>& indices_def,
                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                int opset,
-                               ExpectedEPNodeAssignment expected_ep_assignment) {
+                               ExpectedEPNodeAssignment expected_ep_assignment,
+                               bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -31,7 +65,8 @@ static void RunQDQGatherOpTest(const TestInputDef<float>& input_def,
 #endif
 
   auto f32_model_builder = BuildOpTestCase<float, IndicesType>("Gather", {input_def}, {indices_def}, attrs);
-  auto qdq_model_builder = BuildQDQOpTestCase<QuantType, IndicesType>("Gather", {input_def}, {indices_def}, attrs);
+  auto qdq_model_builder = BuildQDQGatherTestCase<QuantType, IndicesType>(input_def, indices_def, attrs,
+                                                                          use_contrib_qdq);
 
   TestQDQModelAccuracy<QuantType>(f32_model_builder,
                                   qdq_model_builder,
@@ -50,6 +85,16 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt64_Axis0) {
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
                                        13,
                                        ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ Gather with static int64 indices with default axis.
+TEST_F(QnnHTPBackendTests, GatherOp_U16_IndicesStaticInt64_Axis0) {
+  RunQDQGatherOpTest<uint16_t, int64_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
+                                        TestInputDef<int64_t>({2, 2}, true, {0, 1, 1, 2}),
+                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                                        13,
+                                        ExpectedEPNodeAssignment::All,
+                                        true);  // Use 'com.microsoft' Q/DQ ops
 }
 
 // Tests that dynamic int64 indices are not supported on HTP backend.

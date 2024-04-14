@@ -37,4 +37,5 @@ struct OrtCUDAProviderOptionsV2 {
                                                                                                                // The strict mode has better accuracy but lower performance.
   int prefer_nhwc = 0;                                                                                         // make the CUDA EP NHWC preferred
   int use_ep_level_unified_stream = 0;                                                                         // flag specifying if ep level stream is used or not
+  int use_tf32 = 1;                                                                                            // use TF32
 };

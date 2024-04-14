@@ -16,11 +16,11 @@ class CategoryMapper final : public OpKernel {
     std::vector<std::string> string_categories;
     std::vector<int64_t> int_categories;
 
-    ORT_ENFORCE(info.GetAttrs<std::string>("cats_strings", string_categories).IsOK());
-    ORT_ENFORCE(info.GetAttrs<int64_t>("cats_int64s", int_categories).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttrs<std::string>("cats_strings", string_categories));
+    ORT_THROW_IF_ERROR(info.GetAttrs<int64_t>("cats_int64s", int_categories));
 
-    ORT_ENFORCE(info.GetAttr<std::string>("default_string", &default_string_).IsOK());
-    ORT_ENFORCE(info.GetAttr<int64_t>("default_int64", &default_int_).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttr<std::string>("default_string", &default_string_));
+    ORT_THROW_IF_ERROR(info.GetAttr<int64_t>("default_int64", &default_int_));
 
     auto num_entries = string_categories.size();
 

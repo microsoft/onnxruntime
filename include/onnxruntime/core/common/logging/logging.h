@@ -18,6 +18,8 @@
 
 #include "core/common/logging/macros.h"
 
+#include "date/date.h"
+
 /*
 
   Logging overview and expected usage:
@@ -56,6 +58,15 @@ namespace logging {
 
 using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 
+// TODO: When other compilers support std::chrono::operator<<, update this.
+// TODO: Check support for other compilers' version before enable C++20 for other compilers.
+// Xcode added support for C++20's std::chrono::operator<< in SDK version 14.4.
+#if __cplusplus >= 202002L && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140400L
+namespace timestamp_ns = std::chrono;
+#else
+namespace timestamp_ns = ::date;
+#endif
+
 #ifndef NDEBUG
 ORT_ATTRIBUTE_UNUSED static bool vlog_enabled = true;  // Set directly based on your needs.
 #else
@@ -73,6 +84,21 @@ struct Category {
   static const char* onnxruntime;  ///< General output
   static const char* System;       ///< Log output regarding interactions with the host system
   // TODO: What other high level categories are meaningful? Model? Optimizer? Execution?
+};
+
+/// <summary>
+/// ORT TraceLogging keywords for categories of dynamic logging enablement
+/// </summary>
+enum class ORTTraceLoggingKeyword : uint64_t {
+  Session = 0x1,    // ORT Session TraceLoggingWrite
+  Logs = 0x2,       // LOGS() Macro ORT logs. Pair with an appropriate level depending on detail required
+  Reserved1 = 0x4,  // Reserved if we want to add some specific sub-categories instead of just LOGS() or other uses
+  Reserved2 = 0x8,
+  Reserved3 = 0x10,
+  Reserved4 = 0x20,
+  Reserved5 = 0x40,
+  Reserved6 = 0x80,
+  Profiling = 0x100  // Enables profiling. At higher levels >5 can impact inference performance
 };
 
 class ISink;
@@ -332,6 +358,18 @@ unsigned int GetThreadId();
    Return the current process id.
 */
 unsigned int GetProcessId();
+
+/**
+   If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then adds to the existing logger.
+*/
+std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity,
+                                            logging::Severity etwSeverity);
+
+/**
+  If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then can override the logging level.
+  But this overrided level only applies to the ETW sink. The original logger(s) retain their original logging level
+*/
+Severity OverrideLevelWithEtw(Severity originalSeverity);
 
 }  // namespace logging
 }  // namespace onnxruntime

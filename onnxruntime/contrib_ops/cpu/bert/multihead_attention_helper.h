@@ -25,6 +25,7 @@ Status CheckInputs(const T* query,
                    int num_heads,
                    float mask_filter_value,
                    float scale,
+                   bool is_unidirectional,
                    bool past_present_share_buffer,
                    bool dmmha_packing) {
   //     key_padding_mask (K/V)     : (B) or (2*B + 1) or (B, L) or None
@@ -315,7 +316,7 @@ Status CheckInputs(const T* query,
     output_parameters->head_size = hidden_size / num_heads;
     output_parameters->v_head_size = v_hidden_size / num_heads;
     output_parameters->num_heads = num_heads;
-    output_parameters->is_unidirectional = false;
+    output_parameters->is_unidirectional = is_unidirectional;
     output_parameters->past_present_share_buffer = past_present_share_buffer;
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
@@ -342,6 +343,7 @@ Status CheckInputs(const T* query,
                    int num_heads,
                    float mask_filter_value,
                    float scale,
+                   bool is_unidirectional,
                    bool past_present_share_buffer,
                    bool dmmha_packing,
                    int max_threads_per_block) {
@@ -350,8 +352,8 @@ Status CheckInputs(const T* query,
   }
 
   return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
-                     past_seq_len, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer,
-                     dmmha_packing);
+                     past_seq_len, parameters, num_heads, mask_filter_value, scale, is_unidirectional,
+                     past_present_share_buffer, dmmha_packing);
 }
 
 }  // namespace multihead_attention_helper

@@ -494,6 +494,42 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetMatmulBnb4Gradient) {
+  auto attributes = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  bool find_transB = false;
+  for (auto& attr : attributes) {
+    if (attr.first == "transB") {
+      int64_t transB_value = attr.second.i();
+      transB_value = (transB_value + 1) % 2;  // revert the transpose
+      attrs.push_back(MakeAttribute("transB", transB_value));
+      find_transB = true;
+    } else {
+      attrs.push_back(attr.second);
+    }
+  }
+
+  if (!find_transB) {
+    attrs.push_back(MakeAttribute("transB", int64_t(0)));  // default is 1, so we need to set it to 0
+  }
+
+  std::vector<NodeDef> result;
+  // Y =  A * B
+  // dA = dY * B', dB = A' * dY
+  if (IsGradientRequiredForSrcNodeInput(0)) {
+    // B is 1-D, so don't need transpose here.
+    result.push_back(NodeDef(OpDef{"MatMulBnb4", kMSDomain, 1},
+                             {GO(0), I(1), I(2)},
+                             {GI(0)},
+                             attrs));
+  }
+
+  ORT_ENFORCE(!IsGradientRequiredForSrcNodeInput(1), "Gradient propagation to B is not supported yet.");
+  ORT_ENFORCE(!IsGradientRequiredForSrcNodeInput(2), "Gradient propagation to absmax is not supported yet.");
+
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetSplitGradient) {
   std::vector<NodeDef> result = {};
   std::vector<ArgDef> input_args;
@@ -755,13 +791,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetPadAndUnflattenGradient) {
   return std::vector<NodeDef>{
-      NodeDef(OpDef("Reshape"),
-              {GO(0), O(1)},
-              {IA("GO_reshaped")}),
-      NodeDef(OpDef{"Gather", kOnnxDomain, 1},
-              {IA("GO_reshaped"), I(1)},
-              {GI(0)},
-              SrcNodeAttributes())};
+      NodeDef(OpDef{"FlattenAndUnpad", kMSDomain, 1},
+              {GO(0), I(1)},
+              {GI(0), IA("Unflatten_dims")})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetFlattenAndUnpadGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"PadAndUnflatten", kMSDomain, 1},
+              {GO(0), I(1), O(1)},
+              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetShrunkenGatherGradient) {
@@ -1073,6 +1112,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
 
   ArgDef grad = GO(0);
   if (!keepdims) {
+    size_t numInputs = GetSrcNodeInputSize();
     if (attributes.find("axes") != attributes.end()) {
       std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
       grad = IA("Unqueezed_Grad");
@@ -1083,6 +1123,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
         result.push_back(axes_values_node);
         result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), axes_values_node.output_args[0]}, {grad}));
       }
+    } else if (numInputs == 2) {  // optional input 'axes' is available as input I(1)
+      grad = IA("Unqueezed_Grad");
+      result.push_back(NodeDef("Unsqueeze", {GO(0), I(1)}, {grad}));
     }
   }
 
@@ -1113,12 +1156,21 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceLogSumExpGradient) {
   }
 
   ArgDef grad = GO(0);
-  if (!keepdims && attributes.find("axes") != attributes.end()) {
-    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-    grad = IA("Unsqueezed_Grad");
-    result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+  if (!keepdims) {
+    size_t numInputs = GetSrcNodeInputSize();
+    if (attributes.find("axes") != attributes.end()) {
+      std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      grad = IA("Unsqueezed_Grad");
 
-    result.push_back(NodeDef("Unsqueeze", {O(0)}, {IA("Unsqueezed_Output")}, {MakeAttribute("axes", axes_values)}));
+      result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+
+      result.push_back(NodeDef("Unsqueeze", {O(0)}, {IA("Unsqueezed_Output")}, {MakeAttribute("axes", axes_values)}));
+    } else if (numInputs == 2) {  // optional input 'axes' is available as input I(1)
+      grad = IA("Unsqueezed_Grad");
+      result.push_back(NodeDef("Unsqueeze", {GO(0), I(1)}, {grad}));
+
+      result.push_back(NodeDef("Unsqueeze", {O(0), I(1)}, {IA("Unsqueezed_Output")}));
+    }
     result.push_back(NodeDef("Sub", {I(0), IA("Unsqueezed_Output")}, {IA("Self_Sub_Result")}));
   } else {
     result.push_back(NodeDef("Sub", {I(0), O(0)}, {IA("Self_Sub_Result")}));
@@ -1149,11 +1201,17 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceL2Gradient) {
   ArgDef scaled_dy_arg_def = IA("Masked_Scaled_dY");
   result.emplace_back(NodeDef("Where", {IA("Masked_Y"), ZERO, IA("Scaled_dY")}, {scaled_dy_arg_def}));
 
-  if (!keepdims && attributes.find("axes") != attributes.end()) {
-    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+  if (!keepdims) {
+    size_t numInputs = GetSrcNodeInputSize();
     scaled_dy_arg_def = IA("Unsqueezed_Masked_Scaled_dY");
-    result.emplace_back(
-        NodeDef("Unsqueeze", {IA("Masked_Scaled_dY")}, {scaled_dy_arg_def}, {MakeAttribute("axes", axes_values)}));
+    if (attributes.find("axes") != attributes.end()) {
+      std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      result.emplace_back(
+          NodeDef("Unsqueeze", {IA("Masked_Scaled_dY")}, {scaled_dy_arg_def}, {MakeAttribute("axes", axes_values)}));
+    } else if (numInputs == 2) {  // optional input 'axes' is available as input I(1)
+      result.emplace_back(
+          NodeDef("Unsqueeze", {IA("Masked_Scaled_dY"), I(1)}, {scaled_dy_arg_def}));
+    }
   }
 
   result.emplace_back(NodeDef("Mul", {I(0), scaled_dy_arg_def}, {GI(0)}));
@@ -1765,6 +1823,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   ORT_ENFORCE(utils::HasString(src_attrs.at("func_name")));
   attrs.push_back(MakeAttribute("func_name", src_attrs.at("func_name").s()));
   attrs.push_back(MakeAttribute("output_convention", src_attrs.at("input_convention").s()));
+  attrs.push_back(MakeAttribute("safe_run_mode", src_attrs.at("safe_run_mode").i()));
 
   // input_tensor_types[i] store the type of autograd.Function.apply's ith output.
   // Note that PythonOpGrad's 0-th input is the Python context generated by PythonOp.

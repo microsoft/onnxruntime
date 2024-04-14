@@ -24,6 +24,7 @@
 #include "core/providers/cpu/tensor/size.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/upsamplebase.h"
 #include "core/providers/cpu/tensor/tile.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -329,10 +330,6 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
-  return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
-}
-
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
@@ -496,6 +493,10 @@ template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                             /*out*/ std::vector<uint8_t>& unpacked_tensor) {
+  return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
+}
 
 }  // namespace utils
 
@@ -547,7 +548,14 @@ Status ScatterND::ValidateShapes(const TensorShape& input_shape,
                                  const TensorShape& indice_shape,
                                  const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
 
-Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
+Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
+  return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape);
+}
+
+void PadBase::ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                          PadsVector& pads) {
+  g_host_cpu.PadBase__ComputePads(ctx, data_rank, pads_data, pads);
+}
 
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const ConcatBase::InlinedTensorsVector& input_tensors,
                                      Prepare& p) const {
@@ -564,6 +572,11 @@ template <>
 std::unique_ptr<EinsumTypedComputeProcessor<double>> EinsumTypedComputeProcessor<double>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_double__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
 template <>
 std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProcessor<MLFloat16>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_MLFloat16__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
+
+void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                            InlinedVector<float>& scales) const {
+  g_host_cpu.UpsampleBase__AdjustOutputSizeAsPolicy(this, output_dims, input_dims, scales);
+}
 
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
@@ -641,7 +654,6 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, c
                                             const SessionState& subgraph_session_state) {
   return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
-
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN

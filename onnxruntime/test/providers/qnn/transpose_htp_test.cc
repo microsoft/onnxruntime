@@ -76,8 +76,7 @@ static void RunTransposeQDQTest(const TestInputDef<float>& input_def,
                        BuildQDQTransposeTestCase<QuantType>(input_def, attrs),
                        provider_options,
                        18,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 /**

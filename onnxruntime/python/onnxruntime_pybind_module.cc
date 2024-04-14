@@ -16,11 +16,13 @@ static constexpr bool HAS_COLLECTIVE_OPS = true;
 static constexpr bool HAS_COLLECTIVE_OPS = false;
 #endif
 
-void CreateInferencePybindStateModule(py::module& m);
+bool CreateInferencePybindStateModule(py::module& m);
 void CreateQuantPybindModule(py::module& m);
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
-  CreateInferencePybindStateModule(m);
+  if (!CreateInferencePybindStateModule(m)) {
+    throw pybind11::import_error();
+  }
   // move it out of shared method since training build has a little different behavior.
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableExecutionProviderNames(); },

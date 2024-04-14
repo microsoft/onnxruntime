@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <absl/base/config.h>
 
 #include "core/framework/allocator.h"
 
@@ -15,7 +16,7 @@ TEST(AllocatorTest, CPUAllocatorTest) {
   EXPECT_EQ(cpu_arena->Info().id, 0);
 
   // arena is disabled for CPUExecutionProvider on x86 and JEMalloc
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_JEMALLOC) && !defined(USE_MIMALLOC)
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_JEMALLOC) && !defined(USE_MIMALLOC) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
   EXPECT_EQ(cpu_arena->Info().alloc_type, OrtAllocatorType::OrtArenaAllocator);
 #else
   EXPECT_EQ(cpu_arena->Info().alloc_type, OrtAllocatorType::OrtDeviceAllocator);

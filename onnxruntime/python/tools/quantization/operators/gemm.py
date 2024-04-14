@@ -153,11 +153,11 @@ class QDQGemm(QDQOperatorBase):
 
         if len(node.input) == 3:
             if self.quantizer.is_input_a_initializer(node.input[2]):
-                self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1], get_beta(self.node))
+                self.quantizer.quantize_bias_tensor(
+                    node.name, node.input[2], node.input[0], node.input[1], get_beta(self.node)
+                )
                 set_default_beta(self.node)
             else:
                 logging.warning(
-                    "Bias of Gemm node '{}' is not constant. Please exclude this node for better performance.".format(
-                        self.node.name
-                    )
+                    f"Bias of Gemm node '{self.node.name}' is not constant. Please exclude this node for better performance."
                 )
