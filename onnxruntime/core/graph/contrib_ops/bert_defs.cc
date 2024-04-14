@@ -256,7 +256,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
       }
     } else {
       // Packed QKV:
-      //   Input 0 (query) has shape (batch_size, sequence_length, (num_heads * + 2 * kv_num_heads) * head_size)
+      //   Input 0 (query) has shape (batch_size, sequence_length, (num_heads + 2 * kv_num_heads) * head_size)
       //   Input 1 (key) is not present
       //   Input 2 (value) is not present
       ONNX_NAMESPACE::TensorShapeProto output_shape;

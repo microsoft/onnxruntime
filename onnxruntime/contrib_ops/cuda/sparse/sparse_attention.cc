@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifndef USE_TRITON_KERNEL
 
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
 #include "contrib_ops/cuda/sparse/sparse_attention.h"
@@ -56,11 +57,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (!tuning_ctx->IsTunableOpEnabled()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SparseAttention requires enabling tunable in provider option");
-  } else {
-#ifndef USE_TRITON_KERNEL
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparseAttention uses triton kernel, but the runtime is not built with USE_TRITON_KERNEL.");
-#endif
   }
 
   const Tensor* query = context->Input<Tensor>(0);
@@ -216,3 +212,5 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif  // USE_TRITON_KERNEL

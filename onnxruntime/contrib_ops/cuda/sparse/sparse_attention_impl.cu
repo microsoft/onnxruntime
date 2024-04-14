@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifndef USE_TRITON_KERNEL
 
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_tunable.h"
@@ -211,3 +212,5 @@ template Status QkvToContext<BFloat16>(
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif // USE_TRITON_KERNEL
