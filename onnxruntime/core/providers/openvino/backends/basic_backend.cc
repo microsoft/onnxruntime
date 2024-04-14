@@ -25,10 +25,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const SubGraphContext& subgraph_context,
                            EPCtxHandler& ep_ctx_handle)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
-  std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
-
+  std::string& hw_target = global_context_.device_type;
   is_ep_ctx_graph_ = ep_ctx_handle.IsValidOVEPCtxGraph();
-
   if (ValidateSubgraph(const_outputs_map_))
     return;
 
@@ -136,6 +134,10 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
   if (global_context_.precision_str.find("FP32") != std::string::npos) {
     device_config.emplace(ov::hint::inference_precision("f32"));
+  }
+  if (global_context_.precision_str.find("ACCURACY") != std::string::npos && global_context_.device_type == "GPU") {
+    device_config.emplace(ov::hint::inference_precision(ov::element::undefined));
+    device_config.emplace(ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY));
   }
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -516,8 +518,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
 #ifndef IO_BUFFER_ENABLED  // Printing performance counts is disabled when IO_BUFFER_ENABLED
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       inferRequestsQueue_->printstatus();  // Printing the elements of infer_requests_ vector pool only in debug mode
-      std::string& hw_target =
-          (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
+      std::string& hw_target = global_context_.device_type;
       printPerformanceCounts(infer_request, std::cout, hw_target);
     }
 #endif

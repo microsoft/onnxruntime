@@ -1669,9 +1669,6 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
     ov_options_converted_map["enable_npu_fast_compile"] = "true";
   }
 
-  if (legacy_ov_options->device_id != nullptr)
-    ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
-
   if (legacy_ov_options->num_of_threads != '\0')
     ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
 

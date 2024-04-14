@@ -919,6 +919,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (option.first == "device_type") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "precision") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "enable_npu_fast_compile") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
@@ -951,9 +954,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             value = "true";
           }
           OV_provider_options_map["disable_dynamic_shapes"] = value;
-        } else if (option.first == "device_id") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
         } else if (option.first == "num_of_threads") {
           OV_provider_options_map[option.first] = option.second;
           continue;

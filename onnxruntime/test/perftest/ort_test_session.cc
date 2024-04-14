@@ -245,10 +245,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       auto value = token.substr(pos + 1);
 
       if (key == "device_type") {
-        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
-                                                           "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16", "NPU"};
+        std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
+                                                           "GPU.0", "GPU.1", "NPU"};
+        std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
+                                                         "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
+                                                         "GPU.0_FP16", "GPU.1_FP16"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          ov_options[key] = value;
+        } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
           ov_options[key] = value;
         } else if (value.find("HETERO:") == 0) {
           ov_options[key] = value;
@@ -258,13 +262,41 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ov_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [OpenVINO] You have selected a wrong configuration value for the key 'device_type'. "
-              "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-              "'GPU.0_FP16', 'GPU.1_FP16', 'NPU' or from"
+              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+              "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
               " HETERO/MULTI/AUTO options available. \n");
         }
-      } else if (key == "device_id") {
-        ov_options[key] = value;
+      } else if (key == "precision") {
+        auto device_type = ov_options["device_type"];
+        if (device_type == "CPU") {
+          if (value == "" || value == "ACCURACY" || value == "FP32") {
+            value = "FP32";
+            ov_options[key] = value;
+            continue;
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
+          }
+        } else if (device_type == "NPU") {
+          if (value == "" || value == "ACCURACY" || value == "FP16") {
+            value = "FP16";
+            ov_options[key] = value;
+            continue;
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
+          }
+        } else if (device_type == "GPU") {
+          if (value == "")
+            value = "FP16";
+          ov_options[key] = value;
+          continue;
+          if (value == "ACCURACY" || value == "FP16" || value == "FP32") {
+            ov_options[key] = value;
+            std::cout << " Set value for GPU = " << ov_options[key] << std::endl;
+            continue;
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. GPU only supported FP32 / FP16. \n");
+          }
+        }
       } else if (key == "enable_npu_fast_compile") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {

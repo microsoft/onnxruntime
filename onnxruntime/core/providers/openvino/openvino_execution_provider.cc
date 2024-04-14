@@ -35,7 +35,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
   if (info.cache_dir_.empty()) {
     bool device_found = false;
-    bool device_id_found = false;
     auto available_devices = global_context_->ie_core.GetAvailableDevices();
     // Checking for device_type configuration
     if (info.device_type_ != "") {
@@ -43,15 +42,16 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
           info.device_type_.find("MULTI") != std::string::npos ||
           info.device_type_.find("AUTO") != std::string::npos) {
         device_found = true;
-      } else if (info.device_type_ == "CPU" || info.device_type_.find("GPU") != std::string::npos) {
+      } else {
         for (auto device : available_devices) {
           if (device.rfind(info.device_type_, 0) == 0) {
             if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
-                                                                       info.precision_ == "FP16")) {
+                                                                       info.precision_ == "FP16" ||
+                                                                       info.precision_ == "ACCURACY")) {
               device_found = true;
               break;
             }
-            if (info.device_type_ == "CPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
+            if (info.device_type_ == "CPU" && (info.precision_ == "FP32")) {
               device_found = true;
               break;
             }
@@ -61,40 +61,12 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
             }
           }
         }
-      } else {
-        device_found = true;
       }
     }
     if (!device_found) {
-      std::string err_msg = std::string("Device Type not found : ") + info.device_type_ +
-                            "\nChoose the right precision with one of:\n";
-      for (auto device : available_devices) {
-        err_msg = err_msg + device + "\n";
-      }
-      ORT_THROW(err_msg);
-    }
-    // Checking for device_id configuration
-    if (info.device_id_ != "") {
-      for (auto device : available_devices) {
-        if (device.rfind(info.device_id_, 0) == 0) {
-          if (info.device_id_ == "CPU" || info.device_id_ == "GPU") {
-            LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
-                               << "Switching to Device ID: " << info.device_id_;
-            device_id_found = true;
-            break;
-          }
-        }
-      }
-      if (!device_id_found) {
-        std::string err_msg = std::string("Device ID not found : ") + info.device_id_ + "\nChoose one of:\n";
-        for (auto device : available_devices) {
-          err_msg = err_msg + device + "\n";
-        }
-        ORT_THROW(err_msg);
-      }
+      ORT_THROW("[ERROR] [OpenVINO] Specified device - " + info.device_type_ + " is not available");
     }
   }
-  global_context_->device_id = info.device_id_;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -126,10 +98,18 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   global_context_->onnx_model_name = onnx_model_wd.replace_extension();
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
-
+  auto input_type = graph_viewer.GetInputs()[0]->TypeAsProto()->tensor_type().elem_type();
+  std::string precision_str = global_context_->precision_str;
+  if (global_context_->precision_str == "ACCURACY" && global_context_->device_type == "GPU") {
+    if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+      precision_str = "FP32";
+    } else if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+      precision_str = "FP16";
+    }
+  }
   openvino_ep::GetCapability obj(graph_viewer,
                                  global_context_->device_type,
-                                 global_context_->precision_str);
+                                 precision_str);
   result = obj.Execute();
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();

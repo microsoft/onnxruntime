@@ -8,12 +8,13 @@
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(const char* device_type, bool enable_npu_fast_compile,
-                          const char* device_id, size_t num_of_threads,
+  OpenVINOProviderFactory(const char* device_type, const char* precision,
+                          bool enable_npu_fast_compile, size_t num_of_threads,
                           const char* cache_dir, int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
                           bool export_ep_ctx_blob)
-      : enable_npu_fast_compile_(enable_npu_fast_compile),
+      : precision_(precision),
+        enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
         num_streams_(num_streams),
         context_(context),
@@ -21,7 +22,6 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
         disable_dynamic_shapes_(disable_dynamic_shapes),
         export_ep_ctx_blob_(export_ep_ctx_blob) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
-    device_id_ = (device_id == nullptr) ? "" : device_id;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
   }
   ~OpenVINOProviderFactory() override {
@@ -31,8 +31,8 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 
  private:
   std::string device_type_;
+  std::string precision_;
   bool enable_npu_fast_compile_;
-  std::string device_id_;
   size_t num_of_threads_;
   std::string cache_dir_;
   int num_streams_;
@@ -43,7 +43,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info(device_type_, enable_npu_fast_compile_, device_id_, num_of_threads_,
+  OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_,
                                      cache_dir_, num_streams_, context_, enable_opencl_throttling_,
                                      disable_dynamic_shapes_, export_ep_ctx_blob_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
@@ -67,9 +67,12 @@ struct OpenVINO_Provider : Provider {
 
     std::string device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision
                                             //   with these values at runtime.
+    std::string precision = "";             // [precision]: Sets the inference precision for execution.
+                                            // Supported precision for devices are CPU=FP32, GPU=FP32,FP16, NPU=FP16.
+                                            // Not setting precision will execute with optimized precision for best inference latency.
+                                            // set Precision=ACCURACY for executing models with input precision for best accuracy.
     bool enable_npu_fast_compile = false;   // [enable_npu_fast_compile]: Fast-compile may be optionally enabled to
                                             // speeds up the model's compilation to NPU device specific format.
-    const char* device_id = "";             // [device_id]: Selects a particular hardware device for inference.
     int num_of_threads = 0;                 // [num_of_threads]: Overrides the accelerator default value of number of
                                             //  threads with this value at runtime.
     const char* cache_dir = "";             // [cache_dir]: specify the path to
@@ -88,23 +91,55 @@ struct OpenVINO_Provider : Provider {
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
       device_type = provider_options_map.at("device_type").c_str();
 
-      std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
-                                                         "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                         "GPU.0_FP16", "GPU.1_FP16", "NPU"};
+      std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
+                                                         "GPU.0", "GPU.1", "NPU"};
+      std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
+                                                       "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
+                                                       "GPU.0_FP16", "GPU.1_FP16"};
+      if (deprecated_device_types.find(device_type) != deprecated_device_types.end()) {
+        std::string deprecated_device = device_type;
+        int delimit = device_type.find("_");
+        device_type = deprecated_device.substr(0, delimit);
+        precision = deprecated_device.substr(delimit + 1);
+        LOGS_DEFAULT(WARNING) << "[OpenVINO] Selected 'device_type' " + deprecated_device + " is deprecated. \n"
+                              << "Update the 'device_type' to specified types 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
+                              << " HETERO/MULTI/AUTO options and set 'precision' seperately. \n";
+      }
       if (!((ov_supported_device_types.find(device_type) != ov_supported_device_types.end()) ||
             (device_type.find("HETERO:") == 0) ||
             (device_type.find("MULTI:") == 0) ||
             (device_type.find("AUTO:") == 0))) {
         ORT_THROW(
             "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
-            "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-            "'GPU.0_FP16', 'GPU.1_FP16', 'NPU' or from"
+            "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
             " HETERO/MULTI/AUTO options available. \n");
       }
     }
-    if (provider_options_map.find("device_id") != provider_options_map.end()) {
-      device_id = provider_options_map.at("device_id").c_str();
+    if (provider_options_map.find("precision") != provider_options_map.end()) {
+      precision = provider_options_map.at("precision").c_str();
     }
+    if (device_type == "CPU") {
+      if (precision == "" || precision == "ACCURACY" || precision == "FP32") {
+        precision = "FP32";
+      } else {
+        ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
+      }
+    } else if (device_type == "NPU") {
+      if (precision == "" || precision == "ACCURACY" || precision == "FP16") {
+        precision = "FP16";
+      } else {
+        ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
+      }
+    } else if (device_type == "GPU") {
+      if (precision == "") {
+        precision = "FP16";
+      }
+      if (precision != "ACCURACY" && precision != "FP16" && precision != "FP32") {
+        std::cout << " precision = " << precision << std::endl;
+        ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. GPU only supports FP32 / FP16. \n");
+      }
+    }
+
     if (provider_options_map.find("cache_dir") != provider_options_map.end()) {
       cache_dir = provider_options_map.at("cache_dir").c_str();
     }
@@ -180,8 +215,8 @@ struct OpenVINO_Provider : Provider {
       bool_flag = "";
     }
     return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
+                                                     const_cast<char*>(precision.c_str()),
                                                      enable_npu_fast_compile,
-                                                     device_id,
                                                      num_of_threads,
                                                      cache_dir,
                                                      num_streams,
