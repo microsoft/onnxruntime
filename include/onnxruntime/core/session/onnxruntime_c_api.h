@@ -4643,7 +4643,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(AddExternalInitializerFiles, _In_ OrtSessionOptions* options,
                   _In_reads_(input_len) const ORTCHAR_T* const* external_file_names,
-                  _In_reads_(input_len) const void* const* array_buffer,
+                  _In_reads_(input_len) void* const* array_buffer,
                   _In_reads_(input_len) const size_t* file_lengths, size_t initializers_num);
 };
 

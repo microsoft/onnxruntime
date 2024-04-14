@@ -2999,7 +2999,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 }
 
 Status Graph::InjectExternalInitializersFromFile(
-    const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<const void*, size_t>>& external_initializer_files) {
+    const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<void*, size_t>>& external_initializer_files) {
   for (auto ini : name_to_initial_tensor_) {
     if (ini.second->data_location() == TensorProto_DataLocation_EXTERNAL) {
       auto tensor_name = ini.first;
@@ -3028,8 +3028,8 @@ Status Graph::InjectExternalInitializersFromFile(
                     "External initializer: ", tensor_name,
                     " offset: ", file_offset, " size to read: ", external_data_length,
                     " given file_length: ", external_file_length, " are out of bounds or can not be read in full.");
-      const char* external_file_buffer = static_cast<const char*>(external_file_pos->second.first);
-      const char* tensor_buffer = external_file_buffer + file_offset;
+      char* external_file_buffer = static_cast<char*>(external_file_pos->second.first);
+      char* tensor_buffer = external_file_buffer + file_offset;
 
       const auto& old_initializer = *(ini.second);
       auto& mutable_initializers = *(graph_proto_->mutable_initializer());
@@ -3043,7 +3043,7 @@ Status Graph::InjectExternalInitializersFromFile(
       (**existing_entry).clear_data_location();
       const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
       TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
-      auto tensor = Tensor(type, tensor_shape, static_cast<void*>(const_cast<char*>(tensor_buffer)),
+      auto tensor = Tensor(type, tensor_shape, static_cast<void*>(tensor_buffer),
                            OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
       auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
       **existing_entry = std::move(tensor_proto);

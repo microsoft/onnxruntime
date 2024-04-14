@@ -712,7 +712,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    */
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
   common::Status InjectExternalInitializersFromFile(
-      const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<const void*, size_t>>& external_initializer_files);
+      const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<void*, size_t>>& external_initializer_files);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

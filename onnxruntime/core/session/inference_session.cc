@@ -1648,7 +1648,7 @@ common::Status InferenceSession::Initialize() {
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.external_initializer_files.empty()) {
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.InjectExternalInitializersFromFile(session_options_.external_initializer_files));
-      InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<const void*, size_t>>{}.swap(session_options_.external_initializer_files);
+      InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<void*, size_t>>{}.swap(session_options_.external_initializer_files);
     }
 
     if (!session_options_.external_initializers.empty()) {

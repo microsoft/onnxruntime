@@ -347,7 +347,7 @@ ORT_API_STATUS_IMPL(AddExternalInitializers, _In_ OrtSessionOptions* options,
 
 ORT_API_STATUS_IMPL(AddExternalInitializerFiles, _In_ OrtSessionOptions* options,
                     _In_reads_(initializers_num) const ORTCHAR_T* const* file_names,
-                    _In_reads_(initializers_num) const void* const* buffer_array,
+                    _In_reads_(initializers_num) void* const* buffer_array,
                     _In_reads_(initializers_num) const size_t* file_lengths, size_t initializers_num);
 
 ORT_API_STATUS_IMPL(CreateOpAttr,

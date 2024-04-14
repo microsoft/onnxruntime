@@ -57,7 +57,7 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
   return Status::OK();
 }
 Status SessionOptions::AddExternalInitializerFiles(gsl::span<const std::basic_string<ORTCHAR_T>> file_names,
-                                                   gsl::span<const void*> array_buffer,
+                                                   gsl::span<void*> array_buffer,
                                                    gsl::span<const size_t> file_lengths) {
   const auto init_num = file_names.size();
   ORT_ENFORCE(init_num == array_buffer.size(), "Expecting same size spans");

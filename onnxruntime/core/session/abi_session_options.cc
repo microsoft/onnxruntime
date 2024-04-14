@@ -296,12 +296,12 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* op
 
 ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializerFiles, _In_ OrtSessionOptions* options,
                     _In_reads_(initializers_num) const ORTCHAR_T* const* file_names,
-                    _In_reads_(initializers_num) const void* const* buffer_array,
+                    _In_reads_(initializers_num) void* const* buffer_array,
                     _In_reads_(initializers_num) const size_t* file_lengths, size_t initializers_num) {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN
   onnxruntime::InlinedVector<std::basic_string<ORTCHAR_T>> names;
-  onnxruntime::InlinedVector<const void*> buffers;
+  onnxruntime::InlinedVector<void*> buffers;
   onnxruntime::InlinedVector<size_t> lengths;
   buffers.reserve(initializers_num);
   lengths.reserve(initializers_num);

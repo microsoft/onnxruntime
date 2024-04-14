@@ -16,6 +16,7 @@
 #else
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include "core/platform/scoped_resource.h"
 #endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -193,8 +194,21 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArray) {
   TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
 }
 
-void FileMmap(const ORTCHAR_T* file_path, void*& mapped_base) {
+#ifndef _WIN32
+struct FileDescriptorTraits {
+  using Handle = int;
+  static Handle GetInvalidHandleValue() { return -1; }
+  static void CleanUp(Handle h) {
+    if (close(h) == -1) {
+      auto [err_no, err_msg] = GetSystemError();
+      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err_no << " error msg: " << err_msg;
+    }
+  }
+};
+using ScopedFileDescriptor = ScopedResource<FileDescriptorTraits>;
+#endif
 
+void FileMmap(const ORTCHAR_T* file_path, void*& mapped_base) {
 #ifdef _WIN32
   wil::unique_hfile file_handle{CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
   ASSERT_TRUE(file_handle.get() != INVALID_HANDLE_VALUE);
