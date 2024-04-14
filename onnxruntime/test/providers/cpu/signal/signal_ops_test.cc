@@ -33,6 +33,8 @@ static void TestNaiveDFTFloat(bool onesided, int since_version) {
     expected_output.resize(6);
   }
   test.AddInput<float>("input", shape, input);
+  test.AddInput<int64_t>("dft_length", {}, {2});
+  test.AddInput<int64_t>("axis", {}, {-2});
   test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
   test.AddOutput<float>("output", output_shape, expected_output);
   test.Run();

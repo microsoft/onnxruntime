@@ -977,15 +977,15 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
     {
         try
         {
-            int64_t axis;
-            ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axis)));
+            //int64_t axis;
+            //ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axis)));
             int64_t isInverseInt;
             ORT_THROW_IF_FAILED(context->GetAttribute("inverse", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isInverseInt)));
             int64_t isOnesidedInt;
             ORT_THROW_IF_FAILED(context->GetAttribute("onesided", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isOnesidedInt)));
             bool isOnesided = static_cast<bool>(isOnesidedInt);
             bool isInverse = static_cast<bool>(isInverseInt);
-
+            
             if (isInverse && isOnesided)
             {
                 throw new std::exception("onesided and inverse attributes cannot be enabled at the same time");
@@ -999,7 +999,24 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 throw;
             }
 
-            auto axisIdx = OperatorHelper::HandleNegativeAxis(static_cast<int32_t>(axis), rank);
+            int64_t axisValue = -2;
+            bool isDft17 = !context->IsInputValid(2);
+
+            if (isDft17) 
+            {
+                ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axisValue)));
+            } 
+            else 
+            {
+                ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
+                ORT_THROW_IF_FAILED(context->QueryInterface(IID_PPV_ARGS(&contextPrivate)));
+                ComPtr<IMLOperatorTensor> axisTensor;
+                ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(2, &axisTensor));
+                MLOperatorTensor tensor(axisTensor.Get());
+                axisValue = OperatorHelper::ReadScalarTensorCastToInt64(tensor);
+            }
+
+            auto axisIdx = OperatorHelper::HandleNegativeAxis(static_cast<int32_t>(axisValue), rank);
 
             // In general the output shape will match the input shape exactly
             // So initialize the output shape with the input shape
@@ -1010,6 +1027,8 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
             // It corresponds to the real and imaginary parts of the DFT output.
             outputDims.back() = 2;
 
+            auto dftLength = inputDims[axisIdx];
+
             if (context->IsInputValid(1))
             {
                 // If dft_length is specified, then we should honor the shape.
@@ -1019,9 +1038,10 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 ComPtr<IMLOperatorTensor> dftLengthTensor;
                 ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(1, &dftLengthTensor));
                 MLOperatorTensor tensor(dftLengthTensor.Get());
-                auto dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
-                outputDims[axisIdx] = dftLength;
+                dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
             }
+           
+            outputDims[axisIdx] = dftLength;
 
             // When DFT is onesided, the output shape is half the size of the input shape
             // along the specified axis.
@@ -1032,7 +1052,7 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 // but sometimes the dimension will be a free dimension or be otherwise unset.
                 // Only perform inference when a input dimension value exists.
                 auto originalSignalSize = axisDimension;
-                auto halfSignalSize = (originalSignalSize >> 1) + 1;
+                auto halfSignalSize = (isDft17) ? (originalSignalSize >> 1) + 1 : originalSignalSize / 2 + 1;
                 outputDims.at(axisIdx) = halfSignalSize;
             }
 
@@ -1056,6 +1076,13 @@ public:
     {
         try
         {
+            int32_t version = 17;
+
+            if (context->IsInputValid(2)) 
+            {
+                version = 20;
+            }
+
             auto dftOperator = wil::MakeOrThrow<GpuDFTOperator>(context);
             dftOperator.CopyTo(kernel);
             return S_OK;
@@ -1066,12 +1093,12 @@ public:
         }
     }
 
-    static void RegisterDFTKernel(IMLOperatorRegistry* registry)
+    static void RegisterDFTKernel(IMLOperatorRegistry* registry, int32_t version)
     {
         MLOperatorKernelDescription kernelDescription = {};
         kernelDescription.domain = "";
         kernelDescription.name = "DFT";
-        kernelDescription.minimumOperatorSetVersion = 17;
+        kernelDescription.minimumOperatorSetVersion = version;
         kernelDescription.executionType = MLOperatorExecutionType::D3D12;
 
         // T1: tensor(float16), tensor(float), tensor(double), tensor(bfloat16)
@@ -1100,14 +1127,14 @@ public:
         std::vector<MLOperatorEdgeTypeConstrant> typeConstraints{ t1Constraint, t2Constraint };
         kernelDescription.typeConstraints = typeConstraints.data();
         kernelDescription.typeConstraintCount = static_cast<uint32_t>(typeConstraints.size());
-
+        /*
         MLOperatorAttributeNameValue axisAttributeValue;
         axisAttributeValue.name = "axis";
         axisAttributeValue.type = MLOperatorAttributeType::Int;
         axisAttributeValue.valueCount = 1;
         static const int64_t axis[] = { 1 };
         axisAttributeValue.ints = axis;
-
+        */
         MLOperatorAttributeNameValue inverseAttributeValue;
         inverseAttributeValue.name = "inverse";
         inverseAttributeValue.type = MLOperatorAttributeType::Int;
@@ -1123,10 +1150,21 @@ public:
         onesidedAttributeValue.ints = onesided;
 
         std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-            axisAttributeValue,
+            //axisAttributeValue,
             inverseAttributeValue,
             onesidedAttributeValue
         };
+
+        if (version == 17) 
+        {
+            MLOperatorAttributeNameValue axisAttributeValue;
+            axisAttributeValue.name = "axis";
+            axisAttributeValue.type = MLOperatorAttributeType::Int;
+            axisAttributeValue.valueCount = 1;
+            static const int64_t axis[] = { 1 };
+            axisAttributeValue.ints = axis;
+            attributeDefaultValues.push_back(axisAttributeValue);
+        }
 
         kernelDescription.defaultAttributes = attributeDefaultValues.data();
         kernelDescription.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());

@@ -1033,6 +1033,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  ParametricSoftplus,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Dropout,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Shrink,                             typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
+    {REG_INFO(     20,  Gelu,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
 
     // Uncategorized
     {REG_INFO(      7,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -1277,7 +1278,8 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         ));
     }
 
-    GpuDFTOperatorFactory::RegisterDFTKernel(registry);
+    GpuDFTOperatorFactory::RegisterDFTKernel(registry, 17);
+    GpuDFTOperatorFactory::RegisterDFTKernel(registry, 20);
     DmlSTFTOperatorFactory::RegisterSTFTKernel(registry);
     DmlGridSampleOperatorFactory::RegisterGridSampleKernel(registry);
 }
