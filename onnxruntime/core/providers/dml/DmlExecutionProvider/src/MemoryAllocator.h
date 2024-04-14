@@ -23,6 +23,7 @@ namespace Dml
     MemoryAllocator(uint64_t size = 0);
 
     void GrowBy(uint64_t size);
+    void Reset(uint64_t size = 0);
 
     uint64_t FreeSpace() const;
     uint64_t UsedSpace() const;

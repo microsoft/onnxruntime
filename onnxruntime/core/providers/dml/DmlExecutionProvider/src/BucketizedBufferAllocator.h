@@ -73,6 +73,9 @@ namespace Dml
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
 
+        uint64_t m_tiledAllocationSize = 0, m_untiledAllocationSize = 0;
+
+
     #ifndef NDEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet
         std::map<size_t, AllocationInfo*> m_outstandingAllocationsById;

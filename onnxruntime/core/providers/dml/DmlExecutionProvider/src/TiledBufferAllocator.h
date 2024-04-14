@@ -40,8 +40,9 @@ namespace Dml
     std::shared_ptr<ExecutionContext> m_context;
     std::unique_ptr<DmlSubAllocator> m_subAllocator;
 
-    HeapAllocator m_heapAllocator;
-    uint64_t m_currentAllocationId = 0;
+    HeapAllocator m_heapAllocator, m_longAllocator;
+    uint64_t m_currentAllocationId = 0, m_currentResourceId = 0;
+    uint64_t m_tiledAllocationSize = 0, m_untiledAllocationSize = 0;
     std::unordered_map<uintptr_t, uint64_t> m_resourceIds;
 
     virtual void FreeResource(void* p, uint64_t resourceId) override;

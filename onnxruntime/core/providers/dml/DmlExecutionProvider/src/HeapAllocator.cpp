@@ -74,6 +74,8 @@ namespace Dml
 
   void HeapAllocator::SetResidency(bool value)
   {
+    m_isResident = value;
+
     std::vector<ID3D12Pageable*> pageables;
     pageables.reserve(m_heaps.size());
 
@@ -92,6 +94,38 @@ namespace Dml
     {
       ORT_THROW_IF_FAILED(m_device->Evict(UINT(pageables.size()), pageables.data()));
     }
+  }
+
+  std::vector<ComPtr<IUnknown>> HeapAllocator::Clear()
+  {
+    std::vector<ComPtr<IUnknown>> results;
+
+    for (auto& [resource, mapping] : m_usedResources)
+    {
+      results.push_back(resource);
+    }
+
+    for (auto& [mapping, resources] : m_freeResources)
+    {
+      for(auto& resource : resources)
+      {
+        results.push_back(resource);
+      }
+    }
+
+    for (auto& heap : m_heaps)
+    {
+      results.push_back(heap.Heap);
+    }
+
+    m_usedResources.clear();
+    m_freeResources.clear();
+    m_heaps.clear();
+    m_allocator.Reset();
+    
+    OutputDebugString(L"!!! Cleared");
+
+    return results;
   }
 
   void HeapAllocator::EnsureHeapSpace(uint64_t size)

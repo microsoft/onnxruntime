@@ -9,6 +9,9 @@
 #include "DmlSubAllocator.h"
 // #define PRINT_OUTSTANDING_ALLOCATIONS
 
+#include <format>
+#define DebugOut(pattern, ...) OutputDebugString(std::format(pattern L"\n", __VA_ARGS__).c_str())
+
 namespace Dml
 {
     BucketizedBufferAllocator::~BucketizedBufferAllocator()
@@ -84,6 +87,9 @@ namespace Dml
         // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
         if (roundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
         {
+            m_tiledAllocationSize += size;
+            DebugOut(L"!!! Tiled allocate {:.2f} / {:.2f}", size / 1024.f / 1024.f, m_tiledAllocationSize / 1024.f / 1024.f);
+
             Bucket* bucket = nullptr;
 
             // Find the bucket for this allocation size
@@ -114,6 +120,9 @@ namespace Dml
         }
         else
         {
+            m_untiledAllocationSize += size;
+            DebugOut(L"!!! Untiled allocate {:.2f} / {:.2f}", size / 1024.f / 1024.f, m_untiledAllocationSize / 1024.f / 1024.f);
+
             // The allocation will not be pooled.  Construct a new one
             bucketSize = (size + 3) & ~3;
             resourceWrapper = m_subAllocator->Alloc(onnxruntime::narrow<size_t>(bucketSize));
@@ -154,6 +163,9 @@ namespace Dml
         gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
         if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResource()->GetDesc().Width)
         {
+            m_tiledAllocationSize -= allocInfo->GetRequestedSize();
+            DebugOut(L"!!! Tiled deallocate {:.2f} / {:.2f}", allocInfo->GetRequestedSize() / 1024.f / 1024.f, m_tiledAllocationSize / 1024.f / 1024.f);
+
             assert(gsl::narrow_cast<gsl::index>(m_pool.size()) > bucketIndex);
 
             // Return the resource to the bucket
@@ -164,6 +176,9 @@ namespace Dml
         }
         else
         {
+            m_untiledAllocationSize -= allocInfo->GetRequestedSize();
+            DebugOut(L"!!! Untiled deallocate {:.2f} / {:.2f}", allocInfo->GetRequestedSize() / 1024.f / 1024.f, m_untiledAllocationSize / 1024.f / 1024.f);
+
             // Free the underlying allocation once queued work has completed.
 #ifdef _GAMING_XBOX
             m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
