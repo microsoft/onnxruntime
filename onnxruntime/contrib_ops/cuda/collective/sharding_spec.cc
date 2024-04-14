@@ -27,6 +27,28 @@ void ValidateAxisIndex(const int64_t axis, const int64_t rank) {
   ORT_ENFORCE(adjusted_axis >= 0 && adjusted_axis < rank, "axis,", axis, ", should be in [", -rank, ",", rank, ").");
 }
 
+std::vector<int64_t> ParseStringAsInt64Vector(const std::string& str) {
+  if (str.empty() || str.front() != '[' || str.back() != ']') {
+    throw std::invalid_argument("Invalid input string format");
+  }
+  // Parsed vector.
+  // If input is "[0, 1, 2]", result should be {0, 1, 2}.
+  std::vector<int64_t> result;
+  // Skip '[' and ']'
+  std::istringstream iss(str.substr(1, str.size() - 2));
+
+  // Extract integers separated by ',' or whitespaces.
+  int64_t num = -1;
+  while (/* Read one number at a time */ iss >> num) {
+    result.push_back(num);
+    // Skip the comma
+    if (iss.peek() == ',') {
+      iss.ignore();
+    }
+  }
+  return result;
+}
+
 DeviceMesh CreateDeviceMesh(
     std::vector<int64_t> device_mesh_shape,
     std::vector<int64_t> device_mesh_elements) {
@@ -107,7 +129,7 @@ TensorShape ComputeOriginShape(const TensorShape& shard_shape, const TensorParti
   }
   TensorShape shape(shard_shape);
   const int64_t axis = spec.GetPartitionAxis();
-  shape[axis] *= spec.GetPartitionCount(axis);
+  shape[axis] *= spec.GetUniqueDeviceCount(axis);
   return shape;
 }
 
@@ -118,7 +140,15 @@ TensorShape ComputeShardShape(const TensorShape& shape, const TensorPartitionSpe
     return shard_shape;
   }
   const int64_t axis = spec.GetPartitionAxis();
-  shard_shape[axis] /= spec.GetPartitionCount(axis);
+  const int64_t unique_device_count = spec.GetUniqueDeviceCount(axis);
+  ORT_ENFORCE(shard_shape[axis] % unique_device_count == 0, "Number of shards must be divisible by sharded axis' dimension.");
+  // If a [8, 16]-tensor is shared by device mesh [0, 1, 0, 1] along axis=1 (2nd axis),
+  // the local tensors on device 0 & 1 have same shape [8, 8 (from 16/2)] instead of
+  // [8, 4 (from 16/4)]. The reason is that
+  //  - First, the original tensor are split into 4 sub-tensors [8, 4] along the 2nd axis.
+  //  - The 1st and 3rd sub-tensors are concatenated along axis=1 to one tensor on device 0.
+  //  - The 2nd and 4th sub-tensors are concatenated along axis=1 to one tensor on device 1.
+  shard_shape[axis] /= unique_device_count;
   return shard_shape;
 }
 
@@ -180,7 +210,7 @@ bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec) {
   if (axis < 0 || gsl::narrow<size_t>(axis) >= shape.NumDimensions()) {
     return false;
   }
-  if (shape[axis] % spec.GetPartitionCount(axis) != 0) {
+  if (shape[axis] % spec.GetDeviceCount(axis) != 0) {
     return false;
   }
   return true;

@@ -124,7 +124,8 @@ def _are_deterministic_algorithms_enabled():
     return ORTMODULE_IS_DETERMINISTIC
 
 
-from .graph_transformer_registry import register_graph_transformer  # noqa: E402, F401
+from .graph_optimizer_registry import register_graph_optimizer  # noqa: E402, F401
+from .graph_optimizers import *  # noqa: E402, F403
 from .options import DebugOptions, LogLevel  # noqa: E402, F401
 
 # ORTModule must be loaded only after all validation passes

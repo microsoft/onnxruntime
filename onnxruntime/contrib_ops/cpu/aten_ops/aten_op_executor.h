@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace aten_ops {
 
-typedef bool (*IsTensorArgumentFunc)(const char* op_name, const char* overload_name, size_t index);
+typedef bool (*IsCpuArgumentFunc)(const char* op_name, const char* overload_name, size_t index, bool is_input);
 typedef void (*ExecuteATenOperatorFunc)(const char* op_name, const char* overload_name, size_t input_size,
                                         DLManagedTensor** dlpack_inputs, size_t output_size,
                                         DLManagedTensor** dlpack_outputs);
@@ -22,17 +22,17 @@ class ATenOperatorExecutor {
     return instance;
   }
 
-  void Initialize(void* p_is_tensor_argument_func_raw, void* p_execute_aten_op_func_raw) {
-    ORT_ENFORCE(p_is_tensor_argument_func_raw && p_execute_aten_op_func_raw);
-    p_is_tensor_argument_func_ = reinterpret_cast<IsTensorArgumentFunc>(p_is_tensor_argument_func_raw);
+  void Initialize(void* p_is_cpu_argument_func_raw, void* p_execute_aten_op_func_raw) {
+    ORT_ENFORCE(p_is_cpu_argument_func_raw && p_execute_aten_op_func_raw);
+    p_is_cpu_argument_func_ = reinterpret_cast<IsCpuArgumentFunc>(p_is_cpu_argument_func_raw);
     p_execute_aten_op_func_ = reinterpret_cast<ExecuteATenOperatorFunc>(p_execute_aten_op_func_raw);
   }
 
   bool IsInitialized() { return p_execute_aten_op_func_ != nullptr; }
 
-  bool IsTensorArgument(const std::string& op_name, const std::string& overload_name, size_t index) {
-    ORT_ENFORCE(p_is_tensor_argument_func_, "ATenOperatorExecutor is not initialized.");
-    return p_is_tensor_argument_func_(op_name.c_str(), overload_name.c_str(), index);
+  bool IsCpuArgument(const std::string& op_name, const std::string& overload_name, size_t index, bool is_input) {
+    ORT_ENFORCE(p_is_cpu_argument_func_, "ATenOperatorExecutor is not initialized.");
+    return p_is_cpu_argument_func_(op_name.c_str(), overload_name.c_str(), index, is_input);
   }
 
   void operator()(const std::string& op_name, const std::string& overload_name, size_t input_size,
@@ -43,7 +43,7 @@ class ATenOperatorExecutor {
   }
 
  private:
-  IsTensorArgumentFunc p_is_tensor_argument_func_ = nullptr;
+  IsCpuArgumentFunc p_is_cpu_argument_func_ = nullptr;
   ExecuteATenOperatorFunc p_execute_aten_op_func_ = nullptr;
 };
 

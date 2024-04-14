@@ -443,6 +443,13 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #ifdef USE_DML
   provider_names[provider_name_dml] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
+
+#if defined(ENABLE_TRAINING_CORE) && defined(USE_CUDA)
+  // Removing the CPU EP tests from CUDA build for training as these tests are already run in the CPU pipelines.
+  // Note: These are inference tests, we run these in training builds as an extra check. Therefore reducing
+  // the number of times these are run to reduce the CI time.
+  provider_names.erase(provider_name_cpu);
+#endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
   // Please make no more changes to the list

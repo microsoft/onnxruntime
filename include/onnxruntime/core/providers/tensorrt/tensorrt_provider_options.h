@@ -25,13 +25,14 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_dla_core{0};                                   // DLA core number. Default 0
   int trt_dump_subgraphs{0};                             // dump TRT subgraph. Default 0 = false, nonzero = true
   int trt_engine_cache_enable{0};                        // enable engine caching. Default 0 = false, nonzero = true
-  const char* trt_engine_cache_path{nullptr};            // specify engine cache path
+  const char* trt_engine_cache_path{nullptr};            // specify engine cache path, defaults to the working directory
   int trt_engine_decryption_enable{0};                   // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path{nullptr};   // specify engine decryption library path
   int trt_force_sequential_engine_build{0};              // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
   int trt_context_memory_sharing_enable{0};              // enable context memory sharing between subgraphs. Default 0 = false, nonzero = true
   int trt_layer_norm_fp32_fallback{0};                   // force Pow + Reduce ops in layer norm to FP32. Default 0 = false, nonzero = true
   int trt_timing_cache_enable{0};                        // enable TensorRT timing cache. Default 0 = false, nonzero = true
+  const char* trt_timing_cache_path{nullptr};            // specify timing cache path, if none is provided the trt_engine_cache_path is used
   int trt_force_timing_cache{0};                         // force the TensorRT cache to be used even if device profile does not match. Default 0 = false, nonzero = true
   int trt_detailed_build_log{0};                         // Enable detailed build step logging on TensorRT EP with timing for each engine build. Default 0 = false, nonzero = true
   int trt_build_heuristics_enable{0};                    // Build engine using heuristics to reduce build time. Default 0 = false, nonzero = true

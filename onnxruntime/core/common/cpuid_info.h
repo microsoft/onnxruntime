@@ -28,6 +28,8 @@ class CPUIDInfo {
 
   // ARM
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
+  bool HasArmNeon_I8MM() const { return has_arm_neon_i8mm_; }
+  bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
 
   uint32_t GetCurrentCoreIdx() const;
 
@@ -121,6 +123,8 @@ class CPUIDInfo {
 
   bool has_arm_neon_dot_{false};
   bool has_fp16_{false};
+  bool has_arm_neon_i8mm_{false};
+  bool has_arm_sve_i8mm_{false};
 
 #ifdef CPUIDINFO_ARCH_X86
 

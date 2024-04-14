@@ -113,3 +113,20 @@ class Fusion:
 
         self.model.add_initializer(tensor, self.this_graph_name)
         return tensor
+
+    def add_nodes_to_remove(self, nodes: List[NodeProto]):
+        # Some nodes are shared between paths (e.g. rotary embedding nodes in the Q and K paths).
+        # When path A is fused, its shared nodes are added to `self.nodes_to_remove`. But when path B
+        # is fused, its shared nodes are also added to `self.nodes_to_remove`. When the nodes are
+        # iteratively removed from `self.nodes_to_remove`, path A's shared nodes are removed first.
+        # Since path A's shared nodes are removed, path B's shared nodes are not removed because they
+        # were previously removed for path A. This causes an error to print in remove_node that a node
+        # has failed to be removed.
+        #
+        # To avoid this error, we pre-emptively check if the shared nodes are already in `self.nodes_to_remove`.
+        # We could alternatively convert `self.nodes_to_remove` to a set to avoid this issue, but there could
+        # be scenarios where the nodes need to be removed in a specific order and converting to a set would
+        # lose this order.
+        for node in nodes:
+            if node not in self.nodes_to_remove:
+                self.nodes_to_remove.append(node)

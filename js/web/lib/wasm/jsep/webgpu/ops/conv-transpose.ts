@@ -232,7 +232,7 @@ const convTranspose2d =
       // STEP.1: transpose weight
       const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
           context.compute(
-              createTransposeProgramInfo(inputs[1].dataType, inputs[1].dims.length, weightTransposePerm),
+              createTransposeProgramInfo(inputs[1], weightTransposePerm),
               {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
       if (attributes.wIsConst && !context.kernelCustomData.wT) {
         context.kernelCustomData.wT = transposedWeight;

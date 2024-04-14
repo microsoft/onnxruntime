@@ -126,14 +126,14 @@ export class WebGpuBackend {
    */
   kernels: Map<number, [string, string, RunFunction, [((attribute: unknown) => unknown) | undefined, unknown]]>;
 
-  commandEncoder: GPUCommandEncoder|null = null;
-  computePassEncoder: GPUComputePassEncoder|null = null;
+  private commandEncoder: GPUCommandEncoder|null = null;
+  private computePassEncoder: GPUComputePassEncoder|null = null;
   pendingDispatchNumber = 0;
 
-  supportTimestampQuery = false;
-  profilingQuerySet: GPUQuerySet;
-  profilingQueryData: GpuData;
-  profilingTimeBase?: bigint;
+  queryData?: GpuData;
+  querySet?: GPUQuerySet;
+  querySetCount = 2;
+  queryTimeBase?: bigint;
 
   env: Env;
 
@@ -168,11 +168,9 @@ export class WebGpuBackend {
       },
       requiredFeatures,
     };
-    // WebGPU Spec: Timestamp Queries Inside Passes
-    // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
-    if (adapter.features.has('timestamp-query-inside-passes')) {
-      this.supportTimestampQuery = true;
-      requiredFeatures.push('timestamp-query-inside-passes' as GPUFeatureName);
+
+    if (adapter.features.has('timestamp-query')) {
+      requiredFeatures.push('timestamp-query');
     }
     if (adapter.features.has('shader-f16')) {
       requiredFeatures.push('shader-f16');
@@ -197,21 +195,14 @@ export class WebGpuBackend {
       }
     };
 
-    if (this.supportTimestampQuery) {
-      this.profilingQuerySet = this.device.createQuerySet({
-        type: 'timestamp',
-        count: 2,
-      });
-    }
-
     Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
   }
 
   dispose(): void {
-    // currently, we do not do anything in this function. In all known use cases, we don't have the requirement to
-    // actually dispose the WebGpuBackend instance, because it's always used as a singleton.
-    //
-    // revisit this place if we get real requirement to dispose the instance.
+    if (typeof this.querySet !== 'undefined') {
+      this.querySet.destroy();
+    }
+    this.gpuDataManager.dispose();
   }
 
   getCommandEncoder(): GPUCommandEncoder {
@@ -223,7 +214,22 @@ export class WebGpuBackend {
 
   getComputePassEncoder(): GPUComputePassEncoder {
     if (!this.computePassEncoder) {
-      this.computePassEncoder = this.getCommandEncoder().beginComputePass();
+      const computePassDescriptor: GPUComputePassDescriptor = {};
+      if (this.isQueryEnabled()) {
+        if (typeof this.querySet === 'undefined') {
+          this.querySet = this.device.createQuerySet({
+            type: 'timestamp',
+            count: this.querySetCount,
+          });
+        }
+        computePassDescriptor.timestampWrites = {
+          querySet: this.querySet,
+          beginningOfPassWriteIndex: 0,
+          endOfPassWriteIndex: 1,
+        };
+      }
+
+      this.computePassEncoder = this.getCommandEncoder().beginComputePass(computePassDescriptor);
     }
     return this.computePassEncoder;
   }
@@ -242,6 +248,14 @@ export class WebGpuBackend {
       this.gpuDataManager.refreshPendingBuffers();
       this.commandEncoder = null;
       this.pendingDispatchNumber = 0;
+    }
+  }
+
+  isQueryEnabled(): boolean {
+    if (this.device.features.has('timestamp-query') && this.env.webgpu.profilingMode === 'default') {
+      return true;
+    } else {
+      return false;
     }
   }
 

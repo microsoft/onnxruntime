@@ -68,7 +68,7 @@ RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.9
 ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
 
 # Conda base patch
-RUN pip install cryptography==41.0.0
+RUN pip install cryptography==41.0.4
 
 # Enable rocm-ci environment
 SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]

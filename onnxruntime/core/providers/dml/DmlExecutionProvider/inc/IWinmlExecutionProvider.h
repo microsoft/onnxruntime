@@ -7,11 +7,14 @@
 #include <functional>
 #include <variant>
 #include <optional>
+#include <wrl/client.h>
 
 #include "core/framework/op_kernel.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlEdgeShapes.h"
 
 struct AbstractOperatorDesc;
 interface IMLOperatorTensor;
+interface IDMLOperator;
 struct DML_INPUT_GRAPH_EDGE_DESC;
 struct DML_OUTPUT_GRAPH_EDGE_DESC;
 struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
@@ -92,6 +95,8 @@ namespace Windows::AI::MachineLearning::Adapter
         const onnxruntime::Node& node,
         MLOperatorTensorGetter& constantInputGetter,
         const void* executionHandle,
+        const EdgeShapes* inputShapesOverrides,
+        /*out*/ EdgeShapes* outputShapes,
         /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
         )>;
 
