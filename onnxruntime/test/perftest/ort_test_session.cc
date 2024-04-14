@@ -326,6 +326,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ov_options[key] = value;
         }
+      } else if (key == "model_priority") {
+        ov_options[key] = value;
       } else if (key == "cache_dir") {
         ov_options[key] = value;
       } else if (key == "context") {

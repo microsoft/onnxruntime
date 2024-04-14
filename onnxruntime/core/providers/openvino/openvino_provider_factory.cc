@@ -10,12 +10,14 @@ namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device_type, const char* precision,
                           bool enable_npu_fast_compile, size_t num_of_threads,
-                          const char* cache_dir, int num_streams, void* context,
+                          const char* cache_dir, const char* model_priority, 
+                          int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
                           bool export_ep_ctx_blob)
       : precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
+        model_priority_(model_priority),
         num_streams_(num_streams),
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
@@ -35,6 +37,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   bool enable_npu_fast_compile_;
   size_t num_of_threads_;
   std::string cache_dir_;
+  std::string model_priority_;
   int num_streams_;
   void* context_;
   bool enable_opencl_throttling_;
@@ -44,7 +47,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_,
-                                     cache_dir_, num_streams_, context_, enable_opencl_throttling_,
+                                     cache_dir_, model_priority_, num_streams_, context_, enable_opencl_throttling_,
                                      disable_dynamic_shapes_, export_ep_ctx_blob_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
@@ -78,6 +81,8 @@ struct OpenVINO_Provider : Provider {
     const char* cache_dir = "";             // [cache_dir]: specify the path to
                                             // dump and load the blobs for the model caching/kernel caching (GPU)
                                             // feature. If blob files are already present, it will be directly loaded.
+    const char* model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
+                                             // Defines what model should be provided with more performant bounded resource first
     int num_streams = 1;                    // [num_streams]: Option that specifies the number of parallel inference
                                             // requests to be processed on a given `device_type`. Overrides the
                                             // accelerator default value of number of streams
@@ -159,6 +164,18 @@ struct OpenVINO_Provider : Provider {
       }
     }
 
+    if (provider_options_map.find("model_priority") != provider_options_map.end()) {
+      model_priority = provider_options_map.at("model_priority").c_str();
+      std::vector<std::string> supported_priorities({"LOW", "MEDIUM", "HIGH", "DEFAULT"});
+      if (std::find(supported_priorities.begin(), supported_priorities.end(),
+                    model_priority) == supported_priorities.end()) {
+        model_priority = "DEFAULT";
+        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] The value for the key 'model_priority' "
+                              << "is not one of LOW, MEDIUM, HIGH, DEFAULT. "
+                              << "Executing with model_priorty=DEFAULT";
+      }
+    }
+
     if (provider_options_map.find("num_streams") != provider_options_map.end()) {
       num_streams = std::stoi(provider_options_map.at("num_streams"));
       if (num_streams <= 0) {
@@ -219,6 +236,7 @@ struct OpenVINO_Provider : Provider {
                                                      enable_npu_fast_compile,
                                                      num_of_threads,
                                                      cache_dir,
+                                                     model_priority,
                                                      num_streams,
                                                      context,
                                                      enable_opencl_throttling,

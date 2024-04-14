@@ -144,6 +144,10 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     device_config.emplace(ov::enable_profiling(true));
   }
 #endif
+
+  // Set a priority level for the current workload for preemption;  default priority is "DEFAULT"
+  device_config.emplace(ov::hint::model_priority(global_context_.model_priority));
+
   if (global_context_.device_type.find("NPU") != std::string::npos) {
     std::pair<std::string, ov::Any> device_property;
     device_property = std::make_pair("NPU_COMPILER_TYPE", "DRIVER");

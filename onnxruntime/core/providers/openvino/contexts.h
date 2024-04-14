@@ -24,6 +24,7 @@ struct GlobalContext {
   std::string device_type;
   std::string precision_str;
   std::string cache_dir;
+  std::string model_priority = "DEFAULT";
   int num_streams;
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};
   std::string onnx_model_name;

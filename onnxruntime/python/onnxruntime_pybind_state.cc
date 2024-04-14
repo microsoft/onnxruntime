@@ -957,6 +957,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "num_of_threads") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "model_priority") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "num_streams") {
           OV_provider_options_map[option.first] = option.second;
           continue;

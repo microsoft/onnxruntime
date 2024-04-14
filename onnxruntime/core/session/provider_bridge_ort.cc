@@ -1692,6 +1692,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
   ov_options_converted_map["export_ep_ctx_blob"] = "false";
+  ov_options_converted_map["model_priority"] = "DEFAULT";
   return ov_options_converted_map;
 }
 
