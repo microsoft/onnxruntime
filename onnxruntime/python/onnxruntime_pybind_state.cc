@@ -1686,32 +1686,6 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
-  .def("add_external_initializer_files", [](PySessionOptions* options, py::list& file_names, const py::list& buffer_array, , const py::list& file_lengths) -> void {
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-    const auto init_num = buffer_array.size();
-    const auto lengths_num = file_lengths.size();
-    ORT_ENFORCE(init_num == file_names.size(), "Expecting names and buffer array lists to have equal length");
-    ORT_ENFORCE(init_num == lengths_num, "Expecting names and file lengths array lists to have equal length");
-    InlinedVector<std::string> names_ptrs;
-    InlinedVector<void*> buffers;
-    InlinedVector<size_t> lengths;
-    names_ptrs.reserve(init_num);
-    buffers.reserve(init_num);
-    lengths.reserve(init_num);
-    for (size_t i = 0; i < init_num; ++i) {
-      names_ptrs.emplace_back(py::str(file_names[i]));
-      buffers.emplace_back(buffer_array[i]);
-      lengths.emplace_back(file_lengths[i]);
-    }
-    ORT_THROW_IF_ERROR(options->value.AddExternalInitializerFiles(names_ptrs, buffers, lengths));
-#else
-        ORT_UNUSED_PARAMETER(options);
-        ORT_UNUSED_PARAMETER(file_names);
-        ORT_UNUSED_PARAMETER(buffer_array);
-        ORT_UNUSED_PARAMETER(file_lengths);
-        ORT_THROW("Add external initializer files are not supported in this build.");
-#endif
-  });
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
