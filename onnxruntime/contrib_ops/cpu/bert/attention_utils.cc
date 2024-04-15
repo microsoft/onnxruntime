@@ -226,7 +226,7 @@ template Status MaybeTransposeToBNSHAndAddBias<float>(OpKernelContext* context, 
                                                       const Tensor* in, const Tensor* bias, int bias_offset, OrtValue& out);
 
 template <typename T>
-Status MaybeTransposeToBNSH(OpKernelContext* context, AllocatorPtr allocator,
+Status MaybeTransposeToBNSH(AllocatorPtr allocator,
                             int batch_size, int num_heads, int sequence_length, int head_size,
                             const Tensor* in, OrtValue& out) {
   auto element_type = DataTypeImpl::GetType<T>();
@@ -244,7 +244,7 @@ Status MaybeTransposeToBNSH(OpKernelContext* context, AllocatorPtr allocator,
   return Status::OK();
 };
 
-template Status MaybeTransposeToBNSH<float>(OpKernelContext* context, AllocatorPtr allocator,
+template Status MaybeTransposeToBNSH<float>(AllocatorPtr allocator,
                                             int batch_size, int num_heads, int sequence_length, int head_size,
                                             const Tensor* in, OrtValue& out);
 

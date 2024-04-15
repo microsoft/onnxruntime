@@ -103,14 +103,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   OrtValue V;
   if (packed_qkv) {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
-        context, allocator, batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size, query, Q));
+        allocator, batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size, query, Q));
   } else {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
-        context, allocator, batch_size, num_heads_, sequence_length, head_size, query, Q));
+        allocator, batch_size, num_heads_, sequence_length, head_size, query, Q));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
-        context, allocator, batch_size, kv_num_heads_, sequence_length, head_size, key, K));
+        allocator, batch_size, kv_num_heads_, sequence_length, head_size, key, K));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
-        context, allocator, batch_size, kv_num_heads_, sequence_length, head_size, value, V));
+        allocator, batch_size, kv_num_heads_, sequence_length, head_size, value, V));
   }
 
   if (do_rotary_) {

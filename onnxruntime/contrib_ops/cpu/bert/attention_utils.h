@@ -53,7 +53,7 @@ Status MaybeTransposeToBNSHAndAddBias(OpKernelContext* context, AllocatorPtr all
                                       const Tensor* in, const Tensor* bias, int bias_offset, OrtValue& out);
 
 template <typename T>
-Status MaybeTransposeToBNSH(OpKernelContext* context, AllocatorPtr allocator,
+Status MaybeTransposeToBNSH(AllocatorPtr allocator,
                             int batch_size, int num_heads, int sequence_length, int head_size,
                             const Tensor* in, OrtValue& out);
 
