@@ -35,7 +35,7 @@ Status CheckInputs(void* params,
   //   past_value           (batch_size, kv_num_heads, max_sequence_length, head_size) or nullptr
   //   block_mask           (num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks)
   //                                    where max_blocks = max_sequence_length / sparse_block_size
-  //   seqlens_k_total      (batch_size)
+  //   seqlens_k_total      (batch_size) when do_rotary is True, optional otherwise
   //   total_seq_len        (1)
   //   cos_cache            (max_sequence_length, rotary_dim / 2) when do_rotary is true.
   //   sin_cache            (max_sequence_length, rotary_dim / 2) when do_rotary is true.
@@ -123,7 +123,7 @@ Status CheckInputs(void* params,
 
   const auto& block_mask_dim = block_mask->Shape().GetDims();
   if (!(block_mask_dim.size() == 3 && block_mask_dim[1] == block_mask_dim[2] &&
-        (static_cast<int64_t>(num_heads) % block_mask_dim[0] != 0L))) {
+        (static_cast<int64_t>(num_heads) % block_mask_dim[0] == 0L))) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
         "block_mask must have shape (num_layout, max_blocks, max_blocks) where num_heads is divisible by num_layout.");
@@ -174,11 +174,18 @@ Status CheckInputs(void* params,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
   }
 
-  // Check the shape of total_key_sequence_lengths. We do not check the values here.
-  const auto& k_len_dim = seqlens_k_total->Shape().GetDims();
-  if (k_len_dim.size() != 1 && k_len_dim[0] != batch_size) {
+  if (do_rotary && seqlens_k_total == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "key_total_sequence_lengths must have shape (batch_size).");
+                           "key_total_sequence_lengths must be passed to SparseAttention when do_rotary = 1");
+  }
+
+  // Check the shape of total_key_sequence_lengths. We do not check the values here.
+  if (seqlens_k_total != nullptr) {
+    const auto& k_len_dim = seqlens_k_total->Shape().GetDims();
+    if (k_len_dim.size() != 1 && k_len_dim[0] != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "key_total_sequence_lengths must have shape (batch_size).");
+    }
   }
 
   if (!onnxruntime::IsScalarOr1ElementVector(total_seq_len)) {

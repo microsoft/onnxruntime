@@ -1146,7 +1146,9 @@ For example, given 4 layouts (S0, S1, S2, S3), 8 heads will have layouts like (S
 
 Padding shall be on the right side.
 
-It supports cache of past key and value in linear buffers.
+When do_rotary is True, key_total_sequence_lengths, cos_cache and sin_cache are required.
+
+Only supports unidirectional attention with cache of past key and value in linear buffers.
 For performance, past_key and present_key share same memory buffer, and past_value and present_value too.
 )DOC";
 
@@ -1154,8 +1156,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     SparseAttention, 1,
     OpSchema()
         .SetDoc(SparseAttention_ver1_doc)
-        .Attr("causal", "Whether attention is unidirectional. Default is True", AttributeProto::INT,
-              OPTIONAL_VALUE)
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
         .Attr("scale", "Softmax scale. Default is 1/sqrt(head_size)", AttributeProto::FLOAT,
@@ -1197,14 +1197,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "where num_layout is divisible by num_layout, and max_blocks is max_sequence_length / block_size.",
                "M")
         .Input(6,
-               "key_total_sequence_lengths",
-               "1D tensor with shape (batch_size) where each value is total sequence length of key excluding paddings.",
-               "M",
-               OpSchema::Optional)
-        .Input(7,
                "total_sequence_length",
                "Scalar tensor of maximum total sequence length (past_sequence_length + sequence_length) among keys.",
                "M")
+        .Input(7,
+               "key_total_sequence_lengths",
+               "1D tensor with shape (batch_size) where each value is total sequence length of key excluding paddings. ",
+               "M",
+               OpSchema::Optional)
         .Input(8,
                "cos_cache",
                "Cos cache of rotary with shape (max_sequence_length, head_size / 2).",
@@ -1228,7 +1228,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Updated value cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size).",
                 "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("P", {"tensor(int64)"}, "Constrain integer type.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain integer type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           SparseAttentionTypeAndShapeInference(ctx, 3);
         }));

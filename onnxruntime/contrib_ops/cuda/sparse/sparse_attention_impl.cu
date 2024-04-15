@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifndef USE_TRITON_KERNEL
+#ifdef USE_TRITON_KERNEL
 
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_tunable.h"
@@ -171,9 +171,9 @@ Status QkvToContext(
       tuning_ctx,
       ort_stream,
       data.output,
-      data.query,
-      data.key,
-      data.value,
+      reinterpret_cast<const T*>(query),
+      reinterpret_cast<const T*>(key),
+      reinterpret_cast<const T*>(value),
       parameters.batch_size,
       parameters.sequence_length,
       parameters.num_heads,

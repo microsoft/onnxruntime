@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifndef USE_TRITON_KERNEL
+#ifdef USE_TRITON_KERNEL
 
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
 #include "contrib_ops/cuda/sparse/sparse_attention.h"
@@ -11,18 +11,19 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      SparseAttention,                                                   \
-      kMSDomain,                                                         \
-      1,                                                                 \
-      T,                                                                 \
-      kCudaExecutionProvider,                                            \
-      (*KernelDefBuilder::Create())                                      \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
-          .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>()}) \
-          .MayInplace(3, 1)                                              \
-          .MayInplace(4, 2),                                             \
+#define REGISTER_KERNEL_TYPED(T)                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
+      SparseAttention,                                                 \
+      kMSDomain,                                                       \
+      1,                                                               \
+      T,                                                               \
+      kCudaExecutionProvider,                                          \
+      (*KernelDefBuilder::Create())                                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
+          .MayInplace(3, 1)                                            \
+          .MayInplace(4, 2)                                            \
+          .InputMemoryType(OrtMemTypeCPUInput, 6),                     \
       SparseAttention<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -42,8 +43,6 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
   ORT_ENFORCE(info.GetAttr("sparse_block_size", &sparse_block_size).IsOK());
   ORT_ENFORCE(sparse_block_size == 16 || sparse_block_size == 32 || sparse_block_size == 64 || sparse_block_size == 128);
   sparse_block_size_ = static_cast<int>(sparse_block_size);
-
-  is_causal_ = info.GetAttrOrDefault<int64_t>("causal", 1) == 1;
 
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
@@ -65,8 +64,8 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_key = context->Input<Tensor>(3);
   const Tensor* past_value = context->Input<Tensor>(4);
   const Tensor* block_mask = context->Input<Tensor>(5);
-  const Tensor* seqlens_k_total = context->Input<Tensor>(6);
-  const Tensor* total_seq_len = context->Input<Tensor>(7);
+  const Tensor* total_seq_len = context->Input<Tensor>(6);
+  const Tensor* seqlens_k_total = context->Input<Tensor>(7);
   const Tensor* cos_cache = context->Input<Tensor>(8);
   const Tensor* sin_cache = context->Input<Tensor>(9);
 
@@ -75,7 +74,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   SparseAttentionParameters parameters;
 
   // Parameters from node attribute
-  parameters.is_unidirectional = is_causal_;
   parameters.sparse_block_size = sparse_block_size_;
   parameters.num_heads = num_heads_;
   parameters.kv_num_heads = kv_num_heads_;
@@ -96,10 +94,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            total_seq_len));
 
   // Some limitations of CUDA kernels
-  if (!parameters.is_unidirectional) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Only causal is implemented for SparseAttention cuda kernel");
-  }
   if (parameters.head_size != 128) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SparseAttention in CUDA does not support the input: head_size=", parameters.head_size);
@@ -132,7 +126,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.past_key = (nullptr == past_key) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
   data.past_value = (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.block_mask = block_mask->Data<int32_t>();
-  data.seqlens_k_total = seqlens_k_total->Data<int32_t>();
+  data.seqlens_k_total = (nullptr == seqlens_k_total) ? nullptr : seqlens_k_total->Data<int32_t>();
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
