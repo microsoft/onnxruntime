@@ -245,6 +245,7 @@ void FileMmap(const ORTCHAR_T* file_path, void*& mapped_base) {
   ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
   ASSERT_TRUE(file_descriptor.IsValid());
   struct stat sb;
+  stat(file_path.c_str(), &sb)
   mapped_base = mmap(nullptr, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), 0);
 #endif
   return;
@@ -298,6 +299,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string
   ASSERT_TRUE(ret);
 #else
   struct stat sb;
+  stat(external_bin_path.c_str(), &sb)
   int ret = munmap(mapped_base, sb.st_size);
   ASSERT_TRUE(ret == 0);
 #endif
