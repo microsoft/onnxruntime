@@ -216,10 +216,7 @@ struct FileDescriptorTraits {
   using Handle = int;
   static Handle GetInvalidHandleValue() { return -1; }
   static void CleanUp(Handle h) {
-    if (close(h) == -1) {
-      auto [err_no, err_msg] = GetSystemError();
-      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err_no << " error msg: " << err_msg;
-    }
+    ASSERT(close(h) != -1);
   }
 };
 using ScopedFileDescriptor = ScopedResource<FileDescriptorTraits>;
