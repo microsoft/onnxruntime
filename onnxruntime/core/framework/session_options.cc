@@ -68,8 +68,7 @@ Status SessionOptions::AddExternalInitializerFiles(gsl::span<const std::basic_st
       ORT_TSTR(".//"),
       ORT_TSTR("./"),
       ORT_TSTR(".\\\\"),
-      ORT_TSTR(".\\")
-  };
+      ORT_TSTR(".\\")};
   for (size_t i = 0; i < init_num; ++i) {
     // ignore "./" from file name if it has
     auto file_name = file_names[i];

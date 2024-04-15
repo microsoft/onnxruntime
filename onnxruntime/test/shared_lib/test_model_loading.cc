@@ -16,6 +16,7 @@
 #else
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include "core/platform/scoped_resource.h"
 #endif
 
@@ -216,7 +217,7 @@ struct FileDescriptorTraits {
   using Handle = int;
   static Handle GetInvalidHandleValue() { return -1; }
   static void CleanUp(Handle h) {
-    ASSERT(close(h) != -1);
+    ASSERT_TRUE(close(h) != -1);
   }
 };
 using ScopedFileDescriptor = ScopedResource<FileDescriptorTraits>;
