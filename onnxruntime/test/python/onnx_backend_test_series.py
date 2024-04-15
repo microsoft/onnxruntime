@@ -38,7 +38,10 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
 
     @classmethod
     def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol, model_dir=None):
-        """Asserts ref_outputs and outputs match to within the given tolerances."""
+        """
+        Asserts ref_outputs and outputs match to within the given tolerances.
+        The `model_dir` parameter is currently unused (added to base Runner class in onnx 1.16.0).
+        """
 
         def assert_similar_array(ref_output, output):
             np.testing.assert_equal(ref_output.dtype, output.dtype)
