@@ -255,7 +255,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
     const std::byte* QuantBData = QuantBDataColPtr;
     const float* QuantBScale = QuantBScaleColPtr;
     [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
-                                                     // only used if HasZeroPoint == true
+                                                     // only used if HasZeroPoint is true
 
     for (size_t k = 0; k < CountK; k += BlkLen) {
         const size_t k_blk_len = std::min(CountK - k, BlkLen);
@@ -266,7 +266,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
         );
 
         [[maybe_unused]] float offset[NCols];  // Includes zero point and float conversion offset.
-                                               // only used if HasZeroPoint == true
+                                               // only used if HasZeroPoint is true
         if constexpr (HasZeroPoint) {
             UnrolledLoop<NCols>([&](size_t i) {
                 const std::byte zp_packed =
@@ -504,6 +504,91 @@ SQ4BitGemmM1Kernel_CompFp32(
     }
 }
 
+// Block dequantize a 16 x NCols section of B from column major source to row major destination.
+template <size_t NCols, bool HasZeroPoint>
+MLAS_FORCEINLINE void
+Q4BitBlkDequantB_16xNCols(
+    const std::byte* QuantBDataPtr,
+    size_t StrideQuantBData,
+    const float* QuantBColScalePtr,                    // pointer to NCols scales of adjacent columns
+    [[maybe_unused]] const float* QuantBColOffsetPtr,  // pointer to NCols offsets of adjacent columns
+                                                       // only used if HasZeroPoint is true
+    float* DstColPtr
+)
+{
+    const uint8x8_t LowMask = vdup_n_u8(0x0F);
+
+    // load B column vectors
+    uint8x8_t bv_packed[NCols];
+    UnrolledLoop<NCols>([&](size_t i) {
+        bv_packed[i] = vld1_u8(
+            reinterpret_cast<const uint8_t*>(QuantBDataPtr) + i * StrideQuantBData
+        );
+    });
+
+    uint8x8_t bv_u8[NCols][2];
+    UnrolledLoop<NCols>([&](size_t i) {
+        bv_u8[i][0] = vand_u8(bv_packed[i], LowMask);
+        bv_u8[i][1] = vshr_n_u8(bv_packed[i], 4);
+    });
+
+    // shift left 3 and widen to 16 bits
+    uint16x8_t bv_u16[NCols][2];
+    UnrolledLoop<NCols>([&](size_t i) {
+        constexpr int shift = 3;
+        bv_u16[i][0] = vshll_n_u8(bv_u8[i][0], shift);
+        bv_u16[i][1] = vshll_n_u8(bv_u8[i][1], shift);
+    });
+
+    // combine 4 bits with float high half template
+    UnrolledLoop<NCols>([&](size_t i) {
+        bv_u16[i][0] = vorrq_u16(bv_u16[i][0], fp32_conversion::float_high_half_template_v);
+        bv_u16[i][1] = vorrq_u16(bv_u16[i][1], fp32_conversion::float_high_half_template_v);
+    });
+
+    // `SubBlkLen` floats of B
+    float32x4_t bv[NCols][4];
+
+    // shift left 16, widen to 32 bits, and reinterpret as float
+    UnrolledLoop<NCols>([&](size_t i) {
+        constexpr int shift = 16;
+        bv[i][0] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][0]), shift));
+        bv[i][1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][0], shift));
+
+        bv[i][2] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][1]), shift));
+        bv[i][3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][1], shift));
+    });
+
+    // subtract float conversion offset and zero point
+    if constexpr (HasZeroPoint) {
+        UnrolledLoop<NCols>([&](size_t i) {
+            const float32x4_t offset_v = vdupq_n_f32(QuantBColOffsetPtr[i]);
+            UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
+        });
+    } else {
+        const float32x4_t offset_v = vdupq_n_f32(fp32_conversion::offset + 8.0f);
+        UnrolledLoop<NCols>([&](size_t i) {
+            UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
+        });
+    }
+
+    // multiply by scale
+    UnrolledLoop<NCols>([&](size_t i) {
+        const float32x4_t scale_v = vdupq_n_f32(QuantBColScalePtr[i]);
+        UnrolledLoop<4>([&](size_t j) { bv[i][j] = vmulq_f32(bv[i][j], scale_v); });
+    });
+
+    // write, transposed, 16 x NCols values
+    UnrolledLoop<NCols>([&](size_t i) {
+        UnrolledLoop<4>([&](size_t j) {
+            DstColPtr[(j * 4 + 0) * 16 + i] = vgetq_lane_f32(bv[i][j], 0);
+            DstColPtr[(j * 4 + 1) * 16 + i] = vgetq_lane_f32(bv[i][j], 1);
+            DstColPtr[(j * 4 + 2) * 16 + i] = vgetq_lane_f32(bv[i][j], 2);
+            DstColPtr[(j * 4 + 3) * 16 + i] = vgetq_lane_f32(bv[i][j], 3);
+        });
+    });
+}
+
 template <bool HasZeroPoint>
 void
 Q4BitBlkDequantBForSgemm_CompFp32_Impl(
@@ -518,7 +603,6 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
 )
 {
     constexpr size_t BlkBitWidth = 4;
-    // constexpr size_t SubBlkLen = 16;
 
     float* Dst = FpData;
 
@@ -527,16 +611,17 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
     [[maybe_unused]] const std::byte* QuantBZeroPointCol = QuantBZeroPoint;  // only used if HasZeroPoint is true
 
     const size_t StrideQuantBData = BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
+    [[maybe_unused]] const size_t StrideQuantBZeroPoint =  // only used if HasZeroPoint is true
+        MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
 
-    // plan: dequantize 16x16 block from QuantBData at a time, transpose and write into Dst
+    //
+    // Proceed down 16 column-wide regions of B. Dequantize and write output 16 x 16 elements at a time.
+    //
 
-    uint8x8_t LowMask = vdup_n_u8(0x0F);
-
+    // scales of blocks from 16 adjacent columns
     float scale[16];
+    // float conversion offsets (including zero point) of blocks from 16 adjacent columns
     [[maybe_unused]] float offset[16];  // only used if HasZeroPoint is true
-
-    constexpr size_t NCols = 4;
 
     size_t n_cols_remaining = CountN;
     while (n_cols_remaining > 15) {
@@ -557,80 +642,28 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
             const size_t kklen = std::min(CountK - k, BlkLen);
 
             for (size_t kk = 0; kk < kklen; kk += 16) {
+                constexpr size_t NCols = 4;
+
+                const float* ScalePtr = &scale[0];
+                const float* OffsetPtr = HasZeroPoint ? &offset[0] : nullptr;
+
                 float* DstColPtr = Dst;
+
                 for (size_t nn = 0; nn < 16; nn += NCols) {
                     const std::byte* QuantBDataPtr = QuantBDataCol + nn * StrideQuantBData + (k + kk) * BlkBitWidth / 8;
 
-                    // load B column vectors
-                    uint8x8_t bv_packed[NCols];
-                    UnrolledLoop<NCols>([&](size_t i) {
-                        bv_packed[i] = vld1_u8(
-                            reinterpret_cast<const uint8_t*>(QuantBDataPtr) + i * StrideQuantBData
-                        );
-                    });
+                    Q4BitBlkDequantB_16xNCols<NCols, HasZeroPoint>(
+                        QuantBDataPtr,
+                        StrideQuantBData,
+                        ScalePtr,
+                        OffsetPtr,
+                        DstColPtr
+                    );
 
-                    uint8x8_t bv_u8[NCols][2];
-                    UnrolledLoop<NCols>([&](size_t i) {
-                        bv_u8[i][0] = vand_u8(bv_packed[i], LowMask);
-                        bv_u8[i][1] = vshr_n_u8(bv_packed[i], 4);
-                    });
-
-                    // shift left 3 and widen to 16 bits
-                    uint16x8_t bv_u16[NCols][2];
-                    UnrolledLoop<NCols>([&](size_t i) {
-                        constexpr int shift = 3;
-                        bv_u16[i][0] = vshll_n_u8(bv_u8[i][0], shift);
-                        bv_u16[i][1] = vshll_n_u8(bv_u8[i][1], shift);
-                    });
-
-                    // combine 4 bits with float high half template
-                    UnrolledLoop<NCols>([&](size_t i) {
-                        bv_u16[i][0] = vorrq_u16(bv_u16[i][0], fp32_conversion::float_high_half_template_v);
-                        bv_u16[i][1] = vorrq_u16(bv_u16[i][1], fp32_conversion::float_high_half_template_v);
-                    });
-
-                    // `SubBlkLen` floats of B
-                    float32x4_t bv[NCols][4];
-
-                    // shift left 16, widen to 32 bits, and reinterpret as float
-                    UnrolledLoop<NCols>([&](size_t i) {
-                        constexpr int shift = 16;
-                        bv[i][0] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][0]), shift));
-                        bv[i][1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][0], shift));
-
-                        bv[i][2] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][1]), shift));
-                        bv[i][3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][1], shift));
-                    });
-
-                    // subtract float conversion offset and zero point
+                    ScalePtr += NCols;
                     if constexpr (HasZeroPoint) {
-                        UnrolledLoop<NCols>([&](size_t i) {
-                            const float32x4_t offset_v = vdupq_n_f32(offset[nn + i]);
-                            UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
-                        });
-                    } else {
-                        const float32x4_t offset_v = vdupq_n_f32(fp32_conversion::offset + 8.0f);
-                        UnrolledLoop<NCols>([&](size_t i) {
-                            UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
-                        });
+                        OffsetPtr += NCols;
                     }
-
-                    // multiply by scale
-                    UnrolledLoop<NCols>([&](size_t i) {
-                        const float32x4_t scale_v = vdupq_n_f32(scale[nn + i]);
-                        UnrolledLoop<4>([&](size_t j) { bv[i][j] = vmulq_f32(bv[i][j], scale_v); });
-                    });
-
-                    // write, transposed, 16 x NCols values
-                    UnrolledLoop<NCols>([&](size_t i) {
-                        UnrolledLoop<4>([&](size_t j) {
-                            DstColPtr[(j * 4 + 0) * 16 + i] = vgetq_lane_f32(bv[i][j], 0);
-                            DstColPtr[(j * 4 + 1) * 16 + i] = vgetq_lane_f32(bv[i][j], 1);
-                            DstColPtr[(j * 4 + 2) * 16 + i] = vgetq_lane_f32(bv[i][j], 2);
-                            DstColPtr[(j * 4 + 3) * 16 + i] = vgetq_lane_f32(bv[i][j], 3);
-                        });
-                    });
-
                     DstColPtr += NCols;
                 }
 
@@ -674,66 +707,26 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
                     vst1q_f32(Dst + 16 * i + 3, zero_v);
                 });
 
+                const float* ScalePtr = &scale[0];
+                const float* OffsetPtr = HasZeroPoint ? &offset[0] : nullptr;
+
                 float* DstColPtr = Dst;
 
                 for (size_t nn = 0; nn < n_cols_remaining; ++nn) {
                     const std::byte* QuantBDataPtr = QuantBDataCol + nn * StrideQuantBData + (k + kk) * BlkBitWidth / 8;
 
-                    uint8x8_t bv_packed;
-                    bv_packed = vld1_u8(reinterpret_cast<const uint8_t*>(QuantBDataPtr));
+                    Q4BitBlkDequantB_16xNCols<1, HasZeroPoint>(
+                        QuantBDataPtr,
+                        StrideQuantBData,
+                        ScalePtr,
+                        OffsetPtr,
+                        DstColPtr
+                    );
 
-                    uint8x8_t bv_u8[2];
-                    bv_u8[0] = vand_u8(bv_packed, LowMask);
-                    bv_u8[1] = vshr_n_u8(bv_packed, 4);
-
-                    // shift left 3 and widen to 16 bits
-                    uint16x8_t bv_u16[2];
-                    {
-                        constexpr int shift = 3;
-                        bv_u16[0] = vshll_n_u8(bv_u8[0], shift);
-                        bv_u16[1] = vshll_n_u8(bv_u8[1], shift);
-                    }
-
-                    // combine 4 bits with float high half template
-                    bv_u16[0] = vorrq_u16(bv_u16[0], fp32_conversion::float_high_half_template_v);
-                    bv_u16[1] = vorrq_u16(bv_u16[1], fp32_conversion::float_high_half_template_v);
-
-                    // `SubBlkLen` floats of B
-                    float32x4_t bv[4];
-
-                    // shift left 16, widen to 32 bits, and reinterpret as float
-                    {
-                        constexpr int shift = 16;
-                        bv[0] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[0]), shift));
-                        bv[1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[0], shift));
-
-                        bv[2] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[1]), shift));
-                        bv[3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[1], shift));
-                    }
-
-                    // subtract float conversion offset and zero point
+                    ScalePtr += 1;
                     if constexpr (HasZeroPoint) {
-                        const float32x4_t offset_v = vdupq_n_f32(offset[nn]);
-                        UnrolledLoop<4>([&](size_t j) { bv[j] = vsubq_f32(bv[j], offset_v); });
-                    } else {
-                        const float32x4_t offset_v = vdupq_n_f32(fp32_conversion::offset + 8.0f);
-                        UnrolledLoop<4>([&](size_t j) { bv[j] = vsubq_f32(bv[j], offset_v); });
+                        OffsetPtr += 1;
                     }
-
-                    // multiply by scale
-                    {
-                        const float32x4_t scale_v = vdupq_n_f32(scale[nn]);
-                        UnrolledLoop<4>([&](size_t j) { bv[j] = vmulq_f32(bv[j], scale_v); });
-                    }
-
-                    // write, transposed, 16 x 1 values
-                    UnrolledLoop<4>([&](size_t j) {
-                        DstColPtr[(j * 4 + 0) * 16] = vgetq_lane_f32(bv[j], 0);
-                        DstColPtr[(j * 4 + 1) * 16] = vgetq_lane_f32(bv[j], 1);
-                        DstColPtr[(j * 4 + 2) * 16] = vgetq_lane_f32(bv[j], 2);
-                        DstColPtr[(j * 4 + 3) * 16] = vgetq_lane_f32(bv[j], 3);
-                    });
-
                     DstColPtr += 1;
                 }
 
