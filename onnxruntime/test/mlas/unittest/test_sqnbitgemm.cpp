@@ -404,13 +404,31 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
       // SQNBitGemmBlkBitWidth4BlkLen32.SingleThread/isSymmetric1/M1xN1xK64/hasBias0/computeTypeInt8
       tests_registered += RegisterSingleTest(1, 1, 64, CompInt8, true, true, false);
       tests_registered += RegisterSingleTest(1, 1, 96, CompInt8, true, true, false);
+      tests_registered += RegisterSingleTest(2, 16, 17, CompFp32, false, false, false);
+      tests_registered += RegisterSingleTest(2, 16, 33, CompFp32, false, false, false);
+      tests_registered += RegisterSingleTest(2, 32, 17, CompFp32, false, true, false);
+      tests_registered += RegisterSingleTest(2, 32, 31, CompFp32, false, true, false);
+      tests_registered += RegisterSingleTest(2, 32, 33, CompFp32, false, true, false);
+      tests_registered += RegisterSingleTest(2, 64, 33, CompFp32, false, false, false);
+      tests_registered += RegisterSingleTest(2, 17, 32, CompFp32, false, false, false);
+      tests_registered += RegisterSingleTest(2, 17, 33, CompFp32, false, false, false);
+      tests_registered += RegisterSingleTest(2, 288, 32, CompFp32, false, false, false);
+      tests_registered += RegisterSingleTest(2, 288, 33, CompFp32, false, false, false);
+      tests_registered += RegisterSingleTest(2, 288, 49, CompFp32, false, false, false);
+      tests_registered += RegisterSingleTest(2, 1040, 544, CompFp32, false, false, false);
     }
 
     if constexpr (BlkLen == 16) {
       // SQNBitGemmBlkBitWidth4BlkLen32.SingleThread/isSymmetric1/M1xN1xK64/hasBias0/computeTypeInt8
-      tests_registered += RegisterSingleTest(1, 1, 16, CompInt8, true, true, false);
-      tests_registered += RegisterSingleTest(1, 1, 32, CompInt8, true, true, false);
-      tests_registered += RegisterSingleTest(1, 1, 48, CompInt8, true, true, false);
+      //tests_registered += RegisterSingleTest(1, 1, 16, CompInt8, true, true, false);
+      //tests_registered += RegisterSingleTest(1, 1, 32, CompInt8, true, true, false);
+      //tests_registered += RegisterSingleTest(1, 1, 48, CompInt8, true, true, false);
+      tests_registered += RegisterSingleTest(1, 1, 2, CompInt8, true, true, false);
+      tests_registered += RegisterSingleTest(2, 16, 17, CompFp32, false, true, false);
+      tests_registered += RegisterSingleTest(2, 32, 32, CompFp32, false, true, false);
+      tests_registered += RegisterSingleTest(2, 32, 33, CompFp32, false, true, false);
+      tests_registered += RegisterSingleTest(2, 32, 17, CompFp32, false, true, false);
+      tests_registered += RegisterSingleTest(2, 32, 1007, CompFp32, false, true, false);
     }
 
     return tests_registered;

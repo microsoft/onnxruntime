@@ -64,9 +64,8 @@ namespace
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-    size_t SubBlkLen = (ComputeType == CompInt8)
-      ? ((BlkLen == 16) ? 16 : 32)
-      : 16;
+    size_t SubBlkLen = (BlkLen == 16) ? 16 : 32;
+
     if (BlkLen >= 64 && ComputeType == CompInt8)
       SubBlkLen = 64;
 
@@ -293,9 +292,9 @@ namespace
           bvf_hi[i] = _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(bv_hi));
 
           // multiply by scale
-          __m256 s = _mm256_set1_ps(scale_v[i]);
-          bvf_lo[i] = _mm256_mul_ps(bvf_lo[i], s);
-          bvf_hi[i] = _mm256_mul_ps(bvf_hi[i], s);
+          __m256 scale_ps = _mm256_set1_ps(scale_v[i]);
+          bvf_lo[i] = _mm256_mul_ps(bvf_lo[i], scale_ps);
+          bvf_hi[i] = _mm256_mul_ps(bvf_hi[i], scale_ps);
 
           // c[m,n] += a[m,k] * b[k,n]
           acc[i] = _mm256_fmadd_ps(bvf_lo[i], av_lo, acc[i]);
@@ -417,6 +416,8 @@ namespace
     }
   }
 
+#include "sqnbitgemm_kernel_NoNCols_impl_avx512.h"
+
   MLAS_FORCEINLINE void
     SQ4BitGemmM1Kernel_CompFp32(
       size_t BlkLen,
@@ -431,111 +432,537 @@ namespace
       const float* Bias
     )
   {
-    if (QuantBZeroPoint != nullptr) {
-      SQ4BitGemmM1Kernel_CompFp32_Impl<true>(
-        BlkLen,
-        A,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        CountN,
-        CountK,
-        BlockStrideQuantB,
-        Bias
-      );
+    if (BlkLen >= 32)
+    {
+      if (QuantBZeroPoint != nullptr) {
+        MlasQ4GemmKernelAvx512f<true>(
+          BlkLen,
+          A,
+          QuantBData,
+          QuantBScale,
+          QuantBZeroPoint,
+          C,
+          1,
+          CountN,
+          CountK,
+          BlockStrideQuantB,
+          Bias,
+          0,
+          0
+        );
+      }
+      else {
+        MlasQ4GemmKernelAvx512f<false>(
+          BlkLen,
+          A,
+          QuantBData,
+          QuantBScale,
+          QuantBZeroPoint,
+          C,
+          1,
+          CountN,
+          CountK,
+          BlockStrideQuantB,
+          Bias,
+          0,
+          0
+        );
+      }
     }
     else {
-      SQ4BitGemmM1Kernel_CompFp32_Impl<false>(
-        BlkLen,
-        A,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        CountN,
-        CountK,
-        BlockStrideQuantB,
-        Bias
-      );
+      if (QuantBZeroPoint != nullptr) {
+        SQ4BitGemmM1Kernel_CompFp32_Impl<true>(
+          BlkLen,
+          A,
+          QuantBData,
+          QuantBScale,
+          QuantBZeroPoint,
+          C,
+          CountN,
+          CountK,
+          BlockStrideQuantB,
+          Bias
+        );
+      }
+      else {
+        SQ4BitGemmM1Kernel_CompFp32_Impl<false>(
+          BlkLen,
+          A,
+          QuantBData,
+          QuantBScale,
+          QuantBZeroPoint,
+          C,
+          CountN,
+          CountK,
+          BlockStrideQuantB,
+          Bias
+        );
+      }
+    }
+  }
+
+  // uncovered from 949bdbe5b24cb5f33dce823b95b1b6e0fac555de
+  template<bool HasZeroPoint>
+  MLAS_FORCEINLINE void
+    Q4BitBlkDequantBBlkLen16(
+      float* dst_ptr,
+      const std::byte* quant_b_data_col_ptr,
+      const float* quant_b_scale_col_ptr,
+      const std::byte* quant_b_zero_point_col_ptr,
+      size_t CountK
+    )
+  {
+    // SubBlkLen=16 is only used for BlkLen=16. In this case we only need one k-loop.
+    // For BlkLen of 32 - 256, SubBlkLen will always 32 because we use _mm_loadu_si128
+    // to load 128 bits of 32 quantized features.
+    constexpr size_t SubBlkLen16 = 16;
+    constexpr size_t SubBlkStep8 = 8;
+    const std::byte* bptr = quant_b_data_col_ptr;
+    const float* sptr = quant_b_scale_col_ptr;
+    float* fp_data_ptr = dst_ptr;
+
+    [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
+    // only used if HasZeroPoint == true
+
+    for (size_t kk = 0; kk < CountK; kk += SubBlkLen16) {
+      // TODO: load with mask?
+      __m128i bvi4 = _mm_loadu_si64(bptr);
+      bptr += SubBlkStep8;
+
+      // Interleave lower and upper to form the final 8-bit unpacked values
+      __m128i load_mask_v = _mm_set1_epi8(0x0F);  // Mask to isolate the lower 4 bits
+      __m128i lower = _mm_and_si128(bvi4, load_mask_v);
+      __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi4, 4), load_mask_v);
+
+      // Interleave lower and upper to form 8-bit unpacked values
+      __m128i unpacked = _mm_unpacklo_epi8(lower, upper);
+
+      // Convert the unpacked 8-bit integers to 16-bit integers
+      __m256i bv_lo = _mm256_cvtepu8_epi32(unpacked);
+
+      // Extract the second 8 8-bit integers
+      __m128i unpacked_next_8 = _mm_srli_si128(unpacked, 8);
+
+      // Extend the 8-bit integers to 32-bit integers
+      __m256i bv_hi = _mm256_cvtepu8_epi32(unpacked_next_8);
+
+      // Subtract zero-point from the integers
+      if constexpr (HasZeroPoint) {
+        const std::byte zp_packed = quant_b_zero_point_col_ptr[QuantBZeroPointIdx / 2];
+        const std::byte zp_byte_masked =
+          (QuantBZeroPointIdx & 1) == 1 ? (zp_packed >> 4) : (zp_packed & std::byte{ 0x0F });
+        uint8_t zp_uint8 = std::to_integer<uint8_t>(zp_byte_masked);
+
+        // Subtract zero-point from the integers
+        __m256i zp = _mm256_set1_epi32(zp_uint8);
+        bv_lo = _mm256_sub_epi32(bv_lo, zp);
+        bv_hi = _mm256_sub_epi32(bv_hi, zp);
+      }
+      else {
+        // Subtract 8 from the integers
+        const __m256i eight = _mm256_set1_epi32(8);
+        bv_lo = _mm256_sub_epi32(bv_lo, eight);
+        bv_hi = _mm256_sub_epi32(bv_hi, eight);
+      }
+
+      // Convert to 32-bit int -> float 32
+      __m256 bvf_lo = _mm256_cvtepi32_ps(bv_lo);
+      __m256 bvf_hi = _mm256_cvtepi32_ps(bv_hi);
+
+      __m256 s = _mm256_set1_ps(*sptr++);
+      bvf_lo = _mm256_mul_ps(bvf_lo, s);
+      bvf_hi = _mm256_mul_ps(bvf_hi, s);
+
+      size_t kklen = std::min((size_t)SubBlkLen16, CountK - kk);
+      uint32_t store_mask = 0xffff >> (SubBlkLen16 - kklen);
+
+      // store 2 x 8 fp weights
+      // TODO: make dst_ptr stride multiple of 16
+      _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), bvf_lo);
+      fp_data_ptr += 8;
+      store_mask = store_mask >> 8;
+      if (store_mask != 0) {
+        _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), bvf_hi);
+        fp_data_ptr += 8;
+      }
+    }
+  }
+
+  template<bool HasZeroPoint>
+  MLAS_FORCEINLINE void
+    Q4BitBlkDequantBBlkLen32Plus(
+      size_t BlkLen,
+      float* dst_ptr,
+      const std::byte* quant_b_data_col_ptr,
+      const float* quant_b_scale_col_ptr,
+      const std::byte* quant_b_zero_point_col_ptr,
+      size_t CountK
+    )
+  {
+    // For BlkLen of 32 - 256, SubBlkLen will always 32 because we use _mm_loadu_si128
+    // to load 128 bits of 32 quantized features.
+    constexpr size_t SubBlkLen32 = 32;
+    const __m128i* bptr = (__m128i const*)quant_b_data_col_ptr; // 32 of 4bit weights in 128 bits
+    const float* sptr = quant_b_scale_col_ptr;
+    float* fp_data_ptr = dst_ptr;
+
+    [[maybe_unused]] size_t QuantBZeroPointIdx = 0; // only used if HasZeroPoint == true
+    [[maybe_unused]] uint8_t zp_uint8; // only used if HasZeroPoint == true
+
+    __m128i load_mask_v = _mm_set1_epi8(0x0F);
+
+    for (size_t k = 0; k < CountK; k += BlkLen) {
+      size_t ck = std::min(CountK - k, BlkLen);
+      if constexpr (HasZeroPoint) {
+        const std::byte zp_packed = quant_b_zero_point_col_ptr[QuantBZeroPointIdx / 2];
+        const std::byte zp_byte_masked =
+          (QuantBZeroPointIdx & 1) == 1 ? (zp_packed >> 4) : (zp_packed & std::byte{ 0x0F });
+        zp_uint8 = std::to_integer<uint8_t>(zp_byte_masked);
+        QuantBZeroPointIdx++;
+      }
+      for (size_t kk = 0; kk < ck; kk += SubBlkLen32) {
+        // TODO: load with mask?
+        __m128i bvi = _mm_loadu_si128(bptr++);
+        __m128i lower = _mm_and_si128(bvi, load_mask_v);
+        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi, 4), load_mask_v);
+        __m128i u0 = _mm_unpacklo_epi8(lower, upper);
+        __m128i u1 = _mm_unpackhi_epi8(lower, upper);
+        // bytes hold 32 8bit weights
+        __m256i weight_epi8 = _mm256_set_m128i(u1, u0);
+
+        // Subtract zero-point from the integers
+        if constexpr (HasZeroPoint) {
+          weight_epi8 = _mm256_sub_epi8(weight_epi8, _mm256_set1_epi8(zp_uint8));
+        }
+        else {
+          const __m256i eight = _mm256_set1_epi8(8);
+          weight_epi8 = _mm256_sub_epi8(weight_epi8, eight);
+        }
+        __m256 s = _mm256_set1_ps(*sptr);
+
+        size_t kklen = std::min((size_t)SubBlkLen32, ck - kk);
+        uint32_t store_mask = 0xffffffff >> (SubBlkLen32 - kklen);
+        __m256i data_epi16_0 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_epi8, 0));
+        __m256i data_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(data_epi16_0, 0));
+        __m256 data_ps = _mm256_mul_ps(_mm256_cvtepi32_ps(data_epi32), s);
+        _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), data_ps);
+
+        fp_data_ptr += 8;
+        store_mask = store_mask >> 8;
+        if (store_mask != 0) {
+          data_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(data_epi16_0, 1));
+          data_ps = _mm256_mul_ps(_mm256_cvtepi32_ps(data_epi32), s);
+          _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), data_ps);
+
+          fp_data_ptr += 8;
+          store_mask = store_mask >> 8;
+          if (store_mask != 0) {
+            __m256i data_epi16_1 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_epi8, 1));
+            data_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(data_epi16_1, 0));
+            data_ps = _mm256_mul_ps(_mm256_cvtepi32_ps(data_epi32), s);
+            _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), data_ps);
+
+            fp_data_ptr += 8;
+            store_mask = store_mask >> 8;
+            if (store_mask != 0) {
+              data_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(data_epi16_1, 0));
+              data_ps = _mm256_mul_ps(_mm256_cvtepi32_ps(data_epi32), s);
+              _mm256_mask_storeu_ps(fp_data_ptr, __mmask8(store_mask), data_ps);
+              fp_data_ptr += 8;
+            }
+          }
+        }
+      } // kk
+      sptr++;
+    } // k
+  }
+
+  MLAS_FORCEINLINE void
+    Q4BitBlkDequantBForSgemmBlkLen16_CompFp32(
+      float* FpData,
+      const std::byte* QuantBData,
+      const float* QuantBScale,
+      const std::byte* QuantBZeroPoint,
+      const size_t CountN,
+      const size_t CountK,
+      const size_t BlockCountK
+    )
+  {
+    constexpr size_t BlkLen16 = 16;
+    constexpr size_t BlkBitWidth4 = 4;
+
+    const size_t blk_data_size_in_bytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen16);
+    const size_t b_data_col_stride_in_bytes = BlockCountK * blk_data_size_in_bytes;
+    // TODO: constexpr use temaplte parameter
+    /*constexpr*/ const bool HasZeroPoint = QuantBZeroPoint != nullptr;
+    const size_t zp_col_stride_in_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth4>(BlockCountK);
+
+    constexpr size_t NCols8 = 8;  // process NCols8 columns of QuantB at a time
+    constexpr size_t GemmFloatKernelWidth16 = 16; // mlas GemmFloatKernel requires B with width 16
+    const __m128i low_mask = _mm_set1_epi8(0xF);
+    for (size_t col = 0; col < CountN; col += NCols8) {
+      const size_t cols = std::min(NCols8, CountN - col);
+      for (size_t k = 0; k < BlockCountK; k++) {
+        // count # of tiles plus blks of the current tile from top
+        const size_t tile_count = col / GemmFloatKernelWidth16;
+        float* dst_ptr = FpData + (tile_count * CountK + k * BlkLen16) * GemmFloatKernelWidth16;
+        if (col % GemmFloatKernelWidth16 >= NCols8) {
+          // for the second half to 16 width tile
+          dst_ptr += NCols8;
+        }
+        const std::byte* b_data_ptr = QuantBData + col * b_data_col_stride_in_bytes + k * blk_data_size_in_bytes;
+        const float* scale_ptr = QuantBScale + col * BlockCountK + k;
+        const std::byte* zp_ptr = QuantBZeroPoint + col * zp_col_stride_in_bytes + k / 2;
+        bool is_lower = (k % 2) == 0;
+
+        __m256i weight_16_epi16[NCols8];
+        __m256 scale_8_ps[NCols8];
+        UnrolledLoop<NCols8>([&](size_t col_) {
+          if (col_ < cols) {
+            // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
+            __m128i bvi = _mm_loadu_si64((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
+            const __m128i lower = _mm_and_si128(bvi, low_mask);
+            const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask), 8);
+            __m128i weight_16_epi8 = _mm_add_epi8(upper, lower);
+
+            if (HasZeroPoint) {
+              std::byte zp_packed = *(zp_ptr + col_ * zp_col_stride_in_bytes);
+              uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
+              weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, _mm_set1_epi8(zp));
+            }
+            else {
+              const __m128i eight = _mm_set1_epi8(8);
+              weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, eight);
+            }
+            weight_16_epi16[col_] = _mm256_cvtepi8_epi16(weight_16_epi8);
+            scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
+          }
+          else {
+            weight_16_epi16[col_] = _mm256_setzero_si256();
+            scale_8_ps[col_] = _mm256_setzero_ps();
+          }
+          });
+        for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
+          __m256 weight_8_ps[8];
+          for (int col_ = 0; col_ < 8; col_++) {
+            if (col_ < cols) {
+              if (i_of_2 == 0) {
+                __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 0));
+                weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
+              }
+              else {
+                __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 1));
+                weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
+              }
+            }
+            else {
+              weight_8_ps[col_] = _mm256_setzero_ps();
+            }
+          }
+          // transpose and store
+          __m256 a0 = _mm256_unpacklo_ps(weight_8_ps[0], weight_8_ps[1]);
+          __m256 a1 = _mm256_unpackhi_ps(weight_8_ps[0], weight_8_ps[1]);
+          __m256 a2 = _mm256_unpacklo_ps(weight_8_ps[2], weight_8_ps[3]);
+          __m256 a3 = _mm256_unpackhi_ps(weight_8_ps[2], weight_8_ps[3]);
+          __m256 a4 = _mm256_unpacklo_ps(weight_8_ps[4], weight_8_ps[5]);
+          __m256 a5 = _mm256_unpackhi_ps(weight_8_ps[4], weight_8_ps[5]);
+          __m256 a6 = _mm256_unpacklo_ps(weight_8_ps[6], weight_8_ps[7]);
+          __m256 a7 = _mm256_unpackhi_ps(weight_8_ps[6], weight_8_ps[7]);
+
+          __m256 b0 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(1, 0, 1, 0));
+          __m256 b1 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(3, 2, 3, 2));
+          __m256 b2 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(1, 0, 1, 0));
+          __m256 b3 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(3, 2, 3, 2));
+          __m256 b4 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(1, 0, 1, 0));
+          __m256 b5 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(3, 2, 3, 2));
+          __m256 b6 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(1, 0, 1, 0));
+          __m256 b7 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(3, 2, 3, 2));
+
+          // next i_of_2th row
+          const size_t ij_offset_in_k = i_of_2 * 8 * GemmFloatKernelWidth16;
+          __m256 weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 0 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 1 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 2 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 3 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 4 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 5 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 6 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 7 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+      }
+    }
+  }
+
+  MLAS_FORCEINLINE void
+  Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32(
+    const size_t BlkLen,
+    float* FpData,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    const size_t CountN,
+    const size_t CountK,
+    const size_t BlockCountK
+  )
+  {
+    constexpr size_t BlkBitWidth4 = 4;
+    constexpr size_t NCols8 = 8;  // process NCols8 columns of QuantB at a time
+    constexpr size_t GemmFloatKernelWidth16 = 16; // mlas GemmFloatKernel requires B with width 16
+    constexpr size_t SubblkLen32 = 32;  // process SubblkLen32 rows of QuantB at a time
+
+    const size_t blk_data_size_in_bytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen);
+    const size_t subblk_data_size_in_bytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, SubblkLen32);
+    const size_t b_data_col_stride_in_bytes = BlockCountK * blk_data_size_in_bytes;
+    // TODO: constexpr use temaplte parameter
+    /*constexpr*/ const bool HasZeroPoint = QuantBZeroPoint != nullptr;
+    const size_t zp_col_stride_in_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth4>(BlockCountK);
+
+    const __m128i low_mask = _mm_set1_epi8(0xF);
+    for (size_t col = 0; col < CountN; col += NCols8) {
+      // TODO: handle last tile with cols < NCols8
+      const size_t cols = std::min(NCols8, CountN - col);
+      for (size_t k = 0; k < BlockCountK; k++) {
+        // count # of tiles plus blks of the current tile from top
+        const size_t tile_count = col / GemmFloatKernelWidth16;
+        float* dst_ptr = FpData + (tile_count * CountK + k * BlkLen) * GemmFloatKernelWidth16;
+        if (col % GemmFloatKernelWidth16 >= NCols8) {
+          // for the second half to 16 width tile
+          dst_ptr += NCols8;
+        }
+        const std::byte* b_data_ptr = QuantBData + col * b_data_col_stride_in_bytes + k * blk_data_size_in_bytes;
+        const float* scale_ptr = QuantBScale + col * BlockCountK + k;
+        const std::byte* zp_ptr = QuantBZeroPoint + col * zp_col_stride_in_bytes + k / 2;
+        bool is_lower = (k % 2) == 0;
+
+        for (size_t subblk = 0; subblk < BlkLen / SubblkLen32; subblk++) {
+          __m256i weight_32_epi8[NCols8];
+          __m256 scale_8_ps[NCols8];
+          UnrolledLoop<NCols8>([&](size_t col_) {
+            if (col_ < cols) {
+              // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
+              __m128i bvi = _mm_loadu_si128((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
+              __m128i lower = _mm_and_si128(bvi, low_mask);
+              __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask);
+              weight_32_epi8[col_] = _mm256_set_m128i(upper, lower);
+
+              if (HasZeroPoint) {
+                std::byte zp_packed = *(zp_ptr + col_ * zp_col_stride_in_bytes);
+                uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
+                weight_32_epi8[col_] = _mm256_sub_epi8(weight_32_epi8[col_], _mm256_set1_epi8(zp));
+              }
+              else {
+                const __m256i eight = _mm256_set1_epi8(8);
+                weight_32_epi8[col_] = _mm256_sub_epi8(weight_32_epi8[col_], eight);
+              }
+
+              scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
+            }
+            else {
+              weight_32_epi8[col_] = _mm256_setzero_si256();
+              scale_8_ps[col_] = _mm256_setzero_ps();
+            }
+            });
+          for (int i_of_4 = 0; i_of_4 < 4; i_of_4++) {
+            __m256 weight_8_ps[8];
+            for (int col_ = 0; col_ < 8; col_++) {
+              if (col_ < cols) {
+                if (i_of_4 == 0) {
+                  __m256i weight_i_16_epi16 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_32_epi8[col_], 0));
+                  __m256i weight_i_j_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_i_16_epi16, 0));
+                  weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_j_8_epi32), scale_8_ps[col_]);
+                }
+                else if (i_of_4 == 1) {
+                  __m256i weight_i_16_epi16 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_32_epi8[col_], 0));
+                  __m256i weight_i_j_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_i_16_epi16, 1));
+                  weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_j_8_epi32), scale_8_ps[col_]);
+                }
+                else if (i_of_4 == 2) {
+                  __m256i weight_i_16_epi16 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_32_epi8[col_], 1));
+                  __m256i weight_i_j_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_i_16_epi16, 0));
+                  weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_j_8_epi32), scale_8_ps[col_]);
+                }
+                else if (i_of_4 == 3) {
+                  __m256i weight_i_16_epi16 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_32_epi8[col_], 1));
+                  __m256i weight_i_j_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_i_16_epi16, 1));
+                  weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_j_8_epi32), scale_8_ps[col_]);
+                }
+              }
+              else {
+                weight_8_ps[col_] = _mm256_setzero_ps();
+              }
+            }
+            // transpose and store
+            __m256 a0 = _mm256_unpacklo_ps(weight_8_ps[0], weight_8_ps[1]);
+            __m256 a1 = _mm256_unpackhi_ps(weight_8_ps[0], weight_8_ps[1]);
+            __m256 a2 = _mm256_unpacklo_ps(weight_8_ps[2], weight_8_ps[3]);
+            __m256 a3 = _mm256_unpackhi_ps(weight_8_ps[2], weight_8_ps[3]);
+            __m256 a4 = _mm256_unpacklo_ps(weight_8_ps[4], weight_8_ps[5]);
+            __m256 a5 = _mm256_unpackhi_ps(weight_8_ps[4], weight_8_ps[5]);
+            __m256 a6 = _mm256_unpacklo_ps(weight_8_ps[6], weight_8_ps[7]);
+            __m256 a7 = _mm256_unpackhi_ps(weight_8_ps[6], weight_8_ps[7]);
+
+            __m256 b0 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(1, 0, 1, 0));
+            __m256 b1 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(3, 2, 3, 2));
+            __m256 b2 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(1, 0, 1, 0));
+            __m256 b3 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(3, 2, 3, 2));
+            __m256 b4 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(1, 0, 1, 0));
+            __m256 b5 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(3, 2, 3, 2));
+            __m256 b6 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(1, 0, 1, 0));
+            __m256 b7 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(3, 2, 3, 2));
+
+            const size_t ij_offset_in_k = i_of_4 * 8 * GemmFloatKernelWidth16;
+            __m256 weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x20);
+            _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 0 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+            weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x20);
+            _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 1 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+            weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x20);
+            _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 2 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+            weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x20);
+            _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 3 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+            weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x31);
+            _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 4 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+            weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x31);
+            _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 5 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+            weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x31);
+            _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 6 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+            weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x31);
+            _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 7 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+          }
+          dst_ptr += SubblkLen32 * GemmFloatKernelWidth16;
+          b_data_ptr += subblk_data_size_in_bytes;
+        } // subblk
+      }
     }
   }
 
   MLAS_FORCEINLINE void
     Q4BitBlkDequantBForSgemm_CompFp32(
-      size_t BlkLen,
+      const size_t BlkLen,
       float* FpData,
       const std::byte* QuantBData,
       const float* QuantBScale,
       const std::byte* QuantBZeroPoint,
-      size_t CountN,
-      size_t CountK,
-      size_t BlockStrideQuantB
+      const size_t CountN,
+      const size_t CountK,
+      const size_t BlockStrideQuantB
     )
   {
-    auto impl0_reference = [&]() {
-      constexpr size_t BlkBitWidth = 4;
-      constexpr size_t SubBlkLen = 16;
-
-      float* Dst = FpData;
-
-      const std::byte* QuantBDataCol = QuantBData;
-      const float* QuantBScaleCol = QuantBScale;
-      const std::byte* QuantBZeroPointCol = QuantBZeroPoint;
-
-      for (size_t n = 0; n < CountN; n += 16) {
-        const size_t nnlen = std::min(CountN - n, size_t{ 16 });
-
-        for (size_t nn = 0; nn < nnlen; ++nn) {
-          for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
-            const size_t kklen = std::min(CountK - k, BlkLen);
-
-            const std::byte* b_data =
-              QuantBDataCol + k_blk_idx * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-            const float b_s = QuantBScaleCol[k_blk_idx];
-            const uint8_t b_z =
-              (QuantBZeroPointCol != nullptr)
-              ? ((k_blk_idx & 1) == 1)
-              ? std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] >> 4)
-              : std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] & std::byte{ 0x0F })
-              : 8;
-
-            for (size_t kk = 0; kk < kklen; ++kk) {
-              const size_t packed_idx = kk % SubBlkLen;
-
-              const bool is_low_half = packed_idx < (SubBlkLen / 2);
-              const size_t packed_byte_idx = packed_idx % (SubBlkLen / 2);
-              const size_t packed_range_offset = (kk / SubBlkLen) * (SubBlkLen / 2);
-
-              const std::byte b_packed = b_data[packed_range_offset + packed_byte_idx];
-              const std::byte b_byte = is_low_half ? (b_packed & std::byte{ 0x0F }) : (b_packed >> 4);
-              const float b_value = (std::to_integer<int8_t>(b_byte) - b_z) * b_s;
-
-              Dst[(k + kk) * 16 + nn] = b_value;
-            }
-          }
-
-          QuantBDataCol += BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-          QuantBScaleCol += BlockStrideQuantB;
-          if (QuantBZeroPointCol != nullptr) {
-            QuantBZeroPointCol += MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
-          }
-        }
-
-        // zero out any remaining columns
-
-        if (nnlen < 16) {
-          for (size_t k = 0; k < CountK; ++k) {
-            std::fill_n(Dst + (k * 16) + nnlen, 16 - nnlen, 0.0f);
-          }
-        }
-
-        Dst += CountK * 16;
-      }
-      };
-
-    impl0_reference();
-    return;
+    if (BlkLen >= 32) {
+      Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32(
+        BlkLen, FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB);
+    }
+    else { // if (BlkLen == 16)
+      Q4BitBlkDequantBForSgemmBlkLen16_CompFp32(
+        FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB);
+    }
   }
 
   //
@@ -1028,7 +1455,10 @@ namespace
     constexpr size_t BlkBitWidth = 4;
     constexpr size_t SubBlkStep = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, SubBlkLen);
 
-    float acc_lo[NCols] = { 0.0f };
+    __m256 acc[NCols];
+    UnrolledLoop<NCols>([&](size_t i) {
+      acc[i] = _mm256_setzero_ps();
+      });
 
     const std::byte* ablob = QuantARowPtr;
     const auto* b = QuantBDataColPtr;
@@ -1100,13 +1530,10 @@ namespace
       }
 
       UnrolledLoop<NCols>([&](size_t i) {
-        __m256i prod_epi32 = _mm256_madd_epi16(bv_epi16[i], av_epi16);
-        prod_epi32 = _mm256_add_epi32(prod_epi32, _mm256_srli_si256(prod_epi32, 8));
-        prod_epi32 = _mm256_add_epi32(prod_epi32, _mm256_srli_si256(prod_epi32, 4));
+        __m256i prod_8_epi32 = _mm256_madd_epi16(bv_epi16[i], av_epi16);
 
-        // Extract the final sum
-        int dot_product = _mm256_extract_epi32(prod_epi32, 0) + _mm256_extract_epi32(prod_epi32, 4);
-        acc_lo[i] += dot_product * scale_v[i];
+        const __m256 prod_8_ps = _mm256_cvtepi32_ps(prod_8_epi32);
+        acc[i] = _mm256_fmadd_ps(_mm256_set1_ps(scale_v[i]), prod_8_ps, acc[i]);
         });
 
       b += MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -1116,10 +1543,28 @@ namespace
       }
     }
 
-    UnrolledLoop<NCols>([&](size_t i) {
-      SumPtr[i] += acc_lo[i];
-      SumPtr[i] += BiasPtr == nullptr ? 0.0f : BiasPtr[i];
-      });
+    if constexpr (NCols == 4) {
+      __m128 acc_x = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
+      if (BiasPtr != nullptr) {
+        acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(BiasPtr));
+      }
+      _mm_storeu_ps(SumPtr, acc_x);
+    }
+    else {
+      UnrolledLoop<NCols>([&](size_t i) {
+        __m128 vlow = _mm256_castps256_ps128(acc[i]);
+        __m128 vhigh = _mm256_extractf128_ps(acc[i], 1); // Extract high 128 bit
+
+        // Add the two 128-bit vectors together
+        __m128 vsum = _mm_add_ps(vlow, vhigh);
+        // Horizontally add the elements of the resulting 128-bit vector
+        vsum = _mm_hadd_ps(vsum, vsum);
+        vsum = _mm_hadd_ps(vsum, vsum);
+
+        _mm_store_ss(&SumPtr[i], vsum);
+        SumPtr[i] += BiasPtr == nullptr ? 0.0f : BiasPtr[i];
+        });
+    }
   }
 
   // add int16_t pairwise and return as float vector
@@ -1508,8 +1953,6 @@ namespace
         });
     }
   }
-
-#include "sqnbitgemm_kernel_NoNCols_impl_avx512.h"
 
   template <bool HasZeroPoint>
   MLAS_FORCEINLINE void
