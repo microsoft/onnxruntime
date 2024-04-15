@@ -77,13 +77,13 @@ interface StorageCacheValue {
 }
 
 /* eslint-disable */
-const bucketMap: { [key: number]: number } = {
+const bucketMap: {[key: number]: number} = {
   64: 200,
   128: 50,
   256: 50,
   512: 50,
-  2048: 100,
-  4096: 50,
+  2048: 150,
+  4096: 100,
   8192: 30,
   16384: 20,
   32768: 40,
