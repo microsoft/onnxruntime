@@ -47,7 +47,7 @@ ONNX_OPERATOR_KERNEL_EX(ScatterND,
                         ScatterNDWithAtomicReduction);
 
 static Status InitiliazeElementCountsAndInputDimsSpanOrGpu(int64_t last_index_dimension, const TensorShape& input_shape,
-                                                           ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims, 
+                                                           ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims,
                                                            CudaKernel::CudaAsyncBuffer<int64_t>& element_counts_and_input_dims_gpu,
                                                            onnxruntime::OpKernelContext* context) {
   TensorPitches input_strides(input_shape);
