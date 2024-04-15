@@ -472,6 +472,13 @@ common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initiali
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      std::vector<uint8_t>& unpacked_tensor);
 
+/**
+ * This function is used to convert the endianess of Tensor data.
+ * Mostly, will be used in big endian system to support the model file
+ * generated on little endian system.
+ * @param initializer       given initializer tensor
+ * @returns                 None
+ */
 void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto *initializer);
 }  // namespace utils
 }  // namespace onnxruntime

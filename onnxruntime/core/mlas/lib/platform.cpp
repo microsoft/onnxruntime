@@ -681,11 +681,7 @@ MlasPlatformU8S8Overflow(
 }
 
 #endif
-#if defined(_AIX)
-__thread size_t ThreadedBufSize = 0;
-#else
 thread_local size_t ThreadedBufSize = 0;
-#endif
 #ifdef _MSC_VER
 thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder(nullptr, &_aligned_free);
 #else

@@ -60,7 +60,7 @@ inline uint64_t rotl64(uint64_t x, int8_t r) {
 // handle aligned reads, do the conversion here
 
 FORCE_INLINE uint32_t getblock(const uint32_t* p, int i) {
-	if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
+  if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
     return p[i];
   } else {
     const uint8_t* c = (const uint8_t*)&p[i];
@@ -224,17 +224,23 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
     int input_num_bytes = static_cast<int>(input_element_bytes);
     ORT_ENFORCE(input_num_bytes % 4 == 0);
     const auto input_end = input + input_count * input_num_bytes;
-    std::unique_ptr<char[]> raw_data(new char[input_num_bytes]);
 
-   while (input != input_end) {
-      if constexpr (onnxruntime::endian::native == onnxruntime::endian::little)  {
-         MurmurHash3_x86_32(input,
-                            input_num_bytes,
-                            seed_,
-                            output);
+    if constexpr (onnxruntime::endian::native == onnxruntime::endian::little)
+    {
+      while (input != input_end) {
+        MurmurHash3_x86_32(input,
+                         input_num_bytes,
+                         seed_,
+                         output);
+        input += input_num_bytes;
+        ++output;
       }
-      else {
-        char  *raw_data_ptr = raw_data.get();
+    }
+    else
+    {
+      auto raw_data = std::make_unique<char[]>(input_num_bytes);
+      char  *raw_data_ptr = raw_data.get();
+      while (input != input_end) {
         memcpy(raw_data_ptr, input, input_num_bytes);
         char* start_byte = raw_data_ptr;
         char* end_byte = start_byte + input_num_bytes - 1;
@@ -246,9 +252,9 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
                            input_num_bytes,
                            seed_,
                            output);
-     }
-     input += input_num_bytes;
-     ++output;
+        input += input_num_bytes;
+        ++output;
+      }
     }
   }
   return Status::OK();

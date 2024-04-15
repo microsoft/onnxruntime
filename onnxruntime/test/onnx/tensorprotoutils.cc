@@ -68,32 +68,22 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
     ORT_CXX_API_THROW(MakeString("UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
                                  expected_size_in_bytes, ", got ", raw_data_length),
                       OrtErrorCode::ORT_FAIL);
+   memcpy(p_data, raw_data, raw_data_length);
    if constexpr (endian::native != endian::little) {
-	/* Convert Endianness and copy */
-    char *nraw_data = (char*)malloc(raw_data_length);
-    memcpy(nraw_data, raw_data, raw_data_length);
-    char* bytes = nraw_data;
-    size_t element_size = sizeof(T);
-    size_t num_elements = raw_data_length / element_size;
+	 /* Convert Endianness */
+     char* bytes = reinterpret_cast<char*>(p_data);
+     size_t element_size = sizeof(T);
+     size_t num_elements = raw_data_length / element_size;
 
-    for (size_t i = 0; i < num_elements; ++i) {
-        char* start_byte = bytes + i * element_size;
-        char* end_byte = start_byte + element_size - 1;
-        /* keep swapping */
-        for (size_t count = 0; count < element_size / 2; ++count) {
-            char temp = *start_byte;
-            *start_byte = *end_byte;
-            *end_byte = temp;
-            ++start_byte;
-            --end_byte;
-        }
-    }
-    memcpy(p_data, nraw_data, raw_data_length);
-    free(nraw_data);
-  }
-  else{
-  memcpy(p_data, raw_data, raw_data_length);
- }
+     for (size_t i = 0; i < num_elements; ++i) {
+       char* start_byte = bytes + i * element_size;
+       char* end_byte = start_byte + element_size - 1;
+       /* keep swapping */
+       for (size_t count = 0; count < element_size / 2; ++count) {
+         std::swap(*start_byte++,*end_byte--);
+       }
+     }
+   }
 }
 
 // This macro doesn't work for Float16/bool/string tensors

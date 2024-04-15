@@ -104,23 +104,19 @@ static void run_external_data_test() {
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
                                                                          DeleteFileFromDisk);
   float test_data[] = {1.0f, 2.2f, 3.5f};
-#if defined(_AIX)
-  int element_size = sizeof(float); 
-  char *bytes = (char *)&test_data;
-  const size_t num_elements = sizeof(test_data)/sizeof(float);
-  for (size_t i = 0; i < num_elements; ++i) {
-         char* start_byte =  bytes + i * element_size;
-         char* end_byte = start_byte + element_size - 1;
-         /* keep swapping */
-         for (size_t count = 0; count < element_size / 2; ++count) {
-              char temp = *start_byte;
-              *start_byte = *end_byte;
-              *end_byte = temp;
-              ++start_byte;
-              --end_byte;
-         }
+  if constexpr (endian::native != endian::little)
+  {
+     const int element_size = sizeof(float);
+     char* bytes = reinterpret_cast<char*>(test_data);
+     const size_t num_elements = sizeof(test_data)/sizeof(float);
+     for (size_t i = 0; i < num_elements; ++i) {
+        char* start_byte =  bytes + i * element_size;
+        char* end_byte = start_byte + element_size - 1;
+        for (size_t count = 0; count < element_size / 2; ++count) {
+           std::swap(*start_byte++,*end_byte--);
+        }
+     }
   }
-#endif
   ASSERT_EQ(sizeof(test_data), fwrite(test_data, 1, sizeof(test_data), fp));
   ASSERT_EQ(0, fclose(fp));
   // construct a tensor proto
@@ -147,7 +143,7 @@ static void run_external_data_test() {
     cwd.append(ORT_TSTR("\\fake.onnx"));
 #else
 #if defined( _AIX)
-    char* p = getcwd(nullptr, 512);
+    char* p = getcwd(nullptr, PATH_MAX);
 #else
     char* p = getcwd(nullptr, 0);
 #endif
