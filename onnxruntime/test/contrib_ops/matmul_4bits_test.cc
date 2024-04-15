@@ -205,7 +205,7 @@ TEST(MatMulNBits, Float32) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
-#ifdef ORT_NEURAL_SPEED
+#if defined(ORT_NEURAL_SPEED) || defined(USE_DML)
           for (auto accuracy_level : {0, 1, 4}) {
             RunTest(M, N, K, block_size, accuracy_level, false, false);
             RunTest(M, N, K, block_size, accuracy_level, true, false);
@@ -224,15 +224,24 @@ TEST(MatMulNBits, Float32) {
   }
 }
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) || defined(USE_DML)
 TEST(MatMulNBits, Float16) {
+#ifdef USE_CUDA
+  auto has_gidx_options = {true, false};
+#else
+  auto has_gidx_options = {false};
+#endif
+
   for (auto M : {1, 2, 100}) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
-          for (auto has_gidx : {true, false}) {
+          for (auto has_gidx : has_gidx_options) {
             RunTest(M, N, K, block_size, 0, false, true, has_gidx);
+
+#ifdef USE_CUDA
             RunTest(M, N, K, block_size, 0, true, true, has_gidx, false);
+#endif
           }
         }
       }
