@@ -359,6 +359,7 @@ class TestInferenceSession(unittest.TestCase):
 
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     s = torch.cuda.Stream()
                     option["user_compute_stream"] = str(s.cuda_stream)
