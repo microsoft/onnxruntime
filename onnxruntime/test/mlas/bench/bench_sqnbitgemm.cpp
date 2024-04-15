@@ -171,7 +171,7 @@ void RunQ4BitBlkDequantBForSgemmBenchmark(benchmark::State& state,
                                             nullptr);
 
   const size_t BlockCountK = (K + BlkLen - 1) / BlkLen;
-  std::vector<float> DequantB(N * BlockCountK * BlkLen);
+  std::vector<float> DequantB(((N + 16 - 1) / 16 * 16) * BlockCountK * BlkLen);
 
   MlasQ4BitBlkDequantBForSgemm(
       BlkLen,
