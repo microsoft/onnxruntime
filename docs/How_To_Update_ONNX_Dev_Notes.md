@@ -17,9 +17,12 @@ git add onnx
 1. Update [cgmanifests/generated/cgmanifest.json](/cgmanifests/generated/cgmanifest.json).
 This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) for instructions.
 
-1. Update [tools/ci_build/github/linux/docker/scripts/requirements.txt](/tools/ci_build/github/linux/docker/scripts/requirements.txt)
-   and [tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt](/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt).
-   Update the commit hash for `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`.
+1. Update Python requirements files with the updated ONNX version (e.g., `onnx==1.16.0`) or commit hash if building from source (e.g., `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`).
+- [onnxruntime/test/python/requirements.txt](/onnxruntime/test/python/requirements.txt)
+- [tools/ci_build/github/linux/docker/scripts/requirements.txt](/tools/ci_build/github/linux/docker/scripts/requirements.txt)
+- [tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt](/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt)
+- [tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/requirements.txt](/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/requirements.txt)
+- Run `git grep -rn "onnx==1" .` to find other locations and update this document if necessary.
 
 1. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, you need to regenerate OnnxMl.cs.
    [Building onnxruntime with Nuget](https://onnxruntime.ai/docs/build/inferencing.html#build-nuget-packages) will do
