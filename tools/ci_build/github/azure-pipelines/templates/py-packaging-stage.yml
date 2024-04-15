@@ -367,6 +367,8 @@ stages:
         vmImage: 'macOS-latest'
       variables:
         MACOSX_DEPLOYMENT_TARGET: '11.0'
+        Codeql.SkipTaskAutoInjection: true
+
       strategy:
         matrix:
           Python38:
