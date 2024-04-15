@@ -350,7 +350,7 @@ function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   return webgpu;
 }
 
-function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.Option {
+function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.WebNNExecutionProviderOption {
   const deviceType = args['webnn-device-type'];
   if (deviceType !== undefined && deviceType !== 'cpu' && deviceType !== 'gpu') {
     throw new Error('Flag "webnn-device-type" is invalid');
