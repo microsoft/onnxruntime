@@ -28,7 +28,6 @@ static void calculateExpectedOutput(const std::vector<float>& emb_data,
                                     const std::vector<MLFloat16>& q_rot_data,
                                     const std::vector<MLFloat16>& k_data,
                                     const std::vector<MLFloat16>& k_rot_data,
-                                    const std::vector<int64_t>& emb_dim,
                                     const std::vector<int64_t>& mul_dim,
                                     std::vector<MLFloat16>& output1,
                                     std::vector<MLFloat16>& output2) {
@@ -84,7 +83,7 @@ static void RunTest() {
   std::vector<MLFloat16> output1;
   std::vector<MLFloat16> output2;
 
-  calculateExpectedOutput(emb_data, q, q_rot, k, k_rot, emb_dim, mul_dim, output1, output2);
+  calculateExpectedOutput(emb_data, q, q_rot, k, k_rot, mul_dim, output1, output2);
 
   test.AddInput<float>("emb", emb_dim, emb_data);
   test.AddInput<MLFloat16>("q_data", mul_dim, q);
