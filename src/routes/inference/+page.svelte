@@ -74,8 +74,8 @@
 	imgalt=""
 />
 <div class="container mx-auto px-10 my-10">
-	<div class="mx-auto border border-solid border-primary rounded m-4 p-4">
-		<h1 class="text-3xl mb-2">Examples</h1>
+	<div class="mx-auto bg-neutral-200 rounded m-4 p-4">
+		<h1 class="text-3xl mb-2 text-primary-content">Examples</h1>
 		<div class="grid gap-10 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
 			<div class="card bg-base-300">
 				<div class="card-body items-center text-center">
@@ -168,10 +168,10 @@
 			<ImageInference2 />
 		</div>
 	</div>
-	<div class="mx-auto border border-solid border-primary rounded m-4 p-4">
-		<h1 class="text-3xl">Examples</h1>
+	<div class="mx-auto bg-neutral-200 rounded m-4 p-4">
+		<h1 class="text-3xl text-primary-content">Examples</h1>
 		<div class="grid gap-10 grid-cols-1 md:grid-cols-2">
-			<div class="">
+			<div class="text-primary-content">
 				<p>
 					<br />
 					<b>ONNX Runtime Web Demo</b> is an interactive demo portal that showcases live use of ONNX

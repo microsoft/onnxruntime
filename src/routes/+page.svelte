@@ -25,7 +25,7 @@
 			link: 'https://www.youtube-nocookie.com/embed/lRBsmnBE9ZA?si=l5i0Q2P7VtSJyGK1'
 		},
 		{
-			title: 'Optimize Training and Inference with ONNX Runtime (ORT/ACPT/DeepSpeed)',
+			title: 'Optimize Training and Inference with ONNX Runtime (ACPT/DeepSpeed)',
 			link: 'https://www.youtube-nocookie.com/embed/lC7d_7waHLM?si=U4252VEd1t5ioZUN'
 		}
 	];

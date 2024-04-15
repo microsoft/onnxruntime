@@ -1,3 +1,5 @@
+import { d } from 'svelte-highlight/languages';
+const defaultTheme = require('tailwindcss/defaultTheme')
 import flattenColorPalette from 'tailwindcss/lib/util/flattenColorPalette';
 
 /** @type {import('tailwindcss').Config} */
@@ -16,6 +18,10 @@ export default {
 					}
 				}
 			}
+		},
+		screens: {
+			'xs': '360px',
+			...defaultTheme.screens
 		}
 	},
 	plugins: [require('daisyui')],

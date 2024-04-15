@@ -8,7 +8,7 @@
 			<Ortcrossplatform />
 		</div>
 		<div class="">
-			<h1 class="text-4xl">Cross-Platform</h1>
+			<h2 class="text-4xl">Cross-Platform</h2>
 			<br /><br />
 			<p class="text-xl">
 				Do you program in Python? C#? C++? Java? JavaScript? Rust? No problem. ONNX Runtime has you

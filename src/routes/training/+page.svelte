@@ -209,11 +209,11 @@
 					<span class="font-bold">Personalization tasks</span> where the model needs to be trained on
 					the user's data
 				</h2>
-				<p class="list-disc">
+				<ul class="list-disc list-inside">
 					Examples:
 					<li>Image / Audio classification</li>
 					<li>Text Prediction</li>
-				</p>
+				</ul>
 			</div>
 			<figure>
 				<ImageTraining1 />
@@ -225,12 +225,12 @@
 					<span class="font-bold">Federated learning tasks</span> where the model is locally trained
 					on data distributed across multiple devices to build a more robust aggregated global model
 				</h2>
-				<p class="list-disc">
+				<ul class="list-disc list-inside">
 					Examples:
 					<li>Medical research</li>
 					<li>Autonomous vehicles</li>
 					<li>Robotics</li>
-				</p>
+				</ul>
 			</div>
 			<figure>
 				<ImageTraining2 />
