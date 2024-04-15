@@ -30,7 +30,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>()}),
+        .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
     GroupQueryAttention<float>);
 
 template <typename T>
