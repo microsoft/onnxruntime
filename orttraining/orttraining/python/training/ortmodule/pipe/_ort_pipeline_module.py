@@ -104,7 +104,7 @@ class ORTPipelineModule(PipelineModule):
 
                 self.forward_funcs.append(wrapped_layer)
                 self.fwd_map.update({name: len(self.forward_funcs) - 1})
-                self.add_module(name, layer)
+                self.add_module(name, wrapped_layer)
 
             # TiedLayerSpec objects contain an nn.Module that should be allocated now.
             elif isinstance(layer, TiedLayerSpec):
