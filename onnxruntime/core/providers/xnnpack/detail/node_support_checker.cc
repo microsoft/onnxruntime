@@ -101,6 +101,7 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       {"Resize", Resize::IsOnnxNodeSupported},
       {"Gemm", Gemm::IsOnnxNodeSupported},
       {"MatMul", MatMul::IsOnnxNodeSupported},
+      {"MatMulInteger", MatMulIntegerCommon::IsOnnxNodeSupported},
   };
 
   bool supported = false;
