@@ -811,8 +811,8 @@ Q4BitBlkDequantBForSgemm_CompFp32(
         }
     };
 
-    //impl0_reference();
-    impl1();
+    impl0_reference();
+    //impl1();
 }
 
 //
