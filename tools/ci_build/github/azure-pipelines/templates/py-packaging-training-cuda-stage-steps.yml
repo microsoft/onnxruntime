@@ -11,6 +11,7 @@ parameters:
   stage_name: ''
   SpecificArtifact: false
   BuildId: '0'
+  build_pool_name: ''
 
 stages:
   - stage: Build_${{ parameters.stage_name }}
@@ -30,12 +31,13 @@ stages:
       - name: PythonVersion
         value: ${{ parameters.python_version }}
       - name: Repository
-        value: onnxruntimetraininggpubuild_${{ parameters.python_version }}
+        value: onnxruntimetraininggpubuild_cu${{ replace(parameters.cuda_version, '.', '') }}_py${{ replace(parameters.python_version, '.', '') }}
     dependsOn: []
 
     jobs:
     - job: Build
-      pool: onnxruntime-Ubuntu2204-AMD-CPU
+      pool: ${{ parameters.build_pool_name }}
+      timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'
@@ -83,7 +85,6 @@ stages:
                 --volume $(Build.BinariesDirectory):/build \
                 --volume /data/models:/build/models:ro \
                 --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-                -e NVIDIA_VISIBLE_DEVICES=all \
                 -e NIGHTLY_BUILD \
                 -e DEFAULT_TRAINING_PACKAGE_DEVICE \
                 -e BUILD_BUILDNUMBER \
@@ -136,7 +137,9 @@ stages:
       - name: PythonVersion
         value: ${{ parameters.python_version }}
       - name: Repository
-        value: onnxruntimetraininggpubuild_${{ parameters.python_version }}
+        value: onnxruntimetraininggpubuild_cu${{ replace(parameters.cuda_version, '.', '') }}_py${{ replace(parameters.python_version, '.', '') }}
+      - name: UploadWheel
+        value: ${{ parameters.upload_wheel }}
     dependsOn: Build_${{ parameters.stage_name }}
     jobs:
     - job: Test_GPU

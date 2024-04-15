@@ -5725,8 +5725,6 @@ def test_gradient_correctness_bce_with_logits():
 @pytest.mark.parametrize("label_is_sparse", [False, True])
 @pytest.mark.parametrize("rank", [1, 2])
 def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank, caplog):
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
-
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
             super().__init__()
@@ -5797,10 +5795,12 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     "test_cases",
     [
         ("Add", 0),
+        ("Add", 1),
         ("Add", 2),
         ("Add", 3),
         ("Add", 4),
         ("Sub", 0),
+        ("Sub", 1),
         ("Sub", 2),
         ("Sub", 3),
         ("Sub", 4),
@@ -5808,12 +5808,22 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         ("Mul", 2),
         ("Mul", 3),
         ("Mul", 4),
+        ("Div", 0),
+        ("Div", 2),
+        ("Div", 3),
+        ("Div", 4),
+        ("Pow", 0),
+        ("Pow", 1),
+        ("Pow", 2),
+        ("Pow", 3),
+        ("Pow", 4),
         ("MatMul", 0),
         ("MatMul", 1),
         ("Dropout", 0),
         ("LayerNormalization", 0),
         ("LayerNormalization", 1),
         ("Cast", 0),
+        ("Sqrt", 0),
         ("BiasGelu", 0),
         ("Gelu", 0),
         ("ReduceMean", 0),
@@ -5821,7 +5831,6 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     ],
 )
 def test_ops_for_padding_elimination(test_cases):
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     test_op = test_cases[0]
     case = test_cases[1]
 
@@ -5848,7 +5857,7 @@ def test_ops_for_padding_elimination(test_cases):
         #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
         # in case 3, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [1, hidden_size],
         #            the test_op should be included in padding elimination subgraph and a 'Expand + FlattenAndUnpad'
-        #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
+        #            pattern should be insert to the arg of [1, hidden_size].
         # in case 4, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
         #            the test_op should be included in padding elimination subgraph and the PadAndUnflatten should be added to
         #            output of test_op. Besides, the other input of Add should be added 'FlattenAndUnpad' to
@@ -5858,6 +5867,8 @@ def test_ops_for_padding_elimination(test_cases):
             one_input = None
             if case == 0:
                 one_input = torch.ones(self.hidden_size, dtype=torch.long).to(device)
+            elif case == 1:
+                one_input = 1
             elif case == 2:
                 one_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
             elif case == 3:
@@ -5872,6 +5883,10 @@ def test_ops_for_padding_elimination(test_cases):
                 output = one_input - inputs_embeds
             elif test_op == "Mul":
                 output = one_input * inputs_embeds
+            elif test_op == "Div":
+                output = inputs_embeds / one_input
+            elif test_op == "Pow":
+                output = inputs_embeds ** (one_input * 2)
             else:
                 output = None
             return output
@@ -5911,6 +5926,8 @@ def test_ops_for_padding_elimination(test_cases):
                 output = torch.nn.functional.gelu(inputs_embeds + bias)
             elif test_op == "Gelu":
                 output = torch.nn.functional.gelu(inputs_embeds)
+            elif test_op == "Sqrt":
+                output = torch.sqrt(inputs_embeds)
             elif test_op == "ReduceMean":
                 # In case 0, the inputs_embeds are reduced at last dimension, the ReduceMean should be included in padding
                 # elimination subgraph and the PadAndUnflatten should be added to output of ReduceMean.
@@ -5924,7 +5941,7 @@ def test_ops_for_padding_elimination(test_cases):
             return output
 
         def forward(self, input_ids):
-            if test_op in ["Add", "Mul", "Sub"]:
+            if test_op in ["Add", "Mul", "Sub", "Div", "Pow"]:
                 output = self.test_elementwise(input_ids)
             elif test_op == "MatMul":
                 output = self.test_matmul(input_ids)
@@ -5953,7 +5970,7 @@ def test_ops_for_padding_elimination(test_cases):
     model(x)
 
     training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
-    if test_op == "Sub":
+    if test_op == "Sub" or test_op == "Pow":
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
@@ -5974,7 +5991,7 @@ def test_ops_for_padding_elimination(test_cases):
         return result[0].op_type if len(result) == 1 else None
 
     recover_pad_input_optypes = [find_input_node_type(training_model, arg) for arg in recover_pad_node.input]
-    if test_op == "Add" or test_op == "Mul" or test_op == "Sub":
+    if test_op == "Add" or test_op == "Mul" or test_op == "Sub" or test_op == "Div" or test_op == "Pow":
         assert test_op in recover_pad_input_optypes
     else:
         if case == 0:
@@ -5982,11 +5999,8 @@ def test_ops_for_padding_elimination(test_cases):
         else:
             assert "ATen" in recover_pad_input_optypes
 
-    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
-
 
 def test_e2e_padding_elimination():
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     seed = 5033
     random.seed(seed)
     np.random.seed(seed)
@@ -6129,7 +6143,6 @@ def test_e2e_padding_elimination():
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "FlattenAndUnpad" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
-    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
 
 
 @pytest.mark.skipif(
@@ -6533,6 +6546,9 @@ def test_bert_memory_inspection(caplog):
     torch.cuda.synchronize()
     if original_val is not None:
         os.environ["ORTMODULE_PRINT_MEMORY_STATS"] = original_val
+    else:
+        if "ORTMODULE_PRINT_MEMORY_STATS" in os.environ:
+            del os.environ["ORTMODULE_PRINT_MEMORY_STATS"]
 
 
 @pytest.mark.parametrize("softmax_compute_type", [torch.float16, torch.float32])
@@ -6586,3 +6602,97 @@ def test_overridden_softmax_export(softmax_compute_type):
     assert to_attr.name == "to"
     to_value = to_attr.i
     assert to_value == pytorch_type_to_onnx_dtype(softmax_compute_type), "Cast to attribute is not as expected"
+
+
+@pytest.mark.parametrize("memory_optimization_level", [None, 0, 1, 2])
+@pytest.mark.parametrize("allow_gradient_checkpoint_export", [None, 0, 1])
+@pytest.mark.parametrize("fx", ["torch", "deepspeed"])
+def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_checkpoint_export, fx, caplog):
+    """Expected behaviors:
+    memory_optimization_level=0|None, allow_gradient_checkpoint_export=0|None => layerwise recompute is disabled
+    memory_optimization_level=1, allow_gradient_checkpoint_export=0|None => layerwise recompute is enabled
+    memory_optimization_level=2, allow_gradient_checkpoint_export=0|None => layerwise recompute is disabled
+    memory_optimization_level=0|None, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    memory_optimization_level=1, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    memory_optimization_level=2, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    """
+    if fx == "deepspeed":
+        try:
+            import deepspeed
+
+            checkpoint = deepspeed.checkpointing.checkpoint
+        except ImportError:
+            # skip if deepspeed is not installed (in amd CI)
+            return
+
+    elif fx == "torch":
+        from torch.utils.checkpoint import checkpoint
+    else:
+        raise ValueError(f"unsupported fx value: {fx}. only torch and deepspeed are supported.")
+
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
+    original_val_allow_gradient_checkpoint_export = os.environ.get("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", None)
+
+    if memory_optimization_level is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = str(memory_optimization_level)
+    else:
+        if original_val is not None:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+    if allow_gradient_checkpoint_export:
+        os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"] = str(allow_gradient_checkpoint_export)
+    else:
+        if original_val_allow_gradient_checkpoint_export is not None:
+            del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
+
+    class SampleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layer1 = nn.Linear(10, 10)
+            self.layer2 = nn.Linear(10, 10)
+
+        def forward(self, x):
+            # Checkpointing the first layer
+            x = checkpoint(self.layer1, x)
+            x = nn.ReLU()(x)
+            # The second layer is not checkpointed
+            x = self.layer2(x)
+            return x
+
+    model = SampleModel().cuda()
+    input = torch.randn(1, 10).cuda()
+    model = ORTModule(model, DebugOptions(log_level=LogLevel.INFO))
+
+    # Forward pass
+
+    # Tolerant export failure.
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        _ = model(input)
+
+    layerwise_recompute_info_records = [
+        record.message for record in caplog.records if "Layer-wise memory optimization is enabled" in record.message
+    ]
+
+    if memory_optimization_level != 1:
+        assert len(layerwise_recompute_info_records) == 0
+    else:
+        if allow_gradient_checkpoint_export is None or allow_gradient_checkpoint_export == 0:
+            assert len(layerwise_recompute_info_records) > 0
+        else:
+            assert len(layerwise_recompute_info_records) == 0
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+    else:
+        if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+    if original_val_allow_gradient_checkpoint_export is not None:
+        os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"] = original_val_allow_gradient_checkpoint_export
+    else:
+        if "ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT" in os.environ:
+            del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
