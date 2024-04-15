@@ -1436,27 +1436,3 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
 
     return d;
 }();
-
-void MLASCALL
-MlasQ4BitBlkDequantBForSgemm(
-    size_t BlkLen,
-    float* FpData,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    const std::byte* QuantBZeroPoint,
-    size_t CountN,
-    size_t CountK,
-    size_t BlockStrideQuantB
-)
-{
-    Q4BitBlkDequantBForSgemm_CompFp32(
-        BlkLen,
-        FpData,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        CountN,
-        CountK,
-        BlockStrideQuantB
-    );
-}
