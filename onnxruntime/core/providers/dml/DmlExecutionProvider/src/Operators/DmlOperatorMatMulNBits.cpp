@@ -23,40 +23,52 @@ public:
         MLOperatorTensorDataType mlDataType = kernelInfo.GetInputEdgeDescription(0).tensorDataType;
         const DML_TENSOR_DATA_TYPE quantizedDataType = bitCount == 4 ? DML_TENSOR_DATA_TYPE_UINT4 : DML_TENSOR_DATA_TYPE_UINT8;
 
-        std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
-        std::vector<DimensionType> broadcastedInputShape1 = inputShape0;
+        std::vector<DimensionType> aShape = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
+        std::vector<DimensionType> bBroadcastedShape = aShape;
 
         // The quantized input to MatMulNBits always comes as uint8, but the real shape is provided through the N and K attributes
-        broadcastedInputShape1[broadcastedInputShape1.size() - 2] = bRowCount;
-        broadcastedInputShape1[broadcastedInputShape1.size() - 1] = bColCount;
+        bBroadcastedShape[bBroadcastedShape.size() - 2] = bRowCount;
+        bBroadcastedShape[bBroadcastedShape.size() - 1] = bColCount;
 
         // The B tensor always has a batch size and channel of 1 since it's a weight, but DML requires it to have the same channels
         // and channel count as the A tensor so we need to broadcast it
-        std::vector<DimensionType> inputShape1(inputShape0.size(), 1);
-        inputShape1[inputShape1.size() - 2] = bRowCount;
-        inputShape1[inputShape1.size() - 1] = bColCount;
+        std::vector<DimensionType> bShape(aShape.size(), 1);
+        bShape[bShape.size() - 2] = bRowCount;
+        bShape[bShape.size() - 1] = bColCount;
 
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
 
-        std::vector<DimensionType> inputShape2 = inputShape1;
+        std::vector<DimensionType> scaleShape = bShape;
 
         uint32_t scaleElementCount = ComputeElementCountFromDimensions(m_inputTensorDescs[2].GetSizes());
-        inputShape2[inputShape2.size() - 1] = scaleElementCount / bRowCount;
+        scaleShape[scaleShape.size() - 1] = scaleElementCount / bRowCount;
 
-        std::vector<DimensionType> broadcastedInputShape2 = broadcastedInputShape1;
-        broadcastedInputShape2.back() = inputShape2.back();
+        std::vector<DimensionType> scaleBroadcastedShape = bBroadcastedShape;
+        scaleBroadcastedShape.back() = scaleShape.back();
 
         // The quantized input and zero point to MatMulNBits always comes as uint8, but DML will expect the real data type (int4 or int8)
-        m_inputTensorDescs[0] = TensorDesc::ConstructDefaultTensorDesc(mlDataType, inputShape0);
-        m_inputTensorDescs[1] = TensorDesc::ConstructBroadcastedTensorDesc(GetMlDataTypeFromDmlDataType(quantizedDataType), broadcastedInputShape1, inputShape1);
-        m_inputTensorDescs[2] = TensorDesc::ConstructBroadcastedTensorDesc(mlDataType, broadcastedInputShape2, inputShape2);
+        m_inputTensorDescs[0] = TensorDesc::ConstructDefaultTensorDesc(mlDataType, aShape);
+        m_inputTensorDescs[1] = TensorDesc::ConstructBroadcastedTensorDesc(GetMlDataTypeFromDmlDataType(quantizedDataType), bBroadcastedShape, bShape);
+        m_inputTensorDescs[2] = TensorDesc::ConstructBroadcastedTensorDesc(mlDataType, scaleBroadcastedShape, scaleShape);
 
         if (hasZeroPoint)
         {
-            m_inputTensorDescs[3] = TensorDesc::ConstructBroadcastedTensorDesc(GetMlDataTypeFromDmlDataType(quantizedDataType), broadcastedInputShape2, inputShape2);
+            m_inputTensorDescs[3] = TensorDesc::ConstructBroadcastedTensorDesc(GetMlDataTypeFromDmlDataType(quantizedDataType), scaleBroadcastedShape, scaleShape);
+
+            // Zero points are stored in uint8 data in ORT, which means that it will not be tightly packed if the last dimension is an odd number. To account for that,
+            // we round the strides of the next multiple of 2.
+            auto lastDimension = m_inputTensorDescs[3].GetSizes().back();
+
+            if (lastDimension % 2 != 0)
+            {
+                std::vector<uint32_t> strides(m_inputTensorDescs[3].GetDimensionCount());
+                strides[strides.size() - 1] = 1;
+                strides[strides.size() - 2] = lastDimension + 1;
+                m_inputTensorDescs[3].SetStrides(strides);
+            }
         }
 
-        auto dequantizedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(mlDataType, broadcastedInputShape1);
+        auto dequantizedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(mlDataType, bBroadcastedShape);
         auto dequantizedInputDmlTensorDesc = dequantizedInputTensorDesc.GetDmlDesc();
 
         // Initialize the output description while overriding the shape
@@ -163,6 +175,15 @@ void CALLBACK QueryMatMulNBits(IMLOperatorSupportQueryContextPrivate* context, /
     MLOperatorAttributes attributes(context);
     const auto bitCount = attributes.GetAttribute<int64_t>(AttrName::Bits);
     if (bitCount != 4 && bitCount != 8)
+    {
+        return;
+    }
+
+    // DML only supports perfect blocks at the moment, which is what most quantization tools produce anyways since they pad
+    // as part of the quantization process
+    const uint32_t bColCount = gsl::narrow_cast<uint32_t>(attributes.GetAttribute<int64_t>(AttrName::UppercaseK));
+    const auto blockSize = attributes.GetAttribute<int64_t>(AttrName::MatMulNBitsBlockSize);
+    if (bColCount % blockSize != 0)
     {
         return;
     }

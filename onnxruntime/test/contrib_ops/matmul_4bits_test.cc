@@ -156,7 +156,15 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
     test.SetOutputAbsErr("Y", fp16_abs_error);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+
+#ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+
+#ifdef USE_DML
+    execution_providers.push_back(DefaultDmlExecutionProvider());
+#endif
+
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else {
     test.AddInput<float>("A", {M, K}, input0_vals, false);
@@ -237,9 +245,10 @@ TEST(MatMulNBits, Float16) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
           for (auto has_gidx : has_gidx_options) {
+#ifdef USE_DML
+            RunTest(M, N, K, block_size, 0, false, true, has_gidx, true, 0.04f);
+#else
             RunTest(M, N, K, block_size, 0, false, true, has_gidx);
-
-#ifdef USE_CUDA
             RunTest(M, N, K, block_size, 0, true, true, has_gidx, false);
 #endif
           }
@@ -250,11 +259,17 @@ TEST(MatMulNBits, Float16) {
 }
 
 TEST(MatMulNBits, Float16Large) {
+#ifdef USE_DML
+  float abs_error = 0.09f;
+#else
+  float abs_error = 0.05f;
+#endif
+
   for (auto block_size : {16, 32, 64, 128}) {
     for (auto symmetric : {false, true}) {
-      RunTest(1, 4096, 4096, block_size, 0, symmetric, true, false, true, 0.05f);
-      RunTest(1, 4096, 11008, block_size, 0, symmetric, true, false, true, 0.05f);
-      RunTest(1, 11008, 4096, block_size, 0, symmetric, true, false, true, 0.05f);
+      RunTest(1, 4096, 4096, block_size, 0, symmetric, true, false, true, abs_error);
+      RunTest(1, 4096, 11008, block_size, 0, symmetric, true, false, true, abs_error);
+      RunTest(1, 11008, 4096, block_size, 0, symmetric, true, false, true, abs_error);
     }
   }
 }
