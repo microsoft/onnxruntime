@@ -17,6 +17,7 @@
 // each operator provides a helper to check if supported
 #include "core/providers/xnnpack/math/gemm.h"
 #include "core/providers/xnnpack/math/matmul.h"
+#include "core/providers/xnnpack/math/matmul_int.h"
 #include "core/providers/xnnpack/math/softmax.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/conv.h"

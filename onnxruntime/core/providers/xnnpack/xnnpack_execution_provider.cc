@@ -131,6 +131,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_VERSIONED(9, 12, MatMul, kOnnxDomain),
       KERNEL_CREATE_INFO(13, MatMul, kOnnxDomain),
 
+      KERNEL_CREATE_INFO_TYPED(10, int8_t, MatMulInteger, kOnnxDomain),
+      KERNEL_CREATE_INFO_TYPED(10, uint8_t, MatMulInteger, kOnnxDomain),
+
       //  quantization op
       KERNEL_CREATE_INFO(1, QLinearAveragePool, kMSInternalNHWCDomain),
 
