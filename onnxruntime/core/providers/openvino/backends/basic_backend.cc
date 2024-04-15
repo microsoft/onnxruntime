@@ -26,7 +26,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            EPCtxHandler& ep_ctx_handle)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
   std::string& hw_target = global_context_.device_type;
+
   is_ep_ctx_graph_ = ep_ctx_handle.IsValidOVEPCtxGraph();
+
   if (ValidateSubgraph(const_outputs_map_))
     return;
 
