@@ -194,7 +194,6 @@ class TestOpRelu(unittest.TestCase):
             weight_type=QuantType.QUInt8,
         )
 
-    @unittest.skip(reason="Shape inference bug, see onnx PR #6049")
     def test_quantize_qop_relu_s8s8(self):
         np.random.seed(1)
         model_fp32_path = "relu_fp32.onnx"
