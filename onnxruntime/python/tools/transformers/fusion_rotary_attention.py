@@ -942,7 +942,7 @@ class FusionRotaryAttention(FusionAttention):
 
             if concat is None:
                 logger.debug("fuse_rotary_attention: failed to trace the concat node from reshape_q")
-                return
+                return None
 
             # The shape is a tensor like [?, ?, num_heads, head_size]
             num_head_constant_node = self.model.get_constant_value(concat.input[2])
@@ -950,7 +950,7 @@ class FusionRotaryAttention(FusionAttention):
 
             if num_head_constant_node is None or head_size_constant_node is None:
                 logger.debug("fuse_rotary_attention: failed to get constant nodes of num_heads or head_size")
-                return
+                return None
 
             num_head_value = num_head_constant_node[0]
             head_size_value = head_size_constant_node[0]
