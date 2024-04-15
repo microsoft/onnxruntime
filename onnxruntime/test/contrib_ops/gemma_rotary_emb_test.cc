@@ -32,12 +32,12 @@ static void calculateExpectedOutput(const std::vector<float>& emb_data,
                                     const std::vector<int64_t>& mul_dim,
                                     std::vector<MLFloat16>& output1,
                                     std::vector<MLFloat16>& output2) {
-  for (size_t i = 0; i < mul_dim[0]; ++i) {
-    for (size_t j = 0; j < mul_dim[1]; ++j) {
-      for (size_t k = 0; k < mul_dim[2]; ++k) {
-        for (size_t l = 0; l < mul_dim[3]; ++l) {
-          size_t embIdx = i * mul_dim[1] * mul_dim[3] + k * mul_dim[3] + l;
-          size_t mulIdx = i * mul_dim[1] * mul_dim[2] * mul_dim[3] + j * mul_dim[2] * mul_dim[3] + k * mul_dim[3] + l;
+  for (long int i = 0; i < mul_dim[0]; ++i) {
+    for (long int j = 0; j < mul_dim[1]; ++j) {
+      for (long int k = 0; k < mul_dim[2]; ++k) {
+        for (long int l = 0; l < mul_dim[3]; ++l) {
+          long int embIdx = i * mul_dim[1] * mul_dim[3] + k * mul_dim[3] + l;
+          long int mulIdx = i * mul_dim[1] * mul_dim[2] * mul_dim[3] + j * mul_dim[2] * mul_dim[3] + k * mul_dim[3] + l;
 
           MLFloat16 sin_val = static_cast<MLFloat16>(sin(emb_data[embIdx]));
           MLFloat16 cos_val = static_cast<MLFloat16>(cos(emb_data[embIdx]));
@@ -59,7 +59,17 @@ static void RunTest() {
   std::vector<int64_t> mul_dim = {1, 3, 2, 2};
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  int min_cuda_architecture = 530;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+
+  if (enable_cuda) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+
+  if (execution_providers.size() == 0) {
+    // Return early if CI pipeline does not support EP (e.g. CUDA EP for CPU CI pipeline)
+    return;
+  }
 
   OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
 
