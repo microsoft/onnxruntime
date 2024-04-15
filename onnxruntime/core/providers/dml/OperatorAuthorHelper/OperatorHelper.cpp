@@ -2873,4 +2873,33 @@ namespace OperatorHelper
         return { EdgeShapes(std::move(outputShape)) };
     }
 
+    std::vector<EdgeShapes> MatMulNBitsHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        auto inputShape0 = shapeInfo.GetInputTensorShape(0);
+        onnxruntime::TensorShape aShape(std::vector<int64_t>(inputShape0.begin(), inputShape0.end()));
+        onnxruntime::TensorShape bShape({m_bRowCount, m_bColCount});
+
+        onnxruntime::MatMulComputeHelper helper;
+
+        // The B tensor is always transposed
+        ML_CHECK_VALID_ARGUMENT(helper.Compute(aShape, bShape, false, true).IsOK());
+        const auto outputShape = helper.OutputShape().GetDims();
+
+        std::vector<uint32_t> uint32OutputShape;
+        uint32OutputShape.reserve(outputShape.size());
+
+        for (int64_t dim : outputShape)
+        {
+            uint32OutputShape.push_back(gsl::narrow_cast<uint32_t>(dim));
+        }
+
+        return { EdgeShapes(uint32OutputShape) };
+    }
+
+    void MatMulNBitsHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_bRowCount = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::UppercaseN);
+        m_bColCount = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::UppercaseK);
+    }
+
 } // namespace OperatorHelper
