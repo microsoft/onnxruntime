@@ -351,6 +351,16 @@
         },
         "comments": "directx_headers"
       }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "1b0b5eac540b7f8fd19b18f1e6b8427c95503348",
+          "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
+        },
+        "comments": "cudnn_frontend"
+      }
     }
   ]
 }
