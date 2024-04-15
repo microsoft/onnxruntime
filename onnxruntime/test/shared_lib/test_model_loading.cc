@@ -194,6 +194,23 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArray) {
   TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
 }
 
+// Several external initializers from same file
+// Use offset from tensor proto to locate the buffer location
+TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArrayPathRobust) {
+  std::string model_file_name = "conv_qdq_external_ini.onnx";
+  std::string external_bin_name = "./conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+
+  external_bin_name = ".//conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+
+  external_bin_name = ".\\\\conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+
+  external_bin_name = ".\\conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+}
+
 #ifndef _WIN32
 struct FileDescriptorTraits {
   using Handle = int;

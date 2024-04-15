@@ -56,6 +56,7 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
   }
   return Status::OK();
 }
+
 Status SessionOptions::AddExternalInitializerFiles(gsl::span<const std::basic_string<ORTCHAR_T>> file_names,
                                                    gsl::span<void*> array_buffer,
                                                    gsl::span<const size_t> file_lengths) {
@@ -63,11 +64,24 @@ Status SessionOptions::AddExternalInitializerFiles(gsl::span<const std::basic_st
   ORT_ENFORCE(init_num == array_buffer.size(), "Expecting same size spans");
   ORT_ENFORCE(init_num == file_lengths.size(), "Expecting same size spans");
   external_initializer_files.reserve(external_initializer_files.size() + init_num);
+  std::vector<std::basic_string<ORTCHAR_T>> prefix_list{
+      ORT_TSTR(".//"),
+      ORT_TSTR("./"),
+      ORT_TSTR(".\\\\"),
+      ORT_TSTR(".\\")
+  };
   for (size_t i = 0; i < init_num; ++i) {
-    // TODO: ignore "./" from file name if it has
-    bool result = external_initializer_files.emplace(file_names[i], std::make_pair(array_buffer[i], file_lengths[i])).second;
+    // ignore "./" from file name if it has
+    auto file_name = file_names[i];
+    for (auto prefix : prefix_list) {
+      if (file_name.rfind(prefix, 0) == 0) {
+        file_name = file_name.substr(prefix.length());
+        break;
+      }
+    }
+    bool result = external_initializer_files.emplace(file_name, std::make_pair(array_buffer[i], file_lengths[i])).second;
     if (!result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An entry for this name has already been added: ", file_names[i].c_str());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An entry for this name has already been added: ", file_name.c_str());
     }
   }
   return Status::OK();

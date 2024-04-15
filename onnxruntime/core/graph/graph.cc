@@ -3007,7 +3007,6 @@ Status Graph::InjectExternalInitializersFromFile(
       std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
       ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(ini.second->external_data(), external_data_info));
 
-      // TODO: ignore "./" if it has
       const auto& external_file = external_data_info->GetRelPath();
       onnxruntime::FileOffsetType file_offset = external_data_info->GetOffset();
       const size_t external_data_length = external_data_info->GetLength();
@@ -3021,7 +3020,8 @@ Status Graph::InjectExternalInitializersFromFile(
       end_of_read += tensor_byte_size;
 
       auto external_file_pos = external_initializer_files.find(external_file);
-      ORT_RETURN_IF(external_file_pos == external_initializer_files.end(), "External file not provided: ", external_file.c_str());
+      ORT_RETURN_IF(external_file_pos == external_initializer_files.end(),
+                    "External file: ", external_file.c_str(), " not found from the table user provided.");
       auto external_file_length = external_file_pos->second.second;
 
       ORT_RETURN_IF(file_offset < 0 || end_of_read > narrow<FileOffsetType>(external_file_length),
