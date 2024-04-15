@@ -23,7 +23,6 @@ Status CheckInputs(const Tensor* query,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
                    const Tensor* total_seqlen,
-                   bool is_past_bsnh,
                    float scale) {
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
@@ -256,14 +255,13 @@ Status CheckInputs(const Tensor* query,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
                    const Tensor* total_seqlen,
-                   bool is_past_bsnh,
                    float scale,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, is_past_bsnh, scale);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale);
 }
 
 Status GeneratePositionIds(const int32_t* seqlens_k, int batch_size, int sequence_length, int64_t* pos_ids, OpKernelContext* context) {

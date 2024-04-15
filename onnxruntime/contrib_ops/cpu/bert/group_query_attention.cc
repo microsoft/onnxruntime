@@ -74,7 +74,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 kv_num_heads_,
                                                                 seqlens_k,
                                                                 total_seqlen,
-                                                                /*is_past_bsnh_*/ false,
                                                                 scale));
 
   const int batch_size = parameters.batch_size;
