@@ -14,7 +14,7 @@ __global__ void _ScatterNDKernel(
     const size_t num_indices,
     const int64_t* indices_data,
     const int64_t last_index_dimension,
-    const int64_t* element_counts_and_input_dims,
+    ElementCountsAndInputDimsSpanOrGpu element_counts_and_input_dims,
     const T* updates_data,
     const size_t num_updates_elements) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, num_indices);
@@ -27,8 +27,12 @@ __global__ void _ScatterNDKernel(
   for (size_t i = indices_start; i < indices_end; ++i) {
     int64_t index = indices_data[i];
 
-    int64_t element_count_dim = element_counts_and_input_dims[i - indices_start];
-    int64_t dim_value = element_counts_and_input_dims[i - indices_start + last_index_dimension];
+    int64_t element_count_dim = element_counts_and_input_dims.gpu_ptr == nullptr
+                                    ? element_counts_and_input_dims.stack_ptr[i - indices_start]
+                                    : element_counts_and_input_dims.gpu_ptr[i - indices_start];
+    int64_t dim_value = element_counts_and_input_dims.gpu_ptr == nullptr
+                            ? element_counts_and_input_dims.stack_ptr[i - indices_start + last_index_dimension]
+                            : element_counts_and_input_dims.gpu_ptr[i - indices_start + last_index_dimension];
 
     // Clamp the index if out of range
     // This would have been an error in the CPU kernel, but throwing in the CUDA EP
@@ -66,7 +70,7 @@ Status ScatterNDImpl(
     const size_t num_indices,
     const int64_t* indices_data,
     const int64_t last_index_dimension,
-    const int64_t* element_counts_and_input_dims,
+    const ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims,
     const void* updates_data,
     const size_t num_updates_elements) {
   if (num_indices == 0)
@@ -162,7 +166,7 @@ __global__ void _ScatterNDKernelReduction(
     const size_t num_indices,
     const int64_t* indices_data,
     const int64_t last_index_dimension,
-    const int64_t* element_counts_and_input_dims,
+    ElementCountsAndInputDimsSpanOrGpu element_counts_and_input_dims,
     const T* updates_data,
     const size_t num_updates_elements,
     const TFunc func) {
@@ -176,8 +180,12 @@ __global__ void _ScatterNDKernelReduction(
   for (size_t i = indices_start; i < indices_end; ++i) {
     int64_t index = indices_data[i];
 
-    int64_t element_count_dim = element_counts_and_input_dims[i - indices_start];
-    int64_t dim_value = element_counts_and_input_dims[i - indices_start + last_index_dimension];
+    int64_t element_count_dim = element_counts_and_input_dims.gpu_ptr == nullptr
+                                    ? element_counts_and_input_dims.stack_ptr[i - indices_start]
+                                    : element_counts_and_input_dims.gpu_ptr[i - indices_start];
+    int64_t dim_value = element_counts_and_input_dims.gpu_ptr == nullptr
+                            ? element_counts_and_input_dims.stack_ptr[i - indices_start + last_index_dimension]
+                            : element_counts_and_input_dims.gpu_ptr[i - indices_start + last_index_dimension];
 
     // Clamp the index if out of range
     // This would have been an error in the CPU kernel, but throwing in the CUDA EP
@@ -215,7 +223,7 @@ Status _ScatterNDType(
     const size_t num_indices,
     const int64_t* indices_data,
     const int64_t last_index_dimension,
-    const int64_t* element_counts_and_input_dims,
+    const ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims,
     const T* updates_data,
     const size_t num_updates_elements,
     ScatterNDReduction reduction) {
@@ -281,7 +289,7 @@ Status ScatterNDImplReduction(
     const size_t num_indices,
     const int64_t* indices_data,
     const int64_t last_index_dimension,
-    const int64_t* element_counts_and_input_dims,
+    const ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims,
     const void* updates_data,
     const size_t num_updates_elements,
     ScatterNDReduction reduction) {

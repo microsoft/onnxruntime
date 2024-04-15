@@ -3,6 +3,7 @@
 
 #include "core/providers/cuda/tensor/scatter_nd.h"
 #include "core/providers/cuda/tensor/scatter_nd_impl.h"
+#include "core/providers/cuda/tensor/scatter_nd_common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -45,6 +46,31 @@ ONNX_OPERATOR_KERNEL_EX(ScatterND,
                             .MayInplace(0, 0),
                         ScatterNDWithAtomicReduction);
 
+static Status InitiliazeElementCountsAndInputDimsSpanOrGpu(int64_t last_index_dimension, const TensorShape& input_shape,
+                                                           ElementCountsAndInputDimsSpanOrGpu& element_counts_and_input_dims, 
+                                                           CudaKernel::CudaAsyncBuffer<int64_t>& element_counts_and_input_dims_gpu,
+                                                           onnxruntime::OpKernelContext* context) {
+  TensorPitches input_strides(input_shape);
+
+  if (last_index_dimension < 6) {
+    element_counts_and_input_dims.gpu_ptr = nullptr;
+    for (int64_t i = 0; i < last_index_dimension; ++i) {
+      element_counts_and_input_dims.stack_ptr[i] = input_strides[i];
+      element_counts_and_input_dims.stack_ptr[i + last_index_dimension] = input_shape[i];
+    }
+  } else {
+    element_counts_and_input_dims_gpu.AllocCpuPtr(last_index_dimension * 2);
+    memset(element_counts_and_input_dims_gpu.CpuPtr(), 0, sizeof(int64_t) * last_index_dimension * 2);
+    for (int64_t i = 0; i < last_index_dimension; ++i) {
+      element_counts_and_input_dims_gpu.CpuPtr()[i] = input_strides[i];
+      element_counts_and_input_dims_gpu.CpuPtr()[i + last_index_dimension] = input_shape[i];
+    }
+    ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(context->GetComputeStream()));
+    element_counts_and_input_dims.gpu_ptr = element_counts_and_input_dims_gpu.GpuPtr();
+  }
+  return Status::OK();
+}
+
 Status ScatterNDDisjointAndNoReduction::ComputeInternal(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
   const auto* indices_tensor = context->Input<Tensor>(1);
@@ -79,14 +105,13 @@ Status ScatterNDDisjointAndNoReduction::ComputeInternal(OpKernelContext* context
   // We need element counts for each dimension and the input dim value for each dimension
   // for the range [0, last_index_dimension).
   // To avoid multiple GPU data transfers, we combine this into one array and send it through
-  TensorPitches input_strides(input_shape);
-  std::vector<int64_t> element_counts_and_input_dims(last_index_dimension * 2, 0LL);
-  for (int64_t i = 0; i < last_index_dimension; ++i) {
-    element_counts_and_input_dims[i] = input_strides[i];
-    element_counts_and_input_dims[i + last_index_dimension] = input_shape[i];
-  }
-  CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this, element_counts_and_input_dims);
-  ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(context->GetComputeStream()));
+  ElementCountsAndInputDimsSpanOrGpu element_counts_and_input_dims;
+  CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this);
+  ORT_RETURN_IF_ERROR(InitiliazeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
+                                                                   element_counts_and_input_dims,
+                                                                   element_counts_and_input_dims_gpu,
+                                                                   context));
+
   ORT_RETURN_IF_ERROR(ScatterNDImpl(
       Stream(context),
       output_data,
@@ -94,7 +119,7 @@ Status ScatterNDDisjointAndNoReduction::ComputeInternal(OpKernelContext* context
       indices_shape.Size() / static_cast<size_t>(last_index_dimension),
       indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
       last_index_dimension,
-      element_counts_and_input_dims_gpu.GpuPtr(),
+      element_counts_and_input_dims,
       updates_tensor->DataRaw(),
       input_shape.SizeFromDimension(last_index_dimension)));
 
@@ -132,18 +157,12 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
   }
 
   auto last_index_dimension = indices_shape[indices_shape.NumDimensions() - 1];
-
-  // We need element counts for each dimension and the input dim value for each dimension
-  // for the range [0, last_index_dimension).
-  // To avoid multiple GPU data transfers, we combine this into one array and send it through
-  TensorPitches input_strides(input_shape);
-  std::vector<int64_t> element_counts_and_input_dims(last_index_dimension * 2, 0LL);
-  for (int64_t i = 0; i < last_index_dimension; ++i) {
-    element_counts_and_input_dims[i] = input_strides[i];
-    element_counts_and_input_dims[i + last_index_dimension] = input_shape[i];
-  }
-  CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this, element_counts_and_input_dims);
-  ORT_RETURN_IF_ERROR(element_counts_and_input_dims_gpu.CopyToGpu(context->GetComputeStream()));
+  ElementCountsAndInputDimsSpanOrGpu element_counts_and_input_dims;
+  CudaAsyncBuffer<int64_t> element_counts_and_input_dims_gpu(this);
+  ORT_RETURN_IF_ERROR(InitiliazeElementCountsAndInputDimsSpanOrGpu(last_index_dimension, input_shape,
+                                                                   element_counts_and_input_dims,
+                                                                   element_counts_and_input_dims_gpu,
+                                                                   context));
 
   switch (reduction_) {
     case ScatterNDReduction::None: {
@@ -155,7 +174,7 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
           indices_shape.Size() / static_cast<size_t>(last_index_dimension),
           indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
           last_index_dimension,
-          element_counts_and_input_dims_gpu.GpuPtr(),
+          element_counts_and_input_dims,
           updates_tensor->DataRaw(),
           input_shape.SizeFromDimension(last_index_dimension)));
     } break;
@@ -171,7 +190,7 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
           indices_shape.Size() / static_cast<size_t>(last_index_dimension),
           indices_tensor->Data<int64_t>(),  // only int64_t is supported for indices as per the onnx spec
           last_index_dimension,
-          element_counts_and_input_dims_gpu.GpuPtr(),
+          element_counts_and_input_dims,
           updates_tensor->DataRaw(),
           input_shape.SizeFromDimension(last_index_dimension),
           reduction_));
