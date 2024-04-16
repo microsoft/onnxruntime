@@ -33,5 +33,13 @@ TEST(PlatformEnvTest, DirectoryCreationAndDeletion) {
   ASSERT_FALSE(env.FolderExists(root_dir));
 }
 
+TEST(PlatformEnvTest, GetErrnoInfo) {
+  // command that should generate an errno error
+  std::ifstream file("non_existent_file");
+  ASSERT_TRUE(file.fail());
+  auto [err, msg] = GetErrnoInfo();
+  ASSERT_NE(err, 0);
+  ASSERT_EQ(msg, "No such file or directory");
+}
 }  // namespace test
 }  // namespace onnxruntime
