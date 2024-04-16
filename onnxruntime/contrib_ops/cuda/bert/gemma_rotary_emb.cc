@@ -5,7 +5,6 @@
 #include "contrib_ops/cuda/bert/gemma_rotary_emb.h"
 #include "contrib_ops/cuda/bert/gemma_rotary_emb_impl.h"
 
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
