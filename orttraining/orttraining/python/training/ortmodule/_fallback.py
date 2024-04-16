@@ -20,6 +20,7 @@ from ._fallback_exceptions import (
     ORTModuleONNXModelException,
     ORTModuleTorchModelException,
 )
+from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
 
 
 class _FallbackPolicy(IntFlag):
@@ -168,6 +169,11 @@ class _FallbackManager:
         """Executes user PyTorch `model` using the provided inputs and return the result"""
 
         assert self.is_pending(), "`fallback` can only be called when there is a pending fallback"
+
+        # Remove the param trigger input if we are going to fallback to PyTorch.
+        # TODO(pengwa): clean this up once GraphTransitionManager work is done.
+        if MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME in kwargs:
+            kwargs.pop(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
 
         if not self._raised_fallback_exception:
             exception_type = type(self._exception)
