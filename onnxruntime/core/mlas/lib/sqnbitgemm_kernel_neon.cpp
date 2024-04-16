@@ -700,11 +700,8 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
             for (size_t kk = 0; kk < kklen; kk += 16) {
                 // zero out the 16x16 block in Dst first to ensure zero padding
                 const float32x4_t zero_v = vdupq_n_f32(0.0f);
-                UnrolledLoop<16>([&](size_t i) {
-                    vst1q_f32(Dst + 16 * i + 0, zero_v);
-                    vst1q_f32(Dst + 16 * i + 1, zero_v);
-                    vst1q_f32(Dst + 16 * i + 2, zero_v);
-                    vst1q_f32(Dst + 16 * i + 3, zero_v);
+                UnrolledLoop<16 * 4>([&](size_t i) {
+                    vst1q_f32(Dst + 4 * i, zero_v);
                 });
 
                 const float* ScalePtr = &scale[0];
