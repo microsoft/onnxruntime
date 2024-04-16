@@ -106,7 +106,7 @@ On Mac
 ```bash
 ./build.sh --build_shared_lib --skip_tests --parallel --config Release
 cp include/onnxruntime/core/session/onnxruntime_c_api.h <ORT_HOME>/include
-cp build/Linux/Release/libonnxruntime*.dylib* <ORT_HOME>/lib
+cp build/MacOS/Release/libonnxruntime*.dylib* <ORT_HOME>/lib
 ```
 
 
