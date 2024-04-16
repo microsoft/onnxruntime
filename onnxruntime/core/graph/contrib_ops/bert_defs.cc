@@ -1146,7 +1146,7 @@ For example, given 4 layouts (S0, S1, S2, S3), 8 heads will have layouts like (S
 
 Padding shall be on the right side.
 
-When do_rotary is True, key_total_sequence_lengths, cos_cache and sin_cache are required.
+When do_rotary is True, cos_cache and sin_cache are required.
 
 Only supports unidirectional attention with cache of past key and value in linear buffers.
 For performance, past_key and present_key share same memory buffer, and past_value and present_value too.
@@ -1202,9 +1202,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(7,
                "key_total_sequence_lengths",
-               "1D tensor with shape (batch_size) where each value is total sequence length of key excluding paddings. ",
-               "M",
-               OpSchema::Optional)
+               "1D tensor with shape (batch_size) where each value is total sequence length of key excluding paddings.",
+               "M")
         .Input(8,
                "cos_cache",
                "Cos cache of rotary with shape (max_sequence_length, head_size / 2).",

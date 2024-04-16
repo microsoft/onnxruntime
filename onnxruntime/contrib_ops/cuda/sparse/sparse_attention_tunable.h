@@ -111,7 +111,8 @@ struct SparseAttentionTunableParams : OpParams, SparseAttentionParams<T> {
             num_layout) {}
 
   std::string Signature() const override {
-    return std::to_string(this->batch_size) + "_" +
+    return std::to_string(this->kernel_block_size) + "_" +
+           std::to_string(this->batch_size) + "_" +
            std::to_string(this->sequence_length) + "_" +
            std::to_string(this->num_heads) + "_" +
            std::to_string(this->kv_num_heads) + "_" +

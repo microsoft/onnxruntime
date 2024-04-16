@@ -47,14 +47,12 @@ auto GetTritonBlockSparseAttentionTypeStringAndOps() {
     auto impl = [i, block_m, block_n, even_m, even_n, block_d, num_blocks_d](
                     const SparseAttentionTunableParams<T>* params) -> Status {
       // Exclude kernels that are not compatible with the parameters.
-      if (even_m != static_cast<int>(params->sequence_length % block_m == 0) ||
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+        even_m != static_cast<int>(params->sequence_length % block_m == 0) ||
           even_n != static_cast<int>(params->total_sequence_length % block_n == 0) ||
           block_d * num_blocks_d != params->head_size ||
           (block_m > 16 && params->sequence_length <= 16) ||
-          block_n != params->kernel_block_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Invalid input parameters for Triton kernel");
-      }
+          block_n != params->kernel_block_size, "input parameters do mot match with SparseAttention kernel");
 
       int num_rows = (params->sequence_length + block_m - 1) / block_m;
       int num_cols = (params->total_sequence_length + block_n - 1) / block_n;

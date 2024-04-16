@@ -122,7 +122,6 @@ struct SparseAttentionParameters {
   int head_size;                   // hidden size per head of query, key or value
   int kv_hidden_size;              // hidden size of key or value
   int kv_num_heads;                // number of heads of key or value
-  bool is_unidirectional;          // causal or not
   bool do_rotary;                  // whether to use rotary embedding
   bool rotary_interleaved;         // whether to use interleaved rotary embedding
   int rotary_dim;                  // rotary embedding dimension

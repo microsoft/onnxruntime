@@ -174,18 +174,11 @@ Status CheckInputs(void* params,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
   }
 
-  if (do_rotary && seqlens_k_total == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "key_total_sequence_lengths must be passed to SparseAttention when do_rotary = 1");
-  }
-
   // Check the shape of total_key_sequence_lengths. We do not check the values here.
-  if (seqlens_k_total != nullptr) {
-    const auto& k_len_dim = seqlens_k_total->Shape().GetDims();
-    if (k_len_dim.size() != 1 && k_len_dim[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "key_total_sequence_lengths must have shape (batch_size).");
-    }
+  const auto& k_len_dim = seqlens_k_total->Shape().GetDims();
+  if (k_len_dim.size() != 1 && k_len_dim[0] != batch_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "key_total_sequence_lengths must have shape (batch_size).");
   }
 
   if (!onnxruntime::IsScalarOr1ElementVector(total_seq_len)) {
