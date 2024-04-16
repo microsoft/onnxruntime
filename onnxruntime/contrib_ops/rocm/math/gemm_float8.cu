@@ -3,8 +3,8 @@
 
 #include "core/common/common.h"
 #include "core/framework/float16.h"
-#include <core/providers/rocm/cu_inc/binary_elementwise_impl.cuh>
-#include <core/providers/rocm/math/binary_elementwise_ops_impl_functors.cuh>
+#include "core/providers/rocm/cu_inc/binary_elementwise_impl.cuh"
+#include "core/providers/rocm/math/binary_elementwise_ops_impl_functors.cuh"
 #include "core/providers/rocm/rocm_kernel.h"
 #include "core/providers/rocm/shared_inc/fast_divmod.h"
 #include "contrib_ops/rocm/math/gemm_float8_ck.cuh"
