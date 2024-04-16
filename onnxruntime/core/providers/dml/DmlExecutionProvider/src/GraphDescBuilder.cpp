@@ -107,6 +107,8 @@ namespace Dml::GraphDescBuilder
         // Mapping from the old indices to the new indices that have been shifted after removing earlier nodes
         std::vector<uint32_t> shiftedIndicesMapping(graphNodes.size());
 
+        std::unordered_set<uint32_t> nodesRemoved;
+
         uint32_t shift = 0;
         for (uint32_t nodeIndex = 0; nodeIndex < graphNodes.size(); ++nodeIndex)
         {
@@ -114,6 +116,7 @@ namespace Dml::GraphDescBuilder
             {
                 // The node is not connected, so we simply increase the shift value (the node will be overwritten by the following nodes)
                 ++shift;
+                nodesRemoved.insert(nodeIndex);
             }
             else
             {
@@ -124,6 +127,13 @@ namespace Dml::GraphDescBuilder
         }
 
         graphNodes.resize(graphNodes.size() - shift);
+
+        // Remove the inputs that are not connected to anything anymore
+        auto inputEdgesEndIter = std::remove_if(graphInputEdges.begin(), graphInputEdges.end(), [&nodesRemoved](const auto& inputEdge) {
+            return nodesRemoved.count(inputEdge.ToNodeIndex);
+        });
+
+        graphInputEdges.erase(inputEdgesEndIter, graphInputEdges.end());
 
         // Adjust the node indices in the input edges
         std::unordered_set<uint32_t> usedInputEdgeIndex;
