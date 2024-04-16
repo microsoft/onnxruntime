@@ -5,6 +5,7 @@
 
 #include <string>
 #include <filesystem>
+#include <memory>
 
 #include "core/providers/tensorrt/nv_includes.h"
 #include "core/providers/shared_library/provider_api.h"

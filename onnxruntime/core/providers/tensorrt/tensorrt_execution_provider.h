@@ -29,7 +29,7 @@ static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE"
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
 static const std::string kWeightlessEngineEnable = "ORT_TENSORRT_WEIGHTLESS_ENGINE_ENABLE";
 static const std::string kOnnxModelFolderPath = "ORT_TENSORRT_ONNX_MODEL_FOLDER_PATH";
-// As a timing cache can be used across multiple ONNX files it makes sense to have a seperate cache path
+// As a timing cache can be used across multiple ONNX files it makes sense to have a separate cache path
 static const std::string kTimingCachePath = "ORT_TENSORRT_GLOBAL_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";

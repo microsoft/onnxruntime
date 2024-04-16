@@ -75,9 +75,9 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_ep_context_embed_mode{0};               // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
   int trt_weightless_engine_enable{0};            // Enable weightless engine build. Default 0 = false,
                                                   // nonzero = true
-  const char* trt_onnx_model_folder_path{nullptr};// Folder path relative to the current working directory for the ONNX
-                                                  // model containing the weights (applicable only when
-                                                  // the "trt_weightless_engine_enable" is enabled)
+  const char* trt_onnx_model_folder_path{nullptr};  // Folder path relative to the current working directory for
+                                                    // the ONNX model containing the weights (applicable only when
+                                                    // the "trt_weightless_engine_enable" is enabled)
 
   const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
 };

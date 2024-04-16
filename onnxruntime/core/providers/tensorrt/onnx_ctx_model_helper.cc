@@ -304,11 +304,13 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     std::filesystem::path onnx_model_path{onnx_model_folder_path_};
     onnx_model_path.append(onnx_model_filename);
     if (IsAbsolutePath(onnx_model_path.string())) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "For security purpose, the ONNX model path should be set with a relative path, but it is an absolute path: "
-        + onnx_model_path.string());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "For security purpose, the ONNX model path should be set with "
+                                                    "a relative path, but it is an absolute path: "
+                                                    + onnx_model_path.string());
     }
     if (IsRelativePathToParentPath(onnx_model_path.string())) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The ONNX model path has '..'. For security purpose, it's not allowed to point outside the directory.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The ONNX model path has '..'. For security purpose, it's not "
+                                                   "allowed to point outside the directory.");
     }
 
     // Weightless engine refit logic
@@ -316,15 +318,14 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(**trt_engine_, trt_logger));
     auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
                             nvonnxparser::createParserRefitter(*refitter, trt_logger));
-    if(!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
+    if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
           "TensorRT EP's IParserRefitter could not refit deserialized weightless engine with weights contained in: "
           + onnx_model_path.string());
     }
-    if(refitter->refitCudaEngine()) {
+    if (refitter->refitCudaEngine()) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weightless engine.";
-    }
-    else {
+    } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
           "TensorRT EP's IRefitter could not refit deserialized weightless engine with weights contained in: "
           + onnx_model_path.string());
