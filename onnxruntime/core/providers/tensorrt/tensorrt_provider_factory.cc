@@ -91,6 +91,7 @@ struct Tensorrt_Provider : Provider {
     info.engine_cache_enable = options.trt_engine_cache_enable != 0;
     info.engine_cache_path = options.trt_engine_cache_path == nullptr ? "" : options.trt_engine_cache_path;
     info.weightless_engine_enable = options.trt_weightless_engine_enable != 0;
+    info.onnx_model_folder_path = options.trt_onnx_model_folder_path == nullptr ? "" : options.trt_onnx_model_folder_path;
     info.engine_decryption_enable = options.trt_engine_decryption_enable != 0;
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;

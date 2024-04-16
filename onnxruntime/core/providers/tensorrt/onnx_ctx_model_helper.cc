@@ -213,7 +213,7 @@ void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Dumped " + ctx_model_path;
 }
 
-bool IsAbsolutePath(std::string& path_string) {
+bool IsAbsolutePath(const std::string& path_string) {
 #ifdef _WIN32
   onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
   auto path = std::filesystem::path(ort_path_string.c_str());
@@ -227,7 +227,7 @@ bool IsAbsolutePath(std::string& path_string) {
 }
 
 // Like "../file_path"
-bool IsRelativePathToParentPath(std::string& path_string) {
+bool IsRelativePathToParentPath(const std::string& path_string) {
 #ifdef _WIN32
   onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
   auto path = std::filesystem::path(ort_path_string.c_str());
@@ -300,16 +300,26 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
   }
   if (weightless_engine_refit_) {
+    const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
+    std::filesystem::path onnx_model_path{onnx_model_folder_path_};
+    onnx_model_path.append(onnx_model_filename);
+    if (IsAbsolutePath(onnx_model_path.string())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "For security purpose, the ONNX model path should be set with a relative path, but it is an absolute path: "
+        + onnx_model_path.string());
+    }
+    if (IsRelativePathToParentPath(onnx_model_path.string())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The ONNX model path has '..'. For security purpose, it's not allowed to point outside the directory.");
+    }
+
     // Weightless engine refit logic
     TensorrtLogger& trt_logger = GetTensorrtLogger();
     auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(**trt_engine_, trt_logger));
     auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
                             nvonnxparser::createParserRefitter(*refitter, trt_logger));
-    const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
-    if(!parser_refitter->refitFromFile(onnx_model_filename.c_str())) {
+    if(!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
           "TensorRT EP's IParserRefitter could not refit deserialized weightless engine with weights contained in: "
-          + onnx_model_filename);
+          + onnx_model_path.string());
     }
     if(refitter->refitCudaEngine()) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weightless engine.";
@@ -317,7 +327,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
           "TensorRT EP's IRefitter could not refit deserialized weightless engine with weights contained in: "
-          + onnx_model_filename);
+          + onnx_model_path.string());
     }
   }
   return Status::OK();

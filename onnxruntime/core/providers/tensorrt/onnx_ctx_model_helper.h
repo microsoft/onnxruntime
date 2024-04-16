@@ -35,8 +35,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            const logging::Logger* logger);
 std::string GetCtxModelPath(const std::string& ep_context_file_path,
                             const std::string& original_model_path);
-bool IsAbsolutePath(std::string& path_string);
-bool IsRelativePathToParentPath(std::string& path_string);
+bool IsAbsolutePath(const std::string& path_string);
+bool IsRelativePathToParentPath(const std::string& path_string);
 void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
                   const std::string& ctx_model_path);
 void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
@@ -49,12 +49,14 @@ class TensorRTCacheModelHandler {
                             nvinfer1::IRuntime* trt_runtime,
                             std::string ep_context_model_path,
                             std::string compute_capability,
-                            bool weightless_engine_refit)
+                            bool weightless_engine_refit,
+                            std::string onnx_model_folder_path)
     : trt_engine_(trt_engine),
       trt_runtime_(trt_runtime),
       ep_context_model_path_(ep_context_model_path),
       compute_capability_(compute_capability),
-      weightless_engine_refit_(weightless_engine_refit) {
+      weightless_engine_refit_(weightless_engine_refit),
+      onnx_model_folder_path_(onnx_model_folder_path) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
 
@@ -68,5 +70,6 @@ class TensorRTCacheModelHandler {
   std::string ep_context_model_path_;  // If using context model, it implies context model and engine cache is in the same directory
   std::string compute_capability_;
   bool weightless_engine_refit_;
+  std::string onnx_model_folder_path_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime

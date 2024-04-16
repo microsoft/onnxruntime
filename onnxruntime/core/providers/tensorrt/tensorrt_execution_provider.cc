@@ -1232,6 +1232,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dump_subgraphs_ = info.dump_subgraphs;
     engine_cache_enable_ = info.engine_cache_enable;
     weightless_engine_enable_ = info.weightless_engine_enable;
+    onnx_model_folder_path_ = info.onnx_model_folder_path;
     timing_cache_enable_ = info.timing_cache_enable;
     force_timing_cache_match_ = info.force_timing_cache;
     detailed_build_log_ = info.detailed_build_log;
@@ -1607,6 +1608,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_dump_subgraphs: " << dump_subgraphs_
                         << ", trt_engine_cache_enable: " << engine_cache_enable_
                         << ", trt_weightless_engine_enable: " << weightless_engine_enable_
+                        << ", trt_onnx_model_folder_path: " << onnx_model_folder_path_
                         << ", trt_cache_path: " << cache_path_
                         << ", trt_global_cache_path: " << global_cache_path_
                         << ", trt_engine_decryption_enable: " << engine_decryption_enable_
@@ -3570,7 +3572,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
   // Get engine binary data and deserialize it
   auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), model_path_,
-                                                            compute_capability_, weightless_engine_enable_);
+                                                            compute_capability_, weightless_engine_enable_,
+                                                            onnx_model_folder_path_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
