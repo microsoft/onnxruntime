@@ -47,7 +47,7 @@ std::pair<int, std::string> GetErrnoInfo() {
 #else
     // strerror_r return type differs by platform.
     auto ret = strerror_r(err, buf, sizeof(buf));
-    if (std::is_same_v<decltype(ret), int>) {  // POSIX returns int
+    if constexpr (std::is_same_v<decltype(ret), int>) {  // POSIX returns int
       msg = ret == 0 ? buf : "Failed to get error message";
     } else {
       // GNU returns char*
