@@ -4,7 +4,7 @@ import deepspeed
 import torch
 from torch import nn
 
-from onnxruntime.training.ortmodule.pipe import ORTPipelineModule
+from onnxruntime.training.ortmodule.experimental.pipe import ORTPipelineModule
 
 # USAGE:
 # pip install deepspeed
