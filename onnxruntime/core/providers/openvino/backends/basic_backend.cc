@@ -149,7 +149,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 
   // Set a priority level for the current workload for preemption;  default priority is "DEFAULT"
   // CPU Plugin doesn't support workload priority
-  if (global_context_.device_type.find("CPU") != std::string::npos)
+  if (global_context_.device_type.find("CPU") == std::string::npos)
     device_config.emplace(ov::hint::model_priority(global_context_.model_priority));
 
   if (global_context_.device_type.find("NPU") != std::string::npos) {
