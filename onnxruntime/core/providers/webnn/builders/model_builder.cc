@@ -80,12 +80,33 @@ void ModelBuilder::PreprocessInitializers() {
 
 void ModelBuilder::PreprocessActivations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
+
+  if (wnn_device_type_ == WebnnDeviceType::CPU) {
+    // WebNN CPU currently only supports "Relu" and "Clip" fusion.
+    supported_activation_nodes_ = {"Clip", "Relu"};
+  } else {
+    supported_activation_nodes_ = {
+        // Temporarily disable clamp fusion for WebNN GPU as which is not supported yet.
+        // "Clip",
+        "Elu",
+        "Gelu",
+        "HardSigmoid",
+        "HardSwish",
+        "Relu",
+        "LeakyRelu",
+        "Sigmoid",
+        "Softplus",
+        "Softsign",
+        "Tanh",
+    };
+  }
+
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     const auto& op_type(node->OpType());
 
     // Ignore unsupported activation nodes.
-    if (!Contains(GetSupportedActivationNodes(), op_type)) {
+    if (!Contains(supported_activation_nodes_, op_type)) {
       continue;
     }
 
@@ -405,7 +426,7 @@ emscripten::val ModelBuilder::FindActivation(const Node& node, const NodeArg& ou
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    if (!Contains(GetSupportedActivationNodes(), dst_node.OpType())) {
+    if (!Contains(supported_activation_nodes_, dst_node.OpType())) {
       return emscripten::val::null();
     }
     if (Contains(activation_nodes_, dst_node.Index())) {
@@ -436,28 +457,6 @@ emscripten::val ModelBuilder::FindActivation(const Node& node, const NodeArg& ou
   }
 
   return fused_op;
-}
-
-InlinedHashSet<std::string> ModelBuilder::GetSupportedActivationNodes() const {
-  if (wnn_device_type_ == WebnnDeviceType::CPU) {
-    // WebNN CPU currently only supports "Relu" and "Clip" fusion.
-    return {"Clip", "Relu"};
-  } else {
-    return {
-        // Temporarily disable clamp fusion for WebNN GPU as which is not supported yet.
-        // "Clip",
-        "Elu",
-        "Gelu",
-        "HardSigmoid",
-        "HardSwish",
-        "Relu",
-        "LeakyRelu",
-        "Sigmoid",
-        "Softplus",
-        "Softsign",
-        "Tanh",
-    };
-  }
 }
 
 void ModelBuilder::AddScalarOutput(const std::string& output_name) {

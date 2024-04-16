@@ -84,6 +84,8 @@ class ModelBuilder {
 
   InlinedHashSet<std::string> fused_activations_;
 
+  InlinedHashSet<std::string> supported_activation_nodes_;
+
   uint32_t name_token_{0};
   InlinedHashSet<std::string> unique_names_;
 
@@ -109,8 +111,6 @@ class ModelBuilder {
   void AddScalarOutput(const std::string& output_name);
 
   static const IOpBuilder* GetOpBuilder(const Node& node);
-
-  InlinedHashSet<std::string> GetSupportedActivationNodes() const;
 };
 
 }  // namespace webnn
