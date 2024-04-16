@@ -3,7 +3,10 @@
 
 #include "core/common/common.h"
 #include "core/framework/float16.h"
+#include <core/providers/rocm/cu_inc/binary_elementwise_impl.cuh>
+#include <core/providers/rocm/math/binary_elementwise_ops_impl_functors.cuh>
 #include "core/providers/rocm/rocm_kernel.h"
+#include "core/providers/rocm/shared_inc/fast_divmod.h"
 #include "contrib_ops/rocm/math/gemm_float8_ck.cuh"
 
 namespace onnxruntime {
@@ -86,20 +89,42 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
 
   ORT_ENFORCE(!transA_, "ROCm GemmFloat8 does not support input A transpose");
   ORT_ENFORCE(dtype_ == onnx::TensorProto_DataType_FLOAT16, "ROCm GemmFloat8 only supports output float16");
-  ORT_ENFORCE(C == nullptr, "ROCm GemmFloat8 does not support bias input");
+  ORT_ENFORCE(beta_ == 0 || beta_ == 1, "ROCm GemmFloat8 does not support bias scaling");
   ORT_ENFORCE(scale_y == nullptr, "ROCm GemmFloat8 does not support output scaling");
 
   if (A->IsDataType<Float8E4M3FN>()) {
-    return ComputeFp8Fp16Fp16<Float8E4M3FN>(ctx, m, n, k, A, scale_a, B, Y);
+    ORT_RETURN_IF_ERROR(ComputeFp8Fp16Fp16<Float8E4M3FN>(ctx, m, n, k, A, scale_a, B, Y));
   } else if (A->IsDataType<Float8E4M3FNUZ>()) {
-    return ComputeFp8Fp16Fp16<Float8E4M3FNUZ>(ctx, m, n, k, A, scale_a, B, Y);
+    ORT_RETURN_IF_ERROR(ComputeFp8Fp16Fp16<Float8E4M3FNUZ>(ctx, m, n, k, A, scale_a, B, Y));
   } else if (B->IsDataType<Float8E4M3FN>()) {
-    return ComputeFp16Fp8Fp16<Float8E4M3FN>(ctx, m, n, k, A, B, scale_b, Y);
+    ORT_RETURN_IF_ERROR(ComputeFp16Fp8Fp16<Float8E4M3FN>(ctx, m, n, k, A, B, scale_b, Y));
   } else if (B->IsDataType<Float8E4M3FNUZ>()) {
-    return ComputeFp16Fp8Fp16<Float8E4M3FNUZ>(ctx, m, n, k, A, B, scale_b, Y);
+    ORT_RETURN_IF_ERROR(ComputeFp16Fp8Fp16<Float8E4M3FNUZ>(ctx, m, n, k, A, B, scale_b, Y));
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unhandled type combination of GemmFloat8");
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unhandled type combination of GemmFloat8");
+  if (C == nullptr || beta_ == 0) {
+    return Status::OK();
+  }
+
+  // handle bias add out of kernel
+  auto c_shape = C->Shape();
+  ORT_ENFORCE(c_shape.NumDimensions() == 1 || c_shape.NumDimensions() == 2 && c_shape[0] == 1);
+
+  int32_t output_rank_or_simple_broadcast = static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatchN);
+  fast_divmod fdm_h(1);
+  fast_divmod fdm_c(static_cast<int>(c_shape.Size()));
+  int output_count = m * n;
+  auto stream = static_cast<hipStream_t>(ctx->GetComputeStream()->GetHandle());
+
+  BinaryElementWiseImpl(
+      stream, output_rank_or_simple_broadcast, nullptr,
+      reinterpret_cast<const half*>(Y->Data<MLFloat16>()), nullptr,
+      reinterpret_cast<const half*>(C->Data<MLFloat16>()), nullptr, fdm_h, fdm_c,
+      reinterpret_cast<half*>(Y->MutableData<MLFloat16>()), OP_Add<half, half, half>(), output_count);
+
+  return Status::OK();
 #endif
 }
 
