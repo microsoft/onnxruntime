@@ -482,6 +482,8 @@ namespace contrib {
     };
 
     concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, threadCount, worker_lambda);
+
+    alloc->Free(buffer);
   }
 }  // namespace contrib
 }  // namespace onnxruntime
