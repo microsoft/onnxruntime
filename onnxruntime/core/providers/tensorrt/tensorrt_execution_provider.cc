@@ -532,8 +532,8 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
                                               nvinfer1::ITensor* input,
                                               ShapeRangesMap& shape_ranges,
                                               const std::unordered_map<std::string, size_t>& input_indexes,
-                                              std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values, // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
-                                              std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64, // same as above but for int64 shape tensor input
+                                              std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values,        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
+                                              std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64,  // same as above but for int64 shape tensor input
                                               cudaStream_t stream,
                                               bool* engine_update) {
   for (size_t i = 0; i < trt_profiles.size(); i++) {
@@ -586,8 +586,8 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     if (input->isShapeTensor()) {
       // Get shape values for shape tensor input
       const auto tensor_type = tensor_info.GetElementType();
-      int shape_size = dims.nbDims == 0 ? 1 : static_cast<int>(tensor_shapes[0]); // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
-      std::vector<int32_t> values(shape_size); // For setting TRT optimization profile. Note: the min/opt/max profile values are still int32 even though int64 is supported after TRT 10.
+      int shape_size = dims.nbDims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);  // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
+      std::vector<int32_t> values(shape_size);                                     // For setting TRT optimization profile. Note: the min/opt/max profile values are still int32 even though int64 is supported after TRT 10.
 
       switch (tensor_type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
@@ -786,8 +786,8 @@ Status BindContextInput(Ort::KernelContext& ctx,
                         nvinfer1::IExecutionContext* trt_context,
                         const char* input_name,
                         size_t input_index,
-                        std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values, // only use for int32 shape tensor
-                        std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64, // only use for int64 shape tensor
+                        std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values,        // only use for int32 shape tensor
+                        std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64,  // only use for int64 shape tensor
                         std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                         OrtAllocator* alloc,
                         cudaStream_t stream) {
@@ -3071,8 +3071,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // The info is used for both shape tensor and execution tensor:
     // tensor name->(dimension->[min, max, opt])
     auto& shape_ranges = trt_state->input_shape_ranges;
-    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values; // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
-    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64; // same as above but for int64 shape tensor input
+    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
+    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
     auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_builder = trt_state->builder;
     auto trt_engine = trt_state->engine->get();
@@ -3648,8 +3648,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     auto trt_context = trt_state->context->get();
     auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
     int num_outputs = static_cast<int>(output_indexes.size());
-    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values; // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
-    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64; // same as above but for int64 shape tensor input
+    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
+    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
 
     OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
     OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
