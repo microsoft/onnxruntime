@@ -20,24 +20,44 @@ static constexpr int kOpsetVersion20 = 20;
 
 static void TestNaiveDFTFloat(bool onesided, int since_version) {
   OpTester test("DFT", since_version);
+  if (since_version == 17) 
+  {
+    vector<int64_t> shape = {1, 5, 1};
+    vector<int64_t> output_shape = {1, 5, 2};
+    output_shape[1] = onesided ? (1 + (shape[1] >> 1)) : shape[1];
 
-  vector<int64_t> shape = {1, 5, 1};
-  vector<int64_t> output_shape = {1, 5, 2};
-  output_shape[1] = onesided ? (1 + (shape[1] >> 1)) : shape[1];
+    vector<float> input = {1, 2, 3, 4, 5};
+    vector<float> expected_output = {15.000000f, 0.0000000f, -2.499999f, 3.4409550f, -2.500000f,
+                                     0.8123000f, -2.499999f, -0.812299f, -2.500003f, -3.440953f};
 
-  vector<float> input = {1, 2, 3, 4, 5};
-  vector<float> expected_output = {15.000000f, 0.0000000f, -2.499999f, 3.4409550f, -2.500000f,
-                                   0.8123000f, -2.499999f, -0.812299f, -2.500003f, -3.440953f};
+    if (onesided) {
+      expected_output.resize(6);
+    }
+    test.AddInput<float>("input", shape, input);
+    test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
+    test.AddOutput<float>("output", output_shape, expected_output);
+    test.Run();
+  } 
+  else 
+  {
+    vector<int64_t> shape = {1, 5, 1};
+    vector<int64_t> output_shape = {1, 5, 2};
+    output_shape[1] = onesided ? (1 + (shape[1] >> 1)) : shape[1];
 
-  if (onesided) {
-    expected_output.resize(6);
+    vector<float> input = {1, 2, 3, 4, 5};
+    vector<float> expected_output = {15.000000f, 0.0000000f, -2.499999f, 3.4409550f, -2.500000f,
+                                     0.8123000f, -2.499999f, -0.812299f, -2.500003f, -3.440953f};
+
+    if (onesided) {
+      expected_output.resize(6);
+    }
+    test.AddInput<float>("input", shape, input);
+    test.AddInput<int64_t>("dft_length", {}, {5});
+    test.AddInput<int64_t>("axis", {}, {-2});
+    test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
+    test.AddOutput<float>("output", output_shape, expected_output);
+    test.Run();
   }
-  test.AddInput<float>("input", shape, input);
-  test.AddInput<int64_t>("dft_length", {}, {2});
-  test.AddInput<int64_t>("axis", {}, {-2});
-  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
-  test.AddOutput<float>("output", output_shape, expected_output);
-  test.Run();
 }
 
 static void TestRadix2DFTFloat(bool onesided, int since_version) {

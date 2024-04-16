@@ -208,7 +208,7 @@ public:
         PrepareBluesteinZChirp(dataType);
     }
 
-    GpuDFTOperator(IMLOperatorKernelCreationContext* context)
+    GpuDFTOperator(IMLOperatorKernelCreationContext* context, int32_t version)
     {
         ComPtr<IUnknown> executionObject;
         context->GetExecutionInterface(executionObject.GetAddressOf());
@@ -217,8 +217,6 @@ public:
         executionObject.As(&commandList);
 
         ORT_THROW_IF_FAILED(commandList->GetDevice(IID_ID3D12Device, &m_device));
-
-        ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&m_axis)));
 
         int64_t isInverseInt;
         ORT_THROW_IF_FAILED(context->GetAttribute("inverse", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isInverseInt)));
@@ -231,6 +229,24 @@ public:
         MLOperatorEdgeDescription edgeDesc;
         ORT_THROW_IF_FAILED(context->GetInputEdgeDescription(0, &edgeDesc));
         assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+
+        if (version == 17) 
+        {
+            ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&m_axis)));
+        } 
+        else 
+        {
+            m_axis = -2;
+            if (context->IsInputValid(2)) 
+            {
+                 ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
+                ORT_THROW_IF_FAILED(context->QueryInterface(IID_PPV_ARGS(&contextPrivate)));
+                ComPtr<IMLOperatorTensor> axisTensor;
+                ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(2, &axisTensor));
+                MLOperatorTensor tensor(axisTensor.Get());
+                m_axis = OperatorHelper::ReadScalarTensorCastToInt64(tensor);
+            }
+        }
 
         PrepareStockhamFFT(edgeDesc.tensorDataType);
         PrepareBluesteinZChirp(edgeDesc.tensorDataType);
@@ -398,7 +414,10 @@ public:
 
             // Get the input and output shape sizes
             auto inputDims = GetTensorDimensions(inputTensor.Get());
-            ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(m_axis) < inputDims.size())
+            int32_t rank = static_cast<int32_t>(inputDims.size());
+            int32_t axisIdx = OperatorHelper::HandleNegativeAxis(static_cast<int32_t>(m_axis), rank);
+            //ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(m_axis) < inputDims.size());
+            ML_CHECK_VALID_ARGUMENT(axisIdx >= 0 && axisIdx < rank);
             auto outputDims = GetTensorDimensions(outputTensor.Get());
             ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
 
@@ -413,7 +432,7 @@ public:
             ORT_THROW_IF_FAILED(outputUnknown.As(&outputResource));
 
             // Get optional dft_length input
-            uint32_t dftLength = inputDims[onnxruntime::narrow<size_t>(m_axis)];
+            uint32_t dftLength = inputDims[onnxruntime::narrow<size_t>(axisIdx)];
             ComPtr<IMLOperatorTensor> dftLengthTensor;
             if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)) && dftLengthTensor != nullptr)
             {
@@ -1007,7 +1026,7 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axisValue)));
             } 
             else 
-            {
+            {   
                 ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
                 ORT_THROW_IF_FAILED(context->QueryInterface(IID_PPV_ARGS(&contextPrivate)));
                 ComPtr<IMLOperatorTensor> axisTensor;
@@ -1083,7 +1102,7 @@ public:
                 version = 20;
             }
 
-            auto dftOperator = wil::MakeOrThrow<GpuDFTOperator>(context);
+            auto dftOperator = wil::MakeOrThrow<GpuDFTOperator>(context, version);
             dftOperator.CopyTo(kernel);
             return S_OK;
         }
@@ -1174,7 +1193,7 @@ public:
         auto shareInferrer = wil::MakeOrThrow<DFTShapeInferrer>();
         auto factory = wil::MakeOrThrow<GpuDFTOperatorFactory>();
 
-        std::array<uint32_t, 1> requiredConstantCpuInputs = { 1 };
+        std::array<uint32_t, 2> requiredConstantCpuInputs = { 1, 2 };
 
         ComPtr<IMLOperatorRegistryPrivate> registryPrivate;
         ORT_THROW_IF_FAILED(registry->QueryInterface(IID_PPV_ARGS(&registryPrivate)));
