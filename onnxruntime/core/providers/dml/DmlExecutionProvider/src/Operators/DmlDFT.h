@@ -236,18 +236,7 @@ public:
         } 
         else 
         {
-            m_axis = 1;
-            /*
-            if (context->IsInputValid(2)) 
-            {
-                ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
-                context->QueryInterface(IID_PPV_ARGS(&contextPrivate));
-                ComPtr<IMLOperatorTensor> axisTensor;
-                ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(2, &axisTensor));
-                MLOperatorTensor tensor(axisTensor.Get());
-                m_axis = OperatorHelper::ReadScalarTensorCastToInt64(tensor);
-            }
-            */
+            m_axis = -2;
         }
 
         PrepareStockhamFFT(edgeDesc.tensorDataType);
@@ -417,9 +406,14 @@ public:
             // Get the input and output shape sizes
             auto inputDims = GetTensorDimensions(inputTensor.Get());
             int32_t rank = static_cast<int32_t>(inputDims.size());
-            int32_t axisIdx = OperatorHelper::HandleNegativeAxis(static_cast<int32_t>(m_axis), rank);
-            //ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(m_axis) < inputDims.size());
-            ML_CHECK_VALID_ARGUMENT(axisIdx >= 0 && axisIdx < rank);
+            ComPtr<IMLOperatorTensor> axisTensor;
+            if (SUCCEEDED(context->GetInputTensor(2, &axisTensor)) && axisTensor != nullptr)
+            {
+                MLOperatorTensor tensor(axisTensor.Get());
+                m_axis = OperatorHelper::ReadScalarTensorCastToInt64(tensor);
+            }
+            m_axis = OperatorHelper::HandleNegativeAxis(static_cast<int32_t>(m_axis), rank);
+            ML_CHECK_VALID_ARGUMENT(m_axis >= 0 && m_axis < rank);
             auto outputDims = GetTensorDimensions(outputTensor.Get());
             ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
 
@@ -434,7 +428,7 @@ public:
             ORT_THROW_IF_FAILED(outputUnknown.As(&outputResource));
 
             // Get optional dft_length input
-            uint32_t dftLength = inputDims[onnxruntime::narrow<size_t>(axisIdx)];
+            uint32_t dftLength = inputDims[onnxruntime::narrow<size_t>(m_axis)];
             ComPtr<IMLOperatorTensor> dftLengthTensor;
             if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)) && dftLengthTensor != nullptr)
             {
@@ -1168,7 +1162,6 @@ public:
         onesidedAttributeValue.ints = onesided;
 
         std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-            //axisAttributeValue,
             inverseAttributeValue,
             onesidedAttributeValue
         };
