@@ -64,7 +64,7 @@ jobs:
     parameters:
       xcodeVersion: 14.2
 
-  - template: templates/download-deps.yml
+  - template: download-deps.yml
 
   - template: mac-build-step-with-cache.yml
     parameters:
