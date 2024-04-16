@@ -222,7 +222,8 @@ class PosixThread : public EnvThread {
                                 << ", index: " << p->index
                                 << ", mask: " << *p->affinity;
         } else {
-          auto [err_no, err_msg] = GetErrnoInfo(ret);
+          errno = ret;
+          auto [err_no, err_msg] = GetErrnoInfo();
 #if !defined(USE_MIGRAPHX)
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
