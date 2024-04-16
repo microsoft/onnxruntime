@@ -77,33 +77,40 @@ interface StorageCacheValue {
 }
 
 /* eslint-disable */
-const bucketMap: {[key: number]: number} = {
+const bucketFreelist: {[key: number]: number} = {
   64: 200,
-  128: 50,
-  256: 50,
-  512: 50,
-  2048: 150,
-  4096: 100,
-  8192: 30,
-  16384: 20,
-  32768: 40,
-  65536: 40,
-  131072: 40,
+  128: 200,
+  256: 200,
+  512: 200,
+  2048: 230,
+  4096: 200,
+  8192: 50,
+  16384: 50,
+  32768: 50,
+  65536: 50,
+  131072: 50,
   262144: 50,
-  524288: 30,
-  1048576: 40,
+  524288: 50,
+  1048576: 50,
   2097152: 30,
   4194304: 20,
-  8388608: 10
+  8388608: 10,
+  12582912: 10,
+  16777216: 5,
 };
 /* eslint-enable */
 
 const bucketArr: number[] = [];
 
 /**
- * normalize the buffer size so that it fits into buckets.
+* normalize the buffer size so that it fits the 128-bits (16 bytes) alignment.
+*/
+const calcNormalizedBufferSize = (size: number) => Math.ceil(size / 16) * 16;
+
+/**
+ * calculate the buffer size so that it fits into buckets.
  */
-const calcNormalizedBufferSize = (size: number) => {
+const calcBucketBufferSize = (size: number) => {
   for (let idx = 0; idx < bucketArr.length; idx++) {
     const sizeForBucket = bucketArr[idx];
     if (size <= sizeForBucket) {
@@ -192,7 +199,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.capturedPendingBuffers = new Map();
 
     // eslint-disable-next-line guard-for-in
-    for (const s in bucketMap) {
+    for (const s in bucketFreelist) {
       bucketArr.push(Number(s));
       this.freeBuffers.set(Number(s), []);
       this.freeUniformBuffers.set(Number(s), []);
@@ -300,7 +307,7 @@ class GpuDataManagerImpl implements GpuDataManager {
 
   // eslint-disable-next-line no-bitwise
   create(size: number, usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST): GpuData {
-    const bufferSize = calcNormalizedBufferSize(size);
+    const bufferSize = calcBucketBufferSize(size);
 
     let gpuBuffer;
     // Currently, only storage buffers are reused.
@@ -375,7 +382,7 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     if (this.backend.sessionStatus === 'default') {
       for (const buffer of this.buffersPending) {
-        const length = bucketMap[buffer.size];
+        const length = bucketFreelist[buffer.size];
 
         // eslint-disable-next-line no-bitwise
         if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
@@ -389,7 +396,7 @@ class GpuDataManagerImpl implements GpuDataManager {
           // eslint-disable-next-line no-bitwise
         } else if ((buffer.usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM) {
           // Put the pending buffer to freeUniformBuffers list instead of really destroying it for buffer reusing.
-          const length = bucketMap[buffer.size];
+          const length = bucketFreelist[buffer.size];
           const freelist = this.freeUniformBuffers.get(buffer.size) || [];
           if (length === undefined || freelist.length >= length) {
             buffer.destroy();
