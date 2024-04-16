@@ -108,7 +108,7 @@ template <typename Fp8T>
 Status GemmFloat8::ComputeFp8Fp16Fp16(
     OpKernelContext* ctx, int64_t m, int64_t n, int64_t k,
     const Tensor* A, const Tensor* scale_a, const Tensor* B, Tensor* C) const {
-  ORT_ENFORCE(A->IsDataType<Fp8T>() && scale_a->IsDataType<float>() && B->IsDataType<MLFloat16>());
+  ORT_ENFORCE(A->IsDataType<Fp8T>() && (scale_a == nullptr || scale_a->IsDataType<float>()) && B->IsDataType<MLFloat16>());
 
   onnxruntime::rocm::tunable::blas::GemmFloat8Params<Fp8T, MLFloat16, MLFloat16> params{};
   params.tuning_ctx = GetTuningContext();
@@ -124,7 +124,7 @@ Status GemmFloat8::ComputeFp8Fp16Fp16(
   params.a = static_cast<const Fp8T*>(A->DataRaw());
   params.lda = transA_ ? m : k;
   params.scale_a = alpha_;
-  params.scale_a_dev = static_cast<const float*>(scale_a->DataRaw());
+  params.scale_a_dev = scale_a ? static_cast<const float*>(scale_a->DataRaw()) : nullptr;
 
   params.b = static_cast<const MLFloat16*>(B->DataRaw());
   params.ldb = transB_ ? k : n;
@@ -152,7 +152,7 @@ template <typename Fp8T>
 Status GemmFloat8::ComputeFp16Fp8Fp16(
     OpKernelContext* ctx, int64_t m, int64_t n, int64_t k,
     const Tensor* A, const Tensor* B, const Tensor* scale_b, Tensor* C) const {
-  ORT_ENFORCE(A->IsDataType<MLFloat16>() && B->IsDataType<Fp8T>() && scale_b->IsDataType<float>());
+  ORT_ENFORCE(A->IsDataType<MLFloat16>() && B->IsDataType<Fp8T>() && (scale_b == nullptr || scale_b->IsDataType<float>()));
 
   onnxruntime::rocm::tunable::blas::GemmFloat8Params<MLFloat16, Fp8T, MLFloat16> params{};
   params.tuning_ctx = GetTuningContext();
@@ -173,7 +173,7 @@ Status GemmFloat8::ComputeFp16Fp8Fp16(
   params.b = static_cast<const Fp8T*>(B->DataRaw());
   params.ldb = transB_ ? k : n;
   params.scale_b = alpha_;
-  params.scale_b_dev = static_cast<const float*>(scale_b->DataRaw());
+  params.scale_b_dev = scale_b ? static_cast<const float*>(scale_b->DataRaw()) : nullptr;
 
   params.c = static_cast<MLFloat16*>(C->MutableDataRaw());
   params.ldc = n;

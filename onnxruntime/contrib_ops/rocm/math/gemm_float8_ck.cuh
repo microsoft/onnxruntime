@@ -72,12 +72,12 @@ struct Scale {
   }
 
   __forceinline__ __host__ __device__ void operator()(ck::half_t& y, const ck::f8_t& x) const {
-    float scale = scale_value_ * (*dev_scale_ptr_);
+    float scale = scale_value_ * (dev_scale_ptr_ ? *dev_scale_ptr_ : 1.0f);
     y = ck::type_convert<ck::half_t>(scale * fast_type_convert<ck::half_t>(x));
   }
 
   __forceinline__ __host__ __device__ void operator()(ck::half2_t& ys, const ck::f8x2_t& xs) const {
-    float scale = scale_value_ * (*dev_scale_ptr_);
+    float scale = scale_value_ * (dev_scale_ptr_ ? *dev_scale_ptr_ : 1.0f);
     constexpr const uint32_t mask = 0x7fff7fff;
     constexpr const uint32_t sign_mask = 0x80008000;
     constexpr const uint32_t exp_compensate = []() {
@@ -98,7 +98,7 @@ struct Scale {
   }
 
   __forceinline__ __host__ __device__ void operator()(ck::half4_t& ys, const ck::f8x4_t& xs) const {
-    float scale = scale_value_ * (*dev_scale_ptr_);
+    float scale = scale_value_ * (dev_scale_ptr_ ? *dev_scale_ptr_ : 1.0f);
     constexpr const uint32_t mask = 0x7fff7fff;
     constexpr const uint32_t sign_mask = 0x80008000;
     constexpr const uint32_t exp_compensate = []() {
