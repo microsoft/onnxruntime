@@ -149,6 +149,7 @@ class TestOpConvTranspose(unittest.TestCase):
     def test_quantize_conv_transpose_u8u8(self):
         self.quantize_conv_transpose_u8u8(TensorProto.FLOAT, 13, 7)
 
+    @unittest.skip(reason="Shape inference bug, see onnx PR #5709")
     def test_quantize_conv_transpose_u8u8_fp16(self):
         self.quantize_conv_transpose_u8u8(TensorProto.FLOAT16, 19, 9)
 
@@ -174,6 +175,7 @@ class TestOpConvTranspose(unittest.TestCase):
     def test_quantize_conv_transpose_s8s8(self):
         self.quantize_conv_transpose_s8s8(TensorProto.FLOAT, 13, 7)
 
+    @unittest.skip(reason="Shape inference bug, see onnx PR #5709")
     def test_quantize_conv_transpose_s8s8_fp16(self):
         self.quantize_conv_transpose_s8s8(TensorProto.FLOAT16, 19, 9)
 
