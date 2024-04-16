@@ -171,7 +171,7 @@ class _FallbackManager:
 
         # Remove the param trigger input if we are going to fallback to PyTorch.
         # TODO(pengwa): clean this up once GraphTransitionManager work is done.
-        from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+        from onnxruntime.training.ortmodule._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
 
         if MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME in kwargs:
             kwargs.pop(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
