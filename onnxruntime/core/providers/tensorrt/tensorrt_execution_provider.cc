@@ -3050,11 +3050,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
           input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
-          dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
-          runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
-          dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
-          global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
-          builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix};
+          weightless_engine_enable_, dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision,
+          engine_cache_enable_, cache_path_, runtime_.get(), profiles_[context->node_name],
+          context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
+          engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
+          detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
+          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix};
     *state = p.release();
     return 0;
   };
@@ -3264,6 +3265,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       }
       if (trt_state->auxiliary_streams >= 0) {
         LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
+      }
+#endif
+#if NV_TENSORRT_MAJOR >= 10
+      if (trt_state->weightless_engine_enable) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
+        trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
       }
 #endif
       // limit used tactic sources

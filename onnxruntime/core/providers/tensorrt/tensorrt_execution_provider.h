@@ -159,6 +159,7 @@ struct TensorrtFuncState {
   bool fp16_enable = false;
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
+  bool weightless_engine_enable = false;
   bool dla_enable = false;
   int dla_core = 0;
   size_t* max_workspace_size_ptr = nullptr;
