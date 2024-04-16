@@ -10,6 +10,7 @@ import argparse
 import os
 import pty
 import shlex
+import subprocess
 import sys
 from typing import List, Optional
 
@@ -172,6 +173,55 @@ def docker_build_trt_bin(args: argparse.Namespace):
         sys.exit(1)
 
 
+def overwrite_onnx_tensorrt_commit_id(commit_id):
+    """
+    Overwrite onnx-tensorrt commit id in cmake/deps.txt.
+    """
+    deps_file_path = "../../../../../../cmake/deps.txt"
+    line_index = None
+    zip_url = None
+
+    with open(deps_file_path) as file:
+        lines = file.readlines()
+
+    for i, line in enumerate(lines):
+        if line.startswith("onnx_tensorrt"):
+            parts = line.split(";")
+            zip_url = ";".join([parts[0], f"https://github.com/onnx/onnx-tensorrt/archive/{commit_id}.zip", parts[2]])
+            line_index = i
+            break
+
+    if line_index and zip_url:
+        wget_command = f"wget {zip_url.split(';')[1]} -O temp.zip"
+        subprocess.run(wget_command, shell=True, check=True)
+
+        sha1sum_command = "sha1sum temp.zip"
+        result = subprocess.run(sha1sum_command, shell=True, capture_output=True, text=True, check=True)
+        hash_value = result.stdout.split()[0]
+
+        lines[line_index] = zip_url.split(";")[0] + ";" + zip_url.split(";")[1] + ";" + hash_value + "\n"
+
+        with open(deps_file_path, "w") as file:
+            file.writelines(lines)
+
+        print(f"Updated deps.txt with new commit id {commit_id} and hash {hash_value}")
+
+        # Verify updated deps.txt
+        try:
+            with open(deps_file_path) as file:
+                lines = file.readlines()
+                for line in lines:
+                    if line.startswith("onnx_tensorrt"):
+                        print(line.strip())
+                        break
+        except Exception as e:
+            print(f"Failed to read the file: {e}")
+
+        os.remove("temp.zip")
+    else:
+        print("onnx_tensorrt commit id overwrite failed, entry not found in deps.txt")
+
+
 def parse_arguments() -> argparse.Namespace:
     """
     Parses command-line arguments and returns an object with each argument as a field.
@@ -187,6 +237,7 @@ def parse_arguments() -> argparse.Namespace:
         "-t", "--trt_version", default="8.6.cuda_11_8_cudnn_8", help="TensorRT version (e.g., 8.6.cuda_11_8_cudnn_8)"
     )
     parser.add_argument("-a", "--cuda_arch", default="75", help="CUDA architecture (e.g., 75)")
+    parser.add_argument("-o", "--oss_parser_commit_id", default="", help="commit id of onnx-tensorrt")
 
     # Command-line options for installing TensorRT from binaries.
     parser.add_argument(
@@ -223,6 +274,8 @@ def main() -> int:
     if args.install_bin:
         docker_build_trt_bin(args)
     else:
+        if args.oss_parser_commit_id != "":
+            overwrite_onnx_tensorrt_commit_id(args.oss_parser_commit_id)
         docker_build_trt(args)
 
     return 0
