@@ -266,6 +266,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
               "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
               " HETERO/MULTI/AUTO options available. \n");
         }
+      } else if (key=="device_id") {
+          if (value == "CPU" || value == "GPU" || value == "NPU")
+            ov_options[key] = value;
+          else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
+          }
       } else if (key == "precision") {
         auto device_type = ov_options["device_type"];
         if (device_type == "CPU") {

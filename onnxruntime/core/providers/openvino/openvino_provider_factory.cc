@@ -120,6 +120,15 @@ struct OpenVINO_Provider : Provider {
             " HETERO/MULTI/AUTO options available. \n");
       }
     }
+    if(provider_options_map.find("device_id") != provider_options_map.end()) {
+      std::string dev_id = provider_options_map.at("device_id").c_str();
+      LOGS_DEFAULT(WARNING) << "[OpenVINO] The options 'device_id' is deprecated. Upgrade to set deice_type and precision session options.\n";
+      if (dev_id == "CPU" || dev_id == "GPU" || dev_id == "NPU") {
+          device_type = dev_id;
+      } else {
+        ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
+      }
+    }
     if (provider_options_map.find("precision") != provider_options_map.end()) {
       precision = provider_options_map.at("precision").c_str();
     }
