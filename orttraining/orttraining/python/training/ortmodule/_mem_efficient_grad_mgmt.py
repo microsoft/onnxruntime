@@ -10,9 +10,8 @@ import ctypes
 import torch
 from onnx import ModelProto, NodeProto, TensorProto, helper
 
-from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
-
 from onnxruntime.training.ortmodule._pythonop_helper import make_pythonop_node
+from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
 MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME = "mem_efficient_pull_weight_trigger"
 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE = TensorProto.FLOAT
