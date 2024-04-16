@@ -2998,8 +2998,8 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
   return Status::OK();
 }
 
-Status Graph::InjectExternalInitializersFromFile(
-    const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<void*, size_t>>& external_initializer_files) {
+Status Graph::InjectExternalInitializersFromFilesInMemory(
+    const InlinedHashMap<ORT_STRING, std::pair<void*, size_t>>& external_initializer_files) {
   for (auto ini : name_to_initial_tensor_) {
     if (ini.second->data_location() == TensorProto_DataLocation_EXTERNAL) {
       auto tensor_name = ini.first;

@@ -782,9 +782,9 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializers(con
 }
 
 template <typename T>
-inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializerFiles(const std::vector<std::basic_string<ORTCHAR_T>>& file_names,
-                                                                                 const std::vector<void*>& buffer_array,
-                                                                                 const std::vector<size_t>& file_lengths) {
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFromFilesInMemory(const std::vector<std::basic_string<ORTCHAR_T>>& file_names,
+                                                                                              const std::vector<void*>& buffer_array,
+                                                                                              const std::vector<size_t>& file_lengths) {
   const size_t inputs_num = file_names.size();
   if (inputs_num != buffer_array.size()) {
     ORT_CXX_API_THROW("Expecting names and buffer_array to have the same length", ORT_INVALID_ARGUMENT);
@@ -797,8 +797,8 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializerFiles
   for (size_t i = 0; i < inputs_num; ++i) {
     names_ptr.push_back(file_names[i].c_str());
   }
-  ThrowOnError(GetApi().AddExternalInitializerFiles(this->p_, names_ptr.data(), buffer_array.data(),
-                                                    file_lengths.data(), inputs_num));
+  ThrowOnError(GetApi().AddExternalInitializersFromFilesInMemory(this->p_, names_ptr.data(), buffer_array.data(),
+                                                                 file_lengths.data(), inputs_num));
   return *this;
 }
 

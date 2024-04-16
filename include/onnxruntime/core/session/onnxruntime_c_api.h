@@ -3513,8 +3513,8 @@ struct OrtApi {
    * \since Version 1.12.
    */
   ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
-                  _In_reads_(input_len) const char* const* initializer_names,
-                  _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
+                  _In_reads_(initializers_num) const char* const* initializer_names,
+                  _In_reads_(initializers_num) const OrtValue* const* initializers, size_t initializers_num);
 
   /** \brief: Create attribute of onnxruntime operator
    *
@@ -4631,20 +4631,27 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
 
-  /** \brief Set external initializer file buffer
+  /** \brief Replace initialized Tensors with external data with the provided files in memory
+   *
+   * The function will find the initialized TensorProtos with external data in the graph with the provided
+   * external file names and the file content in memory. The API gets the external file name, offset, data length
+   * from TensorProto, and locate the tensor data from the file in memory buffer.
+   * It creates a Tensor to replace the existing Tensor in graph. The replacement
+   * will occur before any of the optimizations take place. The data will be copied into the graph
+   * since TensorProto can't refer to the user provided buffers.
    *
    * \param[in] session options
    * \param[in] external_file_names Array of null terminated UTF-8 encoded strings of the external initializer file names.
-   * \param[in] array_buffer Array of pointers to the buffer of the file context
-   * \param[in] file_lengths Array of size_t to indicate the length of file context
+   * \param[in] array_buffer Array of pointers to the buffer of the file content
+   * \param[in] file_lengths Array of size_t to indicate the length of file content
    * \param[in] initializers_num Number of elements in the initializer_names and initializers
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(AddExternalInitializerFiles, _In_ OrtSessionOptions* options,
-                  _In_reads_(input_len) const ORTCHAR_T* const* external_file_names,
-                  _In_reads_(input_len) void* const* array_buffer,
-                  _In_reads_(input_len) const size_t* file_lengths, size_t initializers_num);
+  ORT_API2_STATUS(AddExternalInitializersFromFilesInMemory, _In_ OrtSessionOptions* options,
+                  _In_reads_(initializers_num) const ORTCHAR_T* const* external_file_names,
+                  _In_reads_(initializers_num) void* const* array_buffer,
+                  _In_reads_(initializers_num) const size_t* file_lengths, size_t initializers_num);
 };
 
 /*

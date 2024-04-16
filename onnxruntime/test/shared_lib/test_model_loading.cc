@@ -161,7 +161,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileArray(const std::strin
   std::vector<std::basic_string<ORTCHAR_T> > file_names{external_file_name};
   std::vector<void*> file_buffers{static_cast<void*>(external_bin_buffer.data())};
   std::vector<size_t> lengths{external_bin_buffer.size()};
-  so.AddExternalInitializerFiles(file_names, file_buffers, lengths);
+  so.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
 
   Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), so);
 
@@ -205,11 +205,13 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArrayPathRo
   external_bin_name = ".//conv_qdq_external_ini.bin";
   TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
 
+#ifdef _WIN32
   external_bin_name = ".\\\\conv_qdq_external_ini.bin";
   TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
 
   external_bin_name = ".\\conv_qdq_external_ini.bin";
   TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+#endif
 }
 
 #ifndef _WIN32
@@ -290,7 +292,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string
   std::vector<std::basic_string<ORTCHAR_T> > file_names{external_file_name};
   std::vector<void*> file_buffers{mapped_base};
   std::vector<size_t> lengths{bin_file_length};
-  so.AddExternalInitializerFiles(file_names, file_buffers, lengths);
+  so.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
 
   Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), so);
 
