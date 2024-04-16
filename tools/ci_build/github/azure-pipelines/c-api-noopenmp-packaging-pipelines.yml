@@ -901,7 +901,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=Pre7 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
+        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet7 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
