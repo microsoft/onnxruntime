@@ -71,40 +71,38 @@ sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider'
 There are two ways to configure TensorRT settings, either by **TensorRT Execution Provider Session Options** or **Environment Variables(deprecated)** shown as below:
 
 
-| TensorRT EP Session Options           | Type   |
-| :------------------------------------ | :----- |
-| device_id                             | int    |
-| user_compute_stream                   | string |
-| trt_max_workspace_size                | int    |
-| trt_max_partition_iterations          | int    |
-| trt_min_subgraph_size                 | int    |
-| trt_fp16_enable                       | bool   |
-| trt_int8_enable                       | bool   |
-| trt_int8_calibration_table_name       | string |
-| trt_int8_use_native_calibration_table | bool   |
-| trt_dla_enable                        | bool   |
-| trt_dla_core                          | int    |
-| trt_engine_cache_enable               | bool   |
-| trt_engine_cache_path                 | string |
-| trt_engine_cache_prefix               | string |
-| trt_dump_subgraphs                    | bool   |
-| trt_force_sequential_engine_build     | bool   |
-| trt_context_memory_sharing_enable     | bool   |
-| trt_layer_norm_fp32_fallback          | bool   |
-| trt_timing_cache_enable               | bool   |
-| trt_timing_cache_path                 | string |
-| trt_force_timing_cache                | bool   |
-| trt_detailed_build_log                | bool   |
-| trt_build_heuristics_enable           | bool   |
-| trt_sparsity_enable                   | bool   |
-| trt_builder_optimization_level        | int    |
-| trt_auxiliary_streams                 | int    |
-| trt_tactic_sources                    | string |
-| trt_extra_plugin_lib_paths            | string |
-| trt_profile_min_shapes                | string |
-| trt_profile_max_shapes                | string |
-| trt_profile_opt_shapes                | string |
-| trt_cuda_graph_enable                 | bool   |
+| TensorRT EP Session Options           | Environment Variables(deprecated)              | Type   |
+|:--------------------------------------|:-----------------------------------------------|:-------|
+| trt_max_workspace_size                | ORT_TENSORRT_MAX_WORKSPACE_SIZE                | int    |
+| trt_max_partition_iterations          | ORT_TENSORRT_MAX_PARTITION_ITERATIONS          | int    |
+| trt_min_subgraph_size                 | ORT_TENSORRT_MIN_SUBGRAPH_SIZE                 | int    |
+| trt_fp16_enable                       | ORT_TENSORRT_FP16_ENABLE                       | bool   |
+| trt_int8_enable                       | ORT_TENSORRT_INT8_ENABLE                       | bool   |
+| trt_int8_calibration_table_name       | ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME       | string |
+| trt_int8_use_native_calibration_table | ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE | bool   |
+| trt_dla_enable                        | ORT_TENSORRT_DLA_ENABLE                        | bool   |
+| trt_dla_core                          | ORT_TENSORRT_DLA_CORE                          | int    |
+| trt_engine_cache_enable               | ORT_TENSORRT_ENGINE_CACHE_ENABLE               | bool   |
+| trt_engine_cache_path                 | ORT_TENSORRT_CACHE_PATH                        | string |
+| trt_engine_cache_prefix               | ORT_TENSORRT_CACHE_PREFIX                      | string |
+| trt_dump_subgraphs                    | ORT_TENSORRT_DUMP_SUBGRAPHS                    | bool   |
+| trt_force_sequential_engine_build     | ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD     | bool   |
+| trt_context_memory_sharing_enable     | ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE     | bool   |
+| trt_layer_norm_fp32_fallback          | ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK          | bool   |
+| trt_timing_cache_enable               | ORT_TENSORRT_TIMING_CACHE_ENABLE               | bool   |
+| trt_timing_cache_path                 | ORT_TENSORRT_TIMING_CACHE_PATH                 | string |
+| trt_force_timing_cache                | ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE         | bool   |
+| trt_detailed_build_log                | ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE         | bool   |
+| trt_build_heuristics_enable           | ORT_TENSORRT_BUILD_HEURISTICS_ENABLE           | bool   |
+| trt_sparsity_enable                   | ORT_TENSORRT_SPARSITY_ENABLE                   | bool   |
+| trt_builder_optimization_level        | ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL        | int    |
+| trt_auxiliary_streams                 | ORT_TENSORRT_AUXILIARY_STREAMS                 | int    |
+| trt_tactic_sources                    | ORT_TENSORRT_TACTIC_SOURCES                    | string |
+| trt_extra_plugin_lib_paths            | ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS            | string |
+| trt_profile_min_shapes                | ORT_TENSORRT_PROFILE_MIN_SHAPES                | string |
+| trt_profile_max_shapes                | ORT_TENSORRT_PROFILE_MAX_SHAPES                | string |
+| trt_profile_opt_shapes                | ORT_TENSORRT_PROFILE_OPT_SHAPES                | string |
+| trt_cuda_graph_enable                 | ORT_TENSORRT_CUDA_GRAPH_ENABLE                 | bool   |
 
 > Note: for bool type options, assign them with **True**/**False** in python, or **1**/**0** in C++.
 
@@ -119,26 +117,28 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 
   * This cannot be used in combination with an external allocator.
 
-  * This can also be set using the python API. i.e The cuda stream captured from pytorch can be passed into ORT-TRT using code below: 
-    <Details>
+  * This can also be set using the python API.  
 
-    ```python
-    import onnxruntime as ort
-    import torch
-    ...
-    sess = ort.InferenceSession('model.onnx')
-    if torch.cuda.is_available():
-        s = torch.cuda.Stream()
-        option = {"user_compute_stream": str(s.cuda_stream)}
-        sess.set_providers(["TensorrtExecutionProvider"], [option])
-        options = sess.get_provider_options()
-    
-        assert "TensorrtExecutionProvider" in options
-        assert options["TensorrtExecutionProvider"].get("user_compute_stream", "") == str(s.cuda_stream)
-        assert options["TensorrtExecutionProvider"].get("has_user_compute_stream", "") == "1"
-    ...
-    ```
-    </Details>
+    * i.e The cuda stream captured from pytorch can be passed into ORT-TRT. Click below to check sample code: 
+      <Details>
+
+      ```python
+      import onnxruntime as ort
+      import torch
+      ...
+      sess = ort.InferenceSession('model.onnx')
+      if torch.cuda.is_available():
+          s = torch.cuda.Stream()
+          option = {"user_compute_stream": str(s.cuda_stream)}
+          sess.set_providers(["TensorrtExecutionProvider"], [option])
+          options = sess.get_provider_options()
+      
+          assert "TensorrtExecutionProvider" in options
+          assert options["TensorrtExecutionProvider"].get("user_compute_stream", "") == str(s.cuda_stream)
+          assert options["TensorrtExecutionProvider"].get("has_user_compute_stream", "") == "1"
+      ...
+      ```
+      </Details>
    * To take advantage of user compute stream, it is recommended to use [I/O Binding](https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device) to bind inputs and outputs to tensors in device.
 
 
