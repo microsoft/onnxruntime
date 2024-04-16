@@ -22,7 +22,7 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #ifdef USE_QNN
-// #include "core/providers/qnn/qnn_provider_factory.h"
+#include "core/providers/qnn/qnn_provider_factory.h"
 #endif
 
 const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NAME_TO_ID_MAP = {
@@ -86,7 +86,9 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
 #endif
 #ifdef USE_QNN
     } else if (name == "qnn") {
-      // TODO add QNN EP options
+      std::unordered_map<std::string, std::string> qnn_options;
+      qnn_options["backend_path"] = "C:\\Qualcomm\\AIStack\\QAIRT\\2.21.0.240401\\lib\\aarch64-windows-msvc\\QnnHtp.dll";
+      sessionOptions.AppendExecutionProvider("QNN", qnn_options);
 #endif
     } else {
       ORT_NAPI_THROW_ERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,
