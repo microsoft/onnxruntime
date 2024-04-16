@@ -241,7 +241,7 @@ public:
             if (context->IsInputValid(2)) 
             {
                 ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
-                ORT_THROW_IF_FAILED(context->QueryInterface(IID_PPV_ARGS(&contextPrivate)));
+                context->QueryInterface(IID_PPV_ARGS(&contextPrivate));
                 ComPtr<IMLOperatorTensor> axisTensor;
                 ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(2, &axisTensor));
                 MLOperatorTensor tensor(axisTensor.Get());
@@ -998,8 +998,6 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
     {
         try
         {
-            //int64_t axis;
-            //ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axis)));
             int64_t isInverseInt;
             ORT_THROW_IF_FAILED(context->GetAttribute("inverse", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isInverseInt)));
             int64_t isOnesidedInt;
@@ -1073,7 +1071,7 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 // but sometimes the dimension will be a free dimension or be otherwise unset.
                 // Only perform inference when a input dimension value exists.
                 auto originalSignalSize = axisDimension;
-                auto halfSignalSize = (isDft17) ? (originalSignalSize >> 1) + 1 : originalSignalSize / 2 + 1;
+                auto halfSignalSize = (originalSignalSize >> 1) + 1;
                 outputDims.at(axisIdx) = halfSignalSize;
             }
 
@@ -1154,14 +1152,7 @@ public:
         std::vector<MLOperatorEdgeTypeConstrant> typeConstraints{ t1Constraint, t2Constraint };
         kernelDescription.typeConstraints = typeConstraints.data();
         kernelDescription.typeConstraintCount = static_cast<uint32_t>(typeConstraints.size());
-        /*
-        MLOperatorAttributeNameValue axisAttributeValue;
-        axisAttributeValue.name = "axis";
-        axisAttributeValue.type = MLOperatorAttributeType::Int;
-        axisAttributeValue.valueCount = 1;
-        static const int64_t axis[] = { 1 };
-        axisAttributeValue.ints = axis;
-        */
+
         MLOperatorAttributeNameValue inverseAttributeValue;
         inverseAttributeValue.name = "inverse";
         inverseAttributeValue.type = MLOperatorAttributeType::Int;
