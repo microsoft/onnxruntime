@@ -22,12 +22,12 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | ✓ | ✓ | |
 | Conv | ai.onnx(7-10, 11+) | conv2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU requires the 'W' (weight) input to be a constant |
-| ConvInteger | ai.onnx(10+) | conv2dInteger | ✗ | ✓ | Only supports 3-D or 4-D input and 'W' (weight) |
+| ConvInteger | ai.onnx(10+) | conv2dInteger | ✗ | ✗ | Only supports 3-D or 4-D input and 'W' (weight) |
 | ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU requires the 'W' (weight) input to be a constant |
 | Cos | ai.onnx(7+) | cos | ✗ | ✓ | |
 | Div | ai.onnx(7-12, 13, 14+) | div | ✓ | ✓ | |
-| DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21+) | dequantizeLinear | ✗ | ✓ | |
-| DynamicQuantizeLinear | ai.onnx(11+) | dynamicQuantizeLinear | ✗ | ✓ | |
+| DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21+) | dequantizeLinear | ✗ | ✗ | |
+| DynamicQuantizeLinear | ai.onnx(11+) | dynamicQuantizeLinear | ✗ | ✗ | |
 | Elu | ai.onnx(7+) | elu | ✓ | ✓ | |
 | Equal | ai.onnx(7-10, 11-12, 13-18, 19+) | equal | ✗ | ✓ | |
 | Erf | ai.onnx(7-9, 10-12, 13+) | erf | ✗ | ✓ | |
@@ -54,7 +54,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Log | ai.onnx(7-12, 13+) | log | ✗ | ✓ | |
 | LpPool | ai.onnx(7-10, 11-17, 18+) | l2Pool2d | ✗ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'p' value is 2 |
 | MatMul | ai.onnx(7-8, 9-12, 13+) | matmul | ✓ | ✓ | WebNN CPU doesn't support broadcasting for MatMul |
-| MatMulInteger | ai.onnx(10+) | matmulInteger | ✗ | ✓ | |
+| MatMulInteger | ai.onnx(10+) | matmulInteger | ✗ | ✗ | |
 | Max | ai.onnx(7, 8-11, 12, 13+) | max | ✓ | ✓ | |
 | MaxPool | ai.onnx(7, 8-9, 10, 11, 12+) | maxPool2d | ✓ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'storage_order' != 1, one output |
 | Min | ai.onnx(7, 8-11, 12, 13+) | min | ✓ | ✓ | |
