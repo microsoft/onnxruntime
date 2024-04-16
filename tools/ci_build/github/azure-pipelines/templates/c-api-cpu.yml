@@ -517,7 +517,6 @@ stages:
   - Windows_CI_GPU_DML_Dev
   - Windows_CI_GPU_DML_Dev_arm64
   - Linux_C_API_Packaging_CPU
-  - Linux_C_API_Packaging_GPU_TensorRT_x64
   - MacOS_C_API_Package_Publish
   condition: succeeded()
   jobs:
@@ -598,7 +597,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Linux x64)'
       inputs:
-        artifactName: 'onnxruntime-linux-x64-tensorrt'
+        artifactName: 'onnxruntime-linux-x64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
@@ -634,7 +633,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
+        artifactName: 'drop-onnxruntime-nodejs-linux-x64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
 
     - task: DownloadPipelineArtifact@0
@@ -697,10 +696,9 @@ stages:
     - task: CopyFiles@2
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-tensorrt\lib'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64\lib'
         Contents: |
           libonnxruntime.so.*
-          libonnxruntime_providers_*.so
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
     - task: CopyFiles@2
       displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
