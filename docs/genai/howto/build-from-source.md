@@ -1,6 +1,6 @@
 ---
 title: Build from source
-description: How to build ONNX Runtime GenAI from source
+description: How to build the ONNX Runtime generate() API from source
 has_children: false
 parent: How to
 grand_parent: Generative AI (Preview)
@@ -95,11 +95,20 @@ copy build\Windows\Release\Release\onnxruntime.lib <ORTHOME>\lib
 
 On Linux
 
-```cmd
+```bash
 ./build.sh --build_shared_lib --skip_tests --parallel [--use_cuda] --config Release
 cp include/onnxruntime/core/session/onnxruntime_c_api.h <ORT_HOME>/include
 cp build/Linux/Release/libonnxruntime*.so* <ORT_HOME>/lib
 ```
+
+On Mac
+
+```bash
+./build.sh --build_shared_lib --skip_tests --parallel --config Release
+cp include/onnxruntime/core/session/onnxruntime_c_api.h <ORT_HOME>/include
+cp build/Linux/Release/libonnxruntime*.dylib* <ORT_HOME>/lib
+```
+
 
 ## Build onnxruntime-genai
 
