@@ -34,9 +34,10 @@ namespace Dml
         ExecutionProviderImpl(
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
-            ID3D12CommandQueue* queue,
+            Dml::ExecutionContext* execution_context,
             bool enableMetacommands,
-            bool enableDynamicGraphFusion);
+            bool enableDynamicGraphFusion,
+            bool enableCpuSyncSpinning);
 
         void ReleaseCompletedReferences();
 
@@ -153,6 +154,7 @@ namespace Dml
         STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
+        bool CpuSyncSpinningEnabled() const noexcept;
         bool DynamicGraphFusionEnabled() const noexcept;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
@@ -191,7 +193,9 @@ namespace Dml
         bool m_areMetacommandsEnabled = true;
         bool m_dynamicGraphFusionEnabled = false;
         bool m_native16BitShaderOpsSupported = false;
-        std::shared_ptr<ExecutionContext> m_context;
+        bool m_sessionInitialized = false;
+        bool m_cpuSyncSpinningEnabled = false;
+        ComPtr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
@@ -241,9 +245,10 @@ namespace Dml
 
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
-            ID3D12CommandQueue* commandQueue,
+            Dml::ExecutionContext* execution_context,
             bool enableMetacommands,
-            bool enableDynamicGraphFusion
+            bool enableDynamicGraphFusion,
+            bool enableSyncSpinning
         );
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
