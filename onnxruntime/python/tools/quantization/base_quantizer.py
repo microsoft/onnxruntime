@@ -234,9 +234,7 @@ class BaseQuantizer:
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
             packed_bias_initializer = onnx.numpy_helper.from_array(bias_np_data, quantized_bias_name)
             self.model.initializer_extend([packed_bias_initializer])
-
-            # Bias's scale dtype should match the original data's unquantized type (float32 or float16).
-            bias_scale_data = np.asarray(bias_scale, dtype=bias_data.dtype).reshape(-1)
+            bias_scale_data = np.asarray(bias_scale, dtype=np.float32).reshape(-1)
             node_type = "DequantizeLinear"
             node_qtype = self.weight_qType
 
