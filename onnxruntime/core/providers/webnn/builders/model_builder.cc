@@ -84,16 +84,18 @@ void ModelBuilder::PreprocessActivations() {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     const auto& op_type(node->OpType());
 
+    // Ignore unsupported activation nodes.
+    if (!Contains(GetSupportedActivationNodes(), op_type)) {
+      continue;
+    }
+
     if (op_type == "Clip") {
-      // Temporarily disable clamp fusion for WebNN GPU as which is not supported yet.
-      if (wnn_device_type_ == WebnnDeviceType::CPU) {
-        float minValue, maxValue;
-        GetClipMinMax(GetInitializerTensors(), *node, minValue, maxValue, logger_);
-        emscripten::val options = emscripten::val::object();
-        options.set("minValue", minValue);
-        options.set("maxValue", maxValue);
-        activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("clamp", options));
-      }
+      float minValue, maxValue;
+      GetClipMinMax(GetInitializerTensors(), *node, minValue, maxValue, logger_);
+      emscripten::val options = emscripten::val::object();
+      options.set("minValue", minValue);
+      options.set("maxValue", maxValue);
+      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("clamp", options));
     } else if (op_type == "Elu") {
       NodeAttrHelper helper(*node);
       emscripten::val options = emscripten::val::object();
@@ -398,14 +400,12 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   return Status::OK();
 }
 
-// supported_nodes is provided by the op to indicate whether it can be fused with the activation node.
-emscripten::val ModelBuilder::FindActivation(const Node& node, const NodeArg& output,
-                                             const InlinedHashSet<std::string> supported_nodes) {
+emscripten::val ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   emscripten::val fused_op = emscripten::val::null();
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    if (!Contains(supported_nodes, dst_node.OpType())) {
+    if (!Contains(GetSupportedActivationNodes(), dst_node.OpType())) {
       return emscripten::val::null();
     }
     if (Contains(activation_nodes_, dst_node.Index())) {
@@ -436,6 +436,28 @@ emscripten::val ModelBuilder::FindActivation(const Node& node, const NodeArg& ou
   }
 
   return fused_op;
+}
+
+InlinedHashSet<std::string> ModelBuilder::GetSupportedActivationNodes() const {
+  if (wnn_device_type_ == WebnnDeviceType::CPU) {
+    // WebNN CPU currently only supports "Relu" and "Clip" fusion.
+    return {"Clip", "Relu"};
+  } else {
+    return {
+        // Temporarily disable clamp fusion for WebNN GPU as which is not supported yet.
+        // "Clip",
+        "Elu",
+        "Gelu",
+        "HardSigmoid",
+        "HardSwish",
+        "Relu",
+        "LeakyRelu",
+        "Sigmoid",
+        "Softplus",
+        "Softsign",
+        "Tanh",
+    };
+  }
 }
 
 void ModelBuilder::AddScalarOutput(const std::string& output_name) {
