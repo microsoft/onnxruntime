@@ -321,10 +321,11 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
 
 const computeAttentionProbs =
     (context: ComputeContext, q: TensorView, key: TensorView, relativePositionBias: TensorView|undefined,
-     parameters: AttentionParameters, attributes: AttentionAttrs) => {
+     parameters: AttentionParameters, attributes: AttentionAttrs, pastSequenceLength: number,
+     totalSequenceLength: number) => {
       const probsShape = [
         parameters.batchSize, parameters.numHeads, parameters.sequenceLength,
-        parameters.kvSequenceLength + parameters.pastSequenceLength
+        parameters.kvSequenceLength + pastSequenceLength
       ];
       // TODO: handle mask
 
@@ -333,15 +334,14 @@ const computeAttentionProbs =
       const vectorizedHeadSize = parameters.headSize / components;
       const TILE_SIZE = 12;
       const dispatch = {
-        x: Math.ceil(parameters.totalSequenceLength / TILE_SIZE),
+        x: Math.ceil(totalSequenceLength / TILE_SIZE),
         y: Math.ceil(parameters.sequenceLength / TILE_SIZE),
         z: parameters.batchSize * parameters.numHeads
       };
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: parameters.sequenceLength}, {type: DataType.uint32, data: vectorizedHeadSize},
-        {type: DataType.uint32, data: parameters.totalSequenceLength},
-        {type: DataType.uint32, data: parameters.numHeads}, {type: DataType.uint32, data: parameters.kvSequenceLength},
-        {type: q.dataType, data: alpha}
+        {type: DataType.uint32, data: totalSequenceLength}, {type: DataType.uint32, data: parameters.numHeads},
+        {type: DataType.uint32, data: parameters.kvSequenceLength}, {type: q.dataType, data: alpha}
       ];
 
       const inputs = [q, key];
@@ -436,14 +436,14 @@ const computeAttentionProbs =
           {inputs, outputs: [-1]})[0];
 
       computeInPlaceSoftmax(
-          context, probs, parameters.batchSize * parameters.numHeads * parameters.sequenceLength,
-          parameters.totalSequenceLength);
+          context, probs, parameters.batchSize * parameters.numHeads * parameters.sequenceLength, totalSequenceLength);
 
       return probs;
     };
 
 const computeVxAttentionScore =
-    (context: ComputeContext, probs: TensorView, v: TensorView, params: AttentionParameters) => {
+    (context: ComputeContext, probs: TensorView, v: TensorView, params: AttentionParameters,
+     totalSequenceLength: number) => {
       const outputShape = [params.batchSize, params.sequenceLength, params.vHiddenSize];
       const TILE_SIZE = 12;
       const dispatch = {
@@ -452,7 +452,7 @@ const computeVxAttentionScore =
         z: params.batchSize * params.numHeads
       };
       const programUniforms: ProgramUniform[] = [
-        {type: DataType.uint32, data: params.sequenceLength}, {type: DataType.uint32, data: params.totalSequenceLength},
+        {type: DataType.uint32, data: params.sequenceLength}, {type: DataType.uint32, data: totalSequenceLength},
         {type: DataType.uint32, data: params.vHeadSize}, {type: DataType.uint32, data: params.numHeads},
         {type: DataType.uint32, data: params.vHiddenSize}
       ];
@@ -525,9 +525,12 @@ export const applyAttention =
     (context: ComputeContext, q: TensorView, k: TensorView, v: TensorView, _maskIndex: TensorView|undefined,
      _past: TensorView|undefined, _pastKey: TensorView|undefined, _pastValue: TensorView|undefined,
      relativePositionBias: TensorView|undefined, parameters: AttentionParameters, attributes: AttentionAttrs) => {
-      const probs = computeAttentionProbs(context, q, k, relativePositionBias, parameters, attributes);
+      const pastSequenceLength = context.outputCount === 1 ? 0 : parameters.pastSequenceLength;
+      const totalSequenceLength = parameters.kvSequenceLength + pastSequenceLength;
+      const probs = computeAttentionProbs(
+          context, q, k, relativePositionBias, parameters, attributes, pastSequenceLength, totalSequenceLength);
 
-      computeVxAttentionScore(context, probs, v, parameters);
+      computeVxAttentionScore(context, probs, v, parameters, totalSequenceLength);
     };
 
 const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
