@@ -78,7 +78,7 @@ interface StorageCacheValue {
 
 /* eslint-disable */
 const bucketFreelist: {[key: number]: number} = {
-  64: 200,
+  64: 250,
   128: 200,
   256: 200,
   512: 200,
@@ -96,7 +96,9 @@ const bucketFreelist: {[key: number]: number} = {
   4194304: 20,
   8388608: 10,
   12582912: 10,
-  16777216: 5,
+  16777216: 10,
+  26214400: 10,
+  33554432: 5,
 };
 /* eslint-enable */
 
