@@ -103,8 +103,8 @@ const bucketFreelist: {[key: number]: number} = {
 const bucketArr: number[] = [];
 
 /**
-* normalize the buffer size so that it fits the 128-bits (16 bytes) alignment.
-*/
+ * normalize the buffer size so that it fits the 128-bits (16 bytes) alignment.
+ */
 const calcNormalizedBufferSize = (size: number) => Math.ceil(size / 16) * 16;
 
 /**
