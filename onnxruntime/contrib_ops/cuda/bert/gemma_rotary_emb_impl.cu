@@ -2,7 +2,6 @@
 Copyright (c) Microsoft Corporation.
 Licensed under the MIT License.
 */
-
 /*
 Kernel implementation for Gamma rotary embeddings. 
 This implementation below subgraph
