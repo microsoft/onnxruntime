@@ -838,9 +838,10 @@ Status BindContextInput(Ort::KernelContext& ctx,
         }
 
         if (!trt_context->setTensorAddress(input_name, &shape_tensor_values[input_name][0])) {
+          std::string error_input_name = input_name;  
           std::string error_msg =
               "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
-              input_name + "'";
+              error_input_name + "'";
           ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, error_msg));
         }
         break;
@@ -860,9 +861,10 @@ Status BindContextInput(Ort::KernelContext& ctx,
         }
 
         if (!trt_context->setTensorAddress(input_name, &shape_tensor_values_int64[input_name][0])) {
+          std::string error_input_name = input_name;  
           std::string error_msg =
               "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
-              input_name + "'";
+              error_input_name + "'";
           ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, error_msg));
         }
         break;
