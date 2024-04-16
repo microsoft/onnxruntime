@@ -60,6 +60,10 @@ stages:
         clean: true
         submodules: none
 
+      - task: UseDotNet@2
+        inputs:
+          version: '7.x'
+
       - template: templates/jobs/win-ci-prebuild-steps.yml
         parameters:
           EnvSetupScript: setup_env.bat
@@ -155,10 +159,15 @@ stages:
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
-        
+
 - stage: x86_release
   dependsOn: []
   jobs:
+    steps:
+    - task: UseDotNet@2
+      inputs:
+        version: '7.x'
+
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
@@ -256,5 +265,3 @@ stages:
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
-
-

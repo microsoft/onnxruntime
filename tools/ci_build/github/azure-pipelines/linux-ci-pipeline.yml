@@ -48,6 +48,10 @@ stages:
         TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       pool: onnxruntime-Ubuntu2204-AMD-CPU
       steps:
+      - task: UseDotNet@2
+        inputs:
+          version: '7.x'
+
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
         condition: always()
@@ -127,6 +131,10 @@ stages:
         TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       pool: onnxruntime-Ubuntu2204-AMD-CPU
       steps:
+      - task: UseDotNet@2
+        inputs:
+          version: '7.x'
+
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
         condition: always()
