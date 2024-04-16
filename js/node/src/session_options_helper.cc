@@ -22,7 +22,7 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #ifdef USE_QNN
-#include "core/providers/qnn/qnn_provider_factory.h"
+//#include "core/providers/qnn/qnn_provider_factory.h"
 #endif
 
 const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NAME_TO_ID_MAP = {
