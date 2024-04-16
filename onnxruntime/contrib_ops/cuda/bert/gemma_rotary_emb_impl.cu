@@ -4,8 +4,8 @@ Licensed under the MIT License.
 */
 
 /*
-Kernel implementation for Gamma rotary embeddings.
-This implementation below subgraph TODO
+Kernel implementation for Gamma rotary embeddings. 
+This implementation below subgraph
            (emb)
           /   \
         /      \
@@ -23,9 +23,9 @@ This implementation below subgraph TODO
 */
 
 #include <cuda_fp16.h>
+#include <cmath>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/gemma_rotary_emb_impl.h"
-#include <cmath>
 
 using namespace onnxruntime::cuda;
 
@@ -33,17 +33,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
 constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 
 template <typename T, typename U>
 __global__ void GemmaRotaryEmb( T* output1,
                                 T* output2,
                                 const U* emb,
-                                const T* q, 
-                                const T* q_rot, 
-                                const T* k, 
-                                const T* k_rot, 
+                                const T* q,
+                                const T* q_rot,
+                                const T* k,
+                                const T* k_rot,
                                 const int batch_size,
                                 const int num_heads,
                                 const int seq_len,
