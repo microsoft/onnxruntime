@@ -80,14 +80,11 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     qnn_data_type = QNN_DATATYPE_INT_32;
   }
 
-  // Even for Quantized model, Gather indices use int32 without quantization
-  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-
   Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, input_shape), "Cannot get shape");
   std::vector<uint32_t> cast_output_shape(input_shape);
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
+  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, QnnQuantParamsWrapper(),
                                        std::move(input_shape), std::move(gather_indices));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
@@ -96,8 +93,8 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
       // Add Cast node for indices
       indices_input_name = input_name + "_ort_qnn_ep_cast";
-      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32, quantize_param,
-                                   std::move(cast_output_shape));
+      QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32,
+                                   QnnQuantParamsWrapper(), std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(indices_input_name,
                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
@@ -157,18 +154,14 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const auto& gather_output = node_unit.Outputs()[0];
   const auto& output_name = gather_output.node_arg.Name();
 
-  Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  bool is_quantized_tensor = gather_output.quant_param.has_value();
-  utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
+  QnnQuantParamsWrapper quantize_param;
+  ORT_RETURN_IF_ERROR(quantize_param.Init(qnn_model_wrapper, gather_output));
 
   const auto* type_proto = gather_output.node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(gather_output.quant_param,
-                                                                   quantize_param.scaleOffsetEncoding.scale,
-                                                                   quantize_param.scaleOffsetEncoding.offset),
-                    "Cannot get quantization parameter");
-  if (is_quantized_tensor) {
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(quantize_param.IsQuantized(), type_proto, qnn_data_type));
+
+  if (quantize_param.IsPerTensor()) {
     // Make sure the output quantization parameters are equal to the input.
     ORT_RETURN_IF_ERROR(SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
                                                                  0 /*input_index*/, 0 /*output_index*/, qnn_data_type,
@@ -183,7 +176,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   bool reshape_required = (qnn_output_shape.size() != target_output_shape.size());
   std::string gather_output_name = output_name + (reshape_required ? "_ort_qnn_ep_reshape" : "");
   Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-  QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param,
+  QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param.Copy(),
                                          std::move(qnn_output_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(gather_output_wrapper)), "Failed to add tensor.");
 
@@ -199,7 +192,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   if (reshape_required) {
     // Add Reshape Node after Gather.
     Qnn_TensorType_t reshape_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-    QnnTensorWrapper reshape_output(output_name, reshape_tensor_type, qnn_data_type, quantize_param,
+    QnnTensorWrapper reshape_output(output_name, reshape_tensor_type, qnn_data_type, std::move(quantize_param),
                                     std::move(target_output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reshape_output)), "Failed to add tensor.");
     const static std::string qnn_node_type = "Reshape";
