@@ -9,7 +9,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda::CudaKernel;
+using onnxruntime::cuda::ToCudaType;
 
 template <typename T, typename U>
 class GemmaRotaryEmbedding final : public CudaKernel {

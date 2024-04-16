@@ -36,7 +36,8 @@ namespace cuda {
 constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 
 template <typename T, typename U>
-__global__ void GemmaRotaryEmb( T* output1,
+__global__ void GemmaRotaryEmb(
+                                T* output1,
                                 T* output2,
                                 const U* emb,
                                 const T* q,
@@ -52,7 +53,7 @@ __global__ void GemmaRotaryEmb( T* output1,
     // index [i, j, k, l] -> [i, k, l]
     const int emb_idx = qk_idx / (num_heads * seq_len * dim) * (seq_len * dim) + qk_idx %  (seq_len * dim);
     if (qk_idx < batch_size * num_heads * seq_len * dim) {
-      T sin_val = static_cast<T>(sin(emb[emb_idx])); 
+      T sin_val = static_cast<T>(sin(emb[emb_idx]));
       T cos_val = static_cast<T>(cos(emb[emb_idx]));
       output1[qk_idx] = q[qk_idx] * cos_val + q_rot[qk_idx] * sin_val;
       output2[qk_idx] = k[qk_idx] * cos_val + k_rot[qk_idx] * sin_val;
@@ -65,10 +66,10 @@ Status LaunchGemmaRotaryEmbeddingKernel(
     T* output1,
     T* output2,
     const U* emb,
-    const T* q, 
-    const T* q_rot, 
-    const T* k, 
-    const T* k_rot, 
+    const T* q,
+    const T* q_rot,
+    const T* k,
+    const T* k_rot,
     const int batch_size,
     const int num_heads,
     const int seq_len,
