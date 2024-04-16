@@ -39,8 +39,10 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param,
   data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_, device_precision_);
 #elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 0
   data_ops_ = new DataOps(graph_viewer_, V_2024_0, device_type_, device_precision_);
+#elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 1
+  data_ops_ = new DataOps(graph_viewer_, V_2024_1, device_type_, device_precision_);
 #else
-  data_ops_ = new DataOps(graph_viewer_, V_2024_0, device_type_, device_precision_);
+  data_ops_ = new DataOps(graph_viewer_, V_2024_1, device_type_, device_precision_);
 #endif
 }
 
