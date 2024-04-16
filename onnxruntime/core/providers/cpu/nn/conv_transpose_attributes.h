@@ -57,7 +57,8 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShape input_shape = X->Shape().Slice(is_nhwc ? 1 : 2, is_nhwc ? rank - 1 : rank);
     const int64_t num_input_channels = is_nhwc ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
-    const int64_t num_output_channels_multiplier = is_nhwc ? F_Shape[3] : F_Shape[1];
+    // for NHWC we move the C dim (dim 0) to the end, so dim 1 becomes dim 0.
+    const int64_t num_output_channels_multiplier = is_nhwc ? F_Shape[0] : F_Shape[1];
     const int64_t num_output_channels = num_output_channels_multiplier * group;
 
     // input validations
