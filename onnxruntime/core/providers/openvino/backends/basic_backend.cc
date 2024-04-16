@@ -92,10 +92,10 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                                                            subgraph_context_.subgraph_name);
         ie_cnn_network_ = exe_network_.Get().get_runtime_model();
       } else if (!subgraph_context_.has_dynamic_input_shape &&
-                 global_context_.onnx_model_path_name != "" &&
-                 dev_prec != "CPU_FP16") {  // Inputs with static dimenstions
+                 global_context_.onnx_model_path_name.find(".onnx") != std::string ::npos) {  // Inputs with static dimenstions
         exe_network_ = global_context_.ie_core.CompileModel(global_context_.onnx_model_path_name,
                                                             hw_target,
+                                                            global_context_.cache_dir,
                                                             device_config,
                                                             subgraph_context_.subgraph_name);
         ie_cnn_network_ = exe_network_.Get().get_runtime_model();
@@ -170,7 +170,7 @@ void BasicBackend::EnableCaching() {
 
   if (!global_context_.cache_dir.empty()) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    global_context_.ie_core.SetCache(global_context_.cache_dir);
+    global_context_.ie_core.SetCache(global_context_.cache_dir, global_context_.device_type);
   }
 }
 

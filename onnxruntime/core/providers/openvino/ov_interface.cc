@@ -15,8 +15,8 @@ namespace openvino_ep {
 
 const std::string log_tag = "[OpenVINO-EP] ";
 
-void printDebugInfo(ov::CompiledModel& obj) {
 #ifndef NDEBUG
+void printDebugInfo(ov::CompiledModel& obj) {
   if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
     // output of the actual settings that the device selected
     auto supported_properties = obj.get_property(ov::supported_properties);
@@ -43,8 +43,9 @@ void printDebugInfo(ov::CompiledModel& obj) {
       }
     }
   }
-#endif
 }
+#endif
+
 
 std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std::string& model_path) const {
   try {
@@ -78,7 +79,9 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
   ov::CompiledModel obj;
   try {
     obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
+#ifndef NDEBUG
     printDebugInfo(obj);
+#endif
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
@@ -90,12 +93,22 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
 
 OVExeNetwork OVCore::CompileModel(const std::string onnx_model_path,
                                   std::string& hw_target,
+                                  std::string cache_dir,
                                   ov::AnyMap& device_config,
                                   std::string name) {
   ov::CompiledModel obj;
   try {
-    obj = oe.compile_model(onnx_model_path, hw_target, device_config);
+    if (hw_target == "AUTO:GPU,CPU") {
+      obj = oe.compile_model(onnx_model_path,
+                             "AUTO",
+                             ov::device::priorities("GPU", "CPU"),
+                             ov::device::properties("GPU", ov::cache_dir(cache_dir)));
+    } else {
+      obj = oe.compile_model(onnx_model_path, hw_target, device_config);
+    }
+#ifndef NDEBUG
     printDebugInfo(obj);
+#endif
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
@@ -111,7 +124,9 @@ OVExeNetwork OVCore::ImportModel(std::istringstream& model_stream,
                                  std::string name) {
   try {
     auto obj = oe.import_model(model_stream, hw_target, device_config);
+#ifndef NDEBUG
     printDebugInfo(obj);
+#endif
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
@@ -121,15 +136,19 @@ OVExeNetwork OVCore::ImportModel(std::istringstream& model_stream,
   }
 }
 
-void OVCore::SetCache(std::string cache_dir_path) {
-  oe.set_property(ov::cache_dir(cache_dir_path));
+void OVCore::SetCache(std::string cache_dir_path, std::string device_type) {
+  if (device_type == "AUTO:GPU,CPU") {
+    oe.set_property(ov::cache_dir(cache_dir_path));
+  }
 }
 
 #ifdef IO_BUFFER_ENABLED
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model, OVRemoteContextPtr context, std::string& name) {
   try {
     auto obj = oe.compile_model(model, *context);
+#ifndef NDEBUG
     printDebugInfo(obj);
+#endif
     return OVExeNetwork(obj);
   } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
@@ -140,7 +159,9 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model, OVRem
 OVExeNetwork OVCore::ImportModel(std::istringstream& model_stream, OVRemoteContextPtr context, std::string& name) {
   try {
     auto obj = oe.import_model(model_stream, *context);
+#ifndef NDEBUG
     printDebugInfo(obj);
+#endif
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
