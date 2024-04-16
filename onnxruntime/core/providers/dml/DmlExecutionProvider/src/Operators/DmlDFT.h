@@ -236,16 +236,18 @@ public:
         } 
         else 
         {
-            m_axis = -2;
+            m_axis = 1;
+            /*
             if (context->IsInputValid(2)) 
             {
-                 ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
+                ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
                 ORT_THROW_IF_FAILED(context->QueryInterface(IID_PPV_ARGS(&contextPrivate)));
                 ComPtr<IMLOperatorTensor> axisTensor;
                 ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(2, &axisTensor));
                 MLOperatorTensor tensor(axisTensor.Get());
                 m_axis = OperatorHelper::ReadScalarTensorCastToInt64(tensor);
             }
+            */
         }
 
         PrepareStockhamFFT(edgeDesc.tensorDataType);
@@ -1127,8 +1129,11 @@ public:
         {
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float },
-            //MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Double },
         };
+        if (version == 20) 
+        {
+            t1AllowedEdges.push_back(MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Double });
+        }
         t1Constraint.allowedTypes = t1AllowedEdges.data();
         t1Constraint.allowedTypeCount = static_cast<uint32_t>(t1AllowedEdges.size());
 
@@ -1137,9 +1142,12 @@ public:
         t2Constraint.typeLabel = "T2";
         std::vector<MLOperatorEdgeDescription> t2AllowedEdges
         {
-          //  MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int32 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int64 },
         };
+        if (version == 20) 
+        {
+            t2AllowedEdges.push_back(MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int32 });
+        }
         t2Constraint.allowedTypes = t2AllowedEdges.data();
         t2Constraint.allowedTypeCount = static_cast<uint32_t>(t2AllowedEdges.size());
 
