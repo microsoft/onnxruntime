@@ -27,6 +27,8 @@ class ORTPipelineModule(PipelineModule):
     with ONNX Runtime's ORTModule. This modification allows leveraging ONNX Runtime optimizations
     for the forward and backward passes, potentially enhancing execution performance and efficiency.
 
+    Please locate the "Using ORTPipelineModule for Deepspeed Pipeline Parallel" section in the "docs/ORTModule_Training_Guidelines.md" file of the ORT repository for more information.
+
     .. note::
         Pipeline parallelism is not compatible with ZeRO-2 and ZeRO-3.
 
