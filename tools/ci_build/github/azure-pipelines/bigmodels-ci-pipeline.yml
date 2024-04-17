@@ -409,6 +409,8 @@ stages:
               python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               ls whisperlargev3; \
+              export LD_LIBRARY_PATH=/tmp/ompffmpeg:${LD_LIBRARY_PATH}; \
+              ffmpeg -version; \
               python3 -m models.whisper.benchmark \
                   --benchmark-type ort \
                   --audio-path models/whisper/test/1272-141231-0002.mp3 \
