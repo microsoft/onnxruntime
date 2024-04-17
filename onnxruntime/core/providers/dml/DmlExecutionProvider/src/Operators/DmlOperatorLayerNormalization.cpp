@@ -6,11 +6,10 @@
 namespace Dml
 {
 
-template <bool simplified>
 class DmlOperatorLayerNormalization : public DmlOperator
 {
 public:
-    DmlOperatorLayerNormalization(const MLOperatorKernelCreationContext& kernelCreationContext)
+    DmlOperatorLayerNormalization(const MLOperatorKernelCreationContext& kernelCreationContext, bool simplified)
     :   DmlOperator(kernelCreationContext)
     {
         std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
@@ -260,8 +259,19 @@ void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* con
     *isSupported = context->GetOutputCount() == 1;
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, DmlOperatorLayerNormalization<false>);
-DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization17, DmlOperatorLayerNormalization<false>);
-DML_OP_DEFINE_CREATION_FUNCTION(SimplifiedLayerNormalization, DmlOperatorLayerNormalization<true>);
+// A specific type of operation for registration.
+template <bool simplified>
+class LayerNormalizationTemplate : public DmlOperatorLayerNormalization
+{
+public:
+    LayerNormalizationTemplate(const MLOperatorKernelCreationContext& kernelCreationContext)
+    :   DmlOperatorLayerNormalization(kernelCreationContext, simplified)
+    {
+    }
+};
+
+DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, LayerNormalizationTemplate<false>);
+DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization17, LayerNormalizationTemplate<false>);
+DML_OP_DEFINE_CREATION_FUNCTION(SimplifiedLayerNormalization, LayerNormalizationTemplate<true>);
 
 } // namespace Dml
