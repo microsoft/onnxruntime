@@ -1,17 +1,21 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 04674124c..12e8b8b00 100644
+index f6dcde44..5beb4fe8 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -19,7 +19,7 @@ endif()
+@@ -23,11 +23,9 @@ endif()
  
  set(version 1.1.0)
  # Check support for CUDA/HIP in Cmake
--project(composable_kernel VERSION ${version})
+-project(composable_kernel VERSION ${version} LANGUAGES CXX)
 +project(composable_kernel VERSION ${version} LANGUAGES CXX HIP)
+ include(CTest)
  
+-find_package(Python3 3.8 COMPONENTS Interpreter REQUIRED)
+-
  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
  
-@@ -173,27 +173,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ if (DTYPES)
+@@ -224,27 +222,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  set(CMAKE_CXX_EXTENSIONS OFF)
  message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
  
@@ -39,27 +43,20 @@ index 04674124c..12e8b8b00 100644
  ## HIP
  find_package(HIP REQUIRED)
  # Override HIP version in config.h, if necessary.
-@@ -215,8 +194,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
+@@ -266,12 +243,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
      message(STATUS "CK_HIP_VERSION_PATCH overriden with ${CK_OVERRIDE_HIP_VERSION_PATCH}")
  endif()
  message(STATUS "Build with HIP ${HIP_VERSION}")
 -link_libraries(hip::device)
--add_compile_definitions(__HIP_PLATFORM_HCC__=1)
+-if(CK_hip_VERSION VERSION_GREATER_EQUAL 6.0.23494)
+-    add_compile_definitions(__HIP_PLATFORM_AMD__=1)
+-else()
+-    add_compile_definitions(__HIP_PLATFORM_HCC__=1)
+-endif()
  
  ## tidy
  include(EnableCompilerWarnings)
-@@ -376,7 +353,9 @@ if(BUILD_DEV)
-     add_compile_options(-Werror -Weverything)
- endif()
- #add flags to reduce the size of binaries
--add_compile_options(-Oz -flto=thin)
-+# -flto requires ORT to use a linker that support LTO and -flto flag shoud be passed to linker together.
-+# add_compile_options(-Oz -flto=thin)
-+add_compile_options(-Oz)
- message("CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
- 
- add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -C ${CMAKE_CFG_INTDIR})
-@@ -482,11 +461,3 @@ rocm_install(FILES
+@@ -538,11 +509,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -72,10 +69,10 @@ index 04674124c..12e8b8b00 100644
 -    HEADER_ONLY
 -)
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-index 9cb5d0e9a..141a46f3d 100644
+index c035e7e5..8c5f36d2 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 +++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-@@ -44,8 +44,14 @@ function(add_instance_library INSTANCE_NAME)
+@@ -59,8 +59,14 @@ function(add_instance_library INSTANCE_NAME)
      endforeach()
      #only continue if there are some source files left on the list
      if(ARGN)
