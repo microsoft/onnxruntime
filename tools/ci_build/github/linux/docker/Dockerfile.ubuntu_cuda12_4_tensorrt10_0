@@ -5,7 +5,7 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # Build base image with required system packages
-FROM nvidia/cuda:12.3.2-cudnn9-devel-ubuntu20.04 AS base
+FROM nvidia/cuda:12.4.1-devel-ubuntu20.04 AS base
 
 # The local directory into which to build and install CMAKE
 ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
@@ -30,12 +30,15 @@ RUN apt-get install -y --no-install-recommends \
 RUN pip install --upgrade pip 
 RUN pip install setuptools>=68.2.2 psutil
 
+# Install cuDNN v9
+RUN apt-get -y install cudnn9-cuda-12
+
 # Install TensorRT
-RUN v="10.0.0.6-1+cuda12.4" &&\
+RUN version="10.0.0.6-1+cuda12.4" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
     sudo apt-get install -y \
-    tensorrt=${v}
+    tensorrt=${version}
 
 ## Compile trtexec
 #RUN cd /usr/src/tensorrt/samples/trtexec && make
