@@ -480,7 +480,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                                       nullptr,
                                                       DeviceCopyDirection::hostToDevice));
 
-    size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
     ORT_RETURN_IF_ERROR(this->finalize_decoder_cross_qk_func_(
         this->ort_stream_,
         iteration_counter,
@@ -494,7 +493,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         cross_qk_buffer_data,
         cross_qk_output->MutableData<float>(),
         parameters->num_return_sequences,
-        cache_indir_data_device, // cache_indir_data,
+        cache_indir_data_device,
         ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)));
   }
 
