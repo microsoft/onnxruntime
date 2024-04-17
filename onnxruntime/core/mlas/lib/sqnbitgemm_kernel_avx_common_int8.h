@@ -120,8 +120,6 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
   // only used if HasZeroPoint == true
 
   for (size_t k = 0; k < CountK; k += BlkLen) {
-    size_t ck = std::min(CountK - k, BlkLen);
-
     const float a_scale = Q8BlkScale(ablob);
     ablob += sizeof(float);
 
@@ -149,8 +147,8 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
     }
 
     // Load A row vector
-    uint32_t load_mask = 0xffff >> (SubBlkLen - ck);
-    __m256i av_epi16 = _mm256_cvtepu8_epi16(_mm_maskz_loadu_epi8(__mmask16(load_mask), ablob));
+    const __m128i av_epi8 = _mm_lddqu_si128((const __m128i*)ablob);
+    __m256i av_epi16 = _mm256_cvtepu8_epi16(av_epi8);
     ablob += BlkLen;
 
     // Load 4 B column vectors (quantized to int4 blobs)
@@ -291,30 +289,30 @@ SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl(
       // Col1
       const float& scale_10 = scale_a0 * (QuantBScalePtr + StrideQuantBScale)[0];
       const float& scale_11 = scale_a1 * (QuantBScalePtr + StrideQuantBScale)[1];
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + StrideQuantBData),
+      accumulator(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + StrideQuantBData),
         low_mask, zero,
         QuantBZeroPointPtr + StrideQuantBZeroPoint, true, scale_10, acc1);
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_1_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + StrideQuantBData + 16),
+      accumulator(av_1_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + StrideQuantBData + 16),
         low_mask, zero,
         QuantBZeroPointPtr + StrideQuantBZeroPoint, false, scale_11, acc1);
 
       // Col2
       const float& scale_20 = scale_a0 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
       const float& scale_21 = scale_a1 * (QuantBScalePtr + 2 * StrideQuantBScale)[1];
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 2 * StrideQuantBData),
+      accumulator(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 2 * StrideQuantBData),
         low_mask, zero,
         QuantBZeroPointPtr + 2 * StrideQuantBZeroPoint, true, scale_20, acc2);
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_1_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 2 * StrideQuantBData + 16),
+      accumulator(av_1_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 2 * StrideQuantBData + 16),
         low_mask, zero,
         QuantBZeroPointPtr + 2 * StrideQuantBZeroPoint, false, scale_21, acc2);
 
       // Col3
       const float& scale_30 = scale_a0 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
       const float& scale_31 = scale_a1 * (QuantBScalePtr + 3 * StrideQuantBScale)[1];
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 3 * StrideQuantBData),
+      accumulator(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 3 * StrideQuantBData),
         low_mask, zero,
         QuantBZeroPointPtr + 3 * StrideQuantBZeroPoint, true, scale_30, acc3);
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_1_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 3 * StrideQuantBData + 16),
+      accumulator(av_1_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 3 * StrideQuantBData + 16),
         low_mask, zero,
         QuantBZeroPointPtr + 3 * StrideQuantBZeroPoint, false, scale_31, acc3);
 
@@ -336,25 +334,25 @@ SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl(
 
       // Col0
       const float& scale_00 = scale_a0 * QuantBScalePtr[0];
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr),
+      accumulator(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr),
         low_mask, zero,
         QuantBZeroPointPtr, true, scale_00, acc0);
 
       // Col1
       const float& scale_10 = scale_a0 * (QuantBScalePtr + StrideQuantBScale)[0];
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + StrideQuantBData),
+      accumulator(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + StrideQuantBData),
         low_mask, zero,
         QuantBZeroPointPtr + StrideQuantBZeroPoint, true, scale_10, acc1);
 
       // Col2
       const float& scale_20 = scale_a0 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 2 * StrideQuantBData),
+      accumulator(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 2 * StrideQuantBData),
         low_mask, zero,
         QuantBZeroPointPtr + 2 * StrideQuantBZeroPoint, true, scale_20, acc2);
 
       // Col3
       const float& scale_30 = scale_a0 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 3 * StrideQuantBData),
+      accumulator(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 3 * StrideQuantBData),
         low_mask, zero,
         QuantBZeroPointPtr + 3 * StrideQuantBZeroPoint, true, scale_30, acc3);
     }
@@ -402,10 +400,10 @@ SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl(
       // Col0
       const float& scale_00 = scale_a0 * QuantBScalePtr[0];
       const float& scale_01 = scale_a1 * QuantBScalePtr[1];
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr),
+      accumulator(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr),
         low_mask, zero,
         QuantBZeroPointPtr, true, scale_00, acc0);
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_1_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 16),
+      accumulator(av_1_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr + 16),
         low_mask, zero,
         QuantBZeroPointPtr, false, scale_01, acc0);
 
@@ -427,7 +425,7 @@ SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl(
 
       // Col0
       const float& scale_00 = scale_a0 * QuantBScalePtr[0];
-      accumulate_mul_sum_avx512vnni<HasZeroPoint>(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr),
+      accumulator(av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr),
         low_mask, zero,
         QuantBZeroPointPtr, true, scale_00, acc0);
     }
@@ -619,7 +617,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen64_NCols4(
       zp_epi8 = _mm256_set1_epi8(zp1);
       bv0_32_epi8 = _mm256_sub_epi8(bv0_32_epi8, zp_epi8);
       bv1_32_epi8 = _mm256_sub_epi8(bv1_32_epi8, zp_epi8);
-      sum_ps = dot_quad_avx512vnni(bv0_32_epi8, bv1_32_epi8, av0_32_epi8, av1_32_epi8);
+      sum_ps = dot_quad(bv0_32_epi8, bv1_32_epi8, av0_32_epi8, av1_32_epi8);
       acc1 = _mm256_fmadd_ps(_mm256_set1_ps(scale_v1), sum_ps, acc1);
 
       bv = _mm256_loadu_si256((__m256i const*)bptr2); bptr2 += SubBlkStep;
@@ -628,7 +626,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen64_NCols4(
       zp_epi8 = _mm256_set1_epi8(zp2);
       bv0_32_epi8 = _mm256_sub_epi8(bv0_32_epi8, zp_epi8);
       bv1_32_epi8 = _mm256_sub_epi8(bv1_32_epi8, zp_epi8);
-      sum_ps = dot_quad_avx512vnni(bv0_32_epi8, bv1_32_epi8, av0_32_epi8, av1_32_epi8);
+      sum_ps = dot_quad(bv0_32_epi8, bv1_32_epi8, av0_32_epi8, av1_32_epi8);
       acc2 = _mm256_fmadd_ps(_mm256_set1_ps(scale_v2), sum_ps, acc2);
 
       bv = _mm256_loadu_si256((__m256i const*)bptr3); bptr3 += SubBlkStep;
@@ -637,7 +635,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen64_NCols4(
       zp_epi8 = _mm256_set1_epi8(zp3);
       bv0_32_epi8 = _mm256_sub_epi8(bv0_32_epi8, zp_epi8);
       bv1_32_epi8 = _mm256_sub_epi8(bv1_32_epi8, zp_epi8);
-      sum_ps = dot_quad_avx512vnni(bv0_32_epi8, bv1_32_epi8, av0_32_epi8, av1_32_epi8);
+      sum_ps = dot_quad(bv0_32_epi8, bv1_32_epi8, av0_32_epi8, av1_32_epi8);
       acc3 = _mm256_fmadd_ps(_mm256_set1_ps(scale_v3), sum_ps, acc3);
     } // kk
 

@@ -24,6 +24,20 @@ Abstract:
 #include "sqnbitgemm_kernel_avx_common.h"
 #include "sqnbitgemm_kernel_avx_common_int8.h"
 
+
+MLAS_FORCEINLINE
+__m256
+load_float_n_avx2(const float* data, int n)
+{
+    assert(n <= 8);
+    if (n <= 0) {
+        return _mm256_setzero_ps();
+    }
+    static const int32_t mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
+    const __m256i load_mask = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - n));
+    return _mm256_maskload_ps(data, load_mask);
+}
+
 MLAS_FORCEINLINE
 void
 SQ4BitGemmM1Kernel_CompInt8_avx2(
@@ -96,7 +110,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
       );
     }
     else if (BlkLen == 32) {
-      SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx512vnni<HasZeroPoint>>(
+      SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
         QuantA,
         QuantBData,
         QuantBScale,
@@ -108,7 +122,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
       );
     }
     else {
-      SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx512vnni>(
+      SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx2>(
         BlkLen,
         QuantA,
         QuantBData,
@@ -185,15 +199,13 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
     }
 
     for (size_t kk = 0; kk < ck; kk += SubBlkLen16) {
-      size_t kklen = std::min((size_t)SubBlkLen16, ck - kk);
+      int kklen = std::min((int)SubBlkLen16, (int)(ck - kk));
 
       // Load A row vectors
-      uint32_t load_mask = 0xffff >> (SubBlkLen16 - kklen);
-      __m256 av_lo = _mm256_maskz_loadu_ps(__mmask8(load_mask), ARowPtr + k + kk);
-
-      load_mask = load_mask >> 8;
-      __m256 av_hi = load_mask == 0 ? _mm256_setzero_ps()
-        : _mm256_maskz_loadu_ps(__mmask8(load_mask), ARowPtr + k + kk + 8);
+      int n_to_read = std::min(kklen, 8);
+      __m256 av_lo = load_float_n_avx2(ARowPtr + k + kk, n_to_read);
+      n_to_read = std::min(kklen - 8, 8);
+      __m256 av_hi = load_float_n_avx2(ARowPtr + k + kk + 8, n_to_read);
 
       __m256 bvf_lo[NCols], bvf_hi[NCols];
       UnrolledLoop<NCols>([&](size_t i) {
@@ -420,23 +432,20 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
     }
 
     for (size_t kk = 0; kk < ck; kk += SubBlkLen32) {
-      size_t kklen = std::min((size_t)SubBlkLen32, ck - kk);
+      int kklen = std::min((int)SubBlkLen32, (int)(ck - kk));
 
       // Load 4 float8 from A
-      uint32_t load_mask = 0xffffffff >> (SubBlkLen32 - kklen);
-      __m256 av0_8_ps = _mm256_maskz_loadu_ps(__mmask8(load_mask), ARowPtr + k + kk);
+      int n_to_read = std::min(kklen, 8);
+      __m256 av0_8_ps = load_float_n_avx2(ARowPtr + k + kk, n_to_read);
 
-      load_mask = load_mask >> 8;
-      __m256 av1_8_ps = load_mask == 0 ? _mm256_setzero_ps()
-        : _mm256_maskz_loadu_ps(__mmask8(load_mask), ARowPtr + k + kk + 8);
+      n_to_read = std::min(kklen - 8, 8);
+      __m256 av1_8_ps = load_float_n_avx2(ARowPtr + k + kk + 8, n_to_read);
 
-      load_mask = load_mask >> 8;
-      __m256 av2_8_ps = load_mask == 0 ? _mm256_setzero_ps()
-        : _mm256_maskz_loadu_ps(__mmask8(load_mask), ARowPtr + k + kk + 16);
+      n_to_read = std::min(kklen - 16, 8);
+      __m256 av2_8_ps = load_float_n_avx2(ARowPtr + k + kk + 16, n_to_read);
 
-      load_mask = load_mask >> 8;
-      __m256 av3_8_ps = load_mask == 0 ? _mm256_setzero_ps()
-        : _mm256_maskz_loadu_ps(__mmask8(load_mask), ARowPtr + k + kk + 24);
+      n_to_read = std::min(kklen - 24, 8);
+      __m256 av3_8_ps = load_float_n_avx2(ARowPtr + k + kk + 24, n_to_read);
 
       UnrolledLoop<NCols>([&](size_t i) {
         // SubBlkLen = 16: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
@@ -704,10 +713,9 @@ QuantizeARow_CompInt8_avx2(
 
     __m256 maxAbs = _mm256_setzero_ps();
     for (size_t kk = 0; kk < step; kk += 8) {
-      const size_t klen = std::min(size_t(8), step - kk);
+      const int klen = std::min(8, (int)(step - kk));
 
-      uint32_t load_mask = 0xff >> (8 - klen);
-      __m256 v0 = _mm256_maskz_loadu_ps(__mmask8(load_mask), A + k + kk);
+      __m256 v0 = load_float_n_avx2(A + k + kk, klen);
 
       // Compute max(abs(e)) for the block
       maxAbs = _mm256_max_ps(maxAbs, _mm256_andnot_ps(signBit, v0));
@@ -728,21 +736,21 @@ QuantizeARow_CompInt8_avx2(
     __m128i* dst = reinterpret_cast<__m128i*>(blob);
 
     for (size_t kk = 0; kk < step; kk += 16) {
-      const size_t klen = std::min(size_t(16), step - kk);
+      const int klen = std::min(16, (int)(step - kk));
 
-      uint32_t load_mask = 0xffff >> (16 - klen);
-      __m256 v0 = _mm256_maskz_loadu_ps(__mmask8(load_mask), A + k + kk);
+      int n_to_read = std::min(klen, 8);
+      __m256 v0 = load_float_n_avx2(A + k + kk, n_to_read);
       v0 = _mm256_mul_ps(v0, mul);
       v0 = _mm256_round_ps(v0, _MM_ROUND_NEAREST);
 
       __m256 v1;
-      load_mask = load_mask >> 8;
-      if (load_mask == 0)
+      n_to_read = std::min(klen - 8, 8);
+      if (n_to_read <= 0)
       {
         v1 = _mm256_setzero_ps();
       }
       else {
-        v1 = _mm256_maskz_loadu_ps(__mmask8(load_mask), A + k + kk + 8);
+        v1 = load_float_n_avx2(A + k + kk + 8, n_to_read);
         v1 = _mm256_mul_ps(v1, mul);
         v1 = _mm256_round_ps(v1, _MM_ROUND_NEAREST);
       }
