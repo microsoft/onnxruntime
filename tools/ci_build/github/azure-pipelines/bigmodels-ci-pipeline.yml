@@ -413,7 +413,7 @@ stages:
               ffmpeg -version; \
               python3 -m models.whisper.benchmark \
                   --benchmark-type ort \
-                  --audio-path models/whisper/test/1272-141231-0002.mp3 \
+                  --audio-path models/whisper/test/sample1.flac \
                   --model-name openai/whisper-large-v3 \
                   --ort-model-path /workspace/onnxruntime/python/tools/transformers/whisperlargev3/whisper_large_v3_beamsearch.onnx \
                   --precision fp32 \
