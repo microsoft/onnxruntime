@@ -27,6 +27,23 @@ class ORTPipelineModule(PipelineModule):
     with ONNX Runtime's ORTModule. This modification allows leveraging ONNX Runtime optimizations
     for the forward and backward passes, potentially enhancing execution performance and efficiency.
 
+    .. note::
+        Pipeline parallelism is not compatible with ZeRO-2 and ZeRO-3.
+
+    Args:
+        layers (Iterable): A sequence of layers defining pipeline structure. Can be a ``torch.nn.Sequential`` module.
+        num_stages (int, optional): The degree of pipeline parallelism. If not specified, ``topology`` must be provided.
+        topology (``deepspeed.runtime.pipe.ProcessTopology``, optional): Defines the axes of parallelism axes for training. Must be provided if ``num_stages`` is ``None``.
+        loss_fn (callable, optional): Loss is computed ``loss = loss_fn(outputs, label)``
+        seed_layers(bool, optional): Use a different seed for each layer. Defaults to False.
+        seed_fn(type, optional): The custom seed generating function. Defaults to random seed generator.
+        base_seed (int, optional): The starting seed. Defaults to 1234.
+        partition_method (str, optional): The method upon which the layers are partitioned. Defaults to 'parameters'.
+        activation_checkpoint_interval (int, optional): The granularity activation checkpointing in terms of number of layers. 0 disables activation checkpointing.
+        activation_checkpoint_func (callable, optional): The function to use for activation checkpointing. Defaults to ``deepspeed.checkpointing.checkpoint``.
+        checkpointable_layers(list, optional): Checkpointable layers may not be checkpointed. Defaults to None which does not additional filtering.
+        debug_options(onnxruntime.training.ortmodule.DebugOptions): An instance of onnxruntime.training.ortmodule.DebugOptions or None.
+            If provided, it will be used to configure debugging options for ORTModule, This is done so we can add the name of the layer to avoid overwriting the ONNX files.
     """
 
     def __init__(
@@ -46,11 +63,6 @@ class ORTPipelineModule(PipelineModule):
     ):
         """
         Initialize the ORTPipelineModule with the option to include ONNX Runtime debug options.
-
-        :param debug_options: An instance of onnxruntime.training.ortmodule.DebugOptions or None.
-                              If provided, it will be used to configure debugging options for ORTModules.
-                              This is done so we can add the name of the layer to avoid overwriting the ONNX files.
-                              Default is None, indicating that no special debug configuration is applied.
         """
 
         self.ort_kwargs = {"debug_options": debug_options} if debug_options is not None else {}
@@ -70,6 +82,10 @@ class ORTPipelineModule(PipelineModule):
         )
 
     def _build(self):
+        """
+        This method does the same thing as PipelineModule._build() method, the only difference is that it wraps each layer with ORTModule.
+        It also handles saving ONNX models with debug options in case of exporting multiple models.
+        """
         specs = self._layer_specs
 
         for local_idx, layer in enumerate(specs[self._local_start : self._local_stop]):
