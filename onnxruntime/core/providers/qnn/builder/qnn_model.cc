@@ -349,14 +349,16 @@ Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_Graph
     // Copy graph input
     Qnn_Tensor_t* input_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphInputs;
     for (size_t i = 0; i < graph_input_num; ++i) {
-      QnnTensorWrapper tensorwrapper(input_tensors[i]);
+      QnnTensorWrapper tensorwrapper;
+      ORT_RETURN_IF_ERROR(tensorwrapper.Init(input_tensors[i]));
       input_tensor_wrappers.push_back(std::move(tensorwrapper));
     }
 
     // Copy graph output
     Qnn_Tensor_t* output_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs;
     for (size_t i = 0; i < graph_output_num; ++i) {
-      QnnTensorWrapper tensorwrapper(output_tensors[i]);
+      QnnTensorWrapper tensorwrapper;
+      ORT_RETURN_IF_ERROR(tensorwrapper.Init(output_tensors[i]));
       output_tensor_wrappers.push_back(std::move(tensorwrapper));
     }
   }

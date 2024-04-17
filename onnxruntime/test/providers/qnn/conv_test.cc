@@ -3,8 +3,10 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <optional>
 #include <string>
 #include "core/graph/graph.h"
+#include "core/graph/node_attr_utils.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 
@@ -20,9 +22,10 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
                                            const std::vector<int64_t>& strides,
                                            const std::vector<int64_t>& pads,
                                            const std::vector<int64_t>& dilations,
+                                           std::optional<int64_t> group,
                                            const std::string& auto_pad = "NOTSET") {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
-          dilations, auto_pad](ModelTestBuilder& builder) {
+          dilations, group, auto_pad](ModelTestBuilder& builder) {
     std::vector<NodeArg*> conv_inputs = {
         MakeTestInput(builder, input_def),
         MakeTestInput(builder, weights_def)};
@@ -33,19 +36,23 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
 
     auto* output = builder.MakeOutput();
 
-    Node& convNode = builder.AddNode(conv_op_type, conv_inputs, {output});
-    convNode.AddAttribute("auto_pad", auto_pad);
+    Node& conv_node = builder.AddNode(conv_op_type, conv_inputs, {output});
+    conv_node.AddAttribute("auto_pad", auto_pad);
+
+    if (group.has_value()) {
+      conv_node.AddAttribute("group", group.value());
+    }
 
     if (!pads.empty() && auto_pad == "NOTSET") {
-      convNode.AddAttribute("pads", pads);
+      conv_node.AddAttribute("pads", pads);
     }
 
     if (!strides.empty()) {
-      convNode.AddAttribute("strides", strides);
+      conv_node.AddAttribute("strides", strides);
     }
 
     if (!dilations.empty()) {
-      convNode.AddAttribute("dilations", dilations);
+      conv_node.AddAttribute("dilations", dilations);
     }
   };
 }
@@ -58,6 +65,7 @@ static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef
                              const std::vector<int64_t>& strides,
                              const std::vector<int64_t>& pads,
                              const std::vector<int64_t>& dilations,
+                             std::optional<int64_t> group,
                              const std::string& auto_pad,
                              ExpectedEPNodeAssignment expected_ep_assignment,
                              int opset = 13,
@@ -69,8 +77,9 @@ static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
-
-  RunQnnModelTest(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations, auto_pad),
+  auto build_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads,
+                                       dilations, group, auto_pad);
+  RunQnnModelTest(build_fn,
                   provider_options,
                   opset,
                   expected_ep_assignment,
@@ -86,11 +95,12 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(const std::string
                                                                const std::vector<int64_t>& strides,
                                                                const std::vector<int64_t>& pads,
                                                                const std::vector<int64_t>& dilations,
+                                                               std::optional<int64_t> group,
                                                                const std::string& auto_pad = "NOTSET",
                                                                bool use_contrib_qdq = false) {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
-          dilations, auto_pad, use_contrib_qdq](ModelTestBuilder& builder,
-                                                std::vector<QuantParams<ActivationQType>>& output_qparams) {
+          dilations, group, auto_pad, use_contrib_qdq](ModelTestBuilder& builder,
+                                                       std::vector<QuantParams<ActivationQType>>& output_qparams) {
     std::vector<NodeArg*> conv_inputs;
 
     // input -> Q/DQ ->
@@ -120,6 +130,104 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(const std::string
 
     conv_node.AddAttribute("auto_pad", auto_pad);
 
+    if (group.has_value()) {
+      conv_node.AddAttribute("group", group.value());
+    }
+
+    if (!pads.empty() && auto_pad == "NOTSET") {
+      conv_node.AddAttribute("pads", pads);
+    }
+    if (!strides.empty()) {
+      conv_node.AddAttribute("strides", strides);
+    }
+    if (!dilations.empty()) {
+      conv_node.AddAttribute("dilations", dilations);
+    }
+
+    AddQDQNodePairWithOutputAsGraphOutput<ActivationQType>(builder, conv_output, output_qparams[0].scale,
+                                                           output_qparams[0].zero_point, use_contrib_qdq);
+  };
+}
+
+template <typename ActivationQType, typename WeightQType>
+static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(const std::string& conv_op_type,
+                                                                         const TestInputDef<float>& input_def,
+                                                                         const TestInputDef<float>& weights_def,
+                                                                         const TestInputDef<float>& bias_def,
+                                                                         const std::vector<int64_t>& strides,
+                                                                         const std::vector<int64_t>& pads,
+                                                                         const std::vector<int64_t>& dilations,
+                                                                         std::optional<int64_t> group,
+                                                                         const std::string& auto_pad = "NOTSET",
+                                                                         bool use_contrib_qdq = false) {
+  return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
+          dilations, group, auto_pad, use_contrib_qdq](ModelTestBuilder& builder,
+                                                       std::vector<QuantParams<ActivationQType>>& output_qparams) {
+    std::vector<NodeArg*> conv_inputs;
+
+    // input -> Q/DQ ->
+    auto* input = MakeTestInput(builder, input_def);
+    QuantParams<ActivationQType> input_qparams = GetTestInputQuantParams<ActivationQType>(input_def);
+    auto* input_qdq = AddQDQNodePair<ActivationQType>(builder, input, input_qparams.scale, input_qparams.zero_point,
+                                                      use_contrib_qdq);
+    conv_inputs.push_back(input_qdq);
+
+    // Quantized(weights) -> DQ ->
+    ORT_ENFORCE(weights_def.IsInitializer() && weights_def.IsRawData());
+    int64_t weight_quant_axis = conv_op_type == "Conv" ? 0 : 1;  // 0 for Conv, 1 for ConvTranspose
+    std::vector<float> weight_scales;
+    std::vector<WeightQType> weight_zero_points;
+    GetTestInputQuantParamsPerChannel<WeightQType>(weights_def, weight_scales, weight_zero_points,
+                                                   static_cast<size_t>(weight_quant_axis), true);
+
+    TensorShape weights_shape = weights_def.GetTensorShape();
+    std::vector<WeightQType> quantized_weights(weights_shape.Size());
+    QuantizeValues<float, WeightQType>(weights_def.GetRawData(), quantized_weights, weights_shape,
+                                       weight_scales, weight_zero_points, weight_quant_axis);
+
+    NodeArg* weights_initializer = builder.MakeInitializer<WeightQType>(weights_def.GetShape(), quantized_weights);
+    NodeArg* weights_dq = builder.MakeIntermediate();
+    Node& weights_dq_node = builder.AddDequantizeLinearNode<WeightQType>(weights_initializer, weight_scales,
+                                                                         weight_zero_points, weights_dq,
+                                                                         nullptr, use_contrib_qdq);
+    weights_dq_node.AddAttribute("axis", weight_quant_axis);
+    conv_inputs.push_back(weights_dq);
+
+    // Quantized(bias) -> DQ ->
+    if (!bias_def.GetShape().empty()) {
+      // Bias requirement taken from python quantization tool: onnx_quantizer.py::quantize_bias_static()
+      // bias_scale = input_scale * weight_scale
+      // bias_zero_point = 0
+      ORT_ENFORCE(bias_def.IsInitializer() && bias_def.IsRawData());
+      std::vector<float> bias_scales = weight_scales;
+      std::vector<int32_t> bias_zero_points(weight_scales.size(), 0);
+      for (size_t i = 0; i < bias_scales.size(); i++) {
+        bias_scales[i] *= input_qparams.scale;
+      }
+
+      TensorShape bias_shape = bias_def.GetTensorShape();
+      std::vector<int32_t> quantized_biases(bias_shape.Size());
+      QuantizeValues<float, int32_t>(bias_def.GetRawData(), quantized_biases, bias_shape, bias_scales,
+                                     bias_zero_points, 0);
+
+      NodeArg* bias_initializer = builder.MakeInitializer<int32_t>(bias_def.GetShape(), quantized_biases);
+      NodeArg* bias_dq = builder.MakeIntermediate();
+      Node& bias_dq_node = builder.AddDequantizeLinearNode<int32_t>(bias_initializer, bias_scales, bias_zero_points,
+                                                                    bias_dq, nullptr, use_contrib_qdq);
+
+      bias_dq_node.AddAttribute("axis", static_cast<int64_t>(0));
+      conv_inputs.push_back(bias_dq);
+    }
+
+    auto* conv_output = builder.MakeIntermediate();
+    Node& conv_node = builder.AddNode(conv_op_type, conv_inputs, {conv_output});
+
+    conv_node.AddAttribute("auto_pad", auto_pad);
+
+    if (group.has_value()) {
+      conv_node.AddAttribute("group", group.value());
+    }
+
     if (!pads.empty() && auto_pad == "NOTSET") {
       conv_node.AddAttribute("pads", pads);
     }
@@ -144,6 +252,7 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              const std::vector<int64_t>& strides,
                              const std::vector<int64_t>& pads,
                              const std::vector<int64_t>& dilations,
+                             std::optional<int64_t> group,
                              const std::string& auto_pad,
                              ExpectedEPNodeAssignment expected_ep_assignment,
                              bool use_contrib_qdq = false,
@@ -158,14 +267,45 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
 #endif
 
   TestQDQModelAccuracy(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
-                                            auto_pad),
+                                            group, auto_pad),
                        BuildQDQConvTestCase<ActivationQType, WeightQType>(conv_op_type, input_def, weights_def,
                                                                           bias_def, strides, pads, dilations,
-                                                                          auto_pad, use_contrib_qdq),
+                                                                          group, auto_pad, use_contrib_qdq),
                        provider_options,
                        opset,
                        expected_ep_assignment,
                        tolerance);
+}
+
+// Runs a QDQ Conv model (per-axis quantization on weight/bias) on the QNN HTP backend.
+// Checks the graph node assignment, and that inference outputs for QNN EP and CPU EP match.
+template <typename ActivationQType, typename WeightQType>
+static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const TestInputDef<float>& input_def,
+                                       const TestInputDef<float>& weights_def,
+                                       const TestInputDef<float>& bias_def,
+                                       const std::vector<int64_t>& strides,
+                                       const std::vector<int64_t>& pads,
+                                       const std::vector<int64_t>& dilations,
+                                       std::optional<int64_t> group,
+                                       const std::string& auto_pad,
+                                       ExpectedEPNodeAssignment expected_ep_assignment,
+                                       bool use_contrib_qdq = false,
+                                       int opset = 13,
+                                       QDQTolerance tolerance = QDQTolerance()) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto f32_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
+                                     group, auto_pad);
+  auto qdq_fn = BuildQDQPerChannelConvTestCase<ActivationQType, WeightQType>(conv_op_type, input_def, weights_def,
+                                                                             bias_def, strides, pads, dilations,
+                                                                             group, auto_pad, use_contrib_qdq);
+  TestQDQModelAccuracy(f32_fn, qdq_fn, provider_options, opset, expected_ep_assignment, tolerance);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -179,6 +319,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_Convf32_dynamic_bias) {
                    {1, 1},                                                 // default strides
                    {0, 0, 0, 0},                                           // default pads
                    {1, 1},                                                 // default dilations
+                   1,                                                      // default group
                    "NOTSET",                                               // No auto-padding
                    ExpectedEPNodeAssignment::All);
 }
@@ -193,6 +334,7 @@ TEST_F(QnnCPUBackendTests, Convf32_bias_initializer) {
                    {1, 1},                                                 // default strides
                    {0, 0, 0, 0},                                           // default pads
                    {1, 1},                                                 // default dilations
+                   1,                                                      // default group
                    "NOTSET",                                               // No auto-padding
                    ExpectedEPNodeAssignment::All);
 }
@@ -206,6 +348,7 @@ TEST_F(QnnCPUBackendTests, Convf32_AutoPadUpper) {
                    {1, 1},                                                 // strides
                    {},                                                     // pads
                    {1, 1},                                                 // dilations
+                   1,                                                      // default group
                    "SAME_UPPER",                                           // auto_pad
                    ExpectedEPNodeAssignment::All);
 }
@@ -219,6 +362,7 @@ TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadUpper) {
                    {1, 1},                                                 // strides
                    {},                                                     // pads
                    {1, 1},                                                 // dilations
+                   1,                                                      // default group
                    "SAME_UPPER",                                           // auto_pad
                    ExpectedEPNodeAssignment::All);
 }
@@ -232,6 +376,7 @@ TEST_F(QnnCPUBackendTests, Convf32_AutoPadLower) {
                    {1, 1},                                                 // strides
                    {},                                                     // pads
                    {1, 1},                                                 // dilations
+                   1,                                                      // default group
                    "SAME_LOWER",                                           // auto_pad
                    ExpectedEPNodeAssignment::All);
 }
@@ -245,6 +390,7 @@ TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
                    {1, 1},                                                 // strides
                    {},                                                     // pads
                    {1, 1},                                                 // dilations
+                   1,                                                      // default group
                    "SAME_LOWER",                                           // auto_pad
                    ExpectedEPNodeAssignment::All);
 }
@@ -258,6 +404,7 @@ TEST_F(QnnCPUBackendTests, Convf32_large_input1_pad_bias_initializer) {
                    {1, 1},
                    {1, 1, 1, 1},
                    {1, 1},
+                   1,  // default group
                    "NOTSET",
                    ExpectedEPNodeAssignment::All,
                    13,
@@ -280,6 +427,7 @@ TEST_F(QnnCPUBackendTests, Convf32_large_input2_nopad_bias_initializer) {
                    {1, 1},
                    {0, 0, 0, 0},
                    {1, 1},
+                   1,  // default group
                    "NOTSET",
                    ExpectedEPNodeAssignment::All,
                    13,  // opset
@@ -296,6 +444,7 @@ TEST_F(QnnCPUBackendTests, Conv1Df32_StaticWeights_DefaultBias) {
                    {1},                                                             // Strides
                    {0, 0},                                                          // Pads
                    {1},                                                             // Dilations
+                   1,                                                               // default group
                    "NOTSET",
                    ExpectedEPNodeAssignment::All);
 }
@@ -310,6 +459,7 @@ TEST_F(QnnCPUBackendTests, Conv1Df32_DynamicWeights_DefaultBias) {
                    {1},                                                              // Strides
                    {0, 0},                                                           // Pads
                    {1},                                                              // Dilations
+                   1,                                                                // default group
                    "NOTSET",
                    ExpectedEPNodeAssignment::All);
 }
@@ -324,6 +474,7 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_StaticWeights_DefaultBias) {
                    {1},                                                             // Strides
                    {0, 0},                                                          // Pads
                    {1},                                                             // Dilations
+                   1,                                                               // default group
                    "NOTSET",
                    ExpectedEPNodeAssignment::All);
 }
@@ -338,6 +489,7 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
                    {1},                                                              // Strides
                    {0, 0},                                                           // Pads
                    {1},                                                              // Dilations
+                   1,                                                                // default group
                    "NOTSET",
                    ExpectedEPNodeAssignment::All);
 }
@@ -363,7 +515,8 @@ TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
   auto BuildConvMulGraph = [](ModelTestBuilder& builder) {
     // DQ node for Conv input
     auto* dq_i_output = builder.MakeIntermediate();
-    auto* conv_dq_input = builder.MakeInitializer<uint8_t>({1, 32, 16, 113}, static_cast<uint8_t>(0), static_cast<uint8_t>(127));
+    auto* conv_dq_input = builder.MakeInitializer<uint8_t>({1, 32, 16, 113}, static_cast<uint8_t>(0),
+                                                           static_cast<uint8_t>(127));
 
     // DQ node for Conv bias
     auto* dq_bias_output = builder.MakeIntermediate();
@@ -375,7 +528,8 @@ TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
     auto* mul_input1 = builder.MakeInput<uint8_t>({16, 32, 1, 1}, static_cast<uint8_t>(0), static_cast<uint8_t>(127));
 
     auto* mul_dq2_output = builder.MakeIntermediate();
-    auto* mul_input2 = builder.MakeInitializer<uint8_t>({16, 1, 1, 1}, static_cast<uint8_t>(0), static_cast<uint8_t>(127));
+    auto* mul_input2 = builder.MakeInitializer<uint8_t>({16, 1, 1, 1}, static_cast<uint8_t>(0),
+                                                        static_cast<uint8_t>(127));
     builder.AddDequantizeLinearNode<uint8_t>(mul_input1, .03f, 0, mul_dq1_output);
     builder.AddDequantizeLinearNode<uint8_t>(mul_input2, .03f, 0, mul_dq2_output);
 
@@ -420,12 +574,177 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
                                      {1, 1},                                                  // Strides
                                      {0, 0, 0, 0},                                            // Pads
                                      {1, 1},                                                  // Dilations
+                                     1,                                                       // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
                                      13,     // opset
                                      // Need tolerance of 0.413% of output range after QNN SDK 2.17
                                      QDQTolerance(0.00413f));
+}
+
+// Test per-channel QDQ Conv. in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
+TEST_F(QnnHTPBackendTests, ConvU8S8S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
+                                              input_def,
+                                              weight_def,
+                                              bias_def,
+                                              {1, 1},        // Strides
+                                              {0, 0, 0, 0},  // Pads
+                                              {1, 1},        // Dilations
+                                              1,             // default group
+                                              "NOTSET",
+                                              ExpectedEPNodeAssignment::All,
+                                              false,  // use_qdq_contrib_ops
+                                              13);    // opset
+}
+
+// Test per-channel QDQ Conv that maps to QNN's DepthwiseConv2d (input_chans == output_chans == group).
+// in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
+TEST_F(QnnHTPBackendTests, ConvDepthwiseU8S8S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};   // (N, C, H, W)
+  std::vector<int64_t> weight_shape = {2, 1, 2, 2};  // (C, M/group, kH, kW)
+  std::vector<int64_t> bias_shape = {2};             // (M)
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
+                                              input_def,
+                                              weight_def,
+                                              bias_def,
+                                              {1, 1},        // Strides
+                                              {0, 0, 0, 0},  // Pads
+                                              {1, 1},        // Dilations
+                                              2,             // group
+                                              "NOTSET",
+                                              ExpectedEPNodeAssignment::All,
+                                              false,  // use_qdq_contrib_ops
+                                              13);    // opset
+}
+
+// Test per-channel QDQ ConvTranspose. in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
+TEST_F(QnnHTPBackendTests, ConvTransposeU8S8S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {2, 3, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint8_t, int8_t>("ConvTranspose",
+                                              input_def,
+                                              weight_def,
+                                              bias_def,
+                                              {1, 1},        // Strides
+                                              {0, 0, 0, 0},  // Pads
+                                              {1, 1},        // Dilations
+                                              1,             // default group
+                                              "NOTSET",
+                                              ExpectedEPNodeAssignment::All,
+                                              false,  // use_qdq_contrib_ops
+                                              13);    // opset
+}
+
+// Test per-channel QDQ Conv. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
+TEST_F(QnnHTPBackendTests, ConvU16S8S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint16_t, int8_t>("Conv",
+                                               input_def,
+                                               weight_def,
+                                               bias_def,
+                                               {1, 1},        // Strides
+                                               {0, 0, 0, 0},  // Pads
+                                               {1, 1},        // Dilations
+                                               1,             // default group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               true,  // use_qdq_contrib_ops
+                                               13);   // opset
+}
+
+// Test per-channel QDQ ConvTranspose. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
+TEST_F(QnnHTPBackendTests, ConvTransposeU16S8S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {2, 3, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint16_t, int8_t>("ConvTranspose",
+                                               input_def,
+                                               weight_def,
+                                               bias_def,
+                                               {1, 1},        // Strides
+                                               {0, 0, 0, 0},  // Pads
+                                               {1, 1},        // Dilations
+                                               1,             // default group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               true,  // use_qdq_contrib_ops
+                                               13);   // opset
+}
+
+// Test per-channel QDQ Conv that maps to QNN's DepthwiseConv2d (input_chans == output_chans == group).
+// in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
+TEST_F(QnnHTPBackendTests, ConvDepthwiseU16S8S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};   // (N, C, H, W)
+  std::vector<int64_t> weight_shape = {2, 1, 2, 2};  // (C, M/group, kH, kW)
+  std::vector<int64_t> bias_shape = {2};             // (M)
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint16_t, int8_t>("Conv",
+                                               input_def,
+                                               weight_def,
+                                               bias_def,
+                                               {1, 1},        // Strides
+                                               {0, 0, 0, 0},  // Pads
+                                               {1, 1},        // Dilations
+                                               2,             // group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               true,  // use_qdq_contrib_ops
+                                               13);   // opset
 }
 
 // Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's Conv2d)
@@ -444,6 +763,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_DynamicBias) {
                                       {1, 1},                                      // Strides
                                       {0, 0, 0, 0},                                // Pads
                                       {1, 1},                                      // Dilations
+                                      1,                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true);  // Use com.microsoft QDQ ops for 16-bit
@@ -461,6 +781,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_DynamicBias) {
                                       {1, 1},                                      // Strides
                                       {0, 0, 0, 0},                                // Pads
                                       {1, 1},                                      // Dilations
+                                      1,                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true);  // Use com.microsoft QDQ ops for 16-bit
@@ -482,6 +803,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_NoBias) {
                                       {1, 1},                                      // Strides
                                       {0, 0, 0, 0},                                // Pads
                                       {1, 1},                                      // Dilations
+                                      1,                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true);  // Use com.microsoft QDQ ops for 16-bit
@@ -499,6 +821,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_NoBias) {
                                       {1, 1},                                                 // Strides
                                       {0, 0, 0, 0},                                           // Pads
                                       {1, 1},                                                 // Dilations
+                                      1,                                                      // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true);  // Use com.microsoft QDQ ops for 16-bit
@@ -521,6 +844,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
                                       {1, 1},                                                // Strides
                                       {0, 0, 0, 0},                                          // Pads
                                       {1, 1},                                                // Dilations
+                                      1,                                                     // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -543,6 +867,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
                                       {1, 1},                                                // Strides
                                       {0, 0, 0, 0},                                          // Pads
                                       {1, 1},                                                // Dilations
+                                      1,                                                     // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -566,6 +891,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
                                       {1, 1},                                                // Strides
                                       {0, 0, 0, 0},                                          // Pads
                                       {1, 1},                                                // Dilations
+                                      1,                                                     // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -588,6 +914,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
                                       {1, 1},                                                // Strides
                                       {0, 0, 0, 0},                                          // Pads
                                       {1, 1},                                                // Dilations
+                                      1,                                                     // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -610,6 +937,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
                                       {1, 1},                                                // Strides
                                       {0, 0, 0, 0},                                          // Pads
                                       {1, 1},                                                // Dilations
+                                      1,                                                     // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -633,6 +961,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
                                       {1, 1},                                                // Strides
                                       {0, 0, 0, 0},                                          // Pads
                                       {1, 1},                                                // Dilations
+                                      1,                                                     // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -649,6 +978,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_DynamicWeight_NoBias) {
                                      {1, 1},                                                     // Strides
                                      {0, 0, 0, 0},                                               // Pads
                                      {1, 1},                                                     // Dilations
+                                     1,                                                          // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All);
 }
@@ -663,6 +993,7 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_DynamicWeight_NoBias) {
                                      {1, 1},                                                     // Strides
                                      {0, 0, 0, 0},                                               // Pads
                                      {1, 1},                                                     // Dilations
+                                     1,                                                          // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All);
 }
@@ -677,6 +1008,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_initializer) {
                                      {1, 1},                                                  // Strides
                                      {0, 0, 0, 0},                                            // Pads
                                      {1, 1},                                                  // Dilations
+                                     1,                                                       // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
@@ -695,6 +1027,7 @@ TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_bias_initializer) {
                                      {1},                                                         // strides
                                      {0, 0},                                                      // pads
                                      {1},                                                         // dilations
+                                     1,                                                           // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All);
 }
@@ -709,6 +1042,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_bias_initializer) {
                                      {1},                                                         // strides
                                      {0, 0},                                                      // pads
                                      {1},                                                         // dilations
+                                     1,                                                           // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All);
 }
@@ -722,6 +1056,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadUpper) {
                                      {1, 1},                                               // strides
                                      {},                                                   // pads
                                      {1, 1},                                               // dilations
+                                     1,                                                    // default group
                                      "SAME_UPPER",                                         // auto_pad
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_contrib_qdq
@@ -738,6 +1073,7 @@ TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadUpper) {
                                      {1},                                                         // strides
                                      {0},                                                         // pads
                                      {1},                                                         // dilations
+                                     1,                                                           // default group
                                      "SAME_UPPER",                                                // auto_pad
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_contrib_qdq
@@ -754,6 +1090,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadUpper) {
                                      {1},                                                         // strides
                                      {0},                                                         // pads
                                      {1},                                                         // dilations
+                                     1,                                                           // default group
                                      "SAME_UPPER",                                                // auto_pad
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_contrib_qdq
@@ -769,6 +1106,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadLower) {
                                      {1, 1},                                               // strides
                                      {},                                                   // pads
                                      {1, 1},                                               // dilations
+                                     1,                                                    // default group
                                      "SAME_LOWER",                                         // auto_pad
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_contrib_qdq
@@ -784,6 +1122,7 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_AutoPadLower) {
                                      {1, 1},                                               // strides
                                      {},                                                   // pads
                                      {1, 1},                                               // dilations
+                                     1,                                                    // default group
                                      "SAME_LOWER",                                         // auto_pad
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_contrib_qdq
@@ -800,6 +1139,7 @@ TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadLower) {
                                      {1},                                                         // strides
                                      {0},                                                         // pads
                                      {1},                                                         // dilations
+                                     1,                                                           // default group
                                      "SAME_LOWER",                                                // auto_pad
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_contrib_qdq
@@ -816,6 +1156,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadLower) {
                                      {1},                                                         // strides
                                      {0},                                                         // pads
                                      {1},                                                         // dilations
+                                     1,                                                           // default group
                                      "SAME_LOWER",                                                // auto_pad
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_contrib_qdq
@@ -830,6 +1171,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input1_padding_bias_initializer) {
                                      {1, 1},
                                      {1, 1, 1, 1},
                                      {1, 1},
+                                     1,  // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
@@ -852,6 +1194,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
                                      {1, 1},
                                      {0, 0, 0, 0},
                                      {1, 1},
+                                     1,  // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,
@@ -867,6 +1210,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {
                                      {2, 2},                                                    // strides
                                      {3, 3, 3, 3},                                              // pads
                                      {1, 1},                                                    // dilations
+                                     1,                                                         // default group
                                      "NOTSET",                                                  // auto_pad
                                      ExpectedEPNodeAssignment::All);
 }
