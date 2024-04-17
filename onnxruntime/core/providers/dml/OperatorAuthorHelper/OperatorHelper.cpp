@@ -2875,8 +2875,8 @@ namespace OperatorHelper
 
     std::vector<EdgeShapes> MatMulNBitsHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
-        auto inputShape0 = shapeInfo.GetInputTensorShape(0);
-        onnxruntime::TensorShape aShape(std::vector<int64_t>(inputShape0.begin(), inputShape0.end()));
+        auto inputShape = shapeInfo.GetInputTensorShape(0);
+        onnxruntime::TensorShape aShape(std::vector<int64_t>(inputShape.begin(), inputShape.end()));
         onnxruntime::TensorShape bShape({m_bRowCount, m_bColCount});
 
         onnxruntime::MatMulComputeHelper helper;
@@ -2887,11 +2887,7 @@ namespace OperatorHelper
 
         std::vector<uint32_t> uint32OutputShape;
         uint32OutputShape.reserve(outputShape.size());
-
-        for (int64_t dim : outputShape)
-        {
-            uint32OutputShape.push_back(gsl::narrow_cast<uint32_t>(dim));
-        }
+        std::transform(outputShape.begin(), outputShape.end(), std::back_inserter(uint32OutputShape), [](int64_t dimSize){ return static_cast<uint32_t>(dimSize); });
 
         return { EdgeShapes(uint32OutputShape) };
     }

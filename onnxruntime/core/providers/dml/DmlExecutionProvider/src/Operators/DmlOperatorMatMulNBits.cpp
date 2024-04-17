@@ -21,12 +21,15 @@ public:
         const auto bitCount = kernelInfo.GetAttribute<int64_t>(AttrName::Bits);
 
         MLOperatorTensorDataType mlDataType = kernelInfo.GetInputEdgeDescription(0).tensorDataType;
+
+        ML_CHECK_VALID_ARGUMENT(bitCount == 4 || bitCount == 8);
         const DML_TENSOR_DATA_TYPE quantizedDataType = bitCount == 4 ? DML_TENSOR_DATA_TYPE_UINT4 : DML_TENSOR_DATA_TYPE_UINT8;
 
         std::vector<DimensionType> aShape = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
-        std::vector<DimensionType> bBroadcastedShape = aShape;
+        ML_CHECK_VALID_ARGUMENT(aShape.size() >= 2);
 
         // The quantized input to MatMulNBits always comes as uint8, but the real shape is provided through the N and K attributes
+        std::vector<DimensionType> bBroadcastedShape = aShape;
         bBroadcastedShape[bBroadcastedShape.size() - 2] = bRowCount;
         bBroadcastedShape[bBroadcastedShape.size() - 1] = bColCount;
 
@@ -183,6 +186,8 @@ void CALLBACK QueryMatMulNBits(IMLOperatorSupportQueryContextPrivate* context, /
     // as part of the quantization process
     const uint32_t bColCount = gsl::narrow_cast<uint32_t>(attributes.GetAttribute<int64_t>(AttrName::UppercaseK));
     const auto blockSize = attributes.GetAttribute<int64_t>(AttrName::MatMulNBitsBlockSize);
+    ML_CHECK_VALID_ARGUMENT(blockSize > 0);
+
     if (bColCount % blockSize != 0)
     {
         return;
