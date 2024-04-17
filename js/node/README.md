@@ -18,13 +18,11 @@ ONNXRuntime works on Node.js v16.x+ (recommend v18.x+) or Electron v15.x+ (recom
 
 The following table lists the supported versions of ONNX Runtime Node.js binding provided with pre-built binaries.
 
-
-| EPs/Platforms | Windows x64 | Windows arm64 | Linux x64 | Linux arm64 | MacOS x64 | MacOS arm64 |
-|--------------|--------|---------|--------|------|---|----|
-| CPU  |   ✔️    |    ✔️    |   ✔️   |  ✔️  |  ✔️  |  ✔️  |
-| DirectML  |   ✔️    |    ✔️    |  ❌  |  ❌  |  ❌  |  ❌  |
-| CUDA     |  ❌  |  ❌  |  ✔️<sup>\[1]</sup>  | ❌ | ❌ |  ❌  |
-
+| EPs/Platforms | Windows x64 | Windows arm64 | Linux x64         | Linux arm64 | MacOS x64 | MacOS arm64 |
+| ------------- | ----------- | ------------- | ----------------- | ----------- | --------- | ----------- |
+| CPU           | ✔️          | ✔️            | ✔️                | ✔️          | ✔️        | ✔️          |
+| DirectML      | ✔️          | ✔️            | ❌                | ❌          | ❌        | ❌          |
+| CUDA          | ❌          | ❌            | ✔️<sup>\[1]</sup> | ❌          | ❌        | ❌          |
 
 - \[1]: CUDA v11.8.
 
