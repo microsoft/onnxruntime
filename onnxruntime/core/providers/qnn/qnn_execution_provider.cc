@@ -192,8 +192,12 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(ERROR) << "No backend path provided.";
   }
 
+  std::string profiling_file_path;
   static const std::string PROFILING_LEVEL = "profiling_level";
   qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
+  // separate out the profiling level for ETW in case it gets disabled later when we extract the events
+  // set to invalid to indicate that ETW is no enabled when we setup QNN
+  qnn::ProfilingLevel profiling_level_etw = qnn::ProfilingLevel::INVALID;
   const Env& env = Env::Default();
   auto& provider = env.GetTelemetryProvider();
   if (provider.IsEnabled()) {
@@ -203,22 +207,30 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       if (level != 0) {
         if (level == 5) {
           LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
-          ParseProfilingLevel("basic", profiling_level);
+          profiling_level_etw = qnn::ProfilingLevel::BASIC;
         } else if (level < 5) {
           LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
                              << static_cast<int>(level);
+          profiling_level_etw = qnn::ProfilingLevel::OFF;
         } else {
           LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
-          ParseProfilingLevel("detailed", profiling_level);
+          profiling_level_etw = qnn::ProfilingLevel::DETAILED;
         }
       }
     }
-  } else {
-    auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
-    if (profiling_level_pos != provider_options_map.end()) {
-      ParseProfilingLevel(profiling_level_pos->second, profiling_level);
-    }
   }
+
+  // In case ETW gets disabled later
+  auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
+  if (profiling_level_pos != provider_options_map.end()) {
+    ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+  }
+  static const std::string PROFILING_FILE = "profiling_file_path";
+  auto profiling_file_pos = provider_options_map.find(PROFILING_FILE);
+  if (profiling_file_pos != provider_options_map.end()) {
+    profiling_file_path = profiling_file_pos->second;
+  }
+  LOGS_DEFAULT(VERBOSE) << "Profiling file path: " << profiling_file_path;
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
   auto latency_pos = provider_options_map.find(RPC_CONTROL_LANTENCY);
@@ -315,7 +327,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
+      profiling_level_etw,
       profiling_level,
+      std::move(profiling_file_path),
       context_priority,
       std::move(qnn_saver_path),
       device_id_,
