@@ -1,4 +1,5 @@
 <svg
+	class="w-full"
 	stroke="currentColor"
 	width="338.4"
 	height="194.4"

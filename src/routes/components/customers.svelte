@@ -177,7 +177,7 @@
 </script>
 
 <div class="lg:my-5">
-	<h1 class="text-3xl my-5 text-center">Trusted By</h1>
+	<h2 class="text-3xl my-5 text-center">Trusted By</h2>
 	<div class="divider" />
 	<InfiniteMovingCards
 		items={testimonials.sort(() => Math.random() - 0.5)}

@@ -1626,45 +1626,6 @@
 			event.currentTarget.className = event.currentTarget.className.replace(' focus', '');
 		}
 
-		jq(document).ready(function () {
-			jq(".tbl_tablist li[role='tab']").click(function () {
-				jq(".tbl_tablist li[role='tab']:not(this)").attr('aria-selected', 'false');
-				jq(this).attr('aria-selected', 'true');
-				var tabpanid = jq(this).attr('aria-controls');
-				var tabpan = jq('#' + tabpanid);
-				jq("div[role='tabpanel']:not(tabpan)").attr('aria-hidden', 'true');
-				jq("div[role='tabpanel']:not(tabpan)").addClass('hidden');
-
-				tabpan.removeClass('hidden');
-				tabpan.attr('aria-hidden', 'false');
-			});
-
-			jq(".tbl_tablist li[role='tab']").keydown(function (ev) {
-				if (ev.which == 13) {
-					jq(this).click();
-				}
-			});
-
-			//This adds keyboard function that pressing an arrow left or arrow right from the tabs toggel the tabs.
-			jq(".tbl_tablist li[role='tab']").keydown(function (ev) {
-				if (ev.which == 39 || ev.which == 37) {
-					var selected = jq(this).attr('aria-selected');
-					if (selected == 'true') {
-						jq("li[aria-selected='false']").attr('aria-selected', 'true').focus();
-						jq(this).attr('aria-selected', 'false');
-
-						var tabpanid = jq("li[aria-selected='true']").attr('aria-controls');
-						var tabpan = jq('#' + tabpanid);
-						jq("div[role='tabpanel']:not(tabpan)").attr('aria-hidden', 'true');
-						jq("div[role='tabpanel']:not(tabpan)").addClass('hidden');
-
-						tabpan.attr('aria-hidden', 'false');
-						tabpan.removeClass('hidden');
-					}
-				}
-			});
-		});
-
 		// Modal Extension
 		// ===============================
 
@@ -1835,7 +1796,7 @@
 		Select the configuration you want to use and run the corresponding installation script.
 	</p>
 	<div>
-		<div class="tabs tabs-bordered">
+		<div class="tabs tabs-bordered" role="tablist">
 			{#each tabs as tab, index}
 				<li
 					class="nav-item tab tab-lg"
@@ -1844,7 +1805,6 @@
 					on:keypress={() => (activeTab = index)}
 					id={index == 0 ? 'OI_tab' : 'OT_tab'}
 					data-toggle="pill"
-					aria-controls="panel{index}"
 					tabindex={0}
 					role="tab"
 				>

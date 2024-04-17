@@ -304,6 +304,14 @@
 	let blogsCommunity = [
 		{
 			title:
+				'Deploying a Production-Ready RAG Server: A Comprehensive Guide with LlamaIndex',
+			date: 'March 27, 2024',
+			link: 'https://python.plainenglish.io/deploying-a-production-ready-rag-server-a-comprehensive-guide-with-llamaindex-dbe57cc960df',
+			blurb:
+				'Leveraging ONNX Runtime to use FastEmbed for a serverless deployment of a RAG server with LlamaIndex.'
+		},
+		{
+			title:
 				'Efficient image generation with Stable Diffusion models and ONNX Runtime using AMD GPUs',
 			date: 'February 23, 2024',
 			link: 'https://rocm.blogs.amd.com/artificial-intelligence/stable-diffusion-onnx-runtime/README.html',
@@ -354,6 +362,7 @@
 				<FeaturedBlog
 					title={blog.title}
 					description={blog.blurb}
+					imgalt={blog.imgalt}
 					date={blog.date}
 					link={blog.link}
 					image={blog.image}

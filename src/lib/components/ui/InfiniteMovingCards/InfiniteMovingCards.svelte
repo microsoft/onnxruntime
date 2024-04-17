@@ -69,12 +69,12 @@
 		)}
 	>
 		{#each items as item, idx (item.alt)}
+		<li class="bg-slate-300 m-auto relative h-28 w-[200px] max-w-full flex-shrink-0 hover:scale-105 transition duration-200 rounded-md border border-2 border-secondary md:w-[200px]"> 
 			<a
-				href={item.href}
-				class="bg-slate-300 m-auto relative h-28 w-[200px] max-w-full flex-shrink-0 hover:scale-105 transition duration-200 rounded-md border border-2 border-secondary md:w-[200px]"
-			>
+				href={item.href}>
 				<img class="h-28 p-2 m-auto" src={item.src} alt={item.alt} />
 			</a>
+		</li>
 		{/each}
 	</ul>
 </div>

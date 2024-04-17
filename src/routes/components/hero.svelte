@@ -53,7 +53,7 @@
 </script>
 
 {#if copied}
-	<div class="toast toast-top top-14 z-50">
+	<div class="toast toast-top top-14 z-50" role="alert">
 		<div class="alert alert-info">
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
@@ -77,22 +77,22 @@
 		</div>
 	</div>
 {/if}
-<div class="hero bg-gradient-to-b from-primary">
+<div role="main" class="hero bg-gradient-to-b from-primary">
 	<div class="hero-content md:my-20">
 		<div class="grid grid-cols-2 md:grid-cols-5 gap-4">
 			<div class="col-span-4 self-center md:mr-20">
-				<h1 class="text-5xl">
+				<h1 class="lg:text-5xl text-4xl">
 					Accelerated
 					{#key activeWord}
 						<span
-							class="text-5xl"
+							class="lg:text-5xl text-4xl"
 							in:fly={{ delay: 0, duration: 300, x: 200, y: 0, opacity: 1, easing: quintOut }}
 						>
 							{activeWord}
 						</span>
 					{/key}
-				</h1>
-				<h1 class="text-5xl">Machine Learning</h1>
+					<br/>
+					Machine Learning</h1>
 				<p class="py-3">
 					Production-grade AI engine to speed up training and inferencing in your existing
 					technology stack.
@@ -107,7 +107,7 @@
 							aria-label="copy python code"
 							on:click={() => copy(pythonCode)}
 							class="col-span-1 btn rounded-none h-full *:hover:scale-125 *:hover:transition *:hover:duration-200"
-							><span class="w-6 h-6"><FaRegClipboard /></span></button
+							><span class="min-w-6 h-6"><FaRegClipboard /></span></button
 						>
 					</div>
 					<div class="grid grid-cols-6 border-solid border-2 border-secondary">
@@ -118,7 +118,7 @@
 							aria-label="copy nuget code"
 							on:click={() => copy(nugetCode)}
 							class="col-span-1 btn rounded-none h-full *:hover:scale-125 *:hover:transition *:hover:duration-200"
-							><span class="w-6 h-6"><FaRegClipboard /></span></button
+							><span class="min-w-6 h-6"><FaRegClipboard /></span></button
 						>
 					</div>
 				</div>
