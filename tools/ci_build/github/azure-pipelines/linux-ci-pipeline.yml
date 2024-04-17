@@ -48,10 +48,6 @@ stages:
         TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       pool: onnxruntime-Ubuntu2204-AMD-CPU
       steps:
-      - task: UseDotNet@2
-        inputs:
-          version: '7.x'
-
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
         condition: always()
@@ -131,10 +127,6 @@ stages:
         TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       pool: onnxruntime-Ubuntu2204-AMD-CPU
       steps:
-      - task: UseDotNet@2
-        inputs:
-          version: '7.x'
-
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
         condition: always()
@@ -252,10 +244,6 @@ stages:
       - script: |
           ln -s /data/models $(Build.BinariesDirectory)/models
         displayName: link model dir
-
-      - task: UseDotNet@2
-        inputs:
-          version: '7.x'
 
       - bash: |
           mkdir -p $HOME/.onnx
