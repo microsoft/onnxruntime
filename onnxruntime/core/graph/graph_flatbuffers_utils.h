@@ -125,11 +125,13 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
 /// @param[in] ort_tensor ORT tensor to serialize to a flatbuffer tensor
 /// @param[in] builder flatbuffer builder to use for creating the flatbuffer tensor
 /// @param[out] fbs_tensor flatbuffer tensor to serialize the ORT tensor to
+/// @param[out] external_data_writer Optional delegate to write the tensor data to an external file
 /// @return Status indicating success or providing error information
 Status SaveOrtTensorOrtFormat(
     const std::string& tensor_name, const onnxruntime::Tensor& ort_tensor,
     flatbuffers::FlatBufferBuilder& builder,
-    flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
+    flatbuffers::Offset<fbs::Tensor>& fbs_tensor,
+    ExternalDataWriter external_data_writer = nullptr);
 
 /// @brief Load an ORT tensor from a flatbuffer tensor
 /// @param[in] fbs_tensor flatbuffer tensor to load the ORT tensor from

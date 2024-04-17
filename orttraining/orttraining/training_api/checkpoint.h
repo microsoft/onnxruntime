@@ -30,6 +30,7 @@ struct CheckpointState {
   ModuleCheckpointState module_checkpoint_state;
   OptimizerCheckpointState optimizer_checkpoint_state;
   PropertyBag property_bag;
+  boolean has_external_data;
 };
 
 /**
@@ -50,11 +51,14 @@ Status SaveCheckpoint(const CheckpointState& state, const PathString& checkpoint
  * @param non_trainable_tensor_protos non-trainable parameters in TensorProto format.
  * @param checkpoint_path file where checkpoint is saved.
  * @param nominal_checkpoint flag indicating whether to save the complete checkpoint or the nominal checkpoint.
+ * @param external_data_threshold optional threshold in bytes for external data. If the size of the data of the
+ *                                TensorProtos exceeds this threshold, then we save the data in an external data file.
  * @return Status
  */
 Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
                       gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
-                      const PathString& checkpoint_path, const bool nominal_checkpoint);
+                      const PathString& checkpoint_path, const bool nominal_checkpoint,
+                      const int32_t external_data_threshold = 1800);
 #endif
 
 /**

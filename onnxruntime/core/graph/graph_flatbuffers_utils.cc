@@ -461,22 +461,32 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
 Status SaveOrtTensorOrtFormat(
     const std::string& tensor_name, const onnxruntime::Tensor& ort_tensor,
     flatbuffers::FlatBufferBuilder& builder,
-    flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
+    flatbuffers::Offset<fbs::Tensor>& fbs_tensor,
+    ExternalDataWriter external_data_writer) {
   ORT_RETURN_IF(ort_tensor.IsDataTypeString(),
                 "TensorProto_DataType_STRING is not supported while saving a tensor to ORT format.");
 
   const auto fbs_tensor_name = builder.CreateString(tensor_name);
   const auto fbs_tensor_dims = SaveDims(builder, ort_tensor.Shape().GetDims());
-  flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(
-      static_cast<const uint8_t*>(ort_tensor.DataRaw()),
-      ort_tensor.SizeInBytes());
 
   fbs::TensorBuilder tb(builder);
   tb.add_name(fbs_tensor_name);
   tb.add_doc_string(0);
   tb.add_dims(fbs_tensor_dims);
   tb.add_data_type(static_cast<fbs::TensorDataType>(ort_tensor.GetElementType()));
-  tb.add_raw_data(raw_data);
+  if (external_data_writer) {
+    uint64_t offset = 0;
+    gsl::span<const uint8_t> ort_tensor_data_span(static_cast<const uint8_t*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
+    ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), ort_tensor_data_span, offset));
+    int64_t external_data_offset = onnxruntime::narrow<int64_t>(offset);
+    tb.add_external_data_offset(external_data_offset);
+  }
+  else {
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(
+      static_cast<const uint8_t*>(ort_tensor.DataRaw()),
+      ort_tensor.SizeInBytes());
+    tb.add_raw_data(raw_data);
+  }
   fbs_tensor = tb.Finish();
   return Status::OK();
 }
