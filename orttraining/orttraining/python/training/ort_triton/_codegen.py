@@ -322,7 +322,7 @@ class TritonCodegen(NodeVisitor):
             elif to_dtype == torch.bool:
                 op_type = "CastBool"
             else:
-                kwargs["dtype"] = str(to_dtype)[6:]  # Remove "torch."" prefix.
+                kwargs["dtype"] = str(to_dtype)[6:]  # Remove "torch." prefix.
 
         if op_type == "QuickGelu" or op_type == "QuickGeluGrad":
             kwargs["alpha"] = str(node.attributes.get("alpha", 1.702))

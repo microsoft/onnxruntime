@@ -12,7 +12,6 @@ import onnx
 import pytest
 import torch
 from onnx import TensorProto, helper
-from packaging.version import Version
 from torch._C import _from_dlpack
 from torch.utils.dlpack import to_dlpack
 
