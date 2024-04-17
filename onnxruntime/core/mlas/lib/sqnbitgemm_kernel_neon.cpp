@@ -141,8 +141,8 @@ UnrolledLoop(IterationFn&& f)
     UnrolledLoopIterations(std::forward<IterationFn>(f), std::make_index_sequence<N>());
 }
 
-MLAS_FORCEINLINE float32x4_t
-FoldAccumulators(float32x4_t a0, float32x4_t a1, float32x4_t a2, float32x4_t a3)
+MLAS_FORCEINLINE void
+Transpose4x4(float32x4_t& a0, float32x4_t& a1, float32x4_t& a2, float32x4_t& a3)
 {
     // aN: aN_0 aN_1 aN_2 aN_3
 
@@ -159,7 +159,12 @@ FoldAccumulators(float32x4_t a0, float32x4_t a1, float32x4_t a2, float32x4_t a3)
     a2 = vreinterpretq_f32_f64(vzip1q_f64(vreinterpretq_f64_f32(b1), vreinterpretq_f64_f32(b3)));
     // a0_3 a1_3 a2_3 a3_3
     a3 = vreinterpretq_f32_f64(vzip2q_f64(vreinterpretq_f64_f32(b1), vreinterpretq_f64_f32(b3)));
+}
 
+MLAS_FORCEINLINE float32x4_t
+FoldAccumulators(float32x4_t a0, float32x4_t a1, float32x4_t a2, float32x4_t a3)
+{
+    Transpose4x4(a0, a1, a2, a3);
     return vaddq_f32(vaddq_f32(a0, a1), vaddq_f32(a2, a3));
 }
 
@@ -579,14 +584,25 @@ Q4BitBlkDequantB_16xNCols(
     });
 
     // write, transposed, 16 x NCols values
-    UnrolledLoop<NCols>([&](size_t i) {
+    if constexpr (NCols == 4) {
         UnrolledLoop<4>([&](size_t j) {
-            DstColPtr[(j * 4 + 0) * 16 + i] = vgetq_lane_f32(bv[i][j], 0);
-            DstColPtr[(j * 4 + 1) * 16 + i] = vgetq_lane_f32(bv[i][j], 1);
-            DstColPtr[(j * 4 + 2) * 16 + i] = vgetq_lane_f32(bv[i][j], 2);
-            DstColPtr[(j * 4 + 3) * 16 + i] = vgetq_lane_f32(bv[i][j], 3);
+            Transpose4x4(bv[0][j], bv[1][j], bv[2][j], bv[3][j]);
+
+            vst1q_f32(&DstColPtr[(j * 4 + 0) * 16], bv[0][j]);
+            vst1q_f32(&DstColPtr[(j * 4 + 1) * 16], bv[1][j]);
+            vst1q_f32(&DstColPtr[(j * 4 + 2) * 16], bv[2][j]);
+            vst1q_f32(&DstColPtr[(j * 4 + 3) * 16], bv[3][j]);
         });
-    });
+    } else {
+        UnrolledLoop<NCols>([&](size_t i) {
+            UnrolledLoop<4>([&](size_t j) {
+                DstColPtr[(j * 4 + 0) * 16 + i] = vgetq_lane_f32(bv[i][j], 0);
+                DstColPtr[(j * 4 + 1) * 16 + i] = vgetq_lane_f32(bv[i][j], 1);
+                DstColPtr[(j * 4 + 2) * 16 + i] = vgetq_lane_f32(bv[i][j], 2);
+                DstColPtr[(j * 4 + 3) * 16 + i] = vgetq_lane_f32(bv[i][j], 3);
+            });
+        });
+    }
 }
 
 template <bool HasZeroPoint>
