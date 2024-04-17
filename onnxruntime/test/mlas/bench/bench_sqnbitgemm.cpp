@@ -147,3 +147,71 @@ void SQNBITGEMM_ENV(benchmark::State& state) {
 }
 
 BENCHMARK(SQNBITGEMM_ENV<4>)->UseRealTime();
+
+void RunQ4BitBlkDequantBForSgemmBenchmark(benchmark::State& state,
+                                          size_t BlkLen, size_t N, size_t K, bool Symmetric) {
+  constexpr size_t BlkBitWidth = 4;
+
+  size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
+  MlasBlockwiseQuantizedBufferSizes(
+      BlkBitWidth, static_cast<int>(BlkLen), /* columnwise */ true,
+      static_cast<int>(K), static_cast<int>(N),
+      QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
+
+  const auto B = RandomVectorUniform(static_cast<size_t>(K * N), -1.0f, 1.0f);
+
+  std::vector<uint8_t> QuantBData(QuantBDataSizeInBytes);
+  std::vector<float> QuantBScale(QuantBScaleSize);
+  std::vector<uint8_t> QuantBZeroPoint(Symmetric ? 0 : QuantBZeroPointSizeInBytes);
+
+  MlasQuantizeBlockwise<float, BlkBitWidth>(QuantBData.data(), QuantBScale.data(),
+                                            Symmetric ? nullptr : QuantBZeroPoint.data(),
+                                            B.data(), static_cast<int>(BlkLen), /* columnwise */ true,
+                                            static_cast<int>(K), static_cast<int>(N), static_cast<int>(N),
+                                            nullptr);
+
+  const size_t BlockCountK = (K + BlkLen - 1) / BlkLen;
+  std::vector<float> DequantB(((N + 16 - 1) / 16 * 16) * BlockCountK * BlkLen);
+
+  MlasQ4BitBlkDequantBForSgemm(
+      BlkLen,
+      DequantB.data(),
+      reinterpret_cast<const std::byte*>(QuantBData.data()),
+      QuantBScale.data(),
+      reinterpret_cast<const std::byte*>(QuantBZeroPoint.data()),
+      N,
+      K,
+      BlockCountK);
+
+  for (auto _ : state) {
+    MlasQ4BitBlkDequantBForSgemm(
+        BlkLen,
+        DequantB.data(),
+        reinterpret_cast<const std::byte*>(QuantBData.data()),
+        QuantBScale.data(),
+        reinterpret_cast<const std::byte*>(QuantBZeroPoint.data()),
+        N,
+        K,
+        BlockCountK);
+  }
+}
+
+// This test gets benchmark arguments from environment variables.
+void SQNBITGEMM_Q4BitBlkDequantBForSgemm_ENV(benchmark::State& state) {
+  using onnxruntime::ParseEnvironmentVariableWithDefault;
+
+  const auto BlkLen = ParseEnvironmentVariableWithDefault<size_t>("ORT_SQNBITGEMM_BLKLEN", 32);
+  const auto N = ParseEnvironmentVariableWithDefault<size_t>("ORT_SQNBITGEMM_N", 4096);
+  const auto K = ParseEnvironmentVariableWithDefault<size_t>("ORT_SQNBITGEMM_K", 4096);
+  const auto Symmetric = ParseEnvironmentVariableWithDefault<bool>("ORT_SQNBITGEMM_SYMMETRIC", true);
+
+  RunQ4BitBlkDequantBForSgemmBenchmark(state, BlkLen, N, K, Symmetric);
+
+  std::ostringstream s;
+  s << "BlkLen:" << BlkLen
+    << "/N:" << N << "/K:" << K
+    << "/Symmetric:" << Symmetric;
+  state.SetLabel(s.str());
+}
+
+BENCHMARK(SQNBITGEMM_Q4BitBlkDequantBForSgemm_ENV)->UseRealTime();
