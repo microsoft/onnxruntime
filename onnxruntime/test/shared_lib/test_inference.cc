@@ -110,6 +110,7 @@ struct DmlObjects {
   ComPtr<ID3D12CommandAllocator> command_allocator;
   ComPtr<ID3D12GraphicsCommandList> command_list;
   ComPtr<ID3D12Resource> upload_buffer;
+  ComPtr<IDMLDevice> dml_device;
 };
 
 static DmlObjects CreateDmlObjects() {
@@ -124,6 +125,7 @@ static DmlObjects CreateDmlObjects() {
   DmlObjects dml_objects;
 
   THROW_IF_FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&dml_objects.d3d12_device)));
+  THROW_IF_FAILED(DMLCreateDevice1(dml_objects.d3d12_device.Get(), DML_CREATE_DEVICE_FLAG_NONE, DML_FEATURE_LEVEL_5_0, IID_PPV_ARGS(&dml_objects.dml_device)));
   THROW_IF_FAILED(dml_objects.d3d12_device->CreateCommandQueue(&command_queue_description, IID_PPV_ARGS(&dml_objects.command_queue)));
   THROW_IF_FAILED(dml_objects.d3d12_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&dml_objects.command_allocator)));
   THROW_IF_FAILED(dml_objects.d3d12_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, dml_objects.command_allocator.Get(), nullptr, IID_PPV_ARGS(&dml_objects.command_list)));
@@ -2221,7 +2223,7 @@ TEST(CApiTest, basic_cuda_graph) {
   Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
 
   auto dml_objects = CreateDmlObjects();
-  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, nullptr, dml_objects.command_queue.Get());
+  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
@@ -2492,7 +2494,7 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   const OrtDmlApi* ort_dml_api;
   Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
   auto dml_objects = CreateDmlObjects();
-  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, nullptr, dml_objects.command_queue.Get());
+  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
 
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 #else

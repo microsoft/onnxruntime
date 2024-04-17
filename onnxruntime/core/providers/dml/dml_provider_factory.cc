@@ -40,8 +40,8 @@ struct DMLProviderFactory : IExecutionProviderFactory {
                      IDMLDevice* dml_device,
                      ID3D12CommandQueue* cmd_queue,
                      bool disable_metacommands) : dml_device_(dml_device),
-                                                         cmd_queue_(cmd_queue),
-                                                         metacommands_enabled_(!disable_metacommands) {
+                                                  cmd_queue_(cmd_queue),
+                                                  metacommands_enabled_(!disable_metacommands) {
     std::string dml_graph_capture_enabled_config_val = config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableGraphCapture, "0");
     std::transform(dml_graph_capture_enabled_config_val.begin(),
                    dml_graph_capture_enabled_config_val.end(),
