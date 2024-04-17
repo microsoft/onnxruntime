@@ -407,6 +407,8 @@ def parse_arguments():
         help="Specify the target platform for macOS build. Only specify this argument when --build_apple_framework is present.",
     )
 
+    parser.add_argument("--visionos", action="store_true", help="build for visionOS")
+
     parser.add_argument(
         "--apple_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
     )
@@ -1367,7 +1369,7 @@ def generate_build_tree(
         ]
         if args.ios:
             cmake_args += [
-                "-DCMAKE_SYSTEM_NAME=visionOS",
+                "-DCMAKE_SYSTEM_NAME=iOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
                 + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
             ]
@@ -1385,6 +1387,16 @@ def generate_build_tree(
                 f"-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
                 f"-DCMAKE_CC_FLAGS=--target={macabi_target}",
                 f"-DCMAKE_CC_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+            ]
+        if args.visionos:
+            cmake_args += [
+                "-DCMAKE_SYSTEM_NAME=visionOS",
+                "-DCMAKE_TOOLCHAIN_FILE="
+                + (
+                    args.visionos_toolchain_file
+                    if args.visionos_toolchain_file
+                    else "../cmake/onnxruntime_visionos.toolchain.cmake"
+                ),
             ]
 
     if args.build_wasm:
