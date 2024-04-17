@@ -156,7 +156,7 @@ struct SessionOptions {
   InlinedHashMap<std::string, OrtValue> external_initializers;
   Status AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values);
   InlinedHashMap<PathString, std::pair<char*, size_t>> external_initializer_files_mmap;
-  Status AddExternalInitializersFromFilesInMemory(gsl::span<const PathString > file_names,
+  Status AddExternalInitializersFromFilesInMemory(gsl::span<const PathString> file_names,
                                                   gsl::span<std::pair<char*, const size_t>> files_buffers);
 #endif
 
