@@ -46,7 +46,7 @@ class CudnnRNN {
     if (dataType == CUDNN_DATA_HALF) {
       mathType = CUDNN_TENSOR_OP_MATH;
     } else if (dataType == CUDNN_DATA_FLOAT && !use_tf32) {
-      mathType = CUDNN_FMA_MATH; // omit TF32 tensor cores
+      mathType = CUDNN_FMA_MATH;  // omit TF32 tensor cores
     }
 
     CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v8(cudnn_rnn_desc_,
