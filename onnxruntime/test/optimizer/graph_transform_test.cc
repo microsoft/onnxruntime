@@ -188,6 +188,11 @@ TEST_F(GraphTransformationTests, DequantizeLinearNodeNotEliminated) {
   test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.onnx",
             false,  // use_contrib_qdq
             *logger_);
+
+  // Test with 16-bit DequantizeLinear(21)
+  test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq16.onnx",
+            false,  // use_contrib_qdq
+            *logger_);
 #if !defined(DISABLE_CONTRIB_OPS)
   // Test with 8-bit com.microsoft.DequantizeLinear
   test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx",
@@ -884,6 +889,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   };
 
   test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx",
+            false, *logger_);
+
+  // Test with 16-bit DequantizeLinear(21).
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16.onnx",
             false, *logger_);
 #if !defined(DISABLE_CONTRIB_OPS)
   // Test with 8-bit contrib QDQ ops
@@ -6015,6 +6024,33 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 
   ASSERT_STATUS_OK(session_object.FilterEnabledOptimizers({"ConstantFolding"}));
+  ASSERT_STATUS_OK(session_object.Initialize());  // Initialize runs the transformers
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 1);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+}
+
+TEST_F(GraphTransformationTests, FilterEnabledOptimizersViaSessionOptions) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_with_scalar_shape_to_initializer.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.FilterEnabledOptimizersViaSessionOptions";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, "ConstantFolding"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+
+  const auto& graph = session_object.GetGraph();
+
+  // check the ops that should go away if the constant folding transformer runs
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 1);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+
   ASSERT_STATUS_OK(session_object.Initialize());  // Initialize runs the transformers
 
   op_to_count = CountOpsInGraph(graph);

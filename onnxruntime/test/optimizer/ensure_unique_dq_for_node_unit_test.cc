@@ -75,7 +75,7 @@ std::function<void(ModelTestBuilder&)> GetGraphBuilder(const GraphConfig& config
 
 void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq_count) {
   auto run_tests = [config, expected_dq_count](bool use_ms_domain_qdq_ops, bool use_16bit_qdq_ops) {
-    constexpr int opset_version = 12;
+    int opset_version = use_16bit_qdq_ops ? 21 : 12;
     const char* dequantize_linear_key = use_ms_domain_qdq_ops ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
     std::function<void(ModelTestBuilder&)> graph_builder_fn = use_16bit_qdq_ops
                                                                   ? GetGraphBuilder<uint16_t>(config, use_ms_domain_qdq_ops)
@@ -122,7 +122,8 @@ void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq
     }
   };
 
-  run_tests(false, false);
+  run_tests(/*use_ms_domain*/ false, /*use_16bit*/ false);
+  run_tests(/*use_ms_domain*/ false, /*use_16bit*/ true);
 #if !defined(DISABLE_CONTRIB_OPS)
   run_tests(true, false);  // Use contrib QDQ ops.
   run_tests(true, true);   // Use 16-bit contrib QDQ ops.
