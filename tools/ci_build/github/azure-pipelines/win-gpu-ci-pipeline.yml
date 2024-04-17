@@ -37,10 +37,10 @@ stages:
 - stage: cuda
   dependsOn: []
   jobs:
-    steps:
     - task: UseDotNet@2
       inputs:
         version: '7.x'
+
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
@@ -58,7 +58,6 @@ stages:
 - stage: training
   dependsOn: []
   jobs:
-    steps:
     - task: UseDotNet@2
       inputs:
         version: '7.x'

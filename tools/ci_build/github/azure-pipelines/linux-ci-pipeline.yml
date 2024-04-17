@@ -253,6 +253,10 @@ stages:
           ln -s /data/models $(Build.BinariesDirectory)/models
         displayName: link model dir
 
+      - task: UseDotNet@2
+        inputs:
+          version: '7.x'
+
       - bash: |
           mkdir -p $HOME/.onnx
           docker run --rm \

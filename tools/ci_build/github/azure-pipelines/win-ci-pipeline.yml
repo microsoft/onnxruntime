@@ -163,7 +163,6 @@ stages:
 - stage: x86_release
   dependsOn: []
   jobs:
-    steps:
     - task: UseDotNet@2
       inputs:
         version: '7.x'
