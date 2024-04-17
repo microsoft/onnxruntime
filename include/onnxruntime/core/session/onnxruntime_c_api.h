@@ -4643,7 +4643,8 @@ struct OrtApi {
    * \param[in] session options
    * \param[in] external_initializer_file_names Array of null terminated UTF-8 encoded strings of the file names
    *            which holds the external initializers.
-   * \param[in] external_initializer_file_buffer_array Array of pointers to the buffer of the file content
+   * \param[in] external_initializer_file_buffer_array Array of pointers to the buffer of the file content.
+   *            The buffer can be freed after session creation.
    * \param[in] external_initializer_file_lengths Array of size_t to indicate the length of file content
    * \param[in] num_external_initializer_files Number of external files
    *
