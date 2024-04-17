@@ -916,7 +916,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   auto level = provider.Level();
   if (provider.IsEnabled()) {
     auto keyword = provider.Keyword();
-    if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0 && level >=5) {
+    if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0 && level >= 5) {
       tracelogging_provider_ep_enabled = true;
     }
   }
