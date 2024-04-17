@@ -40,8 +40,21 @@ AddQDQNodePairWithOutputAsGraphOutput(ModelTestBuilder& builder, NodeArg* q_inpu
   return dq_output;
 }
 
+template <typename T>
+typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
+AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, const std::vector<float>& scales,
+               const std::vector<T>& zero_points, const NodeAttributes* q_attrs = nullptr,
+               const NodeAttributes* dq_attrs = nullptr, bool use_ms_domain = false) {
+  auto* q_output = builder.MakeIntermediate();
+  auto* dq_output = builder.MakeIntermediate();
+  builder.AddQuantizeLinearNode<T>(q_input, scales, zero_points, q_output, q_attrs, use_ms_domain);
+  builder.AddDequantizeLinearNode<T>(q_output, scales, zero_points, dq_output, dq_attrs, use_ms_domain);
+  return dq_output;
+}
+
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
-GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input_shape,
+                                               const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
@@ -71,7 +84,8 @@ GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input
                                                 dq_w_output);
 
     auto* dq_bias_output = builder.MakeIntermediate();
-    auto* bias = builder.MakeInitializer<BiasType>({weights_shape[0]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
+    auto* bias = builder.MakeInitializer<BiasType>({weights_shape[0]}, static_cast<BiasType>(0),
+                                                   static_cast<BiasType>(127));
     builder.AddDequantizeLinearNode<BiasType>(bias, .0012f,
                                               0,
                                               dq_bias_output);
@@ -126,7 +140,8 @@ GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape,
                                                 use_contrib_qdq);
 
     auto* dq_bias_output = builder.MakeIntermediate();
-    auto* bias = builder.MakeInitializer<BiasType>({weights_shape[0]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
+    auto* bias = builder.MakeInitializer<BiasType>({weights_shape[0]}, static_cast<BiasType>(0),
+                                                   static_cast<BiasType>(127));
     builder.AddDequantizeLinearNode<BiasType>(bias, .0012f,
                                               0,
                                               dq_bias_output,
@@ -389,7 +404,8 @@ GetQDQTestCaseFn BuildConsolidationTestCase(
     const int64_t& axis,
     bool use_contrib_qdq = false) {
   return [input_shape, axis, use_contrib_qdq](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>(input_shape, std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
+    auto* input_arg = builder.MakeInput<float>(input_shape, std::numeric_limits<float>::min(),
+                                               std::numeric_limits<float>::max());
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
     OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
     auto* upper_dq_output = builder.MakeIntermediate();
@@ -447,7 +463,8 @@ GetQDQTestCaseFn BuildDoubleQDQTestCases(Type1 zp_1, Type2 zp_2, Type3 zp_3, Typ
 template <typename T>
 GetQDQTestCaseFn BuildDoubleQDQWithoutLastOutput(int output_index, bool use_contrib_qdq = false) {
   return [=](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>({2, 3, 4}, std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
+    auto* input_arg = builder.MakeInput<float>({2, 3, 4}, std::numeric_limits<float>::min(),
+                                               std::numeric_limits<float>::max());
     T zp = (std::numeric_limits<T>::max() - std::numeric_limits<T>::min()) / 2;
     float scale = 0.003f;
     std::vector<NodeArg*> outputs(4);
@@ -632,7 +649,8 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
 
 GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp();
 
-GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape);
+GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape,
+                                        const std::vector<int64_t>& input2_shape);
 
 template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
 GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
@@ -673,7 +691,8 @@ GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
 
     if (has_bias) {
       auto* dq_bias_output = builder.MakeIntermediate();
-      auto* bias = builder.MakeInitializer<BiasType>({input2_shape[0]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
+      auto* bias = builder.MakeInitializer<BiasType>({input2_shape[0]}, static_cast<BiasType>(0),
+                                                     static_cast<BiasType>(127));
       builder.AddDequantizeLinearNode<BiasType>(bias, 0.00156f,
                                                 0,
                                                 dq_bias_output);

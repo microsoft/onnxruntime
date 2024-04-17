@@ -273,13 +273,13 @@ CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.llama_parity \
     --cache_dir ./model_cache \
 ```
 
-4. Merged ONNX model, FP16 CUDA with GroupQueryAttention
+4. Merged ONNX model, FP16 CUDA with GroupQueryAttention + Buffer Sharing Enabled
 ```
 CUDA_VISIBLE_DEVICES=0 python3 -m models.llama.llama_parity \
     --model_name meta-llama/Llama-2-7b-hf \
     --onnx_model_path ./llama2-7b/rank_0_Llama-2-7b-hf_decoder_merged_model_fp32.onnx \
     --merged \
-    --use_gqa \
+    --use_buffer_share \
     --execution_provider cuda \
     --precision fp16 \
     --cache_dir ./model_cache \
