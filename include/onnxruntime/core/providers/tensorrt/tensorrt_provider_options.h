@@ -77,7 +77,7 @@ struct OrtTensorRTProviderOptionsV2 {
                                                   // nonzero = true
   const char* trt_onnx_model_folder_path{nullptr};  // Folder path relative to the current working directory for
                                                     // the ONNX model containing the weights (applicable only when
-                                                    // the "trt_weightless_engine_enable" is enabled)
+                                                    // the "trt_weightless_engine_enable" option is enabled)
 
   const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
 };

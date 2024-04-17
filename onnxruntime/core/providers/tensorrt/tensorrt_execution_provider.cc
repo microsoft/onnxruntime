@@ -1335,7 +1335,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string weightless_engine_enable_env
         = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kWeightlessEngineEnable);
       if (!weightless_engine_enable_env.empty()) {
-        weightless_engine_enable_ = (std::stoi(weightless_engine_enable_env) == 0 ? false : true);
+        weightless_engine_enable_ = std::stoi(weightless_engine_enable_env) != 0;
       }
 
       const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
