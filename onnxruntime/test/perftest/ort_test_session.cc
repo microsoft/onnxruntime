@@ -335,9 +335,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       std::string key(token.substr(0, pos));
       std::string value(token.substr(pos + 1));
 
-      if (key == "backend_path") {
+      if (key == "backend_path" || key == "profiling_file_path") {
         if (value.empty()) {
-          ORT_THROW("Please provide the QNN backend path.");
+          ORT_THROW("Please provide the valid file path.");
         }
       } else if (key == "profiling_level") {
         std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
@@ -393,7 +393,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
-'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
+'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
 'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
       }

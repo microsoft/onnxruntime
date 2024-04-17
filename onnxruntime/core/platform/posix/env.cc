@@ -62,39 +62,11 @@ class UnmapFileParam {
   size_t len;
 };
 
-/**
- * @brief Get System Error
- *
- * @return a pair of {errno, error message}
- */
-static std::pair<int, std::string> GetSystemError(int e) {
-  char buf[1024];
-  const char* msg = "";
-  if (e > 0) {
-#if defined(__GLIBC__) && defined(_GNU_SOURCE) && !defined(__ANDROID__)
-    msg = strerror_r(e, buf, sizeof(buf));
-#else
-    // for Mac OS X and Android lower than API 23
-    if (strerror_r(e, buf, sizeof(buf)) != 0) {
-      buf[0] = '\0';
-    }
-    msg = buf;
-#endif
-  }
-
-  return std::make_pair(e, msg);
-}
-
-static std::pair<int, std::string> GetSystemError() {
-  auto e = errno;
-  return GetSystemError(e);
-}
-
 static void UnmapFile(void* param) noexcept {
   std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
   int ret = munmap(p->addr, p->len);
   if (ret != 0) {
-    auto [err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetErrnoInfo();
     LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err_no << " error msg: " << err_msg;
   }
 }
@@ -104,8 +76,9 @@ struct FileDescriptorTraits {
   static Handle GetInvalidHandleValue() { return -1; }
   static void CleanUp(Handle h) {
     if (close(h) == -1) {
-      auto [err_no, err_msg] = GetSystemError();
-      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err_no << " error msg: " << err_msg;
+      auto [err_no, err_msg] = GetErrnoInfo();
+      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err_no
+                          << " error msg: " << err_msg;
     }
   }
 };
@@ -131,7 +104,7 @@ int nftw_remove(
     int /*typeflag*/, struct FTW* /*ftwbuf*/) {
   const auto result = remove(fpath);
   if (result != 0) {
-    auto [err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetErrnoInfo();
     LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err_no << " error msg: " << err_msg
                           << ", path: " << fpath;
   }
@@ -188,7 +161,7 @@ class PosixThread : public EnvThread {
       pthread_attr_t attr;
       int s = pthread_attr_init(&attr);
       if (s != 0) {
-        auto [err_no, err_msg] = GetSystemError();
+        auto [err_no, err_msg] = GetErrnoInfo();
         ORT_THROW("pthread_attr_init failed, error code: ", err_no, " error msg: ", err_msg);
       }
 
@@ -196,14 +169,14 @@ class PosixThread : public EnvThread {
       if (stack_size > 0) {
         s = pthread_attr_setstacksize(&attr, stack_size);
         if (s != 0) {
-          auto [err_no, err_msg] = GetSystemError();
+          auto [err_no, err_msg] = GetErrnoInfo();
           ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
         }
       }
 
       s = pthread_create(&hThread, &attr, ThreadMain, param_ptr.get());
       if (s != 0) {
-        auto [err_no, err_msg] = GetSystemError();
+        auto [err_no, err_msg] = GetErrnoInfo();
         ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
       }
       param_ptr.release();
@@ -249,7 +222,8 @@ class PosixThread : public EnvThread {
                                 << ", index: " << p->index
                                 << ", mask: " << *p->affinity;
         } else {
-          auto [err_no, err_msg] = GetSystemError(ret);
+          errno = ret;
+          auto [err_no, err_msg] = GetErrnoInfo();
 #if !defined(USE_MIGRAPHX)
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
@@ -461,7 +435,7 @@ class PosixEnv : public Env {
   }
 
   static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
-    auto [err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetErrnoInfo();
     std::ostringstream oss;
     oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
     return common::Status(common::SYSTEM, err_no, oss.str());
