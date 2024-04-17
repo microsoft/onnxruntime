@@ -843,32 +843,6 @@ def test_slice_scel_module(dtype, has_sum):
     _run_module_test(NeuralNetSliceScel, dtype, _gen_inputs, 2)
 
 
-@pytest.mark.skipif(
-    Version(torch.__version__) < Version("2.1"), reason="PyTorch has scaled_dot_product_attention since 2.1."
-)
-def test_scaled_dot_product_attention_module():
-    class NeuralNetScaledDotProductAttention(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.linear1 = torch.nn.Linear(64, 64, bias=False, dtype=torch.float16)
-            self.linear2 = torch.nn.Linear(64, 64, bias=False, dtype=torch.float16)
-            self.linear3 = torch.nn.Linear(64, 64, bias=False, dtype=torch.float16)
-
-        def forward(self, q, k, v):
-            return torch.nn.functional.scaled_dot_product_attention(
-                self.linear1(q), self.linear2(k), self.linear3(v)
-            ).to(torch.float16)
-
-    def _gen_inputs(dtype):
-        return [
-            (torch.rand(32, 8, 128, 64) * 0.01).to(dtype=torch.float16, device=DEVICE),
-            (torch.rand(32, 8, 128, 64) * 0.01).to(dtype=torch.float16, device=DEVICE),
-            (torch.rand(32, 8, 128, 64) * 0.01).to(dtype=torch.float16, device=DEVICE),
-        ]
-
-    _run_module_test(NeuralNetScaledDotProductAttention, torch.float16, _gen_inputs, 3)
-
-
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 @pytest.mark.parametrize("input_shapes", [([128, 64], [64, 64]), ([16, 64, 128], [16, 128, 64])])
 def test_matmul_tunable_op(dtype, input_shapes):

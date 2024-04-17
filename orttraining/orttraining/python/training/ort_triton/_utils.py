@@ -11,7 +11,6 @@ from typing import Any, List, Tuple
 import numpy as np
 import torch
 from onnx import GraphProto, NodeProto, TensorProto, helper, numpy_helper
-from onnx.mapping import TENSOR_TYPE_TO_NP_TYPE
 
 
 def gen_unique_name(prefix: str) -> str:
@@ -91,7 +90,7 @@ def to_torch_dtype(tensor_type: TensorProto.DataType) -> torch.dtype:
     # Native numpy does not support bfloat16.
     if tensor_type == TensorProto.BFLOAT16:
         return torch.bfloat16
-    return torch.from_numpy(np.zeros(1, dtype=TENSOR_TYPE_TO_NP_TYPE[tensor_type])).dtype
+    return torch.from_numpy(np.zeros(1, dtype=helper.tensor_dtype_to_np_dtype(tensor_type))).dtype
 
 
 # Generate a unique variable name based on the node arg name.
