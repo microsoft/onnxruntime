@@ -120,6 +120,6 @@ namespace DmlGraphFusionHelper
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
         IExecutionProvider* provider,
-        IUnknown* persistentResourceAllocatorUnk);
+        IUnknown* persistentResourceAllocatorUnknown);
 }
 }

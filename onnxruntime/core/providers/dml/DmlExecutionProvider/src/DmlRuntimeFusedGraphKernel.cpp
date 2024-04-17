@@ -75,7 +75,7 @@ namespace Dml
                     static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Disabled,
                     m_persistentResource.ReleaseAndGetAddressOf(),
-                    m_persistentResourceAllocatorUnk.ReleaseAndGetAddressOf()));
+                    m_persistentResourceAllocatorUnknown.ReleaseAndGetAddressOf()));
 
                 m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
             }
@@ -257,7 +257,7 @@ namespace Dml
                     m_persistentResourceBinding);
 
                 reusableCommandList->persistentResource = m_persistentResource;
-                reusableCommandList->persistentResourceAllocatorUnk = m_persistentResourceAllocatorUnk;
+                reusableCommandList->persistentResourceAllocatorUnknown = m_persistentResourceAllocatorUnknown;
 
                 DmlGraphFusionHelper::ExecuteReusableCommandList(
                     kernelContext,
@@ -270,7 +270,7 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnk.Get());
+                    m_persistentResourceAllocatorUnknown.Get());
 
                 providerImpl->AppendCapturedGraph(providerImpl->GetCurrentGraphAnnotationId(), std::move(reusableCommandList));
             }
@@ -299,7 +299,7 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnk.Get());
+                    m_persistentResourceAllocatorUnknown.Get());
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
                 m_reusedCommandLists.pop_front();
@@ -330,7 +330,7 @@ namespace Dml
         mutable ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
         mutable std::vector<bool> m_inputsUsed;
         mutable ComPtr<ID3D12Resource> m_persistentResource;
-        mutable ComPtr<IUnknown> m_persistentResourceAllocatorUnk; // Controls when the persistent resource is returned to the allocator
+        mutable ComPtr<IUnknown> m_persistentResourceAllocatorUnknown; // Controls when the persistent resource is returned to the allocator
         mutable Windows::AI::MachineLearning::Adapter::EdgeShapes m_outputShapes;
         mutable std::unordered_map<std::string, onnxruntime::TensorShape> m_inferredInputShapes;
         mutable std::deque<std::unique_ptr<DmlReusedCommandListState>> m_reusedCommandLists;

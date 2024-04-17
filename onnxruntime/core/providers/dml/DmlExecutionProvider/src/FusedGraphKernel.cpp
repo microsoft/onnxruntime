@@ -67,7 +67,7 @@ namespace Dml
                     static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Disabled,
                     m_persistentResource.GetAddressOf(),
-                    m_persistentResourceAllocatorUnk.GetAddressOf()));
+                    m_persistentResourceAllocatorUnknown.GetAddressOf()));
 
                 m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
             }
@@ -79,7 +79,7 @@ namespace Dml
 
             // Queue references to objects which must be kept alive until resulting GPU work completes
             m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
-            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
+            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnknown.Get());
 
             std::for_each(
                 initializeResourceRefs.begin(),
@@ -148,7 +148,7 @@ namespace Dml
 
                 // Queue references to objects which must be kept alive until resulting GPU work completes
                 m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
-                m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
+                m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnknown.Get());
             }
             else
             {
@@ -175,7 +175,7 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnk.Get());
+                    m_persistentResourceAllocatorUnknown.Get());
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
                 m_reusedCommandLists.pop_front();
@@ -259,7 +259,7 @@ namespace Dml
 
         std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         ComPtr<ID3D12Resource> m_persistentResource;
-        ComPtr<IUnknown> m_persistentResourceAllocatorUnk; // Controls when the persistent resource is returned to the allocator
+        ComPtr<IUnknown> m_persistentResourceAllocatorUnknown; // Controls when the persistent resource is returned to the allocator
 
         std::vector<uint8_t> m_isInputsUploadedByDmlEP;
         std::vector<ComPtr<ID3D12Resource>> m_nonOwnedGraphInputsFromInitializers;

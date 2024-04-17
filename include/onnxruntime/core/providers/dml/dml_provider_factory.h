@@ -126,7 +126,7 @@ struct OrtDmlApi {
    * See also: ID3D12Device::CreateCommandQueue
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML1, _In_ OrtSessionOptions* options,
-                  _In_opt_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
+                  _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
 
   /**
    * CreateGPUAllocationFromD3DResource

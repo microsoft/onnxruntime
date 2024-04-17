@@ -96,13 +96,13 @@ namespace DmlGraphFusionHelper
         ID3D12Resource** resource,
         uint64_t* allocId)
     {
-        IUnknown* allocationUnk = static_cast<IUnknown*>(const_cast<void*>(tensor->DataRaw()));
-        Microsoft::WRL::ComPtr<IUnknown> resourceUnk;
-        winmlProvider->GetABIDataInterface(false, allocationUnk, &resourceUnk);
+        IUnknown* allocationUnknown = static_cast<IUnknown*>(const_cast<void*>(tensor->DataRaw()));
+        Microsoft::WRL::ComPtr<IUnknown> resourceUnknown;
+        winmlProvider->GetABIDataInterface(false, allocationUnknown, &resourceUnknown);
 
-        *allocId = winmlProvider->TryGetPooledAllocationId(allocationUnk, 0);
+        *allocId = winmlProvider->TryGetPooledAllocationId(allocationUnknown, 0);
 
-        ORT_THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
+        ORT_THROW_IF_FAILED(resourceUnknown->QueryInterface(resource));
     }
 
     std::tuple<std::unique_ptr<std::byte[]>, std::vector<uint8_t>, std::byte*, size_t> UnpackInitializer(
@@ -935,7 +935,7 @@ namespace DmlGraphFusionHelper
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
         IExecutionProvider* provider,
-        IUnknown* persistentResourceAllocatorUnk)
+        IUnknown* persistentResourceAllocatorUnknown)
     {
         DML_BINDING_PROPERTIES execBindingProps = compiledExecutionPlanOperator->GetBindingProperties();
 
@@ -1027,12 +1027,12 @@ namespace DmlGraphFusionHelper
             uint64_t tempAllocId = 0;
             ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
 
-            ComPtr<IUnknown> tempResourceUnk;
-            winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnk);
+            ComPtr<IUnknown> tempResourceUnknown;
+            winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnknown);
 
             // Bind the temporary resource.
             ComPtr<ID3D12Resource> tempResource;
-            ORT_THROW_IF_FAILED(tempResourceUnk->QueryInterface(tempResource.GetAddressOf()));
+            ORT_THROW_IF_FAILED(tempResourceUnknown->QueryInterface(tempResource.GetAddressOf()));
             DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, execBindingProps.TemporaryResourceSize};
             DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
 
@@ -1065,7 +1065,7 @@ namespace DmlGraphFusionHelper
         winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(commandListState.graphicsCommandList).Get());
         winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(commandListState.heap).Get());
         winmlProvider->QueueReference(commandListState.bindingTable.Get());
-        winmlProvider->QueueReference(persistentResourceAllocatorUnk);
+        winmlProvider->QueueReference(persistentResourceAllocatorUnknown);
     }
 }
 }

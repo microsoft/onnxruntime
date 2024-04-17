@@ -75,16 +75,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(co
                                                                               IDMLDevice* dml_device,
                                                                               ID3D12CommandQueue* cmd_queue,
                                                                               bool disable_metacommands) {
-  ComPtr<IDMLDevice> ownedDmlDevice;
-  if (dml_device == nullptr)
-  {
-    ComPtr<ID3D12Device> d3d12_device;
-    ORT_THROW_IF_FAILED(cmd_queue->GetDevice(IID_PPV_ARGS(&d3d12_device)));
-
-    ownedDmlDevice = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device.Get());
-    dml_device = ownedDmlDevice.Get();
-  }
-
 #ifndef _GAMING_XBOX
   // Validate that the D3D12 devices match between DML and the command queue. This specifically asks for IUnknown in
   // order to be able to compare the pointers for COM object identity.

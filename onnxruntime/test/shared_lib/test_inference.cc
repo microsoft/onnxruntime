@@ -105,15 +105,15 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
 
 #ifdef USE_DML
 struct DmlObjects {
-  ComPtr<ID3D12Device> d3d12Device;
-  ComPtr<ID3D12CommandQueue> commandQueue;
-  ComPtr<ID3D12CommandAllocator> commandAllocator;
-  ComPtr<ID3D12GraphicsCommandList> commandList;
+  ComPtr<ID3D12Device> d3d12_device;
+  ComPtr<ID3D12CommandQueue> command_queue;
+  ComPtr<ID3D12CommandAllocator> command_allocator;
+  ComPtr<ID3D12GraphicsCommandList> command_list;
   ComPtr<ID3D12Resource> upload_buffer;
 };
 
 static DmlObjects CreateDmlObjects() {
-  D3D12_COMMAND_QUEUE_DESC commandQueueDescription =
+  D3D12_COMMAND_QUEUE_DESC command_queue_description =
       {
           D3D12_COMMAND_LIST_TYPE_DIRECT,
           0,
@@ -121,56 +121,56 @@ static DmlObjects CreateDmlObjects() {
           0,
       };
 
-  DmlObjects dmlObjects;
+  DmlObjects dml_objects;
 
-  THROW_IF_FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&dmlObjects.d3d12Device)));
-  THROW_IF_FAILED(dmlObjects.d3d12Device->CreateCommandQueue(&commandQueueDescription, IID_PPV_ARGS(&dmlObjects.commandQueue)));
-  THROW_IF_FAILED(dmlObjects.d3d12Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&dmlObjects.commandAllocator)));
-  THROW_IF_FAILED(dmlObjects.d3d12Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, dmlObjects.commandAllocator.Get(), nullptr, IID_PPV_ARGS(&dmlObjects.commandList)));
+  THROW_IF_FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&dml_objects.d3d12_device)));
+  THROW_IF_FAILED(dml_objects.d3d12_device->CreateCommandQueue(&command_queue_description, IID_PPV_ARGS(&dml_objects.command_queue)));
+  THROW_IF_FAILED(dml_objects.d3d12_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&dml_objects.command_allocator)));
+  THROW_IF_FAILED(dml_objects.d3d12_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, dml_objects.command_allocator.Get(), nullptr, IID_PPV_ARGS(&dml_objects.command_list)));
 
-  return dmlObjects;
+  return dml_objects;
 }
 
 static ComPtr<ID3D12Resource> CreateD3D12ResourceOfByteSize(
-    ID3D12Device* d3dDevice,
-    size_t resourceByteSize,
-    D3D12_HEAP_TYPE heapType = D3D12_HEAP_TYPE_DEFAULT,
-    D3D12_RESOURCE_STATES resourceState = D3D12_RESOURCE_STATE_COMMON,
-    D3D12_RESOURCE_FLAGS resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) {
-  resourceByteSize = std::max(resourceByteSize, size_t(DML_MINIMUM_BUFFER_TENSOR_ALIGNMENT));
+    ID3D12Device* d3d_device,
+    size_t resource_byte_size,
+    D3D12_HEAP_TYPE heap_type = D3D12_HEAP_TYPE_DEFAULT,
+    D3D12_RESOURCE_STATES resource_state = D3D12_RESOURCE_STATE_COMMON,
+    D3D12_RESOURCE_FLAGS resource_flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) {
+  resource_byte_size = std::max(resource_byte_size, size_t(DML_MINIMUM_BUFFER_TENSOR_ALIGNMENT));
 
   // DML needs the resources' sizes to be a multiple of 4 bytes
-  (resourceByteSize += 3) &= ~3;
+  (resource_byte_size += 3) &= ~3;
 
-  D3D12_HEAP_PROPERTIES heapProperties = {};
-  heapProperties.Type = heapType;
-  heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-  heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-  heapProperties.CreationNodeMask = 1;
-  heapProperties.VisibleNodeMask = 1;
+  D3D12_HEAP_PROPERTIES heap_properties = {};
+  heap_properties.Type = heap_type;
+  heap_properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+  heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+  heap_properties.CreationNodeMask = 1;
+  heap_properties.VisibleNodeMask = 1;
 
-  D3D12_RESOURCE_DESC resourceDesc = {};
-  resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-  resourceDesc.Alignment = 0;
-  resourceDesc.Width = static_cast<uint64_t>(resourceByteSize);
-  resourceDesc.Height = 1;
-  resourceDesc.DepthOrArraySize = 1;
-  resourceDesc.MipLevels = 1;
-  resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
-  resourceDesc.SampleDesc = {1, 0};
-  resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-  resourceDesc.Flags = resourceFlags;
+  D3D12_RESOURCE_DESC resource_desc = {};
+  resource_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+  resource_desc.Alignment = 0;
+  resource_desc.Width = static_cast<uint64_t>(resource_byte_size);
+  resource_desc.Height = 1;
+  resource_desc.DepthOrArraySize = 1;
+  resource_desc.MipLevels = 1;
+  resource_desc.Format = DXGI_FORMAT_UNKNOWN;
+  resource_desc.SampleDesc = {1, 0};
+  resource_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+  resource_desc.Flags = resource_flags;
 
-  ComPtr<ID3D12Resource> gpuResource;
-  THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
-      &heapProperties,
+  ComPtr<ID3D12Resource> gpu_resource;
+  THROW_IF_FAILED(d3d_device->CreateCommittedResource(
+      &heap_properties,
       D3D12_HEAP_FLAG_NONE,
-      &resourceDesc,
-      resourceState,
+      &resource_desc,
+      resource_state,
       nullptr,
-      IID_PPV_ARGS(&gpuResource)));
+      IID_PPV_ARGS(&gpu_resource)));
 
-  return gpuResource;
+  return gpu_resource;
 }
 
 static void WaitForQueueToComplete(ID3D12CommandQueue* queue) {
@@ -184,114 +184,114 @@ static void WaitForQueueToComplete(ID3D12CommandQueue* queue) {
 
 static void UploadDataToDml(
     DmlObjects& dml_objects,
-    ID3D12Resource* destinationResource,
-    gsl::span<const std::byte> sourceData) {
+    ID3D12Resource* destination_resource,
+    gsl::span<const std::byte> source_data) {
   // Get the size of the resource.
-  D3D12_RESOURCE_DESC resourceDesc = destinationResource->GetDesc();
-  assert(resourceDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER);
-  const size_t dataSizeInBytes = static_cast<size_t>(resourceDesc.Width);
+  D3D12_RESOURCE_DESC resource_desc = destination_resource->GetDesc();
+  assert(resource_desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER);
+  const size_t data_size_in_bytes = static_cast<size_t>(resource_desc.Width);
 
   // Create intermediate upload resource visible to both CPU and GPU.
-  dml_objects.upload_buffer = CreateD3D12ResourceOfByteSize(dml_objects.d3d12Device.Get(), dataSizeInBytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_FLAG_NONE);
+  dml_objects.upload_buffer = CreateD3D12ResourceOfByteSize(dml_objects.d3d12_device.Get(), data_size_in_bytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_FLAG_NONE);
 
   // Copy CPU-side data to shared memory that is both CPU and GPU visible.
-  size_t clampedDataByteSize = std::min(dataSizeInBytes, sourceData.size());
-  std::byte* uploadBufferData = nullptr;
-  THROW_IF_FAILED(dml_objects.upload_buffer->Map(0, nullptr, reinterpret_cast<void**>(&uploadBufferData)));
-  memcpy(uploadBufferData, sourceData.data(), clampedDataByteSize);
+  size_t clamped_data_byte_size = std::min(data_size_in_bytes, source_data.size());
+  std::byte* upload_buffer_data = nullptr;
+  THROW_IF_FAILED(dml_objects.upload_buffer->Map(0, nullptr, reinterpret_cast<void**>(&upload_buffer_data)));
+  memcpy(upload_buffer_data, source_data.data(), clamped_data_byte_size);
   dml_objects.upload_buffer->Unmap(0, nullptr);
 
-  D3D12_RESOURCE_BARRIER resourceBarrier{};
-  resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-  resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-  resourceBarrier.Transition = {};
-  resourceBarrier.Transition.pResource = destinationResource;
-  resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-  resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-  resourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  D3D12_RESOURCE_BARRIER resource_barrier{};
+  resource_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  resource_barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+  resource_barrier.Transition = {};
+  resource_barrier.Transition.pResource = destination_resource;
+  resource_barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  resource_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+  resource_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
   // Issue deferred command to copy from the intermediate shared resource to the final GPU resource,
   // and then execute the commands.
-  dml_objects.commandList->CopyResource(destinationResource, dml_objects.upload_buffer.Get());
-  dml_objects.commandList->ResourceBarrier(1, &resourceBarrier);
-  THROW_IF_FAILED(dml_objects.commandList->Close());
-  ID3D12CommandList* commandLists[] = {dml_objects.commandList.Get()};
-  dml_objects.commandQueue->ExecuteCommandLists(ARRAYSIZE(commandLists), commandLists);
+  dml_objects.command_list->CopyResource(destination_resource, dml_objects.upload_buffer.Get());
+  dml_objects.command_list->ResourceBarrier(1, &resource_barrier);
+  THROW_IF_FAILED(dml_objects.command_list->Close());
+  ID3D12CommandList* command_lists[] = {dml_objects.command_list.Get()};
+  dml_objects.command_queue->ExecuteCommandLists(ARRAYSIZE(command_lists), command_lists);
 
-  THROW_IF_FAILED(dml_objects.commandAllocator->Reset());
-  THROW_IF_FAILED(dml_objects.commandList->Reset(dml_objects.commandAllocator.Get(), nullptr));
+  THROW_IF_FAILED(dml_objects.command_allocator->Reset());
+  THROW_IF_FAILED(dml_objects.command_list->Reset(dml_objects.command_allocator.Get(), nullptr));
 }
 
 static void DownloadDataFromDml(
     DmlObjects& dml_objects,
-    ID3D12Resource* sourceResource,
-    gsl::span<std::byte> destinationData) {
+    ID3D12Resource* source_resource,
+    gsl::span<std::byte> destination_data) {
   // Get the size of the resource.
-  D3D12_RESOURCE_DESC resourceDesc = sourceResource->GetDesc();
-  assert(resourceDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER);
-  const size_t dataSizeInBytes = static_cast<size_t>(resourceDesc.Width);
+  D3D12_RESOURCE_DESC resource_desc = source_resource->GetDesc();
+  assert(resource_desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER);
+  const size_t data_size_in_bytes = static_cast<size_t>(resource_desc.Width);
 
   // Create intermediate upload resource visible to both CPU and GPU.
-  ComPtr<ID3D12Resource> downloadBuffer = CreateD3D12ResourceOfByteSize(dml_objects.d3d12Device.Get(), dataSizeInBytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAG_NONE);
+  ComPtr<ID3D12Resource> download_buffer = CreateD3D12ResourceOfByteSize(dml_objects.d3d12_device.Get(), data_size_in_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAG_NONE);
 
-  D3D12_RESOURCE_BARRIER resourceBarrier = {};
-  resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-  resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-  resourceBarrier.Transition = {};
-  resourceBarrier.Transition.pResource = sourceResource;
-  resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-  resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  resourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+  D3D12_RESOURCE_BARRIER resource_barrier = {};
+  resource_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  resource_barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+  resource_barrier.Transition = {};
+  resource_barrier.Transition.pResource = source_resource;
+  resource_barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  resource_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  resource_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
 
   // Copy GPU data into the download buffer.
-  dml_objects.commandList->ResourceBarrier(1, &resourceBarrier);
-  dml_objects.commandList->CopyResource(downloadBuffer.Get(), sourceResource);
-  THROW_IF_FAILED(dml_objects.commandList->Close());
-  ID3D12CommandList* commandLists[] = {dml_objects.commandList.Get()};
-  dml_objects.commandQueue->ExecuteCommandLists(static_cast<uint32_t>(std::size(commandLists)), commandLists);
-  WaitForQueueToComplete(dml_objects.commandQueue.Get());
-  THROW_IF_FAILED(dml_objects.commandAllocator->Reset());
-  THROW_IF_FAILED(dml_objects.commandList->Reset(dml_objects.commandAllocator.Get(), nullptr));
+  dml_objects.command_list->ResourceBarrier(1, &resource_barrier);
+  dml_objects.command_list->CopyResource(download_buffer.Get(), source_resource);
+  THROW_IF_FAILED(dml_objects.command_list->Close());
+  ID3D12CommandList* command_lists[] = {dml_objects.command_list.Get()};
+  dml_objects.command_queue->ExecuteCommandLists(static_cast<uint32_t>(std::size(command_lists)), command_lists);
+  WaitForQueueToComplete(dml_objects.command_queue.Get());
+  THROW_IF_FAILED(dml_objects.command_allocator->Reset());
+  THROW_IF_FAILED(dml_objects.command_list->Reset(dml_objects.command_allocator.Get(), nullptr));
 
   // Copy from shared GPU/CPU memory to ordinary system RAM.
-  size_t clampedDataByteSize = std::min(dataSizeInBytes, destinationData.size());
+  size_t clamped_data_byte_size = std::min(data_size_in_bytes, destination_data.size());
   std::byte* sourceData = nullptr;
-  D3D12_RANGE range = {0, clampedDataByteSize};
-  THROW_IF_FAILED(downloadBuffer->Map(0, &range, reinterpret_cast<void**>(&sourceData)));
-  memcpy(destinationData.data(), sourceData, clampedDataByteSize);
-  downloadBuffer->Unmap(0, nullptr);
+  D3D12_RANGE range = {0, clamped_data_byte_size};
+  THROW_IF_FAILED(download_buffer->Map(0, &range, reinterpret_cast<void**>(&sourceData)));
+  memcpy(destination_data.data(), sourceData, clamped_data_byte_size);
+  download_buffer->Unmap(0, nullptr);
 }
 
 Ort::Value CreateTensorValueFromExistingD3DResource(
-    const OrtDmlApi& ortDmlApi,
-    Ort::MemoryInfo const& memoryInformation,
-    ID3D12Resource* d3dResource,
-    gsl::span<const int64_t> tensorDimensions,
-    ONNXTensorElementDataType elementDataType,
-    /*out*/ void** dmlEpResourceWrapper  // Must stay alive with Ort::Value.
+    const OrtDmlApi& ort_dml_api,
+    Ort::MemoryInfo const& memory_information,
+    ID3D12Resource* d3d_resource,
+    gsl::span<const int64_t> tensor_dimensions,
+    ONNXTensorElementDataType element_data_type,
+    /*out*/ void** dml_ep_resource_wrapper  // Must stay alive with Ort::Value.
 ) {
-  *dmlEpResourceWrapper = nullptr;
+  *dml_ep_resource_wrapper = nullptr;
 
-  void* dmlAllocatorResource;
-  Ort::ThrowOnError(ortDmlApi.CreateGPUAllocationFromD3DResource(d3dResource, &dmlAllocatorResource));
-  auto deleter = [&](void*) { ortDmlApi.FreeGPUAllocation(dmlAllocatorResource); };
-  std::unique_ptr<void, std::function<void(void*)>> dmlAllocatorResourceCleanup(dmlAllocatorResource, deleter);
+  void* dml_allocator_resource;
+  Ort::ThrowOnError(ort_dml_api.CreateGPUAllocationFromD3DResource(d3d_resource, &dml_allocator_resource));
+  auto deleter = [&](void*) { ort_dml_api.FreeGPUAllocation(dml_allocator_resource); };
+  std::unique_ptr<void, std::function<void(void*)>> dml_allocator_resource_cleanup(dml_allocator_resource, deleter);
 
-  size_t tensorByteSize = static_cast<size_t>(d3dResource->GetDesc().Width);
-  Ort::Value newValue(
+  size_t tensor_byte_size = static_cast<size_t>(d3d_resource->GetDesc().Width);
+  Ort::Value new_value(
       Ort::Value::CreateTensor(
-          memoryInformation,
-          dmlAllocatorResource,
-          tensorByteSize,
-          tensorDimensions.data(),
-          tensorDimensions.size(),
-          elementDataType));
+          memory_information,
+          dml_allocator_resource,
+          tensor_byte_size,
+          tensor_dimensions.data(),
+          tensor_dimensions.size(),
+          element_data_type));
 
   // Return values and the wrapped resource.
-  *dmlEpResourceWrapper = dmlAllocatorResource;
-  dmlAllocatorResourceCleanup.release();
+  *dml_ep_resource_wrapper = dml_allocator_resource;
+  dml_allocator_resource_cleanup.release();
 
-  return newValue;
+  return new_value;
 }
 
 #endif
@@ -2217,11 +2217,11 @@ TEST(CApiTest, basic_cuda_graph) {
 #elif defined(USE_DML)
   // Enable dynamic DML graph in DML provider option.
   session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
-  const OrtDmlApi* ortDmlApi;
-  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ortDmlApi)));
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
 
   auto dml_objects = CreateDmlObjects();
-  ortDmlApi->SessionOptionsAppendExecutionProvider_DML1(session_options, nullptr, dml_objects.commandQueue.Get());
+  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, nullptr, dml_objects.command_queue.Get());
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
@@ -2249,7 +2249,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
 #ifdef USE_DML
   ComPtr<ID3D12Resource> input_resource;
-  Ort::ThrowOnError(ortDmlApi->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
+  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
 #else
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
@@ -2282,7 +2282,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
 #ifdef USE_DML
   ComPtr<ID3D12Resource> output_resource;
-  Ort::ThrowOnError(ortDmlApi->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
+  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
   auto output_cpu_bytes = reinterpret_cast<std::byte*>(y_values.data());
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #else
@@ -2382,11 +2382,11 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
   Ort::SessionOptions session_options;
   Ort::Allocator allocator(session, info_mem);
   const auto& api = Ort::GetApi();
-  const OrtDmlApi* ortDmlApi;
-  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ortDmlApi)));
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
 
   ComPtr<ID3D12Resource> input_resource;
-  Ort::ThrowOnError(ortDmlApi->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
+  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(cg_data.x_values.data()), sizeof(float) * cg_data.x_values.size()));
 #else
   (void)cudaMemcpy(input_data.get(),
@@ -2425,7 +2425,7 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
   // Check the values against the bound raw memory (needs copying from device to host first)
 #ifdef USE_DML
   ComPtr<ID3D12Resource> output_resource;
-  Ort::ThrowOnError(ortDmlApi->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
+  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
   auto output_cpu_bytes = reinterpret_cast<std::byte*>(cg_data.y_values.data());
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * cg_data.y_values.size()));
 #else
@@ -2489,10 +2489,10 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
 
 #ifdef USE_DML
   session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
-  const OrtDmlApi* ortDmlApi;
-  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ortDmlApi)));
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
   auto dml_objects = CreateDmlObjects();
-  ortDmlApi->SessionOptionsAppendExecutionProvider_DML1(session_options, nullptr, dml_objects.commandQueue.Get());
+  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, nullptr, dml_objects.command_queue.Get());
 
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 #else
@@ -2591,11 +2591,11 @@ TEST(CApiTest, dml_graph_with_shape_nodes) {
   const auto& api = Ort::GetApi();
 
   // Enable hip graph in rocm provider option.
-  const OrtDmlApi* ortDmlApi;
+  const OrtDmlApi* ort_dml_api;
   Ort::SessionOptions session_options;
   session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
-  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ortDmlApi)));
-  ortDmlApi->SessionOptionsAppendExecutionProvider_DML(session_options, 0);
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+  ort_dml_api->SessionOptionsAppendExecutionProvider_DML(session_options, 0);
 
   // Successful loading of the ONNX model with shape nodes with dml graph feature enabled
   Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
