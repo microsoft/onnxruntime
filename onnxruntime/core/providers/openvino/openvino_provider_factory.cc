@@ -10,7 +10,7 @@ namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device_type, const char* precision,
                           bool enable_npu_fast_compile, size_t num_of_threads,
-                          const char* cache_dir, const char* model_priority, 
+                          const char* cache_dir, const char* model_priority,
                           int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
                           bool export_ep_ctx_blob)
@@ -68,28 +68,28 @@ struct OpenVINO_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
     auto& provider_options_map = *reinterpret_cast<const ProviderOptions*>(void_params);
 
-    std::string device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision
-                                            //   with these values at runtime.
-    std::string precision = "";             // [precision]: Sets the inference precision for execution.
-                                            // Supported precision for devices are CPU=FP32, GPU=FP32,FP16, NPU=FP16.
-                                            // Not setting precision will execute with optimized precision for best inference latency.
-                                            // set Precision=ACCURACY for executing models with input precision for best accuracy.
-    bool enable_npu_fast_compile = false;   // [enable_npu_fast_compile]: Fast-compile may be optionally enabled to
-                                            // speeds up the model's compilation to NPU device specific format.
-    int num_of_threads = 0;                 // [num_of_threads]: Overrides the accelerator default value of number of
-                                            //  threads with this value at runtime.
-    const char* cache_dir = "";             // [cache_dir]: specify the path to
-                                            // dump and load the blobs for the model caching/kernel caching (GPU)
-                                            // feature. If blob files are already present, it will be directly loaded.
+    std::string device_type = "";            // [device_type]: Overrides the accelerator hardware type and precision
+                                             //   with these values at runtime.
+    std::string precision = "";              // [precision]: Sets the inference precision for execution.
+                                             // Supported precision for devices are CPU=FP32, GPU=FP32,FP16, NPU=FP16.
+                                             // Not setting precision will execute with optimized precision for best inference latency.
+                                             // set Precision=ACCURACY for executing models with input precision for best accuracy.
+    bool enable_npu_fast_compile = false;    // [enable_npu_fast_compile]: Fast-compile may be optionally enabled to
+                                             // speeds up the model's compilation to NPU device specific format.
+    int num_of_threads = 0;                  // [num_of_threads]: Overrides the accelerator default value of number of
+                                             //  threads with this value at runtime.
+    const char* cache_dir = "";              // [cache_dir]: specify the path to
+                                             // dump and load the blobs for the model caching/kernel caching (GPU)
+                                             // feature. If blob files are already present, it will be directly loaded.
     const char* model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
                                              // Defines what model should be provided with more performant bounded resource first
-    int num_streams = 1;                    // [num_streams]: Option that specifies the number of parallel inference
-                                            // requests to be processed on a given `device_type`. Overrides the
-                                            // accelerator default value of number of streams
-                                            // with this value at runtime.
-    bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
-                                            // device (Reduces CPU Utilization when using GPU)
-    bool export_ep_ctx_blob = false;        // Whether to export the pre-compiled blob as an EPContext model.
+    int num_streams = 1;                     // [num_streams]: Option that specifies the number of parallel inference
+                                             // requests to be processed on a given `device_type`. Overrides the
+                                             // accelerator default value of number of streams
+                                             // with this value at runtime.
+    bool enable_opencl_throttling = false;   // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
+                                             // device (Reduces CPU Utilization when using GPU)
+    bool export_ep_ctx_blob = false;         // Whether to export the pre-compiled blob as an EPContext model.
 
     void* context = nullptr;
 
@@ -120,11 +120,11 @@ struct OpenVINO_Provider : Provider {
             " HETERO/MULTI/AUTO options available. \n");
       }
     }
-    if(provider_options_map.find("device_id") != provider_options_map.end()) {
+    if (provider_options_map.find("device_id") != provider_options_map.end()) {
       std::string dev_id = provider_options_map.at("device_id").c_str();
       LOGS_DEFAULT(WARNING) << "[OpenVINO] The options 'device_id' is deprecated. Upgrade to set deice_type and precision session options.\n";
       if (dev_id == "CPU" || dev_id == "GPU" || dev_id == "NPU") {
-          device_type = dev_id;
+        device_type = dev_id;
       } else {
         ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
       }

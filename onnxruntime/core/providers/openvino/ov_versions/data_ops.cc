@@ -367,9 +367,9 @@ void DataOps::populate_op_mode_supported() {
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                  if ((node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
                                       ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) ||
-                                      (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
+                                     (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
                                       ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8))
-                                  return true;
+                                   return true;
                                }
                                return false;
                              }};

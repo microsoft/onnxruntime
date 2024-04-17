@@ -46,7 +46,6 @@ void printDebugInfo(ov::CompiledModel& obj) {
 }
 #endif
 
-
 std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std::string& model_path) const {
   try {
     std::istringstream modelStringStream(model);
