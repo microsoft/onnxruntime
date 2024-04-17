@@ -2242,6 +2242,14 @@ Status Graph::UpdateShapeInference(Node& node) {
   return InferAndVerifyTypeMatch(node, *node.Op(), {});
 }
 
+void print(std::unordered_set<DataType> const &s)
+{
+    for (auto it = s.begin(); it != s.end(); it++) {
+        std::cout << *(*it) << ' ';
+    }
+    std::cout << "\n";
+}
+
 // Implementation of type-inference and type-checking for a single node
 GSL_SUPPRESS(f.23)  // spurious warning about inferred_type never being checked for null
 Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const ResolveOptions& options) {
@@ -2293,6 +2301,9 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         std::string null_pointer("(null)");
         if (input_type == nullptr) input_type = &null_pointer;
         // Type error in input model/graph.
+
+        std::cout << "Operator: " << op.Name() << " permitted_types:" << "\n";
+        print(permitted_types);
 
         Status status(ONNXRUNTIME, INVALID_GRAPH,
                       "This is an invalid model. "

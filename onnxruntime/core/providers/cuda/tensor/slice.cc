@@ -87,6 +87,7 @@ static Status SliceImpCore(cudaStream_t stream,
                            const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides,
                            const TensorShape& output_shape) {
   if (output_shape.Size() == 0) {
+    printf("slice.cc::SliceImpCore output_shape.Size() == 0, return...\n");
     return Status::OK();
   }
 

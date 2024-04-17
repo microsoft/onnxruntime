@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <inttypes.h>
 #include "orttraining/training_ops/cuda/tensor/slice_grad.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cuda/tensor/slice_impl.h"
@@ -51,6 +52,11 @@ Status SliceGrad::CallSliceImp(size_t element_size, size_t dimension_count, cons
                                const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
                                const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
                                const TensorShape& output_shape) const {
+  if (output_shape.Size() == 0) {
+    printf("slice_grad.cc::CallSliceImp output_shape.Size() == 0, return...\n");
+    return Status::OK();
+  }
+
   Tensor* gradient_out_tensor = GetOutputGradientTensor(ctx);
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(gradient_out_tensor->MutableDataRaw(), 0, gradient_out_tensor->SizeInBytes(), Stream(ctx)));
   return SliceImplGrad(Stream(ctx),
