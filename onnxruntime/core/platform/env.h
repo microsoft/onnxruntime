@@ -102,7 +102,6 @@ std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors>);
 /// <returns>errno and the error message string if errno indicates an error.</returns>
 std::pair<int, std::string> GetErrnoInfo();
 
-
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
 ///
