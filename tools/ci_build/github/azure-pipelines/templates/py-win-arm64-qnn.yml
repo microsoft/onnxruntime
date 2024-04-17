@@ -44,10 +44,6 @@ jobs:
 
       - template: telemetry-steps.yml
 
-      - template: jobs/download_win_qnn_sdk.yml
-        parameters:
-          QnnSDKVersion: ${{ parameters.QNN_SDK }}
-
       - script: |
           MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
           XCOPY /s /y /h /e /c /q "C:\Python\Python311\*.*" $(Agent.ToolsDirectory)\Python\3.11.0\arm64\
@@ -79,6 +75,10 @@ jobs:
           displayName: 'Install python modules'
 
       - template: set-nightly-build-option-variable-step.yml
+
+      - template: jobs/download_win_qnn_sdk.yml
+        parameters:
+          QnnSDKVersion: ${{ parameters.QNN_SDK }}
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'

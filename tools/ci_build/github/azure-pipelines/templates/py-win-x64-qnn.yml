@@ -48,10 +48,6 @@ jobs:
 
       - template: telemetry-steps.yml
 
-      - template: jobs/download_win_qnn_sdk.yml
-        parameters:
-          QnnSDKVersion: ${{ parameters.QNN_SDK }}
-
       - task: UsePythonVersion@0
         inputs:
           versionSpec: $(PythonVersion)
@@ -92,6 +88,10 @@ jobs:
           arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - template: set-nightly-build-option-variable-step.yml
+
+      - template: jobs/download_win_qnn_sdk.yml
+        parameters:
+          QnnSDKVersion: ${{ parameters.QNN_SDK }}
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
