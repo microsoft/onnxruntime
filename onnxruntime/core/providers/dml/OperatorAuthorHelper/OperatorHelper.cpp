@@ -2797,10 +2797,12 @@ namespace OperatorHelper
 
         const uint32_t presentSequenceLength = std::max(pastSequenceLength, m_totalSequenceLength);
 
-        std::vector<EdgeShapes> outputShapes(3);
-        outputShapes[0] = EdgeShapes({batchSize, sequenceLength, hiddenSize});
-        outputShapes[1] = EdgeShapes({batchSize, m_kvNumHeads, presentSequenceLength, kvHeadSize});
-        outputShapes[2] = EdgeShapes({batchSize, m_kvNumHeads, presentSequenceLength, kvHeadSize});
+        std::vector<EdgeShapes> outputShapes =
+        {
+            EdgeShapes({batchSize, sequenceLength, hiddenSize}),
+            EdgeShapes({batchSize, m_kvNumHeads, presentSequenceLength, kvHeadSize}),
+            EdgeShapes({batchSize, m_kvNumHeads, presentSequenceLength, kvHeadSize}),
+        };
 
         return outputShapes;
     }

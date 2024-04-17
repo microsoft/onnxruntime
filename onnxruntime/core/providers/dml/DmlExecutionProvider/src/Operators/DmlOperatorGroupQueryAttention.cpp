@@ -264,13 +264,16 @@ public:
 
         if (isFp16)
         {
+            // Output cast nodes start at the 4th index (previously we have the mha, query, key and value nodes)
+            const uint32_t outputCastNodeStart = 4;
+
             // Link MHA's output to the output cast nodes
             for (uint32_t i = 0; i < 3; ++i)
             {
                 DML_INTERMEDIATE_GRAPH_EDGE_DESC mhaToCastEdge = {};
                 mhaToCastEdge.FromNodeIndex = 0;
                 mhaToCastEdge.FromNodeOutputIndex = i;
-                mhaToCastEdge.ToNodeIndex = 4 + i;
+                mhaToCastEdge.ToNodeIndex = outputCastNodeStart + i;
                 mhaToCastEdge.ToNodeInputIndex = 0;
                 intermediateEdges.push_back(mhaToCastEdge);
             }
@@ -279,7 +282,7 @@ public:
             for (uint32_t i = 0; i < 3; ++i)
             {
                 DML_OUTPUT_GRAPH_EDGE_DESC castToOutputEdge = {};
-                castToOutputEdge.FromNodeIndex = 4 + i;
+                castToOutputEdge.FromNodeIndex = outputCastNodeStart + i;
                 castToOutputEdge.FromNodeOutputIndex = 0;
                 castToOutputEdge.GraphOutputIndex = i;
                 outputEdges.push_back(castToOutputEdge);

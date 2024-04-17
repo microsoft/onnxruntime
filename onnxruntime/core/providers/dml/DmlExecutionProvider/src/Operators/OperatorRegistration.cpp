@@ -679,7 +679,7 @@ constexpr auto requiredConstantCpuInputs(Args... args)
 }
 
 template<typename... Args>
-constexpr auto alias(Args... args)
+constexpr auto Aliases(Args... args)
 {
     if constexpr (sizeof...(args) == 0)
     {
@@ -695,23 +695,23 @@ constexpr auto alias(Args... args)
 
 // Define a single row of OperatorRegistrationInformation.
 #define REG_INFO(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, alias(), ##__VA_ARGS__,
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, Aliases(), ##__VA_ARGS__,
 
 #define REG_INFO_DYNAMIC_OUTPUTS(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, nullptr, alias(), ##__VA_ARGS__,
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, nullptr, Aliases(), ##__VA_ARGS__,
 
 // Versioned operator
 #define REG_INFO_VER(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName##version, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, alias(), ##__VA_ARGS__,
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName##version, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, Aliases(), ##__VA_ARGS__,
 
 // Identity operators use Copy, alias their first input, and use elementwise identity operators
 // when needed for striding support, but issue actual copies outside the graph.
 #define REG_INFO_COPY(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, alias(std::make_pair(0, 0)), ##__VA_ARGS__,
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, Aliases(std::make_pair(0, 0)), ##__VA_ARGS__,
 
 // MS-domain operators
 #define REG_INFO_MS(version, operatorName, ...) \
-    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, alias(), ##__VA_ARGS__,
+    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, Aliases(), ##__VA_ARGS__,
 
 // MS-domain operators
 #define REG_INFO_MS_ALIAS(version, operatorName, aliases, ...) \
@@ -719,7 +719,7 @@ constexpr auto alias(Args... args)
 
 // MS-domain operators
 #define REG_INFO_MSDML(version, operatorName, ...) \
-    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, alias(), ##__VA_ARGS__,
+    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, Aliases(), ##__VA_ARGS__,
 
 constexpr static OperatorRegistrationInformation operatorRegistrationInformationTable[] =
 {
@@ -1138,7 +1138,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
 
     // Operators that need to alias an input with an output
-    {REG_INFO_MS_ALIAS(1, GroupQueryAttention, alias(std::make_pair(3, 1), std::make_pair(4, 2)), typeNameListAttention, supportedTypeListAttention, DmlGraphSupport::Supported, requiredConstantCpuInputs(6))},
+    {REG_INFO_MS_ALIAS(1, GroupQueryAttention, Aliases(std::make_pair(3, 1), std::make_pair(4, 2)), typeNameListAttention, supportedTypeListAttention, DmlGraphSupport::Supported, requiredConstantCpuInputs(6))},
 };
 
 template<typename T>
