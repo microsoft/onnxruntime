@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <math.h>
 #include "contrib_ops/cuda/sparse/sparse_attention_triton.cuh"
 #include "core/providers/cuda/tunable/cuda_tuning_context.h"
 
@@ -68,7 +69,7 @@ struct SparseAttentionParams {
     this->head_size = head_size;
     this->past_sequence_length = total_sequence_length - sequence_length;
     this->total_sequence_length = total_sequence_length;
-    this->softmax_scale = softmax_scale;
+    this->softmax_scale = softmax_scale == 0.0f ? 1.0f / sqrtf(static_cast<float>(head_size)) : softmax_scale;
     this->kernel_block_size = kernel_block_size;
     this->layout_crow = layout_crow;
     this->layout_col = layout_col;

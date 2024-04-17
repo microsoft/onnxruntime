@@ -51,7 +51,7 @@ Status QkvToContext(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data);
 
-template <typename T>
+template <typename T, bool output_bnsh>
 Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
                        const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
                        cudaStream_t stream, const int max_threads_per_block);
@@ -68,7 +68,8 @@ Status LaunchConcatKVInPlace(int batch_size,
                              const T* new_value,
                              T* present_key,
                              T* present_value,
-                             AttentionQkvFormat past_kv_format,
+                             bool is_past_kv_bnsh_format,
+                             bool is_new_kv_bnsh_format,
                              cudaStream_t stream,
                              const int max_threads_per_block);
 

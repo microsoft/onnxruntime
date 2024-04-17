@@ -45,9 +45,8 @@ struct SparseAttentionData {
   const int32_t* seqlens_k_total = nullptr;
 
   // Temporary buffers
+  T* transposed_q_buffer = nullptr;
   T* rotary_buffer = nullptr;
-  T* k = nullptr;
-  T* v = nullptr;
   T* unpacked_qkv_buffer = nullptr;
 
   // This is sparse layout used in kernel.

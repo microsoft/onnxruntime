@@ -188,13 +188,21 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, context->GetComputeStream());
   data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
 
+  size_t transposed_q_bytes = 0;
+  if (!parameters.is_packed_qkv) {
+    transposed_q_bytes = (parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size * sizeof(T));
+  }
+  auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, context->GetComputeStream());
+  if (transposed_q_buffer) {
+    data.transposed_q_buffer = reinterpret_cast<CudaT*>(transposed_q_buffer.get());
+  }
+
   size_t unpacked_qkv_bytes = 0;
   if (parameters.is_packed_qkv) {
     unpacked_qkv_bytes = (parameters.batch_size * parameters.sequence_length * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T));
   }
   auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
-
-  if (unpacked_qkv_buffer != nullptr) {
+  if (unpacked_qkv_buffer) {
     data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
 

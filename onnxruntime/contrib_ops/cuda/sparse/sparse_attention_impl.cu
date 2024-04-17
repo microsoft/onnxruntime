@@ -8,6 +8,8 @@
 #include "contrib_ops/cpu/utils/console_dumper.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -72,14 +74,17 @@ Status FillPositionIds(contrib::SparseAttentionParameters& parameters,
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Concat new to kv buffer in place
+// Concat new key and value (BSNH format) to kv buffer (BNSH format) in place.
 template <typename T>
 Status LaunchConcatKVInPlace(contrib::SparseAttentionParameters& parameters,
                              SparseAttentionData<T>& data,
                              const void* new_key,
                              const void* new_value,
+                             bool is_new_kv_bnsh_format,
                              cudaStream_t stream,
                              const int max_threads_per_block) {
+  assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
+  bool is_past_kv_bnsh_format = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
   return LaunchConcatKVInPlace(parameters.batch_size,
                                parameters.kv_num_heads,
                                parameters.head_size,
@@ -91,7 +96,8 @@ Status LaunchConcatKVInPlace(contrib::SparseAttentionParameters& parameters,
                                reinterpret_cast<const T*>(new_value),
                                data.present_key,
                                data.present_value,
-                               parameters.past_kv_format,
+                               is_past_kv_bnsh_format,
+                               is_new_kv_bnsh_format,
                                stream,
                                max_threads_per_block);
 }
@@ -116,8 +122,14 @@ Status QkvToContext(
   const void* query;
   const void* key;
   const void* value;
+
   if (!parameters.is_packed_qkv) {
-    query = reinterpret_cast<const void*>(data.query);
+    static_assert(sizeof(T) == 2);
+    ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH(
+        batch_size, sequence_length, num_heads, head_size,
+        reinterpret_cast<const half*>(data.query), reinterpret_cast<half*>(data.transposed_q_buffer),
+        stream, max_threads_per_block));
+    query = reinterpret_cast<const void*>(data.transposed_q_buffer);
     key = reinterpret_cast<const void*>(data.key);
     value = reinterpret_cast<const void*>(data.value);
   } else {
@@ -126,12 +138,19 @@ Status QkvToContext(
     auto q = reinterpret_cast<T*>(data.unpacked_qkv_buffer);
     auto k = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size);
     auto v = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size + k_size);
-    ORT_RETURN_IF_ERROR(LaunchUnpackQKV(reinterpret_cast<const T*>(data.query), q, k, v, num_heads, kv_num_heads,
-                                        head_size, sequence_length, batch_size, stream, max_threads_per_block));
+    Status status = LaunchUnpackQKV<T, LAYOUT_BNSH>(data.query, q, k, v, num_heads, kv_num_heads, head_size,
+                                                    sequence_length, batch_size, stream, max_threads_per_block);
+    if (status != Status::OK()) {
+      return status;
+    }
+
     query = reinterpret_cast<const void*>(q);
     key = reinterpret_cast<const void*>(k);
     value = reinterpret_cast<const void*>(v);
   }
+
+  constexpr bool q_layout = LAYOUT_BNSH;
+  bool kv_layout = parameters.is_packed_qkv ? LAYOUT_BNSH : LAYOUT_BSNH;
 
   if (parameters.do_rotary) {
     size_t bsh = static_cast<size_t>(parameters.batch_size * parameters.sequence_length * parameters.head_size);
@@ -152,28 +171,30 @@ Status QkvToContext(
                                                        parameters.num_heads, parameters.head_size,
                                                        parameters.rotary_dim, parameters.max_sequence_length,
                                                        /*position_ids_format*/ 1, parameters.rotary_interleaved,
-                                                       device_prop.maxThreadsPerBlock, /*transposed*/ false));
+                                                       max_threads_per_block, q_layout));
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(stream, k_buffer, reinterpret_cast<const T*>(key),
                                                        position_ids_buff, data.cos_cache, data.sin_cache,
                                                        parameters.batch_size, parameters.sequence_length,
                                                        parameters.kv_num_heads, parameters.head_size,
                                                        parameters.rotary_dim, parameters.max_sequence_length,
                                                        /*position_ids_format*/ 1, parameters.rotary_interleaved,
-                                                       device_prop.maxThreadsPerBlock, /*transposed*/ false));
+                                                       max_threads_per_block, kv_layout));
     query = reinterpret_cast<const void*>(q_buffer);
     key = reinterpret_cast<const void*>(k_buffer);
   }
 
+  // Concat new key and value to kv buffers (in BNSH format) in place
   ORT_ENFORCE(parameters.past_present_share_buffer);
-  ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(parameters, data, key, value, stream, max_threads_per_block));
+  ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(
+      parameters, data, key, value, kv_layout, stream, max_threads_per_block));
 
   SparseAttentionTunableParams<T> params(
       tuning_ctx,
       ort_stream,
       data.output,
       reinterpret_cast<const T*>(query),
-      reinterpret_cast<const T*>(key),
-      reinterpret_cast<const T*>(value),
+      reinterpret_cast<const T*>(data.present_key),
+      reinterpret_cast<const T*>(data.present_value),
       parameters.batch_size,
       parameters.sequence_length,
       parameters.num_heads,
@@ -188,7 +209,7 @@ Status QkvToContext(
       data.kernel_layout.num_rows * data.kernel_layout.num_cols,          // stride per head in col indices
       data.kernel_layout.num_layout);
 
-  assert (tuning_ctx->IsTunableOpEnabled());
+  assert(tuning_ctx->IsTunableOpEnabled());
   static SparseAttentionTunableOp<T> op;
   return op(&params);
 }
@@ -213,4 +234,4 @@ template Status QkvToContext<BFloat16>(
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif // USE_TRITON_KERNEL
+#endif  // USE_TRITON_KERNEL
