@@ -108,7 +108,7 @@ struct OpenVINO_Provider : Provider {
         precision = deprecated_device.substr(delimit + 1);
         LOGS_DEFAULT(WARNING) << "[OpenVINO] Selected 'device_type' " + deprecated_device + " is deprecated. \n"
                               << "Update the 'device_type' to specified types 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
-                              << " HETERO/MULTI/AUTO options and set 'precision' seperately. \n";
+                              << " HETERO/MULTI/AUTO options and set 'precision' separately. \n";
       }
       if (!((ov_supported_device_types.find(device_type) != ov_supported_device_types.end()) ||
             (device_type.find("HETERO:") == 0) ||

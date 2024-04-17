@@ -424,7 +424,7 @@ TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
   std::unordered_set<std::string> excluded_providers;
   excluded_providers.insert(kTensorrtExecutionProvider);
 #if defined(OPENVINO_CONFIG_GPU)
-  // OpenVINO GPU: Disabled temporarily due to accuarcy issues
+  // OpenVINO GPU: Disabled temporarily due to accuracy issues
   // OpenVINO VPU: Disabled due to software limitation
   excluded_providers.insert(kOpenVINOExecutionProvider);
 #endif
