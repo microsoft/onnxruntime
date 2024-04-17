@@ -51,7 +51,7 @@ jobs:
           versionSpec: '3.8'
           addToPath: true
       
-      - template: templates/jobs/download_qin_qnn_sdk.yml
+      - template: templates/jobs/download_win_qnn_sdk.yml
         parameters:
           QnnSDKVersion: ${{ parameters.QnnSdk }}
 
@@ -109,7 +109,7 @@ jobs:
         inputs:
           forceReinstallCredentialProvider: true  
 
-      - template: templates/jobs/download_qin_qnn_sdk.yml
+      - template: templates/jobs/download_win_qnn_sdk.yml
         parameters:
           QnnSDKVersion: ${{ parameters.QnnSdk }}
 
