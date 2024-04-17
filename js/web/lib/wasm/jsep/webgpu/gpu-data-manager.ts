@@ -101,6 +101,8 @@ const bucketFreelist: {[key: number]: number} = {
   33554432: 22,
   44236800: 2,
   58982400: 6,
+  67108864: 0,
+  134217728: 0,
   167772160: 6,
 };
 /* eslint-enable */
