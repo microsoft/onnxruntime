@@ -657,15 +657,19 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
 
             const size_t kklen = std::min(CountK - k, BlkLen);
 
-            for (size_t kk = 0; kk < kklen; kk += 16) {
-                constexpr size_t NCols = 4;
+            constexpr size_t NCols = 4;
 
-                const float* ScalePtr = &scale[0];
-                const float* OffsetPtr = HasZeroPoint ? &offset[0] : nullptr;
+            const float* ScalePtr = &scale[0];
+            const float* OffsetPtr = HasZeroPoint ? &offset[0] : nullptr;
 
-                float* DstColPtr = Dst;
+            float* DstColPtr = Dst;
 
-                for (size_t nn = 0; nn < 16; nn += NCols) {
+            for (size_t nn = 0; nn < 16; nn += NCols) {
+
+                float* DstSectionPtr = DstColPtr;
+
+                for (size_t kk = 0; kk < kklen; kk += 16) {
+
                     const std::byte* QuantBDataPtr = QuantBDataCol + nn * StrideQuantBData + (k + kk) * BlkBitWidth / 8;
 
                     Q4BitBlkDequantB_16xNCols<NCols, HasZeroPoint>(
@@ -673,18 +677,21 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
                         StrideQuantBData,
                         ScalePtr,
                         OffsetPtr,
-                        DstColPtr
+                        DstSectionPtr
                     );
 
-                    ScalePtr += NCols;
-                    if constexpr (HasZeroPoint) {
-                        OffsetPtr += NCols;
-                    }
-                    DstColPtr += NCols;
+                    DstSectionPtr += 16 * 16;
                 }
 
-                Dst += 16 * std::min(kklen - kk, size_t{16});
+                ScalePtr += NCols;
+                if constexpr (HasZeroPoint) {
+                    OffsetPtr += NCols;
+                }
+                DstColPtr += NCols;
+
             }
+
+            Dst += 16 * kklen;
         }
 
         n_cols_remaining -= 16;
