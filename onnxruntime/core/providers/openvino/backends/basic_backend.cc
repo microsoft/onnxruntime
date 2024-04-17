@@ -85,8 +85,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       if (is_ep_ctx_graph_) {
         // If the blob is held in an EPContext node, then skip FE+Compile
         // and directly move on to creating a backend with the executable blob
-        std::istringstream model_stream(ep_ctx_handle.GetModelBlobString());
-        exe_network_ = global_context_.ie_core.ImportModel(model_stream,
+        exe_network_ = global_context_.ie_core.ImportModel(ep_ctx_handle.GetModelBlobStream(),
                                                            hw_target,
                                                            device_config,
                                                            subgraph_context_.subgraph_name);

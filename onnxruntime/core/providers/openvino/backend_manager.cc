@@ -127,7 +127,13 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
                                                      const logging::Logger& logger) {
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
-  const std::string& graph_name = global_context_.onnx_model_name;
+  auto graph_name = global_context_.onnx_model_path_name;
+  // Remove extension so we can append suffix to form the complete name of output graph
+  graph_name = [&]() {
+    size_t dot = graph_name.find_last_of(".");
+    if (dot == std::string::npos) return graph_name;
+    return graph_name.substr(0, dot);
+  }();
   // If embed_mode, then pass on the serialized blob
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   if (global_context_.ep_context_embed_mode) {
@@ -146,7 +152,8 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
                                                       logger,
                                                       global_context_.ep_context_embed_mode,
                                                       model_blob_str,
-                                                      openvino_sdk_version_));
+                                                      openvino_sdk_version_,
+                                                      GetGlobalContext().device_type));
 
   return Status::OK();
 }

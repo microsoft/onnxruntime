@@ -95,8 +95,6 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   global_context_->onnx_model_path_name =
       graph_viewer.ModelPath().ToPathString();
 #endif
-  std::filesystem::path onnx_model_wd = graph_viewer.ModelPath().GetComponents().back();
-  global_context_->onnx_model_name = onnx_model_wd.replace_extension().string();
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
   auto input_type = graph_viewer.GetInputs()[0]->TypeAsProto()->tensor_type().elem_type();

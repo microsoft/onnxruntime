@@ -27,15 +27,16 @@ class EPCtxHandler {
                           const logging::Logger& logger,
                           const bool& ep_context_embed_mode,
                           const std::string& model_blob_str,
-                          const std::string& openvino_sdk_version) const;
+                          const std::string& openvino_sdk_version,
+                          const std::string& device_type) const;
   Status ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer);
   bool CheckForOVEPCtxNode(const GraphViewer& graph_viewer, std::string openvino_sdk_version) const;
   bool IsValidOVEPCtxGraph() const { return is_valid_ep_ctx_graph_; };
-  [[nodiscard]] const std::string& GetModelBlobString() const { return blob_serialized_; }
+  [[nodiscard]] const std::shared_ptr<std::istringstream> GetModelBlobStream() const { return model_stream_; }
 
  private:
   bool is_valid_ep_ctx_graph_{false};
-  std::string blob_serialized_{};
+  std::shared_ptr<std::istringstream> model_stream_;
 };
 
 }  // namespace openvino_ep

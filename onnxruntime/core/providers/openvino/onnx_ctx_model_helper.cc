@@ -18,7 +18,8 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
                                       const logging::Logger& logger,
                                       const bool& ep_context_embed_mode,
                                       const std::string& model_blob_str,
-                                      const std::string& openvino_sdk_version) const {
+                                      const std::string& openvino_sdk_version,
+                                      const std::string& device_type) const {
   auto model_build = graph_viewer.CreateModel(logger);
   auto& graph_build = model_build->MainGraph();
 
@@ -75,7 +76,7 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   // Finally, dump the model
-  std::ofstream dump(graph_name + "-ov_blob.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+  std::ofstream dump(graph_name + "-ov_"+ device_type + "_blob.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto->SerializeToOstream(dump);
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Export blob as EPContext Node";
@@ -88,7 +89,7 @@ Status EPCtxHandler::ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer) {
   auto& attrs = node->GetAttributes();
   ORT_ENFORCE(attrs.count(EP_CACHE_CONTEXT) > 0);
 
-  blob_serialized_ = attrs.at(EP_CACHE_CONTEXT).s();
+  model_stream_ = std::make_shared<std::istringstream>(attrs.at(EP_CACHE_CONTEXT).s());
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
 

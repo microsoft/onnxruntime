@@ -117,13 +117,12 @@ OVExeNetwork OVCore::CompileModel(const std::string onnx_model_path,
   }
 }
 
-OVExeNetwork OVCore::ImportModel(std::istringstream& model_stream,
+OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
                                  std::string& hw_target,
                                  ov::AnyMap& device_config,
                                  std::string name) {
   try {
-    auto obj = oe.import_model(model_stream, hw_target, device_config);
-#ifndef NDEBUG
+    auto obj = oe.import_model(*model_stream, hw_target, device_config);
     printDebugInfo(obj);
 #endif
     OVExeNetwork exe(obj);
@@ -155,10 +154,9 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model, OVRem
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
-OVExeNetwork OVCore::ImportModel(std::istringstream& model_stream, OVRemoteContextPtr context, std::string& name) {
+OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream, OVRemoteContextPtr context, std::string& name) {
   try {
-    auto obj = oe.import_model(model_stream, *context);
-#ifndef NDEBUG
+    auto obj = oe.import_model(*model_stream, *context);
     printDebugInfo(obj);
 #endif
     OVExeNetwork exe(obj);

@@ -49,13 +49,13 @@ class OVCore {
                             std::string cache_dir,
                             ov::AnyMap& device_config,
                             std::string name);
-  OVExeNetwork ImportModel(std::istringstream& model_stream,
+  OVExeNetwork ImportModel(std::shared_ptr<std::istringstream> model_stream,
                            std::string& hw_target,
                            ov::AnyMap& device_config,
                            std::string name);
 #ifdef IO_BUFFER_ENABLED
   OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& model, OVRemoteContextPtr context, std::string& name);
-  OVExeNetwork ImportModel(std::istringstream& model_stream, OVRemoteContextPtr context, std::string& name);
+  OVExeNetwork ImportModel(std::shared_ptr<std::istringstream> model_stream, OVRemoteContextPtr context, std::string& name);
 #endif
   std::vector<std::string> GetAvailableDevices();
   void SetCache(std::string cache_dir_path, std::string device_type);
