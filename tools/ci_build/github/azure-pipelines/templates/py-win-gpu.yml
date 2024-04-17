@@ -121,17 +121,6 @@ stages:
               workingDirectory: '$(Build.BinariesDirectory)'
               arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
-          # it could be removed once there's onnx wheel for python 3.12
-          - ${{ if eq(parameters.PYTHON_VERSION, '3.12') }}:
-            - task: PublishPipelineArtifact@1
-              displayName: 'Publish Artifact: ONNX python 12 wheel'
-              inputs:
-                targetPath: '$(Agent.TempDirectory)\onnx\onnx-1.15.0\dist\'
-                publishLocation: 'pipeline'
-                # In fact, the onnx artifact is same with different EP_NAME, but in CI, we couldn't publish artifact with same name.
-                # And there's not way to check if the artifact exists.
-                artifactName: onnx_py12_wheel_${{ parameters.EP_NAME }}
-
           - template: set-nightly-build-option-variable-step.yml
 
           - task: PythonScript@0
@@ -246,30 +235,13 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-        # It could be remove once there's onnx wheel for python 3.12
-        - ${{ if eq(parameters.PYTHON_VERSION, '3.12') }}:
-          - template: flex-downloadPipelineArtifact.yml
-            parameters:
-              ArtifactName: onnx_py12_wheel_${{ parameters.EP_NAME }}
-              StepName: 'Download Pipeline Artifact - Onnx Python12 wheel'
-              TargetPath: '$(Agent.TempDirectory)\onnx\'
-              SpecificArtifact: ${{ parameters.SpecificArtifact }}
-              BuildId: ${{ parameters.BuildId }}
-
-          - powershell: |
-              python -m pip install upgrade pip
-              Get-ChildItem -Path $(Agent.TempDirectory)\onnx\*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-              python -m pip install pytest
-            workingDirectory: '$(Build.SourcesDirectory)'
-            displayName: 'Install ONNX and pytest'
-        - ${{ else }}:
-          - powershell: |
-              pushd onnxruntime/test/python
-              python -m pip install --upgrade pip
-              python -m pip install -r requirements.txt
-              popd
-            workingDirectory: '$(Build.SourcesDirectory)'
-            displayName: 'Install ONNX'
+        - powershell: |
+            pushd onnxruntime/test/python
+            python -m pip install --upgrade pip
+            python -m pip install -r requirements.txt
+            popd
+          workingDirectory: '$(Build.SourcesDirectory)'
+          displayName: 'Install ONNX'
 
         - powershell: |
             python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq

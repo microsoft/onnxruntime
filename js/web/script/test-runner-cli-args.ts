@@ -78,7 +78,7 @@ Options:
  --webgpu.<...>=<...>            --webgpu.profiling.mode=default --wasm.numThreads=1 --wasm.simd=false
  --webnn.<...>=<...>
 
- --webnn-device-type           Set the WebNN device type (cpu/gpu)
+ --webnn-device-type           Set the WebNN device type (cpu/gpu/npu)
 
  -x, --wasm-number-threads     Set the WebAssembly number of threads
                                 ("--wasm-number-threads" is deprecated. use "--wasm.numThreads" or "-x" instead)
@@ -351,7 +351,7 @@ function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
 
 function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.WebNNExecutionProviderOption {
   const deviceType = args['webnn-device-type'];
-  if (deviceType !== undefined && deviceType !== 'cpu' && deviceType !== 'gpu') {
+  if (deviceType !== undefined && !['cpu', 'gpu', 'npu'].includes(deviceType)) {
     throw new Error('Flag "webnn-device-type" is invalid');
   }
   return {name: 'webnn', deviceType};
