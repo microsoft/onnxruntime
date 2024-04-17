@@ -5,7 +5,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ibackend.h"
-#include "basic_backend.h"
+#include "core/providers/openvino/backends/basic_backend.h"
 
 namespace onnxruntime {
 namespace openvino_ep {

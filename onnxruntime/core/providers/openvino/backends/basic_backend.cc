@@ -9,10 +9,10 @@
 #include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "../backend_utils.h"
-#include "basic_backend.h"
-#include "../onnx_ctx_model_helper.h"
-#include "../backend_manager.h"
+#include "core/providers/openvino/backend_utils.h"
+#include "core/providers/openvino/backends/basic_backend.h"
+#include "core/providers/openvino/onnx_ctx_model_helper.h"
+#include "core/providers/openvino/backend_manager.h"
 
 namespace onnxruntime {
 
@@ -85,14 +85,14 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       if (is_ep_ctx_graph_) {
         // If the blob is held in an EPContext node, then skip FE+Compile
         // and directly move on to creating a backend with the executable blob
-        std::istringstream model_stream(ep_ctx_handle.GetModelBlobString());
-        exe_network_ = global_context_.ie_core.ImportModel(model_stream,
+        exe_network_ = global_context_.ie_core.ImportModel(ep_ctx_handle.GetModelBlobStream(),
                                                            hw_target,
                                                            device_config,
                                                            subgraph_context_.subgraph_name);
         ie_cnn_network_ = exe_network_.Get().get_runtime_model();
       } else if (!subgraph_context_.has_dynamic_input_shape &&
-                 global_context_.onnx_model_path_name.find(".onnx") != std::string ::npos) {  // Inputs with static dimenstions
+                 global_context_.onnx_model_path_name.find(".onnx") != std::string ::npos) {
+        // Inputs with static dimenstions
         exe_network_ = global_context_.ie_core.CompileModel(global_context_.onnx_model_path_name,
                                                             hw_target,
                                                             global_context_.cache_dir,
@@ -191,7 +191,8 @@ void BasicBackend::EnableStreams() {
       (global_context_.device_type.find("HETERO") != std::string::npos) ||
       (global_context_.device_type.find("AUTO") != std::string::npos)) {
     if (global_context_.num_streams != 1) {
-      ORT_THROW(log_tag + "Cannot set NUM_STREAMS to " + std::to_string(global_context_.num_streams) + " for device " + global_context_.device_type);
+      ORT_THROW(log_tag + "Cannot set NUM_STREAMS to " +
+                std::to_string(global_context_.num_streams) + " for device " + global_context_.device_type);
     }
     // Do nothing
   } else {

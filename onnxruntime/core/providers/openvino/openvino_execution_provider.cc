@@ -3,11 +3,11 @@
 #include <filesystem>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "openvino_execution_provider.h"
-#include "contexts.h"
-#include "backend_manager.h"
-#include "onnx_ctx_model_helper.h"
-#include "ov_versions/capability.h"
+#include "core/providers/openvino/openvino_execution_provider.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/onnx_ctx_model_helper.h"
+#include "core/providers/openvino/ov_versions/capability.h"
 #include "openvino/core/version.hpp"
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
@@ -95,22 +95,11 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   global_context_->onnx_model_path_name =
       graph_viewer.ModelPath().ToPathString();
 #endif
-  std::filesystem::path onnx_model_wd = graph_viewer.ModelPath().GetComponents().back();
-  global_context_->onnx_model_name = onnx_model_wd.replace_extension().string();
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
-  auto input_type = graph_viewer.GetInputs()[0]->TypeAsProto()->tensor_type().elem_type();
-  std::string precision_str = global_context_->precision_str;
-  if (global_context_->precision_str == "ACCURACY" && global_context_->device_type == "GPU") {
-    if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
-      precision_str = "FP32";
-    } else if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-      precision_str = "FP16";
-    }
-  }
+
   openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 precision_str);
+                                 global_context_->device_type);
   result = obj.Execute();
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();

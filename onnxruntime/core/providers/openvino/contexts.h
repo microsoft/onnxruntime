@@ -6,7 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
-#include "ov_interface.h"
+#include "core/providers/openvino/ov_interface.h"
 
 namespace onnxruntime {
 namespace openvino_ep {

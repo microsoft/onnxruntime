@@ -8,10 +8,10 @@
 #include <memory>
 #include <string>
 
-#include "ov_interface.h"
-#include "contexts.h"
-#include "onnx_ctx_model_helper.h"
-#include "ibackend.h"
+#include "core/providers/openvino/ov_interface.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/onnx_ctx_model_helper.h"
+#include "core/providers/openvino/ibackend.h"
 
 namespace onnxruntime {
 namespace openvino_ep {

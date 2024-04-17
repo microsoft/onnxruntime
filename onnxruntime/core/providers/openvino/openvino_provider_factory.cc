@@ -72,8 +72,9 @@ struct OpenVINO_Provider : Provider {
                                              //   with these values at runtime.
     std::string precision = "";              // [precision]: Sets the inference precision for execution.
                                              // Supported precision for devices are CPU=FP32, GPU=FP32,FP16, NPU=FP16.
-                                             // Not setting precision will execute with optimized precision for best inference latency.
-                                             // set Precision=ACCURACY for executing models with input precision for best accuracy.
+                                             // Not setting precision will execute with optimized precision for
+                                             // best inference latency. set Precision=ACCURACY for executing models
+                                             // with input precision for best accuracy.
     bool enable_npu_fast_compile = false;    // [enable_npu_fast_compile]: Fast-compile may be optionally enabled to
                                              // speeds up the model's compilation to NPU device specific format.
     int num_of_threads = 0;                  // [num_of_threads]: Overrides the accelerator default value of number of
@@ -82,7 +83,8 @@ struct OpenVINO_Provider : Provider {
                                              // dump and load the blobs for the model caching/kernel caching (GPU)
                                              // feature. If blob files are already present, it will be directly loaded.
     const char* model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
-                                             // Defines what model should be provided with more performant bounded resource first
+                                             // Defines what model should be provided with more performant
+                                             // bounded resource first
     int num_streams = 1;                     // [num_streams]: Option that specifies the number of parallel inference
                                              // requests to be processed on a given `device_type`. Overrides the
                                              // accelerator default value of number of streams
@@ -107,8 +109,9 @@ struct OpenVINO_Provider : Provider {
         device_type = deprecated_device.substr(0, delimit);
         precision = deprecated_device.substr(delimit + 1);
         LOGS_DEFAULT(WARNING) << "[OpenVINO] Selected 'device_type' " + deprecated_device + " is deprecated. \n"
-                              << "Update the 'device_type' to specified types 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
-                              << " HETERO/MULTI/AUTO options and set 'precision' seperately. \n";
+                              << "Update the 'device_type' to specified types 'CPU', 'GPU', 'GPU.0', "
+                              << "'GPU.1', 'NPU' or from"
+                              << " HETERO/MULTI/AUTO options and set 'precision' separately. \n";
       }
       if (!((ov_supported_device_types.find(device_type) != ov_supported_device_types.end()) ||
             (device_type.find("HETERO:") == 0) ||
@@ -122,7 +125,8 @@ struct OpenVINO_Provider : Provider {
     }
     if (provider_options_map.find("device_id") != provider_options_map.end()) {
       std::string dev_id = provider_options_map.at("device_id").c_str();
-      LOGS_DEFAULT(WARNING) << "[OpenVINO] The options 'device_id' is deprecated. Upgrade to set deice_type and precision session options.\n";
+      LOGS_DEFAULT(WARNING) << "[OpenVINO] The options 'device_id' is deprecated. "
+                            << "Upgrade to set deice_type and precision session options.\n";
       if (dev_id == "CPU" || dev_id == "GPU" || dev_id == "NPU") {
         device_type = dev_id;
       } else {
@@ -220,12 +224,13 @@ struct OpenVINO_Provider : Provider {
     }
     if (provider_options_map.find("disable_dynamic_shapes") != provider_options_map.end()) {
       bool_flag = provider_options_map.at("disable_dynamic_shapes");
-      if (bool_flag == "true" || bool_flag == "True")
+      if (bool_flag == "true" || bool_flag == "True") {
         disable_dynamic_shapes = true;
-      else if (bool_flag == "false" || bool_flag == "False") {
+      } else if (bool_flag == "false" || bool_flag == "False") {
         if (device_type.find("NPU") != std::string::npos) {
           disable_dynamic_shapes = true;
-          LOGS_DEFAULT(INFO) << "[OpenVINO-EP] The value for the key 'disable_dynamic_shapes' will be set to TRUE for NPU backend.\n ";
+          LOGS_DEFAULT(INFO) << "[OpenVINO-EP] The value for the key 'disable_dynamic_shapes' will be set to "
+                             << "TRUE for NPU backend.\n ";
         } else {
           disable_dynamic_shapes = false;
         }
