@@ -388,15 +388,21 @@ Status QnnBackendManager::ReleaseDevice() {
 }
 
 Status QnnBackendManager::InitializeProfiling() {
-  if (ProfilingLevel::OFF == profiling_level_ || ProfilingLevel::INVALID == profiling_level_) {
+  profiling_level_merge_ = profiling_level_;
+  // use profiling level from ETW if ETW is enabled
+  if (profiling_level_etw_ != ProfilingLevel::INVALID) {
+    profiling_level_merge_ = profiling_level_etw_;
+  }
+
+  if (ProfilingLevel::OFF == profiling_level_merge_ || ProfilingLevel::INVALID == profiling_level_merge_) {
     LOGS_DEFAULT(INFO) << "Profiling turned off.";
     return Status::OK();
   }
 
   QnnProfile_Level_t qnn_profile_level = QNN_PROFILE_LEVEL_BASIC;
-  if (ProfilingLevel::BASIC == profiling_level_) {
+  if (ProfilingLevel::BASIC == profiling_level_merge_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_BASIC;
-  } else if (ProfilingLevel::DETAILED == profiling_level_) {
+  } else if (ProfilingLevel::DETAILED == profiling_level_merge_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_DETAILED;
   }
   auto result = qnn_interface_.profileCreate(backend_handle_, qnn_profile_level, &profile_backend_handle_);
@@ -900,9 +906,36 @@ void QnnBackendManager::ReleaseResources() {
 }
 
 Status QnnBackendManager::ExtractBackendProfilingInfo() {
-  if (ProfilingLevel::OFF == profiling_level_ || ProfilingLevel::INVALID == profiling_level_) {
+  if (ProfilingLevel::OFF == profiling_level_merge_ || ProfilingLevel::INVALID == profiling_level_merge_) {
     return Status::OK();
   }
+
+  bool tracelogging_provider_ep_enabled = false;
+  const Env& env = Env::Default();
+  auto& provider = env.GetTelemetryProvider();
+  auto level = provider.Level();
+  if (provider.IsEnabled()) {
+    auto keyword = provider.Keyword();
+    if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0 && level >= 5) {
+      tracelogging_provider_ep_enabled = true;
+    }
+  }
+
+  // ETW disabled previously, but enabled now
+  if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
+    LOGS(*logger_, ERROR) << "ETW disabled previously, but enabled now. Can't do the switch! Won't output any profiling.";
+    return Status::OK();
+  }
+
+  // ETW enabled previously, but disabled now
+  if (ProfilingLevel::INVALID != profiling_level_etw_ && !tracelogging_provider_ep_enabled) {
+    LOGS(*logger_, ERROR) << "ETW enabled previously, but disabled now. Can't do the switch! Won't output any profiling.";
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF(!tracelogging_provider_ep_enabled && profiling_file_path_.empty(),
+                "Need to specify a cvs file via provider option profiling_file_path if ETW not enabled.");
+
   ORT_RETURN_IF(nullptr == profile_backend_handle_, "Backend profile handle not valid.");
 
   const QnnProfile_EventId_t* profile_events{nullptr};
@@ -917,32 +950,22 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
     Qnn_ErrorHandle_t resultPropertyHasCapability =
         qnn_interface_.propertyHasCapability(QNN_PROPERTY_PROFILE_SUPPORTS_EXTENDED_EVENT);
     uint16_t errorCodePropertyHasCapability = static_cast<uint16_t>(resultPropertyHasCapability & 0xFFFF);
-    if (errorCodePropertyHasCapability == QNN_PROFILE_NO_ERROR) {
+    if (errorCodePropertyHasCapability == QNN_PROPERTY_SUPPORTED) {
       LOGS(*logger_, VERBOSE) << "The QNN backend supports extended event data.";
       backendSupportsExtendedEventData = true;
     } else {
       LOGS(*logger_, VERBOSE) << "The QNN backend does not support extended event data.";
     }
 
-    bool tracelogging_provider_ep_enabled = false;
-    const Env& env = Env::Default();
-    auto& provider = env.GetTelemetryProvider();
-    if (provider.IsEnabled()) {
-      auto keyword = provider.Keyword();
-      if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
-        tracelogging_provider_ep_enabled = true;
-      }
-    }
     std::ofstream outfile;
     if (!tracelogging_provider_ep_enabled) {
       // Write to CSV in append mode
-      const char* profilingCsvFilename = "qnn-profiling-data.csv";
-      std::ifstream infile(profilingCsvFilename);
+      std::ifstream infile(profiling_file_path_.c_str());
       bool exists = infile.good();
       infile.close();
 
-      outfile.open(profilingCsvFilename, std::ios_base::app);
-      ORT_RETURN_IF(!outfile.is_open(), "Failed to open qnn-profiling-data.csv");
+      outfile.open(profiling_file_path_, std::ios_base::app);
+      ORT_RETURN_IF(!outfile.is_open(), "Failed to open profiling file: ", profiling_file_path_);
       // If file didn't exist before, write the header
       if (!exists) {
         outfile << "Msg Timestamp,Message,Time,Unit of Measurement,Timing Source,Event Level,Event Identifier\n";
@@ -1063,6 +1086,7 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
   QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(resultGetExtendedEventData & 0xFFFF);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != errorCode, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
 
+  // need to check the version first
   std::string message = GetEventTypeString(event_data_extended.v1.type);
   std::string unit = GetUnitString(event_data_extended.v1.unit);
 
@@ -1071,16 +1095,17 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
 #endif
 
   if (!tracelogging_provider_ep_enabled) {
-    if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
-      outfile << event_data_extended.v1.timestamp << ","
-              << message << ","
-              << ExtractQnnScalarValue(event_data_extended.v1.value) << ","
-              << unit << ","
-              << "BACKEND"
-              << ","
-              << eventLevel << ","
-              << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
-    }
+    // QNN issue, the version number not correct, ticket created
+    // if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
+    outfile << event_data_extended.v1.timestamp << ","
+            << message << ","
+            << ExtractQnnScalarValue(event_data_extended.v1.value) << ","
+            << unit << ","
+            << "BACKEND"
+            << ","
+            << eventLevel << ","
+            << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
+    //}
   } else {
 #ifdef _WIN32
     LogQnnProfileEventAsTraceLogging(
