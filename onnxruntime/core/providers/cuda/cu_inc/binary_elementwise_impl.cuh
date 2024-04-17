@@ -21,19 +21,19 @@ __global__ void _BinaryElementWise(
     const TArray<fast_divmod> fdm_output_strides,
     T* output_data,
     const FuncT& functor,
-    CUDA_LONG N) {
-  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+    size_t N) {
+  size_t start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T1 lvalue[NumElementsPerThread];
   T2 rvalue[NumElementsPerThread];
 
-  CUDA_LONG id = start;
+  size_t id = start;
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      CUDA_LONG lhs_index = (lhs_need_compute ? 0 : id);
-      CUDA_LONG rhs_index = (rhs_need_compute ? 0 : id);
+      size_t lhs_index = (lhs_need_compute ? 0 : id);
+      size_t rhs_index = (rhs_need_compute ? 0 : id);
       // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md
-      CUDA_LONG offset = id;
+      size_t offset = id;
 #pragma unroll
       for (auto dim = 0; dim < fdm_output_strides.Capacity(); dim++) {
         if (dim >= output_rank) {
@@ -75,12 +75,12 @@ __global__ void _BinaryElementWiseSimple(
     const T2* rhs_data,
     T* output_data,
     const FuncT func,
-    CUDA_LONG N) {
-  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+    size_t N) {
+  size_t start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T1 lvalue[NumElementsPerThread];
   T2 rvalue[NumElementsPerThread];
 
-  CUDA_LONG id = start;
+  size_t id = start;
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
@@ -110,16 +110,16 @@ __global__ void _BinaryElementWiseRhsPerChannelBatch1(
     const fast_divmod fdm_H,
     T* output_data,
     FuncT func,
-    CUDA_LONG N) {
-  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+    size_t N) {
+  size_t start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T1 lvalue[NumElementsPerThread];
   T2 rvalue[NumElementsPerThread];
 
-  CUDA_LONG id = start;
+  size_t id = start;
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      CUDA_LONG rhs_id = fdm_H.div(id);
+      size_t rhs_id = fdm_H.div(id);
       lvalue[i] = lhs_data[id];
       rvalue[i] = rhs_data[rhs_id];
 
@@ -146,16 +146,16 @@ __global__ void _BinaryElementWiseRhsPerChannelBatchN(
     const fast_divmod fdm_C,
     T* output_data,
     FuncT func,
-    CUDA_LONG N) {
-  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+    size_t N) {
+  size_t start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T1 lvalue[NumElementsPerThread];
   T2 rvalue[NumElementsPerThread];
 
-  CUDA_LONG id = start;
+  size_t id = start;
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      CUDA_LONG rhs_id = fdm_H.div(id);
+      size_t rhs_id = fdm_H.div(id);
       int q, r;
       fdm_C.divmod(rhs_id, q, r);
       rhs_id = r;
@@ -198,7 +198,7 @@ void BinaryElementWiseNoBroadcastImpl(
   #endif
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
-  CUDA_LONG N = static_cast<CUDA_LONG>(count);
+  size_t N = static_cast<size_t>(count);
   _BinaryElementWiseSimple<true, true, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
       lhs_data,
       rhs_data,
@@ -234,7 +234,7 @@ void BinaryElementWiseImpl(
   #endif
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
-  CUDA_LONG N = static_cast<CUDA_LONG>(count);
+  size_t N = static_cast<size_t>(count);
   if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::NoBroadcast)) {
     _BinaryElementWiseSimple<true, true, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
         lhs_data,
