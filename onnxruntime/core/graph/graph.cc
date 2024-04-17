@@ -3000,18 +3000,16 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 
 Status Graph::InjectExternalInitializersFromFilesInMemory(
     const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>& external_initializer_files) {
-  for (auto ini : name_to_initial_tensor_) {
-    if (ini.second->data_location() == TensorProto_DataLocation_EXTERNAL) {
-      auto& tensor_name = ini.first;
-
+  for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
+    if (tensor_proto->data_location() == TensorProto_DataLocation_EXTERNAL) {
       std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
-      ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(ini.second->external_data(), external_data_info));
+      ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
 
       const auto& external_file = external_data_info->GetRelPath();
       onnxruntime::FileOffsetType file_offset = external_data_info->GetOffset();
       const size_t external_data_length = external_data_info->GetLength();
       SafeInt<size_t> tensor_byte_size;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(*ini.second, &tensor_byte_size));
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &tensor_byte_size));
       ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
                         "TensorProto: ", tensor_name, " external data size mismatch. Computed size: ",
                         *&tensor_byte_size, ", external_data.length: ", external_data_length);
@@ -3032,7 +3030,7 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       char* external_file_buffer = static_cast<char*>(external_file_pos->second.first);
       char* tensor_buffer = external_file_buffer + file_offset;
 
-      const auto& old_initializer = *(ini.second);
+      const auto& old_initializer = *(tensor_proto);
       auto& mutable_initializers = *(graph_proto_->mutable_initializer());
       // use cheaper pointer comparison to find old entry
       auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
@@ -3046,8 +3044,8 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
       auto tensor = Tensor(type, tensor_shape, tensor_buffer,
                            OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-      auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
-      **existing_entry = std::move(tensor_proto);
+      auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
+      **existing_entry = std::move(new_tensor_proto);
     }
   }
 

@@ -62,7 +62,7 @@ Status SessionOptions::AddExternalInitializersFromFilesInMemory(gsl::span<const 
   const auto num_files = file_names.size();
   ORT_ENFORCE(num_files == files_buffers.size(), "Expecting same size spans");
   external_initializer_files_mmap.reserve(external_initializer_files_mmap.size() + num_files);
-  constexpr std::array<std::basic_string_view<ORTCHAR_T>, 4> prefix_list{
+  static constexpr std::array<std::basic_string_view<ORTCHAR_T>, 4> prefix_list{
       ORT_TSTR(".//"),
       ORT_TSTR("./"),
       ORT_TSTR(".\\\\"),
