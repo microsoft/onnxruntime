@@ -30,6 +30,8 @@ gsl::span<const int32_t> Sequences::GetSequence(int beam_index) const {
 }
 
 gsl::span<const int32_t> Sequences::GetSequenceIndices(int beam_index) const {
+  if (indices.empty())
+    return {};
   return indices.subspan(SafeInt<size_t>(beam_index) * max_length_, static_cast<gsl::index>(current_length_));
 }
 

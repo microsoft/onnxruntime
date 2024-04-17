@@ -168,14 +168,17 @@ void BeamSearchScorer::Process(ISequences& sequences,
 
         // Clone the sequence and append to buffer.
         gsl::span<const int32_t> src = sequences.GetSequence(batch_beam_idx);
-        gsl::span<const int32_t> indices_src = sequences.GetSequenceIndices(batch_beam_idx);
         auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
-        auto indices_clone = hypothesis_indices_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
         gsl::copy(src, clone);
-        gsl::copy(indices_src, indices_clone);
         hypothesis_buffer_offset_ += static_cast<size_t>(sequence_length);
         auto sequence = ReinterpretAsSpan<const int32_t>(clone);
-        auto sequence_indices = ReinterpretAsSpan<const int32_t>(indices_clone);
+        gsl::span<const int32_t> indices_src = sequences.GetSequenceIndices(batch_beam_idx);
+        gsl::span<const int32_t> sequence_indices;
+        if (!indices_src.empty()) {
+          auto indices_clone = hypothesis_indices_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
+          gsl::copy(indices_src, indices_clone);
+          sequence_indices = ReinterpretAsSpan<const int32_t>(indices_clone);
+        }
         beam_hyp.Add(sequence, sequence_indices, next_score);
       } else {
         // Add next predicted token since it is not eos_token.
