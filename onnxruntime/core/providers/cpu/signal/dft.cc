@@ -506,7 +506,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
 
   // Calculate the window size with preference to the window input.
   const auto window_size = window ? window->Shape()[0] : frame_length;
-  ORT_ENFORCE(window_size < signal_size, "Ensure that the dft size is smaller than the signal.");
+  ORT_ENFORCE(window_size <= signal_size, "Ensure that the dft size is smaller than the signal.");
 
   // Calculate the number of dfts to run
   const auto n_dfts =

@@ -2,9 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <core/graph/graph.h>
 #include "vaip/dll_safe.h"
-#include <cstdint>
+#include "vaip/my_ort.h"
 namespace vaip {
 using namespace onnxruntime;
 
@@ -26,9 +25,7 @@ void node_arg_set_shape_i64(const NodeArg& node_arg,
 void node_arg_set_denotation(const NodeArg& node_arg,
                              const std::vector<std::string>& denotation);
 void node_arg_set_element_type(NodeArg& node_arg,
-                               ONNX_NAMESPACE::TensorProto::DataType data_type);
-void node_arg_set_shape(NodeArg& node_arg, std::vector<int64_t> shape);
-
+                               int data_type);
 const ONNX_NAMESPACE::TensorProto& node_arg_get_const_data_as_tensor(const Graph& graph,
                                                                      const NodeArg& node_arg);
 

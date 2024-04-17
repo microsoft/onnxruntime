@@ -3,7 +3,6 @@
 
 #pragma once
 
-// #include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -13,7 +12,10 @@
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #ifdef _WIN32
+#include <winmeta.h>
+#include <evntrace.h>
 #include "core/platform/tracing.h"
+#include "core/platform/windows/telemetry.h"
 #endif
 
 namespace onnxruntime {
@@ -43,20 +45,62 @@ class ExecutionProviders {
     exec_provider_options_[provider_id] = providerOptions;
 
 #ifdef _WIN32
-    for (const auto& config_pair : providerOptions) {
-      TraceLoggingWrite(
-          telemetry_provider_handle,
-          "ProviderOptions",
-          TraceLoggingString(provider_id.c_str(), "ProviderId"),
-          TraceLoggingString(config_pair.first.c_str(), "Key"),
-          TraceLoggingString(config_pair.second.c_str(), "Value"));
-    }
+    LogProviderOptions(provider_id, providerOptions, false);
+
+    // Register callback for ETW capture state (rundown)
+    WindowsTelemetry::RegisterInternalCallback(
+        [this](
+            LPCGUID SourceId,
+            ULONG IsEnabled,
+            UCHAR Level,
+            ULONGLONG MatchAnyKeyword,
+            ULONGLONG MatchAllKeyword,
+            PEVENT_FILTER_DESCRIPTOR FilterData,
+            PVOID CallbackContext) {
+          (void)SourceId;
+          (void)Level;
+          (void)MatchAnyKeyword;
+          (void)MatchAllKeyword;
+          (void)FilterData;
+          (void)CallbackContext;
+
+          // Check if this callback is for capturing state
+          if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
+              ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
+            for (size_t i = 0; i < exec_providers_.size(); ++i) {
+              const auto& provider_id = exec_provider_ids_[i];
+
+              auto it = exec_provider_options_.find(provider_id);
+              if (it != exec_provider_options_.end()) {
+                const auto& options = it->second;
+
+                LogProviderOptions(provider_id, options, true);
+              }
+            }
+          }
+        });
 #endif
 
     exec_provider_ids_.push_back(provider_id);
     exec_providers_.push_back(p_exec_provider);
     return Status::OK();
   }
+
+#ifdef _WIN32
+  void LogProviderOptions(const std::string& provider_id, const ProviderOptions& providerOptions, bool captureState) {
+    for (const auto& config_pair : providerOptions) {
+      TraceLoggingWrite(
+          telemetry_provider_handle,
+          "ProviderOptions",
+          TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+          TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+          TraceLoggingString(provider_id.c_str(), "ProviderId"),
+          TraceLoggingString(config_pair.first.c_str(), "Key"),
+          TraceLoggingString(config_pair.second.c_str(), "Value"),
+          TraceLoggingBool(captureState, "isCaptureState"));
+    }
+  }
+#endif
 
   const IExecutionProvider* Get(const onnxruntime::Node& node) const {
     return Get(node.GetExecutionProviderType());

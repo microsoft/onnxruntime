@@ -14,6 +14,7 @@ namespace tensorrt {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kHasUserComputeStream = "has_user_compute_stream";
+constexpr const char* kUserComputeStream = "user_compute_stream";
 constexpr const char* kMaxPartitionIterations = "trt_max_partition_iterations";
 constexpr const char* kMinSubgraphSize = "trt_min_subgraph_size";
 constexpr const char* kMaxWorkspaceSize = "trt_max_workspace_size";
@@ -26,6 +27,7 @@ constexpr const char* kDLACore = "trt_dla_core";
 constexpr const char* kDumpSubgraphs = "trt_dump_subgraphs";
 constexpr const char* kEngineCacheEnable = "trt_engine_cache_enable";
 constexpr const char* kEngineCachePath = "trt_engine_cache_path";
+constexpr const char* kEngineCachePrefix = "trt_engine_cache_prefix";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
 constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine_build";
@@ -46,11 +48,15 @@ constexpr const char* kProfilesMinShapes = "trt_profile_min_shapes";
 constexpr const char* kProfilesMaxShapes = "trt_profile_max_shapes";
 constexpr const char* kProfilesOptShapes = "trt_profile_opt_shapes";
 constexpr const char* kCudaGraphEnable = "trt_cuda_graph_enable";
+constexpr const char* kEpContextEmbedMode = "trt_ep_context_embed_mode";
+constexpr const char* kEpContextFilePath = "trt_ep_context_file_path";
+constexpr const char* kDumpEpContextModel = "trt_dump_ep_context_model";
 }  // namespace provider_option_names
 }  // namespace tensorrt
 
 TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   TensorrtExecutionProviderInfo info{};
+  void* user_compute_stream = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -67,6 +73,14 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
               })
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxPartitionIterations, info.max_partition_iterations)
           .AddAssignmentToReference(tensorrt::provider_option_names::kHasUserComputeStream, info.has_user_compute_stream)
+          .AddValueParser(
+              tensorrt::provider_option_names::kUserComputeStream,
+              [&user_compute_stream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                user_compute_stream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
           .AddAssignmentToReference(tensorrt::provider_option_names::kMinSubgraphSize, info.min_subgraph_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kFp16Enable, info.fp16_enable)
@@ -78,6 +92,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCacheEnable, info.engine_cache_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCachePath, info.engine_cache_path)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCachePrefix, info.engine_cache_prefix)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionEnable, info.engine_decryption_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionLibPath, info.engine_decryption_lib_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kForceSequentialEngineBuild, info.force_sequential_engine_build)
@@ -97,8 +112,13 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesMaxShapes, info.profile_max_shapes)
           .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesOptShapes, info.profile_opt_shapes)
           .AddAssignmentToReference(tensorrt::provider_option_names::kCudaGraphEnable, info.cuda_graph_enable)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDumpEpContextModel, info.dump_ep_context_model)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextFilePath, info.ep_context_file_path)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextEmbedMode, info.ep_context_embed_mode)
           .Parse(options));  // add new provider option here.
 
+  info.user_compute_stream = user_compute_stream;
+  info.has_user_compute_stream = (user_compute_stream != nullptr);
   return info;
 }
 
@@ -107,6 +127,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.max_partition_iterations)},
       {tensorrt::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
+      {tensorrt::provider_option_names::kUserComputeStream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_compute_stream))},
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
       {tensorrt::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.fp16_enable)},
@@ -118,6 +139,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.dump_subgraphs)},
       {tensorrt::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.engine_cache_enable)},
       {tensorrt::provider_option_names::kEngineCachePath, MakeStringWithClassicLocale(info.engine_cache_path)},
+      {tensorrt::provider_option_names::kEngineCachePrefix, MakeStringWithClassicLocale(info.engine_cache_prefix)},
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, MakeStringWithClassicLocale(info.engine_decryption_lib_path)},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.force_sequential_engine_build)},
@@ -138,6 +160,9 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kProfilesMaxShapes, MakeStringWithClassicLocale(info.profile_max_shapes)},
       {tensorrt::provider_option_names::kProfilesOptShapes, MakeStringWithClassicLocale(info.profile_opt_shapes)},
       {tensorrt::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
+      {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.dump_ep_context_model)},
+      {tensorrt::provider_option_names::kEpContextFilePath, MakeStringWithClassicLocale(info.ep_context_file_path)},
+      {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.ep_context_embed_mode)},
   };
   return options;
 }
@@ -146,6 +171,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
   auto empty_if_null = [](const char* s) { return s != nullptr ? std::string{s} : std::string{}; };
   const std::string kInt8CalibTable_ = empty_if_null(info.trt_int8_calibration_table_name);
   const std::string kEngineCachePath_ = empty_if_null(info.trt_engine_cache_path);
+  const std::string kEngineCachePrefix_ = empty_if_null(info.trt_engine_cache_prefix);
   const std::string kTimingCachePath_ = empty_if_null(info.trt_timing_cache_path);
   const std::string kTacticSources_ = empty_if_null(info.trt_tactic_sources);
   const std::string kDecryptionLibPath_ = empty_if_null(info.trt_engine_decryption_lib_path);
@@ -153,10 +179,12 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
   const std::string kProfilesMinShapes_ = empty_if_null(info.trt_profile_min_shapes);
   const std::string kProfilesMaxShapes_ = empty_if_null(info.trt_profile_max_shapes);
   const std::string kProfilesOptShapes_ = empty_if_null(info.trt_profile_opt_shapes);
+  const std::string kEpContextFilePath_ = empty_if_null(info.trt_ep_context_file_path);
 
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {tensorrt::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
+      {tensorrt::provider_option_names::kUserComputeStream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_compute_stream))},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.trt_max_partition_iterations)},
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.trt_min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.trt_max_workspace_size)},
@@ -169,6 +197,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.trt_dump_subgraphs)},
       {tensorrt::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.trt_engine_cache_enable)},
       {tensorrt::provider_option_names::kEngineCachePath, kEngineCachePath_},
+      {tensorrt::provider_option_names::kEngineCachePrefix, kEngineCachePrefix_},
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.trt_engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, kDecryptionLibPath_},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.trt_force_sequential_engine_build)},
@@ -188,6 +217,9 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kProfilesMaxShapes, kProfilesMaxShapes_},
       {tensorrt::provider_option_names::kProfilesOptShapes, kProfilesOptShapes_},
       {tensorrt::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.trt_cuda_graph_enable)},
+      {tensorrt::provider_option_names::kEpContextFilePath, kEpContextFilePath_},
+      {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.trt_dump_ep_context_model)},
+      {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.trt_ep_context_embed_mode)},
   };
   return options;
 }
@@ -235,9 +267,13 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.device_id = internal_options.device_id;
 
   // The 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance can be set by C API UpdateTensorRTProviderOptionsWithValue() as well
-  // We only set the 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance if it is provided in options
+  // We only set the 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance if it is provided in options or user_compute_stream is provided
   if (options.find("has_user_compute_stream") != options.end()) {
     trt_provider_options_v2.has_user_compute_stream = internal_options.has_user_compute_stream;
+  }
+  if (options.find("user_compute_stream") != options.end() && internal_options.user_compute_stream != nullptr) {
+    trt_provider_options_v2.user_compute_stream = internal_options.user_compute_stream;
+    trt_provider_options_v2.has_user_compute_stream = true;
   }
 
   trt_provider_options_v2.trt_max_partition_iterations = internal_options.max_partition_iterations;
@@ -255,6 +291,7 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_engine_cache_enable = internal_options.engine_cache_enable;
 
   trt_provider_options_v2.trt_engine_cache_path = copy_string_if_needed(internal_options.engine_cache_path);
+  trt_provider_options_v2.trt_engine_cache_prefix = copy_string_if_needed(internal_options.engine_cache_prefix);
   trt_provider_options_v2.trt_timing_cache_path = copy_string_if_needed(internal_options.timing_cache_path);
 
   trt_provider_options_v2.trt_engine_decryption_enable = internal_options.engine_decryption_enable;
@@ -279,5 +316,8 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_profile_opt_shapes = copy_string_if_needed(internal_options.profile_opt_shapes);
 
   trt_provider_options_v2.trt_cuda_graph_enable = internal_options.cuda_graph_enable;
+  trt_provider_options_v2.trt_dump_ep_context_model = internal_options.dump_ep_context_model;
+  trt_provider_options_v2.trt_ep_context_embed_mode = internal_options.ep_context_embed_mode;
+  trt_provider_options_v2.trt_ep_context_file_path = copy_string_if_needed(internal_options.ep_context_file_path);
 }
 }  // namespace onnxruntime

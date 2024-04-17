@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import contextlib
+import inspect
 import os
 import sys
 import warnings
@@ -21,7 +23,10 @@ if not is_ortmodule_available():
     raise ImportError("ORTModule is not supported on this platform.")
 
 
-def _defined_from_envvar(name, default_value, warn=True):
+def _defined_from_envvar(name: str, default_value: any, warn: bool = True):
+    """Check given name exists in the environment variable and return the value using the default_value's
+    type if it exists.
+    """
     new_value = os.getenv(name, None)
     if new_value is None:
         return default_value
@@ -34,12 +39,92 @@ def _defined_from_envvar(name, default_value, warn=True):
     return new_value
 
 
+def _override_gradient_checkpoint(original_checkpoint):
+    """
+    Best effort to override `torch.utils.checkpoint` and `deepspeed.checkpointing.checkpoint` during ONNX export.
+
+    Despite importing `torch.utils.checkpoint` or `deepspeed.checkpointing.checkpoint` in `__init__.py`,
+    users might import it first, causing our override to not take effect. We still attempt to override
+    it to work in most cases.
+
+    We replace the checkpoint function with our implementation, without condition checks.
+    The actual check is in the overridden function, verifying if:
+    1) `checkpoint` is called during ORTModule model export,
+    2) Gradient checkpoint autograd function is disallowed (ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT),
+    3) Memory optimization level is not specified by the user (ORTMODULE_MEMORY_OPT_LEVEL).
+    If true, we reset memory optimization to layer-wise recompute.
+
+    """
+
+    # Note: The `torch.utils.checkpoint` checkpoint function signature looks like below:
+    #   `checkpoint(function, *args,
+    #               use_reentrant = None,
+    #               context_fn = noop_context_fn,
+    #               determinism_check = _DEFAULT_DETERMINISM_MODE,
+    #               debug = False,
+    #               **kwargs).`
+    # The few keyword arguments are not used in the recompute module forward function, but by the
+    # checkpoint function itself, so we need to filter them out otherwise module forward function
+    # would complain about unexpected keyword arguments.
+    all_input_parameters = inspect.signature(original_checkpoint).parameters.values()
+    outside_kwarg_params = []
+    for input_parameter in all_input_parameters:
+        if (
+            input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+            or input_parameter.kind == inspect.Parameter.KEYWORD_ONLY
+            or input_parameter.kind == inspect.Parameter.VAR_KEYWORD
+        ):
+            outside_kwarg_params.append(input_parameter.name)
+
+    def _checkpoint(
+        function,
+        *args,
+        **kwargs,
+    ):
+        # Conditions to activate layer-wise memory optimization automatically:
+        # 1. Checkpoint is called during ORTModule model export context.
+        # 2. Gradient checkpoint autograd function export is disallowed.
+        # 3. Memory optimization level is layer-wise recompute.
+        if (
+            ORTMODULE_ONNX_EXPORT_CONTEXT[0] is True
+            and _defined_from_envvar("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", 0) != 1
+            and _defined_from_envvar("ORTMODULE_MEMORY_OPT_LEVEL", 0) == 1
+        ):
+            for name in outside_kwarg_params:
+                if name in kwargs:
+                    # Pop out the keyword argument to avoid passing it to the module run function
+                    kwargs.pop(name)
+            print(
+                "Layer-wise memory optimization is enabled upon detecting "
+                "gradient checkpointing autograd function usage during model execution."
+            )
+            return function(*args, **kwargs)
+        return original_checkpoint(
+            function,
+            *args,
+            **kwargs,
+        )
+
+    return _checkpoint
+
+
+with contextlib.suppress(Exception):
+    from torch.utils.checkpoint import checkpoint as original_torch_checkpoint
+
+    torch.utils.checkpoint.checkpoint = _override_gradient_checkpoint(original_torch_checkpoint)
+
+    import deepspeed
+
+    original_deepspeed_checkpoint = deepspeed.checkpointing.checkpoint
+    deepspeed.checkpointing.checkpoint = _override_gradient_checkpoint(original_deepspeed_checkpoint)
+
+
 ################################################################################
 # All global constant goes here, before ORTModule is imported ##################
 # NOTE: To *change* values in runtime, import onnxruntime.training.ortmodule and
 # assign them new values. Importing them directly do not propagate changes.
 ################################################################################
-ONNX_OPSET_VERSION = 15
+ONNX_OPSET_VERSION = 17
 MINIMUM_RUNTIME_PYTORCH_VERSION_STR = "1.8.1"
 ORTMODULE_TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__), "torch_cpp_extensions")
 _FALLBACK_INIT_EXCEPTION = None
@@ -55,7 +140,24 @@ ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
 ONNXRUNTIME_CUDA_VERSION = ort_info.cuda_version if hasattr(ort_info, "cuda_version") else None
 ONNXRUNTIME_ROCM_VERSION = ort_info.rocm_version if hasattr(ort_info, "rocm_version") else None
 
-# Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
+# The first value indicates whether the code is in ONNX export context.
+# The export context here include the full export process, including prepare export input/output information,
+# and export model.
+ORTMODULE_ONNX_EXPORT_CONTEXT = [False]
+
+
+@contextlib.contextmanager
+def export_context():
+    """Context manager for model export."""
+    try:
+        ORTMODULE_ONNX_EXPORT_CONTEXT[0] = True
+
+        yield
+    finally:
+        ORTMODULE_ONNX_EXPORT_CONTEXT[0] = False
+
+
+# Verify minimum PyTorch version is installed before proceeding to ONNX Runtime initialization
 try:
     import torch
 
@@ -70,6 +172,8 @@ try:
                 f" but version {torch.__version__} was found instead."
             ),
         )
+
+
 except ORTModuleFallbackException as e:
     # Initialization fallback is handled at ORTModule.__init__
     _FALLBACK_INIT_EXCEPTION = e

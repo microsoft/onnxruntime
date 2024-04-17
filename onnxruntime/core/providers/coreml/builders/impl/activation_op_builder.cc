@@ -2,44 +2,32 @@
 // Licensed under the MIT License.
 
 #include "core/common/narrow.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
-
-#ifdef __APPLE__
-#include "core/framework/tensorprotoutils.h"
-#include "core/providers/coreml/builders/impl/builder_utils.h"
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
 
 namespace onnxruntime {
 namespace coreml {
 
 class ActivationOpBuilder : public BaseOpBuilder {
-  // Add operator related
-#ifdef __APPLE__
- public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
- private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
 
-  // Operator support related
- private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
+
   int GetMinSupportedOpSet(const Node& node) const override;
 };
 
-// Add operator related
-
-#ifdef __APPLE__
 void ActivationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
@@ -86,7 +74,7 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
 Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                   const Node& node,
                                                   const logging::Logger& logger) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
   const auto& op_type(node.OpType());
   if (op_type == "Sigmoid") {
@@ -115,14 +103,10 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
-#endif
-
-// Operator support related
 
 namespace {
 // assumes that node.OpType() == "PRelu"
-bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_params,
-                        const logging::Logger& logger) {
+bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
 
   // X input rank must be 3 or 4

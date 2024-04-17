@@ -56,7 +56,7 @@ class IOpBuilder {
   // Operator support check related
 
   // Check if an operator is supported
-  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  virtual bool IsOpSupported(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                              const OpSupportCheckParams& params) const = 0;
 };
 

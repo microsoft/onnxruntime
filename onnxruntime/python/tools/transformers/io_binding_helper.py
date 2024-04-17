@@ -1,3 +1,4 @@
+import copy
 import logging
 from collections import OrderedDict
 from typing import Any, Dict, List, Tuple, Union
@@ -5,7 +6,7 @@ from typing import Any, Dict, List, Tuple, Union
 import numpy
 import torch
 
-from onnxruntime import InferenceSession
+from onnxruntime import InferenceSession, RunOptions
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +228,6 @@ class CudaSession:
         del self.input_tensors
         del self.output_tensors
         del self.io_binding
-        del self.ort_session
 
     def allocate_buffers(self, shape_dict: Dict[str, Union[Tuple[int], List[int]]]):
         """Allocate tensors for I/O Binding"""
@@ -276,7 +276,7 @@ class CudaSession:
                     tensor.data_ptr(),
                 )
 
-    def infer(self, feed_dict: Dict[str, torch.Tensor]):
+    def infer(self, feed_dict: Dict[str, torch.Tensor], run_options: RunOptions = None, synchronize: bool = False):
         """Bind input tensors and run inference"""
         for name, tensor in feed_dict.items():
             assert isinstance(tensor, torch.Tensor) and tensor.is_contiguous()
@@ -285,16 +285,7 @@ class CudaSession:
                     assert self.input_tensors[name].nelement() == tensor.nelement()
                     assert self.input_tensors[name].dtype == tensor.dtype
                     assert tensor.device.type == "cuda"
-                    # Please install cuda-python package with a version corresponding to CUDA in your machine.
-                    from cuda import cudart
-
-                    # Update input tensor inplace since cuda graph requires input and output has fixed memory address.
-                    cudart.cudaMemcpy(
-                        self.input_tensors[name].data_ptr(),
-                        tensor.data_ptr(),
-                        tensor.element_size() * tensor.nelement(),
-                        cudart.cudaMemcpyKind.cudaMemcpyDeviceToDevice,
-                    )
+                    self.input_tensors[name].copy_(tensor)
                 else:
                     self.io_binding.bind_input(
                         name,
@@ -305,14 +296,115 @@ class CudaSession:
                         tensor.data_ptr(),
                     )
 
-        self.ort_session.run_with_iobinding(self.io_binding)
+        # Synchronization are not needed in most cases unless different streams are used or inputs/outputs are in CPU.
+        if synchronize:
+            self.io_binding.synchronize_inputs()
+            self.ort_session.run_with_iobinding(self.io_binding, run_options)
+            self.io_binding.synchronize_outputs()
+        else:
+            self.ort_session.run_with_iobinding(self.io_binding, run_options)
 
         return self.output_tensors
 
     @staticmethod
-    def get_cuda_provider_options(device_id: int, enable_cuda_graph: bool) -> Dict[str, Any]:
-        return {
+    def get_cuda_provider_options(device_id: int, enable_cuda_graph: bool, stream: int = 0) -> Dict[str, Any]:
+        options = {
             "device_id": device_id,
             "arena_extend_strategy": "kSameAsRequested",
             "enable_cuda_graph": enable_cuda_graph,
         }
+
+        # Stream is address of a CUDA stream. 0 means the default stream.
+        if stream != 0:
+            options["user_compute_stream"] = str(stream)
+
+        return options
+
+
+class GpuBinding(CudaSession):
+    def __init__(
+        self,
+        ort_session: InferenceSession,
+        device: torch.device,
+        shape_dict: Dict[str, Union[Tuple[int], List[int]]],
+        enable_gpu_graph: bool = False,
+        gpu_graph_id: int = -1,
+        stream: int = 0,
+    ):
+        super().__init__(ort_session, device, enable_gpu_graph)
+        self.allocate_buffers(shape_dict)
+        self.gpu_graph_id = gpu_graph_id
+        # For cuda graph, we need to keep a copy of shape_dict to check if the shape is same in inference later.
+        self.shape_dict = copy.deepcopy(shape_dict) if enable_gpu_graph else None
+        self.stream = stream
+        # The gpu graph id of last run. It will be saved to image metadata.
+        self.last_run_gpu_graph_id = None
+
+    def get_run_options(self, disable_cuda_graph_in_run: bool = False) -> RunOptions:
+        options = RunOptions()
+
+        gpu_graph_id = -1 if disable_cuda_graph_in_run else self.gpu_graph_id
+
+        options.add_run_config_entry("gpu_graph_id", str(gpu_graph_id))
+
+        self.last_run_gpu_graph_id = gpu_graph_id
+
+        return options
+
+    def infer(self, feed_dict: Dict[str, torch.Tensor], disable_cuda_graph_in_run: bool = False):
+        run_options = self.get_run_options(disable_cuda_graph_in_run)
+
+        if self.stream:
+            run_options.add_run_config_entry("disable_synchronize_execution_providers", "1")
+
+        return super().infer(feed_dict, run_options)
+
+
+class GpuBindingManager:
+    """A manager for I/O bindings that support multiple CUDA Graphs.
+    One cuda graph is reused for same input shape. Automatically add a new cuda graph for new input shape.
+    """
+
+    def __init__(self, ort_session: InferenceSession, device: torch.device, stream: int = 0, max_cuda_graphs: int = 1):
+        self.ort_session = ort_session
+        self.device = device
+
+        # Binding supports cuda graphs. For a binding, it is able to disable cuda graph for a specific run.
+        self.graph_bindings = []
+
+        # Binding for not using cuda graph.
+        self.no_graph_binding = None
+
+        self.stream = stream
+
+        self.max_cuda_graphs = max_cuda_graphs
+
+    def get_binding(
+        self,
+        shape_dict: Dict[str, Union[Tuple[int], List[int]]],
+        use_cuda_graph: bool = False,
+    ) -> GpuBinding:
+        for gpu_graph_binding in self.graph_bindings:
+            # Found a cuda graph that captured with the same shape
+            if gpu_graph_binding.shape_dict == shape_dict:
+                return gpu_graph_binding
+
+        # Reached the maximum number of cuda graphs. Return a binding without cuda graph.
+        if len(self.graph_bindings) >= self.max_cuda_graphs or (not use_cuda_graph):
+            if self.no_graph_binding is None:
+                self.no_graph_binding = GpuBinding(self.ort_session, self.device, shape_dict, stream=self.stream)
+            else:
+                self.no_graph_binding.allocate_buffers(shape_dict)
+            return self.no_graph_binding
+
+        # This is a new input shape, create a new cuda graph
+        gpu_graph_binding = GpuBinding(
+            self.ort_session,
+            self.device,
+            shape_dict,
+            enable_gpu_graph=True,
+            gpu_graph_id=len(self.graph_bindings),
+            stream=self.stream,
+        )
+        self.graph_bindings.append(gpu_graph_binding)
+        return gpu_graph_binding

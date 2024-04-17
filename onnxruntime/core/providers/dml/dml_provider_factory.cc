@@ -1,8 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <dxcore.h>
 #include <vector>
+
+#define INITGUID
+#include <guiddef.h>
+#include <directx/dxcore.h>
+#undef INITGUID
+
+#include "directx/d3d12.h"
 
 #include <DirectML.h>
 #ifndef _GAMING_XBOX
@@ -118,7 +124,6 @@ static bool IsGPU(IDXCoreAdapter* compute_adapter) {
   return compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
 }
 
-#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
 static bool IsNPU(IDXCoreAdapter* compute_adapter) {
   // Only considering hardware adapters
   if (!IsHardwareAdapter(compute_adapter)) {
@@ -126,7 +131,6 @@ static bool IsNPU(IDXCoreAdapter* compute_adapter) {
   }
   return !(compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS));
 }
-#endif
 
 enum class DeviceType { GPU, NPU, BadDevice };
 
@@ -159,12 +163,15 @@ static ComPtr<IDXCoreAdapterList> EnumerateDXCoreAdapters(IDXCoreAdapterFactory*
   // When DXCore APIs are available QI for relevant enumeration interfaces
   constexpr bool use_dxcore_workload_enumeration = false;
   if (!use_dxcore_workload_enumeration) {
-    // Get a list of all the adapters that support compute
-    GUID attributes[]{ DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE };
     ORT_THROW_IF_FAILED(
-      adapter_factory->CreateAdapterList(_countof(attributes),
-        attributes,
+      adapter_factory->CreateAdapterList(1,
+        &DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML,
         adapter_list.GetAddressOf()));
+
+    if (adapter_list->GetAdapterCount() == 0)
+    {
+        ORT_THROW_IF_FAILED(adapter_factory->CreateAdapterList(1, &DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE, adapter_list.GetAddressOf()));
+    }
   }
 
   return adapter_list;
@@ -327,10 +334,10 @@ static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(con
 }
 
 static std::optional<OrtDmlDeviceFilter> ParseFilter(const ProviderOptions& provider_options) {
-  static const std::string Filter = "filter";
+  static const std::string Filter = "device_filter";
+  static const std::string Any = "any";
   static const std::string Gpu = "gpu";
 #ifdef ENABLE_NPU_ADAPTER_ENUMERATION
-  static const std::string Any = "any";
   static const std::string Npu = "npu";
 #endif
 
@@ -475,12 +482,43 @@ Microsoft::WRL::ComPtr<IDMLDevice> DMLProviderFactoryCreator::CreateDMLDevice(ID
   return dml_device;
 }
 
+static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_device) {
+  D3D12_FEATURE_DATA_FEATURE_LEVELS feature_levels = {};
+
+  D3D_FEATURE_LEVEL feature_levels_list[] = {
+  #ifndef _GAMING_XBOX
+      D3D_FEATURE_LEVEL_1_0_GENERIC,
+  #endif
+      D3D_FEATURE_LEVEL_1_0_CORE,
+      D3D_FEATURE_LEVEL_11_0,
+      D3D_FEATURE_LEVEL_11_1,
+      D3D_FEATURE_LEVEL_12_0,
+      D3D_FEATURE_LEVEL_12_1
+  };
+
+  feature_levels.NumFeatureLevels = ARRAYSIZE(feature_levels_list);
+  feature_levels.pFeatureLevelsRequested = feature_levels_list;
+  ORT_THROW_IF_FAILED(d3d12_device->CheckFeatureSupport(
+      D3D12_FEATURE_FEATURE_LEVELS,
+      &feature_levels,
+      sizeof(feature_levels)
+      ));
+
+  auto use_compute_command_list = (feature_levels.MaxSupportedFeatureLevel <= D3D_FEATURE_LEVEL_1_0_CORE);
+  if (use_compute_command_list)
+  {
+    return D3D12_COMMAND_LIST_TYPE_COMPUTE;
+  }
+
+  return D3D12_COMMAND_LIST_TYPE_DIRECT;
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(
-    ID3D12Device* d3d12_device,
-    bool disable_metacommands,
-    bool enable_dynamic_graph_fusion) {
+  ID3D12Device* d3d12_device,
+  bool disable_metacommands,
+  bool enable_dynamic_graph_fusion) {
   D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
-  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+  cmd_queue_desc.Type = CalculateCommandListType(d3d12_device);
   cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 
   ComPtr<ID3D12CommandQueue> cmd_queue;
@@ -500,15 +538,28 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(
 }
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFromAdapterList(
-    std::vector<ComPtr<IDXCoreAdapter>>&& dxcore_devices,
+    std::vector<ComPtr<IDXCoreAdapter>>&& adapters,
     bool disable_metacommands,
     bool enable_dynamic_graph_fusion) {
   // Choose the first device from the list since it's the highest priority
-  auto dxcore_device = dxcore_devices[0];
+  auto adapter = adapters[0];
+
+  auto feature_level = D3D_FEATURE_LEVEL_11_0;
+  if (IsNPU(adapter.Get())) {
+    feature_level = D3D_FEATURE_LEVEL_1_0_GENERIC;
+  }
 
   // Create D3D12 Device from DXCore Adapter
   ComPtr<ID3D12Device> d3d12_device;
-  ORT_THROW_IF_FAILED(D3D12CreateDevice(dxcore_device.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+  if (feature_level == D3D_FEATURE_LEVEL_1_0_GENERIC) {
+      // Attempt to create a D3D_FEATURE_LEVEL_1_0_CORE device first, in case the device supports this
+      // feature level and the D3D runtime does not support D3D_FEATURE_LEVEL_1_0_GENERIC
+      HRESULT hrUnused = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_1_0_CORE, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf()));
+  }
+  
+  if (!d3d12_device) {
+    ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), feature_level, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
+  }
 
   return CreateDMLDeviceAndProviderFactory(d3d12_device.Get(), disable_metacommands, enable_dynamic_graph_fusion);
 }

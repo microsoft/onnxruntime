@@ -132,11 +132,11 @@ bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);
 bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit);
 
 common::Status GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
+    const GraphViewer& graph_viewer, const NodeUnitIODef& io_def, const Path& model_path,
     float& scale, int32_t& zero_point);
 
 common::Status GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
+    const GraphViewer& graph_viewer, const NodeUnit& node_unit, const std::string& name,
     float& scale, int32_t& zero_point, ArgType arg_type = ArgType::kInput);
 
 // Get Shape/Type of a NodeArg
@@ -167,11 +167,11 @@ inline uint32_t ShapeSize(const Shape& shape) {
   return ShapeSize(shape, 0, shape.size());
 }
 
-// Check the given input is an initializer tensor
+// Check the given input is a constant initializer
 // input_name is the name of the initializer
 // input_description is the string describing the input in the output message (if any)
-bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                        const std::string& input_name, const char* input_description);
+bool CheckIsConstantInitializer(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                const std::string& input_name, const char* input_description);
 
 // Convert ONNX int64 input to NNAPI int32 type input and optionally handle negative axis if needed
 // Mostly used in handling `axes` input for now

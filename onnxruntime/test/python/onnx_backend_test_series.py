@@ -37,8 +37,11 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
         super().__init__(backend, parent_module=__name__)
 
     @classmethod
-    def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
-        """Asserts ref_outputs and outputs match to within the given tolerances."""
+    def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol, model_dir=None):
+        """
+        Asserts ref_outputs and outputs match to within the given tolerances.
+        The `model_dir` parameter is currently unused (added to base Runner class in onnx 1.16.0).
+        """
 
         def assert_similar_array(ref_output, output):
             np.testing.assert_equal(ref_output.dtype, output.dtype)
@@ -140,8 +143,8 @@ def create_backend_test(test_name=None):
         if backend.supports_device("OPENVINO_CPU_FP16"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP16")
 
-        if backend.supports_device("OPENVINO_NPU_FP16"):
-            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_NPU_FP16")
+        if backend.supports_device("OPENVINO_NPU"):
+            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_NPU")
 
         if backend.supports_device("OPENVINO"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_opset18")

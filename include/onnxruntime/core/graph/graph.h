@@ -21,7 +21,7 @@
 #pragma warning(pop)
 #endif
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/common/gsl.h"
 
@@ -621,6 +621,22 @@ class Node {
 
   // Reference to the function template defined in the model.
   const FunctionTemplate* func_template_ = nullptr;
+
+  // set/clear NodeProto that the Node was created from.
+  // Set by Graph ctor when loading a model from file.
+  // Cleared after first call to onnx::check_node in VerifyNodeAndOpMatch when the first Graph::Resolve runs.
+  void SetOriginalNodeProto(const ONNX_NAMESPACE::NodeProto* node_proto) {
+    original_node_proto_ = node_proto;
+  }
+
+  const ONNX_NAMESPACE::NodeProto* GetOriginalNodeProto() const {
+    return original_node_proto_;
+  }
+
+  // NodeProto that the Node was created from. We temporarily set this as a performance optimization to avoid calling
+  // Node::ToProto when running onnx::check_node in the first Graph::Resolve. At that point we know all the nodes are
+  // unchanged from the original model.
+  const ONNX_NAMESPACE::NodeProto* original_node_proto_ = nullptr;
 #endif
 
   // Execution priority, lower value for higher priority
@@ -753,7 +769,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
   @param check_outer_scope If true and the graph is a subgraph,
          check ancestor graph/s for 'name' if not found in 'graph'.
-  @remarks check_outer_scope of true is not supported in a minimal build
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 

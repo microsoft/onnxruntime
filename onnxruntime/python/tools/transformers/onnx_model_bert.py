@@ -126,7 +126,8 @@ class BertOnnxModel(OnnxModel):
         # Remove non-MS domain functions
         rot_emb_nodes = list(
             filter(
-                lambda node: node.op_type == "RotaryEmbedding" and node.domain != "com.microsoft", self.model.graph.node
+                lambda node: node.op_type == "RotaryEmbedding" and node.domain != "com.microsoft",
+                self.model.graph.node,
             )
         )
         non_ms_domains_to_keep = set(map(lambda node: node.domain, rot_emb_nodes))
@@ -350,7 +351,11 @@ class BertOnnxModel(OnnxModel):
             self.attention_mask.set_mask_format(options.attention_mask_format)
             if options.use_multi_head_attention and not isinstance(self.attention_fusion, FusionBartAttention):
                 self.attention_fusion = FusionAttention(
-                    self, self.hidden_size, self.num_heads, self.attention_mask, options.use_multi_head_attention
+                    self,
+                    self.hidden_size,
+                    self.num_heads,
+                    self.attention_mask,
+                    options.use_multi_head_attention,
                 )
 
         if (options is None) or options.enable_attention:
@@ -415,7 +420,12 @@ class BertOnnxModel(OnnxModel):
             "SkipSimplifiedLayerNormalization",
             "RotaryEmbedding",
         ]
-        q_ops = ["QOrderedAttention", "QOrderedGelu", "QOrderedLayerNormalization", "QOrderedMatMul"]
+        q_ops = [
+            "QOrderedAttention",
+            "QOrderedGelu",
+            "QOrderedLayerNormalization",
+            "QOrderedMatMul",
+        ]
         for op in ops + q_ops:
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)

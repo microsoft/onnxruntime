@@ -283,6 +283,48 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// This function performs a training step that computes the outputs of the training model and the gradients
+        /// of the trainable parameters for the given OrtValue inputs. The train step is performed based on the training model
+        /// that was provided to the training session.
+        /// The TrainStep method is equivalent of running forward propagation and backward propagation in a single
+        /// step.
+        /// The gradients computed are stored inside the training session state so they can be later consumed
+        /// by the OptimizerStep function.
+        /// The gradients can be lazily reset by invoking the LazyResetGrad function.
+        /// Example usage:
+        /// <code>
+        /// using OrtValue x = OrtValue.CreateTensorValueFromMemory(...);
+        /// using OrtValue label = OrtValue.CreateTensorValueFromMemory(...);
+        /// List<OrtValue> inputValues = new List<OrtValue> { x, label };
+        /// using (var loss = trainingSession.TrainStep(inputValues))
+        /// {
+        ///     // process output values
+        /// }
+        /// </code>
+        /// </summary>
+        /// <param name="inputValues">Specify a collection of <see cref="OrtValue"/> that indicates the input values to the training model.</param>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
+        public IDisposableReadOnlyCollection<OrtValue> TrainStep(IReadOnlyCollection<OrtValue> inputValues)
+        {
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues);
+            IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, IntPtr.Zero, (UIntPtr)inputValues.Count,
+                inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
+
+
+            var disposableHandles = new DisposableOrtValueHandleArray(outputValuesArray);
+            try
+            {
+                return CreateDisposableResult(disposableHandles);
+            }
+            finally
+            {
+                disposableHandles.Dispose();
+            }
+        }
+
+        /// <summary>
         /// Convert native OrtValue handles to OrtValue instances
         /// in an exceptions safe manner.
         /// </summary>
@@ -368,6 +410,42 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr[] outputValuesArray = GetOrtValuesHandles(outputValues, !isInput); /* pointers to Pre-allocated OrtValue instances */
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtEvalStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
                 inputValuesArray, (UIntPtr)outputValues.Count, outputValuesArray));
+        }
+
+        /// <summary>
+        /// This function performs an eval step that computes the outputs of the eval model for the given inputs.
+        /// Inputs are expected to be of type OrtValue. The eval step is performed based on the eval model that was
+        /// provided to the training session.
+        /// Example usage:
+        /// <code>
+        /// using OrtValue x = OrtValue.CreateTensorValueFromMemory(...);
+        /// using OrtValue label = OrtValue.CreateTensorValueFromMemory(...);
+        /// List<OrtValue> inputValues = new List<OrtValue> { x, label };
+        /// using (var loss = trainingSession.EvalSteps(inputValues))
+        /// {
+        ///     // process output values
+        /// }
+        /// </code>
+        /// </summary>
+        /// <param name="inputValues">Specify a collection of <see cref="OrtValue"/> that indicates the input values to the eval model.</param>
+        public IDisposableReadOnlyCollection<OrtValue> EvalStep(IReadOnlyCollection<OrtValue> inputValues)
+        {
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues);
+            IntPtr[] outputValuesArray = new IntPtr[(int)_evalOutputCount];
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtEvalStep(_nativeHandle, IntPtr.Zero, (UIntPtr)inputValues.Count,
+                inputValuesArray, (UIntPtr)_evalOutputCount, outputValuesArray));
+
+
+            var disposableHandles = new DisposableOrtValueHandleArray(outputValuesArray);
+            try
+            {
+                return CreateDisposableResult(disposableHandles);
+            }
+            finally
+            {
+                disposableHandles.Dispose();
+            }
         }
 
 
@@ -700,6 +778,35 @@ namespace Microsoft.ML.OnnxRuntime
                 valuesArray[index] = v.Value.Handle;
             }
             return valuesArray;
+        }
+
+        private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<OrtValue> inputValues)
+        {
+            var valuesArray = new IntPtr[inputValues.Count];
+            for (int index = 0; index < inputValues.Count; ++index)
+            {
+                valuesArray[index] = inputValues.ElementAt(index).Handle;
+            }
+            return valuesArray;
+        }
+
+        private static IDisposableReadOnlyCollection<OrtValue> CreateDisposableResult(DisposableOrtValueHandleArray disposableHandles)
+        {
+            var outputValues = new DisposableList<OrtValue>(disposableHandles.Span.Length);
+            try
+            {
+                for (int i = 0; i < disposableHandles.Span.Length; i++)
+                {
+                    outputValues.Add(new OrtValue(disposableHandles.Span[i]));
+                    disposableHandles.Span[i] = IntPtr.Zero;
+                }
+                return outputValues;
+            }
+            catch (Exception)
+            {
+                outputValues.Dispose();
+                throw;
+            }
         }
 
         private IntPtr[] ConvertNamesToUtf8(IReadOnlyCollection<string> names, DisposableList<IDisposable> cleanupList)

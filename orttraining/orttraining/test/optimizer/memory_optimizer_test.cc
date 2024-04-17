@@ -29,6 +29,7 @@
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
+#include "orttraining/core/optimizer/memory_optimizer/transformer_specific.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -310,6 +311,46 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
   for (size_t i = 1; i < nodes_in_topological_order.size(); ++i) {
     ASSERT_TRUE(nodes_in_topological_order[i - 1] < nodes_in_topological_order[i]);
   }
+}
+
+TEST(MemoryOptimizerTests, TransformerLayerDetectionTest) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "3layer_bloom_optimized_training.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  GraphViewer graph_viewer(graph);
+
+  InlinedHashMap<NodeIndex, ptrdiff_t> node_index_to_its_order_in_topological_sort_map;
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+
+  // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
+  ptrdiff_t yield_op_order_in_topological_sort = -1;
+  for (size_t i = 0; i < node_ids.size(); ++i) {
+    const Node* p_node = graph_viewer.GetNode(node_ids[i]);
+    if (p_node == nullptr) { /* skip removed nodes*/
+      continue;
+    }
+
+    if (p_node->OpType() == "YieldOp") {
+      // There are multiple YieldOps in the graph。
+      ASSERT_EQ(yield_op_order_in_topological_sort, -1);
+      yield_op_order_in_topological_sort = static_cast<ptrdiff_t>(i);
+    }
+
+    node_index_to_its_order_in_topological_sort_map[p_node->Index()] = static_cast<ptrdiff_t>(i);
+  }
+
+  InlinedVector<const Node*> layer_boundary_ln_node;
+  optimizer::memory_optimizer::FindLayerBoundaryLayerNormNodes(graph_viewer, *logger,
+                                                               node_index_to_its_order_in_topological_sort_map,
+                                                               yield_op_order_in_topological_sort,
+                                                               layer_boundary_ln_node);
+
+  ASSERT_EQ(layer_boundary_ln_node.size(), 3);
+  ASSERT_EQ(layer_boundary_ln_node[0]->Name(), "LayerNormalization_token_0");
+  ASSERT_EQ(layer_boundary_ln_node[1]->Name(), "LayerNormalization_token_6");
+  ASSERT_EQ(layer_boundary_ln_node[2]->Name(), "LayerNormalization_token_12");
 }
 
 }  // namespace test

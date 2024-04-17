@@ -11,12 +11,6 @@ parameters:
 - name: OnnxruntimeArch
   type: string
 
-- name: OnnxruntimeCFlags
-  type: string
-
-- name: OnnxruntimeCXXFlags
-  type: string
-
 - name: OnnxruntimeNodejsBindingArch
   type: string
   values:
@@ -25,7 +19,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Ubuntu2004-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
 - name: ArtifactNamePrefix
   type: string
@@ -67,10 +61,10 @@ jobs:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --rm -e CFLAGS="${{parameters.OnnxruntimeCFlags}}" -e CXXFLAGS="${{parameters.OnnxruntimeCXXFlags}}" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}} /bin/bash -c "python3.9 \
-          /onnxruntime_src/tools/ci_build/build.py --build_java --build_nodejs --build_dir /build --config Release \
-          --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-${{parameters.OnnxruntimeArch}}"
+          /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
+          --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-${{parameters.OnnxruntimeArch}}"
         workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build'
 

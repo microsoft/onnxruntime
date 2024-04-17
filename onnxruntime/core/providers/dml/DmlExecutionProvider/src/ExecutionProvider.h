@@ -150,6 +150,7 @@ namespace Dml
         }
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept final;
+        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
         bool DynamicGraphFusionEnabled() const noexcept;
@@ -186,6 +187,7 @@ namespace Dml
         ComPtr<ID3D12Device> m_d3d12Device;
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
+        bool m_areCustomHeapsSupported = false;
         bool m_areMetacommandsEnabled = true;
         bool m_dynamicGraphFusionEnabled = false;
         bool m_native16BitShaderOpsSupported = false;
@@ -268,7 +270,7 @@ namespace Dml
             return m_impl->OnSessionInitializationEnd();
         }
 
-        virtual onnxruntime::Status Sync() const final override
+        onnxruntime::Status Sync() const final override
         {
             // Completely wait until the device has completed all preceding tasks.
             // The application could have called SynchronizeBoundOutputs().
@@ -276,7 +278,7 @@ namespace Dml
             return Status::OK();
         }
 
-        virtual onnxruntime::Status OnRunEnd(bool /*sync_stream*/) final override
+        onnxruntime::Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) final override
         {
             // Flush any pending work to the GPU, but don't block for completion, permitting it
             // to overlap other work.

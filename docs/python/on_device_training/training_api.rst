@@ -42,12 +42,32 @@ Sample usage:
     CheckpointState.save_checkpoint(state, path_to_the_checkpoint_artifact)
 
 
+.. autoclass:: onnxruntime.training.api.checkpoint_state.Parameter
+    :members:
+    :show-inheritance:
+    :member-order: bysource
+    :inherited-members:
+    :special-members: __repr__
+
+.. autoclass:: onnxruntime.training.api.checkpoint_state.Parameters
+    :members:
+    :show-inheritance:
+    :member-order: bysource
+    :inherited-members:
+    :special-members: __getitem__, __setitem__, __contains__, __iter__, __repr__, __len__
+
+.. autoclass:: onnxruntime.training.api.checkpoint_state.Properties
+    :members:
+    :show-inheritance:
+    :member-order: bysource
+    :inherited-members:
+    :special-members: __getitem__, __setitem__, __contains__, __iter__, __repr__, __len__
+
 .. autoclass:: onnxruntime.training.api.CheckpointState
     :members:
     :show-inheritance:
     :member-order: bysource
     :inherited-members:
-    :special-members: __getitem__, __setitem__, __contains__
 
 .. autoclass:: onnxruntime.training.api.Module
     :members:

@@ -11,8 +11,17 @@ import unittest
 import numpy as np
 import onnx
 
-from onnxruntime import quantization
-from onnxruntime.quantization.quant_utils import compute_scale_zp, get_qmin_qmax_for_qType
+from onnxruntime.quantization import CalibrationDataReader, QuantFormat, QuantType, quantize_static
+from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config
+from onnxruntime.quantization.quant_utils import compute_scale_zp, get_qmin_qmax_for_qType, ms_domain
+
+
+class DummyDataReader(CalibrationDataReader):
+    def __init__(self, activations):
+        self.iterator = ({"INP": act} for act in activations)
+
+    def get_next(self):
+        return next(self.iterator, None)
 
 
 class TestTensorQuantOverridesOption(unittest.TestCase):
@@ -43,7 +52,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             "OUT": (0, np.float32(0.005075461231172085)),
         }
 
-    def perform_qdq_quantization(self, output_model_name, tensor_quant_overrides=None, per_channel=False):
+    def build_float32_model(self):
         #    (input)
         #       |
         #    Sigmoid
@@ -66,24 +75,18 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 13)])
         onnx.save(model, "model.onnx")
 
-        # Quantize model
-        class DummyDataReader(quantization.CalibrationDataReader):
-            def __init__(self, activations):
-                self.iterator = ({"INP": act} for act in activations)
+    def perform_qdq_quantization(self, output_model_name, extra_options=None, per_channel=False, activation_type=None):
+        self.build_float32_model()
 
-            def get_next(self):
-                return next(self.iterator, None)
+        if activation_type is None:
+            activation_type = self.default_act_qtype
 
-        extra_options = {}
-        if tensor_quant_overrides is not None:
-            extra_options["TensorQuantOverrides"] = tensor_quant_overrides
-
-        quantization.quantize_static(
+        quantize_static(
             model_input="model.onnx",
             model_output=output_model_name,
             calibration_data_reader=DummyDataReader(self.activations),
-            quant_format=quantization.QuantFormat.QDQ,
-            activation_type=self.default_act_qtype,
+            quant_format=QuantFormat.QDQ,
+            activation_type=activation_type,
             weight_type=self.default_wgt_qtype,
             per_channel=per_channel,
             op_types_to_quantize=["Conv", "Sigmoid"],
@@ -129,7 +132,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             out_sc,
         ) = self.perform_qdq_quantization(
             "model_default_quant_overrides.onnx",
-            tensor_quant_overrides=None,  # default behavior
+            extra_options=None,  # default behavior
         )
 
         # No overrides set. Expect default values
@@ -147,7 +150,8 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
         self.assertEqual(bias_zp.int32_data[0], self.default_zp_scales["BIAS"][0])
         self.assertEqual(bias_zp.data_type, self.default_bias_qtype)
-        self.assertEqual(bias_sc.float_data[0], self.default_zp_scales["BIAS"][1])
+        np_array = onnx.numpy_helper.to_array(bias_sc)
+        self.assertEqual(np_array[0], self.default_zp_scales["BIAS"][1])
 
         self.assertEqual(out_zp.int32_data[0], self.default_zp_scales["OUT"][0])
         self.assertEqual(out_zp.data_type, self.default_act_qtype)
@@ -170,7 +174,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             out_sc,
         ) = self.perform_qdq_quantization(
             "model_default_per_channel_quant_overrides.onnx",
-            tensor_quant_overrides=None,  # default behavior
+            extra_options=None,  # default behavior
             per_channel=True,
         )
 
@@ -214,10 +218,14 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, wgt_zp, wgt_sc, bias_zp, bias_sc, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides1.onnx",
-            tensor_quant_overrides={
-                "SIG_OUT": [{"scale": 1.0, "zero_point": 127}],
-                "WGT": [{"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True}],
-                "BIAS": [{"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True}],
+            extra_options={
+                "TensorQuantOverrides": {
+                    "SIG_OUT": [
+                        {"scale": np.array(1.0, dtype=np.float32), "zero_point": np.array(127, dtype=np.uint8)}
+                    ],
+                    "WGT": [{"quant_type": QuantType.QInt8, "symmetric": True, "reduce_range": True}],
+                    "BIAS": [{"quant_type": QuantType.QInt8, "symmetric": True, "reduce_range": True}],
+                }
             },
         )
 
@@ -232,7 +240,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.assertEqual(sig_out_sc.float_data[0], np.float32(1.0))
 
         # Weight should have different type, zero_point, and scale
-        self.assertEqual(wgt_zp.data_type, quantization.QuantType.QInt8.tensor_type)
+        self.assertEqual(wgt_zp.data_type, QuantType.QInt8.tensor_type)
 
         wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type, reduce_range=True, symmetric=True)
         wgt_rmin, wgt_rmax = np.min(self.weight), np.max(self.weight)
@@ -241,7 +249,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.assertEqual(wgt_sc.float_data[0], np.float32(new_wgt_sc))
 
         # Bias should now be treated as a weight and should have different type, zero_point, and scale
-        self.assertEqual(bias_zp.data_type, quantization.QuantType.QInt8.tensor_type)
+        self.assertEqual(bias_zp.data_type, QuantType.QInt8.tensor_type)
 
         bias_qmin, bias_qmax = get_qmin_qmax_for_qType(bias_zp.data_type, reduce_range=True, symmetric=True)
         bias_rmin, bias_rmax = np.min(self.bias), np.max(self.bias)
@@ -253,10 +261,10 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         Test overriding rmin/rmax for Sigmoid output.
         """
-        sigmoid_rmin, sigmoid_rmax = 0.0, 0.5
+        sigmoid_rmin, sigmoid_rmax = np.array(0.0, dtype=np.float32), np.array(0.5, dtype=np.float32)
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, _, _, _, _, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides2.onnx",
-            tensor_quant_overrides={"SIG_OUT": [{"rmin": sigmoid_rmin, "rmax": sigmoid_rmax}]},
+            extra_options={"TensorQuantOverrides": {"SIG_OUT": [{"rmin": sigmoid_rmin, "rmax": sigmoid_rmax}]}},
         )
 
         # Input should have same quant params
@@ -276,11 +284,13 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         Test overriding rmin and rmax for Conv weight
         """
-        wgt_rmin, wgt_rmax = 0.0, 1.0
+        wgt_rmin, wgt_rmax = np.array(0.0, dtype=np.float32), np.array(1.0, dtype=np.float32)
         _, _, _, _, wgt_zp, wgt_sc, _, _, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides3.onnx",
-            tensor_quant_overrides={
-                "WGT": [{"rmin": wgt_rmin, "rmax": wgt_rmax}],
+            extra_options={
+                "TensorQuantOverrides": {
+                    "WGT": [{"rmin": wgt_rmin, "rmax": wgt_rmax}],
+                }
             },
         )
 
@@ -298,11 +308,13 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         Test overriding scale and zero_point for Conv weight
         """
-        wgt_zp_val, wgt_scale_val = 4, 0.5
+        wgt_zp_val, wgt_scale_val = np.array(4, dtype=np.float32), np.array(0.5, dtype=np.float32)
         _, _, _, _, wgt_zp, wgt_sc, _, _, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides4.onnx",
-            tensor_quant_overrides={
-                "WGT": [{"zero_point": wgt_zp_val, "scale": wgt_scale_val}],
+            extra_options={
+                "TensorQuantOverrides": {
+                    "WGT": [{"zero_point": wgt_zp_val, "scale": wgt_scale_val}],
+                }
             },
         )
 
@@ -315,7 +327,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         Test per-channel overriding of scale/zero_point for Conv weight and bias.
         """
-        zp_vals, scale_vals = [2, 4], [0.5, 0.2]
+        zp_vals, scale_vals = np.array([2, 4], dtype=np.float32), np.array([0.5, 0.2], dtype=np.float32)
         (
             _,
             _,
@@ -329,15 +341,17 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             _,
         ) = self.perform_qdq_quantization(
             "model_per_channel_quant_overrides1.onnx",
-            tensor_quant_overrides={
-                "WGT": [
-                    {"zero_point": zp_vals[0], "scale": scale_vals[0]},
-                    {"zero_point": zp_vals[1], "scale": scale_vals[1]},
-                ],
-                "BIAS": [
-                    {"zero_point": zp_vals[0], "scale": scale_vals[0]},
-                    {"zero_point": zp_vals[1], "scale": scale_vals[1]},
-                ],
+            extra_options={
+                "TensorQuantOverrides": {
+                    "WGT": [
+                        {"axis": 0, "zero_point": zp_vals[0], "scale": scale_vals[0]},
+                        {"zero_point": zp_vals[1], "scale": scale_vals[1]},
+                    ],
+                    "BIAS": [
+                        {"axis": 0, "zero_point": zp_vals[0], "scale": scale_vals[0]},
+                        {"zero_point": zp_vals[1], "scale": scale_vals[1]},
+                    ],
+                }
             },
             per_channel=True,
         )
@@ -359,48 +373,88 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         Test per-channel overriding of rmin, rmax, reduce_range, and quant_type for Conv weight.
         """
-        rmin_vals = [0.0, 0.2]
-        rmax_vals = [1.0, 0.8]
-        quant_type = quantization.QuantType.QUInt8
-        reduce_ranges = [True, False]
-        (
-            _,
-            _,
-            _,
-            _,
-            wgt_zp,
-            wgt_sc,
-            bias_zp,
-            bias_sc,
-            _,
-            _,
-        ) = self.perform_qdq_quantization(
-            "model_per_channel_quant_overrides2.onnx",
-            tensor_quant_overrides={
-                "WGT": [
-                    {
-                        "quant_type": quant_type,
-                        "rmin": rmin_vals[0],
-                        "rmax": rmax_vals[0],
-                        "reduce_range": reduce_ranges[0],
+        for reduce_range in (False, True):
+            with self.subTest(reduce_range=reduce_range):
+                qdq_model_name = f"model_per_chan_overrides_2_reduce_range_{reduce_range}.onnx"
+                rmin_vals = [0.0, 0.2]
+                rmax_vals = [1.0, 0.8]
+                quant_type = QuantType.QUInt8
+                (
+                    _,
+                    _,
+                    _,
+                    _,
+                    wgt_zp,
+                    wgt_sc,
+                    bias_zp,
+                    bias_sc,
+                    _,
+                    _,
+                ) = self.perform_qdq_quantization(
+                    qdq_model_name,
+                    extra_options={
+                        "TensorQuantOverrides": {
+                            "WGT": [
+                                {
+                                    "axis": 0,
+                                    "quant_type": quant_type,
+                                    "rmin": np.array(rmin_vals[0], dtype=np.float32),
+                                    "rmax": np.array(rmax_vals[0], dtype=np.float32),
+                                    "reduce_range": reduce_range,
+                                },
+                                {
+                                    "quant_type": quant_type,
+                                    "rmin": np.array(rmin_vals[1], dtype=np.float32),
+                                    "rmax": np.array(rmax_vals[1], dtype=np.float32),
+                                    "reduce_range": reduce_range,
+                                },
+                            ],
+                        }
                     },
-                    {
-                        "quant_type": quant_type,
-                        "rmin": rmin_vals[1],
-                        "rmax": rmax_vals[1],
-                        "reduce_range": reduce_ranges[1],
-                    },
-                ],
+                    per_channel=True,
+                )
+
+                self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
+                for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
+                    wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type, reduce_range=reduce_range)
+                    expected_zp, expected_scale = compute_scale_zp(
+                        np.array(rmin_vals[index], dtype=np.float32),
+                        np.array(rmax_vals[index], dtype=np.float32),
+                        wgt_qmin,
+                        wgt_qmax,
+                    )
+                    self.assertEqual(zp, expected_zp)
+                    self.assertEqual(scale, np.float32(expected_scale))
+
+    def test_16bit_overrides_set_ms_domain(self):
+        """
+        Test that overriding a tensor to 16bit (when default is 8bit) automatically sets the 'com.microsoft'
+        domain on DQ and Q ops.
+        """
+        qdq_model_name = "model_quant_overrides_to_16bit.onnx"
+        inp_zp, _, sig_out_zp, _, _, _, _, _, out_zp, _ = self.perform_qdq_quantization(
+            qdq_model_name,
+            activation_type=onnx.TensorProto.UINT8,  # Default to 8bit activations
+            extra_options={
+                "TensorQuantOverrides": {
+                    "INP": [{"quant_type": QuantType.QUInt16}],
+                    "SIG_OUT": [{"quant_type": QuantType.QUInt16}],
+                }
             },
-            per_channel=True,
         )
 
-        self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
-        for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
-            wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type, reduce_range=reduce_ranges[index])
-            expected_zp, expected_scale = compute_scale_zp(rmin_vals[index], rmax_vals[index], wgt_qmin, wgt_qmax)
-            self.assertEqual(zp, expected_zp)
-            self.assertEqual(scale, np.float32(expected_scale))
+        # Input and Sigmoid's output should be overridden to 16bit
+        self.assertEqual(inp_zp.data_type, onnx.TensorProto.UINT16)
+        self.assertEqual(sig_out_zp.data_type, onnx.TensorProto.UINT16)
+
+        # Output should the default uint8 type
+        self.assertEqual(out_zp.data_type, onnx.TensorProto.UINT8)
+
+        # Q/DQ ops should all have the 'com.microsoft' domain
+        qdq_model = onnx.load_model(qdq_model_name)
+        for node in qdq_model.graph.node:
+            if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+                self.assertEqual(node.domain, ms_domain)
 
     def test_override_validation_nonexisting_tensor(self):
         """
@@ -409,7 +463,13 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"NON_EXISTING": [{"rmin": 0.0, "rmax": 0.5}]},
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "NON_EXISTING": [
+                            {"rmin": np.array(0.0, dtype=np.float32), "rmax": np.array(0.5, dtype=np.float32)}
+                        ]
+                    }
+                },
             )
 
         self.assertIn("is not present in the model", str(context.exception))
@@ -421,7 +481,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0}]},
+                extra_options={"TensorQuantOverrides": {"SIG_OUT": [{"scale": np.array(0.0, dtype=np.float32)}]}},
             )
 
         self.assertIn("Must provide both 'scale' and 'zero_point'", str(context.exception))
@@ -433,35 +493,630 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0, "zero_point": 0, "rmax": 10.0}]},
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "SIG_OUT": [
+                            {
+                                "scale": np.array(0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int8),
+                                "rmax": np.array(10.0, dtype=np.float32),
+                            }
+                        ]
+                    }
+                },
             )
 
-        self.assertIn("option 'rmax' is invalid with 'scale' and 'zero_point'", str(context.exception))
+        self.assertIn("option(s) [rmax] are invalid with 'scale' and 'zero_point'", str(context.exception))
 
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0, "zero_point": 0, "rmin": 10.0}]},
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "SIG_OUT": [
+                            {
+                                "scale": np.array(0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int8),
+                                "rmax": np.array(10.0, dtype=np.float32),
+                            }
+                        ]
+                    }
+                },
             )
 
-        self.assertIn("option 'rmin' is invalid with 'scale' and 'zero_point'", str(context.exception))
+        self.assertIn("option(s) [rmax] are invalid with 'scale' and 'zero_point'", str(context.exception))
 
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0, "zero_point": 0, "symmetric": True}]},
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "SIG_OUT": [
+                            {
+                                "scale": np.array(0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int8),
+                                "symmetric": True,
+                            }
+                        ]
+                    }
+                },
             )
 
-        self.assertIn("option 'symmetric' is invalid with 'scale' and 'zero_point'", str(context.exception))
+        self.assertIn("option(s) [symmetric] are invalid with 'scale' and 'zero_point'", str(context.exception))
 
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0, "zero_point": 0, "reduce_range": True}]},
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "SIG_OUT": [
+                            {
+                                "scale": np.array(0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int8),
+                                "reduce_range": True,
+                            }
+                        ]
+                    }
+                },
             )
 
-        self.assertIn("option 'reduce_range' is invalid with 'scale' and 'zero_point'", str(context.exception))
+        self.assertIn("option(s) [reduce_range] are invalid with 'scale' and 'zero_point'", str(context.exception))
+
+    def test_get_qnn_qdq_config_sigmoid(self):
+        """
+        Test that the QNN-specific configs override the scale and zero-point of 16-bit Sigmoid.
+        """
+        # Create float model with a Abs --> Sigmoid
+        graph = onnx.helper.make_graph(
+            [
+                onnx.helper.make_node("Abs", ["input_0"], ["abs_out"], name="Abs_0"),
+                onnx.helper.make_node("Sigmoid", ["abs_out"], ["output_0"], name="Sigmoid_0"),
+            ],
+            "sigmoid_graph",
+            [onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, (1, 2, 3))],
+            [onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, (1, 2, 3))],
+        )
+        opset_imports = [
+            onnx.helper.make_opsetid("", 18),
+        ]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        float_model_path = "model.onnx"
+        onnx.save_model(model, float_model_path)
+
+        other_override_0 = {"abs_out": [{"symmetric": True}]}
+        other_override_1 = {
+            "abs_out": [
+                {
+                    "quant_type": QuantType.QUInt8,
+                    "convert": {"quant_type": QuantType.QUInt16, "recv_nodes": {"Sigmoid_0"}},
+                }
+            ]
+        }
+        other_override_2 = {
+            "abs_out": [
+                {
+                    "quant_type": QuantType.QInt8,
+                    "convert": {"quant_type": QuantType.QInt16, "recv_nodes": {"Sigmoid_0"}},
+                }
+            ]
+        }
+
+        # Enumerate subtests (default_act_qtype, sigmoid_out_qtype, other_override)
+        subtest_configs = [
+            (QuantType.QUInt16, None, {}),  # Sigmoid gets new scale/zp
+            (QuantType.QUInt16, None, other_override_0),  # Sigmoid gets new scale/zp
+            (QuantType.QInt16, None, {}),  # Sigmoid gets new scale/zp
+            (QuantType.QInt16, None, other_override_0),  # Sigmoid gets new scale/zp
+            (QuantType.QUInt8, QuantType.QUInt16, other_override_1),  # Sigmoid gets new scale/zp
+            (QuantType.QInt8, QuantType.QInt16, other_override_2),  # Sigmoid gets new scale/zp
+            (QuantType.QUInt8, None, other_override_0),  # Sigmoid DOES NOT gets new scale/zp
+            (QuantType.QInt8, None, {}),  # Sigmoid DOES NOT gets new scale/zp
+            (QuantType.QInt8, QuantType.QInt8, {}),  # Sigmoid DOES NOT gets new scale/zp
+        ]
+
+        # Test that Sigmoid's output scale and zp should be overridden for 16-bit Sigmoid.
+        for default_act_qtype, sigmoid_out_qtype, abs_override in subtest_configs:
+            with self.subTest(
+                default_act_qtype=default_act_qtype, sigmoid_out_qtype=sigmoid_out_qtype, abs_override=abs_override
+            ):
+                init_overrides = {}
+                init_overrides.update(abs_override)
+
+                if sigmoid_out_qtype is not None:
+                    init_overrides["output_0"] = [{"quant_type": sigmoid_out_qtype}]
+
+                qnn_config = get_qnn_qdq_config(
+                    float_model_path,
+                    DummyDataReader([]),
+                    activation_type=default_act_qtype,
+                    init_overrides=(init_overrides if init_overrides else None),
+                    add_qtype_converts=False,
+                )
+
+                self.assertEqual(set(qnn_config.op_types_to_quantize), {"Abs", "Sigmoid"})
+
+                if default_act_qtype == QuantType.QUInt16 or sigmoid_out_qtype == QuantType.QUInt16:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("output_0", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["output_0"],
+                        [
+                            {
+                                "quant_type": QuantType.QUInt16,
+                                "scale": np.array(1.0 / 65536.0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.uint16),
+                            }
+                        ],
+                    )
+                elif default_act_qtype == QuantType.QInt16 or sigmoid_out_qtype == QuantType.QInt16:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("output_0", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["output_0"],
+                        [
+                            {
+                                "quant_type": QuantType.QInt16,
+                                "scale": np.array(1.0 / 32768.0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int16),
+                            }
+                        ],
+                    )
+
+    def test_get_qnn_qdq_config_tanh(self):
+        """
+        Test that the QNN-specific configs override the scale and zero-point of 16-bit Tanh.
+        """
+
+        # Create float model with a Abs --> Tanh
+        graph = onnx.helper.make_graph(
+            [
+                onnx.helper.make_node("Abs", ["input_0"], ["abs_out"], name="Abs_0"),
+                onnx.helper.make_node("Tanh", ["abs_out"], ["output_0"], name="Tanh_0"),
+            ],
+            "tanh_graph",
+            [onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, (1, 2, 3))],
+            [onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, (1, 2, 3))],
+        )
+        opset_imports = [
+            onnx.helper.make_opsetid("", 18),
+        ]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        float_model_path = "model.onnx"
+        onnx.save_model(model, float_model_path)
+
+        other_override_0 = {"abs_out": [{"symmetric": True}]}
+        other_override_1 = {
+            "abs_out": [
+                {"quant_type": QuantType.QUInt8, "convert": {"quant_type": QuantType.QUInt16, "recv_nodes": {"Tanh_0"}}}
+            ]
+        }
+        other_override_2 = {
+            "abs_out": [
+                {"quant_type": QuantType.QInt8, "convert": {"quant_type": QuantType.QInt16, "recv_nodes": {"Tanh_0"}}}
+            ]
+        }
+
+        # Enumerate subtests (default_act_qtype, tanh_out_qtype, other_override)
+        subtest_configs = [
+            (QuantType.QUInt16, None, {}),  # Tanh gets new scale/zp
+            (QuantType.QUInt16, None, other_override_0),  # Tanh gets new scale/zp
+            (QuantType.QInt16, None, {}),  # Tanh gets new scale/zp
+            (QuantType.QInt16, None, other_override_0),  # Tanh gets new scale/zp
+            (QuantType.QUInt8, QuantType.QUInt16, other_override_1),  # Tanh gets new scale/zp
+            (QuantType.QInt8, QuantType.QInt16, other_override_2),  # Tanh gets new scale/zp
+            (QuantType.QUInt8, None, other_override_0),  # Tanh DOES NOT gets new scale/zp
+            (QuantType.QInt8, None, {}),  # Tanh DOES NOT gets new scale/zp
+            (QuantType.QInt8, QuantType.QInt8, {}),  # Tanh DOES NOT gets new scale/zp
+        ]
+
+        # Test that Tanh's output scale and zp should be overridden for 16-bit Tanh.
+        for default_act_qtype, tanh_out_qtype, abs_override in subtest_configs:
+            with self.subTest(
+                default_act_qtype=default_act_qtype, tanh_out_qtype=tanh_out_qtype, abs_override=abs_override
+            ):
+                init_overrides = {}
+                init_overrides.update(abs_override)
+
+                if tanh_out_qtype is not None:
+                    init_overrides["output_0"] = [{"quant_type": tanh_out_qtype}]
+
+                qnn_config = get_qnn_qdq_config(
+                    float_model_path,
+                    DummyDataReader([]),
+                    activation_type=default_act_qtype,
+                    init_overrides=(init_overrides if init_overrides else None),
+                    add_qtype_converts=False,
+                )
+
+                self.assertEqual(set(qnn_config.op_types_to_quantize), {"Abs", "Tanh"})
+
+                if default_act_qtype == QuantType.QUInt16 or tanh_out_qtype == QuantType.QUInt16:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("output_0", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["output_0"],
+                        [
+                            {
+                                "quant_type": QuantType.QUInt16,
+                                "scale": np.array(1.0 / 32768.0, dtype=np.float32),
+                                "zero_point": np.array(32768, dtype=np.uint16),
+                            }
+                        ],
+                    )
+                elif default_act_qtype == QuantType.QInt16 or tanh_out_qtype == QuantType.QInt16:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("output_0", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["output_0"],
+                        [
+                            {
+                                "quant_type": QuantType.QInt16,
+                                "scale": np.array(1.0 / 32768.0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int16),
+                            }
+                        ],
+                    )
+
+    def test_get_qnn_qdq_config_matmul(self):
+        """
+        Test that the QNN-specific configs override MatMul's initializer input type to 8-bit if
+        the other input is 16-bit and the default weight type is 8-bit.
+        """
+        # Create float model with a Abs --> MatMul
+        graph = onnx.helper.make_graph(
+            [
+                onnx.helper.make_node("Abs", ["input_0"], ["abs_0_out"], name="Abs_0"),
+                onnx.helper.make_node("MatMul", ["abs_0_out", "weight"], ["matmul_0_out"], name="MatMul_0"),
+                onnx.helper.make_node("Abs", ["matmul_0_out"], ["output_0"], name="Abs_1"),
+            ],
+            "matmul_graph",
+            [onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, (2, 3))],
+            [onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, (2, 2))],
+            initializer=[onnx.numpy_helper.from_array(np.random.random((3, 2)).astype(np.float32), "weight")],
+        )
+        opset_imports = [
+            onnx.helper.make_opsetid("", 18),
+        ]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        float_model_path = "model.onnx"
+        onnx.save_model(model, float_model_path)
+
+        q16_qtypes = {QuantType.QUInt16, QuantType.QInt16}
+        q8_qtypes = {QuantType.QUInt8, QuantType.QInt8}
+        symmetric_wgt_qtypes = {QuantType.QInt8, QuantType.QInt16}
+
+        other_override_0 = {"output_0": [{"symmetric": True}]}
+        other_override_1 = {
+            "matmul_0_out": [
+                {
+                    "quant_type": QuantType.QUInt16,
+                    "convert": {"quant_type": QuantType.QUInt8, "recv_nodes": {"Abs_1"}},
+                }
+            ]
+        }
+        other_override_2 = {
+            "matmul_0_out": [
+                {
+                    "quant_type": QuantType.QInt16,
+                    "convert": {"quant_type": QuantType.QInt8, "recv_nodes": {"Abs_1"}},
+                }
+            ]
+        }
+        convert_matmul_input = {
+            "abs_0_out": [
+                {
+                    "quant_type": QuantType.QUInt8,
+                    "convert": {"quant_type": QuantType.QUInt16, "recv_nodes": {"MatMul_0"}},
+                }
+            ]
+        }
+
+        # Enumerate subtests (default_act_qtype, default_wgt_qtype, matmul_in_qtype, other_override)
+        subtest_configs = [
+            (QuantType.QUInt8, QuantType.QUInt8, None, {}),
+            (QuantType.QUInt8, QuantType.QUInt8, QuantType.QUInt16, {}),
+            (QuantType.QUInt8, QuantType.QUInt8, QuantType.QUInt16, other_override_0),
+            (QuantType.QUInt8, QuantType.QUInt8, QuantType.QUInt16, other_override_1),
+            (QuantType.QInt8, QuantType.QInt8, QuantType.QInt16, other_override_2),
+            (QuantType.QUInt16, QuantType.QUInt8, None, other_override_0),
+            (QuantType.QInt16, QuantType.QInt8, None, {}),
+            (QuantType.QUInt16, QuantType.QUInt16, None, other_override_0),
+            (QuantType.QInt16, QuantType.QInt16, None, {}),
+            (QuantType.QUInt8, QuantType.QUInt8, None, {}),
+            (QuantType.QUInt8, QuantType.QUInt8, None, convert_matmul_input),
+        ]
+
+        # Test if MatMul's weight input is overridden.
+        for default_act_qtype, default_wgt_qtype, matmul_input_qtype, other_override in subtest_configs:
+            with self.subTest(
+                default_act_qtype=default_act_qtype,
+                default_wgt_qtype=default_wgt_qtype,
+                matmul_input_qtype=matmul_input_qtype,
+                other_override=other_override,
+            ):
+                init_overrides = {}
+                init_overrides.update(other_override)
+
+                if matmul_input_qtype is not None:
+                    init_overrides["abs_0_out"] = [{"quant_type": matmul_input_qtype}]
+
+                qnn_config = get_qnn_qdq_config(
+                    float_model_path,
+                    DummyDataReader([]),
+                    activation_type=default_act_qtype,
+                    weight_type=default_wgt_qtype,
+                    init_overrides=(init_overrides if init_overrides else None),
+                    add_qtype_converts=False,
+                )
+
+                self.assertEqual(set(qnn_config.op_types_to_quantize), {"Abs", "MatMul"})
+                input_is_16bit = (
+                    (default_act_qtype in q16_qtypes)
+                    or (matmul_input_qtype in q16_qtypes)
+                    or (other_override == convert_matmul_input)
+                )
+                weight_is_symmetric = default_wgt_qtype in symmetric_wgt_qtypes
+
+                if input_is_16bit and default_wgt_qtype in q8_qtypes:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("weight", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["weight"],
+                        [
+                            {
+                                "quant_type": default_wgt_qtype,
+                                "symmetric": weight_is_symmetric,
+                            }
+                        ],
+                    )
+                elif init_overrides:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertNotIn("weight", qnn_config.extra_options["TensorQuantOverrides"])
+
+                self.assertEqual(weight_is_symmetric, qnn_config.extra_options["WeightSymmetric"])
+
+    def test_get_qnn_qdq_config_matmul_per_channel(self):
+        """
+        When per_channel is enabled, test that the QNN-specific configs explicitly override MatMul's
+        initializer inputs to use per-tensor quantization (QNN does not support per-channel MatMul).
+        """
+        # Create float model with a Abs --> MatMul
+        graph = onnx.helper.make_graph(
+            [
+                onnx.helper.make_node("Abs", ["input_0"], ["abs_0_out"], name="Abs_0"),
+                onnx.helper.make_node("MatMul", ["abs_0_out", "weight"], ["matmul_0_out"], name="MatMul_0"),
+                onnx.helper.make_node("Abs", ["matmul_0_out"], ["output_0"], name="Abs_1"),
+            ],
+            "matmul_graph",
+            [onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, (2, 3))],
+            [onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, (2, 2))],
+            initializer=[onnx.numpy_helper.from_array(np.random.random((3, 2)).astype(np.float32), "weight")],
+        )
+        opset_imports = [
+            onnx.helper.make_opsetid("", 18),
+        ]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        float_model_path = "model.onnx"
+        onnx.save_model(model, float_model_path)
+
+        symmetric_wgt_qtypes = {QuantType.QInt8, QuantType.QInt16}
+        weight_override_16bit = {"weight": [{"quant_type": QuantType.QInt16, "symmetric": True}]}
+
+        # Enumerate subtests (default_wgt_qtype, default_wgt_symmetric, other_override)
+        subtest_configs = [
+            (QuantType.QUInt8, False, {}),
+            (QuantType.QInt8, True, {}),
+            (QuantType.QUInt8, None, {}),
+            (QuantType.QInt8, None, {}),
+            (QuantType.QInt8, None, weight_override_16bit),
+        ]
+
+        # Test if MatMul's weight input is overridden to per-tensor correctly.
+        for default_wgt_qtype, default_wgt_symmetric, other_override in subtest_configs:
+            with self.subTest(
+                default_wgt_qtype=default_wgt_qtype,
+                default_wgt_symmetric=default_wgt_symmetric,
+                other_override=other_override,
+            ):
+                init_overrides = {}
+                init_overrides.update(other_override)
+
+                qnn_config = get_qnn_qdq_config(
+                    float_model_path,
+                    DummyDataReader([]),
+                    weight_type=default_wgt_qtype,
+                    weight_symmetric=default_wgt_symmetric,
+                    init_overrides=(init_overrides if init_overrides else None),
+                    per_channel=True,
+                )
+
+                self.assertEqual(set(qnn_config.op_types_to_quantize), {"Abs", "MatMul"})
+                weight_is_symmetric = default_wgt_symmetric or default_wgt_qtype in symmetric_wgt_qtypes
+
+                # User did not provide overrides for weight, so get_qnn_qdq_config() should set per-tensor overrides.
+                if not init_overrides:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("weight", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["weight"],
+                        [
+                            {
+                                "quant_type": default_wgt_qtype,
+                                "symmetric": weight_is_symmetric,
+                            }
+                        ],
+                    )
+                else:
+                    # Should retain user's overrides.
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("weight", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["weight"], weight_override_16bit["weight"]
+                    )
+
+    def test_get_qnn_qdq_config_layernorm(self):
+        """
+        Test that the QNN-specific configs override LayerNorm's initializer input type to 8-bit if
+        the other input is 16-bit and the default weight type is 8-bit.
+        """
+        # Create float model with a Abs --> LayerNormalization
+        graph = onnx.helper.make_graph(
+            [
+                onnx.helper.make_node("Abs", ["input_0"], ["abs_0_out"], name="Abs_0"),
+                onnx.helper.make_node(
+                    "LayerNormalization", ["abs_0_out", "weight", "bias"], ["layernorm_0_out"], name="LayerNorm_0"
+                ),
+                onnx.helper.make_node("Abs", ["layernorm_0_out"], ["output_0"], name="Abs_1"),
+            ],
+            "layernorm_graph",
+            [onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, (2, 3))],
+            [onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, (2, 3))],
+            initializer=[
+                onnx.numpy_helper.from_array(np.random.random((2, 3)).astype(np.float32), "weight"),
+                onnx.numpy_helper.from_array(np.random.random((2, 3)).astype(np.float32), "bias"),
+            ],
+        )
+        opset_imports = [
+            onnx.helper.make_opsetid("", 18),
+        ]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        float_model_path = "model.onnx"
+        onnx.save_model(model, float_model_path)
+
+        q16_qtypes = {QuantType.QUInt16, QuantType.QInt16}
+        q8_qtypes = {QuantType.QUInt8, QuantType.QInt8}
+        symmetric_wgt_qtypes = {QuantType.QInt8, QuantType.QInt16}
+
+        other_override_0 = {"output_0": [{"symmetric": True}]}
+        other_override_1 = {
+            "layernorm_0_out": [
+                {
+                    "quant_type": QuantType.QUInt16,
+                    "convert": {"quant_type": QuantType.QUInt8, "recv_nodes": {"Abs_1"}},
+                }
+            ]
+        }
+        other_override_2 = {
+            "layernorm_0_out": [
+                {
+                    "quant_type": QuantType.QInt16,
+                    "convert": {"quant_type": QuantType.QInt8, "recv_nodes": {"Abs_1"}},
+                }
+            ]
+        }
+        convert_layernorm_input = {
+            "abs_0_out": [
+                {
+                    "quant_type": QuantType.QUInt8,
+                    "convert": {"quant_type": QuantType.QUInt16, "recv_nodes": {"LayerNorm_0"}},
+                }
+            ]
+        }
+
+        # Enumerate subtests (default_act_qtype, default_wgt_qtype, layernorm_in_qtype, other_override)
+        subtest_configs = [
+            (QuantType.QUInt8, QuantType.QUInt8, None, {}),
+            (QuantType.QUInt8, QuantType.QUInt8, QuantType.QUInt16, {}),
+            (QuantType.QUInt8, QuantType.QUInt8, QuantType.QUInt16, other_override_0),
+            (QuantType.QUInt8, QuantType.QUInt8, QuantType.QUInt16, other_override_1),
+            (QuantType.QInt8, QuantType.QInt8, QuantType.QInt16, other_override_2),
+            (QuantType.QUInt16, QuantType.QUInt8, None, other_override_0),
+            (QuantType.QInt16, QuantType.QInt8, None, {}),
+            (QuantType.QUInt16, QuantType.QUInt16, None, other_override_0),
+            (QuantType.QInt16, QuantType.QInt16, None, {}),
+            (QuantType.QUInt8, QuantType.QUInt8, None, {}),
+            (QuantType.QUInt8, QuantType.QUInt8, None, convert_layernorm_input),
+        ]
+
+        # Test if LayerNorm's weight input is overridden.
+        for default_act_qtype, default_wgt_qtype, layernorm_input_qtype, other_override in subtest_configs:
+            with self.subTest(
+                default_act_qtype=default_act_qtype,
+                default_wgt_qtype=default_wgt_qtype,
+                layernorm_input_qtype=layernorm_input_qtype,
+                other_override=other_override,
+            ):
+                init_overrides = {}
+                init_overrides.update(other_override)
+
+                if layernorm_input_qtype is not None:
+                    init_overrides["abs_0_out"] = [{"quant_type": layernorm_input_qtype}]
+
+                qnn_config = get_qnn_qdq_config(
+                    float_model_path,
+                    DummyDataReader([]),
+                    activation_type=default_act_qtype,
+                    weight_type=default_wgt_qtype,
+                    init_overrides=(init_overrides if init_overrides else None),
+                    add_qtype_converts=False,
+                )
+
+                self.assertEqual(set(qnn_config.op_types_to_quantize), {"Abs", "LayerNormalization"})
+                input_is_16bit = (
+                    (default_act_qtype in q16_qtypes)
+                    or (layernorm_input_qtype in q16_qtypes)
+                    or (other_override == convert_layernorm_input)
+                )
+                weight_is_symmetric = default_wgt_qtype in symmetric_wgt_qtypes
+
+                if input_is_16bit and default_wgt_qtype in q8_qtypes:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertIn("weight", qnn_config.extra_options["TensorQuantOverrides"])
+                    self.assertEqual(
+                        qnn_config.extra_options["TensorQuantOverrides"]["weight"],
+                        [
+                            {
+                                "quant_type": default_wgt_qtype,
+                                "symmetric": weight_is_symmetric,
+                            }
+                        ],
+                    )
+                elif init_overrides:
+                    self.assertIn("TensorQuantOverrides", qnn_config.extra_options)
+                    self.assertNotIn("weight", qnn_config.extra_options["TensorQuantOverrides"])
+
+                self.assertEqual(weight_is_symmetric, qnn_config.extra_options["WeightSymmetric"])
+                self.assertNotIn("bias", qnn_config.extra_options["TensorQuantOverrides"])
+
+    def test_get_qnn_qdq_config_ext_data(self):
+        """
+        Test that get_qnn_qdq_config() returns a config that enables external data
+        if the input model has external data.
+        """
+
+        # Create model with a weight large enough (> 1024 bytes) to be stored externally.
+        large_weight = onnx.numpy_helper.from_array(np.random.random((1, 32, 32)).astype(np.float32), "weight")
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("Add", ["input", "weight"], ["output"])],
+            "add_ext_data",
+            [onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, (1, 32, 32))],
+            [onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, (1, 32, 32))],
+            initializer=[large_weight],
+        )
+        model = onnx.helper.make_model(
+            graph,
+            opset_imports=[onnx.helper.make_opsetid("", 18)],
+        )
+        onnx.save_model(
+            model,
+            "add_ext_data.onnx",
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location="add_ext_data.bin",
+        )
+
+        qnn_config = get_qnn_qdq_config("add_ext_data.onnx", DummyDataReader(self.activations))
+        self.assertEqual(set(qnn_config.op_types_to_quantize), {"Add"})
+        self.assertTrue(qnn_config.use_external_data_format)
 
 
 if __name__ == "__main__":
+    t = TestTensorQuantOverridesOption()
+    t.setUp()
+    t.test_qdq_default_per_channel()
     unittest.main()

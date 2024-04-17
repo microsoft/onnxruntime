@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -6,18 +6,11 @@
 #include <vector>
 #include <memory>
 
-#if defined(OPENVINO_2022_3) || (OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVINO_2023_2)
-#define OV_API_20
 #include "openvino/openvino.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/frontend/manager.hpp"
-#else
-#include <inference_engine.hpp>
-#endif
 
 #ifdef IO_BUFFER_ENABLED
-#include <gpu/gpu_context_api_ocl.hpp>
-#include <gpu/gpu_config.hpp>
 #include <openvino/runtime/intel_gpu/ocl/ocl.hpp>
 #endif
 
@@ -49,12 +42,10 @@ class OVCore {
                            std::string& hw_target,
                            ov::AnyMap& device_config,
                            std::string name);
-#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVINO_2023_2)
-  OVExeNetwork LoadNetwork(const std::string& model_stream,
+  OVExeNetwork LoadNetwork(const std::string model_path,
                            std::string& hw_target,
                            ov::AnyMap& device_config,
                            std::string name);
-#endif
   void SetCache(std::string cache_dir_path);
 #ifdef IO_BUFFER_ENABLED
   OVExeNetwork LoadNetwork(std::shared_ptr<OVNetwork>& model, OVRemoteContextPtr context, std::string& name);

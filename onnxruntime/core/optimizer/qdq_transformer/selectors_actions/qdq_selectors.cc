@@ -58,8 +58,8 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  if (const auto dq_validation_status = QDQ::ValidateNodeGroupDQNodes(graph_viewer, node, dq_nodes);
-      !dq_validation_status.IsOK()) {
+  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
+      !qdq_validation_status.IsOK()) {
     return false;
   }
 
@@ -91,6 +91,13 @@ std::optional<NodeGroup> NodeGroupSelector::GetQDQSelection(const GraphViewer& g
 }
 
 std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node) const {
+  const std::string_view node_ep = node.GetExecutionProviderType();
+
+  if (!compatible_providers_.empty() &&
+      std::find(compatible_providers_.begin(), compatible_providers_.end(), node_ep) == compatible_providers_.end()) {
+    return std::nullopt;
+  }
+
   const auto qdq_group = node_group_selector_->GetQDQSelection(graph_viewer, node);
   if (!qdq_group.has_value()) {
     return std::nullopt;
@@ -146,8 +153,8 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  if (const auto dq_validation_status = QDQ::ValidateNodeGroupDQNodes(graph_viewer, node, dq_nodes);
-      !dq_validation_status.IsOK()) {
+  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
+      !qdq_validation_status.IsOK()) {
     return false;
   }
 
@@ -537,8 +544,8 @@ bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  if (const auto dq_validation_status = QDQ::ValidateNodeGroupDQNodes(graph_viewer, node, dq_nodes);
-      !dq_validation_status.IsOK()) {
+  if (const auto qdq_validation_status = QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
+      !qdq_validation_status.IsOK()) {
     return false;
   }
 

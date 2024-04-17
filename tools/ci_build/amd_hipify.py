@@ -117,7 +117,6 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("HIPBLAS_R_16F", "rocblas_datatype_f16_r")
     s = s.replace("HIPBLAS_R_32F", "rocblas_datatype_f32_r")
     s = s.replace("ROCBLAS_GEMM_DEFAULT_TENSOR_OP", "rocblas_gemm_algo_standard")
-    s = s.replace("ROCBLAS_TENSOR_OP_MATH", "0 /* CUBLAS_TENSOR_OP_MATH is deprecated */")
 
     # compatible layer
     s = s.replace("rocblas_gemm_strided_batched_ex", "_compat_rocblas_gemm_strided_batched_ex")
@@ -181,6 +180,8 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     # Fix onnxruntime/contrib_ops/rocm/transformers. They include cpu headers which use "cuda" in their names.
     s = s.replace("rocm_device_prop_", "cuda_device_prop_")
     s = s.replace("rocm_device_arch_", "cuda_device_arch_")
+
+    s = s.replace("HipTuningContext", "RocmTuningContext")
 
     # We want hipfft, which needs hipDataType etc, but only do this for files that have "fft" in their names
     # And we do this last, undoing or fixing hipify mistakes.

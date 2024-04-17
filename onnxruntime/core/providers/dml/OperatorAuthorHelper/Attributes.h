@@ -12,6 +12,7 @@ namespace AttrName
     static constexpr const char* AllowZero = "allowzero";
     static constexpr const char* Alpha = "alpha";
     static constexpr const char* AlignCorners = "align_corners";
+    static constexpr const char* Antialiased = "antialias";
     static constexpr const char* AutoPad = "auto_pad";
     static constexpr const char* Axes = "axes";
     static constexpr const char* Axis = "axis";
@@ -23,8 +24,8 @@ namespace AttrName
     static constexpr const char* BlockSize = "blocksize";
     static constexpr const char* Border = "border";
     static constexpr const char* Broadcast = "broadcast";
-    static constexpr const char* ChannelsLast = "channels_last";
     static constexpr const char* CeilMode = "ceil_mode";
+    static constexpr const char* ChannelsLast = "channels_last";
     static constexpr const char* Clip = "clip";
     static constexpr const char* CoordinateTransformationMode = "coordinate_transformation_mode";
     static constexpr const char* CountIncludePad = "count_include_pad";
@@ -107,6 +108,7 @@ namespace AttrName
     static constexpr const char* QkvHiddenSizes = "qkv_hidden_sizes";
     static constexpr const char* Unidirectional = "unidirectional";
     static constexpr const char* NumHeads = "num_heads";
+    static constexpr const char* PastPresentShareBuffer = "past_present_share_buffer";
 
     static constexpr const char* FusedActivation = "fused_activation";
     static constexpr const char* FusedActivationDomain = "fused_activation_domain";
@@ -148,5 +150,6 @@ namespace AttrValue
     static constexpr const char* NearestNeighbor = "NN";
     static constexpr const char* NotSet = "NOTSET";
     static constexpr const char* Reflect = "reflect";
+    static constexpr const char* Wrap = "wrap";
 
 } // namespace AttrValue

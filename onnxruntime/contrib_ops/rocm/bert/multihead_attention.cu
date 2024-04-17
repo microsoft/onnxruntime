@@ -68,6 +68,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL) != 0LL;
+  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 
   using HipT = typename ToHipType<T>::MappedType;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
@@ -121,8 +122,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
           query, key, value, bias,
           key_padding_mask, relative_position_bias,
           past_key, past_value, past_seq_len,
-          &attn,
-          num_heads_, mask_filter_value_, scale_,
+          &attn, num_heads_, 
+          mask_filter_value_, scale_, false, /*is_unidirectional_*/ 
           past_present_share_buffer_, false, device_prop.maxThreadsPerBlock));
 
   if (attn_type_ == kDecoderMaskedMultiHeadAttention && attn.sequence_length != 1) {

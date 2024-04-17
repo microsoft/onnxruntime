@@ -21,6 +21,15 @@ parameters:
     values:
       - 11.8
       - 12.2
+  - name: SpecificArtifact
+    displayName: Use Specific Artifact
+    type: boolean
+    default: false
+
+  - name: BuildId
+    displayName: Specific Artifact's BuildId
+    type: string
+    default: '0'
 
 resources:
   repositories:
@@ -37,3 +46,5 @@ stages:
       enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
       cmake_build_type: ${{ parameters.cmake_build_type }}
       cuda_version: ${{ parameters.cuda_version }}
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}

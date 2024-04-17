@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/trt_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -692,7 +693,7 @@ TEST(UpsampleOpTest, NhwcUpsampleOp4D1CBilinearTest) {
   // TensorRT: results mismatch
   // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(UpsampleOpTest, NhwcUpsampleOp4DBilinearTest) {
@@ -766,7 +767,7 @@ TEST(UpsampleOpTest, NhwcUpsampleOp4DBilinearTest) {
   // TensorRT: results mismatch
   // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(UpsampleOpTest, UpsampleOp2DBilinearTest) {
@@ -886,7 +887,7 @@ TEST(UpsampleOpTest, NhwcUpsampleOp4DBilinearTest_int32) {
   // TensorRT: results mismatch
   // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest_1D) {
@@ -939,7 +940,9 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_opset9) {
       7, 7, 9, 9};
 
   test.AddOutput<int32_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+
+  // TRT: segmentation fault in A100
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(UpsampleOpTest, NhwcUpsampleOpNearest2XTest_opset9) {

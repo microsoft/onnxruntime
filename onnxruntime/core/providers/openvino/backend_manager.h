@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -18,13 +18,14 @@ namespace openvino_ep {
 // Singleton class that manages all the backends
 class BackendManager {
  public:
-  BackendManager(const onnxruntime::Node& fused_node,
+  BackendManager(const GlobalContext& global_context,
+                 const onnxruntime::Node& fused_node,
                  const onnxruntime::GraphViewer& subgraph,
                  const logging::Logger& logger);
   void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
-  static GlobalContext& GetGlobalContext();
-  static void ReleaseGlobalContext();
+  void SetGlobalCotext(const GlobalContext& global_context);
+  GlobalContext& GetGlobalContext();
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(
@@ -45,6 +46,7 @@ class BackendManager {
   std::shared_ptr<IBackend> concrete_backend_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   SubGraphContext subgraph_context_;
+  GlobalContext global_context_;
 };
 
 }  // namespace openvino_ep

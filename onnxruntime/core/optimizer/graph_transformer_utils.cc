@@ -45,6 +45,7 @@
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
+#include "core/optimizer/label_encoder_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
@@ -69,6 +70,7 @@
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/shape_input_merge.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer.h"
@@ -132,6 +134,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<MatmulBNFusion>());
       rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
+      rules.push_back(std::make_unique<LabelEncoderFusion>());
       break;
 
     case TransformerLevel::Level2:
@@ -211,9 +214,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
       }
 
-      // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
-      // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
-      // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
+      // Put ConstantSharing and ShapeInputMerge before CommonSubexpressionElimination by intention as it can create
+      // more opportunities for CSE. For example, if A and B nodes consume same different args but produce same output
+      // or consume different initializers with same value, by default, CSE will not merge them.
       InlinedHashSet<std::string> excluded_initializers;
       excluded_initializers.reserve(session_options.initializers_to_share_map.size());
       for (const auto& p : session_options.initializers_to_share_map) {
@@ -221,9 +224,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
       const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
       transformers.emplace_back(std::make_unique<ConstantSharing>(no_limit_empty_ep_list, excluded_initializers));
-
+      transformers.emplace_back(std::make_unique<ShapeInputMerge>());
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
-      transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
+      transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
+                                                                  session_options.config_options));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
@@ -277,7 +281,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                onnxruntime::kAclExecutionProvider,
                                                                                onnxruntime::kArmNNExecutionProvider,
                                                                                onnxruntime::kJsExecutionProvider};
-
+      const InlinedHashSet<std::string_view> cpu_dml_eps = {onnxruntime::kCpuExecutionProvider,
+                                                            onnxruntime::kDmlExecutionProvider};
 #ifdef MLAS_TARGET_AMD64_IX86
       const bool avx2_precision_mode =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1" && MlasPlatformU8S8Overflow();
@@ -295,7 +300,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
-      transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
+      transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_eps));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_js_eps));
@@ -305,7 +310,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_cuda_dml_rocm_eps));
-      transformers.emplace_back(std::make_unique<GatherToSplitFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_rocm_eps));
 
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
@@ -313,7 +318,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_cuda_dml_rocm_eps));
 
-      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_cuda_dml_rocm_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,

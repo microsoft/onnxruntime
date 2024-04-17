@@ -23,6 +23,16 @@ parameters:
 - name: win_trt_home
   type: string
 
+- name: SpecificArtifact
+  displayName: Use Specific Artifact
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Specific Artifact's BuildId
+  type: string
+  default: '0'
+
 stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
@@ -40,6 +50,8 @@ stages:
     buildJava: false
     java_artifact_id: onnxruntime_gpu
     PublishProtoc: true
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
@@ -56,12 +68,14 @@ stages:
     buildJava: false
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 # Windows CUDA Combined Testing and Publishing
 - stage: Windows_Packaging_combined_GPU
   dependsOn:
-    - Windows_Packaging_gpu
-    - Windows_Packaging_tensorrt
+    - Windows_Packaging_gpu_Testing
+    - Windows_Packaging_tensorrt_Testing
   condition: succeeded()
 
   jobs:
@@ -139,9 +153,24 @@ stages:
             filename: $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet\run_capi_application.bat
             arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet
             workingFolder: '$(Build.ArtifactStagingDirectory)'
+        - script: |
+            dir
+          workingDirectory: '$(Build.ArtifactStagingDirectory)'
+          displayName: 'List ArtifactStagingDirectory before delete'
+
+        - task: DeleteFiles@1
+          displayName: 'Clean up none zip files from ArtifactStagingDirectory'
+          inputs:
+            SourceFolder: $(Build.ArtifactStagingDirectory)
+            Contents: '*/'
+
+        - script: |
+            dir
+          workingDirectory: '$(Build.ArtifactStagingDirectory)'
+          displayName: 'List ArtifactStagingDirectory after delete'
 
         - task: PublishPipelineArtifact@0
           displayName: 'Publish Pipeline Combined GPU Package Artifact'
           inputs:
             artifactName: 'onnxruntime-win-x64-gpu'
-            targetPath: '$(Build.ArtifactStagingDirectory)'
+            targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'

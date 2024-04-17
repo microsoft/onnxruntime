@@ -100,10 +100,8 @@ export const createReduceProgramInfo =
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: outputDataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-          programUniforms: [
-            {type: 'uint32', data: outputSize}, ...createTensorShapeVariables(inputShape),
-            ...createTensorShapeVariables(outputShape)
-          ]
+          programUniforms:
+              [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputShape, outputShape)]
         }),
       };
     };

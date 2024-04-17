@@ -482,7 +482,7 @@ class BFCArena : public IAllocator {
 
   Bin* BinForSize(size_t bytes) { return BinFromIndex(BinNumForSize(bytes)); }
 
-  char bins_space_[sizeof(Bin) * kNumBins];
+  alignas(Bin) char bins_space_[sizeof(Bin) * kNumBins];
 
   // The size of the current region allocation.
   SafeInt<size_t> curr_region_allocation_bytes_;

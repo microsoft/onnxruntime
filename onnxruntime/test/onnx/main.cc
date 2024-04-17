@@ -25,6 +25,10 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
+
 using namespace onnxruntime;
 
 namespace {
@@ -51,15 +55,22 @@ void usage() {
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
+      "\t    [QNN only] [profiling_file_path]: QNN profiling file path if ETW not enabled.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
-      "\t    'high_power_saver', 'low_balanced', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
+      "\t    'high_power_saver', 'low_balanced', 'extreme_power_saver', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
       "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
       "\t    0 means dump the QNN context binary into separate bin file and set the path in the Onnx skeleton model.\n"
       "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
       "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: \n"
       "\t    '0', '1', '2', '3', default is '0'.\n"
+      "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
+      "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
+      "\t    Options are '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
+      "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
+      "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
+      "\t    Otherwise, it will be fp32 precision. Only works for float32 model. Defaults to '0' (with FP32 precision.). \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
@@ -335,11 +346,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     logging_level = ORT_LOGGING_LEVEL_VERBOSE;
   }
 
-  if (concurrent_session_runs > 1 && repeat_count > 1) {
-    fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
-    usage();
-    return -1;
-  }
   argc -= optind;
   argv += optind;
   if (argc < 1) {
@@ -400,12 +406,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      OrtCUDAProviderOptions cuda_options;
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
+#ifdef USE_CUDA
+      OrtCUDAProviderOptionsV2 cuda_options;
       cuda_options.device_id = device_id;
       cuda_options.do_copy_in_default_stream = true;
+      cuda_options.use_tf32 = false;
       // TODO: Support arena configuration for users of test runner
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
-      sf.AppendExecutionProvider_CUDA(cuda_options);
+      sf.AppendExecutionProvider_CUDA_V2(cuda_options);
+#endif
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -423,10 +432,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      OrtCUDAProviderOptions cuda_options;
+      OrtCUDAProviderOptionsV2 cuda_options;
       cuda_options.do_copy_in_default_stream = true;
+      cuda_options.use_tf32 = false;
       // TODO: Support arena configuration for users of test runner
-      sf.AppendExecutionProvider_CUDA(cuda_options);
+      sf.AppendExecutionProvider_CUDA_V2(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
@@ -470,9 +480,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         std::string key(token.substr(0, pos));
         std::string value(token.substr(pos + 1));
 
-        if (key == "backend_path") {
+        if (key == "backend_path" || key == "profiling_file_path") {
           if (value.empty()) {
-            ORT_THROW("Please provide the QNN backend path.");
+            ORT_THROW("Please provide the valid file path.");
           }
         } else if (key == "qnn_context_embed_mode") {
           if (value != "0") {
@@ -483,11 +493,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
             ORT_THROW("Supported profiling_level: off, basic, detailed");
           }
-        } else if (key == "rpc_control_latency" || key == "vtcm_mb") {
+        } else if (key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" || key == "device_id") {
           // no validation
         } else if (key == "htp_performance_mode") {
           std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
-                                                           "high_power_saver", "low_balanced", "low_power_saver",
+                                                           "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver",
                                                            "power_saver", "sustained_high_performance"};
           if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
             std::ostringstream str_stream;
@@ -512,10 +522,29 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
           }
+        } else if (key == "htp_arch") {
+          std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+          if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
+            std::ostringstream str_stream;
+            std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
+                      std::ostream_iterator<std::string>(str_stream, ","));
+            std::string str = str_stream.str();
+            ORT_THROW("Wrong value for htp_arch. select from: " + str);
+          }
+        } else if (key == "enable_htp_fp16_precision") {
+          std::unordered_set<std::string> supported_options = {"0", "1"};
+          if (supported_options.find(value) == supported_options.end()) {
+            std::ostringstream str_stream;
+            std::copy(supported_options.begin(), supported_options.end(),
+                      std::ostream_iterator<std::string>(str_stream, ","));
+            std::string str = str_stream.str();
+            ORT_THROW("Wrong value for enable_htp_fp16_precision. select from: " + str);
+          }
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
-'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
-'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
+'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
+'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority',
+'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
         }
 
         qnn_options[key] = value;

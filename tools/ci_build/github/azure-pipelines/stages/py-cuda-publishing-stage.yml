@@ -20,7 +20,7 @@ stages:
       dependsOn: []
     jobs:
       - job:
-        pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+        pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
         steps:
           - checkout: none
           - task: DownloadPipelineArtifact@2

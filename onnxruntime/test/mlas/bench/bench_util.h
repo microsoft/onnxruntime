@@ -5,10 +5,8 @@
 
 #include <benchmark/benchmark.h>
 
+#include <functional>
 #include <random>
-
-void ArgsProduct(benchmark::internal::Benchmark* bench,
-                 const std::vector<std::vector<int64_t>>& arglists);
 
 template <typename ElementType>
 std::vector<ElementType> RandomVectorUniform(

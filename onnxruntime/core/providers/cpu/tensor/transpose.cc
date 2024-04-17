@@ -418,9 +418,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Transpose);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     13,
+    20,
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    Transpose);
+
+// Opset 21 added support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
+// TODO(adrianlizarraga): Implement support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
+ONNX_CPU_OPERATOR_KERNEL(
+    Transpose,
+    21,
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Transpose);
 

@@ -222,12 +222,8 @@ class TestOpQuatizerPad(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_i8_path = "qop_pad_{}_i8_{}{}_{}{}.onnx".format(
-            quantize_mode,
-            tag_pad_mode,
-            tag_constant_value,
-            activation_type_str,
-            weight_type_str,
+        model_i8_path = (
+            f"qop_pad_{quantize_mode}_i8_{tag_pad_mode}{tag_constant_value}_{activation_type_str}{weight_type_str}.onnx"
         )
         data_reader.rewind()
         self.quantize_model(
@@ -496,6 +492,8 @@ class TestOpQuatizerPad(unittest.TestCase):
         )
 
         model_fp32 = TestOpQuatizerPad.construct_model_add_pad_add(name=name, shape=shape, final_name="output")
+        op_types = [n.op_type for n in model_fp32.graph.node]
+        self.assertEqual(["Add", "Pad", "Add"], op_types)
 
         onnx.save(model_fp32, model_fp32_path)
 
@@ -506,13 +504,11 @@ class TestOpQuatizerPad(unittest.TestCase):
         )
 
         model_i8 = onnx.load(model_i8_path)
+        print(model_i8)
 
         # Assert quantization really happens.
-        self.assertEqual(model_i8.graph.node[0].op_type, "QuantizeLinear")
-        self.assertEqual(model_i8.graph.node[1].op_type, "QLinearAdd")
-        self.assertEqual(model_i8.graph.node[2].op_type, "Pad")
-        self.assertEqual(model_i8.graph.node[3].op_type, "QLinearAdd")
-        self.assertEqual(model_i8.graph.node[4].op_type, "DequantizeLinear")
+        op_types = [n.op_type for n in model_i8.graph.node]
+        self.assertEqual(["QuantizeLinear", "QLinearAdd", "Pad", "QLinearAdd", "DequantizeLinear"], op_types)
 
         for node in model_i8.graph.node:
             # Examine no empty string flows to quantization process.

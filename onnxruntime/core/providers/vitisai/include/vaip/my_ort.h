@@ -9,15 +9,17 @@
 #include <vector>
 
 namespace onnxruntime {
-class Model;
-class Graph;
-class GraphViewer;
-class Node;
-class NodeArg;
+struct Model;
+struct Graph;
+struct GraphViewer;
+struct Node;
+struct NodeArg;
+struct ProviderHost;
+struct NodeAttributes;
 }  // namespace onnxruntime
 namespace ONNX_NAMESPACE {
-class AttributeProto;
-class TensorProto;
+struct AttributeProto;
+struct TensorProto;
 #ifndef USE_VITISAI
 enum TensorProto_DataType : int {
   TensorProto_DataType_UNDEFINED = 0,
@@ -68,6 +70,7 @@ using onnxruntime::GraphViewer;
 using onnxruntime::Model;
 using onnxruntime::Node;
 using onnxruntime::NodeArg;
+using onnxruntime::NodeAttributes;
 struct ModelDeleter {
   VAIP_DLL_SPEC void operator()(Model* tp) const;
 };
@@ -75,22 +78,17 @@ using ModelPtr = std::unique_ptr<Model, ModelDeleter>;
 struct AttributeProtoDeleter {
   VAIP_DLL_SPEC void operator()(AttributeProto* p) const;
 };
-using AttributeProtoPtr =
-    std::unique_ptr<AttributeProto, AttributeProtoDeleter>;
+using AttributeProtoPtr = std::unique_ptr<AttributeProto, AttributeProtoDeleter>;
 
 struct TensorProtoDeleter {
   VAIP_DLL_SPEC void operator()(TensorProto* tp) const;
 };
 using TensorProtoPtr = std::unique_ptr<TensorProto, TensorProtoDeleter>;
 
-/// I cannot forward declare a using directive, because
-/// std::unorderd_map required AttributeProto must be defiend.
-class NodeAttributes;
 struct NodeAttributesDeleter {
   VAIP_DLL_SPEC void operator()(NodeAttributes* p) const;
 };
-using NodeAttributesPtr =
-    std::unique_ptr<NodeAttributes, NodeAttributesDeleter>;
+using NodeAttributesPtr = std::unique_ptr<NodeAttributes, NodeAttributesDeleter>;
 /// get node's input
 /// when Node* is nullptr, it is a tensor in the initializer.
 /// node_arg is always non-null.

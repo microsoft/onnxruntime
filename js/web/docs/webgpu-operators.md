@@ -34,6 +34,7 @@ Do not modify directly.*
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | CumSum | ai.onnx(11-13,14+) |  |
+| DepthToSpace | ai.onnx(11-12,13+); com.ms.internal.nhwc(11-12,13+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
 | Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
@@ -41,6 +42,7 @@ Do not modify directly.*
 | Erf | ai.onnx(9-12,13+) |  |
 | Exp | ai.onnx(6-12,13+) |  |
 | Expand | ai.onnx(8-12,13+) |  |
+| FastGelu | com.microsoft(1+) |  |
 | Flatten | ai.onnx(1-8,9-10,11-12,13+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
 | FusedConv | com.microsoft(1+) |  |
@@ -52,6 +54,7 @@ Do not modify directly.*
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | Greater | ai.onnx(7-8,9-12,13+) |  |
 | GreaterOrEqual | ai.onnx(12-15,16+) |  |
+| HardSigmoid | ai.onnx(6+) |  |
 | If | ai.onnx(1-10,11-12,13-18,19+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(17+) |  |
@@ -60,6 +63,7 @@ Do not modify directly.*
 | LessOrEqual | ai.onnx(12-15,16+) |  |
 | Log | ai.onnx(6-12,13+) |  |
 | MatMul | ai.onnx(1-12,13+) |  |
+| MatMulNBits | com.microsoft(1+) |  |
 | MaxPool | ai.onnx(1-7,8-9,10,11,12+); com.ms.internal.nhwc(1-7,8-9,10,11,12+) | need perf optimization; need implementing activation |
 | MemcpyFromHost | ai.onnx(1+) |  |
 | MemcpyToHost | ai.onnx(1+) |  |
@@ -84,11 +88,14 @@ Do not modify directly.*
 | Relu | ai.onnx(6-12,13,14+) |  |
 | Reshape | ai.onnx(5-12,13,14+) | no GPU kernel |
 | Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
+| RotaryEmbedding | com.microsoft(1+) |  |
 | Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
+| SimplifiedLayerNormalization | ai.onnx(1+) |  |
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
 | SkipLayerNormalization | com.microsoft(1+) |  |
+| SkipSimplifiedLayerNormalization | com.microsoft(1+) |  |
 | Slice | ai.onnx(1-9,10,11-12,13+) |  |
 | Softmax | ai.onnx(1-10,11-12,13+) |  |
 | Split | ai.onnx(1,2-10,11-12,13-17,18+) |  |
