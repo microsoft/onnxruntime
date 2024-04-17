@@ -91,7 +91,6 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
       : parameters_{parameters} {
     sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size_, stream);
 
-    // Allocate the sequence & indices buffers back to back
     size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size_ * parameters.max_length;
     sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes, stream, true /* fill */);
     indices_space = AllocateBuffer<int32_t>(allocator, indices_space_buffer_, sequences_bytes / 2, stream, false /* fill */);

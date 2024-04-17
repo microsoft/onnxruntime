@@ -38,9 +38,9 @@ struct BeamHypotheses {
 
   // Output results
   template <typename T>
-  void Output(int top_k,                      // number of sequences to return
-              int max_length,                 // max sequence length
-              gsl::span<int32_t>& sequences,  // buffer with pad token, shape (num_return_sequences, max_length)
+  void Output(int top_k,                            // number of sequences to return
+              int max_length,                       // max sequence length
+              gsl::span<int32_t>& sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
               gsl::span<int32_t>& indices,
               gsl::span<T>& sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
 

@@ -219,13 +219,13 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
   // for decoder subgraph output cross qk
   int64_t frames_of_k = 0LL;
-  Tensor* cross_qk_output = nullptr;  // output tensor
+  Tensor* cross_qk_output  = nullptr; // output tensor
   int64_t cross_qk_layer_head_pair_count = 0LL;
   OrtValue cross_qk_buffer_value;
   float* cross_qk_buffer_data = nullptr;
   std::vector<int32_t> cross_qk_all_layer_heads;
   const int32_t* cross_qk_layer_head_pairs = nullptr;
-  IAllocatorUniquePtr<float*> qk_layer_pointers;  // if needed, device array hold the cross qk data pointers, shape of [num_layers]
+  IAllocatorUniquePtr<float*> qk_layer_pointers; // if needed, device array hold the cross qk data pointers, shape of [num_layers]
 
   std::vector<OrtValue> decoder_fetches;
 
@@ -278,17 +278,17 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       const auto* input_tensor_cross_qk_layer_head = this->context_.template Input<Tensor>(12);
       ORT_ENFORCE(input_tensor_cross_qk_layer_head != nullptr, "Must specify input cross_qk_layer_head");
       cross_qk_layer_head_pair_count = input_tensor_cross_qk_layer_head->Shape()[0];
-      cross_qk_layer_head_pairs = input_tensor_cross_qk_layer_head->template Data<int32_t>();  // it is on GPU
+      cross_qk_layer_head_pairs = input_tensor_cross_qk_layer_head->template Data<int32_t>(); // it is on GPU
 
       size_t decoder_input_first_cross_key = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + (2 * decoder_subgraph_.num_layers);
       auto first_cross_attention_key = decoder_feeds[decoder_input_first_cross_key].GetMutable<Tensor>();
       frames_of_k = first_cross_attention_key->Shape()[2];
 
       TensorShape layer_cross_qk_shape{
-          static_cast<int64_t>(parameters->BatchBeamSize()),
-          static_cast<int64_t>(parameters->num_heads),
-          1LL,
-          static_cast<int64_t>(frames_of_k)};
+        static_cast<int64_t>(parameters->BatchBeamSize()),
+        static_cast<int64_t>(parameters->num_heads),
+        1LL,
+        static_cast<int64_t>(frames_of_k)};
       for (int layer = 0; layer < decoder_subgraph_.num_layers; layer++) {
         OrtValue cross_qk_value;
         Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), layer_cross_qk_shape, this->temp_space_allocator_, cross_qk_value);
@@ -357,16 +357,16 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     if (decoder_subgraph_.output_cross_qk_) {
       int decoder_output_first_cross_qk = decoder_subgraph_.GetFirstPresentOutputIndex() + (2 * decoder_subgraph_.num_layers);
       ORT_RETURN_IF_ERROR(this->update_decoder_cross_qk_func_(
-          iteration_counter,
-          this->ort_stream_,
-          &decoder_fetches[decoder_output_first_cross_qk],
-          qk_layer_pointers,
-          parameters->num_layers,
-          static_cast<int>(cross_qk_layer_head_pair_count),
-          cross_qk_layer_head_pairs,
-          cross_qk_buffer_data,
-          parameters->max_length,
-          this->temp_space_allocator_));
+        iteration_counter,
+        this->ort_stream_,
+        &decoder_fetches[decoder_output_first_cross_qk],
+        qk_layer_pointers,
+        parameters->num_layers,
+        static_cast<int>(cross_qk_layer_head_pair_count),
+        cross_qk_layer_head_pairs,
+        cross_qk_buffer_data,
+        parameters->max_length,
+        this->temp_space_allocator_));
     }
 
 #ifdef DEBUG_GENERATION
@@ -386,7 +386,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (this->beam_scorer_->IsDone()) {
-      break;
+        break;
     }
 
     // Increase sequence length after a new token is generated.
@@ -444,7 +444,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       static_cast<int64_t>(parameters->max_length)};
 
   OrtValue output_sequence_indices_value;
-  Tensor* output_sequence_indices{};
+  Tensor *output_sequence_indices{};
 
   if (decoder_subgraph_.output_cross_qk_) {
     Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), output_sequence_indices_shape, this->cpu_allocator_, output_sequence_indices_value);
@@ -494,9 +494,10 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         cross_qk_buffer_data,
         cross_qk_output->MutableData<float>(),
         parameters->num_return_sequences,
-        cache_indir_data_device,  // cache_indir_data,
+        cache_indir_data_device, // cache_indir_data,
         ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)));
   }
+
 
   /*
   if (output_sequences_scores == nullptr || output_sequences_scores->IsDataType<float>()) {

@@ -62,7 +62,7 @@ template <typename T>
 void BeamHypotheses::Output(
     int top_k,
     int max_length,
-    gsl::span<int32_t>& sequences,  // buffer filled with pad token ID, shape (num_return_sequences, max_length)
+    gsl::span<int32_t>& sequences,       // buffer filled with pad token ID, shape (num_return_sequences, max_length)
     gsl::span<int32_t>& indices,
     gsl::span<T>& sequences_scores)  // buffer of shape (num_return_sequences) or empty
 {
@@ -206,15 +206,15 @@ void BeamSearchScorer::Process(ISequences& sequences,
 
 template <typename T>
 void BeamSearchScorer::OutputSequenceScores(ISequences& sequences,
-                                            gsl::span<const float>& final_beam_scores,
-                                            Tensor* output_sequences,
-                                            Tensor* output_sequence_scores,
-                                            gsl::span<int32_t> output,
-                                            gsl::span<int32_t> output_indices) {
+                                gsl::span<const float>& final_beam_scores,
+                                Tensor* output_sequences,
+                                Tensor* output_sequence_scores, 
+                                gsl::span<int32_t> output,
+                                gsl::span<int32_t> output_indices){
   ORT_ENFORCE(output_sequences != nullptr);
 
   // Score of each sequence, with shape (batch_size * num_return_sequences).
-  // gsl::span<T> sequence_scores;
+  //gsl::span<T> sequence_scores;
   gsl::span<T> sequence_scores = output_sequence_scores->MutableDataAsSpan<T>();
   gsl::span<T> batch_sequence_score;
 
