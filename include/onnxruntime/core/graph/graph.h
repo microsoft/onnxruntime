@@ -51,7 +51,6 @@ class Graph;
 struct IndexedSubGraph;
 class Model;
 class OpSignature;
-typedef std::basic_string<ORTCHAR_T> ORT_STRING;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
@@ -717,7 +716,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    *    data and replaces graph initializers with its content.
    */
   common::Status InjectExternalInitializersFromFilesInMemory(
-      const InlinedHashMap<ORT_STRING, std::pair<void*, size_t>>& external_initializer_files);
+      const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>& external_initializer_files);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

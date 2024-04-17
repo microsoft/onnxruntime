@@ -783,7 +783,7 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializers(con
 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFromFilesInMemory(const std::vector<std::basic_string<ORTCHAR_T>>& file_names,
-                                                                                              const std::vector<void*>& buffer_array,
+                                                                                              const std::vector<char*>& buffer_array,
                                                                                               const std::vector<size_t>& file_lengths) {
   const size_t inputs_num = file_names.size();
   if (inputs_num != buffer_array.size()) {

@@ -159,7 +159,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileArray(const std::strin
 
   std::basic_string<ORTCHAR_T> external_file_name(external_data_file_name.begin(), external_data_file_name.end());
   std::vector<std::basic_string<ORTCHAR_T> > file_names{external_file_name};
-  std::vector<void*> file_buffers{static_cast<void*>(external_bin_buffer.data())};
+  std::vector<char*> file_buffers{external_bin_buffer.data()};
   std::vector<size_t> lengths{external_bin_buffer.size()};
   so.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
 
@@ -290,7 +290,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string
 
   std::basic_string<ORTCHAR_T> external_file_name(external_data_file_name.begin(), external_data_file_name.end());
   std::vector<std::basic_string<ORTCHAR_T> > file_names{external_file_name};
-  std::vector<void*> file_buffers{mapped_base};
+  std::vector<char*> file_buffers{static_cast<char*>(mapped_base)};
   std::vector<size_t> lengths{bin_file_length};
   so.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
 

@@ -2999,10 +2999,10 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 }
 
 Status Graph::InjectExternalInitializersFromFilesInMemory(
-    const InlinedHashMap<ORT_STRING, std::pair<void*, size_t>>& external_initializer_files) {
+    const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>& external_initializer_files) {
   for (auto ini : name_to_initial_tensor_) {
     if (ini.second->data_location() == TensorProto_DataLocation_EXTERNAL) {
-      auto tensor_name = ini.first;
+      auto& tensor_name = ini.first;
 
       std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
       ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(ini.second->external_data(), external_data_info));
@@ -3021,7 +3021,8 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
 
       auto external_file_pos = external_initializer_files.find(external_file);
       ORT_RETURN_IF(external_file_pos == external_initializer_files.end(),
-                    "External file: ", external_file.c_str(), " not found from the table user provided.");
+                    "External file: ", ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(external_file),
+                    " not found from the table user provided.");
       auto external_file_length = external_file_pos->second.second;
 
       ORT_RETURN_IF(file_offset < 0 || end_of_read > narrow<FileOffsetType>(external_file_length),
@@ -3043,7 +3044,7 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       (**existing_entry).clear_data_location();
       const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
       TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
-      auto tensor = Tensor(type, tensor_shape, static_cast<void*>(tensor_buffer),
+      auto tensor = Tensor(type, tensor_shape, tensor_buffer,
                            OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
       auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
       **existing_entry = std::move(tensor_proto);

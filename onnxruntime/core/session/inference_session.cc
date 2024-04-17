@@ -1651,10 +1651,11 @@ common::Status InferenceSession::Initialize() {
       InlinedHashMap<std::string, OrtValue>{}.swap(session_options_.external_initializers);
     }
 
-    if (!session_options_.external_initializer_files.empty()) {
+    if (!session_options_.external_initializer_files_mmap.empty()) {
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files));
-      InlinedHashMap<ORT_STRING, std::pair<void*, size_t>>{}.swap(session_options_.external_initializer_files);
+          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap));
+      InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>{}.swap(
+          session_options_.external_initializer_files_mmap);
     }
 #endif
 

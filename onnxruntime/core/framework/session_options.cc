@@ -58,18 +58,16 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
 }
 
 Status SessionOptions::AddExternalInitializersFromFilesInMemory(gsl::span<const std::basic_string<ORTCHAR_T>> file_names,
-                                                                gsl::span<void*> array_buffer,
-                                                                gsl::span<const size_t> file_lengths) {
-  const auto init_num = file_names.size();
-  ORT_ENFORCE(init_num == array_buffer.size(), "Expecting same size spans");
-  ORT_ENFORCE(init_num == file_lengths.size(), "Expecting same size spans");
-  external_initializer_files.reserve(external_initializer_files.size() + init_num);
-  std::vector<std::basic_string<ORTCHAR_T>> prefix_list{
+                                                                gsl::span<std::pair<char*, const size_t>> files_buffers) {
+  const auto num_files = file_names.size();
+  ORT_ENFORCE(num_files == files_buffers.size(), "Expecting same size spans");
+  external_initializer_files_mmap.reserve(external_initializer_files_mmap.size() + num_files);
+  constexpr std::array<std::basic_string_view<ORTCHAR_T>, 4> prefix_list{
       ORT_TSTR(".//"),
       ORT_TSTR("./"),
       ORT_TSTR(".\\\\"),
       ORT_TSTR(".\\")};
-  for (size_t i = 0; i < init_num; ++i) {
+  for (size_t i = 0; i < num_files; ++i) {
     // ignore "./" from file name if it has
     auto file_name = file_names[i];
     for (auto prefix : prefix_list) {
@@ -78,9 +76,10 @@ Status SessionOptions::AddExternalInitializersFromFilesInMemory(gsl::span<const 
         break;
       }
     }
-    bool result = external_initializer_files.emplace(file_name, std::make_pair(array_buffer[i], file_lengths[i])).second;
+    bool result = external_initializer_files_mmap.emplace(file_name, files_buffers[i]).second;
     if (!result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An entry for this name has already been added: ", file_name.c_str());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An entry for this name has already been added: ",
+                             ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(file_name));
     }
   }
   return Status::OK();

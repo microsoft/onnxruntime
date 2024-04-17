@@ -295,28 +295,28 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* op
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializersFromFilesInMemory, _In_ OrtSessionOptions* options,
-                    _In_reads_(initializers_num) const ORTCHAR_T* const* file_names,
-                    _In_reads_(initializers_num) void* const* buffer_array,
-                    _In_reads_(initializers_num) const size_t* file_lengths, size_t initializers_num) {
+                    _In_reads_(num_external_initializer_files) const ORTCHAR_T* const* file_names,
+                    _In_reads_(num_external_initializer_files) char* const* buffer_array,
+                    _In_reads_(num_external_initializer_files) const size_t* file_lengths,
+                    size_t num_external_initializer_files) {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN
   onnxruntime::InlinedVector<std::basic_string<ORTCHAR_T>> names;
-  onnxruntime::InlinedVector<void*> buffers;
+  onnxruntime::InlinedVector<std::pair<char*, const size_t>> buffers;
   onnxruntime::InlinedVector<size_t> lengths;
-  names.reserve(initializers_num);
-  buffers.reserve(initializers_num);
-  lengths.reserve(initializers_num);
-  for (size_t i = 0; i < initializers_num; ++i) {
+  names.reserve(num_external_initializer_files);
+  buffers.reserve(num_external_initializer_files);
+  lengths.reserve(num_external_initializer_files);
+  for (size_t i = 0; i < num_external_initializer_files; ++i) {
     if (file_names[i] == nullptr || buffer_array[i] == nullptr) {
       auto message = onnxruntime::MakeString("Input index: ", i, " contains null pointers");
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
     }
     names.emplace_back(file_names[i]);
-    buffers.emplace_back(buffer_array[i]);
-    lengths.emplace_back(file_lengths[i]);
+    buffers.emplace_back(std::make_pair(buffer_array[i], file_lengths[i]));
   }
 
-  auto st = options->value.AddExternalInitializersFromFilesInMemory(names, buffers, lengths);
+  auto st = options->value.AddExternalInitializersFromFilesInMemory(names, buffers);
   if (!st.IsOK()) {
     return onnxruntime::ToOrtStatus(st);
   }
@@ -327,7 +327,7 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializersFromFilesInMemory, _In_ OrtS
   ORT_UNUSED_PARAMETER(file_names);
   ORT_UNUSED_PARAMETER(buffer_array);
   ORT_UNUSED_PARAMETER(file_lengths);
-  ORT_UNUSED_PARAMETER(initializers_num);
+  ORT_UNUSED_PARAMETER(num_external_initializer_files);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
                                "AddExternalInitializersFromFilesInMemory is not supported in this build");
 #endif
