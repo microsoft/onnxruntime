@@ -301,7 +301,7 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializersFromFilesInMemory, _In_ OrtS
                     size_t num_external_initializer_files) {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN
-  onnxruntime::InlinedVector<std::basic_string<ORTCHAR_T>> names;
+  onnxruntime::InlinedVector<onnxruntime::PathString> names;
   onnxruntime::InlinedVector<std::pair<char*, const size_t>> buffers;
   onnxruntime::InlinedVector<size_t> lengths;
   names.reserve(num_external_initializer_files);

@@ -147,7 +147,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileArray(const std::strin
   auto length = optimized_model_file_name.length();
   optimized_model_file_name.insert(length - 5, "_opt");
   std::string optimized_file_path(test_folder + optimized_model_file_name);
-  std::basic_string<ORTCHAR_T> optimized_file_path_t(optimized_file_path.begin(), optimized_file_path.end());
+  PathString optimized_file_path_t(optimized_file_path.begin(), optimized_file_path.end());
 
   so.SetOptimizedModelFilePath(optimized_file_path_t.c_str());
   //  Dump the optimized model with external data so that it will unpack the external data from the loaded model
@@ -157,8 +157,8 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileArray(const std::strin
   so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName, opt_bin_file_name.c_str());
   so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, external_ini_min_size_bytes.c_str());
 
-  std::basic_string<ORTCHAR_T> external_file_name(external_data_file_name.begin(), external_data_file_name.end());
-  std::vector<std::basic_string<ORTCHAR_T> > file_names{external_file_name};
+  PathString external_file_name(external_data_file_name.begin(), external_data_file_name.end());
+  std::vector<PathString> file_names{external_file_name};
   std::vector<char*> file_buffers{external_bin_buffer.data()};
   std::vector<size_t> lengths{external_bin_buffer.size()};
   so.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
@@ -263,7 +263,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string
   ReadFileToBuffer(model_path.c_str(), buffer);
 
   std::string external_bin_path = test_folder + external_data_file_name;
-  std::basic_string<ORTCHAR_T> external_bin_path_t(external_bin_path.begin(), external_bin_path.end());
+  PathString external_bin_path_t(external_bin_path.begin(), external_bin_path.end());
 
   void* mapped_base = nullptr;
   FileMmap(external_bin_path_t.c_str(), mapped_base);
@@ -278,7 +278,7 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string
   auto length = optimized_model_file_name.length();
   optimized_model_file_name.insert(length - 5, "_opt");
   std::string optimized_file_path(test_folder + optimized_model_file_name);
-  std::basic_string<ORTCHAR_T> optimized_file_path_t(optimized_file_path.begin(), optimized_file_path.end());
+  PathString optimized_file_path_t(optimized_file_path.begin(), optimized_file_path.end());
 
   so.SetOptimizedModelFilePath(optimized_file_path_t.c_str());
   //  Dump the optimized model with external data so that it will unpack the external data from the loaded model
@@ -288,8 +288,8 @@ void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string
   so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName, opt_bin_file_name.c_str());
   so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, external_ini_min_size_bytes.c_str());
 
-  std::basic_string<ORTCHAR_T> external_file_name(external_data_file_name.begin(), external_data_file_name.end());
-  std::vector<std::basic_string<ORTCHAR_T> > file_names{external_file_name};
+  PathString external_file_name(external_data_file_name.begin(), external_data_file_name.end());
+  std::vector<PathString> file_names{external_file_name};
   std::vector<char*> file_buffers{static_cast<char*>(mapped_base)};
   std::vector<size_t> lengths{bin_file_length};
   so.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);

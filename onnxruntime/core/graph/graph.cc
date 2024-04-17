@@ -2999,7 +2999,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 }
 
 Status Graph::InjectExternalInitializersFromFilesInMemory(
-    const InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>& external_initializer_files) {
+    const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files) {
   for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
     if (tensor_proto->data_location() == TensorProto_DataLocation_EXTERNAL) {
       std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
