@@ -14,6 +14,7 @@ namespace tensorrt {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kHasUserComputeStream = "has_user_compute_stream";
+constexpr const char* kUserComputeStream = "user_compute_stream";
 constexpr const char* kMaxPartitionIterations = "trt_max_partition_iterations";
 constexpr const char* kMinSubgraphSize = "trt_min_subgraph_size";
 constexpr const char* kMaxWorkspaceSize = "trt_max_workspace_size";
@@ -55,6 +56,7 @@ constexpr const char* kDumpEpContextModel = "trt_dump_ep_context_model";
 
 TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   TensorrtExecutionProviderInfo info{};
+  void* user_compute_stream = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -71,6 +73,14 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
               })
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxPartitionIterations, info.max_partition_iterations)
           .AddAssignmentToReference(tensorrt::provider_option_names::kHasUserComputeStream, info.has_user_compute_stream)
+          .AddValueParser(
+              tensorrt::provider_option_names::kUserComputeStream,
+              [&user_compute_stream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                user_compute_stream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
           .AddAssignmentToReference(tensorrt::provider_option_names::kMinSubgraphSize, info.min_subgraph_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kFp16Enable, info.fp16_enable)
@@ -107,6 +117,8 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextEmbedMode, info.ep_context_embed_mode)
           .Parse(options));  // add new provider option here.
 
+  info.user_compute_stream = user_compute_stream;
+  info.has_user_compute_stream = (user_compute_stream != nullptr);
   return info;
 }
 
@@ -115,6 +127,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.max_partition_iterations)},
       {tensorrt::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
+      {tensorrt::provider_option_names::kUserComputeStream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_compute_stream))},
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
       {tensorrt::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.fp16_enable)},
@@ -171,6 +184,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {tensorrt::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
+      {tensorrt::provider_option_names::kUserComputeStream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_compute_stream))},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.trt_max_partition_iterations)},
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.trt_min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.trt_max_workspace_size)},
@@ -253,9 +267,13 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.device_id = internal_options.device_id;
 
   // The 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance can be set by C API UpdateTensorRTProviderOptionsWithValue() as well
-  // We only set the 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance if it is provided in options
+  // We only set the 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance if it is provided in options or user_compute_stream is provided
   if (options.find("has_user_compute_stream") != options.end()) {
     trt_provider_options_v2.has_user_compute_stream = internal_options.has_user_compute_stream;
+  }
+  if (options.find("user_compute_stream") != options.end() && internal_options.user_compute_stream != nullptr) {
+    trt_provider_options_v2.user_compute_stream = internal_options.user_compute_stream;
+    trt_provider_options_v2.has_user_compute_stream = true;
   }
 
   trt_provider_options_v2.trt_max_partition_iterations = internal_options.max_partition_iterations;

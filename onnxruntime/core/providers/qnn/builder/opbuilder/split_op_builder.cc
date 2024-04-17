@@ -3,6 +3,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
@@ -37,7 +38,7 @@ class SplitOpBuilder : public BaseOpBuilder {
                                   const std::vector<std::string>& input_names,
                                   size_t output_index,
                                   Qnn_DataType_t qnn_data_type,
-                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
+                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
 Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -149,7 +150,11 @@ Status SplitOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapp
                                                 const std::vector<std::string>& input_names,
                                                 size_t output_index,
                                                 Qnn_DataType_t qnn_data_type,
-                                                Qnn_QuantizeParams_t& quant_param) const {
+                                                QnnQuantParamsWrapper& quant_param) const {
+  if (!quant_param.IsPerTensor()) {
+    return Status::OK();
+  }
+
   // Force Split outputs to use the same quantization parameters as the input if nearly equal.
   // This helps the HTP backend employ certain optimizations.
   //

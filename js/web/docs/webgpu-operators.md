@@ -91,9 +91,11 @@ Do not modify directly.*
 | RotaryEmbedding | com.microsoft(1+) |  |
 | Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
+| SimplifiedLayerNormalization | ai.onnx(1+) |  |
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
 | SkipLayerNormalization | com.microsoft(1+) |  |
+| SkipSimplifiedLayerNormalization | com.microsoft(1+) |  |
 | Slice | ai.onnx(1-9,10,11-12,13+) |  |
 | Softmax | ai.onnx(1-10,11-12,13+) |  |
 | Split | ai.onnx(1,2-10,11-12,13-17,18+) |  |
