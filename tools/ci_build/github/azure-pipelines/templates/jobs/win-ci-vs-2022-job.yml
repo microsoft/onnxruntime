@@ -83,6 +83,10 @@ jobs:
     clean: true
     submodules: none
 
+  - task: UseDotNet@2
+    inputs:
+      version: '7.x'
+
   - template: win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: ${{parameters.EnvSetupScript}}
