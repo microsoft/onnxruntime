@@ -477,7 +477,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     assert(this->IsCuda());
     ORT_RETURN_IF_ERROR(this->device_copy_int32_func_(gsl::span<int32_t>{cache_indir_data_device, cache_indir_data_size},
                                                       gsl::span<const int32_t>{cache_indir_data, cache_indir_data_size},
-                                                      nullptr,
+                                                      this->ort_stream_,
                                                       DeviceCopyDirection::hostToDevice));
 
     ORT_RETURN_IF_ERROR(this->finalize_decoder_cross_qk_func_(

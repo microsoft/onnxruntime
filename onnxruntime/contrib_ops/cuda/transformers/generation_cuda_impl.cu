@@ -1065,13 +1065,12 @@ void LaunchCopyCrossQKSingleDecodeStep(
 template <typename T>
 __global__ void CopyDecoderCrossQKAllStepsKernel(
     int context_decoding_len,
-    int num_beams,
     int num_return_sequences,
     int max_length,
     int frames_of_k,
     const T* cross_qk_buffer_data, // [batch, num_beams, layer_head_pair_count, max_length, frames]
     T* cross_qk_output, // [batch, num_return_sequences, layer_head_pair_count, total_decoding_length, frames]
-    const int* cache_indir_data, // [batch, num_beams, max_length]
+    const int* cache_indir_data, // [batch, num_return_sequences, max_length]
     const int32_t* beam_indices
 ) {
   const int pair = blockIdx.y;
@@ -1082,17 +1081,11 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   const int batch = br / num_return_sequences;
   const int ret_seq_id = br % num_return_sequences;
 
-  // get the real beam index, as the cache_indir_data did not updated in last token
-  const int src_beam = beam_indices[batch * num_beams + ret_seq_id] % num_beams;
+  const int64_t offset_in_cache = ((int64_t)batch * num_return_sequences + ret_seq_id) * max_length + token_decoding_index + context_decoding_len;
+  int bi_src = batch * num_return_sequences + cache_indir_data[offset_in_cache];
 
-  const int64_t offset_in_cache = ((int64_t)batch * num_beams + src_beam) * max_length + token_decoding_index + context_decoding_len;
-  int bm_mapped = ((num_beams <= 1) ? 0: ((token_decoding_index == total_decoding_length - 1) ?  ret_seq_id : cache_indir_data[offset_in_cache]));
-  int bi_src = batch * num_beams + bm_mapped;
-
-  T* target =  cross_qk_output +
-          (((int64_t)br * layer_head_pair_count + (int64_t)pair) * total_decoding_length + token_decoding_index) * frames_of_k;
-  const T* src = cross_qk_buffer_data +
-          ((int64_t)bi_src * layer_head_pair_count * max_length + (int64_t)pair * max_length + token_decoding_index) * frames_of_k;
+  T* target    = cross_qk_output      + (((int64_t)br     * layer_head_pair_count + (int64_t)pair) * total_decoding_length + token_decoding_index) * frames_of_k;
+  const T* src = cross_qk_buffer_data + (((int64_t)bi_src * layer_head_pair_count + (int64_t)pair) * max_length            + token_decoding_index) * frames_of_k;
   for (int tid = threadIdx.x; tid < frames_of_k; tid += blockDim.x) {
     target[tid] = src[tid]; // use vectorized read write in future if needed
   }
@@ -1123,7 +1116,6 @@ void LaunchFinalizeCrossQK(
 
   CopyDecoderCrossQKAllStepsKernel<<<grid, block, 0, stream>>>(
     context_decoding_len,
-    num_beams,
     num_return_sequences,
     max_length,
     frames_of_k,

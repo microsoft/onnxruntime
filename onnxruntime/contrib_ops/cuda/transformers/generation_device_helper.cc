@@ -1173,7 +1173,7 @@ Status UpdateDecoderFeeds(
                                                                   current_length,
                                                                   cuda_stream);
 
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences.GetIndexHistoryCPU().data(), cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>(), sizeof(int32_t) * num_beams * max_sequence_length, cudaMemcpyDeviceToHost, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences.GetIndexHistoryCPU().data(), cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>(), sizeof(int32_t) * batch_beam_size * max_sequence_length, cudaMemcpyDeviceToHost, cuda_stream));
 
       // Update cache indirection for next decoding run
       next_inputs[past_sequence_length_idx + 2] = cache_indirection;
