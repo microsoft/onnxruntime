@@ -97,18 +97,9 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 #endif
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
-  auto input_type = graph_viewer.GetInputs()[0]->TypeAsProto()->tensor_type().elem_type();
-  std::string precision_str = global_context_->precision_str;
-  if (global_context_->precision_str == "ACCURACY" && global_context_->device_type == "GPU") {
-    if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
-      precision_str = "FP32";
-    } else if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-      precision_str = "FP16";
-    }
-  }
+
   openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 precision_str);
+                                 global_context_->device_type);
   result = obj.Execute();
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();

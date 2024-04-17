@@ -73,8 +73,8 @@ class DataOps {
 
  public:
   DataOps(const GraphViewer& graph_viewer_param, VersionNum ver,
-          const std::string dev_id, const std::string device_precision)
-      : graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id), device_precision_(device_precision) {
+          const std::string dev_id)
+      : graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id) {
     populate_op_mode_supported();
     populate_types_supported();
   }
