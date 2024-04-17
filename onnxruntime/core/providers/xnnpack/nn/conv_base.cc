@@ -33,20 +33,19 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
 
   // if this is 1D input, we fake all the height related dims being 1 to make it 2D. so {W} -> {1, W}
   const auto is_1D = kernel_shape.size() == 1;
-  size_t w_dim = is_1D ? 0 : 1;
 
   const uint32_t kernel_height = is_1D ? 1 : gsl::narrow<uint32_t>(kernel_shape[0]);
-  const uint32_t kernel_width = gsl::narrow<uint32_t>(kernel_shape[w_dim]);
+  const uint32_t kernel_width = gsl::narrow<uint32_t>(kernel_shape[is_1D ? 0 : 1]);
 
   const uint32_t input_padding_top = is_1D ? 0 : gsl::narrow<uint32_t>(conv_attrs.pads[0]);
-  const uint32_t input_padding_left = gsl::narrow<uint32_t>(conv_attrs.pads[w_dim]);
+  const uint32_t input_padding_left = gsl::narrow<uint32_t>(conv_attrs.pads[is_1D ? 0 : 1]);
   const uint32_t input_padding_bottom = is_1D ? 0 : gsl::narrow<uint32_t>(conv_attrs.pads[2]);
-  const uint32_t input_padding_right = gsl::narrow<uint32_t>(conv_attrs.pads[2 * w_dim + 1]);
+  const uint32_t input_padding_right = gsl::narrow<uint32_t>(conv_attrs.pads[is_1D ? 1 : 3]);
 
   const uint32_t subsampling_height = is_1D ? 1 : gsl::narrow<uint32_t>(conv_attrs.strides[0]);
-  const uint32_t subsampling_width = gsl::narrow<uint32_t>(conv_attrs.strides[w_dim]);
+  const uint32_t subsampling_width = gsl::narrow<uint32_t>(conv_attrs.strides[is_1D ? 0 : 1]);
   const uint32_t dilation_height = is_1D ? 1 : gsl::narrow<uint32_t>(conv_attrs.dilations[0]);
-  const uint32_t dilation_width = gsl::narrow<uint32_t>(conv_attrs.dilations[w_dim]);
+  const uint32_t dilation_width = gsl::narrow<uint32_t>(conv_attrs.dilations[is_1D ? 0 : 1]);
 
   uint32_t flags = 0;
   if (conv_attrs.auto_pad == AutoPadType::SAME_UPPER) {

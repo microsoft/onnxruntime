@@ -119,9 +119,8 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
   }
   pthreadpool_t threadpool = GetThreadPool();
 
-  const size_t w_dim = is_1D ? 0 : 1;
   auto output_pad_0 = is_1D ? 0 : gsl::narrow_cast<uint32_t>(conv_transpose_attrs_.output_padding[0]);
-  auto output_pad_1 = gsl::narrow_cast<uint32_t>(conv_transpose_attrs_.output_padding[w_dim]);
+  auto output_pad_1 = gsl::narrow_cast<uint32_t>(conv_transpose_attrs_.output_padding[is_1D ? 0 : 1]);
 
   xnn_status status = xnn_status_invalid_state;
 
