@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 #include <memory>
-#include "data_ops.h"
+#include "core/providers/openvino/ov_versions/data_ops.h"
 
 namespace onnxruntime {
 namespace openvino_ep {

@@ -1,12 +1,12 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
-#include "ov_interface.h"
+#include "core/providers/openvino/ov_interface.h"
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/shared_library/provider_api.h"
-#include "backend_utils.h"
+#include "core/providers/openvino/backend_utils.h"
 
 using Exception = ov::Exception;
 
@@ -16,7 +16,7 @@ namespace openvino_ep {
 const std::string log_tag = "[OpenVINO-EP] ";
 
 #ifndef NDEBUG
-void printDebugInfo(ov::CompiledModel& obj) {
+void printDebugInfo(const ov::CompiledModel& obj) {
   if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
     // output of the actual settings that the device selected
     auto supported_properties = obj.get_property(ov::supported_properties);
@@ -68,8 +68,6 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
   }
 }
-
-// TODO new method to import the precompiled blob through the import_model API
 
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                                   std::string& hw_target,
@@ -123,6 +121,7 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
                                  std::string name) {
   try {
     auto obj = oe.import_model(*model_stream, hw_target, device_config);
+#ifndef NDEBUG
     printDebugInfo(obj);
 #endif
     OVExeNetwork exe(obj);
@@ -141,7 +140,8 @@ void OVCore::SetCache(std::string cache_dir_path, std::string device_type) {
 }
 
 #ifdef IO_BUFFER_ENABLED
-OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model, OVRemoteContextPtr context, std::string& name) {
+OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
+                                  OVRemoteContextPtr context, std::string& name) {
   try {
     auto obj = oe.compile_model(model, *context);
 #ifndef NDEBUG
@@ -154,9 +154,11 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model, OVRem
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
-OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream, OVRemoteContextPtr context, std::string& name) {
+OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
+                                 OVRemoteContextPtr context, std::string& name) {
   try {
     auto obj = oe.import_model(*model_stream, *context);
+#ifndef NDEBUG
     printDebugInfo(obj);
 #endif
     OVExeNetwork exe(obj);

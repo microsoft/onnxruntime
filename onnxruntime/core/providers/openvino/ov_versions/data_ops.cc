@@ -9,12 +9,12 @@
 #include <set>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "../backend_utils.h"
-#include "../backend_manager.h"
-#include "data_ops.h"
-#include "capability.h"
-#include "utils.h"
-#include "../ov_interface.h"
+#include "core/providers/openvino/backend_utils.h"
+#include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/ov_interface.h"
+#include "core/providers/openvino/ov_versions/data_ops.h"
+#include "core/providers/openvino/ov_versions/capability.h"
+#include "core/providers/openvino/ov_versions/utils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245 5208)

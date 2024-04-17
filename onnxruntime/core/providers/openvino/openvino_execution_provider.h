@@ -9,8 +9,9 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <set>
 
-#include "backend_manager.h"
+#include "core/providers/openvino/backend_manager.h"
 
 namespace onnxruntime {
 
@@ -60,17 +61,19 @@ static std::vector<std::string> parseDevices(const std::string& device_string) {
 
 // Information needed to construct OpenVINO execution providers.
 struct OpenVINOExecutionProviderInfo {
-  std::string device_type_;
-  std::string precision_;
-  bool enable_npu_fast_compile_;
-  size_t num_of_threads_;
-  std::string cache_dir_;
-  std::string model_priority_;
-  int num_streams_;
-  void* context_;
-  bool enable_opencl_throttling_;
-  bool disable_dynamic_shapes_;
-  bool export_ep_ctx_blob_;
+  std::string device_type_{""};
+  std::string precision_{""};
+  bool enable_npu_fast_compile_{false};
+  size_t num_of_threads_{0};
+  std::string cache_dir_{""};
+  std::string model_priority_{""};
+  int num_streams_{1};
+  void* context_{NULL};
+  bool enable_opencl_throttling_{false};
+  bool disable_dynamic_shapes_{false};
+  bool export_ep_ctx_blob_{false};
+
+  OpenVINOExecutionProviderInfo() = delete;
 
   explicit OpenVINOExecutionProviderInfo(std::string dev_type, std::string precision, bool enable_npu_fast_compile,
                                          size_t num_of_threads, std::string cache_dir, std::string model_priority,
@@ -133,9 +136,6 @@ struct OpenVINOExecutionProviderInfo {
     }
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                        << "Choosing Device: " << device_type_ << " , Precision: " << precision_;
-  }
-  OpenVINOExecutionProviderInfo() {
-    OpenVINOExecutionProviderInfo("", "", false, 0, "", "", 1, NULL, false, false, false);
   }
 };
 

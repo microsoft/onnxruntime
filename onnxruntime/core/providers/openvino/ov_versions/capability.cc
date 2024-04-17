@@ -1,11 +1,13 @@
 // Copyright (C) 2019- Intel Corporation
 // Licensed under the MIT License
+#include <map>
+#include <unordered_set>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "../backend_utils.h"
-#include "../backend_manager.h"
-#include "capability.h"
-#include "utils.h"
+#include "core/providers/openvino/backend_utils.h"
+#include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/ov_versions/capability.h"
+#include "core/providers/openvino/ov_versions/utils.h"
 #include "openvino/core/version.hpp"
 
 #if defined(_MSC_VER)

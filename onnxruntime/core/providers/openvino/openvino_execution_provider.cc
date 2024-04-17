@@ -3,11 +3,11 @@
 #include <filesystem>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "openvino_execution_provider.h"
-#include "contexts.h"
-#include "backend_manager.h"
-#include "onnx_ctx_model_helper.h"
-#include "ov_versions/capability.h"
+#include "core/providers/openvino/openvino_execution_provider.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/onnx_ctx_model_helper.h"
+#include "core/providers/openvino/ov_versions/capability.h"
 #include "openvino/core/version.hpp"
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))

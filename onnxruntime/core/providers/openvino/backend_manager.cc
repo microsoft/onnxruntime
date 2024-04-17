@@ -6,10 +6,10 @@
 #include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "contexts.h"
-#include "backend_manager.h"
-#include "ibackend.h"
-#include "backend_utils.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/ibackend.h"
+#include "core/providers/openvino/backend_utils.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -233,7 +233,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   return model_proto;
 }
 
-std::vector<std::vector<int64_t>> GetInputTensorShapes(Ort::KernelContext& context) {
+std::vector<std::vector<int64_t>> GetInputTensorShapes(const Ort::KernelContext& context) {
   const auto input_count = context.GetInputCount();
   std::vector<std::vector<int64_t>> input_shapes;
   input_shapes.reserve(input_count);

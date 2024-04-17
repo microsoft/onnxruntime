@@ -4,6 +4,8 @@
 #pragma once
 
 #include <sstream>
+#include <string>
+#include <memory>
 
 #include "core/providers/shared_library/provider_api.h"
 
@@ -12,11 +14,11 @@ namespace openvino_ep {
 
 // Utilities to handle EPContext node export and parsing of an EPContext node
 // to create the compiled_model object to infer on
-static const std::string EPCONTEXT_OP = "EPContext";
-static const std::string EMBED_MODE = "embed_mode";
-static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
-static const std::string EP_SDK_VER = "ep_sdk_version";
-static const std::string SOURCE = "source";
+static const char EPCONTEXT_OP[] = "EPContext";
+static const char EMBED_MODE[] = "embed_mode";
+static const char EP_CACHE_CONTEXT[] = "ep_cache_context";
+static const char EP_SDK_VER[] = "ep_sdk_version";
+static const char SOURCE[] = "source";
 
 class EPCtxHandler {
  public:
@@ -31,7 +33,7 @@ class EPCtxHandler {
                           const std::string& device_type) const;
   Status ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer);
   bool CheckForOVEPCtxNode(const GraphViewer& graph_viewer, std::string openvino_sdk_version) const;
-  bool IsValidOVEPCtxGraph() const { return is_valid_ep_ctx_graph_; };
+  bool IsValidOVEPCtxGraph() const { return is_valid_ep_ctx_graph_; }
   [[nodiscard]] const std::shared_ptr<std::istringstream> GetModelBlobStream() const { return model_stream_; }
 
  private:

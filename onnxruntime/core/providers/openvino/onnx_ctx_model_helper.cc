@@ -3,8 +3,9 @@
 
 #include <string>
 #include <fstream>
+#include <vector>
 
-#include "onnx_ctx_model_helper.h"
+#include "core/providers/openvino/onnx_ctx_model_helper.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -76,7 +77,8 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   // Finally, dump the model
-  std::ofstream dump(graph_name + "-ov_"+ device_type + "_blob.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+  std::ofstream dump(graph_name + "-ov_" + device_type + "_blob.onnx",
+                     std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto->SerializeToOstream(dump);
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Export blob as EPContext Node";

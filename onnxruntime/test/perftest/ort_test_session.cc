@@ -267,9 +267,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
               " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
-        if (value == "CPU" || value == "GPU" || value == "NPU")
+        if (value == "CPU" || value == "GPU" || value == "NPU") {
           ov_options[key] = value;
-        else {
+        } else {
           ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
         }
       } else if (key == "precision") {

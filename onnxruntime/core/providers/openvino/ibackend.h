@@ -6,7 +6,7 @@
 #include <memory>
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
-#include "onnx_ctx_model_helper.h"
+#include "core/providers/openvino/onnx_ctx_model_helper.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
