@@ -230,11 +230,11 @@ public:
         ORT_THROW_IF_FAILED(context->GetInputEdgeDescription(0, &edgeDesc));
         assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
-        if (version == 17) 
+        if (version == 17)
         {
             ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&m_axis)));
-        } 
-        else 
+        }
+        else
         {
             m_axis = -2;
         }
@@ -998,7 +998,7 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
             ORT_THROW_IF_FAILED(context->GetAttribute("onesided", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isOnesidedInt)));
             bool isOnesided = static_cast<bool>(isOnesidedInt);
             bool isInverse = static_cast<bool>(isInverseInt);
-            
+
             if (isInverse && isOnesided)
             {
                 throw new std::exception("onesided and inverse attributes cannot be enabled at the same time");
@@ -1015,12 +1015,12 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
             int64_t axisValue = -2;
             bool isDft17 = !context->IsInputValid(2);
 
-            if (isDft17) 
+            if (isDft17)
             {
                 ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axisValue)));
-            } 
-            else 
-            {   
+            }
+            else
+            {
                 ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
                 ORT_THROW_IF_FAILED(context->QueryInterface(IID_PPV_ARGS(&contextPrivate)));
                 ComPtr<IMLOperatorTensor> axisTensor;
@@ -1053,7 +1053,7 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 MLOperatorTensor tensor(dftLengthTensor.Get());
                 dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
             }
-           
+
             outputDims[axisIdx] = dftLength;
 
             // When DFT is onesided, the output shape is half the size of the input shape
@@ -1091,7 +1091,7 @@ public:
         {
             int32_t version = 17;
 
-            if (context->IsInputValid(2)) 
+            if (context->IsInputValid(2))
             {
                 version = 20;
             }
@@ -1122,7 +1122,7 @@ public:
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float },
         };
-        if (version == 20) 
+        if (version == 20)
         {
             t1AllowedEdges.push_back(MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Double });
         }
@@ -1136,7 +1136,7 @@ public:
         {
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int64 },
         };
-        if (version == 20) 
+        if (version == 20)
         {
             t2AllowedEdges.push_back(MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int32 });
         }
@@ -1166,7 +1166,7 @@ public:
             onesidedAttributeValue
         };
 
-        if (version == 17) 
+        if (version == 17)
         {
             MLOperatorAttributeNameValue axisAttributeValue;
             axisAttributeValue.name = "axis";
