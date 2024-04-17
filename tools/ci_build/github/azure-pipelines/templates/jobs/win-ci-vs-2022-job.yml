@@ -83,10 +83,6 @@ jobs:
     clean: true
     submodules: none
 
-  - task: UseDotNet@2
-    inputs:
-      version: '7.x'
-
   - template: win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: ${{parameters.EnvSetupScript}}
@@ -123,9 +119,9 @@ jobs:
     displayName: 'API Documentation Check and generate'
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 5.7.0
+    displayName: Use Nuget 7.0.0
     inputs:
-      versionSpec: 5.7.0
+      versionSpec: 7.0.0
 
   - task: NuGetCommand@2
     displayName: 'NuGet restore'
