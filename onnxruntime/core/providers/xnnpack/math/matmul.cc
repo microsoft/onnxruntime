@@ -139,24 +139,18 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   xnn_status status = xnn_status::xnn_status_uninitialized;
   auto a_shape = a->Shape();
 
-  if (a_shape.NumDimensions() != b_shape_.NumDimensions()) {
-    // A is [batch, ..., K] and B is [K, N] output is [batch, ..., N]
-    size_t batch_size = a_shape[0];
-    size_t M = a_shape[1];
-    for (size_t i = 0; i < batch_size; i++) {
-      size_t offset = i * M;
-      status = xnn_reshape_fully_connected_nc_f32(op0_.get(), M, threadpool);
-      ORT_RETURN_IF_NOT(xnn_status_success == status, "xnn_reshape_fully_connected_nc_f32 returned ", status);
-      status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>() + offset, y_data + offset);
-      ORT_RETURN_IF_NOT(xnn_status_success == status, "xnn_setup_fully_connected_nc_f32 returned ", status);
-      status = xnn_run_operator(op0_.get(), nullptr);
-      ORT_RETURN_IF_NOT(xnn_status_success == status, "xnn_run_operator returned ", status);
-    }
-  } else {
-    // A is [M, K] and B is [K, N]
-    status = xnn_reshape_fully_connected_nc_f32(op0_.get(), a->Shape()[0], threadpool);
+  ORT_ENFORCE(a_shape[a_shape.NumDimensions() - 1] == b_shape_[0], "A and B channels does not match");
+
+  size_t batch_size = a_shape.NumDimensions() == b_shape_.NumDimensions() ? 1 : a_shape[0];
+  size_t M = batch_size == 1 ? a_shape[0] : a_shape[1];
+
+  xnn_status status = xnn_status::xnn_status_uninitialized;
+
+  for (size_t i = 0; i < batch_size; i++) {
+    size_t offset = i * M * sizeof(float);
+    status = xnn_reshape_fully_connected_nc_f32(op0_.get(), M, threadpool);
     ORT_RETURN_IF_NOT(xnn_status_success == status, "xnn_reshape_fully_connected_nc_f32 returned ", status);
-    status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>(), y_data);
+    status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>() + offset, y_data + offset);
     ORT_RETURN_IF_NOT(xnn_status_success == status, "xnn_setup_fully_connected_nc_f32 returned ", status);
     status = xnn_run_operator(op0_.get(), nullptr);
     ORT_RETURN_IF_NOT(xnn_status_success == status, "xnn_run_operator returned ", status);
