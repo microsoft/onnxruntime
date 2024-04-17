@@ -25,7 +25,7 @@ void BeamHypotheses::Init(const IGenerationParameters& parameters, gsl::span<Hyp
   beams_used_ = 0;
 }
 
-void BeamHypotheses::Add(gsl::span<const int32_t>& hypothesis, float sum_logprobs) {
+void BeamHypotheses::Add(gsl::span<const int32_t>& hypothesis, gsl::span<const int32_t>& hypothesis_indices, float sum_logprobs) {
   auto length = hypothesis.size();
   float score = sum_logprobs / pow(static_cast<float>(length), length_penalty_);
 
@@ -41,7 +41,7 @@ void BeamHypotheses::Add(gsl::span<const int32_t>& hypothesis, float sum_logprob
   for (; index > 0 && score > beams_[index - 1].score; index--)
     beams_[index] = beams_[index - 1];
 
-  beams_[index] = HypothesisScore{hypothesis, score};
+  beams_[index] = HypothesisScore{hypothesis, hypothesis_indices, score};
 }
 
 bool BeamHypotheses::IsDone(float best_sum_logprobs, int current_length) const {
@@ -62,7 +62,8 @@ template <typename T>
 void BeamHypotheses::Output(
     int top_k,
     int max_length,
-    gsl::span<int32_t>& sequences,       // buffer filled with pad token ID, shape (num_return_sequences, max_length)
+    gsl::span<int32_t>& sequences,  // buffer filled with pad token ID, shape (num_return_sequences, max_length)
+    gsl::span<int32_t>& indices,
     gsl::span<T>& sequences_scores)  // buffer of shape (num_return_sequences) or empty
 {
   // Copy the top_k beams into the sequences
@@ -74,6 +75,11 @@ void BeamHypotheses::Output(
     // Note that word_ids might be less than max_length.
     // Since the sequences has been filled with pad token ID, so padding is not needed here.
     gsl::copy(item.hypothesis, target);
+
+    if (!indices.empty()) {
+      gsl::span<int32_t> indices_target = indices.subspan(static_cast<gsl::index>(index) * max_length, max_length);
+      gsl::copy(item.hypothesis_indices, indices_target);
+    }
 
     if (!sequences_scores.empty())
       sequences_scores[index] = (T)item.score;
@@ -105,6 +111,7 @@ BeamSearchScorer::BeamSearchScorer(const IGenerationParameters& parameters,
   size_t per_beam = (SafeInt<size_t>(max_length_) * (max_length_ + 1) - (parameters.sequence_length - 1) * parameters.sequence_length) / 2;
   hypothesis_buffer_length_ = batch_beam_size * per_beam;
   hypothesis_buffer_ = Allocate<int32_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_);
+  hypothesis_indices_buffer_ = Allocate<int32_t>(allocator, hypothesis_buffer_length_, hypothesis_indices_buffer_ptr_);
 }
 
 bool BeamSearchScorer::IsDone() const {
@@ -161,11 +168,15 @@ void BeamSearchScorer::Process(ISequences& sequences,
 
         // Clone the sequence and append to buffer.
         gsl::span<const int32_t> src = sequences.GetSequence(batch_beam_idx);
+        gsl::span<const int32_t> indices_src = sequences.GetSequenceIndices(batch_beam_idx);
         auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
+        auto indices_clone = hypothesis_indices_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
         gsl::copy(src, clone);
+        gsl::copy(indices_src, indices_clone);
         hypothesis_buffer_offset_ += static_cast<size_t>(sequence_length);
         auto sequence = ReinterpretAsSpan<const int32_t>(clone);
-        beam_hyp.Add(sequence, next_score);
+        auto sequence_indices = ReinterpretAsSpan<const int32_t>(indices_clone);
+        beam_hyp.Add(sequence, sequence_indices, next_score);
       } else {
         // Add next predicted token since it is not eos_token.
         next_beam_scores_[batch * num_beams_ + beam_idx] = next_score;
@@ -195,14 +206,15 @@ void BeamSearchScorer::Process(ISequences& sequences,
 
 template <typename T>
 void BeamSearchScorer::OutputSequenceScores(ISequences& sequences,
-                                gsl::span<const float>& final_beam_scores,
-                                Tensor* output_sequences,
-                                Tensor* output_sequence_scores, 
-                                gsl::span<int32_t> output){
+                                            gsl::span<const float>& final_beam_scores,
+                                            Tensor* output_sequences,
+                                            Tensor* output_sequence_scores,
+                                            gsl::span<int32_t> output,
+                                            gsl::span<int32_t> output_indices) {
   ORT_ENFORCE(output_sequences != nullptr);
 
   // Score of each sequence, with shape (batch_size * num_return_sequences).
-  //gsl::span<T> sequence_scores;
+  // gsl::span<T> sequence_scores;
   gsl::span<T> sequence_scores = output_sequence_scores->MutableDataAsSpan<T>();
   gsl::span<T> batch_sequence_score;
 
@@ -214,6 +226,11 @@ void BeamSearchScorer::OutputSequenceScores(ISequences& sequences,
     auto batch_output = output.subspan(batch_index * num_return_sequences * max_length_,
                                        num_return_sequences * max_length_);
 
+    gsl::span<int32_t> batch_indices;
+    if (!output_indices.empty())
+      batch_indices = output_indices.subspan(batch_index * num_return_sequences * max_length_,
+                                             num_return_sequences * max_length_);
+
     if (output_sequence_scores) {
       batch_sequence_score = sequence_scores.subspan(batch_index * num_return_sequences, num_return_sequences);
     }
@@ -222,12 +239,14 @@ void BeamSearchScorer::OutputSequenceScores(ISequences& sequences,
         num_return_sequences,
         max_length_,
         batch_output,
+        batch_indices,
         batch_sequence_score);
   }
 }
 void BeamSearchScorer::Finalize(ISequences& sequences,
                                 gsl::span<const float>& final_beam_scores,
                                 Tensor* output_sequences,
+                                Tensor* output_sequence_indices,
                                 Tensor* output_sequence_scores) {
   ORT_ENFORCE(output_sequences != nullptr);
 
@@ -242,7 +261,8 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
       size_t batch_beam_index = batch_index * num_beams_ + beam_index;
       float final_score = final_beam_scores[batch_beam_index];
       auto final_tokens = sequences.GetSequence(batch_beam_index);
-      beam_hyp.Add(final_tokens, final_score);
+      auto final_indices = sequences.GetSequenceIndices(batch_beam_index);
+      beam_hyp.Add(final_tokens, final_indices, final_score);
     }
   }
 
@@ -252,11 +272,20 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
   // Fill output sequences with pad token ID so that we do not need append it later.
   std::fill_n(output.data(), output.size(), pad_token_id_);
 
+  // Output indices for each sequence, with shape (batch_size * num_return_sequences, max_sequence_length).
+  // Used to copy the correct cross-qk cache data
+  gsl::span<int32_t> output_indices;
+  if (output_sequence_indices) {
+    output_indices = output_sequence_indices->MutableDataAsSpan<int32_t>();
+    // Fill with 0's since sequences don't fill entire buffer and that the cross-qk copy operation pulls from from valid memory
+    std::fill_n(output_indices.data(), output_indices.size(), 0);
+  }
+
   if (output_sequence_scores == nullptr || output_sequence_scores->IsDataType<float>()) {
-    OutputSequenceScores<float>(sequences, final_beam_scores, output_sequences, output_sequence_scores, output);
+    OutputSequenceScores<float>(sequences, final_beam_scores, output_sequences, output_sequence_scores, output, output_indices);
   } else {
     ORT_ENFORCE(output_sequence_scores->IsDataType<MLFloat16>());
-    OutputSequenceScores<MLFloat16>(sequences, final_beam_scores, output_sequences, output_sequence_scores, output);
+    OutputSequenceScores<MLFloat16>(sequences, final_beam_scores, output_sequences, output_sequence_scores, output, output_indices);
   }
 }
 

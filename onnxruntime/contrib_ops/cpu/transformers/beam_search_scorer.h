@@ -21,6 +21,7 @@ namespace transformers {
 
 struct HypothesisScore {
   gsl::span<const int32_t> hypothesis;
+  gsl::span<const int32_t> hypothesis_indices;
   float score;
 };
 
@@ -31,15 +32,16 @@ struct BeamHypotheses {
   int Size() const { return beams_used_; }
 
   // Add a new hypothesis
-  void Add(gsl::span<const int32_t>& hypothesis, float sum_logprobs);
+  void Add(gsl::span<const int32_t>& hypothesis, gsl::span<const int32_t>& hypothesis_indices, float sum_logprobs);
 
   bool IsDone(float best_sum_logprobs, int current_length) const;
 
   // Output results
   template <typename T>
-  void Output(int top_k,                            // number of sequences to return
-              int max_length,                       // max sequence length
-              gsl::span<int32_t>& sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
+  void Output(int top_k,                      // number of sequences to return
+              int max_length,                 // max sequence length
+              gsl::span<int32_t>& sequences,  // buffer with pad token, shape (num_return_sequences, max_length)
+              gsl::span<int32_t>& indices,
               gsl::span<T>& sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
 
  private:
@@ -62,6 +64,7 @@ class BeamSearchScorer : public IBeamScorer {
   void Finalize(ISequences& sequences,
                 gsl::span<const float>& final_beam_scores,
                 Tensor* output_sequences,
+                Tensor* output_sequence_indices,
                 Tensor* output_sequence_scores) override;
 
   template <typename T>
@@ -69,7 +72,8 @@ class BeamSearchScorer : public IBeamScorer {
                             gsl::span<const float>& final_beam_scores,
                             Tensor* output_sequences,
                             Tensor* output_sequence_scores,
-                            gsl::span<int32_t> output);
+                            gsl::span<int32_t> output,
+                            gsl::span<int32_t> output_indices);
   bool IsDone() const;
 
   gsl::span<float>& GetNextScores() { return next_beam_scores_; }
@@ -96,10 +100,12 @@ class BeamSearchScorer : public IBeamScorer {
   IAllocatorUniquePtr<int32_t> next_beam_indices_ptr_;
   gsl::span<int32_t> next_beam_indices_;
 
-  IAllocatorUniquePtr<int32_t> hypothesis_buffer_ptr_;  // Allocated buffer to hold all hypotheses
-  gsl::span<int32_t> hypothesis_buffer_;                // Span of the allocated buffer
-  size_t hypothesis_buffer_length_{};                   // Total number of elements
-  size_t hypothesis_buffer_offset_{};                   // Offset of available buffer, or length of used buffer.
+  IAllocatorUniquePtr<int32_t> hypothesis_buffer_ptr_;          // Allocated buffer to hold all hypotheses
+  IAllocatorUniquePtr<int32_t> hypothesis_indices_buffer_ptr_;  // Allocated buffer to hold all hypotheses historical beam indices
+  gsl::span<int32_t> hypothesis_buffer_;                        // Span of the allocated buffer
+  gsl::span<int32_t> hypothesis_indices_buffer_;                // Span of the allocated buffer
+  size_t hypothesis_buffer_length_{};                           // Total number of elements
+  size_t hypothesis_buffer_offset_{};                           // Offset of available buffer, or length of used buffer.
 
   IAllocatorUniquePtr<HypothesisScore> hypothesis_scores_ptr_;  // num_beams_ * batch_size_, divided into num_beams_ chunks per BeamHypothesis in beam_hyps_
   IAllocatorUniquePtr<BeamHypotheses> beam_hyps_ptr_;

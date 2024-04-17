@@ -379,6 +379,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,
+                               nullptr,
                                output_sequences_scores);
 
   // Output per token scores

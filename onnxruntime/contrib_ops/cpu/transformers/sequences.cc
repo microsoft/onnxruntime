@@ -8,12 +8,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-void Sequences::Init(gsl::span<int32_t> buffer, int batch_beam_size, int sequence_length, int max_length) {
+void Sequences::Init(gsl::span<int32_t> buffer, gsl::span<int32_t> indices_buffer, int batch_beam_size, int sequence_length, int max_length) {
   size_t sequences_size = SafeInt<size_t>(batch_beam_size) * max_length;
   assert(buffer.size() == sequences_size + sequences_size);
 
   sequences[0] = buffer.subspan(0, sequences_size);
   sequences[1] = buffer.subspan(sequences_size);
+
+  indices = indices_buffer;
 
   current_sequences_buffer = 0;
 
@@ -25,6 +27,10 @@ void Sequences::Init(gsl::span<int32_t> buffer, int batch_beam_size, int sequenc
 gsl::span<const int32_t> Sequences::GetSequence(int beam_index) const {
   gsl::span<const int32_t> buffer = sequences[current_sequences_buffer];
   return buffer.subspan(SafeInt<size_t>(beam_index) * max_length_, static_cast<gsl::index>(current_length_));
+}
+
+gsl::span<const int32_t> Sequences::GetSequenceIndices(int beam_index) const {
+  return indices.subspan(SafeInt<size_t>(beam_index) * max_length_, static_cast<gsl::index>(current_length_));
 }
 
 int Sequences::GetSequenceLength() const {

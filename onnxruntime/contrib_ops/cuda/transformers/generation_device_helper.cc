@@ -448,9 +448,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // NOTE: currently we treat extra decoding ids are same
   int extra_decoding_len = static_cast<int>(parameters->extra_decoding_ids.size() / parameters->batch_size);
-  const bool need_handle_extra_decoding_ids = is_whisper_model
-                                               && (!parameters->extra_decoding_ids.empty())
-                                               && (extra_decoding_len >= step);
+  const bool need_handle_extra_decoding_ids = is_whisper_model && (!parameters->extra_decoding_ids.empty()) && (extra_decoding_len >= step);
 
   cuda::LaunchLogitsProcessKernel<float>(
       next_token_scores.data(),
@@ -497,14 +495,14 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   if (need_handle_extra_decoding_ids && !parameters->extra_decoding_ids.empty()) {
     cuda::LaunchForceDecodingIds(
-      next_token_scores.data(),
-      parameters->batch_size,
-      parameters->num_beams,
-      parameters->vocab_size,
-      parameters->extra_decoding_ids.data(),
-      parameters->extra_decoding_ids.size() / parameters->batch_size,
-      step - 1,
-      cuda_stream);
+        next_token_scores.data(),
+        parameters->batch_size,
+        parameters->num_beams,
+        parameters->vocab_size,
+        parameters->extra_decoding_ids.data(),
+        parameters->extra_decoding_ids.size() / parameters->batch_size,
+        step - 1,
+        cuda_stream);
   }
 
 #ifdef DEBUG_GENERATION
@@ -1173,6 +1171,8 @@ Status UpdateDecoderFeeds(
                                                                   current_length,
                                                                   cuda_stream);
 
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences.GetIndexHistoryCPU().data(), cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>(), sizeof(int32_t) * num_beams * max_sequence_length, cudaMemcpyDeviceToHost, cuda_stream));
+
       // Update cache indirection for next decoding run
       next_inputs[past_sequence_length_idx + 2] = cache_indirection;
     }
@@ -1542,20 +1542,20 @@ Status FinalizeDecoderCrossQK(
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   cuda::LaunchFinalizeCrossQK(
-    cuda_stream,
-    iteration_number,
-    context_decoding_len,
-    batch_size,
-    num_beams,
-    max_length,
-    cross_qk_layer_head_pair_count,
-    cross_qk_layer_head_pairs,
-    frames_of_k,
-    cross_qk_buffer_data,
-    cross_qk_output,
-    num_return_sequences,
-    cache_indir_data,
-    beam_indices_gpu.data());
+      cuda_stream,
+      iteration_number,
+      context_decoding_len,
+      batch_size,
+      num_beams,
+      max_length,
+      cross_qk_layer_head_pair_count,
+      cross_qk_layer_head_pairs,
+      frames_of_k,
+      cross_qk_buffer_data,
+      cross_qk_output,
+      num_return_sequences,
+      cache_indir_data,
+      beam_indices_gpu.data());
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 

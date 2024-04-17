@@ -91,9 +91,11 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
       : parameters_{parameters} {
     sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size_, stream);
 
+    // Allocate the sequence & indices buffers back to back
     size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size_ * parameters.max_length;
     sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes, stream, true /* fill */);
-    sequences.Init(sequences_space, batch_beam_size_, parameters.sequence_length, parameters.max_length);
+    indices_space = AllocateBuffer<int32_t>(allocator, indices_space_buffer_, sequences_bytes / 2, stream, false /* fill */);
+    sequences.Init(sequences_space, indices_space, batch_beam_size_, parameters.sequence_length, parameters.max_length);
 
     if (is_cuda) {
       // buffers used by CUDA operator but not by CPU operator.
@@ -137,6 +139,7 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
   IAllocatorUniquePtr<void> topk_tokens_buffer_;
   IAllocatorUniquePtr<void> topk_indices_buffer_;
   IAllocatorUniquePtr<void> sequences_space_buffer_;
+  IAllocatorUniquePtr<void> indices_space_buffer_;
   IAllocatorUniquePtr<void> next_token_scores_buffer_;
 };
 
