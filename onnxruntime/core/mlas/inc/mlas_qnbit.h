@@ -179,16 +179,3 @@ MlasSQNBitGemmPackQuantBData(
     void* PackedQuantBData,
     MLAS_THREADPOOL* ThreadPool = nullptr
 );
-
-// TODO - Test entry point for benchmarking. Remove later.
-void MLASCALL
-MlasQ4BitBlkDequantBForSgemm(
-    size_t BlkLen,
-    float* FpData,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    const std::byte* QuantBZeroPoint,
-    size_t CountN,
-    size_t CountK,
-    size_t BlockStrideQuantB
-);
