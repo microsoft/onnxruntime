@@ -114,8 +114,34 @@ TensorRT configurations can be set by execution provider options. It's useful wh
     * Default value: 0
 
 * `user_compute_stream`: Defines the compute stream for the inference to run on. It implicitly sets the `has_user_compute_stream` option. It cannot be set through `UpdateTensorRTProviderOptions`, but rather `UpdateTensorRTProviderOptionsWithValue`.
+
     * This cannot be used in combination with an external allocator.
-    * This can not be set using the python API.
+
+    * This can also be set using the python API.  
+
+      * i.e The cuda stream captured from pytorch can be passed into ORT-TRT. Click below to check sample code: 
+      
+        <Details>
+
+        ```python
+        import onnxruntime as ort
+        import torch
+        ...
+        sess = ort.InferenceSession('model.onnx')
+        if torch.cuda.is_available():
+            s = torch.cuda.Stream()
+            option = {"user_compute_stream": str(s.cuda_stream)}
+            sess.set_providers(["TensorrtExecutionProvider"], [option])
+            options = sess.get_provider_options()
+      
+            assert "TensorrtExecutionProvider" in options
+            assert options["TensorrtExecutionProvider"].get("user_compute_stream", "") == str(s.cuda_stream)
+            assert options["TensorrtExecutionProvider"].get("has_user_compute_stream", "") == "1"
+        ...
+        ```
+        </Details>
+    * To take advantage of user compute stream, it is recommended to use [I/O Binding](https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device) to bind inputs and outputs to tensors in device.
+
 
 * `trt_max_workspace_size`: maximum workspace size for TensorRT engine.
     * Default value: 1073741824 (1GB).
