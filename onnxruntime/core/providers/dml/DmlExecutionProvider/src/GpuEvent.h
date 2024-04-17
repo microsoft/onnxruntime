@@ -5,6 +5,7 @@
 
 #include <wil/wrl.h>
 #include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
+#include "core/common/spin_pause.h"
 
 namespace Dml
 {
@@ -30,6 +31,7 @@ namespace Dml
                 while (!IsSignaled())
                 {
                     // We keep spinning until the fence gets signaled
+                    onnxruntime::concurrency::SpinPause();
                 }
             }
             else

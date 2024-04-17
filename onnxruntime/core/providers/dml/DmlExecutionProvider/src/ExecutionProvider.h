@@ -34,7 +34,7 @@ namespace Dml
         ExecutionProviderImpl(
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
-            Dml::ExecutionContext* execution_context,
+            Dml::ExecutionContext* executionContext,
             bool enableMetacommands,
             bool enableDynamicGraphFusion,
             bool enableCpuSyncSpinning);
@@ -245,7 +245,7 @@ namespace Dml
 
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
-            Dml::ExecutionContext* execution_context,
+            Dml::ExecutionContext* executionContext,
             bool enableMetacommands,
             bool enableDynamicGraphFusion,
             bool enableSyncSpinning

@@ -69,13 +69,13 @@ namespace Dml
 
     ExecutionProvider::ExecutionProvider(
         IDMLDevice* dmlDevice,
-        Dml::ExecutionContext* execution_context,
+        Dml::ExecutionContext* executionContext,
         bool enableMetacommands,
         bool enableDynamicGraphFusion,
         bool enableSyncSpinning) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
-        D3D12_COMMAND_LIST_TYPE queueType = execution_context->GetCommandListTypeForQueue();
+        D3D12_COMMAND_LIST_TYPE queueType = executionContext->GetCommandListTypeForQueue();
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
         {
             // DML requires either DIRECT or COMPUTE command queues.
@@ -85,7 +85,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), execution_context, enableMetacommands, enableDynamicGraphFusion, enableSyncSpinning);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), executionContext, enableMetacommands, enableDynamicGraphFusion, enableSyncSpinning);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -146,13 +146,13 @@ namespace Dml
         }
     }
 
-    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ExecutionContext* execution_context, bool enableMetacommands, bool enableDynamicGraphFusion, bool enableCpuSyncSpinning)
+    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ExecutionContext* executionContext, bool enableMetacommands, bool enableDynamicGraphFusion, bool enableCpuSyncSpinning)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
           m_dynamicGraphFusionEnabled(enableDynamicGraphFusion),
           m_cpuSyncSpinningEnabled(enableCpuSyncSpinning),
-          m_context(execution_context)
+          m_context(executionContext)
     {
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
@@ -1183,12 +1183,12 @@ namespace Dml
 
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
-        Dml::ExecutionContext* execution_context,
+        Dml::ExecutionContext* executionContext,
         bool enableMetacommands,
         bool enableDynamicGraphFusion,
         bool enableCpuSyncSpinning)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, execution_context, enableMetacommands, enableDynamicGraphFusion, enableCpuSyncSpinning);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, executionContext, enableMetacommands, enableDynamicGraphFusion, enableCpuSyncSpinning);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
