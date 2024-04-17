@@ -2583,9 +2583,17 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       {
         auto status = Status::OK();
         ORT_TRY {
-          NodeProto node_proto;
-          node.ToProto(node_proto);
-          checker::check_node(node_proto, ctx, lsc);
+          // if this is first Graph::Resolve call, we may have a NodeProto that was set on the Node so we can skip
+          // the ToProto call.
+          if (const NodeProto* orig_node_proto = node.GetOriginalNodeProto(); orig_node_proto) {
+            checker::check_node(*orig_node_proto, ctx, lsc);
+            // clear original as we don't know if the node will be modified once the Graph::Resolve completes.
+            node.SetOriginalNodeProto(nullptr);
+          } else {
+            NodeProto node_proto;
+            node.ToProto(node_proto);
+            checker::check_node(node_proto, ctx, lsc);
+          }
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
@@ -3123,13 +3131,25 @@ Node& Graph::AddNode(const NodeProto& node_proto,
     attributes[attr.name()] = attr;
   }
 
-  return AddNode(node_proto.name(),
-                 node_proto.op_type(),
-                 node_proto.doc_string(),
-                 input_defs,
-                 output_defs,
-                 &attributes,
-                 node_proto.domain());
+  Node& new_node = AddNode(node_proto.name(),
+                           node_proto.op_type(),
+                           node_proto.doc_string(),
+                           input_defs,
+                           output_defs,
+                           &attributes,
+                           node_proto.domain());
+
+  // Perf optimization: temporarily set NodeProto in Node so we don't need to call Node::ToProto prior to
+  // calling onnx::check_node
+  // NOTE: We don't handle a node with kOnnxDomainAlias. The entry in schema_registry_ uses kOnnxDomain,
+  // and that's what onnx::check_node uses during validation.
+  // The Node ctor automatically converts kOnnxDomainAlias to kOnnxDomain to handle this.
+  // node_proto is const so we can't do the same here.
+  if (node_proto.domain() != kOnnxDomainAlias) {
+    new_node.SetOriginalNodeProto(&node_proto);
+  }
+
+  return new_node;
 }
 
 static flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>

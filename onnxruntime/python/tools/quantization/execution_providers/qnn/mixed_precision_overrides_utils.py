@@ -138,7 +138,7 @@ class MixedPrecisionTensorQuantOverridesFixer:
         value_infos.update({it.name: it for it in model.graph.input})
 
         # Ensure that the user-provided initial overrides are actually valid.
-        valid, err = overrides.is_valid(set(initializers), set(value_infos), default_activation_qtype)
+        valid, err = overrides.is_valid(initializers, set(value_infos), default_activation_qtype)
         if not valid:
             pprint_overrides = overrides.pprint_str(indent=4)
             logging.error(f"Provided invalid tensor quantization overrides:\n{pprint_overrides}")
@@ -233,7 +233,7 @@ class MixedPrecisionTensorQuantOverridesFixer:
                 raise ValueError(f"TypeRequest for tensor {tensor_name} has no producer or consumers.")
 
         # Done. Check if the overrides are valid.
-        valid, err = self.overrides.is_valid(set(self.initializers), set(self.value_infos), default_activation_qtype)
+        valid, err = self.overrides.is_valid(self.initializers, set(self.value_infos), default_activation_qtype)
         if not valid:
             pprint_overrides = self.overrides.pprint_str(indent=4)
             logging.error(
