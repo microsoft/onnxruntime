@@ -23,6 +23,7 @@ struct GlobalContext {
   size_t num_of_threads;
   std::string device_type;
   std::string precision_str;
+  std::string model_precision;
   std::string cache_dir;
   std::string model_priority = "DEFAULT";
   int num_streams;
