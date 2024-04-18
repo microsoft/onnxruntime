@@ -8,7 +8,7 @@ Licensed under the MIT License.
 
 #pragma once
 
-#include "contrib_ops/cpu/quantization/neural_speed_wrapper.h"
+#include "contrib_ops/cpu/quantization/int4_acceleration_wrapper.h"
 
 namespace bestla {
 

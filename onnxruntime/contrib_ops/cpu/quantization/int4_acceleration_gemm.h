@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    neural_speed_gemm.h
+    int4_acceleration.h
 
 Abstract:
 
-    Prepack-weight GEMM APIs of neural_speed.
+    Prepack-weight GEMM APIs of int4_acceleration.
 --*/
 
 #pragma once

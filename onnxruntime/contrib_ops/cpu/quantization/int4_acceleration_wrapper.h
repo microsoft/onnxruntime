@@ -27,14 +27,15 @@
 #pragma warning(disable : 4244)
 #pragma warning(disable : 4267)
 #pragma warning(disable : 4702)
-#pragma warning(disable : 4127)
+#define _CRT_SECURE_NO_WARNINGS
 #endif
 
-#include "bestla/bestla_prologue_a.h"
-#include "bestla/bestla_wrapper.h"
+#include "../../../core/providers/dnnl/subgraph/int4_acceleration/kernels/bestla/bestla_prologue_a.h"
+#include "../../../core/providers/dnnl/subgraph/int4_acceleration/kernels/bestla/bestla_wrapper.h"
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #elif defined(_MSC_VER)
 #pragma warning(pop)
+#undef _CRT_SECURE_NO_WARNINGS
 #endif

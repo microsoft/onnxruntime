@@ -1,0 +1,20 @@
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+/.vs
+/.vscode
+/out/
+/build/
+.clangd
+.cache/
+tags
+# CMakeUserPresets.json should be ignored. See: https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html
+CMakeUserPresets.json

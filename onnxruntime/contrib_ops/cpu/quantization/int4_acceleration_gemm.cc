@@ -6,15 +6,15 @@ Licensed under the MIT License.
 
 Module Name:
 
-    neural_speed_gemm.cpp
+    int4_acceleration_gemm.cpp
 
 Abstract:
 
-    GEMM template combinations of neural_speed.
+    GEMM template combinations of int4_acceleration.
 --*/
 
-#include "contrib_ops/cpu/quantization/neural_speed_defs.h"
-#include "contrib_ops/cpu/quantization/neural_speed_gemm.h"
+#include "contrib_ops/cpu/quantization/int4_acceleration_defs.h"
+#include "contrib_ops/cpu/quantization/int4_acceleration_gemm.h"
 #include "core/platform/threadpool.h"
 
 using ThreadPool = onnxruntime::concurrency::ThreadPool;

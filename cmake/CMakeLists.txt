@@ -947,8 +947,8 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
     endif()
 
-    if(USE_NEURAL_SPEED)
-      target_compile_definitions(${target_name} PRIVATE ORT_NEURAL_SPEED)
+    if(USE_INT4_ACCELERATION)
+      target_compile_definitions(${target_name} PRIVATE ORT_INT4_ACCELERATION)
     endif()
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
@@ -1236,13 +1236,6 @@ endif()
 if (onnxruntime_USE_DNNL)
   include(dnnl)
   add_compile_definitions(DNNL_OPENMP)
-endif()
-
-if (onnxruntime_USE_NEURAL_SPEED AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_USE_TVM)
-  include(neural_speed)
-  if (USE_NEURAL_SPEED)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES neural_speed::bestla)
-  endif()
 endif()
 
 # TVM EP

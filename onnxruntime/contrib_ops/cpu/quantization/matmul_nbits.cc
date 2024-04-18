@@ -16,8 +16,8 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
 
-#ifdef ORT_NEURAL_SPEED
-#include "contrib_ops/cpu/quantization/neural_speed_gemm.h"
+#ifdef ORT_INT4_ACCELERATION
+#include "contrib_ops/cpu/quantization/int4_acceleration_gemm.h"
 #endif
 
 namespace onnxruntime {
@@ -29,15 +29,15 @@ int64_t GetAccuracyLevel(size_t nbits, size_t block_size, int64_t accuracy_level
                                          static_cast<int64_t>(CompMostAccurate),
                                          static_cast<int64_t>(CompLeastAccurate));
 
-#if defined(ORT_NEURAL_SPEED)
+#if defined(ORT_INT4_ACCELERATION)
 
   ORT_UNUSED_PARAMETER(nbits);
   ORT_UNUSED_PARAMETER(block_size);
 
-  // Neural Speed APIs already expect a minimum accuracy level so just use the given value.
+  //APIs already expect a minimum accuracy level so just use the given value.
   return accuracy_level;
 
-#else  // defined(ORT_NEURAL_SPEED)
+#else  // defined(ORT_INT4_ACCELERATION)
 
   // Find a supported accuracy level that is not less accurate than the one given.
   // CompMostAccurate is always supported with the fallback implementation.
@@ -52,7 +52,7 @@ int64_t GetAccuracyLevel(size_t nbits, size_t block_size, int64_t accuracy_level
 
   return effective_accuracy_level;
 
-#endif  // defined(ORT_NEURAL_SPEED)
+#endif  // defined(ORT_INT4_ACCELERATION)
 }
 }  // namespace
 
@@ -89,7 +89,7 @@ class MatMulNBits final : public OpKernel {
 
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
-#ifdef ORT_NEURAL_SPEED
+#ifdef ORT_INT4_ACCELERATION
     const Tensor* tensor_B = nullptr;
     const Tensor* tensor_scale = nullptr;
     const Tensor* tensor_zero_point = nullptr;
@@ -123,12 +123,12 @@ class MatMulNBits final : public OpKernel {
   IAllocatorUniquePtr<void> packed_b_;
   size_t packed_b_size_{0};
 
-#if defined(ORT_NEURAL_SPEED)
+#if defined(ORT_INT4_ACCELERATION)
 
   bool is_asym_{false};
   bool all_constant_{false};
 
-#endif  // defined(ORT_NEURAL_SPEED)
+#endif  // defined(ORT_INT4_ACCELERATION)
 };
 
 Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
@@ -138,7 +138,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   if (act_order_ || zero_point_is_not_quant_) {
     return Status::OK();
   }
-#if defined(ORT_NEURAL_SPEED)
+#if defined(ORT_INT4_ACCELERATION)
 
   if (!all_constant_) {
     return Status::OK();
@@ -184,7 +184,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
 
-#else  // defined(ORT_NEURAL_SPEED)
+#else  // defined(ORT_INT4_ACCELERATION)
 
   if (input_idx == 1) {
     const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
@@ -205,7 +205,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
 
-#endif  // defined(ORT_NEURAL_SPEED)
+#endif  // defined(ORT_INT4_ACCELERATION)
 
   return Status::OK();
 }
@@ -214,7 +214,7 @@ Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
                                               /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
-#if defined(ORT_NEURAL_SPEED)
+#if defined(ORT_INT4_ACCELERATION)
 
   // Pack three tensors into one buffer
   if (input_idx == 1) {
@@ -230,14 +230,14 @@ Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
     packed_b_ = std::move(prepacked_buffers[0]);
   }
 
-#else  // defined(ORT_NEURAL_SPEED)
+#else  // defined(ORT_INT4_ACCELERATION)
 
   if (input_idx == 1) {
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
   }
 
-#endif  // defined(ORT_NEURAL_SPEED)
+#endif  // defined(ORT_INT4_ACCELERATION)
 
   return Status::OK();
 }
@@ -247,7 +247,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
   const auto* a_data = a->Data<float>();
 
-#if defined(ORT_NEURAL_SPEED)
+#if defined(ORT_INT4_ACCELERATION)
 
   if (packed_b_) {
     TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
@@ -285,7 +285,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-#endif  // defined(ORT_NEURAL_SPEED)
+#endif  // defined(ORT_INT4_ACCELERATION)
 
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->InputCount() > 3 ? ctx->Input<Tensor>(3) : nullptr;

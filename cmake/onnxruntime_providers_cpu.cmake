@@ -50,6 +50,13 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
+set(MLAS_INT4_ACCELERATION_KERNEL_DIR ${ONNXRUNTIME_ROOT}/core/providers/dnnl/subgraph/int4_acceleration/kernels)
+
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND onnxruntime_target_platform STREQUAL "x86_64")
+  set(USE_INT4_ACCELERATION TRUE)
+elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC" AND onnxruntime_target_platform STREQUAL "x64")
+  set(USE_INT4_ACCELERATION TRUE)
+endif()
 
 # disable contrib ops conditionally
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
@@ -60,14 +67,14 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op_executor.cc"
     )
   endif()
-  set(onnxruntime_cpu_neural_speed_srcs 
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_wrapper.h"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_defs.h"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.cc"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.h"
+  set(onnxruntime_cpu_int4_acceleration_srcs
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/int4_acceleration_wrapper.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/int4_acceleration_defs.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/int4_acceleration_gemm.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/int4_acceleration_gemm.h"
   )
-  if(NOT USE_NEURAL_SPEED)
-    list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs ${onnxruntime_cpu_neural_speed_srcs})
+  if(NOT USE_INT4_ACCELERATION)
+    list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs ${onnxruntime_cpu_int4_acceleration_srcs})
   endif()
   # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
@@ -153,9 +160,11 @@ if (HAS_BITWISE_INSTEAD_OF_LOGICAL)
   target_compile_options(onnxruntime_providers PRIVATE "-Wno-bitwise-instead-of-logical")
 endif()
 
+set(BTLA_USE_OPENMP OFF)
+
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-  if(USE_NEURAL_SPEED)
-    onnxruntime_add_include_to_target(onnxruntime_providers neural_speed::bestla)
+  if(USE_INT4_ACCELERATION)
+    onnxruntime_add_include_to_target(onnxruntime_providers ${MLAS_INT4_ACCELERATION_KERNEL_DIR})
   endif()
 endif()
 
