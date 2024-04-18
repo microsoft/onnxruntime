@@ -35,9 +35,10 @@ namespace Dml
         ExecutionProviderImpl(
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
-            ID3D12CommandQueue* queue,
+            Dml::ExecutionContext* executionContext,
             bool enableMetacommands,
-            bool enableGraphCapture);
+            bool enableGraphCapture,
+            bool enableCpuSyncSpinning);
 
         void ReleaseCompletedReferences();
 
@@ -161,6 +162,7 @@ namespace Dml
         Status OnRunEnd();
         int GetCurrentGraphAnnotationId() const { return m_currentGraphAnnotationId; }
         void AppendCapturedGraph(int annotationId, std::unique_ptr<DmlReusedCommandListState> capturedGraph);
+        bool CpuSyncSpinningEnabled() const noexcept;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
 
@@ -203,7 +205,9 @@ namespace Dml
 
         std::unordered_map<int, std::vector<std::unique_ptr<DmlReusedCommandListState>>> m_capturedGraphs;
         std::unordered_set<int> m_graphCapturingDone;
-        std::shared_ptr<ExecutionContext> m_context;
+        bool m_sessionInitialized = false;
+        bool m_cpuSyncSpinningEnabled = false;
+        ComPtr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
@@ -253,9 +257,10 @@ namespace Dml
 
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
-            ID3D12CommandQueue* commandQueue,
+            Dml::ExecutionContext* executionContext,
             bool enableMetacommands,
-            bool enableGraphCapture
+            bool enableGraphCapture,
+            bool enableSyncSpinning
         );
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override

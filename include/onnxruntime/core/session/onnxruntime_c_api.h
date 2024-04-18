@@ -3618,6 +3618,7 @@ struct OrtApi {
    * QNN supported keys:
    *   "backend_path": file path to QNN backend library.
    *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
+   *   "profiling_file_path": QNN profiling file path if ETW not enabled.
    *   "rpc_control_latency": QNN RPC control latency.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",

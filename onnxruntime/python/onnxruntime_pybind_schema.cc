@@ -61,7 +61,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #ifdef USE_DML
             []() {
               ConfigOptions config_options{};
-              return onnxruntime::DMLProviderFactoryCreator::Create(config_options, 0, false, false);
+              return onnxruntime::DMLProviderFactoryCreator::Create(config_options, 0, false, false, false);
             }(),
 #endif
 #ifdef USE_NNAPI

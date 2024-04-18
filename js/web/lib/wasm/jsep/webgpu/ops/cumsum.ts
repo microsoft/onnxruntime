@@ -54,7 +54,7 @@ const createCumsumProgramInfo =
               outputs: [{dims: inputShape, dataType: inputType}],
               dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
               programUniforms: [
-                {type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: axis},
+                {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: axis},
                 ...createTensorShapeVariables(inputShape, inputShape)
               ]
 
