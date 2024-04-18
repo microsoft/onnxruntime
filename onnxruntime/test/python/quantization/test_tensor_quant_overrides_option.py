@@ -52,7 +52,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             "OUT": (0, np.float32(0.005075461231172085)),
         }
 
-    def build_float32_model(self):
+    def build_float32_model(self, opset=13):
         #    (input)
         #       |
         #    Sigmoid
@@ -72,11 +72,13 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         graph = onnx.helper.make_graph(
             [sigmoid_node, conv_node], "test", [inp], [out], initializer=[wgt_init, bias_init]
         )
-        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 13)])
+        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", opset)])
         onnx.save(model, "model.onnx")
 
-    def perform_qdq_quantization(self, output_model_name, extra_options=None, per_channel=False, activation_type=None):
-        self.build_float32_model()
+    def perform_qdq_quantization(
+        self, output_model_name, extra_options=None, per_channel=False, activation_type=None, opset=13
+    ):
+        self.build_float32_model(opset)
 
         if activation_type is None:
             activation_type = self.default_act_qtype
@@ -428,8 +430,9 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
     def test_16bit_overrides_set_ms_domain(self):
         """
-        Test that overriding a tensor to 16bit (when default is 8bit) automatically sets the 'com.microsoft'
-        domain on DQ and Q ops.
+        Test that overriding a tensor to 16bit (when default is 8bit) automatically
+        sets the 'com.microsoft' domain on DQ and Q ops for opset < 21.
+        Before ONNX 1.16.0, we had to use the 'com.microsoft' domain to be able to use 16-bit quantization.
         """
         qdq_model_name = "model_quant_overrides_to_16bit.onnx"
         inp_zp, _, sig_out_zp, _, _, _, _, _, out_zp, _ = self.perform_qdq_quantization(
@@ -441,6 +444,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
                     "SIG_OUT": [{"quant_type": QuantType.QUInt16}],
                 }
             },
+            opset=19,
         )
 
         # Input and Sigmoid's output should be overridden to 16bit
@@ -455,6 +459,38 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         for node in qdq_model.graph.node:
             if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
                 self.assertEqual(node.domain, ms_domain)
+
+    def test_16bit_overrides_not_set_ms_domain(self):
+        """
+        Test that overriding a tensor to 16bit (when default is 8bit) no longer automatically
+        sets the 'com.microsoft' domain on DQ and Q ops for opset >= 21.
+        Before ONNX 1.16.0, we had to use the 'com.microsoft' domain to be able to use 16-bit quantization.
+        """
+        qdq_model_name = "model_quant_overrides_to_16bit.onnx"
+        inp_zp, _, sig_out_zp, _, _, _, _, _, out_zp, _ = self.perform_qdq_quantization(
+            qdq_model_name,
+            activation_type=onnx.TensorProto.UINT8,  # Default to 8bit activations
+            extra_options={
+                "TensorQuantOverrides": {
+                    "INP": [{"quant_type": QuantType.QUInt16}],
+                    "SIG_OUT": [{"quant_type": QuantType.QUInt16}],
+                }
+            },
+            opset=21,
+        )
+
+        # Input and Sigmoid's output should be overridden to 16bit
+        self.assertEqual(inp_zp.data_type, onnx.TensorProto.UINT16)
+        self.assertEqual(sig_out_zp.data_type, onnx.TensorProto.UINT16)
+
+        # Output should the default uint8 type
+        self.assertEqual(out_zp.data_type, onnx.TensorProto.UINT8)
+
+        # Q/DQ ops should all have the 'com.microsoft' domain
+        qdq_model = onnx.load_model(qdq_model_name)
+        for node in qdq_model.graph.node:
+            if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+                self.assertNotEqual(node.domain, ms_domain)
 
     def test_override_validation_nonexisting_tensor(self):
         """
