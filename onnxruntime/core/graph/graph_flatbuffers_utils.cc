@@ -202,7 +202,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
  *
  * @param tensor flatbuffer representation of a tensor.
  * @return size_t size in bytes of the tensor's data.
-*/
+ */
 size_t GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor) {
   auto fbs_dims = tensor.dims();
 
@@ -468,6 +468,11 @@ Status SaveOrtTensorOrtFormat(
 
   const auto fbs_tensor_name = builder.CreateString(tensor_name);
   const auto fbs_tensor_dims = SaveDims(builder, ort_tensor.Shape().GetDims());
+  // To avoid issues with vtable offsets, raw_data fbs::vector must be constructed before the TensorBuilder begins
+  // building the tensor. See flatbuffer_builder.h's NotNested() function for more details.
+  flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(
+      static_cast<const uint8_t*>(ort_tensor.DataRaw()),
+      ort_tensor.SizeInBytes());
 
   fbs::TensorBuilder tb(builder);
   tb.add_name(fbs_tensor_name);
@@ -480,11 +485,7 @@ Status SaveOrtTensorOrtFormat(
     ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), ort_tensor_data_span, offset));
     int64_t external_data_offset = onnxruntime::narrow<int64_t>(offset);
     tb.add_external_data_offset(external_data_offset);
-  }
-  else {
-    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(
-      static_cast<const uint8_t*>(ort_tensor.DataRaw()),
-      ort_tensor.SizeInBytes());
+  } else {
     tb.add_raw_data(raw_data);
   }
   fbs_tensor = tb.Finish();
@@ -527,7 +528,7 @@ struct UnpackTensorWithType {
           static_cast<size_t>(ort_tensor.Shape().Size()));
     } else {
       ORT_RETURN_IF_NOT(false, "Invalid tensor. Expected: raw data or external data offset. Actual: ",
-                        fbs_tensor.string_data() ? "string data" : "nullptr" , " for tensor named: ",
+                        fbs_tensor.string_data() ? "string data" : "nullptr", " for tensor named: ",
                         fbs_tensor.name()->str());
     }
   }

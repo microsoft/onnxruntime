@@ -211,12 +211,12 @@ std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializersNoString() {
 
   return initializers;
 }
-#endif // ENABLE_TRAINING_APIS
+#endif  // ENABLE_TRAINING_APIS
 
 #define ASSERT_EQ_TENSORPROTO_VECTORFIELD(EXPECTED, ACTUAL, FIELD) \
-  ASSERT_EQ((EXPECTED).FIELD.size(), (ACTUAL).FIELD.size());              \
-  for (int j = 0; j < (EXPECTED).FIELD.size(); ++j) {                   \
-    ASSERT_EQ((EXPECTED).FIELD[j], (ACTUAL).FIELD[j]);                    \
+  ASSERT_EQ((EXPECTED).FIELD.size(), (ACTUAL).FIELD.size());       \
+  for (int j = 0; j < (EXPECTED).FIELD.size(); ++j) {              \
+    ASSERT_EQ((EXPECTED).FIELD[j], (ACTUAL).FIELD[j]);             \
   }
 
 }  // namespace
@@ -266,12 +266,9 @@ TEST(GraphUtilsTest, ExternalWriteReadWithLoadInitializers) {
     ASSERT_STATUS_OK(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader));
     loaded_initializers.emplace_back(std::move(initializer));
     // also check that the loaded flatbuffer tensors have accurately written to the external_data_offset field
-    if (fbs_tensor->data_type() != fbs::TensorDataType::STRING && fbs_tensor->name()->str() != "tensor_32_small")
-    {
+    if (fbs_tensor->data_type() != fbs::TensorDataType::STRING && fbs_tensor->name()->str() != "tensor_32_small") {
       ASSERT_GE(fbs_tensor->external_data_offset(), 0) << "external_data_offset is not set when we expect it to be set for tensor " << fbs_tensor->name()->str();
-    }
-    else
-    {
+    } else {
       ASSERT_EQ(fbs_tensor->external_data_offset(), -1) << "external_data_offset is set for string data when we expect it to not be set for tensor " << fbs_tensor->name()->str();
       ASSERT_TRUE(fbs_tensor->raw_data() || fbs_tensor->string_data()) << "tensor has no data attached to it" << fbs_tensor->name()->str();
     }
@@ -328,7 +325,6 @@ TEST(GraphUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
     fbs_tensors.push_back(fbs_tensor);
   }
 
-  // TODO: might be 844 depending on whether it's 4 byte or 8 byte alignment
   ASSERT_EQ(output_stream.tellp(), 840) << "Data written to the external file is incorrect.";
   output_stream.close();
   ASSERT_TRUE(output_stream.good()) << "Failed to close data file.";
@@ -385,15 +381,15 @@ TEST(GraphUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
     ASSERT_EQ(expected_tensor.Shape(), loaded_tensor.Shape());
     ASSERT_EQ(expected_tensor.SizeInBytes(), loaded_tensor.SizeInBytes());
     std::vector<uint8_t> expected_data(static_cast<uint8_t*>(expected_tensor.MutableDataRaw()),
-                                        static_cast<uint8_t*>(expected_tensor.MutableDataRaw()) + expected_tensor.SizeInBytes());
+                                       static_cast<uint8_t*>(expected_tensor.MutableDataRaw()) + expected_tensor.SizeInBytes());
     std::vector<uint8_t> loaded_data(static_cast<uint8_t*>(loaded_tensor.MutableDataRaw()),
-                                        static_cast<uint8_t*>(loaded_tensor.MutableDataRaw()) + loaded_tensor.SizeInBytes());
+                                     static_cast<uint8_t*>(loaded_tensor.MutableDataRaw()) + loaded_tensor.SizeInBytes());
     for (int j = 0; j < expected_data.size(); ++j) {
       ASSERT_EQ(expected_data[j], loaded_data[j]);
     }
   }
   ASSERT_TRUE(data_validated);
 }
-#endif // ENABLE_TRAINING_APIS
+#endif  // ENABLE_TRAINING_APIS
 }  // namespace test
 }  // namespace onnxruntime

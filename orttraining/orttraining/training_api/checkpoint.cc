@@ -894,7 +894,7 @@ Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointSt
   std::optional<std::ifstream> external_data_stream;
 
   state.has_external_data = false;
-  if (fbs_module_state->has_external_data()) {
+  if (nullptr != fbs_module_state && fbs_module_state->has_external_data()) {
     state.has_external_data = true;
     ORT_RETURN_IF_NOT(checkpoint_path.has_value(),
                       "External data is present in the checkpoint but the checkpoint path is not provided. External data with loading from buffer is not supported yet.");

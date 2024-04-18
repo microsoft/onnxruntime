@@ -30,7 +30,7 @@ struct CheckpointState {
   ModuleCheckpointState module_checkpoint_state;
   OptimizerCheckpointState optimizer_checkpoint_state;
   PropertyBag property_bag;
-  boolean has_external_data;
+  boolean has_external_data = false;
 };
 
 /**
