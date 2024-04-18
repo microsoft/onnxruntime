@@ -18,8 +18,10 @@
 
 namespace onnxruntime {
 
+#if defined(_M_AMD64) || defined(__x86_64__)
 const bool tpause = CPUIDInfo::GetCPUIDInfo().HasTPAUSE();
 const std::uint64_t spin_delay_cycles = 2000;
+#endif
 
 namespace concurrency {
 
