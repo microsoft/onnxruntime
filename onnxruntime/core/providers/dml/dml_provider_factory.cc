@@ -129,7 +129,7 @@ static bool IsNPU(IDXCoreAdapter* compute_adapter) {
   if (!IsHardwareAdapter(compute_adapter)) {
     return false;
   }
-  return !(compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML));
+  return !(compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS));
 }
 
 enum class DeviceType { GPU, NPU, BadDevice };
