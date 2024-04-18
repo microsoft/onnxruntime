@@ -34,6 +34,13 @@ struct CheckpointState {
 };
 
 /**
+ * @brief Get the external data path for a given checkpoint path.
+ *
+ * @param checkpoint_path file where checkpoint is stored.
+*/
+PathString ExternalCheckpointDataPath(const PathString& checkpoint_path);
+
+/**
  * @brief Save training states as ORT checkpoint.
  *
  * @param state parameter/optimizer and other user defined training states.

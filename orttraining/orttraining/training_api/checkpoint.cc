@@ -11,6 +11,10 @@
 
 namespace onnxruntime::training::api {
 
+PathString ExternalCheckpointDataPath(const PathString& checkpoint_path) {
+  return checkpoint_path + ORT_TSTR(".data");
+}
+
 namespace {
 
 /**
@@ -149,10 +153,6 @@ Status OrtValuesFromFlatbufferTensors(
   }
 
   return Status::OK();
-}
-
-PathString ExternalCheckpointDataPath(const PathString& checkpoint_path) {
-  return checkpoint_path + ORT_TSTR(".data");
 }
 
 namespace save {

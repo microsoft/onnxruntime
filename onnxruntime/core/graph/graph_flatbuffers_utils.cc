@@ -198,7 +198,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
  * @brief Calculates how much memory will be required for putting contents of the given tensor into a plain array.
  *
  * complex64/complex128 tensors are not supported. The size is calculated from the dimensions and the data type,
- * to accomodate fbs::Tensors with external data.
+ * to accommodate fbs::Tensors with external data.
  *
  * @param tensor flatbuffer representation of a tensor.
  * @return size_t size in bytes of the tensor's data.

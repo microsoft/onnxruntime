@@ -677,8 +677,15 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
   ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(), state_->module_checkpoint_state.named_parameters,
                                                        eval_sess_->GetDataTransferManager()));
 
+  if (state_->has_external_data) {
+    std::string external_data_path = ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(ExternalCheckpointDataPath(ToPathString(inference_model_path)));
+    PathString inference_model_pathstring = ToPathString(inference_model_path);
+    ORT_THROW_IF_ERROR(Model::SaveWithExternalInitializers(*inference_model, inference_model_pathstring, external_data_path, 64));
+  }
+  else {
+    ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
+  }
   // Save the model at the desired location.
-  ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
   return Status::OK();
 }
 #endif
