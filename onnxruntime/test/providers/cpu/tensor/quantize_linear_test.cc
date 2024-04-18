@@ -378,6 +378,52 @@ TEST(QuantizeLinearOpTest, Int16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Test int4 QuantizeLinear (per tensor)
+TEST(QuantizeLinearOpTest, Int4) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{7};
+  constexpr int8_t unused_val = 0;
+  test.AddInput<float>("x", dims, {
+                                      -20.0f,  // Clamp to qmin
+                                      -16.0f,  // Close to qmin
+                                      -3.0f,   // round
+                                      0.0f,    // Zero-point
+                                      3.0f,    // round
+                                      12.0f,   // qmax
+                                      20.0f,   // Clamp to qmax
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<Int4x2>("zero_point", {}, {Int4x2(1, unused_val)}, true);
+  test.AddOutput<Int4x2>("y", dims,
+                         {Int4x2(-8, -7), Int4x2(-1, 1), Int4x2(2, 7),
+                          Int4x2(7, unused_val)});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test uint4 QuantizeLinear (per tensor)
+TEST(QuantizeLinearOpTest, UInt4) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{7};
+  constexpr uint8_t unused_val = 0;
+  test.AddInput<float>("x", dims, {
+                                      -20.0f,  // Clamp to qmin
+                                      -8.0f,   // qmin
+                                      -3.0f,   // round
+                                      0.0f,    // Zero-point
+                                      3.0f,    // round
+                                      22.0f,   // qmax
+                                      20.0f,   // Clamp to qmax
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<UInt4x2>("zero_point", {}, {UInt4x2(4, unused_val)}, true);
+  test.AddOutput<UInt4x2>("y", dims,
+                          {UInt4x2(0, 0), UInt4x2(2, 4), UInt4x2(6, 15),
+                           UInt4x2(15, unused_val)});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // quantize with scalar zero point and scale
 TEST(QuantizeLinearOpTest, Int8_NegativeZeroPoint) {
   // TODO: Unskip when fixed #41968513

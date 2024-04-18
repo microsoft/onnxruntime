@@ -734,7 +734,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
     const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
     return size == 0 ? Status::OK() : Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
-  if (ONNX_NAMESPACE::TensorProto_DataType_INT4 != tensor.data_type()) {
+  if (ONNX_NAMESPACE::TensorProto_DataType_UINT4 != tensor.data_type()) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
 

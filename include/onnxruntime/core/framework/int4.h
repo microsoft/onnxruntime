@@ -25,6 +25,14 @@ struct Int4x2 {
     return index == 0 ? val_0 : val_1;
   }
 
+  inline bool operator==(const Int4x2& other) const {
+    return this->val_0 == other.val_0 && this->val_1 == other.val_1;
+  }
+
+  inline bool operator!=(const Int4x2& other) const {
+    return !(*this == other);
+  }
+
   inline uint8_t ToBits() const {
     return (static_cast<uint8_t>(val_1) << 4) | (static_cast<uint8_t>(val_0) & 0xF);
   }
@@ -79,6 +87,14 @@ struct UInt4x2 {
   inline uint8_t operator[](size_t index) const {
     assert(index <= 1);
     return index == 0 ? val_0 : val_1;
+  }
+
+  inline bool operator==(const UInt4x2& other) const {
+    return this->val_0 == other.val_0 && this->val_1 == other.val_1;
+  }
+
+  inline bool operator!=(const UInt4x2& other) const {
+    return !(*this == other);
   }
 
   inline uint8_t ToBits() const {
