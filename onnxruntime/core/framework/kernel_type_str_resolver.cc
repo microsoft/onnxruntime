@@ -13,10 +13,35 @@ namespace fb = flatbuffers;
 
 namespace onnxruntime {
 
+static OpKernelTypeStrMap::const_iterator LookUpOpId(const OpIdentifier& op_id,
+                                                     const OpKernelTypeStrMap& map) {
+  if (op_id.domain == kMSInternalNHWCDomain) {
+    // Special case for kMSInternalNHWCDomain:
+    // This domain is set, replacing the original domain, by ORT during layout transformation.
+    // It maps to one of these alternate domains, so try them all.
+    constexpr std::array alternate_domains{
+        std::string_view{kOnnxDomain},
+        std::string_view{kMSDomain},
+    };
+
+    for (auto alternate_domain : alternate_domains) {
+      const auto alternate_op_id = OpIdentifier{std::string{alternate_domain}, op_id.op_type, op_id.since_version};
+      const auto it = map.find(alternate_op_id);
+      if (it != map.end()) {
+        return it;
+      }
+    }
+
+    return map.end();
+  }
+
+  return map.find(op_id);
+}
+
 Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
                                                    gsl::span<const ArgTypeAndIndex>& resolved_args) const {
   const auto op_id = utils::MakeOpId(node);
-  const auto op_it = op_kernel_type_str_map_.find(op_id);
+  const auto op_it = LookUpOpId(op_id, op_kernel_type_str_map_);
   ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
   const auto& type_str_map = op_it->second;
 
