@@ -83,10 +83,6 @@ jobs:
     clean: true
     submodules: none
 
-  - task: UseDotNet@2
-    inputs:
-      version: '7.x'
-
   - template: win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: ${{parameters.EnvSetupScript}}
@@ -99,6 +95,13 @@ jobs:
       MachinePool: ${{parameters.MachinePool}}
       WithCache: ${{parameters.WITH_CACHE}}
       Today: $(Today)
+
+  - ${{ if eq(parameters.isX86, true) }}:
+    - task: UseDotNet@2
+      inputs:
+        version: '7.x'
+      env:
+        PROCESSOR_ARCHITECTURE: 'x86'
 
   - task: NodeTool@0
     inputs:
