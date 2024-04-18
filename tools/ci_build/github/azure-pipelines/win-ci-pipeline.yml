@@ -134,7 +134,6 @@ stages:
         ORT_EP_NAME: VitisAI
         GenerateDocumentation: false
         WITH_CACHE: false
-        # Intel EPs require Intel CPUs
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
 # Tests doesn't work on AMD CPUs
