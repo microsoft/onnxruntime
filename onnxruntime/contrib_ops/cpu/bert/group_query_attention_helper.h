@@ -268,19 +268,16 @@ Status GeneratePositionIds(const int32_t* seqlens_k, int batch_size, int sequenc
   // auto* tp = context->GetOperatorThreadPool();
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-  // TODO: parallelize this
   if (sequence_length == 1) {
+    // In non-prompt case, we only need to generate position ids for the first token
     for (int b = 0; b < batch_size; b++) {
       pos_ids[b] = static_cast<int64_t>(seqlens_k[b]);
     }
   } else {
+    // In prompt case, we don't need to generate position ids, so don't use this
     for (int b = 0; b < batch_size; b++) {
       for (int s = 0; s < sequence_length; s++) {
-        if (s < seqlens_k[b] + 1) {
-          pos_ids[b * sequence_length + s] = static_cast<int64_t>(s);
-        } else {
-          pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
-        }
+        pos_ids[b * sequence_length + s] = static_cast<int64_t>(s);
       }
     }
   }

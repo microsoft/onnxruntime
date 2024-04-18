@@ -14,7 +14,6 @@
 
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
-#include <iostream>
 
 using onnxruntime::concurrency::ThreadPool;
 
@@ -97,19 +96,25 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
+  auto element_type = DataTypeImpl::GetType<T>();
   OrtValue Q;
   OrtValue K;
   OrtValue V;
   if (packed_qkv) {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size, query, Q));
-  } else {
+  } else if (sequence_length > 1) {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, num_heads_, sequence_length, head_size, query, Q));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, kv_num_heads_, sequence_length, head_size, key, K));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, kv_num_heads_, sequence_length, head_size, value, V));
+  } else {
+    std::cout << "here" << std::endl;
+    Tensor::InitOrtValue(element_type, std::move(const_cast<Tensor&>(*query)), Q);
+    Tensor::InitOrtValue(element_type, std::move(const_cast<Tensor&>(*key)), K);
+    Tensor::InitOrtValue(element_type, std::move(const_cast<Tensor&>(*value)), V);
   }
 
   if (do_rotary_) {
@@ -124,29 +129,24 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     rotary_params.seq_stride = head_size;
     rotary_params.head_stride = sequence_length * rotary_params.seq_stride;
     rotary_params.batch_stride = (packed_qkv ? (num_heads_ + 2 * kv_num_heads_) : num_heads_) * rotary_params.head_stride;
-    rotary_params.position_ids_format = 1;
+    rotary_params.position_ids_format = sequence_length == 1 ? 1 : 0;
     rotary_params.transposed = true;
     auto* tp = context->GetOperatorThreadPool();
-    OrtValue pos_ids;
-    auto element_type = DataTypeImpl::GetType<int64_t>();
-    std::vector<int64_t> pos_id_dim({batch_size, sequence_length});
-    gsl::span<const int64_t> pos_id_dim_span{pos_id_dim};
-    TensorShape pos_id_shape(pos_id_dim_span);
-    Tensor::InitOrtValue(element_type, pos_id_shape, allocator, pos_ids);
-    ORT_RETURN_IF_ERROR(group_query_attention_helper::GeneratePositionIds(seqlens_k->Data<int32_t>(), batch_size,
-                                                                          sequence_length, pos_ids.GetMutable<Tensor>()->MutableData<int64_t>(), context));
-
+    std::vector<int64_t> pos_ids(sequence_length == 1 ? batch_size : 1);
+    if (sequence_length == 1) {
+      for (int b = 0; b < batch_size; b++) {
+        pos_ids[b] = static_cast<int64_t>(seqlens_k->Data<int32_t>()[b]);
+      }
+    } else {
+      pos_ids[0] = static_cast<int64_t>(0);
+    }
     const T* q_input;
     const T* k_input;
     T* q_rotary;
     T* k_rotary;
     if (packed_qkv) {
       OrtValue RotaryQKV;
-      element_type = DataTypeImpl::GetType<T>();
-      std::vector<int64_t> qkv_dim({batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size});
-      gsl::span<const int64_t> qkv_dim_span{qkv_dim};
-      TensorShape qkv_shape(qkv_dim_span);
-      Tensor::InitOrtValue(element_type, qkv_shape, allocator, RotaryQKV);
+      Tensor::InitOrtValue(element_type, TensorShape({batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size}), allocator, RotaryQKV);
       q_input = Q.Get<Tensor>().Data<T>();
       k_input = q_input + num_heads_ * sequence_length * head_size;
       q_rotary = RotaryQKV.GetMutable<Tensor>()->MutableData<T>();
@@ -154,16 +154,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       Q = RotaryQKV;
     } else {
       OrtValue RotaryQ;
-      element_type = DataTypeImpl::GetType<T>();
-      std::vector<int64_t> q_dim({batch_size, num_heads_, sequence_length, head_size});
-      gsl::span<const int64_t> q_dim_span{q_dim};
-      TensorShape q_shape(q_dim_span);
-      Tensor::InitOrtValue(element_type, q_shape, allocator, RotaryQ);
+      Tensor::InitOrtValue(element_type, TensorShape({batch_size, num_heads_, sequence_length, head_size}), allocator, RotaryQ);
       OrtValue RotaryK;
-      std::vector<int64_t> k_dim({batch_size, kv_num_heads_, sequence_length, head_size});
-      gsl::span<const int64_t> k_dim_span{k_dim};
-      TensorShape k_shape(k_dim_span);
-      Tensor::InitOrtValue(element_type, k_shape, allocator, RotaryK);
+      Tensor::InitOrtValue(element_type, TensorShape({batch_size, kv_num_heads_, sequence_length, head_size}), allocator, RotaryK);
       q_input = Q.Get<Tensor>().Data<T>();
       k_input = K.Get<Tensor>().Data<T>();
       q_rotary = RotaryQ.GetMutable<Tensor>()->MutableData<T>();
@@ -172,15 +165,16 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       K = RotaryK;
     }
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
-                                              pos_ids.Get<Tensor>().Data<int64_t>(), cos_cache->Data<T>(),
+                                              pos_ids.data(), cos_cache->Data<T>(),
                                               sin_cache->Data<T>(), q_rotary, rotary_interleaved_));
+
     rotary_params.num_heads = kv_num_heads_;
     rotary_params.hidden_size = parameters.kv_hidden_size;
     if (!packed_qkv) {
       rotary_params.batch_stride = kv_num_heads_ * rotary_params.head_stride;
     }
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
-                                              pos_ids.Get<Tensor>().Data<int64_t>(), cos_cache->Data<T>(),
+                                              pos_ids.data(), cos_cache->Data<T>(),
                                               sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
     if (packed_qkv) {
       const T* v_input = k_input + kv_num_heads_ * sequence_length * head_size;

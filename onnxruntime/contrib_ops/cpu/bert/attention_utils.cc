@@ -11,26 +11,23 @@ namespace onnxruntime {
 namespace contrib {
 
 // Reshape Q/K/V from BxSxD to BxSxNxH
-Status Reshape_BSD_to_BSNH(Tensor* qkv,
+inline Status Reshape_BSD_to_BSNH(Tensor* qkv,
                            int batch_size,
                            int sequence_length,
                            int num_heads,
                            int head_size) {
-  std::vector<int64_t> reshape_dims({batch_size, sequence_length, num_heads, head_size});
-  gsl::span<const int64_t> reshape_dims_span{reshape_dims};
-  TensorShape qkv_bsnh(reshape_dims_span);
-  qkv->Reshape(qkv_bsnh);
+  qkv->Reshape(TensorShape({batch_size, sequence_length, num_heads, head_size}));
   return Status::OK();
 }
 
 // Transpose Q/K/V from BxSxNxH to BxNxSxH
-Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
+inline Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
                               OrtValue& qkv_transposed,
                               concurrency::ThreadPool* tp) {
   std::vector<size_t> permutations({0, 2, 1, 3});
   gsl::span<const size_t> permutations_span{permutations};
   size_t from = 2, to = 1;
-  SingleAxisTranspose(permutations_span, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to, nullptr, tp);
+  SingleAxisTranspose(permutations, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to, nullptr, tp);
   return Status::OK();
 }
 
@@ -186,10 +183,7 @@ Status AddBiasReshape(const Tensor* qkv,        // Input: Q/K/V data - query is 
   }
 
   // Reshape Q from BxSxD to BxNxSxH
-  std::vector<int64_t> reshape_dims({batch_size, num_heads, sequence_length, head_size});
-  gsl::span<const int64_t> reshape_dims_span{reshape_dims};
-  TensorShape qkv_final_dims(reshape_dims_span);
-  qkv_with_bias.GetMutable<Tensor>()->Reshape(qkv_final_dims);
+  qkv_with_bias.GetMutable<Tensor>()->Reshape(TensorShape({batch_size, num_heads, sequence_length, head_size}));
 
   return Status::OK();
 }

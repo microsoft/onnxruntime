@@ -174,7 +174,6 @@ void PrepareMaskGQA(T* mask_data,
       // Apply causal/local mask for prompt case.
       for (int s_i = 0; s_i < sequence_length; s_i++) {
         for (int m_i = s_i + 1; m_i < buffer_sequence_length; m_i++) {
-          // std::cout << m_i << " ";
           p_mask[s_i * buffer_sequence_length + m_i] = std::numeric_limits<T>::lowest();
         }
         // Apply local mask.
