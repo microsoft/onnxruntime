@@ -185,6 +185,11 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
 }
 
 void BasicBackend::EnableStreams() {
+  // Return silently for NPU as it's currently treated as a read-only flag by the NPU plugin
+  // and throws an exception for the same
+  if (global_context_.device_type.find("NPU") != std::string::npos)
+    return;
+
   // Streams can be set only if the device is not one of AUTO, MULTI, or HETERO
   // Throw an exception if the user tries to set num_streams for these devices
   if ((global_context_.device_type.find("MULTI") != std::string::npos) ||
