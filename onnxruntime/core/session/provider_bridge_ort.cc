@@ -797,6 +797,8 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetType_Float8E5M2() override { return DataTypeImpl::GetType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetType_Float8E5M2FNUZ() override { return DataTypeImpl::GetType<Float8E5M2FNUZ>(); }
 #endif
+  MLDataType DataTypeImpl__GetType_Int4x2() override { return DataTypeImpl::GetType<Int4x2>(); }
+  MLDataType DataTypeImpl__GetType_UInt4x2() override { return DataTypeImpl::GetType<UInt4x2>(); }
 
   MLDataType DataTypeImpl__GetTensorType_bool() override { return DataTypeImpl::GetTensorType<bool>(); }
   MLDataType DataTypeImpl__GetTensorType_int8() override { return DataTypeImpl::GetTensorType<int8_t>(); }
@@ -818,6 +820,8 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetTensorType_Float8E5M2() override { return DataTypeImpl::GetTensorType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetTensorType_Float8E5M2FNUZ() override { return DataTypeImpl::GetTensorType<Float8E5M2FNUZ>(); }
 #endif
+  MLDataType DataTypeImpl__GetTensorType_Int4x2() override { return DataTypeImpl::GetTensorType<Int4x2>(); }
+  MLDataType DataTypeImpl__GetTensorType_UInt4x2() override { return DataTypeImpl::GetTensorType<UInt4x2>(); }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   MLDataType DataTypeImpl__GetSparseTensorType_bool() override { return DataTypeImpl::GetSparseTensorType<bool>(); }
@@ -840,6 +844,8 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>(); }
 #endif
+  MLDataType DataTypeImpl__GetSparseTensorType_Int4x2() override { return DataTypeImpl::GetSparseTensorType<Int4x2>(); }
+  MLDataType DataTypeImpl__GetSparseTensorType_UInt4x2() override { return DataTypeImpl::GetSparseTensorType<UInt4x2>(); }
 #endif
 
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
@@ -1201,6 +1207,8 @@ struct ProviderHostImpl : ProviderHost {
   Float8E5M2* Tensor__MutableData_Float8E5M2(Tensor* p) override { return p->MutableData<Float8E5M2>(); }
   Float8E5M2FNUZ* Tensor__MutableData_Float8E5M2FNUZ(Tensor* p) override { return p->MutableData<Float8E5M2FNUZ>(); }
 #endif
+  Int4x2* Tensor__MutableData_Int4x2(Tensor* p) override { return p->MutableData<Int4x2>(); }
+  UInt4x2* Tensor__MutableData_UInt4x2(Tensor* p) override { return p->MutableData<UInt4x2>(); }
 
   const bool* Tensor__Data_bool(const Tensor* p) override { return p->Data<bool>(); }
   const int8_t* Tensor__Data_int8(const Tensor* p) override { return p->Data<int8_t>(); }
@@ -1222,6 +1230,8 @@ struct ProviderHostImpl : ProviderHost {
   const Float8E5M2* Tensor__Data_Float8E5M2(const Tensor* p) override { return p->Data<Float8E5M2>(); }
   const Float8E5M2FNUZ* Tensor__Data_Float8E5M2FNUZ(const Tensor* p) override { return p->Data<Float8E5M2FNUZ>(); }
 #endif
+  const Int4x2* Tensor__Data_Int4x2(const Tensor* p) override { return p->Data<Int4x2>(); }
+  const UInt4x2* Tensor__Data_UInt4x2(const Tensor* p) override { return p->Data<UInt4x2>(); }
 
   gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) override { return p->DataAsSpan<int64_t>(); }
 
@@ -1251,6 +1261,8 @@ struct ProviderHostImpl : ProviderHost {
   bool Tensor__IsDataType_Float8E5M2(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2>(); }
   bool Tensor__IsDataType_Float8E5M2FNUZ(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2FNUZ>(); }
 #endif
+  bool Tensor__IsDataType_Int4x2(const Tensor* p) noexcept override { return p->IsDataType<Int4x2>(); }
+  bool Tensor__IsDataType_UInt4x2(const Tensor* p) noexcept override { return p->IsDataType<UInt4x2>(); }
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
   void Tensor__Reshape(Tensor* p, const TensorShape& new_shape) override { return p->Reshape(new_shape); }
