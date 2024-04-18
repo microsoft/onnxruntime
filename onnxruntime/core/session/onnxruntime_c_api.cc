@@ -216,6 +216,12 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   }
 
   auto elem_count = narrow<size_t>(tensor_shape.Size());
+
+  // TODO: Handle this more cleanly.
+  if (utils::IsPrimitiveDataType<Int4x2>(ml_type) || utils::IsPrimitiveDataType<UInt4x2>(ml_type)) {
+    elem_count = (elem_count + 1) / 2;
+  }
+
   size_t size_to_allocate;
   if (!IAllocator::CalcMemSizeForArray(ml_type->Size(), elem_count, &size_to_allocate)) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "size overflow");
