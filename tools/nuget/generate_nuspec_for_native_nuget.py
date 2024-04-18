@@ -987,7 +987,7 @@ def generate_files(line_list, args):
                 args.package_name + ".targets",
             )
 
-            net6_android_source_targets = os.path.join(
+            net7_android_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
@@ -996,7 +996,7 @@ def generate_files(line_list, args):
                 "net7.0-android",
                 "targets.xml",
             )
-            net6_android_target_targets = os.path.join(
+            net7_android_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
@@ -1006,10 +1006,10 @@ def generate_files(line_list, args):
                 args.package_name + ".targets",
             )
 
-            net6_ios_source_targets = os.path.join(
+            net7_ios_source_targets = os.path.join(
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net7.0-ios", "targets.xml"
             )
-            net6_ios_target_targets = os.path.join(
+            net7_ios_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
@@ -1019,7 +1019,7 @@ def generate_files(line_list, args):
                 args.package_name + ".targets",
             )
 
-            net6_maccatalyst_source_targets = os.path.join(
+            net7_maccatalyst_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
@@ -1028,14 +1028,14 @@ def generate_files(line_list, args):
                 "net7.0-maccatalyst",
                 "_._",
             )
-            net6_maccatalyst_target_targets = os.path.join(
+            net7_maccatalyst_target_targets = os.path.join(
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net7.0-maccatalyst", "_._"
             )
 
-            net6_macos_source_targets = os.path.join(
+            net7_macos_source_targets = os.path.join(
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net7.0-macos", "targets.xml"
             )
-            net6_macos_target_targets = os.path.join(
+            net7_macos_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
@@ -1047,10 +1047,10 @@ def generate_files(line_list, args):
 
             os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
             os.system(copy_command + " " + xamarinios_source_targets + " " + xamarinios_target_targets)
-            os.system(copy_command + " " + net6_android_source_targets + " " + net6_android_target_targets)
-            os.system(copy_command + " " + net6_ios_source_targets + " " + net6_ios_target_targets)
-            os.system(copy_command + " " + net6_maccatalyst_source_targets + " " + net6_maccatalyst_target_targets)
-            os.system(copy_command + " " + net6_macos_source_targets + " " + net6_macos_target_targets)
+            os.system(copy_command + " " + net7_android_source_targets + " " + net7_android_target_targets)
+            os.system(copy_command + " " + net7_ios_source_targets + " " + net7_ios_target_targets)
+            os.system(copy_command + " " + net7_maccatalyst_source_targets + " " + net7_maccatalyst_target_targets)
+            os.system(copy_command + " " + net7_macos_source_targets + " " + net7_macos_target_targets)
 
             files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
             files_list.append(
@@ -1063,30 +1063,30 @@ def generate_files(line_list, args):
             )
 
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net7.0-android31.0" />'
+                "<file src=" + '"' + net7_android_target_targets + '" target="build\\net7.0-android31.0" />'
             )
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net7.0-android31.0" />'
-            )
-
-            files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net7.0-ios15.4" />')
-            files_list.append(
-                "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net7.0-ios15.4" />'
+                "<file src=" + '"' + net7_android_target_targets + '" target="buildTransitive\\net7.0-android31.0" />'
             )
 
+            files_list.append("<file src=" + '"' + net7_ios_target_targets + '" target="build\\net7.0-ios15.4" />')
             files_list.append(
-                "<file src=" + '"' + net6_maccatalyst_target_targets + '" target="build\\net7.0-maccatalyst14.0" />'
+                "<file src=" + '"' + net7_ios_target_targets + '" target="buildTransitive\\net7.0-ios15.4" />'
+            )
+
+            files_list.append(
+                "<file src=" + '"' + net7_maccatalyst_target_targets + '" target="build\\net7.0-maccatalyst14.0" />'
             )
             files_list.append(
                 "<file src="
                 + '"'
-                + net6_maccatalyst_target_targets
+                + net7_maccatalyst_target_targets
                 + '" target="buildTransitive\\net7.0-maccatalyst14.0" />'
             )
 
-            files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net7.0-macos12.3" />')
+            files_list.append("<file src=" + '"' + net7_macos_target_targets + '" target="build\\net7.0-macos12.3" />')
             files_list.append(
-                "<file src=" + '"' + net6_macos_target_targets + '" target="buildTransitive\\net7.0-macos12.3" />'
+                "<file src=" + '"' + net7_macos_target_targets + '" target="buildTransitive\\net7.0-macos12.3" />'
             )
 
         # Process Training specific targets and props
@@ -1110,7 +1110,7 @@ def generate_files(line_list, args):
                 args.package_name + ".targets",
             )
 
-            net6_android_source_targets = os.path.join(
+            net7_android_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
@@ -1119,7 +1119,7 @@ def generate_files(line_list, args):
                 "net7.0-android",
                 "targets.xml",
             )
-            net6_android_target_targets = os.path.join(
+            net7_android_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
@@ -1130,7 +1130,7 @@ def generate_files(line_list, args):
             )
 
             os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
-            os.system(copy_command + " " + net6_android_source_targets + " " + net6_android_target_targets)
+            os.system(copy_command + " " + net7_android_source_targets + " " + net7_android_target_targets)
 
             files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
             files_list.append(
@@ -1138,10 +1138,10 @@ def generate_files(line_list, args):
             )
 
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net7.0-android31.0" />'
+                "<file src=" + '"' + net7_android_target_targets + '" target="build\\net7.0-android31.0" />'
             )
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net7.0-android31.0" />'
+                "<file src=" + '"' + net7_android_target_targets + '" target="buildTransitive\\net7.0-android31.0" />'
             )
 
     # README
