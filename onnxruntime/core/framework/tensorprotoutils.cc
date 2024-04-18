@@ -326,7 +326,8 @@ Status UnpackTensorWithExternalData<Int4x2>(const ONNX_NAMESPACE::TensorProto& t
   size_t num_packed_pairs = (expected_num_elements + 1) / 2;
   ORT_RETURN_IF_NOT(num_packed_pairs == unpacked_tensor.size(), "Unexpected number of packed int4 pairs");
 
-  gsl::span<const Int4x2> src_span = gsl::make_span(reinterpret_cast<const Int4x2*>(unpacked_tensor.data()), num_packed_pairs);
+  gsl::span<const Int4x2> src_span = gsl::make_span(reinterpret_cast<const Int4x2*>(unpacked_tensor.data()),
+                                                    num_packed_pairs);
   gsl::span<Int4x2> dst_span = gsl::make_span(p_data, expected_num_elements);
 
   std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);
@@ -347,7 +348,8 @@ Status UnpackTensorWithExternalData<UInt4x2>(const ONNX_NAMESPACE::TensorProto& 
   size_t num_packed_pairs = (expected_num_elements + 1) / 2;
   ORT_RETURN_IF_NOT(num_packed_pairs == unpacked_tensor.size(), "Unexpected number of packed int4 pairs");
 
-  gsl::span<const UInt4x2> src_span = gsl::make_span(reinterpret_cast<const UInt4x2*>(unpacked_tensor.data()), num_packed_pairs);
+  gsl::span<const UInt4x2> src_span = gsl::make_span(reinterpret_cast<const UInt4x2*>(unpacked_tensor.data()),
+                                                     num_packed_pairs);
   gsl::span<UInt4x2> dst_span = gsl::make_span(p_data, expected_num_elements);
 
   std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);
