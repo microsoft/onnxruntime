@@ -5,6 +5,7 @@
 #include "core/framework/element_type_lists.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/int4.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
@@ -126,6 +127,8 @@ REGISTER_DEQUANTIZELINEAR(uint8_t)
 REGISTER_DEQUANTIZELINEAR(int16_t)
 REGISTER_DEQUANTIZELINEAR(uint16_t)
 REGISTER_DEQUANTIZELINEAR(int32_t)
+REGISTER_DEQUANTIZELINEAR(Int4x2)
+REGISTER_DEQUANTIZELINEAR(UInt4x2)
 #if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FN)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FNUZ)
@@ -199,6 +202,24 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
     DequantizeLinear<int32_t>);
 
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    DequantizeLinear,
+    1,
+    Int4x2,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<Int4x2>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
+    DequantizeLinear<Int4x2>);
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    DequantizeLinear,
+    1,
+    UInt4x2,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<UInt4x2>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
+    DequantizeLinear<UInt4x2>);
+
 }  // namespace contrib
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
@@ -216,6 +237,32 @@ struct DequantizeLinearApply {
     }
   }
 };
+
+#define DEQUANTIZE_LINEAR_APPLY_INT4(T)                                                                                                   \
+  template <typename OutT>                                                                                                                \
+  struct DequantizeLinearApply<T, OutT> {                                                                                                 \
+    void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) { \
+      size_t input_index = 0;                                                                                                             \
+      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                                                               \
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                                                              \
+          size_t bd_i = bd >> 1;  /*bd / 2*/                                                                                              \
+          size_t bd_j = bd & 0x1; /*bd % 2*/                                                                                              \
+          auto zp = zero_point ? static_cast<int32_t>(zero_point[bd_i][bd_j]) : 0;                                                        \
+          auto sc = static_cast<float>(scale[bd]);                                                                                        \
+          for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {                                                               \
+            size_t input_i = input_index >> 1;                                                                                            \
+            size_t input_j = input_index & 0x1;                                                                                           \
+            *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(input[input_i][input_j]) - zp) * sc);                   \
+            input_index += 1;                                                                                                             \
+          }                                                                                                                               \
+        }                                                                                                                                 \
+      }                                                                                                                                   \
+      assert(input_index == static_cast<size_t>(N * broadcast_dim * block_size));                                                         \
+    }                                                                                                                                     \
+  };
+
+DEQUANTIZE_LINEAR_APPLY_INT4(Int4x2);
+DEQUANTIZE_LINEAR_APPLY_INT4(UInt4x2);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
