@@ -1065,6 +1065,7 @@ void LaunchCopyCrossQKSingleDecodeStep(
 template <typename T>
 __global__ void CopyDecoderCrossQKAllStepsKernel(
     int context_decoding_len,
+    int num_beams,
     int num_return_sequences,
     int max_length,
     int frames_of_k,
@@ -1082,7 +1083,7 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   const int ret_seq_id = br % num_return_sequences;
 
   const int64_t offset_in_cache = ((int64_t)batch * num_return_sequences + ret_seq_id) * max_length + token_decoding_index + context_decoding_len;
-  int bi_src = batch * num_return_sequences + cache_indir_data[offset_in_cache];
+  int bi_src = batch * num_beams + cache_indir_data[offset_in_cache];
 
   T* target    = cross_qk_output      + (((int64_t)br     * layer_head_pair_count + (int64_t)pair) * total_decoding_length + token_decoding_index) * frames_of_k;
   const T* src = cross_qk_buffer_data + (((int64_t)bi_src * layer_head_pair_count + (int64_t)pair) * max_length            + token_decoding_index) * frames_of_k;
@@ -1116,6 +1117,7 @@ void LaunchFinalizeCrossQK(
 
   CopyDecoderCrossQKAllStepsKernel<<<grid, block, 0, stream>>>(
     context_decoding_len,
+    num_beams,
     num_return_sequences,
     max_length,
     frames_of_k,
