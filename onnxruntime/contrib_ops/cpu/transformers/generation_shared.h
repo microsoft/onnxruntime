@@ -48,6 +48,7 @@ struct IBeamSearchState {
 struct IBeamSearchCpuState {
   gsl::span<int32_t> sequence_lengths;  // shape (batch_size, num_beams), initial sequence length
   gsl::span<int32_t> sequences_space;   // shape (2, batch_size, num_beams, max_seq_length)
+  gsl::span<int32_t> indices_space;     // shape (2, batch_size, num_beams, max_seq_length) (same as sequences
 
   // The following are used only by CUDA operator for data copied from device.
   gsl::span<float> topk_scores;        // shape (batch_size, 2*num_beams), scores of topk candidates (K=2*num_beams).
@@ -97,6 +98,7 @@ struct ISamplingState {
 struct ISequences {
   virtual ~ISequences() {}
   virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
+  virtual gsl::span<const int32_t> GetSequenceIndices(int beam_index) const = 0;
   virtual int GetSequenceLength() const = 0;
 };
 
@@ -117,6 +119,7 @@ struct IBeamScorer {
   virtual void Finalize(ISequences& sequences,
                         gsl::span<const float>& final_beam_scores,
                         Tensor* output_sequences,
+                        Tensor* output_sequence_indices,
                         Tensor* output_sequence_scores) = 0;
 
   virtual gsl::span<int32_t>& GetNextIndices() = 0;

@@ -429,34 +429,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     }
   }
 
-  if (decoder_subgraph_.output_cross_qk_) {
-    TensorShape cross_qk_shape{
-        static_cast<int64_t>(parameters->batch_size),
-        static_cast<int64_t>(parameters->num_return_sequences),
-        cross_qk_layer_head_pair_count,
-        static_cast<int64_t>(iteration_counter - 1),
-        frames_of_k};
-    cross_qk_output = this->context_.Output(3, cross_qk_shape);
-
-    size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
-    const int* cache_indir_data = decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>()->Data<int32_t>();
-    ORT_RETURN_IF_ERROR(this->finalize_decoder_cross_qk_func_(
-      this->ort_stream_,
-      iteration_counter,
-      parameters->sequence_length,
-      parameters->batch_size,
-      parameters->num_beams,
-      parameters->max_length,
-      static_cast<int>(cross_qk_layer_head_pair_count),
-      cross_qk_layer_head_pairs,
-      static_cast<int>(frames_of_k),
-      cross_qk_buffer_data,
-      cross_qk_output->MutableData<float>(),
-      parameters->num_return_sequences,
-      cache_indir_data,
-      ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)));
-  }
-
   gsl::span<const float> final_beam_scores = beam_state.beam_scores;
   if (this->IsCuda()) {
     ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores,
@@ -466,10 +438,66 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     final_beam_scores = cpu_state.final_beam_scores;
   }
 
+  TensorShape output_sequence_indices_shape{
+      static_cast<int64_t>(parameters->batch_size),
+      static_cast<int64_t>(parameters->num_return_sequences),
+      static_cast<int64_t>(parameters->max_length)};
+
+  OrtValue output_sequence_indices_value;
+  Tensor *output_sequence_indices{};
+
+  if (decoder_subgraph_.output_cross_qk_) {
+    Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), output_sequence_indices_shape, this->cpu_allocator_, output_sequence_indices_value);
+    output_sequence_indices = output_sequence_indices_value.GetMutable<Tensor>();
+  }
+
   this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,
+                               output_sequence_indices,
                                output_sequences_scores);
+
+  if (decoder_subgraph_.output_cross_qk_) {
+    TensorShape cross_qk_shape{
+        static_cast<int64_t>(parameters->batch_size),
+        static_cast<int64_t>(parameters->num_return_sequences),
+        cross_qk_layer_head_pair_count,
+        static_cast<int64_t>(iteration_counter - 1),
+        frames_of_k};
+    cross_qk_output = this->context_.Output(3, cross_qk_shape);
+
+    OrtValue output_sequence_indices_value_device;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), output_sequence_indices_shape, this->temp_space_allocator_, output_sequence_indices_value_device);
+    Tensor* output_sequence_indices_device = output_sequence_indices_value_device.GetMutable<Tensor>();
+
+    size_t cache_indir_data_size = output_sequence_indices_shape.Size();
+    const int* cache_indir_data = output_sequence_indices->MutableData<int32_t>();
+    int* cache_indir_data_device = output_sequence_indices_device->MutableData<int32_t>();
+
+    assert(this->IsCuda());
+    ORT_RETURN_IF_ERROR(this->device_copy_int32_func_(gsl::span<int32_t>{cache_indir_data_device, cache_indir_data_size},
+                                                      gsl::span<const int32_t>{cache_indir_data, cache_indir_data_size},
+                                                      this->ort_stream_,
+                                                      DeviceCopyDirection::hostToDevice));
+
+    ORT_RETURN_IF_ERROR(this->finalize_decoder_cross_qk_func_(
+        this->ort_stream_,
+        iteration_counter,
+        parameters->sequence_length,
+        parameters->batch_size,
+        parameters->num_beams,
+        parameters->max_length,
+        static_cast<int>(cross_qk_layer_head_pair_count),
+        cross_qk_layer_head_pairs,
+        static_cast<int>(frames_of_k),
+        cross_qk_buffer_data,
+        cross_qk_output->MutableData<float>(),
+        parameters->num_return_sequences,
+        cache_indir_data_device,
+        ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)));
+  }
+
+
   /*
   if (output_sequences_scores == nullptr || output_sequences_scores->IsDataType<float>()) {
     this->beam_scorer_->Finalize<float>(cpu_state.sequences,

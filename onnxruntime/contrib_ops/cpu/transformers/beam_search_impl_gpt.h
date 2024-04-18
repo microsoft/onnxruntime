@@ -380,6 +380,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,
+                               nullptr,
                                output_sequences_scores);
 
   // Output per token scores

@@ -90,7 +90,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
                                                     sequences_space_buffer_,
                                                     SafeInt<size_t>(2) * batch_size * max_length, stream);
     memset(this->sequences_space.data(), 0, this->sequences_space.size_bytes());
-    this->sequences.Init(this->sequences_space, static_cast<int>(batch_size), sequence_length, max_length);
+    this->sequences.Init(this->sequences_space, {}, static_cast<int>(batch_size), sequence_length, max_length);
 
     this->sequence_lengths = AllocateBuffer<int32_t>(cpu_allocator, sequence_lengths_buffer_, batch_size, stream);
     this->eos_meet = AllocateBuffer<bool>(cpu_allocator, eos_meet_buffer_, batch_size, stream);
