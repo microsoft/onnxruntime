@@ -207,7 +207,6 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
       n_to_read = std::min(kklen - 8, 8);
       __m256 av_hi = load_float_n_avx2(ARowPtr + k + kk + 8, n_to_read);
 
-      __m256 bvf_lo[NCols], bvf_hi[NCols];
       UnrolledLoop<NCols>([&](size_t i) {
         // SubBlkLen = 16: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
         // SubBlkLen = 32: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
@@ -241,17 +240,17 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
         const __m128i bv_lo = _mm256_extractf128_si256(bv_epi16, 0);
         const __m128i bv_hi = _mm256_extractf128_si256(bv_epi16, 1);
 
-        bvf_lo[i] = _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(bv_lo));
-        bvf_hi[i] = _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(bv_hi));
+        __m256 bvf_lo = _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(bv_lo));
+        __m256 bvf_hi = _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(bv_hi));
 
         // multiply by scale
         __m256 scale_ps = _mm256_set1_ps(scale_v[i]);
-        bvf_lo[i] = _mm256_mul_ps(bvf_lo[i], scale_ps);
-        bvf_hi[i] = _mm256_mul_ps(bvf_hi[i], scale_ps);
+        bvf_lo = _mm256_mul_ps(bvf_lo, scale_ps);
+        bvf_hi = _mm256_mul_ps(bvf_hi, scale_ps);
 
         // c[m,n] += a[m,k] * b[k,n]
-        acc[i] = _mm256_fmadd_ps(bvf_lo[i], av_lo, acc[i]);
-        acc[i] = _mm256_fmadd_ps(bvf_hi[i], av_hi, acc[i]);
+        acc[i] = _mm256_fmadd_ps(bvf_lo, av_lo, acc[i]);
+        acc[i] = _mm256_fmadd_ps(bvf_hi, av_hi, acc[i]);
         });
     } // kk
 
