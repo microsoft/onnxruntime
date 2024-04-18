@@ -340,9 +340,7 @@ class BaseQuantizer:
                             f"\nraw={str(q_weight_initializer)[:200]}."
                         )
             elif qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
-                q_weight_initializer = onnx.helper.make_tensor(
-                    q_weight_name, qType, weight.dims, q_weight_data
-                )
+                q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, q_weight_data)
             else:
                 q_weight_data = np.asarray(q_weight_data, dtype=onnx.helper.tensor_dtype_to_np_dtype(qType)).reshape(
                     weight.dims
@@ -400,9 +398,10 @@ class BaseQuantizer:
 
         symmetric = quant_overrides_for_channels[0].get(
             "symmetric",
-            (self.is_weight_symmetric or weight_qType in (onnx.TensorProto.INT8,
-                                                          onnx.TensorProto.FLOAT8E4M3FN,
-                                                          onnx.TensorProto.INT4)),
+            (
+                self.is_weight_symmetric
+                or weight_qType in (onnx.TensorProto.INT8, onnx.TensorProto.FLOAT8E4M3FN, onnx.TensorProto.INT4)
+            ),
         )
         reduce_range = quant_overrides_for_channels[0].get("reduce_range", self.reduce_range and reduce_range)
         zero_point_list = []
