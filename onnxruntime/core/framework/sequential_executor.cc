@@ -324,7 +324,6 @@ class KernelScope {
 #endif
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-    LARGE_INTEGER kernel_start;
     QueryPerformanceCounter(&kernel_start);
 #endif
 
@@ -398,7 +397,7 @@ class KernelScope {
     // Log an event
     TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
                       "OpEnd",                    // Event Name that should uniquely identify your event.
-                      TraceLoggingValue(p_op_kernel->KernelDef().OpName().c_str(), "op_name"),
+                      TraceLoggingValue(kernel_.KernelDef().OpName().c_str(), "op_name"),
                       TraceLoggingValue(elapsed.QuadPart, "time"));
 #endif
 
@@ -430,6 +429,10 @@ class KernelScope {
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   utils::NodeDumpContext dump_context_;
+#endif
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  LARGE_INTEGER kernel_start;
 #endif
 };
 
