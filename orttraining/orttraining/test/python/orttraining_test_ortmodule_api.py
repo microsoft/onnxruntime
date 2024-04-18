@@ -6546,6 +6546,9 @@ def test_bert_memory_inspection(caplog):
     torch.cuda.synchronize()
     if original_val is not None:
         os.environ["ORTMODULE_PRINT_MEMORY_STATS"] = original_val
+    else:
+        if "ORTMODULE_PRINT_MEMORY_STATS" in os.environ:
+            del os.environ["ORTMODULE_PRINT_MEMORY_STATS"]
 
 
 @pytest.mark.parametrize("softmax_compute_type", [torch.float16, torch.float32])
@@ -6599,3 +6602,97 @@ def test_overridden_softmax_export(softmax_compute_type):
     assert to_attr.name == "to"
     to_value = to_attr.i
     assert to_value == pytorch_type_to_onnx_dtype(softmax_compute_type), "Cast to attribute is not as expected"
+
+
+@pytest.mark.parametrize("memory_optimization_level", [None, 0, 1, 2])
+@pytest.mark.parametrize("allow_gradient_checkpoint_export", [None, 0, 1])
+@pytest.mark.parametrize("fx", ["torch", "deepspeed"])
+def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_checkpoint_export, fx, caplog):
+    """Expected behaviors:
+    memory_optimization_level=0|None, allow_gradient_checkpoint_export=0|None => layerwise recompute is disabled
+    memory_optimization_level=1, allow_gradient_checkpoint_export=0|None => layerwise recompute is enabled
+    memory_optimization_level=2, allow_gradient_checkpoint_export=0|None => layerwise recompute is disabled
+    memory_optimization_level=0|None, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    memory_optimization_level=1, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    memory_optimization_level=2, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    """
+    if fx == "deepspeed":
+        try:
+            import deepspeed
+
+            checkpoint = deepspeed.checkpointing.checkpoint
+        except ImportError:
+            # skip if deepspeed is not installed (in amd CI)
+            return
+
+    elif fx == "torch":
+        from torch.utils.checkpoint import checkpoint
+    else:
+        raise ValueError(f"unsupported fx value: {fx}. only torch and deepspeed are supported.")
+
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
+    original_val_allow_gradient_checkpoint_export = os.environ.get("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", None)
+
+    if memory_optimization_level is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = str(memory_optimization_level)
+    else:
+        if original_val is not None:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+    if allow_gradient_checkpoint_export:
+        os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"] = str(allow_gradient_checkpoint_export)
+    else:
+        if original_val_allow_gradient_checkpoint_export is not None:
+            del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
+
+    class SampleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layer1 = nn.Linear(10, 10)
+            self.layer2 = nn.Linear(10, 10)
+
+        def forward(self, x):
+            # Checkpointing the first layer
+            x = checkpoint(self.layer1, x)
+            x = nn.ReLU()(x)
+            # The second layer is not checkpointed
+            x = self.layer2(x)
+            return x
+
+    model = SampleModel().cuda()
+    input = torch.randn(1, 10).cuda()
+    model = ORTModule(model, DebugOptions(log_level=LogLevel.INFO))
+
+    # Forward pass
+
+    # Tolerant export failure.
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        _ = model(input)
+
+    layerwise_recompute_info_records = [
+        record.message for record in caplog.records if "Layer-wise memory optimization is enabled" in record.message
+    ]
+
+    if memory_optimization_level != 1:
+        assert len(layerwise_recompute_info_records) == 0
+    else:
+        if allow_gradient_checkpoint_export is None or allow_gradient_checkpoint_export == 0:
+            assert len(layerwise_recompute_info_records) > 0
+        else:
+            assert len(layerwise_recompute_info_records) == 0
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+    else:
+        if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+    if original_val_allow_gradient_checkpoint_export is not None:
+        os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"] = original_val_allow_gradient_checkpoint_export
+    else:
+        if "ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT" in os.environ:
+            del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]

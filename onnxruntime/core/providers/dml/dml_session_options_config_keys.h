@@ -22,3 +22,4 @@
 // The default value is "0"
 static const char* const kOrtSessionOptionsConfigDisableDmlGraphFusion = "ep.dml.disable_graph_fusion";
 static const char* const kOrtSessionOptionsConfigEnableGraphSerialization = "ep.dml.enable_graph_serialization";
+static const char* const kOrtSessionOptionsConfigEnableCpuSyncSpinning = "ep.dml.enable_cpu_sync_spinning";

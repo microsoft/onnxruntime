@@ -6,7 +6,7 @@ mypy
 pytest
 setuptools==69.0.3
 wheel==0.42.0
-onnx==1.15.0
+onnx==1.16.0
 argparse
 sympy==1.12
 flatbuffers

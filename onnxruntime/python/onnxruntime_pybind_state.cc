@@ -486,6 +486,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
             }
+          } else if (option.first == "user_compute_stream") {
+            if (!option.second.empty()) {
+              auto stream = std::stoull(option.second, nullptr, 0);
+              params.user_compute_stream = reinterpret_cast<void*>(stream);
+              params.has_user_compute_stream = true;
+            } else {
+              params.has_user_compute_stream = false;
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'user_compute_stream' should be a string to define the compute stream for the inference to run on.\n");
+            }
           } else if (option.first == "trt_max_partition_iterations") {
             if (!option.second.empty()) {
               params.trt_max_partition_iterations = std::stoi(option.second);
@@ -1021,7 +1030,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
     return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+               session_options.config_options, cit == provider_options_map.end() ? ProviderOptions{} : cit->second, true)
         ->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
