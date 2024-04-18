@@ -11,6 +11,15 @@
 
 #include "gmock/gmock.h"
 
+#ifdef _WIN32
+#include <wil/Resource.h>
+#else
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include "core/platform/scoped_resource.h"
+#endif
+
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
@@ -101,8 +110,227 @@ TEST(CApiTest, TestExternalInitializersInjection) {
   initializer_data.push_back(std::move(init_tensor));
 
   Ort::SessionOptions so;
+  const ORTCHAR_T* optimized_model_path = ORT_TSTR("testdata/model_with_external_initializer_come_from_user_opt.onnx");
+  so.SetOptimizedModelFilePath(optimized_model_path);
   so.AddExternalInitializers(init_names, initializer_data);
+  // Dump the optimized model with external data so that it will unpack the external data from the loaded model
+  so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName, "model_with_external_initializer_come_from_user_opt.bin");
+  so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "10");
   EXPECT_NO_THROW(Ort::Session(*ort_env, model_path, so));
+}
+
+static void ReadFileToBuffer(const char* file_path, std::vector<char>& buffer) {
+  std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+  if (!file)
+    ORT_THROW("Error reading file.");
+  buffer.resize(narrow<size_t>(file.tellg()));
+  file.seekg(0, std::ios::beg);
+  if (!file.read(buffer.data(), buffer.size()))
+    ORT_THROW("Error reading file");
+}
+
+void TestLoadModelFromArrayWithExternalInitializerFromFileArray(const std::string& model_file_name,
+                                                                const std::string& external_data_file_name,
+                                                                const std::string& external_ini_min_size_bytes = "10",
+                                                                bool compare_external_bin_file = true) {
+  std::string test_folder = "testdata/";
+  std::string model_path = test_folder + model_file_name;
+  std::vector<char> buffer;
+  ReadFileToBuffer(model_path.c_str(), buffer);
+
+  std::vector<char> external_bin_buffer;
+  std::string external_bin_path = test_folder + external_data_file_name;
+  ReadFileToBuffer(external_bin_path.c_str(), external_bin_buffer);
+
+  Ort::SessionOptions so;
+  std::string optimized_model_file_name(model_file_name);
+  auto length = optimized_model_file_name.length();
+  optimized_model_file_name.insert(length - 5, "_opt");
+  std::string optimized_file_path(test_folder + optimized_model_file_name);
+  PathString optimized_file_path_t(optimized_file_path.begin(), optimized_file_path.end());
+
+  so.SetOptimizedModelFilePath(optimized_file_path_t.c_str());
+  //  Dump the optimized model with external data so that it will unpack the external data from the loaded model
+  std::string opt_bin_file_name(optimized_model_file_name);
+  opt_bin_file_name.replace(optimized_model_file_name.length() - 4, 4, "bin");
+  so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName, opt_bin_file_name.c_str());
+  so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, external_ini_min_size_bytes.c_str());
+
+  PathString external_file_name(external_data_file_name.begin(), external_data_file_name.end());
+  std::vector<PathString> file_names{external_file_name};
+  std::vector<char*> file_buffers{external_bin_buffer.data()};
+  std::vector<size_t> lengths{external_bin_buffer.size()};
+  so.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
+
+  Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), so);
+
+  std::string generated_bin_path = test_folder + opt_bin_file_name;
+  // If there are multiple initializers in the external bin file
+  // It's hard to guarantee the generated bin for optimized model is exactly same with original one for some cases
+  if (compare_external_bin_file) {
+    std::vector<char> generated_bin_buffer;
+    ReadFileToBuffer(generated_bin_path.c_str(), generated_bin_buffer);
+
+    ASSERT_EQ(external_bin_buffer, generated_bin_buffer);
+  }
+
+  // Cleanup.
+  ASSERT_EQ(std::remove(optimized_file_path.c_str()), 0);
+  ASSERT_EQ(std::remove(generated_bin_path.c_str()), 0);
+}
+
+// Single initializer from single bin file
+TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializerFromFileArray) {
+  std::string model_file_name = "model_with_external_initializers.onnx";
+  std::string external_bin_name = "Pads.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+}
+
+// Several external initializers from same file
+// Use offset from tensor proto to locate the buffer location
+TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArray) {
+  std::string model_file_name = "conv_qdq_external_ini.onnx";
+  std::string external_bin_name = "conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+}
+
+// Several external initializers from same file
+// Use offset from tensor proto to locate the buffer location
+TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileArrayPathRobust) {
+  std::string model_file_name = "conv_qdq_external_ini.onnx";
+  std::string external_bin_name = "./conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+
+  external_bin_name = ".//conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+
+#ifdef _WIN32
+  external_bin_name = ".\\\\conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+
+  external_bin_name = ".\\conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileArray(model_file_name, external_bin_name);
+#endif
+}
+
+#ifndef _WIN32
+struct FileDescriptorTraits {
+  using Handle = int;
+  static Handle GetInvalidHandleValue() { return -1; }
+  static void CleanUp(Handle h) {
+    ASSERT_TRUE(close(h) != -1);
+  }
+};
+using ScopedFileDescriptor = ScopedResource<FileDescriptorTraits>;
+#endif
+
+void FileMmap(const ORTCHAR_T* file_path, void*& mapped_base) {
+#ifdef _WIN32
+  wil::unique_hfile file_handle{CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
+  ASSERT_TRUE(file_handle.get() != INVALID_HANDLE_VALUE);
+
+  wil::unique_hfile file_mapping_handle{
+      CreateFileMappingW(file_handle.get(),
+                         nullptr,
+                         PAGE_READONLY,
+                         0,
+                         0,
+                         nullptr)};
+  ASSERT_TRUE(file_mapping_handle.get() != INVALID_HANDLE_VALUE);
+  mapped_base = MapViewOfFile(file_mapping_handle.get(),
+                              FILE_MAP_READ,
+                              0,
+                              0,
+                              0);
+#else
+  ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
+  ASSERT_TRUE(file_descriptor.IsValid());
+  struct stat sb;
+  stat(file_path, &sb);
+  mapped_base = mmap(nullptr, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), 0);
+#endif
+  return;
+}
+
+void TestLoadModelFromArrayWithExternalInitializerFromFileMmap(const std::string& model_file_name,
+                                                               const std::string& external_data_file_name,
+                                                               const std::string& external_ini_min_size_bytes = "10",
+                                                               bool compare_external_bin_file = true) {
+  std::string test_folder = "testdata/";
+  std::string model_path = test_folder + model_file_name;
+  std::vector<char> buffer;
+  ReadFileToBuffer(model_path.c_str(), buffer);
+
+  std::string external_bin_path = test_folder + external_data_file_name;
+  PathString external_bin_path_t(external_bin_path.begin(), external_bin_path.end());
+
+  void* mapped_base = nullptr;
+  FileMmap(external_bin_path_t.c_str(), mapped_base);
+  ASSERT_TRUE(mapped_base);
+
+  std::ifstream bin_file(external_bin_path, std::ios::binary | std::ios::ate);
+  ASSERT_TRUE(bin_file);
+  size_t bin_file_length = narrow<size_t>(bin_file.tellg());
+
+  Ort::SessionOptions so;
+  std::string optimized_model_file_name(model_file_name);
+  auto length = optimized_model_file_name.length();
+  optimized_model_file_name.insert(length - 5, "_opt");
+  std::string optimized_file_path(test_folder + optimized_model_file_name);
+  PathString optimized_file_path_t(optimized_file_path.begin(), optimized_file_path.end());
+
+  so.SetOptimizedModelFilePath(optimized_file_path_t.c_str());
+  //  Dump the optimized model with external data so that it will unpack the external data from the loaded model
+  std::string opt_bin_file_name(optimized_model_file_name);
+  opt_bin_file_name.replace(optimized_model_file_name.length() - 4, 4, "bin");
+  so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName, opt_bin_file_name.c_str());
+  so.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, external_ini_min_size_bytes.c_str());
+
+  PathString external_file_name(external_data_file_name.begin(), external_data_file_name.end());
+  std::vector<PathString> file_names{external_file_name};
+  std::vector<char*> file_buffers{static_cast<char*>(mapped_base)};
+  std::vector<size_t> lengths{bin_file_length};
+  so.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
+
+  Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), so);
+
+#ifdef _WIN32
+  bool ret = UnmapViewOfFile(mapped_base);
+  ASSERT_TRUE(ret);
+#else
+  struct stat sb;
+  stat(external_bin_path.c_str(), &sb);
+  int ret = munmap(mapped_base, sb.st_size);
+  ASSERT_TRUE(ret == 0);
+#endif
+
+  std::string generated_bin_path = test_folder + opt_bin_file_name;
+  // If there are multiple initializers in the external bin file
+  // It's hard to guarantee the generated bin for optimized model is exactly same with original one for some cases
+  if (compare_external_bin_file) {
+    std::vector<char> external_bin_buffer;
+    ReadFileToBuffer(external_bin_path.c_str(), external_bin_buffer);
+
+    std::vector<char> generated_bin_buffer;
+    ReadFileToBuffer(generated_bin_path.c_str(), generated_bin_buffer);
+
+    ASSERT_EQ(external_bin_buffer, generated_bin_buffer);
+  }
+
+  // Cleanup.
+  ASSERT_EQ(std::remove(optimized_file_path.c_str()), 0);
+  ASSERT_EQ(std::remove(generated_bin_path.c_str()), 0);
+}
+
+// Load external bin file using mmap
+// Several external initializers from same file
+// Use offset from tensor proto to locate the buffer location
+TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersFromFileMmap) {
+  std::string model_file_name = "conv_qdq_external_ini.onnx";
+  std::string external_bin_name = "conv_qdq_external_ini.bin";
+  TestLoadModelFromArrayWithExternalInitializerFromFileMmap(model_file_name, external_bin_name);
 }
 
 #endif
