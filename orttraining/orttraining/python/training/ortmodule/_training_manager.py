@@ -38,9 +38,7 @@ class TrainingManager(GraphExecutionManager):
         fallback_manager: _FallbackManager,
         logger: Logger,
     ):
-        super().__init__(model, debug_options, fallback_manager, logger)
-
-        self._export_mode = torch.onnx.TrainingMode.TRAINING
+        super().__init__(model, debug_options, torch.onnx.TrainingMode.TRAINING, fallback_manager, logger)
         self._forward_class = self._create_autofunction_class()
 
     @staticmethod

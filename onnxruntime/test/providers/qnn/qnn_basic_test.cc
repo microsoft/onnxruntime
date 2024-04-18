@@ -168,6 +168,26 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
   }
 }
 
+// Conv node `Conv` is not supported: GetFileLength for conv_qdq_external_ini.bin failed:open file conv_qdq_external_ini.bin fail,
+// errcode = 2 - The system cannot find the file specified.
+TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
+  Ort::SessionOptions so;
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  so.AppendExecutionProvider("QNN", options);
+
+  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_external_ini.onnx";
+
+  Ort::Session session(*ort_env, ort_model_path, so);
+}
+
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
 // Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
@@ -683,6 +703,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
 
 // Test shape inference of QDQ NHWC Resize operator (opset 18) that uses
 // the sizes input. Use the QNN HTP backend.
+// Maps to QNN's ResizeBilinear operator.
 TEST_F(QnnHTPBackendTests, TestNHWCResizeShapeInference_qdq_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", true);
 }

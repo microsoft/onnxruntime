@@ -41,6 +41,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
   * <a href="#com.microsoft.GemmFloat8">com.microsoft.GemmFloat8</a>
+  * <a href="#com.microsoft.GemmaRotaryEmbedding">com.microsoft.GemmaRotaryEmbedding</a>
   * <a href="#com.microsoft.GreedySearch">com.microsoft.GreedySearch</a>
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
@@ -78,6 +79,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QLinearSigmoid">com.microsoft.QLinearSigmoid</a>
   * <a href="#com.microsoft.QLinearSoftmax">com.microsoft.QLinearSoftmax</a>
   * <a href="#com.microsoft.QLinearWhere">com.microsoft.QLinearWhere</a>
+  * <a href="#com.microsoft.QMoE">com.microsoft.QMoE</a>
   * <a href="#com.microsoft.QOrderedAttention">com.microsoft.QOrderedAttention</a>
   * <a href="#com.microsoft.QOrderedGelu">com.microsoft.QOrderedGelu</a>
   * <a href="#com.microsoft.QOrderedLayerNormalization">com.microsoft.QOrderedLayerNormalization</a>
@@ -2209,6 +2211,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.GemmaRotaryEmbedding"></a><a name="com.microsoft.gemmarotaryembedding">**com.microsoft.GemmaRotaryEmbedding**</a>
+
+  GemmaRotaryEmbedding is the implementation of below part of rotary positional embeddings (RoPE). It implements below from modeling_gemma.py.
+  
+  Here's onnxscript that was tested
+  
+  from onnxscript import FLOAT, FLOAT16, script
+  from onnxscript import opset18 as op
+  
+  @script()
+  def gemma_rotary_embedding(emb: FLOAT["bs", "seq_len", "dim"], q: FLOAT16["bs", "num_heads", "seq_len", "dim"], q_rot: FLOAT16["bs", "num_heads", "seq_len", "dim"], k: FLOAT16["bs", "num_heads", "seq_len", "dim"], k_rot: FLOAT16["bs", "num_heads", "seq_len", "dim"]):
+    sin_val = op.Sin(emb)
+    casted_sin = op.Cast(sin_val, to=10) # for fp16 mix-precision training. Other types are not supported.
+    cos_val = op.Cos(emb)
+    casted_cos = op.Cast(cos_val, to=10)
+    unsqueezed_sin = op.Unsqueeze(casted_sin, [1])
+    unsqueezed_cos = op.Unsqueeze(casted_cos, [1])
+    q_embed = (q * casted_cos) + (q_rot * casted_sin)
+    k_embed = (k * casted_cos) + (k_rot * casted_sin)
+    return q_embed, k_embed
+  
+  onnx_model = gemma_rotary_embedding.to_model_proto()
+  
+  
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>emb</tt> : U</dt>
+<dd>embeddding - 3D tensor with shape (batch_size, seq_len, dim)</dd>
+<dt><tt>q</tt> : T</dt>
+<dd>q state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)</dd>
+<dt><tt>q_rot</tt> : T</dt>
+<dd>half rotated q state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)</dd>
+<dt><tt>k</tt> : T</dt>
+<dd>k state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)</dd>
+<dt><tt>k_rot</tt> : T</dt>
+<dd>k state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output1</tt> : T</dt>
+<dd>4D tensor with shape (batch_size, num_heads, seq_len, dim)</dd>
+<dt><tt>output2</tt> : T</dt>
+<dd>4D tensor with shape (batch_size, num_heads, seq_len, dim)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16)</dt>
+<dd>Constrain input and output types to float16 tensors.</dd>
+<dt><tt>U</tt> : tensor(float)</dt>
+<dd>Constrain input 0 type to float tensors</dd>
+</dl>
+
+
 ### <a name="com.microsoft.GreedySearch"></a><a name="com.microsoft.greedysearch">**com.microsoft.GreedySearch**</a>
 
   Greedy Search for text generation.
@@ -2931,8 +2996,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MoE"></a><a name="com.microsoft.moe">**com.microsoft.MoE**</a>
 
   Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
-        GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, and Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
-        usually uses top 32 experts.
+        GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
+        usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
         
 
 #### Version
@@ -2946,9 +3011,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Activation function to use. Choose from relu, gelu, silu and identity. Default is relu</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
+<dt><tt>normalize_routing_weights</tt> : int</dt>
+<dd>Whether to normalize routing weights</dd>
 </dl>
 
-#### Inputs (4 - 6)
+#### Inputs (5 - 8)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -2957,12 +3024,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D input tensor with shape (num_rows, num_experts)</dd>
 <dt><tt>fc1_experts_weights</tt> : T</dt>
 <dd>3D input tensor with shape (num_experts, hidden_size, inter_size)</dd>
-<dt><tt>fc2_experts_weights</tt> : T</dt>
-<dd>3D input tensor with shape (num_experts, inter_size, hidden_size)</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dt><tt>fc2_experts_weights</tt> : T</dt>
+<dd>3D input tensor with shape (num_experts, inter_size, hidden_size)</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional input tensor with shape (num_experts, hidden_size)</dd>
+<dt><tt>fc3_experts_weights</tt> (optional) : T</dt>
+<dd>3D optional input tensor with shape (num_experts, hidden_size, inter_size)</dd>
+<dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
 </dl>
 
 #### Outputs
@@ -4252,6 +4323,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain scale types to any float tensor type.</dd>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
 <dd>Constrain input and output types to 8 bit signed and unsigned tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QMoE"></a><a name="com.microsoft.qmoe">**com.microsoft.QMoE**</a>
+
+  Int4 MoE
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation_type</tt> : string</dt>
+<dd>Activation function to use. Choose from relu, gelu, silu and identity. Default is relu</dd>
+<dt><tt>k</tt> : int</dt>
+<dd>Number of top experts to select from expert pool</dd>
+<dt><tt>normalize_routing_weights</tt> : int</dt>
+<dd>Whether to normalize routing weights</dd>
+</dl>
+
+#### Inputs (7 - 11)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>router_probs</tt> : T</dt>
+<dd>2D input tensor with shape (num_rows, num_experts)</dd>
+<dt><tt>fc1_experts_weights</tt> : T1</dt>
+<dd>3D input tensor with shape (num_experts, hidden_size, inter_size / 2)</dd>
+<dt><tt>fc1_scales</tt> : T</dt>
+<dd>2D input tensor with shape (num_experts, inter_size)</dd>
+<dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dt><tt>fc2_experts_weights</tt> : T1</dt>
+<dd>3D input tensor with shape (num_experts, inter_size, hidden_size / 2)</dd>
+<dt><tt>fc2_scales</tt> : T</dt>
+<dd>2D input tensor with shape (num_experts, hidden_size)</dd>
+<dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, hidden_size)</dd>
+<dt><tt>fc3_experts_weights</tt> (optional) : T1</dt>
+<dd>3D optional input tensor with shape (num_experts, hidden_size, inter_size / 2)</dd>
+<dt><tt>fc3_scales</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+<dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
+<dd>2D optional input tensor with shape (num_experts, inter_size)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16)</dt>
+<dd>Constrain input and output types to float or float16 tensors.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Constrain weights type to uint8 tensors.</dd>
 </dl>
 
 

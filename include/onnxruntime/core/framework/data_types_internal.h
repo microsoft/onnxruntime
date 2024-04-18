@@ -7,7 +7,6 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
-#include <iostream>
 #include <type_traits>
 #include <vector>
 
@@ -273,11 +272,7 @@ inline bool IsDataTypeString(MLDataType dt_type) {
 template <class T>
 inline bool IsPrimitiveDataType(MLDataType dt_type) {
   auto prim_type = dt_type->AsPrimitiveDataType();
-  bool result =  (prim_type != nullptr && prim_type->GetDataType() == ToTensorProtoElementType<T>());
-  if (!result) {
-    result = false;
-  }
-  return result;
+  return  (prim_type != nullptr && prim_type->GetDataType() == ToTensorProtoElementType<T>());
 }
 
 // Use after AsPrimitiveDataType() is successful
@@ -285,11 +280,7 @@ inline bool IsPrimitiveDataType(MLDataType dt_type) {
 template <class T>
 inline bool IsPrimitiveDataType(const PrimitiveDataTypeBase* prim_type) {
   assert(prim_type != nullptr);
-  bool result = prim_type->GetDataType() == ToTensorProtoElementType<T>();
-  if (!result) {
-    result = false;
-  }
-  return result;
+  return prim_type->GetDataType() == ToTensorProtoElementType<T>();
 }
 
 // This implementation contains a workaround for GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226

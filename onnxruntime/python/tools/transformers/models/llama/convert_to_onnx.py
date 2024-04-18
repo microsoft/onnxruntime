@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 from __future__ import annotations
 
 import argparse
@@ -1024,7 +1029,7 @@ def main():
             os.path.join(args.output, filename),
             "-ep",
             args.execution_provider,
-            "-fp",
+            "--precision",
             args.precision,
             "--cache_dir",
             args.cache_dir,
@@ -1037,8 +1042,6 @@ def main():
             parity_cmd.append("--use_past_kv")
         if "merged" in filename:
             parity_cmd.append("--merged")
-        if args.use_gqa:
-            parity_cmd.append("--use_gqa")
 
         try:
             logger.info(f"check parity with cmd: {parity_cmd}")

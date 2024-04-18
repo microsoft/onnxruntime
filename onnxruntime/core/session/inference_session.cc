@@ -15,6 +15,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
+#include "core/common/string_utils.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/framework/bfc_arena.h"
@@ -147,8 +148,8 @@ static bool HasMemcpyNodes(const Graph& graph) {
   return false;
 }
 
-static bool AreAllComputeNodesAssignedToCudaOrJsEp(const Graph& graph) {
-  bool nodes_on_cpu_and_cuda_and_js_eps_only = true;
+static bool AreAllComputeNodesAssignedToCudaOrJsOrDmlEp(const Graph& graph) {
+  bool nodes_on_cpu_and_cuda_and_js_and_dml_eps_only = true;
 
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
@@ -157,9 +158,10 @@ static bool AreAllComputeNodesAssignedToCudaOrJsEp(const Graph& graph) {
     if (!node_provider.empty() &&
         !(node_provider == kCudaExecutionProvider ||
           node_provider == kRocmExecutionProvider ||
-          node_provider == kJsExecutionProvider) &&
+          node_provider == kJsExecutionProvider ||
+          node_provider == kDmlExecutionProvider) &&
         node_provider != kCpuExecutionProvider) {
-      nodes_on_cpu_and_cuda_and_js_eps_only = false;
+      nodes_on_cpu_and_cuda_and_js_and_dml_eps_only = false;
       break;
     }
   }
@@ -170,7 +172,7 @@ static bool AreAllComputeNodesAssignedToCudaOrJsEp(const Graph& graph) {
   // We allow CPU EPs to show up in the EP list as long as thre is no Memcpy
   // involved as shape subgraphs will be forced onto CPU and these will not have
   // Memcpy nodes involved.
-  return nodes_on_cpu_and_cuda_and_js_eps_only && !HasMemcpyNodes(graph);
+  return nodes_on_cpu_and_cuda_and_js_and_dml_eps_only && !HasMemcpyNodes(graph);
 }
 
 static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
@@ -401,7 +403,21 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
-  ORT_ENFORCE(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
+  ORT_THROW_IF_ERROR(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps));
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  {
+    auto disabled_string = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsDisableSpecifiedOptimizers, "");
+    if (!disabled_string.empty()) {
+      const auto disabled_list = utils::SplitString(disabled_string, ";");
+      InlinedHashSet<std::string> disabled_rules_and_transformers;
+      disabled_rules_and_transformers.reserve(disabled_list.size());
+      disabled_rules_and_transformers.insert(disabled_list.cbegin(), disabled_list.cend());
+      ORT_THROW_IF_ERROR(FilterEnabledOptimizers(std::move(disabled_rules_and_transformers)));
+    }
+  }
 #endif
 
   bool set_denormal_as_zero =
@@ -1635,6 +1651,13 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.InjectExternalInitializedTensors(session_options_.external_initializers));
       InlinedHashMap<std::string, OrtValue>{}.swap(session_options_.external_initializers);
     }
+
+    if (!session_options_.external_initializer_files_mmap.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap));
+      InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>{}.swap(
+          session_options_.external_initializer_files_mmap);
+    }
 #endif
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -1733,7 +1756,14 @@ common::Status InferenceSession::Initialize() {
                        [](char ch) { return std::tolower(ch); });
         bool dml_graph_serialization_enabled = dml_graph_serialization_enabled_config_val == "true";
 
-        if (dml_graph_fusion_enabled) {
+        if (static_cast<const Dml::ExecutionProvider*>(dmlExecutionProvider)->IsGraphCaptureEnabled()) {
+          std::unique_ptr<onnxruntime::GraphTransformer> dmlRuntimeGraphFusionTransformer = std::make_unique<Dml::DmlRuntimeGraphFusionTransformer>("DmlRuntimeGraphFusionTransformer",
+                                                                                                                                                    dmlExecutionProvider);
+          if (dmlRuntimeGraphFusionTransformer == nullptr) {
+            return Status(common::ONNXRUNTIME, common::FAIL, "DmlRuntimeGraphFusionTransformer is nullptr");
+          }
+          ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlRuntimeGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
+        } else if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
                                                                                                                                       dmlExecutionProvider,
                                                                                                                                       dml_graph_serialization_enabled);
@@ -1741,15 +1771,6 @@ common::Status InferenceSession::Initialize() {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
           }
           ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
-
-          if (static_cast<const Dml::ExecutionProvider*>(dmlExecutionProvider)->DynamicGraphFusionEnabled()) {
-            std::unique_ptr<onnxruntime::GraphTransformer> dmlRuntimeGraphFusionTransformer = std::make_unique<Dml::DmlRuntimeGraphFusionTransformer>("DmlRuntimeGraphFusionTransformer",
-                                                                                                                                                      dmlExecutionProvider);
-            if (dmlRuntimeGraphFusionTransformer == nullptr) {
-              return Status(common::ONNXRUNTIME, common::FAIL, "DmlRuntimeGraphFusionTransformer is nullptr");
-            }
-            ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dmlRuntimeGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
-          }
         }
 
         // This transformer applies DML-specific fusions that go beyond what ORT offers by default
@@ -1809,7 +1830,8 @@ common::Status InferenceSession::Initialize() {
           onnxruntime::kTensorrtExecutionProvider,
           onnxruntime::kCudaExecutionProvider,
           onnxruntime::kRocmExecutionProvider,
-          onnxruntime::kJsExecutionProvider};
+          onnxruntime::kJsExecutionProvider,
+          onnxruntime::kDmlExecutionProvider};
 
       for (auto& it : graph_support_ep_list) {
         auto* target_ep = execution_providers_.Get(it);
@@ -1830,12 +1852,13 @@ common::Status InferenceSession::Initialize() {
 
           if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kRocmExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0) {
+              strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0 ||
+              strcmp(target_ep->Type().c_str(), onnxruntime::kDmlExecutionProvider) == 0) {
             // Ensure that all nodes have been partitioned to CUDA/JS or CPU EP && there are no memcpy nodes
             // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
             // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
             // which is all we care about.
-            if (!AreAllComputeNodesAssignedToCudaOrJsEp(graph)) {
+            if (!AreAllComputeNodesAssignedToCudaOrJsOrDmlEp(graph)) {
               LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
                                             << " as all compute graph nodes have not been partitioned to the "
                                             << target_ep->Type();

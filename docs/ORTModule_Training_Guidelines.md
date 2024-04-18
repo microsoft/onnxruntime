@@ -495,3 +495,31 @@ for epoch in range(start_epoch, n_epochs):
 ```
 
 Check [LoadBalancingDistributedBatchSampler implementation](../orttraining/orttraining/python/training/utils/data/sampler.py) for more details.
+
+## 8 Using ORTPipelineModule for Deepspeed Pipeline Parallel
+
+You can use `ORTPipelineModule` to support Deepspeed Pipeline Parallelism. Here's how you can integrate it into your pipeline:
+
+```python
+from onnxruntime.training.ortmodule import DebugOptions
+from onnxruntime.training.ortmodule.experimental.pipe import ORTPipelineModule
+
+# Create a debug configuration if needed
+# Since we're exporting multiple graphs here, this will generate multiple graphs with their index added as a prefix to differentiate them.
+
+debug_options = DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name")
+
+# Keep your deepspeed script the same and use ORTPipelineModule instead of PipelineModule
+# Initialize the ORTPipelineModule
+pipeline_module = ORTPipelineModule(
+    layers,
+    num_stages=2,  # Set your number of stages
+    base_seed=1234,
+    partition_method="parameters",
+    debug_options=debug_options  # Pass the debug configuration if needed
+)
+
+# Keep the rest of the script as it is.
+```
+
+Check [ORTPipelineModule implementation](../orttraining/orttraining/python/training/ortmodule/experimental/pipe/_ort_pipeline_module.py) for more details.

@@ -140,8 +140,8 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                          is_graph_input));
 
   Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, op_input_name);
-  QnnTensorWrapper input_tensorwrapper(op_input_name, tensor_type, input_info.qnn_data_type, input_info.quant_param,
-                                       std::move(op_input_shape), {});
+  QnnTensorWrapper input_tensorwrapper(op_input_name, tensor_type, input_info.qnn_data_type,
+                                       std::move(input_info.quant_param), std::move(op_input_shape), {});
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   return Status::OK();
@@ -199,8 +199,8 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
   op_output_shape[output_rank - 1] = output_info.shape[axis];
   op_output_shape[axis] = output_info.shape[output_rank - 1];
 
-  QnnTensorWrapper output_tensorwrapper(op_output_name, QNN_TENSOR_TYPE_NATIVE, output_info.qnn_data_type, output_info.quant_param,
-                                        std::vector<uint32_t>(op_output_shape));
+  QnnTensorWrapper output_tensorwrapper(op_output_name, QNN_TENSOR_TYPE_NATIVE, output_info.qnn_data_type,
+                                        output_info.quant_param.Copy(), std::vector<uint32_t>(op_output_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,

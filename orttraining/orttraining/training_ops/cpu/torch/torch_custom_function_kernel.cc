@@ -38,7 +38,7 @@ Status PythonOp::Compute(OpKernelContext* context) const {
 
   SetOutputs(context, diff_ctx, returned_ortvalues);
 
-  // RefCountTracker::GetInstance().DumpDetails("Forward Kernel Completed");
+  RefCountTracker::GetInstance().DumpDetails("Forward Kernel Completed");
   return Status::OK();
 }
 
@@ -48,7 +48,7 @@ Status PythonOpGrad::Compute(OpKernelContext* context) const {
 
   SetOutputs(context, returned_ortvalues);
 
-  // RefCountTracker::GetInstance().DumpDetails("Backward Kernel Completed");
+  RefCountTracker::GetInstance().DumpDetails("Backward Kernel Completed");
   return Status::OK();
 }
 

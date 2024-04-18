@@ -48,7 +48,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
                                   const std::vector<std::string>& input_names,
                                   size_t output_index,
                                   Qnn_DataType_t qnn_data_type,
-                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
+                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
   // Info for each ONNX attribute of interest (attribute name + default value)
@@ -148,7 +148,20 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                     "QNN EP: Cannot get shape for Resize input");
   const size_t input_rank = input_shape.size();
 
-  // Validate Resize w/ "nearest" mode.
+  // Resize w/ "linear" mode.
+  // Translation matrix of ONNX Resize w/ "linear" mode on HTP backend.
+  // Table entries correspond to the QNN operator used for the given configuration
+  // (Resize = QNN Resize op, RBL = QNN ResizeBilinear op, X = Unsupported).
+  //
+  //                                                   input rank:
+  // coordinate_transformation_mode: |   < 3      3        4        5        > 5
+  // ---------------------------------------------------------------------------------
+  //                      half_pixel |    X     Resize    RBL     Resize       X
+  //              pytorch_half_pixel |    X     Resize    Resize  Resize       X
+  //                   align_corners |    X     Resize    RBL     Resize       X
+  //                      asymmetric |    X     Resize    RBL     Resize       X
+
+  // Resize w/ "nearest" mode.
   // Translation matrix of ONNX Resize w/ "nearest" mode on HTP backend.
   // Table entries correspond to the QNN operator used for the given configuration
   // (Resize = QNN Resize op, RNN = QNN ResizeNearestNeighbor op, X = Unsupported).
@@ -239,36 +252,74 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   std::vector<std::string> param_tensor_names;
   NodeAttrHelper node_helper(node_unit);
 
+  const auto& input_0 = node_unit.Inputs()[0];
+  std::vector<uint32_t> input_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
+                    "QNN EP: Cannot get shape for Resize input");
+  const size_t input_rank = input_shape.size();
   const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
   const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
   const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
   const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   std::string qnn_op_type = "Resize";
 
-  // Translate Resize with {mode: "nearest", nearest_mode: "floor", coordinate_transformation_mode: XXX} to
-  // QNN's ResizeNearestNeighbor operator on the HTP backend. This combination of parameters is not supported on HTP
-  // via QNN's Resize operator. Note that QNN's ResizeNearestNeighbor operator always uses "floor" rounding.
-  if (is_npu_backend && interp_mode == "nearest" && nearest_mode == "floor") {
+  if (is_npu_backend && input_rank == 4 && interp_mode == "nearest" && nearest_mode == "floor") {
+    // Translate Resize with
+    // {input_rank: 4, mode: "nearest", nearest_mode: "floor", coordinate_transformation_mode: XXX} to
+    // QNN's ResizeNearestNeighbor operator on the HTP backend. This combination of parameters is not supported on HTP
+    // via QNN's Resize operator. Note that QNN's ResizeNearestNeighbor operator always uses "floor" rounding.
     qnn_op_type = "ResizeNearestNeighbor";
 
-    // Parameter 'align_corners'
+    // 'align_corners'
     Qnn_Scalar_t qnn_align_corners = QNN_SCALAR_INIT;
     qnn_align_corners.dataType = QNN_DATATYPE_BOOL_8;
     qnn_align_corners.bool8Value = static_cast<uint8_t>(transformation_mode == "align_corners");
     QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
-                                            QNN_OP_RESIZE_BILINEAR_PARAM_ALIGN_CORNERS, qnn_align_corners);
+                                            QNN_OP_RESIZE_NEAREST_NEIGHBOR_PARAM_ALIGN_CORNERS, qnn_align_corners);
     param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_align_corners_param));
 
-    // Parameter 'half_pixel_centers'
+    // 'half_pixel_centers'
     Qnn_Scalar_t qnn_half_pixel = QNN_SCALAR_INIT;
     qnn_half_pixel.dataType = QNN_DATATYPE_BOOL_8;
     qnn_half_pixel.bool8Value = static_cast<uint8_t>(transformation_mode == "half_pixel");
     QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
+                                         QNN_OP_RESIZE_NEAREST_NEIGHBOR_PARAM_HALF_PIXEL_CENTERS, qnn_half_pixel);
+    param_tensor_names.push_back(qnn_half_pixel_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_half_pixel_param));
+  } else if (is_npu_backend && input_rank == 4 && interp_mode == "linear" &&
+             transformation_mode != "pytorch_half_pixel") {
+    // Translate Resize with
+    // {input_rank: 4, mode: "linear", coordinate_transformation_mode: XXX} to
+    // QNN's ResizeBilinear operator on the HTP backend. QNN ResizeBilinear seems to be faster than QNN Resize on
+    // Windows/HTP QNN SDK 2.19.2.
+    qnn_op_type = "ResizeBilinear";
+
+    // 'align_corners'
+    Qnn_Scalar_t qnn_align_corners = QNN_SCALAR_INIT;
+    qnn_align_corners.dataType = QNN_DATATYPE_BOOL_8;
+    qnn_align_corners.bool8Value = static_cast<uint8_t>(transformation_mode == "align_corners");
+
+    QnnParamWrapper qnn_align_corners_param(node_unit.Index(), node_unit.Name(),
+                                            QNN_OP_RESIZE_BILINEAR_PARAM_ALIGN_CORNERS, qnn_align_corners);
+
+    param_tensor_names.push_back(qnn_align_corners_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_align_corners_param));
+
+    // 'half_pixel_centers'
+    Qnn_Scalar_t qnn_half_pixel = QNN_SCALAR_INIT;
+    qnn_half_pixel.dataType = QNN_DATATYPE_BOOL_8;
+    qnn_half_pixel.bool8Value = static_cast<uint8_t>(transformation_mode == "half_pixel");
+
+    QnnParamWrapper qnn_half_pixel_param(node_unit.Index(), node_unit.Name(),
                                          QNN_OP_RESIZE_BILINEAR_PARAM_HALF_PIXEL_CENTERS, qnn_half_pixel);
+
     param_tensor_names.push_back(qnn_half_pixel_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_half_pixel_param));
   } else {
+    // Fallback to QNN's Resize operator, which seems to align better with ONNX's Resize attributes and supports
+    // input ranks other than 4, but may not perform as optimally (at the moment).
+
     // Parameter 'transformation_mode'
     Qnn_Scalar_t qnn_transformation_mode = QNN_SCALAR_INIT;
     qnn_transformation_mode.dataType = QNN_DATATYPE_UINT_32;
@@ -325,7 +376,11 @@ Status ResizeOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrap
                                                  const std::vector<std::string>& input_names,
                                                  size_t output_index,
                                                  Qnn_DataType_t qnn_data_type,
-                                                 Qnn_QuantizeParams_t& quant_param) const {
+                                                 QnnQuantParamsWrapper& quant_param) const {
+  if (!quant_param.IsPerTensor()) {
+    return Status::OK();
+  }
+
   // Force Resize op's output to use the same quantization parameters as the input if nearly equal.
   // This helps the HTP backend employ certain optimizations.
   return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,

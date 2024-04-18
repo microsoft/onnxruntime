@@ -873,6 +873,9 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
+  SessionOptionsImpl& AddExternalInitializersFromFilesInMemory(const std::vector<std::basic_string<ORTCHAR_T>>& external_initializer_file_names,
+                                                               const std::vector<char*>& external_initializer_file_buffer_array,
+                                                               const std::vector<size_t>& external_initializer_file_lengths);  ///< Wraps OrtApi::AddExternalInitializersFromFilesInMemory
 
   SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
   SessionOptionsImpl& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
@@ -2301,6 +2304,11 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetEndVersion = [](const OrtCustomOp* this_) {
       return static_cast<const TOp*>(this_)->end_ver_;
     };
+
+    OrtCustomOp::GetMayInplace = nullptr;
+    OrtCustomOp::ReleaseMayInplace = nullptr;
+    OrtCustomOp::GetAliasMap = nullptr;
+    OrtCustomOp::ReleaseAliasMap = nullptr;
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
