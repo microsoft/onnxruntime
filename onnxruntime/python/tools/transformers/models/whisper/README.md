@@ -17,6 +17,8 @@ In addition to the above packages, you will need to install `ffmpeg` on your mac
 - MacOS: `sudo brew install ffmpeg`
 - Windows: Download from website
 
+**FFMPEG includes numerous codecs, many of which are likely not used by your product/service. Microsoft engineering teams using FFMPEG must build FFMPEG to remove all the unneeded and unused codecs. Including codecs in your product/service, even if not used, can create patent risk for Microsoft. You are responsible for building FFMPEG in a way that follows this codec guidance.**
+
 ## Exporting Whisper with Beam Search
 
 There are several ways to export Whisper with beam search (using Whisper tiny as an example).
