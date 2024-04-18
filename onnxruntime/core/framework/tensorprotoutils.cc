@@ -1738,7 +1738,7 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
 #define CASE_UNPACK_INT4(TYPE, ELEMENT_TYPE, DATA_SIZE)                          \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {      \
     TensorShape tensor_shape = GetTensorShapeFromTensorProto(initializer);       \
-    size_t element_count = tensor_shape.Size();                                  \
+    size_t element_count = static_cast<size_t>(tensor_shape.Size());             \
     size_t packed_element_count = (element_count + 1) / 2;                       \
     unpacked_tensor.resize(packed_element_count * sizeof(ELEMENT_TYPE));         \
     return onnxruntime::utils::UnpackTensor(                                     \
