@@ -412,7 +412,6 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
                                        is_input_string, num_batches, num_rows, &fn_weight](ptrdiff_t batch_num) {
     // Frequency holder allocate [B..output_size_] and init all to zero.
     auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_batches, static_cast<size_t>(num_rows));
-    std::vector<uint32_t> frequencies(this->impl_->output_size_);
     for (auto row_num = work.start; row_num < work.end; ++row_num) {
       auto out = gsl::span<float>(output_data + row_num * this->impl_->output_size_, this->impl_->output_size_);
       std::fill(out.begin(), out.end(), 0.0f);
