@@ -155,6 +155,9 @@ struct SessionOptions {
   // Customer supplied pre-processed data for external initializers
   InlinedHashMap<std::string, OrtValue> external_initializers;
   Status AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values);
+  InlinedHashMap<PathString, std::pair<char*, size_t>> external_initializer_files_mmap;
+  Status AddExternalInitializersFromFilesInMemory(gsl::span<const PathString> file_names,
+                                                  gsl::span<std::pair<char*, const size_t>> files_buffers);
 #endif
 
   // custom function callback to create a thread
@@ -203,6 +206,7 @@ inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_
   //<< " initializers_to_share_map:"          << session_options.initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   //<< " external_initializers:"             << session_options.external_initializers
+  //<< " external_initializer_files:"        << session_options.external_initializer_files
 #endif
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   //<< " custom_op_libs:" << session_options.custom_op_libs

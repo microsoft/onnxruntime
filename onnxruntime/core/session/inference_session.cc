@@ -1650,6 +1650,13 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.InjectExternalInitializedTensors(session_options_.external_initializers));
       InlinedHashMap<std::string, OrtValue>{}.swap(session_options_.external_initializers);
     }
+
+    if (!session_options_.external_initializer_files_mmap.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap));
+      InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>{}.swap(
+          session_options_.external_initializer_files_mmap);
+    }
 #endif
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
