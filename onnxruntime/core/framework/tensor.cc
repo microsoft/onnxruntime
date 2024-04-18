@@ -35,7 +35,7 @@ size_t Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape
   if (shape_size > 0) {
     SafeInt<size_t> len = 0;
 
-    // TODO: Handle more cleanly. Add virtual function to MLDataType: ByteSizeFromShape(TensorShape) ??
+    // TODO(adrianlizarraga): Handle more cleanly.
     if (utils::IsPrimitiveDataType<Int4x2>(elt_type) || utils::IsPrimitiveDataType<UInt4x2>(elt_type)) {
       shape_size = (shape_size + 1) / 2;
     }
@@ -112,7 +112,7 @@ size_t Tensor::SizeInBytes() const {
 #endif
   size_t ret = 0;
 
-  // TODO: Handle more cleanly. Add virtual function to MLDataType: ByteSizeFromShape(TensorShape) ??
+  // TODO(adrianlizarraga): Handle more cleanly.
   if (utils::IsPrimitiveDataType<Int4x2>(dtype_) || utils::IsPrimitiveDataType<UInt4x2>(dtype_)) {
     size = (size + 1) / 2;
   }
