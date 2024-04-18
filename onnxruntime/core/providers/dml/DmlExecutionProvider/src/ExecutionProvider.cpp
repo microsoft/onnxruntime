@@ -1208,17 +1208,17 @@ namespace Dml
     {
         if (GraphCaptureEnabled())
         {
-            auto graph_annotation_str = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
+            auto graphAnnotationStr = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
             // If graph annotation is not provided, fall back to the one dml graph per session behavior
-            int dml_graph_annotation_id = 0;
-            if (graph_annotation_str.has_value())
+            int dmlGraphAnnotationId = 0;
+            if (graphAnnotationStr.has_value())
             {
-                ORT_ENFORCE(onnxruntime::TryParseStringWithClassicLocale<int>(*graph_annotation_str, dml_graph_annotation_id),
+                ORT_ENFORCE(onnxruntime::TryParseStringWithClassicLocale<int>(*graphAnnotationStr, dmlGraphAnnotationId),
                             "Failed to parse the dml graph annotation id: ",
-                            *graph_annotation_str);
+                            *graphAnnotationStr);
             }
 
-            m_currentGraphAnnotationId = dml_graph_annotation_id;
+            m_currentGraphAnnotationId = dmlGraphAnnotationId;
         }
 
         return onnxruntime::common::Status::OK();

@@ -50,6 +50,7 @@
 #ifdef USE_DML
 #include <wrl/client.h>
 #include <wil/result.h>
+#include <DirectML.h>
 #include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
 
 using Microsoft::WRL::ComPtr;
