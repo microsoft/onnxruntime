@@ -37,10 +37,6 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
 
-ADD ompffmpeg/runtimes/linux-x64/native /tmp/ompffmpeg
-RUN chmod +x /tmp/ompffmpeg/ffmpeg && chmod +x /tmp/ompffmpeg/ffprobe
-RUN ln -s /tmp/ompffmpeg/ffmpeg /usr/local/bin/ffmpeg
-RUN ln -s /tmp/ompffmpeg/ffprobe /usr/local/bin/ffprobe
 
 # Build final image from base.
 FROM base as final
