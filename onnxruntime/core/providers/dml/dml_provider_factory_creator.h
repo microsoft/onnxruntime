@@ -26,7 +26,6 @@ struct DMLProviderFactoryCreator {
     int device_id,
     bool skip_software_device_check,
     bool disable_metacommands,
-    bool enable_dynamic_graph_fusion,
     bool python_api = false);
 
   static std::shared_ptr<IExecutionProviderFactory> CreateFromProviderOptions(
@@ -38,14 +37,12 @@ struct DMLProviderFactoryCreator {
     const ConfigOptions& config_options,
     const OrtDmlDeviceOptions* device_options,
     bool disable_metacommands,
-    bool enable_dynamic_graph_fusion,
     bool python_api = false);
 
   static std::shared_ptr<IExecutionProviderFactory> CreateFromAdapterList(
     const ConfigOptions& config_options,
     std::vector<Microsoft::WRL::ComPtr<IDXCoreAdapter>>&& dxcore_devices,
     bool disable_metacommands,
-    bool enable_dynamic_graph_fusion,
     bool python_api = false);
 
   static Microsoft::WRL::ComPtr<ID3D12Device> CreateD3D12Device(int device_id, bool skip_software_device_check);
