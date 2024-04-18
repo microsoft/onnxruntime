@@ -1,0 +1,2 @@
+Microsoft.Media.FFmpeg.ORT.Onnxruntime.Linux.7.0.0
+https://dev.azure.com/OneMediaPipeline/OMP-FFmpeg/_artifacts/feed/One_Media_Pipeline/NuGet/Microsoft.Media.FFmpeg.ORT.Onnxruntime.Linux/overview/7.0.0
