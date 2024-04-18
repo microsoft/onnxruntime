@@ -13,8 +13,8 @@
             "--build_apple_framework",
             "--use_xcode",
             "--use_coreml",
-            "--use_xnnpack",
             "--skip_tests",
+            "--compile_no_warning_as_error",
             "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
         ],
         "xros": [
