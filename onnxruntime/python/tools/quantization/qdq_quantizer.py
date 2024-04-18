@@ -187,20 +187,22 @@ class QDQQuantizer(BaseQuantizer):
 
         self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else None
 
-        # The ONNX spec does not yet support 16-bit Q/DQ ops. So, must override the Q/DQ op domain to 'com.microsoft'
-        # if the activation or weight types are 16-bit integers.
-        # TODO: Remove this override (and use only the 'UseQDQContribOps' option) if/when ONNX adds 16-bit support.
-        int16_types = (TensorProto.UINT16, TensorProto.INT16)
-        overrides_have_int16 = any(t.tensor_type in int16_types for t in self.tensor_quant_override_qtypes)
-        if not self.qdq_op_domain and (
-            self.activation_qType in int16_types or self.weight_qType in int16_types or overrides_have_int16
-        ):
-            logging.warning(
-                "ONNX QuantizeLinear and DequantizeLinear operators do not support 16-bit integer quantization types. "
-                f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
-                "enable support."
-            )
-            self.qdq_op_domain = ms_domain
+        # The ONNX spec did not support 16-bit Q/DQ ops before opset 21.
+        # So, may have to override the Q/DQ op domain to 'com.microsoft' if the activation or weight types
+        # are 16-bit integers.
+        if self.opset_version < 21:
+            int16_types = (TensorProto.UINT16, TensorProto.INT16)
+            overrides_have_int16 = any(t.tensor_type in int16_types for t in self.tensor_quant_override_qtypes)
+            if not self.qdq_op_domain and (
+                self.activation_qType in int16_types or self.weight_qType in int16_types or overrides_have_int16
+            ):
+                logging.warning(
+                    "ONNX QuantizeLinear and DequantizeLinear operators do not support "
+                    "16-bit integer quantization types prior to opset 21. "
+                    f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
+                    "enable support."
+                )
+                self.qdq_op_domain = ms_domain
 
         self.quantization_params = self.calc_graph_quant_params()
 
