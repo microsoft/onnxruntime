@@ -228,7 +228,7 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
   };
 };
 
-const createInPlaceSoftmaxProgramInfo = (context: ComputeContext, input: TensorView, n: number, d: number) => {
+const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: TensorView, n: number, d: number) => {
   const components = getMaxComponents(d);
   let WG = 64;
   const dComp = d / components;
@@ -459,15 +459,10 @@ const createAttentionProbsProgramInfo =
       return {
         name: 'AttentionProbs',
         shaderCache: {hint: `${components}`, inputDependencies},
-        getRunData: () => ({
-          outputs: [{dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default}],
-          dispatchGroup: dispatch,
-          programUniforms
-        }),
+        getRunData: () => ({outputs, dispatchGroup: dispatch, programUniforms}),
         getShaderSource,
       };
-    }
-
+    };
 
 
 const createVxAttentionScoreProgramInfo =
@@ -487,7 +482,11 @@ const createVxAttentionScoreProgramInfo =
         {type: DataType.uint32, data: params.vHiddenSize}
       ];
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
-
+      const presentValueShape = [params.batchSize, params.numHeads, totalSequenceLength, params.vHeadSize];
+      const outputs = [{dims: outputShape, dataType: probs.dataType, gpuDataType: GpuDataType.default}];
+      if (context.outputCount > 1) {
+        outputs.push({dims: presentValueShape, dataType: probs.dataType, gpuDataType: GpuDataType.default});
+      }
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const probsHelper = inputVariable('probs', probs.dataType, probs.dims);
         const vHelper = inputVariable('value', v.dataType, v.dims);
@@ -581,11 +580,7 @@ const createVxAttentionScoreProgramInfo =
       return {
         name: 'AttentionScore',
         shaderCache: {inputDependencies},
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: probs.dataType, gpuDataType: GpuDataType.default}],
-          dispatchGroup: dispatch,
-          programUniforms
-        }),
+        getRunData: () => ({outputs, dispatchGroup: dispatch, programUniforms}),
         getShaderSource,
       };
     };
@@ -596,22 +591,25 @@ export const applyAttention =
      relativePositionBias: TensorView|undefined, parameters: AttentionParameters, attributes: AttentionAttrs) => {
       const pastSequenceLength = context.outputCount === 1 ? 0 : parameters.pastSequenceLength;
       const totalSequenceLength = parameters.kvSequenceLength + pastSequenceLength;
+      const inputsK = [q, k];
+      if (relativePositionBias) {
+        inputsK.push(relativePositionBias);
+      }
       const probs = context.compute(
           createAttentionProbsProgramInfo(
               context, q, k, relativePositionBias, parameters, attributes, pastSequenceLength, totalSequenceLength),
-          {
-            inputs: relativePositionBias ? [q, k, relativePositionBias] : [q, k],
-            outputs: context.outputCount > 1 ? [-1, 1] : [-1]
-          })[0];
+          {inputs: inputsK, outputs: context.outputCount > 1 ? [-1, 1] : [-1]})[0];
+
       context.compute(
           createInPlaceSoftmaxProgramInfo(
               context, probs, parameters.batchSize * parameters.numHeads * parameters.sequenceLength,
               totalSequenceLength),
           {inputs: [probs], outputs: []});
 
+      const inputsV = [probs, v];
       context.compute(
           createVxAttentionScoreProgramInfo(context, probs, v, parameters, pastSequenceLength, totalSequenceLength),
-          {inputs: [probs, v], outputs: context.outputCount > 2 ? [0, 2] : [0]});
+          {inputs: inputsV, outputs: context.outputCount > 2 ? [0, 2] : [0]});
     };
 
 const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
