@@ -911,7 +911,7 @@ def use_dev_mode(args):
         return False
     if args.use_armnn:
         return False
-    if args.ios and is_macOS() and args.visionos:
+    if (args.ios or args.visionos) and is_macOS():
         return False
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
     if SYSTEM_COLLECTIONURI and SYSTEM_COLLECTIONURI != "https://dev.azure.com/onnxruntime/":
@@ -2785,7 +2785,7 @@ def main():
 
         if is_macOS():
             if (
-                not args.ios
+                not (args.ios or args.visionos)
                 and args.macos != "Catalyst"
                 and not args.android
                 and args.osx_arch == "arm64"
