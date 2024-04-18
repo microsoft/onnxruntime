@@ -99,8 +99,8 @@ jobs:
   - task: UseDotNet@2
     inputs:
       version: '7.x'
-      env:
-        PROCESSOR_ARCHITECTURE: 'x86'
+    env:
+      PROCESSOR_ARCHITECTURE: 'x86'
 
   - task: NodeTool@0
     inputs:
