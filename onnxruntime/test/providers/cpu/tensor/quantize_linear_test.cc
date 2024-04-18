@@ -44,7 +44,6 @@ TEST(DequantizeLinearOpTest, Int4) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<Int4x2>("x_zero_point", {}, {Int4x2(-1, unused_val)});
   test.AddOutput<float>("y", dims, {-14.0f, -4.0f, 4.0f, 16.0f, 6.0f});
-  // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -59,7 +58,6 @@ TEST(DequantizeLinearOpTest, UInt4) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<UInt4x2>("x_zero_point", {}, {UInt4x2(1, unused_val)});
   test.AddOutput<float>("y", dims, {-2.0f, 0.0f, 4.0f, 28.0f, 2.0f});
-  // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
