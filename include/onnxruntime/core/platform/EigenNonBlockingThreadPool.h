@@ -54,10 +54,6 @@
 #include "core/platform/ort_spin_lock.h"
 #include "core/platform/Barrier.h"
 
-#if defined(CPUINFO_SUPPORTED) && !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-#include <cpuinfo.h>
-#endif
-
 // ORT thread pool overview
 // ------------------------
 //
@@ -1539,7 +1535,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     constexpr int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
     const int steal_count = spin_count / 100;
-    const bool tpause = CPUIDInfo::GetCPUIDInfo().HasTPAUSE();
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
@@ -1559,14 +1554,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
           }
-		  
-          if (tpause) {
-            onnxruntime::concurrency::SpinTPAUSE();
-          }
-          else {
-            onnxruntime::concurrency::SpinPause();
-          }
-        } 
+          onnxruntime::concurrency::SpinPause();
+        }
 
         // Attempt to block
         if (!t) {

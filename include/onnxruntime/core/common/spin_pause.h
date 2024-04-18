@@ -13,27 +13,29 @@
 
 #if defined(_M_AMD64) || defined(__x86_64__)
 #include <cstdint>
+#include "core/common/cpuid_info.h"
 #endif
 
 namespace onnxruntime {
 
+const bool tpause = CPUIDInfo::GetCPUIDInfo().HasTPAUSE();
+const std::uint64_t spin_delay_cycles = 2000;
+
 namespace concurrency {
 
 // Intrinsic to use in spin-loops
-
 inline void SpinPause() {
 #if defined(_M_AMD64) || defined(__x86_64__)
-  _mm_pause();
-#endif
-}
-
-inline void SpinTPAUSE() {
-#if defined(_M_AMD64) || defined(__x86_64__)
-   const std::uint64_t spin_delay_cycles = 2000;
+if(tpause) {
   _tpause(0x0, __rdtsc() + spin_delay_cycles);
+}
+else{
+  _mm_pause();
+}
 #endif
 }
 
 }  // namespace concurrency
 
 }  // namespace onnxruntime
+
