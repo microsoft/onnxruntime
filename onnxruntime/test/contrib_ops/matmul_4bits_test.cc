@@ -201,27 +201,21 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
 }
 
 TEST(MatMulNBits, Float32) {
-  //for (auto M : {1, 2, 100}) {
-  //  for (auto N : {1, 2, 32, 288}) {
-  //    for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
-  //      for (auto block_size : {16, 32, 64, 128}) {
-  for (auto M : { 1,  }) {
-    for (auto N : { 1, }) {
-      for (auto K : { 1 }) {
-        for (auto block_size : { 16 }) {
+  for (auto M : {1, 2, 100}) {
+    for (auto N : {1, 2, 32, 288}) {
+      for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
+        for (auto block_size : {16, 32, 64, 128}) {
 #ifdef ORT_NEURAL_SPEED
           for (auto accuracy_level : {0, 1, 4}) {
             RunTest(M, N, K, block_size, accuracy_level, false, false);
             RunTest(M, N, K, block_size, accuracy_level, true, false);
           }
 #else
-          for (auto accuracy_level : {4}) {
-            //has_zeropoint, bool use_float16, bool has_g_idx = false, bool zp_is_4bit = true
-            RunTest(M, N, K, block_size, accuracy_level, false, false, false, false);
-            //RunTest(M, N, K, block_size, accuracy_level, false, false);
-            //RunTest(M, N, K, block_size, accuracy_level, true, false);
-            //RunTest(M, N, K, block_size, accuracy_level, false, false, true);
-            //RunTest(M, N, K, block_size, accuracy_level, true, false, false, false);
+          for (auto accuracy_level : {0}) {
+            RunTest(M, N, K, block_size, accuracy_level, false, false);
+            RunTest(M, N, K, block_size, accuracy_level, true, false);
+            RunTest(M, N, K, block_size, accuracy_level, false, false, true);
+            RunTest(M, N, K, block_size, accuracy_level, true, false, false, false);
           }
 #endif
         }

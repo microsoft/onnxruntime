@@ -159,8 +159,6 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
   constexpr size_t SubBlkStep8 = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, SubBlkLen16);
   static_assert(SubBlkStep8 == 8);  // 16 * 4 / 8
 
-  const __m256i low_mask = _mm256_set1_epi8(0xF);
-
   __m256 acc[NCols];
   UnrolledLoop<NCols>([&](size_t i) {
     acc[i] = _mm256_setzero_ps();

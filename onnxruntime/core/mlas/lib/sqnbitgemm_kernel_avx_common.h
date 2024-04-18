@@ -114,20 +114,6 @@ Q4BitBlkDequantBForSgemm_CompFp32_avx2(
   const size_t BlockStrideQuantB
 );
 
-void
-SQ4BitGemmM1Kernel_CompInt8_avx512vnni(
-  size_t BlkLen,
-  const std::byte* QuantA,
-  const std::byte* QuantBData,
-  const float* QuantBScale,
-  const std::byte* QuantBZeroPoint,
-  float* C,
-  size_t CountN,
-  size_t CountK,
-  size_t BlockStrideQuantB,
-  const float* Bias
-);
-
 //
 // General helpers.
 //
@@ -151,10 +137,6 @@ namespace
 
   // this function is used to dot product 2 pairs of 32 epi8s. it is used with Int8 precision
   // and blklen >= 64. In this case, 64 of 4b weights are filled with one load.
-  using DotQuadFunctionType = __m256 (*)(
-    const __m256i, const __m256i,
-    const __m256i, const __m256i);
-
   static MLAS_FORCEINLINE __m256 dot_quad_avx512vnni(
     const __m256i bv0_32_epi8, const __m256i bv1_32_epi8,
     const __m256i av0_32_epi8, const __m256i av1_32_epi8) {
@@ -238,6 +220,17 @@ namespace
     acc0 = _mm256_fmadd_ps(sum_ps, scale0, acc0);
   }
 
+  template<bool HasZeroPoint>
+  int8_t MLAS_FORCEINLINE get_zp(bool is_lower_half_byte_zp, const std::byte* QuantBZeroPointPtr) {
+      if constexpr (HasZeroPoint) {
+          return is_lower_half_byte_zp ?
+              std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{ 0x0F }) :
+              std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4);
+      } else {
+          return 8;
+      }
+  }
+
   // this function load and unpack 32 4b weights (packed for BlkLen32) and dot product it with 32
   // epi8 input. dot products are accumulated into acc0.
   // This function is called for Int8 precision with BlkLen = 32.
@@ -259,11 +252,7 @@ namespace
     const float combined_scale,
     __m256& acc0) {
     const __m256 scale0 = _mm256_set1_ps(combined_scale);
-    const int8_t zp = constexpr (HasZeroPoint) ?
-      (is_lower_half_byte_zp ?
-        std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{ 0x0F }) :
-        std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4))
-      : 8;
+    const int8_t zp = get_zp<HasZeroPoint>(is_lower_half_byte_zp, QuantBZeroPointPtr);
     load_and_mul_sum_s8_quads_with_zp_avx512vnni(
       av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr),
       low_mask, zero,
@@ -279,11 +268,7 @@ namespace
     const float combined_scale,
     __m256& acc0) {
     const __m256 scale0 = _mm256_set1_ps(combined_scale);
-    const int8_t zp = constexpr (HasZeroPoint) ?
-      (is_lower_half_byte_zp ?
-        std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{ 0x0F }) :
-        std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4))
-      : 8;
+    const int8_t zp = get_zp<HasZeroPoint>(is_lower_half_byte_zp, QuantBZeroPointPtr);
     load_and_mul_sum_s8_quads_with_zp_avx2(
       av_0_epi8, reinterpret_cast<const __m128i*>(QuantBDataPtr),
       low_mask, zero,
@@ -356,4 +341,3 @@ namespace
     return _mm_add_ps(_mm256_extractf32x4_ps(acc_y, 0), _mm256_extractf32x4_ps(acc_y, 1));
   }
 }  // namespace
-

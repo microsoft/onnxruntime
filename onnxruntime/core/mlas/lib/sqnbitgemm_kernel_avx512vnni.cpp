@@ -22,6 +22,7 @@ Abstract:
 #include "sqnbitgemm.h"
 
 #include "sqnbitgemm_kernel_avx_common.h"
+#include "sqnbitgemm_kernel_avx_common_int8.h"
 #include "sqnbitgemm_kernel_avx_common_fp32.h"
 
 MLAS_FORCEINLINE void
@@ -106,6 +107,107 @@ SQ4BitGemmM1Kernel_CompFp32(
         Bias,
         0,
         0
+      );
+    }
+  }
+}
+
+MLAS_FORCEINLINE
+void
+SQ4BitGemmM1Kernel_CompInt8_avx512vnni(
+  size_t BlkLen,
+  const std::byte* QuantA,
+  const std::byte* QuantBData,
+  const float* QuantBScale,
+  const std::byte* QuantBZeroPoint,
+  float* C,
+  size_t CountN,
+  size_t CountK,
+  size_t BlockStrideQuantB,
+  const float* Bias
+)
+{
+  if (QuantBZeroPoint != nullptr) {
+    constexpr bool HasZeroPoint = true;
+    if (BlkLen == 16) {
+      SQ4BitGemmM1Kernel_BlkLen16_CompInt8_Impl<HasZeroPoint>(
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        CountK,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
+    else if (BlkLen == 32) {
+      SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx512vnni<HasZeroPoint>>(
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
+    else {
+      SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx512vnni>(
+        BlkLen,
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        CountK,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
+  }
+  else {
+    constexpr bool HasZeroPoint = false;
+    if (BlkLen == 16) {
+      SQ4BitGemmM1Kernel_BlkLen16_CompInt8_Impl<HasZeroPoint>(
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        CountK,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
+    else if (BlkLen == 32) {
+      SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx512vnni<HasZeroPoint>>(
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        BlockStrideQuantB,
+        Bias
+      );
+    }
+    else {
+      SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx512vnni>(
+        BlkLen,
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        CountK,
+        BlockStrideQuantB,
+        Bias
       );
     }
   }

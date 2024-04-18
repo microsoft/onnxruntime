@@ -141,7 +141,7 @@ MLAS_FORCEINLINE void
   constexpr size_t GemmFloatKernelWidth16 = 16; // mlas GemmFloatKernel requires B with width 16
   const __m128i low_mask = _mm_set1_epi8(0xF);
   for (size_t col = 0; col < CountN; col += NCols8) {
-    const size_t cols = std::min(NCols8, CountN - col);
+    const int cols = std::min((int)NCols8, (int)CountN - (int)col);
     for (size_t k = 0; k < BlockCountK; k++) {
       // count # of tiles plus blks of the current tile from top
       const size_t tile_count = col / GemmFloatKernelWidth16;
@@ -158,7 +158,7 @@ MLAS_FORCEINLINE void
       __m256i weight_16_epi16[NCols8];
       __m256 scale_8_ps[NCols8];
       UnrolledLoop<NCols8>([&](size_t col_) {
-        if (col_ < cols) {
+        if ((int)col_ < cols) {
           // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
           __m128i bvi = _mm_loadu_si64((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
           const __m128i lower = _mm_and_si128(bvi, low_mask);
@@ -184,8 +184,8 @@ MLAS_FORCEINLINE void
         });
       for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
         __m256 weight_8_ps[8];
-        for (int col_ = 0; col_ < 8; col_++) {
-          if (col_ < cols) {
+        for (size_t col_ = 0; col_ < 8; col_++) {
+          if ((int)col_ < cols) {
             if (i_of_2 == 0) {
               __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 0));
               weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
@@ -312,7 +312,7 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32(
           });
         for (int i_of_4 = 0; i_of_4 < 4; i_of_4++) {
           __m256 weight_8_ps[8];
-          for (int col_ = 0; col_ < 8; col_++) {
+          for (size_t col_ = 0; col_ < 8; col_++) {
             if (col_ < cols) {
               if (i_of_4 == 0) {
                 __m256i weight_i_16_epi16 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_32_epi8[col_], 0));
@@ -485,107 +485,6 @@ QuantizeARow_CompInt8_avx512(
   MlasQ80BlkQuantRow_avx512(BlkLen, A, CountK, QuantA);
 }
 
-MLAS_FORCEINLINE
-void
-SQ4BitGemmM1Kernel_CompInt8_avx512vnni(
-  size_t BlkLen,
-  const std::byte* QuantA,
-  const std::byte* QuantBData,
-  const float* QuantBScale,
-  const std::byte* QuantBZeroPoint,
-  float* C,
-  size_t CountN,
-  size_t CountK,
-  size_t BlockStrideQuantB,
-  const float* Bias
-)
-{
-  if (QuantBZeroPoint != nullptr) {
-    constexpr bool HasZeroPoint = true;
-    if (BlkLen == 16) {
-      SQ4BitGemmM1Kernel_BlkLen16_CompInt8_Impl<HasZeroPoint>(
-        QuantA,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        CountN,
-        CountK,
-        BlockStrideQuantB,
-        Bias
-      );
-    }
-    else if (BlkLen == 32) {
-      SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx512vnni<HasZeroPoint>>(
-        QuantA,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        CountN,
-        BlockStrideQuantB,
-        Bias
-      );
-    }
-    else {
-      SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx512vnni>(
-        BlkLen,
-        QuantA,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        CountN,
-        CountK,
-        BlockStrideQuantB,
-        Bias
-      );
-    }
-  }
-  else {
-    constexpr bool HasZeroPoint = false;
-    if (BlkLen == 16) {
-      SQ4BitGemmM1Kernel_BlkLen16_CompInt8_Impl<HasZeroPoint>(
-        QuantA,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        CountN,
-        CountK,
-        BlockStrideQuantB,
-        Bias
-      );
-    }
-    else if (BlkLen == 32) {
-      SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx512vnni<HasZeroPoint>>(
-        QuantA,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        CountN,
-        BlockStrideQuantB,
-        Bias
-      );
-    }
-    else {
-      SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx512vnni>(
-        BlkLen,
-        QuantA,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        CountN,
-        CountK,
-        BlockStrideQuantB,
-        Bias
-      );
-    }
-  }
-}
-
 const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
     MLAS_SQNBIT_GEMM_DISPATCH d;
 
@@ -595,7 +494,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32_avx512;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
-    d.SQ4BitGemmM1Kernel_CompInt8 = SQ4BitGemmM1Kernel_CompInt8_avx512vnni;
+    d.SQ4BitGemmM1Kernel_CompInt8 = SQ4BitGemmM1Kernel_CompInt8_avx2;
     d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8_avx512;
 
     return d;

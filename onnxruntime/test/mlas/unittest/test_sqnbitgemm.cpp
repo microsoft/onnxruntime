@@ -388,51 +388,6 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
       }
     }
 
-    // to march selected benchmark runs
-    // SQNBITGEMM<4>/BlkLen:128/M:1024/N:4096/K:4096/Threads:1/Symmetric:1/ComputeType:4/real_time
-    // SQNBitGemmBlkBitWidth4BlkLen128.SingleThread/isSymmetric1/M1024xN4096xK4096/hasBias0/computeTypeInt8
-    if constexpr (BlkLen == 128)
-      // replace M 1024 with 128, N 4096 with 512 to reduce execution time in debug
-      tests_registered += RegisterSingleTest(128/*1024*/, 512/*4096*/, 4096, CompInt8, true, true, false);
-
-    if constexpr (BlkLen == 64) {
-      // SQNBitGemmBlkBitWidth4BlkLen64.SingleThread/isSymmetric1/M1xN1xK64/hasBias0/computeTypeInt8
-      tests_registered += RegisterSingleTest(1, 4, 64, CompInt8, true, false, true);
-    }
-
-    if constexpr (BlkLen == 32) {
-      // SQNBitGemmBlkBitWidth4BlkLen32.SingleThread/isSymmetric1/M1xN1xK64/hasBias0/computeTypeInt8
-      tests_registered += RegisterSingleTest(1, 1, 2, CompFp32, true, true, false);
-      tests_registered += RegisterSingleTest(1, 1, 32, CompFp32, true, true, false);
-      tests_registered += RegisterSingleTest(1, 1, 64, CompInt8, true, true, false);
-      tests_registered += RegisterSingleTest(1, 1, 96, CompInt8, true, true, false);
-      tests_registered += RegisterSingleTest(2, 16, 17, CompFp32, false, false, false);
-      tests_registered += RegisterSingleTest(2, 16, 33, CompFp32, false, false, false);
-      tests_registered += RegisterSingleTest(2, 32, 17, CompFp32, false, true, false);
-      tests_registered += RegisterSingleTest(2, 32, 31, CompFp32, false, true, false);
-      tests_registered += RegisterSingleTest(2, 32, 33, CompFp32, false, true, false);
-      tests_registered += RegisterSingleTest(2, 64, 33, CompFp32, false, false, false);
-      tests_registered += RegisterSingleTest(2, 17, 32, CompFp32, false, false, false);
-      tests_registered += RegisterSingleTest(2, 17, 33, CompFp32, false, false, false);
-      tests_registered += RegisterSingleTest(2, 288, 32, CompFp32, false, false, false);
-      tests_registered += RegisterSingleTest(2, 288, 33, CompFp32, false, false, false);
-      tests_registered += RegisterSingleTest(2, 288, 49, CompFp32, false, false, false);
-      tests_registered += RegisterSingleTest(2, 1040, 544, CompFp32, false, false, false);
-    }
-
-    if constexpr (BlkLen == 16) {
-      // SQNBitGemmBlkBitWidth4BlkLen32.SingleThread/isSymmetric1/M1xN1xK64/hasBias0/computeTypeInt8
-      //tests_registered += RegisterSingleTest(1, 1, 16, CompInt8, true, true, false);
-      //tests_registered += RegisterSingleTest(1, 1, 32, CompInt8, true, true, false);
-      //tests_registered += RegisterSingleTest(1, 1, 48, CompInt8, true, true, false);
-      tests_registered += RegisterSingleTest(1, 1, 2, CompInt8, true, true, false);
-      tests_registered += RegisterSingleTest(2, 16, 17, CompFp32, false, true, false);
-      tests_registered += RegisterSingleTest(2, 32, 32, CompFp32, false, true, false);
-      tests_registered += RegisterSingleTest(2, 32, 33, CompFp32, false, true, false);
-      tests_registered += RegisterSingleTest(2, 32, 17, CompFp32, false, true, false);
-      tests_registered += RegisterSingleTest(2, 32, 1007, CompFp32, false, true, false);
-    }
-
     return tests_registered;
   }
 
