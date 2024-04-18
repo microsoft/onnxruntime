@@ -10,6 +10,7 @@ interface ID3D12Resource;
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 #include "IWinmlExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ExecutionContext.h"
 
 namespace onnxruntime
 {
@@ -30,9 +31,10 @@ namespace Dml
 {
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
-        ID3D12CommandQueue* commandQueue,
+        Dml::ExecutionContext* execution_context,
         bool enableMetacommands,
-        bool enableDynamicGraphFusion);
+        bool enableGraphCapture,
+        bool enableCpuSyncSpinning);
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
     void FlushContext(onnxruntime::IExecutionProvider* provider);
