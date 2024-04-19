@@ -26,19 +26,14 @@ let tileCol = i32(localId.x);
 let globalRow = i32(globalId.y);
 let globalCol = i32(globalId.x);
 
-let zero_point = ${tensorTypeToWsglStorageType(batchDims.type.tensor)}(8);
 // Loop over shared dimension.
 for (var t = 0; t < num_tiles; t++) {
   // Load one tile of A into local memory.
   read_a_to_shared_memory(tileRow, tileCol, batch, i32(workgroupId.y) * ${tileAOuter} + tileRow,
       kStart + tileCol${batchDims ? ', batchIndices' : ''});
 
-  // Load one tile of B into local memory.
-  read_b_to_shared_memory(${threadPerCol} * tileRow, tileCol,
-      (i32(workgroupId.x) * ${tileBOuter} + tileRow) * ${threadPerCol}, kStart + tileCol);
-
-  // Load one tile of Scales into local memory.
-  read_scales_to_shared_memory(${threadPerCol} * tileRow, tileCol,
+  // Load one tile of dequantized B into local memory.
+  read_dequantized_b_to_shared_memory(${threadPerCol} * tileRow, tileCol,
       (i32(workgroupId.x) * ${tileBOuter} + tileRow) * ${threadPerCol}, kStart + tileCol);
 
   kStart += tileInner;
@@ -47,12 +42,7 @@ for (var t = 0; t < num_tiles; t++) {
   // Compute acc values for a single thread.
   for(var j = 0; j < ${threadPerCol}; j++) {
     for (var k = 0; k < tileInner; k = k + 1) {
-      var BCached = mm_b_sub[${threadPerCol} * tileCol +j][k];
-      var ScaleCached = mm_scales_sub[${threadPerCol} * tileCol +j][k];
-      let dequantizeB = (BCached - zero_point) * ScaleCached;
-
-      let ACached = mm_a_sub[tileRow][k];
-      acc[j] += dot(ACached, dequantizeB);
+      acc[j] += dot(mm_a_sub[tileRow][k], mm_dequantized_b_sub[${threadPerCol} * tileCol +j][k]);
     }
   }
   workgroupBarrier();
@@ -61,14 +51,11 @@ for (var t = 0; t < num_tiles; t++) {
 write_result(batch, globalRow, globalCol, acc);
 `;
 
-          // 32 = bitsof(u32)
           return `
         var<workgroup> mm_a_sub: array<array<${tensorTypeToWsglStorageType(batchDims.type.tensor, component)}, ${
               tileAWidth}>, ${tileAHight}>;
-        var<workgroup> mm_b_sub: array<array<${tensorTypeToWsglStorageType(batchDims.type.tensor, component)}, ${
-              tileBWidth}>, ${tileBHight}>;
-        var<workgroup> mm_scales_sub: array<array<${tensorTypeToWsglStorageType(batchDims.type.tensor)}, ${
-              tileBWidth}>, ${tileBHight}>;
+        var<workgroup> mm_dequantized_b_sub: array<array<${
+              tensorTypeToWsglStorageType(batchDims.type.tensor, component)}, ${tileBWidth}>, ${tileBHight}>;
 
         const tileInner = ${tileInner};
 
@@ -107,49 +94,41 @@ const matMulNBitsReadWriteFnSource =
     fn read_a_to_shared_memory(inputRow: i32, inputCol: i32, batch: i32, row: i32, col: i32, batchIndices: ${
           batchVariable.type.indices}) {
       var value = ${tensorTypeToWsglStorageType(aVariable.type.tensor, component)}(0.0);
-      if(row < uniforms.dim_a_outer && col < uniforms.dim_inner)
-      {
+      if(row < uniforms.dim_a_outer && col < uniforms.dim_inner) {
         ${getAIndices()}
         value = ${aVariable.getByIndices('aIndices')};
       }
       mm_a_sub[inputRow][inputCol] = value;
     }
 
-    fn read_b_to_shared_memory(inputRow: i32, inputCol: i32, row: i32, col: i32) {
+    fn read_dequantized_b_to_shared_memory(inputRow: i32, inputCol: i32, row: i32, col: i32) {
       for (var i = 0; i < ${threadPerCol}; i++) {
-        var value = ${tensorTypeToWsglStorageType(bVariable.type.tensor)}(0);
-        let dequantizeCol = col / 2;
-        if(row + i < i32(uniforms.b_shape[0]) && dequantizeCol < i32(uniforms.b_shape[1]))
-        {
-          let bIndices = vec2<u32>(u32(row + i), u32(dequantizeCol));
-          value = ${bVariable.getByIndices('bIndices')};
+        var value_b = ${tensorTypeToWsglStorageType(bVariable.type.tensor)}(0);
+        var value_scale = ${dataType}(0);
+        let dequantized_b_col = col / 2;
+        let dequantized_scale_col = col / (uniforms.dim_inner /uniforms.n_blocks_per_col);
+        if(row + i < i32(uniforms.b_shape[0]) && dequantized_b_col < i32(uniforms.b_shape[1])
+            && dequantized_scale_col < i32(uniforms.scales_shape[1])) {
+          let bIndices = vec2<u32>(u32(row + i), u32(dequantized_b_col));
+          value_b = ${bVariable.getByIndices('bIndices')};
+          let scalesIndices = vec2<u32>(u32(row + i), u32(dequantized_scale_col));
+          value_scale = ${scalesVariable.getByIndices('scalesIndices')};
         }
 
-        var dequantizeValue : ${tensorTypeToWsglStorageType(aVariable.type.tensor, component)};
+        var dequantized_b_value : ${tensorTypeToWsglStorageType(aVariable.type.tensor, component)};
         if (col % 2 == 0) {
-          dequantizeValue = ${tensorTypeToWsglStorageType(aVariable.type.tensor, component)}(
-              ${dataType}(extractBits(value, 0, 4)), ${dataType}(extractBits(value, 4, 4)),
-              ${dataType}(extractBits(value, 8, 4)), ${dataType}(extractBits(value, 12, 4)));
+          dequantized_b_value = ${tensorTypeToWsglStorageType(aVariable.type.tensor, component)}(
+              ${dataType}(extractBits(value_b, 0, 4)), ${dataType}(extractBits(value_b, 4, 4)),
+              ${dataType}(extractBits(value_b, 8, 4)), ${dataType}(extractBits(value_b, 12, 4)));
         } else {
-          dequantizeValue = ${tensorTypeToWsglStorageType(aVariable.type.tensor, component)}(
-              ${dataType}(extractBits(value, 16, 4)), ${dataType}(extractBits(value, 20, 4)),
-              ${dataType}(extractBits(value, 24, 4)), ${dataType}(extractBits(value, 28, 4)));
+          dequantized_b_value = ${tensorTypeToWsglStorageType(aVariable.type.tensor, component)}(
+              ${dataType}(extractBits(value_b, 16, 4)), ${dataType}(extractBits(value_b, 20, 4)),
+              ${dataType}(extractBits(value_b, 24, 4)), ${dataType}(extractBits(value_b, 28, 4)));
         }
 
-        mm_b_sub[inputRow + i][inputCol] = dequantizeValue;
-      }
-    }
-
-    fn read_scales_to_shared_memory(inputRow: i32, inputCol: i32, row: i32, col: i32) {
-      for (var i = 0; i < ${threadPerCol}; i++) {
-        var value = ${dataType}(0);
-        var dequantizeCol = col / (uniforms.dim_inner /uniforms.n_blocks_per_col);
-        if(row + i < i32(uniforms.scales_shape[0]) && dequantizeCol < i32(uniforms.scales_shape[1]))
-        {
-          let scalesIndices = vec2<u32>(u32(row + i), u32(dequantizeCol));
-          value = ${scalesVariable.getByIndices('scalesIndices')};
-        }
-        mm_scales_sub[inputRow + i][inputCol] = value;
+        // The default zero point is 8 for unsigned 4-bit quantization.
+        let zero_point = ${tensorTypeToWsglStorageType(batchVariable.type.tensor)}(8);
+        mm_dequantized_b_sub[inputRow + i][inputCol] = (dequantized_b_value - zero_point) * value_scale;
       }
     }
 
@@ -192,9 +171,7 @@ export const createMatMulNBitsSharedProgramInfo =
       const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
       const programUniforms: ProgramUniform[] = [
         {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
-        {type: DataType.int32, data: dimInner / component}, {type: DataType.int32, data: attributes.blockSize},
-        {type: DataType.int32, data: attributes.bits}, {type: DataType.int32, data: nBlocksPerCol},
-        {type: DataType.int32, data: attributes.k}
+        {type: DataType.int32, data: dimInner / component}, {type: DataType.int32, data: nBlocksPerCol}
       ];
       const scaleShapeTemp = [attributes.n, nBlocksPerCol];
       const scalesRank = bShapeTemp.length;
@@ -216,8 +193,7 @@ export const createMatMulNBitsSharedProgramInfo =
 
         const uniforms: UniformsArrayType = [
           {name: 'dim_a_outer', type: 'i32'}, {name: 'dim_b_outer', type: 'i32'}, {name: 'dim_inner', type: 'i32'},
-          {name: 'block_size', type: 'i32'}, {name: 'bits', type: 'i32'}, {name: 'n_blocks_per_col', type: 'i32'},
-          {name: 'k', type: 'i32'}
+          {name: 'n_blocks_per_col', type: 'i32'}
         ];
         const declareFunctions =
             matMulNBitsReadWriteFnSource(component, threadPerCol, [batchDims, A, B, Scales, output]);
