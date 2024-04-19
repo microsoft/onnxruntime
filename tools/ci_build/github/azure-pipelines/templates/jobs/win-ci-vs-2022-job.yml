@@ -103,11 +103,6 @@ jobs:
       env:
           PROCESSOR_ARCHITECTURE: 'x86'
 
-  - ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
-    - task: UseDotNet@2
-      inputs:
-        version: '7.x'
-
   - task: NodeTool@0
     inputs:
       versionSpec: '18.x'
