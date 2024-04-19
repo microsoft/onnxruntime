@@ -126,6 +126,10 @@ namespace AttrName
     static constexpr const char* GraphFusedActivation = "activation";
     static constexpr const char* GraphFusedAxis = "activation_axis";
     static constexpr const char* Interleaved = "interleaved";
+    static constexpr const char* Bits = "bits";
+    static constexpr const char* UppercaseN = "N";
+    static constexpr const char* UppercaseK = "K";
+    static constexpr const char* MatMulNBitsBlockSize = "block_size";
 
 } // namespace AttrName
 
