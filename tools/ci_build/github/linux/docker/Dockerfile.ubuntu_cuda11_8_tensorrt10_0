@@ -52,9 +52,6 @@ RUN version="10.0.0.6-1+cuda11.8" &&\
     tensorrt-dev=${version} \
     libnvinfer-bin=${version}
 
-# Compile trtexec
-RUN cd /usr/src/tensorrt/samples/trtexec && make
-
 # Install Valgrind
 RUN apt-get install -y valgrind
 
