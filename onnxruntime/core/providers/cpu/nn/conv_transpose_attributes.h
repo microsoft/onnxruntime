@@ -73,9 +73,10 @@ struct ConvTransposeAttributes : public ConvAttributes {
                              " W: ", F_Shape.ToString().c_str());
     }
 
-    if (F_Shape[0] != num_input_channels) {
+    const auto F_channels_dim = is_nhwc ? F_Shape.NumDimensions() - 1 : 0;
+    if (F_Shape[F_channels_dim] != num_input_channels) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.",
-                             " filter_number: ", F_Shape[0],
+                             " filter_number: ", F_Shape[F_channels_dim],
                              " num_input_channels: ", num_input_channels);
     }
 

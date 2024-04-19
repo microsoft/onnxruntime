@@ -48,22 +48,34 @@ Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, Allo
                                        [[maybe_unused]] PrePackedWeights* prepacked_weights) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
-  if (NHWC) {  // InputTensors::IN_W
+  if constexpr (NHWC) {  // InputTensors::IN_W
     if (input_idx == 1) {
-      // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
       auto orig_shape = tensor.Shape();
+      const auto rank = orig_shape.NumDimensions();
 
-      InlinedVector<size_t> perm{0, 2, 3, 1};
-      gsl::span<size_t> permutation(perm.data(), 4);
-      TensorShapeVector new_dims{orig_shape[0], orig_shape[2], orig_shape[3], orig_shape[1]};
+      InlinedVector<size_t> perm;
+      TensorShapeVector new_dims;
+
+      if (rank == 3) {
+        // Transpose from {C, M/group, k1} to {M/group, k1, C}
+        perm = {1, 2, 0};
+        new_dims = TensorShapeVector{orig_shape[1], orig_shape[2], orig_shape[0]};
+      } else if (rank == 4) {
+        // Transpose from {C, M/group, kH, kW} to {M/group, kH, kW, C}
+        perm = {1, 2, 3, 0};
+        new_dims = TensorShapeVector{orig_shape[1], orig_shape[2], orig_shape[3], orig_shape[0]};
+      } else if (rank == 5) {
+        // Transpose from {C, M/group, k1, k2, k3} to {M/group, k1, k2, k3, C}
+        perm = {1, 2, 3, 4, 0};
+        new_dims = TensorShapeVector{orig_shape[1], orig_shape[2], orig_shape[3], orig_shape[4], orig_shape[0]};
+      }
+
+      gsl::span<size_t> permutation(perm.data(), rank);
       W_ = Tensor::Create(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
 
-      auto status = cuda::Transpose::DoTranspose(GetDeviceProp(), DefaultCudaStream(), DefaultCublasHandle(),
-                                                 permutation, tensor, *W_);
+      ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(GetDeviceProp(), DefaultCudaStream(), DefaultCublasHandle(),
+                                                       permutation, tensor, *W_));
 
-      if (!status.IsOK()) {
-        return status;
-      }
       CUDA_CALL_THROW(cudaStreamSynchronize(DefaultCudaStream()));
       is_packed = true;
     }
@@ -87,12 +99,10 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3-, 4- or 5-dimensional.",
                            " X: ", X->Shape().ToString().c_str());
   }
-  const Tensor* W;
-  if (!W_) {
-    W = context->Input<Tensor>(1);
-  } else {
-    W = W_.get();
-  }
+
+  // use pre-packed W if available
+  const Tensor* W = W_ ? W_.get() : context->Input<Tensor>(1);
+
   const TensorShape& w_shape = W->Shape();
   TensorShapeVector w_dims = w_shape.AsShapeVector();
   auto w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
@@ -101,9 +111,18 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
 
   CudaT* y_data = nullptr;
+
+  // convert 1D to 2D
   if (x_dimensions == 3) {
-    x_dims.insert(x_dims.begin() + 2, 1);
-    w_dims.insert(w_dims.begin() + 2, 1);
+    const auto insert_at = NHWC ? 1 : 2;
+
+    // NCHW: N, C, k1, C -> N, C, 1, k1
+    // NHWC: N, k1, C -> N, 1, k1, C
+    x_dims.insert(x_dims.begin() + insert_at, 1);
+
+    // NCHW: C, M/g, k1  -> C, M/g, 1, k1
+    // NHWC: M/g, k1, C -> M/g, 1, k1, C
+    w_dims.insert(w_dims.begin() + insert_at, 1);
   }
 
   {
@@ -113,7 +132,9 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
     bool input_dims_changed = (s_.last_x_dims.AsShapeVector() != x_dims);
     bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
     if (input_dims_changed || w_dims_changed) {
-      if (input_dims_changed) s_.last_x_dims = gsl::make_span(x_dims);
+      if (input_dims_changed) {
+        s_.last_x_dims = gsl::make_span(x_dims);
+      }
 
       if (w_dims_changed) {
         s_.last_w_dims = gsl::make_span(w_dims);
@@ -126,19 +147,20 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
       auto y_dims = p.Y->Shape().AsShapeVector();
       if (x_dimensions == 3) {
-        y_dims.insert(y_dims.begin() + 2, 1);
+        y_dims.insert(y_dims.begin() + (NHWC ? 1 : 2), 1);
         p.kernel_shape.insert(p.kernel_shape.begin(), 1);
         p.pads.insert(p.pads.begin(), 0);
         p.pads.insert(p.pads.begin() + 2, 0);
         p.strides.insert(p.strides.begin(), 1);
         p.dilations.insert(p.dilations.begin(), 1);
       }
+
       s_.y_dims = gsl::make_span(y_dims);
 
       if (w_dims_changed) {
-        if (NHWC) {
+        if constexpr (NHWC) {
           ORT_RETURN_IF_ERROR(s_.w_desc.Set(CUDNN_TENSOR_NHWC, CudnnTensor::GetDataType<CudaT>(),
-                                            static_cast<int>(w_dims[0]), static_cast<int>(w_dims[3]),
+                                            static_cast<int>(w_dims[3]), static_cast<int>(w_dims[0]),
                                             static_cast<int>(w_dims[1]), static_cast<int>(w_dims[2])));
         } else {
           ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
@@ -152,7 +174,8 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
       if (p.Y->Shape().Size() == 0) {
         return Status::OK();
       }
-      if (NHWC) {
+
+      if constexpr (NHWC) {
         ORT_RETURN_IF_ERROR(s_.x_tensor.Set(CUDNN_TENSOR_NHWC, CudnnTensor::GetDataType<CudaT>(),
                                             static_cast<int>(x_dims[0]), static_cast<int>(x_dims[3]),
                                             static_cast<int>(x_dims[1]), static_cast<int>(x_dims[2])));
@@ -215,8 +238,9 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
     if (!y_data) {
       auto y_dims = s_.y_dims.AsShapeVector();
       if (x_dimensions == 3) {
-        y_dims.erase(y_dims.begin() + 2);
+        y_dims.erase(y_dims.begin() + (NHWC ? 1 : 2));
       }
+
       Tensor* Y = context->Output(0, TensorShape(y_dims));
       y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 

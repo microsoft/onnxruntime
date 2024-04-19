@@ -409,11 +409,6 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: provider_test_utils.cc(866): error: Value of: expect_result == ExpectResult::kExpectSuccess";
-  }
-
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{1, 1, 1, 5},   // invalid kernel_shape, should be [1, 5]
       {},                            // output_padding
@@ -436,7 +431,11 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
                         11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectFailure,
-                      "kernel_shape num_dims is not compatible with W num_dims. kernel_shape: {1,1,1,5} W: {1,1,1,5}");
+                      // error message will end in "W: {1,1,1,5}" or "W: {1,1,5,1} depending on whether NCHW or NHWC,
+                      // so drop the part that differs from the expected string
+                      "kernel_shape num_dims is not compatible with W num_dims. kernel_shape: {1,1,1,5} W: {1,1,",
+                      {kTensorrtExecutionProvider, kQnnExecutionProvider,
+                       kDmlExecutionProvider});  // TODO: Unskip when fixed #41968513
 }
 
 TEST(ConvTransposeTest, ConvTranspose_onnx) {
@@ -1053,11 +1052,6 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
 }
 
 TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},  // kernel_shape
       {},                     // output_padding
@@ -1100,7 +1094,9 @@ TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
-                      {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});  // Accuracy Mismatch on OpenVINO-EP
+                      {kTensorrtExecutionProvider, kQnnExecutionProvider,
+                       kOpenVINOExecutionProvider,  // Accuracy Mismatch on OpenVINO-EP
+                       kDmlExecutionProvider});     // TODO: Unskip when fixed #41968513
 }
 
 #ifndef ENABLE_TRAINING
