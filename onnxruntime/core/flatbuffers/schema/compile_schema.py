@@ -144,6 +144,4 @@ def main():
 
 
 if __name__ == "__main__":
-    test_schema_path = SCRIPT_DIR.parents[2] / "test" / "flatbuffers" / "flatbuffers_utils_test.fbs"
-    print(test_schema_path)
     main()
