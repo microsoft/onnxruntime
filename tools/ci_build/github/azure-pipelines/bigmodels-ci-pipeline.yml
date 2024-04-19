@@ -354,7 +354,7 @@ stages:
 
     - powershell: |
         mkdir -p $(Agent.TempDirectory)/ompffmpeg
-        azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/ffmpeg/runtimes/linux-x64" $(Agent.TempDirectory)/ompffmpeg
+        azcopy cp --recursive "https://lotusscus.blob.core.windows.net/models/ffmpeg/runtimes/linux-x64" $(Agent.TempDirectory)/ompffmpeg
       displayName: 'Download OMP FFmpeg'
 
     - template: templates/get-docker-image-steps.yml
