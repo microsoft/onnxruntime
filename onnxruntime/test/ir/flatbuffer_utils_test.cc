@@ -294,7 +294,7 @@ TEST(GraphUtilsTest, ExternalWriteReadWithLoadInitializers) {
 
       ASSERT_EQ(expected_data.size(), loaded_initializer.raw_data().size()) << "expected initializer name " << expected_initializer.name() << " | loaded initializer name " << loaded_initializer.name();
       std::vector<uint8_t> loaded_data(loaded_initializer.raw_data().begin(), loaded_initializer.raw_data().end());
-      for (int j = 0; j < expected_data.size(); ++j) {
+      for (int j = 0; j < static_cast<int>(expected_data.size()); ++j) {
         ASSERT_EQ(expected_data[j], loaded_data[j]) << "expected initializer name " << expected_initializer.name() << " | loaded initializer name " << loaded_initializer.name();
       }
     } else {
@@ -374,7 +374,7 @@ TEST(GraphUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
   }
 
   // validate data
-  for (int i = 0; i < expected_tensors.size(); i++) {
+  for (int i = 0; i < static_cast<int>(expected_tensors.size()); i++) {
     auto& expected_tensor = expected_tensors[i];
     auto& loaded_tensor = loaded_tensors[i];
     ASSERT_EQ(expected_tensor.DataType(), loaded_tensor.DataType());

@@ -132,7 +132,6 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   ASSERT_EQ(outputs.size(), 1U);
 }
 
-
 void TestModuleExportWithExternalData(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
   auto training_model_uri = MODEL_FOLDER "training_model.onnx";
   auto eval_model_uri = MODEL_FOLDER "eval_model.onnx";

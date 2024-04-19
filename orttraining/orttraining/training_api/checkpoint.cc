@@ -17,16 +17,32 @@ PathString ExternalCheckpointDataPath(const PathString& checkpoint_path) {
 
 namespace {
 
+/**
+ * @brief Helper method to create a function object that reads data from an external file.
+ * @param external_data_stream Stream that data will be read from.
+ * @param offset Offset in the external data file to begin reading from.
+ * @param output_buffer Buffer to store the read data.
+ * @return Status of the operation.
+ */
 Status ReadFromExternalFileHelper(std::ifstream& external_data_stream,
                                   uint64_t offset, gsl::span<uint8_t> output_buffer) {
   external_data_stream.seekg(offset);
   external_data_stream.read(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
 
-  ORT_RETURN_IF(external_data_stream.fail(), "Failed reading external checkpoint data.");
+  auto [err, msg] = GetErrnoInfo();
+  ORT_RETURN_IF(external_data_stream.fail(), "Failed reading external checkpoint data. ", msg);
 
   return Status::OK();
 }
 
+/**
+ * @brief Helper method to create a function object that writes data to an external file.
+ * @param external_data_stream Stream where data will be written to.
+ * @param data_type data type to write -- used to determine alignment.
+ * @param bytes information to write in bytes.
+ * @param offset Modified to be the offset in the external data file where the data was written.
+ * @return Status of the operation.
+ */
 Status WriteToExternalFileHelper(std::ofstream& external_data_stream,
                                  int32_t data_type, gsl::span<const uint8_t> bytes, uint64_t& offset) {
   // for now align everything to 4 or 8 bytes. we can optimize this later if needed.
@@ -51,8 +67,8 @@ Status WriteToExternalFileHelper(std::ofstream& external_data_stream,
   }
 
   external_data_stream.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-  // TODO: include error code/message for why it failed. requires platform specific code
-  ORT_RETURN_IF(external_data_stream.fail(), "Failed writing external checkpoint data.");
+  auto [err, msg] = GetErrnoInfo();
+  ORT_RETURN_IF(external_data_stream.fail(), "Failed writing external checkpoint data. ", msg);
 
   offset = pos;
 
@@ -211,7 +227,8 @@ Status ToFile(const PathString& checkpoint_path, flatbuffers::FlatBufferBuilder&
   const uint8_t* buf = builder.GetBufferPointer();
   int size = builder.GetSize();
   file.write(reinterpret_cast<const char*>(buf), size);
-  ORT_RETURN_IF_NOT(file, "Failed to save checkpoint to file: ", ToUTF8String(checkpoint_path));
+  auto [err, msg] = GetErrnoInfo();
+  ORT_RETURN_IF_NOT(file, "Failed to save checkpoint to file: ", ToUTF8String(checkpoint_path), " ", msg);
 
   return Status::OK();
 }
