@@ -8,10 +8,12 @@
 ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 ARG TRT_VERSION=8.6.1.6-1+cuda11.8
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64:/usr/local/cuda/lib64
+ARG OMP_FFMPEG_PATH
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
+
 
 ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}:${LD_LIBRARY_PATH}
 
@@ -37,10 +39,12 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
 
-ADD ompffmpeg/runtimes/linux-x64/native /tmp/ompffmpeg
-RUN chmod +x /tmp/ompffmpeg/ffmpeg && chmod +x /tmp/ompffmpeg/ffprobe
-RUN ln -s /tmp/ompffmpeg/ffmpeg /usr/local/bin/ffmpeg
-RUN ln -s /tmp/ompffmpeg/ffprobe /usr/local/bin/ffprobe
+ADD ${OMP_FFMPEG_PATH} /tmp/ompffmpeg
+RUN if [[ -n "$OMP_FFMPEG_PATH" ]]; then \
+        chmod +x /tmp/ompffmpeg/ffmpeg && chmod +x /tmp/ompffmpeg/ffprobe; \
+        ln -s /tmp/ompffmpeg/ffmpeg /usr/local/bin/ffmpeg; ln -s /tmp/ompffmpeg/ffprobe /usr/local/bin/ffprobe; \
+    fi
+
 
 # Build final image from base.
 FROM base as final
