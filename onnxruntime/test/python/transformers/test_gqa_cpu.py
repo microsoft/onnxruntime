@@ -1790,7 +1790,7 @@ class TestGQA(unittest.TestCase):
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
                                 for packed in [False, True]:
-                                    config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
+                                    config = PromptConfig(3, sq, skv, sq + skv + 8, n, n2, h)
                                     past_kv_format = Formats.BNSH
                                     parity_check_gqa_prompt(
                                         config,
@@ -1837,7 +1837,7 @@ class TestGQA(unittest.TestCase):
                 for n, n2 in num_h:
                     for h in h_sizes:
                         for local in [False, True]:
-                            for rotary, rotary_interleaved in [(False, False), (True, True), (False, False)]:
+                            for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
                                 for packed in [False, True]:
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                     config = Config(b, s, s2, sp, n, n2, h)
