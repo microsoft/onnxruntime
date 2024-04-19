@@ -9,11 +9,6 @@ RUN yum install -y zlib-devel python39-devel python39-numpy python39-setuptools 
 
 ENV JAVA_HOME=/usr/lib/jvm/java-1.8.0
 
-RUN ln -s /usr/lib64 /usr/lib/x86_64-linux-gnu && /bin/bash -c 'for f in $(find $JAVA_HOME -name "*.h"); do ln -s $f /usr/include/$(basename $f); done' && \
-    git clone https://github.com/protocolbuffers/protobuf.git && cd protobuf && git checkout v21.12 && git submodule update --init --recursive && mkdir build_source && cd build_source && \
-    cmake ../cmake  -DCMAKE_INSTALL_LIBDIR=lib64 -Dprotobuf_BUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release && \
-    make -j$(nproc) && make install
-
 ENV GRADLE_HOME=/opt/gradle-8.6
 ENV PATH=${GRADLE_HOME}/bin:${PATH}
 
