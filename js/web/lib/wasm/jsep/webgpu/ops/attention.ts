@@ -229,7 +229,7 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
   };
 };
 
-const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: TensorView, n: number, d: number) => {
+const createLocalSoftmaxProgramInfo = (_context: ComputeContext, input: TensorView, n: number, d: number) => {
   const components = getMaxComponents(d);
   let WG = 64;
   const dComp = d / components;
@@ -246,7 +246,8 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
   const dataType = tensorTypeToWsglStorageType(input.dataType, components);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
-    const inputHelper = outputVariable('x', input.dataType, input.dims, components);
+    const inputHelper = inputVariable('x', input.dataType, input.dims, components);
+    const outputHelper = outputVariable('y', input.dataType, input.dims, components);
     let threadMaxValue = 'thread_max_vector';
     if (components === 2) {
       threadMaxValue = 'max(thread_max_vector.x, thread_max_vector.y)';
@@ -263,7 +264,7 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
     return `
   var<workgroup> wgMax: array<f32, ${WG}>;
   var<workgroup> wgSum: array<f32, ${WG}>;
-  ${shaderHelper.registerUniforms(uniforms).declareVariables(inputHelper)}
+  ${shaderHelper.registerUniforms(uniforms).declareVariables(inputHelper, outputHelper)}
   ${shaderHelper.mainStart([
       WG, 1, 1
     ])}
@@ -296,12 +297,12 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
 
     if (sum == 0) {
       for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
-        x[offset + i] = ${fillVector(elemValueType, components, 'uniforms.d_inv')};
+        y[offset + i] = ${fillVector(elemValueType, components, 'uniforms.d_inv')};
       }
     } else {
       for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
         let f32input = ${castToF32(elemValueType, components, 'x[offset + i]')};
-        x[offset + i] = ${inputHelper.type.value}(exp(f32input - maxValue) / sum);
+        y[offset + i] = ${inputHelper.type.value}(exp(f32input - maxValue) / sum);
       }
     }
   }`;
@@ -311,7 +312,11 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
     name: 'AttentionProbsSoftmax',
     shaderCache: {hint: `${WG};${dataType};${components}`},
     getShaderSource,
-    getRunData: () => ({outputs: [], dispatchGroup: {x: n}, programUniforms}),
+    getRunData: () => ({
+      outputs: [{dims: input.dims, dataType: input.dataType, gpuDataType: GpuDataType.default}],
+      dispatchGroup: {x: n},
+      programUniforms
+    }),
   };
 };
 
@@ -509,33 +514,32 @@ export const applyAttention =
     (context: ComputeContext, q: TensorView, k: TensorView, v: TensorView, _maskIndex: TensorView|undefined,
      _past: TensorView|undefined, pastKey: TensorView|undefined, pastValue: TensorView|undefined,
      relativePositionBias: TensorView|undefined, parameters: AttentionParameters, attributes: AttentionAttrs) => {
-      const kvShape = [parameters.batchSize, parameters.numHeads, parameters.kvSequenceLength, parameters.headSize];
-
       // Concatinate pastKey and K to produce presentKey.
       const presentKeyShape =
           [parameters.batchSize, parameters.numHeads, parameters.totalSequenceLength, parameters.headSize];
-      const concatKeyInputs = [k.reshape(kvShape)];
-      if (pastKey) {
-        concatKeyInputs.unshift(pastKey);
+      const concatKeyInputs = pastKey ? [pastKey, k] : [k];
+      const key = (pastKey) ? context.compute(
+                                  createConcatProgramInfo(concatKeyInputs, 2, presentKeyShape, k.dataType),
+                                  {inputs: concatKeyInputs, outputs: [-1]})[0] :
+                              k;
+      if (context.outputCount > 2) {
+        context.compute(
+            createConcatProgramInfo(concatKeyInputs, 2, presentKeyShape, k.dataType),
+            {inputs: concatKeyInputs, outputs: [1]});
       }
-      const key = (context.outputCount > 1 || pastKey) ?
-          context.compute(
-              createConcatProgramInfo(concatKeyInputs, 2, presentKeyShape, k.dataType),
-              {inputs: concatKeyInputs, outputs: [context.outputCount > 1 ? 1 : -1]})[0] :
-          k;
-
       // Concatinate pastValue and V to produce presentValue.
       const presentValueShape =
           [parameters.batchSize, parameters.numHeads, parameters.totalSequenceLength, parameters.headSize];
-      const concatValueInputs = [v.reshape(kvShape)];
-      if (pastValue) {
-        concatValueInputs.unshift(pastValue);
+      const concatValueInputs = pastValue ? [pastValue, v] : [v];
+      const value = (pastValue) ? context.compute(
+                                      createConcatProgramInfo(concatValueInputs, 2, presentValueShape, v.dataType),
+                                      {inputs: concatValueInputs, outputs: [-1]})[0] :
+                                  v;
+      if (context.outputCount > 2) {
+        context.compute(
+            createConcatProgramInfo(concatValueInputs, 2, presentValueShape, v.dataType),
+            {inputs: concatValueInputs, outputs: [2]});
       }
-      const value = (context.outputCount > 2 || pastValue) ?
-          context.compute(
-              createConcatProgramInfo(concatValueInputs, 2, presentValueShape, v.dataType),
-              {inputs: concatValueInputs, outputs: [context.outputCount > 2 ? 2 : -1]})[0] :
-          v;
       const inputsK = [q, key];
       if (relativePositionBias) {
         inputsK.push(relativePositionBias);
@@ -547,16 +551,17 @@ export const applyAttention =
           {inputs: inputsK, outputs: [-1]})[0];
 
       // Run Softmax
-      context.compute(
-          createInPlaceSoftmaxProgramInfo(
+      const softmaxOutput = context.compute(
+          createLocalSoftmaxProgramInfo(
               context, probs, parameters.batchSize * parameters.numHeads * parameters.sequenceLength,
               parameters.totalSequenceLength),
-          {inputs: [probs], outputs: []});
+          {inputs: [probs], outputs: [-1]})[0];
 
       // Run AttrionScore
-      const inputsV = [probs, value];
+      const inputsV = [softmaxOutput, value];
       context.compute(
-          createVxAttentionScoreProgramInfo(context, probs, value, parameters), {inputs: inputsV, outputs: [0]});
+          createVxAttentionScoreProgramInfo(context, softmaxOutput, value, parameters),
+          {inputs: inputsV, outputs: [0]});
     };
 
 const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
