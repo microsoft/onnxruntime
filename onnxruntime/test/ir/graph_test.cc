@@ -905,7 +905,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
 
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  GraphViewer graph_viewer(graph, false, true);
+  GraphViewer graph_viewer(graph);
 
   // PRIORITY_BASED order
   {
@@ -989,7 +989,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
 
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  GraphViewer graph_viewer(graph, false, true);
+  GraphViewer graph_viewer(graph);
 
   // PRIORITY_BASED order
   {
@@ -1042,7 +1042,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
 
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  GraphViewer graph_viewer(graph, false, true);
+  GraphViewer graph_viewer(graph);
 
   // PRIORITY_BASED order
   {
@@ -1128,7 +1128,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_MultiLayerRecom
 
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  GraphViewer graph_viewer(graph, false, true);
+  GraphViewer graph_viewer(graph);
 
   // PRIORITY_BASED order
   {
@@ -2174,7 +2174,7 @@ TEST_F(GraphTest, GraphConstruction_MemoryEfficientTopologicalSort_Recompute) {
 
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  GraphViewer graph_viewer(graph, true, false);
+  GraphViewer graph_viewer(graph);
 
   // MEMORY_EFFICIENT order
   {

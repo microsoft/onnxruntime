@@ -153,7 +153,7 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
   Graph& graph = model->MainGraph();
 
   // Find all optimizable subgraphs
-  GraphViewer graph_viewer(graph, true, false);
+  GraphViewer graph_viewer(graph);
   const std::string initial_mem_config("");
   const std::string probe_config("1:1");
   std::map<std::string, std::pair<std::string, int>>
@@ -304,7 +304,7 @@ TEST(MemoryOptimizerTests, TransformerLayerDetectionTest) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
   Graph& graph = model->MainGraph();
-  GraphViewer graph_viewer(graph, true, false);
+  GraphViewer graph_viewer(graph);
 
   InlinedHashMap<NodeIndex, ptrdiff_t> node_index_to_its_order_in_topological_sort_map;
   const auto& node_ids =

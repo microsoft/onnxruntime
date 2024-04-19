@@ -276,11 +276,13 @@ const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder(ExecutionO
             },
             PriorityNodeCompare());
 
-        auto orig_priority_order = std::move(nodes_in_topological_order_with_priority_);
-        nodes_in_topological_order_with_priority_.reserve(filter_info_->nodes.size());
-        std::copy_if(orig_priority_order.cbegin(), orig_priority_order.cend(),
-                     std::back_inserter(nodes_in_topological_order_with_priority_),
-                     [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
+        if (filter_info_) {
+          auto orig_priority_order = std::move(nodes_in_topological_order_with_priority_);
+          nodes_in_topological_order_with_priority_.reserve(filter_info_->nodes.size());
+          std::copy_if(orig_priority_order.cbegin(), orig_priority_order.cend(),
+                       std::back_inserter(nodes_in_topological_order_with_priority_),
+                       [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
+        }
       });
       return nodes_in_topological_order_with_priority_;
 #else
@@ -315,6 +317,8 @@ const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder(ExecutionO
         }
 
         // This is ORTModule training specific branch.
+        ORT_ENFORCE(yield_node != nullptr, "YieldOp is not found in the graph.");
+
         std::vector<NodeIndex> node_orders;
         const size_t num_of_nodes = NumberOfNodes();
         node_orders.reserve(num_of_nodes);
@@ -322,15 +326,18 @@ const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder(ExecutionO
             yield_node,
             shape_size_parents,
             node_orders);
-        nodes_in_mem_efficient_topological_order_ = std::move(node_orders);
-        ORT_ENFORCE(nodes_in_mem_efficient_topological_order_.size() == num_of_nodes,
-                    "Topological sort failed.", nodes_in_mem_efficient_topological_order_.size(), "!=", num_of_nodes);
 
-        auto orig_mem_efficient_order = std::move(nodes_in_mem_efficient_topological_order_);
-        nodes_in_mem_efficient_topological_order_.reserve(filter_info_->nodes.size());
-        std::copy_if(orig_mem_efficient_order.cbegin(), orig_mem_efficient_order.cend(),
-                     std::back_inserter(nodes_in_mem_efficient_topological_order_),
-                     [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
+        ORT_ENFORCE(node_orders.size() == num_of_nodes,
+                    "Topological sort failed.", node_orders.size(), "!=", num_of_nodes);
+
+        if (filter_info_) {
+          nodes_in_mem_efficient_topological_order_.reserve(filter_info_->nodes.size());
+          std::copy_if(node_orders.cbegin(), node_orders.cend(),
+                       std::back_inserter(nodes_in_mem_efficient_topological_order_),
+                       [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
+        } else {
+          nodes_in_mem_efficient_topological_order_ = std::move(node_orders);
+        }
       });
 
       return nodes_in_mem_efficient_topological_order_;

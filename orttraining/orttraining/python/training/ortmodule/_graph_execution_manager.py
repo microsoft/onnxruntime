@@ -258,7 +258,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Enable  memory efficient execution order for training if 1). memory efficient grad management is enabled
         # or 2). memory optimizer is enabled.
         use_memory_efficient_topo_sort = (self._export_mode == torch.onnx.TrainingMode.TRAINING) and (
-            self._mem_efficient_grad_management_is_enabled or self._runtime_options.use_memory_efficient_gradient
+            self._mem_efficient_grad_management_is_enabled or self._runtime_options.memory_optimizer_is_enabled()
         )
         session_options.execution_order = (
             onnxruntime.ExecutionOrder.MEMORY_EFFICIENT
