@@ -402,8 +402,7 @@ def parse_arguments():
     platform_group = parser.add_mutually_exclusive_group()
     platform_group.add_argument("--ios", action="store_true", help="build for ios")
     platform_group.add_argument("--visionos", action="store_true", help="build for visionOS")
-
-    parser.add_argument(
+    platform_group.add_argument(
         "--macos",
         choices=["MacOSX", "Catalyst"],
         help="Specify the target platform for macOS build. Only specify this argument when --build_apple_framework is present.",
