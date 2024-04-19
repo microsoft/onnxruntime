@@ -144,7 +144,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
       device_config.emplace(ov::hint::inference_precision(ov::element::undefined));
       device_config.emplace(ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY));
     } else {
-      device_config.emplace(ov::hint::inference_precision(global_context_.model_precision));
+      if (global_context_.model_precision != "")
+        device_config.emplace(ov::hint::inference_precision(global_context_.model_precision));
     }
   }
 #ifndef NDEBUG
