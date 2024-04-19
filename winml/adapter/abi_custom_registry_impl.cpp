@@ -55,7 +55,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
   const uint32_t* requiredInputCountForGraph,
   _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
   uint32_t constantCpuInputCount,
-  _In_reads_(aliasCount) const std::pair<uint32_t, uint32_t>* aliases = nullptr,
+  _In_reads_(aliasCount) const std::pair<uint32_t, uint32_t>* aliases,
   uint32_t aliasCount
 ) const noexcept try {
 #ifdef LAYERING_DONE
