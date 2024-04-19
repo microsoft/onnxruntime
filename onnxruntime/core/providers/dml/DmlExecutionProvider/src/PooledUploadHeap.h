@@ -13,7 +13,7 @@ namespace Dml
     class PooledUploadHeap
     {
     public:
-        PooledUploadHeap(ID3D12Device* device, std::shared_ptr<ExecutionContext> executionContext);
+        PooledUploadHeap(ID3D12Device* device, ExecutionContext* executionContext);
 
         // Makes a copy of the source data and begins copying it into the destination resource, and returns a GpuEvent
         // which will become signaled when the copy is complete. The destination resource must be a default or readback
@@ -89,7 +89,7 @@ namespace Dml
         void AssertInvariants();
 
         ComPtr<ID3D12Device> m_device;
-        std::shared_ptr<ExecutionContext> m_executionContext;
+        ComPtr<ExecutionContext> m_executionContext;
 
         std::vector<Chunk> m_chunks; // sorted ascending by capacity (upload heap size)
         size_t m_totalCapacity = 0; // Total size of all chunks, in bytes
