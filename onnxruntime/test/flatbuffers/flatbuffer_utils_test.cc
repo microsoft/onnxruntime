@@ -14,7 +14,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
-#include "test/flatbuffers/flatbuffers_utils_test_generated.h"
+#include "test/flatbuffers/flatbuffers_utils_test.fbs.h"
 
 #include "test/util/include/asserts.h"
 
