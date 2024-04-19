@@ -8,7 +8,7 @@ steps:
       azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v${{ parameters.QnnSDKVersion }}_win $(Agent.TempDirectory)
     displayName: 'Download QNN SDK v${{ parameters.QnnSDKVersion }}'
 
-  - bash: |
+  - powershell: |
       echo "##vso[task.setvariable variable=QnnSDKRootDir]$(Agent.TempDirectory)\qnn-v${{ parameters.QnnSDKVersion }}_win"
     displayName: Set QnnSDKRootDir
 
