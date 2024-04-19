@@ -52,6 +52,7 @@ struct OrtVitisAIEpAPI {
                                                                                       const char* json_config);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_with_options)(
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
+  uint32_t (*vaip_get_version)();
   void Ensure() {
     if (handle_)
       return;
@@ -65,6 +66,8 @@ struct OrtVitisAIEpAPI {
       ::onnxruntime::LogRuntimeError(0, status1, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status1);
     }
+    std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
+                                           (void**)&vaip_get_version);
   }
 
  private:
@@ -177,8 +180,17 @@ void initialize_vitisai_ep() {
   create_kernel_registry(s_domains_vitisaiep);
 }
 
+static void set_version_info(vaip_core::OrtApiForVaip& api) {
+  const char* magic = "VAIP";
+  std::memcpy(reinterpret_cast<char*>(&api.magic), magic, sizeof(api.magic));
+  api.major = 1u;
+  api.minor = 0u;
+  api.patch = 0u;
+}
+
 vaip_core::OrtApiForVaip* create_org_api_hook() {
   InitProviderOrtApi();
+  set_version_info(the_global_api);
   the_global_api.host_ = Provider_GetHost();
   assert(Ort::Global<void>::api_ != nullptr);
   the_global_api.ort_api_ = Ort::Global<void>::api_;
@@ -359,5 +371,9 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.get_lib_id = []() -> vaip_core::DllSafe<std::string> {
     return vaip_core::DllSafe(std::string(GIT_COMMIT_ID));
   };
-  return &the_global_api;
+  if (!s_library_vitisaiep.vaip_get_version) {
+    return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
+  } else {
+    return &the_global_api;
+  }
 }

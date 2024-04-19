@@ -134,13 +134,11 @@ def create_backend_test(test_name=None):
         if backend.supports_device("NNAPI"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_NNAPI")
 
-        if backend.supports_device("OPENVINO_GPU_FP32") or backend.supports_device("OPENVINO_GPU_FP16"):
+        if backend.supports_device("OPENVINO_GPU"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_GPU")
 
-        if backend.supports_device("OPENVINO_CPU_FP32"):
+        if backend.supports_device("OPENVINO_CPU"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP32")
-
-        if backend.supports_device("OPENVINO_CPU_FP16"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP16")
 
         if backend.supports_device("OPENVINO_NPU"):
