@@ -2762,14 +2762,17 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 #endif
 
-#if NV_TENSORRT_MAJOR >= 10
+
   if (weightless_engine_enable_) {
+#if NV_TENSORRT_MAJOR >= 10
     trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
     trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
-  }
+#else
+  LOGS_DEFAULT(WARNING) << "[TensorRT EP] Weightless engines can only be used on TRT 10.0 onwards!";
 #endif
+  }
 
   // limit used tactic sources
   if (!tactic_sources_.empty()) {
@@ -3269,14 +3272,16 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
       }
 #endif
-#if NV_TENSORRT_MAJOR >= 10
       if (trt_state->weightless_engine_enable) {
+#if NV_TENSORRT_MAJOR >= 10
         trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
         trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
-      }
+#else
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Weightless engines can only be used on TRT 10.0 onwards!";
 #endif
+      }
       // limit used tactic sources
       if (trt_state->filter_tactic_sources) {
         nvinfer1::TacticSources tactics = trt_config->getTacticSources();

@@ -300,6 +300,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
   }
   if (weightless_engine_refit_) {
+#if NV_TENSORRT_MAJOR >= 10
     const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
     std::filesystem::path onnx_model_path{onnx_model_folder_path_};
     onnx_model_path.append(onnx_model_filename);
@@ -330,6 +331,9 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
           "TensorRT EP's IRefitter could not refit deserialized weightless engine with weights contained in: "
           + onnx_model_path.string());
     }
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");
+#endif
   }
   return Status::OK();
 }
