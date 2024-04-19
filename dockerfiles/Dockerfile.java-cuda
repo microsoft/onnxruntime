@@ -7,7 +7,7 @@ RUN yum install -y zlib-devel python39-devel python39-numpy python39-setuptools 
     tar -zxf cmake-3.27.3-linux-x86_64.tar.gz --strip=1 -C /usr && rm -f cmake-3.27.3-linux-x86_64.tar.gz && \
     wget https://services.gradle.org/distributions/gradle-8.6-bin.zip && unzip gradle-8.6-bin.zip -d /opt/ && rm -f gradle-8.6-bin.zip
 
-ENV JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.402.b06-2.el8.x86_64
+ENV JAVA_HOME=/usr/lib/jvm/java-1.8.0
 
 RUN ln -s /usr/lib64 /usr/lib/x86_64-linux-gnu && /bin/bash -c 'for f in $(find $JAVA_HOME -name "*.h"); do ln -s $f /usr/include/$(basename $f); done' && \
     git clone https://github.com/protocolbuffers/protobuf.git && cd protobuf && git checkout v21.12 && git submodule update --init --recursive && mkdir build_source && cd build_source && \
