@@ -2919,4 +2919,29 @@ namespace OperatorHelper
         return { EdgeShapes(std::move(outputShape)) };
     }
 
+    std::vector<EdgeShapes> MatMulNBitsHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        auto inputShape = shapeInfo.GetInputTensorShape(0);
+        onnxruntime::TensorShape aShape(std::vector<int64_t>(inputShape.begin(), inputShape.end()));
+        onnxruntime::TensorShape bShape({m_bRowCount, m_bColCount});
+
+        onnxruntime::MatMulComputeHelper helper;
+
+        // The B tensor is always transposed
+        ML_CHECK_VALID_ARGUMENT(helper.Compute(aShape, bShape, false, true).IsOK());
+        const auto outputShape = helper.OutputShape().GetDims();
+
+        std::vector<uint32_t> uint32OutputShape;
+        uint32OutputShape.reserve(outputShape.size());
+        std::transform(outputShape.begin(), outputShape.end(), std::back_inserter(uint32OutputShape), [](int64_t dimSize){ return static_cast<uint32_t>(dimSize); });
+
+        return { EdgeShapes(uint32OutputShape) };
+    }
+
+    void MatMulNBitsHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_bRowCount = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::UppercaseN);
+        m_bColCount = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::UppercaseK);
+    }
+
 } // namespace OperatorHelper

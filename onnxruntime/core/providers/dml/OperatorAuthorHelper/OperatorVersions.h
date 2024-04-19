@@ -467,6 +467,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_RotaryEmbedding = 1;
         static const int sc_sinceVer_QLinearAveragePool = 1;
         static const int sc_sinceVer_QLinearGlobalAveragePool = 1;
+        static const int sc_sinceVer_MatMulNBits = 1;
         static const int sc_sinceVer_DynamicQuantizeMatMul = 1;
     } // namespace MsftOperatorSet1
 
