@@ -363,7 +363,7 @@ stages:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
         Context: tools/ci_build/github/linux/docker/
         ScriptName: tools/ci_build/get_docker_image.py
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg OMP_FFMPEG_PATH=$(Agent.TempDirectory)/ompffmpeg"
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg OMP_FFMPEG_PATH=$(Agent.TempDirectory)/ompffmpeg/linux-x64"
         Repository: onnxruntimepackagestest_ompffmpeg
         UpdateDepsTxt: false
 
