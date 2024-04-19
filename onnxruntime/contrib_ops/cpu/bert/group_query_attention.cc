@@ -111,10 +111,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, kv_num_heads_, sequence_length, head_size, value, V));
   } else {
-    std::cout << "here" << std::endl;
-    Tensor::InitOrtValue(element_type, std::move(const_cast<Tensor&>(*query)), Q);
-    Tensor::InitOrtValue(element_type, std::move(const_cast<Tensor&>(*key)), K);
-    Tensor::InitOrtValue(element_type, std::move(const_cast<Tensor&>(*value)), V);
+    Tensor::InitOrtValue(std::move(const_cast<Tensor&>(*query)), Q);
+    Tensor::InitOrtValue(std::move(const_cast<Tensor&>(*key)), K);
+    Tensor::InitOrtValue(std::move(const_cast<Tensor&>(*value)), V);
   }
 
   if (do_rotary_) {
@@ -186,7 +185,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q.Get<Tensor>().Data<T>(), packed_qkv ? nullptr : K.Get<Tensor>().Data<T>(),
                         packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(), past_key, past_value, output, present_k, present_v,
-                        seqlens_k, parameters, context);
+                        seqlens_k, parameters, allocator, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

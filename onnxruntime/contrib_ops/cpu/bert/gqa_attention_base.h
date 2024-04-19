@@ -34,15 +34,13 @@ class GQAAttentionBase : public AttentionBase {
                         Tensor* present_value,                      // present V output tensor (if separating present KV)
                         const Tensor* seqlens_k,                    // past sequence lengths tensor
                         GroupQueryAttentionParameters& parameters,  // attention parameters
+                        AllocatorPtr allocator,                     // allocator for temporary tensors
                         OpKernelContext* context) const {
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
     const int head_size = parameters.head_size;
     const int hidden_size = parameters.hidden_size;
     const bool packed_qkv = parameters.is_packed_qkv;
-
-    AllocatorPtr allocator;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
     auto* tp = context->GetOperatorThreadPool();
 

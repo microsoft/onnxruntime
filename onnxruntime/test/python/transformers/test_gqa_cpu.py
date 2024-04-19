@@ -1760,54 +1760,54 @@ def parity_check_gqa_past_no_buff(
 
 
 class TestGQA(unittest.TestCase):
-    # def test_gqa_no_past(self):
-    #     torch.manual_seed(69)
-    #     print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
-    #     batches = [1, 3] if pipeline_mode else [1, 3, 5]
-    #     seqs = (
-    #         [
-    #             (127, 127),
-    #             (35, 35),
-    #             (2000, 2000),
-    #             (200, 200),
-    #             (240, 240),
-    #         ]
-    #         if pipeline_mode
-    #         else [
-    #             (127, 127),
-    #             (35, 35),
-    #             (2000, 2000),
-    #             (200, 200),
-    #             (240, 240),
-    #         ]
-    #     )
-    #     num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-    #     h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-    #     for b in batches:
-    #         for sq, skv in seqs:
-    #             for n, n2 in num_h:
-    #                 for h in h_sizes:
-    #                     for local in [False, True]:
-    #                         for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
-    #                             for packed in [False, True]:
-    #                                 config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-    #                                 past_kv_format = Formats.BNSH
-    #                                 parity_check_gqa_prompt(
-    #                                     config,
-    #                                     local=local,
-    #                                     past_format=past_kv_format,
-    #                                     rotary=rotary,
-    #                                     rotary_interleaved=rotary_interleaved,
-    #                                     packed=packed,
-    #                                 )
-    #                                 parity_check_gqa_prompt_no_buff(
-    #                                     config,
-    #                                     local=local,
-    #                                     past_format=past_kv_format,
-    #                                     rotary=rotary,
-    #                                     rotary_interleaved=rotary_interleaved,
-    #                                     packed=packed,
-    #                                 )
+    def test_gqa_no_past(self):
+        torch.manual_seed(69)
+        print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
+        batches = [1, 3] if pipeline_mode else [1, 3, 5]
+        seqs = (
+            [
+                (127, 127),
+                (35, 35),
+                (2000, 2000),
+                (200, 200),
+                (240, 240),
+            ]
+            if pipeline_mode
+            else [
+                (127, 127),
+                (35, 35),
+                (2000, 2000),
+                (200, 200),
+                (240, 240),
+            ]
+        )
+        num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        for b in batches:
+            for sq, skv in seqs:
+                for n, n2 in num_h:
+                    for h in h_sizes:
+                        for local in [False, True]:
+                            for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
+                                for packed in [False, True]:
+                                    config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
+                                    past_kv_format = Formats.BNSH
+                                    parity_check_gqa_prompt(
+                                        config,
+                                        local=local,
+                                        past_format=past_kv_format,
+                                        rotary=rotary,
+                                        rotary_interleaved=rotary_interleaved,
+                                        packed=packed,
+                                    )
+                                    parity_check_gqa_prompt_no_buff(
+                                        config,
+                                        local=local,
+                                        past_format=past_kv_format,
+                                        rotary=rotary,
+                                        rotary_interleaved=rotary_interleaved,
+                                        packed=packed,
+                                    )
 
     def test_gqa_past(self):
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
@@ -1832,22 +1832,6 @@ class TestGQA(unittest.TestCase):
         num_h = [(16, 16), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 64, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
-        # config = Config(1, 1, 128, 122, 4, 4, 16)
-        # past_kv_format = Formats.BSNH
-        # local = False
-        # rotary = False
-        # rotary_interleaved = False
-        # packed = False
-        # parity_check_gqa_past(
-        #     config,
-        #     local=local,
-        #     past_format=past_kv_format,
-        #     rtol=1e-3,
-        #     atol=1e-3,
-        #     rotary=rotary,
-        #     rotary_interleaved=rotary_interleaved,
-        #     packed=packed,
-        # )
         for b in batches:
             for s, s2 in seqs:
                 for n, n2 in num_h:
@@ -1856,19 +1840,18 @@ class TestGQA(unittest.TestCase):
                             for rotary, rotary_interleaved in [(False, False), (True, True), (False, False)]:
                                 for packed in [False, True]:
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                                    config = Config(3, s, s2, sp, n, n2, h)
-                                    print(b, s, s2, sp, n, n2, h)
+                                    config = Config(b, s, s2, sp, n, n2, h)
                                     past_kv_format = Formats.BNSH
-                                    # parity_check_gqa_past(
-                                    #     config,
-                                    #     local=local,
-                                    #     past_format=past_kv_format,
-                                    #     rtol=1e-3,
-                                    #     atol=1e-3,
-                                    #     rotary=rotary,
-                                    #     rotary_interleaved=rotary_interleaved,
-                                    #     packed=packed,
-                                    # )
+                                    parity_check_gqa_past(
+                                        config,
+                                        local=local,
+                                        past_format=past_kv_format,
+                                        rtol=1e-3,
+                                        atol=1e-3,
+                                        rotary=rotary,
+                                        rotary_interleaved=rotary_interleaved,
+                                        packed=packed,
+                                    )
                                     parity_check_gqa_past_no_buff(
                                         config,
                                         local=local,
@@ -1879,7 +1862,6 @@ class TestGQA(unittest.TestCase):
                                         rotary_interleaved=rotary_interleaved,
                                         packed=packed,
                                     )
-                                    return
 
 
 if __name__ == "__main__":
