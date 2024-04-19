@@ -15,9 +15,11 @@
   },
   "version": "1.18.0",
   "dependencies": {
-    "onnxruntime-common": "file:../common"
+    "onnxruntime-common": "file:../common",
+    "tar": "^7.0.1"
   },
   "scripts": {
+    "postinstall": "node ./script/install",
     "buildr": "tsc && node ./script/build --config=RelWithDebInfo",
     "preprepare": "node -e \"require('node:fs').copyFileSync('./node_modules/long/index.d.ts', './node_modules/long/umd/index.d.ts')\"",
     "prepare": "tsc --build script test .",
