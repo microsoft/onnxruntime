@@ -1613,7 +1613,9 @@ using ShapeInferenceHelper_GroupNorm = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization17 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_SkipLayerNormalization = SkipLayerNormHelper;
+using ShapeInferenceHelper_SkipSimplifiedLayerNormalization = SkipLayerNormHelper;
 using ShapeInferenceHelper_EmbedLayerNormalization = EmbedLayerNormalizationHelper;
+using ShapeInferenceHelper_SimplifiedLayerNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;
 using ShapeInferenceHelper_GRU = RecurrentHelper;
@@ -1784,6 +1786,7 @@ using ShapeInferenceHelper_Dropout = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Shrink = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Gelu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BiasGelu = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_FastGelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;

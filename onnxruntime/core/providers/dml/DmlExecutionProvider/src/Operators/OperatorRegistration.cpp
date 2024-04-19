@@ -336,6 +336,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(BiasAdd);
 DML_OP_EXTERN_CREATION_FUNCTION(LRN);
 DML_OP_EXTERN_CREATION_FUNCTION(MeanVarianceNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(GroupNorm);
+DML_OP_EXTERN_CREATION_FUNCTION(SimplifiedLayerNormalization);
+DML_OP_EXTERN_CREATION_FUNCTION(SkipSimplifiedLayerNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(LpNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(RNN);
 DML_OP_EXTERN_CREATION_FUNCTION(GRU);
@@ -476,6 +478,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Where);
 DML_OP_EXTERN_CREATION_FUNCTION(Shrink);
 DML_OP_EXTERN_CREATION_FUNCTION(Gelu);
 DML_OP_EXTERN_CREATION_FUNCTION(BiasGelu);
+DML_OP_EXTERN_CREATION_FUNCTION(FastGelu);
 DML_OP_EXTERN_CREATION_FUNCTION(OneHot);
 DML_OP_EXTERN_CREATION_FUNCTION(EyeLike);
 DML_OP_EXTERN_CREATION_FUNCTION(MaxUnpool);
@@ -508,7 +511,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(MatMulIntegerToFloat);
 DML_OP_EXTERN_CREATION_FUNCTION(ConvInteger);
 DML_OP_EXTERN_CREATION_FUNCTION(Trilu);
 
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
 DML_OP_EXTERN_CREATION_FUNCTION(Col2Im);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize18);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize19);
@@ -547,7 +550,7 @@ constexpr static std::array<const char*, 2> typeNameListAttention = {"T", "M"};
 constexpr static std::array<const char*, 2> typeNameListRotaryEmbedding = {"T", "M"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
 constexpr static std::array<const char*, 2> typeNameListLayerNorm = { "T", "U" };
-constexpr static std::array<const char*, 2> typeNameListLayerNormContrib = { "T", "V" };
+constexpr static std::array<const char*, 3> typeNameListLayerNormContrib = { "T", "U", "V" };
 constexpr static std::array<const char*, 3> typeNameListThree = { "T1", "T2", "T3" };
 constexpr static std::array<const char*, 4> typeNameListFour = { "T1", "T2", "T3", "T4" };
 constexpr static std::array<const char*, 2> typeNameListTopK = { "T", "I" };
@@ -611,7 +614,7 @@ constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListIntege
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListInteger8 = {SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8 };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRoiAlign = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListArgMinMax = {SupportedTensorDataTypes::Float16to32|SupportedTensorDataTypes::Ints8to64};
-constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalizationContrib = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
+constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListLayerNormalizationContrib = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalization = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListShape = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListSize = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
@@ -771,7 +774,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 13,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO_VER( 18,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
 
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
     {REG_INFO_VER( 19,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
 #endif
 
@@ -805,7 +808,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  EyeLike,                            typeNameListEyeLike,            supportedTypeListEyeLike,               DmlGraphSupport::Supported)},
     {REG_INFO(     14,  Trilu,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
 
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
     {REG_INFO(     18,  Col2Im,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1, 2))},
 #endif
 
@@ -995,7 +998,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 10,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported,      requiredConstantCpuInputs(1) /*scales*/)},
     {REG_INFO_VER( 11,  Resize,                             typeNameListTwo,                supportedTypeListResize11,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
     {REG_INFO_VER( 13,  Resize,                             typeNameListTwo,                supportedTypeListResize13,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
     {REG_INFO_VER( 18,  Resize,                             typeNameListTwo,                supportedTypeListResize18,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
     {REG_INFO_VER( 19,  Resize,                             typeNameListTwo,                supportedTypeListResize18,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
 #endif
@@ -1075,6 +1078,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     // Contrib operators
     {REG_INFO_MS(   1,  Gelu,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  BiasGelu,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  FastGelu,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  DynamicQuantizeMatMul,              typeNameListTwo,                supportedTypeListDynamicQuantizeLinear, DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  FusedMatMulActivation,              typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -1108,7 +1112,9 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO(     11,  DynamicQuantizeLinear,              typeNameListTwo,                supportedTypeListDynamicQuantizeLinear, DmlGraphSupport::Supported)},
     {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
+    {REG_INFO(      7,  SimplifiedLayerNormalization,       typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO_MS(   1,  SkipLayerNormalization,             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QuerySkipLayerNormalization)},
+    {REG_INFO_MS(   1,  SkipSimplifiedLayerNormalization,   typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QuerySkipLayerNormalization)},
     {REG_INFO_MS(   1,  EmbedLayerNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  BiasSplitGelu,                      typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  BiasAdd,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
