@@ -29,16 +29,12 @@ class GraphViewer {
   /**
   Construct a GraphViewer from the provided Graph instance.
   */
-  explicit GraphViewer(const Graph& graph,
-                       bool need_memory_efficient_topo_order = false,
-                       bool need_priority_based_topo_order = true);
+  explicit GraphViewer(const Graph& graph);
 
   /**
   Construct a GraphViewer from the provided Graph instance, filtering to the nodes specified in the IndexedSubGraph
   */
-  explicit GraphViewer(const Graph& graph, const IndexedSubGraph& filter_info,
-                       bool need_memory_efficient_topo_order = false,
-                       bool need_priority_based_topo_order = true);
+  explicit GraphViewer(const Graph& graph, const IndexedSubGraph& filter_info);
 
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
@@ -198,9 +194,7 @@ class GraphViewer {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
-  GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info,
-              bool need_memory_efficient_topo_order = false,
-              bool need_priority_based_topo_order = false);
+  GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info);
 
   const Graph* graph_;
   ConstGraphNodes graph_nodes_;
@@ -210,14 +204,16 @@ class GraphViewer {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // The NodeIndex values of the graph nodes sorted in topological order with priority.
-  std::vector<NodeIndex> nodes_in_topological_order_with_priority_;
-  bool is_priority_order_available_{false};
+  // Using mutable once_flag for lazy initialization.
+  mutable std::vector<NodeIndex> nodes_in_topological_order_with_priority_;
+  mutable std::once_flag priority_based_topo_sort_init_flag_;
 #endif
 
 #ifdef ENABLE_TRAINING
   // The NodeIndex values of the graph nodes sorted in memory efficient topological order.
-  std::vector<NodeIndex> nodes_in_mem_efficient_topological_order_;
-  bool is_memory_efficient_topo_order_available_{false};
+  // Using mutable once_flag for lazy initialization.
+  mutable std::vector<NodeIndex> nodes_in_mem_efficient_topological_order_;
+  mutable std::once_flag mem_efficient_topo_sort_init_flag_;
 #endif
 
   // Graph root nodes.

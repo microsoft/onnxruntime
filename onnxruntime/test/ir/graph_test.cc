@@ -2264,7 +2264,7 @@ TEST_F(GraphTest, GraphConstruction_MemoryEfficientTopologicalSort_MultiLayerRec
 
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  GraphViewer graph_viewer(graph, true /*need_memory_efficient_topo_order*/, false);
+  GraphViewer graph_viewer(graph);
 
   // MEMORY_EFFICIENT order
   {

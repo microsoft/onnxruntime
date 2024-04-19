@@ -163,7 +163,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   InlinedHashMap<NodeIndex, ptrdiff_t> node_index_to_its_order_in_topological_sort_map;
 
   // The first pass - find the candidate subgraphs.
-  GraphViewer graph_viewer(graph, true /*need_memory_efficient_topo_order*/, false);
+  GraphViewer graph_viewer(graph);
   optimizer::memory_optimizer::MemoryOptimizationPlanner memory_opt_planner;
   ORT_ENFORCE(optimizer::memory_optimizer::FindORTModuleMemoryOpportunity(
                   graph_viewer,
