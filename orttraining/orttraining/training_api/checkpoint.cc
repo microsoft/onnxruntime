@@ -29,8 +29,8 @@ Status ReadFromExternalFileHelper(std::ifstream& external_data_stream,
   external_data_stream.seekg(offset);
   external_data_stream.read(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
 
-  auto [err, msg] = GetErrnoInfo();
-  ORT_RETURN_IF(external_data_stream.fail(), "Failed reading external checkpoint data. ", msg);
+  const auto [err, msg] = GetErrnoInfo();
+  ORT_RETURN_IF(external_data_stream.fail(), "Failed reading external checkpoint data. ", msg, " errno:", errno);
 
   return Status::OK();
 }
@@ -48,7 +48,7 @@ Status WriteToExternalFileHelper(std::ofstream& external_data_stream,
   // for now align everything to 4 or 8 bytes. we can optimize this later if needed.
   int32_t alignment = 4;
 
-  // TODO: Add more special-cased 8 byte types if needed.
+  // Add more special-cased types if needed. Currently we don't expect to see any other types that are >= 8-bytes here.
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
       data_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
     alignment = 8;
@@ -67,8 +67,8 @@ Status WriteToExternalFileHelper(std::ofstream& external_data_stream,
   }
 
   external_data_stream.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-  auto [err, msg] = GetErrnoInfo();
-  ORT_RETURN_IF(external_data_stream.fail(), "Failed writing external checkpoint data. ", msg);
+  const auto [err, msg] = GetErrnoInfo();
+  ORT_RETURN_IF(external_data_stream.fail(), "Failed writing external checkpoint data. ", msg, " errno:", errno);
 
   offset = pos;
 
@@ -227,8 +227,9 @@ Status ToFile(const PathString& checkpoint_path, flatbuffers::FlatBufferBuilder&
   const uint8_t* buf = builder.GetBufferPointer();
   int size = builder.GetSize();
   file.write(reinterpret_cast<const char*>(buf), size);
-  auto [err, msg] = GetErrnoInfo();
-  ORT_RETURN_IF_NOT(file, "Failed to save checkpoint to file: ", ToUTF8String(checkpoint_path), " ", msg);
+  const auto [err, msg] = GetErrnoInfo();
+  ORT_RETURN_IF_NOT(file, "Failed to save checkpoint to file: ", ToUTF8String(checkpoint_path), ". error:", msg,
+                    " errno:", errno);
 
   return Status::OK();
 }
@@ -241,14 +242,14 @@ Status ToFile(const PathString& checkpoint_path, flatbuffers::FlatBufferBuilder&
  * @param non_trainable_tensor_protos non-trainable parameters in TensorProto format.
  * @param checkpoint_path file where checkpoint is saved.
  * @param nominal_checkpoint if true, create a nominal checkpoint.
- * @param external_data_threshold optional threshold in bytes for external data. If the size of the data of the
+ * @param external_data_threshold threshold in bytes for external data. If the size of the data of the
  *                                TensorProtos exceeds this threshold, then we save the data in an external data file.
  * @return Status
  */
 Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
                         gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
                         const PathString& checkpoint_path, const bool nominal_checkpoint,
-                        const int32_t external_data_threshold = 1800 * 1024 * 1024) {
+                        const int32_t external_data_threshold) {
   const auto check_unique = [](gsl::span<const ONNX_NAMESPACE::TensorProto> tensor_protos,
                                InlinedHashSet<std::string>& unique_names) {
     for (const auto& tensor_proto : tensor_protos) {
@@ -269,7 +270,8 @@ Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_t
   constexpr size_t m_bytes = 1024 * 1024;
   size_t fbs_buffer_size = 0U;
   size_t fbs_potential_external_buffer_size = 0;
-  for (const auto& tensor_proto : trainable_tensor_protos) {
+
+  const auto update_fbs_buffer_size = [&](const ONNX_NAMESPACE::TensorProto& tensor_proto) {
     auto bytes = tensor_proto.ByteSizeLong();
     fbs_buffer_size += bytes;
 
@@ -279,44 +281,32 @@ Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_t
       fbs_buffer_size += external_data_info->GetLength();
     }
 
-    if (bytes > onnxruntime::fbs::utils::kMinimumSizeForExternalData) {  // assuming strings aren't trainable
-      fbs_potential_external_buffer_size += bytes;
-    }
-  }
-
-  for (const auto& tensor_proto : non_trainable_tensor_protos) {
-    auto bytes = tensor_proto.ByteSizeLong();
-    fbs_buffer_size += bytes;
-
-    if (tensor_proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      ORT_RETURN_IF_NOT(tensor_proto.external_data()[2].key() == "length",
-                        "Invalid external data for ", tensor_proto.name());
-      // external_data field is a dictionary of strings
-      // length is stored as a string
-      fbs_buffer_size += std::stoull(tensor_proto.external_data()[2].value());
-    }
-
     if (bytes > onnxruntime::fbs::utils::kMinimumSizeForExternalData &&
         tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
       fbs_potential_external_buffer_size += bytes;
     }
+
+    return Status::OK();
+  };
+
+  for (const auto& tensor_proto : trainable_tensor_protos) {
+    ORT_RETURN_IF_ERROR(update_fbs_buffer_size(tensor_proto));
+  }
+
+  for (const auto& tensor_proto : non_trainable_tensor_protos) {
+    ORT_RETURN_IF_ERROR(update_fbs_buffer_size(tensor_proto));
   }
 
   // Align buffer size to 1MB.
-  // TODO: This should probably also have an allowance for the other parts of the tensor if we're trying to avoid
-  // all reallocs during serialization. e.g. name, shape, data type, offset if external data is used.
   fbs_buffer_size = std::max(fbs_buffer_size, m_bytes);
   fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
 
-  // 2GB is the real limit, but fbs_buffer_size doesn't include space for initializer names and shapes.
-  // for now, arbitrarily use ~1.8GB as a conservative 'safe' value with a 10% buffer.
   const bool use_external_data = fbs_buffer_size >= external_data_threshold * m_bytes;
 
   fbs::utils::ExternalDataWriter external_data_writer = nullptr;
   std::optional<std::ofstream> external_data_stream;
 
   if (use_external_data) {
-    // 2GB. Have to use external file for data.
     fbs_buffer_size -= fbs_potential_external_buffer_size;  // reduce fbs buffer size to account for external data
 
     auto data_path = ExternalCheckpointDataPath(checkpoint_path);
@@ -895,10 +885,12 @@ Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointSt
     auto data_path = ExternalCheckpointDataPath(*checkpoint_path);
     external_data_stream = std::ifstream(data_path, std::ios::binary);
 
-    char errbuf[256];
-    ORT_RETURN_IF(external_data_stream.value().fail(),
-                  "Failed to open checkpoint's external data file: ", ToUTF8String(data_path),
-                  " error: ", strerror_s(errbuf, sizeof(errbuf), errno));
+    if (external_data_stream.value().fail()) {
+      const auto [err, errmsg] = GetErrnoInfo();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Failed to open checkpoint's external data file: ", ToUTF8String(data_path),
+                             " error:", errmsg, " errno:", err);
+    }
 
     external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
       return ReadFromExternalFileHelper(external_data_stream.value(), offset, output_buffer);

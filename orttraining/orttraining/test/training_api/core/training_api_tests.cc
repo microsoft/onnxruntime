@@ -66,6 +66,24 @@ Status CreateFakeOptimizerCheckpointStateOnCPU(
   return Status::OK();
 }
 
+void RunInferenceSession(const Environment& env, const PathString& inference_model_path) {
+  auto inference_session = std::make_unique<onnxruntime::InferenceSession>(onnxruntime::SessionOptions(), env);
+  ASSERT_STATUS_OK(inference_session->Load(inference_model_path));
+  ASSERT_STATUS_OK(inference_session->Initialize());
+
+  std::vector<std::string> input_names({"input-0"});
+  OrtValue graph_input;
+  GenerateRandomInput(std::array<int64_t, 2>{2, 784}, graph_input);
+
+  std::vector<OrtValue> feeds;
+  feeds.emplace_back(graph_input);
+  std::vector<std::string> output_names({"output-0"});
+  std::vector<OrtValue> outputs;
+
+  ASSERT_STATUS_OK(inference_session->Run(RunOptions(), input_names, feeds, output_names, &outputs));
+  ASSERT_EQ(outputs.size(), 1U);
+}
+
 void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
   auto training_model_uri = MODEL_FOLDER "training_model.onnx";
   auto eval_model_uri = MODEL_FOLDER "eval_model.onnx";
@@ -117,19 +135,7 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   ASSERT_EQ(softmaxceloss_node_found(eval_model), true);
   ASSERT_EQ(softmaxceloss_node_found(inference_model), false);
 
-  // Try running an inference session
-  auto inference_session = std::make_unique<onnxruntime::InferenceSession>(onnxruntime::SessionOptions(), *env);
-  ASSERT_STATUS_OK(inference_session->Load(inference_model_path));
-  ASSERT_STATUS_OK(inference_session->Initialize());
-  std::vector<std::string> input_names({"input-0"});
-  OrtValue graph_input;
-  GenerateRandomInput(std::array<int64_t, 2>{2, 784}, graph_input);
-  std::vector<OrtValue> feeds;
-  feeds.emplace_back(graph_input);
-  std::vector<std::string> output_names({"output-0"});
-  std::vector<OrtValue> outputs;
-  ASSERT_STATUS_OK(inference_session->Run(RunOptions(), input_names, feeds, output_names, &outputs));
-  ASSERT_EQ(outputs.size(), 1U);
+  RunInferenceSession(*env, inference_model_path);
 }
 
 void TestModuleExportWithExternalData(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
@@ -139,6 +145,9 @@ void TestModuleExportWithExternalData(const std::vector<std::shared_ptr<IExecuti
   onnxruntime::training::api::CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
   ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
+
+  // whilst the checkpoint doesn't _actually_ have external data, setting this to true is enough to test that
+  // ExportModelForInferencing will use external data when writing out the ONNX model.
   state.has_external_data = true;
 
   std::unique_ptr<Environment> env;
@@ -147,8 +156,7 @@ void TestModuleExportWithExternalData(const std::vector<std::shared_ptr<IExecuti
                                            std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_uri)),
                                            std::nullopt);
   auto model = std::make_unique<onnxruntime::training::api::Module>(
-      model_identifier, &state, onnxruntime::SessionOptions(),
-      *env, providers);
+      model_identifier, &state, onnxruntime::SessionOptions(), *env, providers);
 
   std::string inference_model_path = "inference_model.onnx";
   std::string external_data_for_inference_model = inference_model_path + ".data";
@@ -157,6 +165,7 @@ void TestModuleExportWithExternalData(const std::vector<std::shared_ptr<IExecuti
   if (std::filesystem::exists(inference_model_path)) {
     std::filesystem::remove(inference_model_path);
   }
+
   if (std::filesystem::exists(external_data_for_inference_model)) {
     std::filesystem::remove(external_data_for_inference_model);
   }
@@ -169,41 +178,12 @@ void TestModuleExportWithExternalData(const std::vector<std::shared_ptr<IExecuti
   ASSERT_TRUE(std::filesystem::exists(inference_model_path));
   ASSERT_TRUE(std::filesystem::exists(external_data_for_inference_model));
 
-  ASSERT_EQ(std::filesystem::file_size(inference_model_path), 1198);
-  ASSERT_EQ(std::filesystem::file_size(external_data_for_inference_model), 1590000);
+  // ensure there's roughly the expected amount of data in each. sizes may differ a little by platform.
+  ASSERT_GT(std::filesystem::file_size(inference_model_path), 1000);
+  ASSERT_LT(std::filesystem::file_size(inference_model_path), 2000);
+  ASSERT_GT(std::filesystem::file_size(external_data_for_inference_model), 1500000);
 
-  // Load model
-  ONNX_NAMESPACE::ModelProto eval_model;
-  ONNX_NAMESPACE::ModelProto inference_model;
-  ORT_THROW_IF_ERROR(Model::Load(eval_model_uri, eval_model));
-  ORT_THROW_IF_ERROR(Model::Load(ToPathString(inference_model_path), inference_model));
-
-  // Check it has only one graph input
-  ASSERT_EQ(eval_model.graph().input().size(), 6);
-  ASSERT_EQ(inference_model.graph().input().size(), 1);
-  ASSERT_EQ(inference_model.graph().input()[0].name(), "input-0");
-
-  // Check that it does not have any node which has op type SoftmaxCrossEntropyLoss
-  auto softmaxceloss_node_found = [](auto& model) -> bool {
-    for (auto& node : model.graph().node()) {
-      if (node.op_type() == "SoftmaxCrossEntropyLoss") {
-        return true;
-      }
-    }
-    return false;
-  };
-  ASSERT_EQ(softmaxceloss_node_found(eval_model), true);
-  ASSERT_EQ(softmaxceloss_node_found(inference_model), false);
-
-  // Try running an inference session
-  auto inference_session = std::make_unique<onnxruntime::InferenceSession>(onnxruntime::SessionOptions(), *env);
-  ASSERT_STATUS_OK(inference_session->Load(inference_model_path));
-  ASSERT_STATUS_OK(inference_session->Initialize());
-  std::vector<std::string> input_names({"input-0"});
-  OrtValue graph_input;
-  GenerateRandomInput(std::array<int64_t, 2>{2, 784}, graph_input);
-  std::vector<OrtValue> feeds;
-  feeds.emplace_back(graph_input);
+  RunInferenceSession(*env, ToPathString(inference_model_path));
 }
 }  // namespace
 

@@ -92,6 +92,10 @@ def main():
     schema_path = SCRIPT_DIR / "ort.fbs"
     training_schema_path = SCRIPT_DIR / "ort_training_checkpoint.fbs"
 
+    test_dir = SCRIPT_DIR.parents[2] / "test" / "flatbuffers"
+    test_schema = "flatbuffers_utils_test.fbs"
+    test_schema_path = test_dir / test_schema
+
     if "python" in languages:
         with tempfile.TemporaryDirectory() as temp_dir_name:
             temp_dir = pathlib.Path(temp_dir_name).resolve()
@@ -134,6 +138,12 @@ def main():
         generate_cpp(flatc, schema_path)
         generate_cpp(flatc, training_schema_path)
 
+        # generate schema used in unit tests and move to the test dir
+        generate_cpp(flatc, test_schema_path)
+        shutil.move(str(test_schema) + ".h", str(test_dir))
+
 
 if __name__ == "__main__":
+    test_schema_path = SCRIPT_DIR.parents[2] / "test" / "flatbuffers" / "flatbuffers_utils_test.fbs"
+    print(test_schema_path)
     main()
