@@ -403,7 +403,7 @@ const createAttentionProbsProgramInfo =
           }
         })()}
 
-    var output_value = ${fillVector(dataType, components)};
+    var value = ${fillVector(dataType, components)};
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
@@ -431,7 +431,7 @@ const createAttentionProbsProgramInfo =
       workgroupBarrier();
 
       for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {
-        output_value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * local_id.x + k];
+        value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * local_id.x + k];
       }
 
       workgroupBarrier();
@@ -439,7 +439,7 @@ const createAttentionProbsProgramInfo =
     let headOffset = headIdx * uniforms.M * uniforms.N;
     if (global_id.y < uniforms.M && global_id.x < uniforms.N) {
       let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;
-      output[outputIdx] = ${sumVector('output_value', components)} * uniforms.alpha;
+      output[outputIdx] = ${sumVector('value', components)} * uniforms.alpha;
   ${(() => {
           if (relativePositionBiasInput) {
             return `
@@ -552,8 +552,8 @@ const createVxAttentionScoreProgramInfo =
         })()}
       }
      workgroupBarrier();
-     for (var k: u32 = 0u; k<TILE_SIZE && (w+k) < uniforms.K; k++) {
-       output_value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * k + local_id.x];
+     for (var k: u32 = 0u; k<TILE_SIZE && w+k < uniforms.K; k++) {
+       value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * k + local_id.x];
      }
      workgroupBarrier();
    }
@@ -565,7 +565,7 @@ const createVxAttentionScoreProgramInfo =
    if (m < uniforms.M && n < uniforms.N) {
      let outputIdx = batchIdx * uniforms.M *uniforms.v_hidden_size + m * uniforms.v_hidden_size
        + currentBatchHeadNumber * uniforms.N + n;
-     output[outputIdx] = output_value;
+     output[outputIdx] = value;
    }
   }`;
       };
@@ -586,15 +586,10 @@ export const applyAttention =
     (context: ComputeContext, q: TensorView, k: TensorView, v: TensorView, _maskIndex: TensorView|undefined,
      _past: TensorView|undefined, pastKey: TensorView|undefined, pastValue: TensorView|undefined,
      relativePositionBias: TensorView|undefined, parameters: AttentionParameters, attributes: AttentionAttrs) => {
-      const kvShape = [parameters.batchSize, parameters.numHeads, parameters.kvSequenceLength, parameters.headSize];
-
       // Concatinate pastKey and K to produce presentKey.
       const presentKeyShape =
           [parameters.batchSize, parameters.numHeads, parameters.totalSequenceLength, parameters.headSize];
-      const concatKeyInputs = [k.reshape(kvShape)];
-      if (pastKey) {
-        concatKeyInputs.unshift(pastKey);
-      }
+      const concatKeyInputs = pastKey ? [pastKey, k] : [k];
       const key = (context.outputCount > 1 || pastKey) ?
           context.compute(
               createConcatProgramInfo(concatKeyInputs, 2, presentKeyShape, k.dataType),
@@ -604,10 +599,7 @@ export const applyAttention =
       // Concatinate pastValue and V to produce presentValue.
       const presentValueShape =
           [parameters.batchSize, parameters.numHeads, parameters.totalSequenceLength, parameters.headSize];
-      const concatValueInputs = [v.reshape(kvShape)];
-      if (pastValue) {
-        concatValueInputs.unshift(pastValue);
-      }
+      const concatValueInputs = pastValue ? [pastValue, v] : [v];
       const value = (context.outputCount > 2 || pastValue) ?
           context.compute(
               createConcatProgramInfo(concatValueInputs, 2, presentValueShape, v.dataType),
