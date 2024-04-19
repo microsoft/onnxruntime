@@ -87,7 +87,7 @@ Build from source and copy the include and libraries into `ORT_HOME`
 On Windows
 
 ```cmd
-build.bat --build_shared_lib --skip_tests --parallel [--use_dml] [--use_cuda] --config Release
+build.bat --build_shared_lib --skip_tests --parallel [--use_dml | --use_cuda] --config Release
 copy include\onnxruntime\core\session\onnxruntime_c_api.h <ORT_HOME>\include
 copy build\Windows\Release\Release\*.dll <ORT_HOME>\lib
 copy build\Windows\Release\Release\onnxruntime.lib <ORTHOME>\lib
