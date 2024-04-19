@@ -66,8 +66,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
         BlockStrideQuantB,
         Bias
       );
-    }
-    else if (BlkLen == 32) {
+    } else if (BlkLen == 32) {
       SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
         QuantA,
         QuantBData,
@@ -78,8 +77,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
         BlockStrideQuantB,
         Bias
       );
-    }
-    else {
+    } else {
       SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx2>(
         BlkLen,
         QuantA,
@@ -93,8 +91,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
         Bias
       );
     }
-  }
-  else {
+  } else {
     constexpr bool HasZeroPoint = false;
     if (BlkLen == 16) {
       SQ4BitGemmM1Kernel_BlkLen16_CompInt8_Impl<HasZeroPoint>(
@@ -108,8 +105,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
         BlockStrideQuantB,
         Bias
       );
-    }
-    else if (BlkLen == 32) {
+    } else if (BlkLen == 32) {
       SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
         QuantA,
         QuantBData,
@@ -120,8 +116,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
         BlockStrideQuantB,
         Bias
       );
-    }
-    else {
+    } else {
       SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx2>(
         BlkLen,
         QuantA,
@@ -227,8 +222,7 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
           // Subtract zero-point from the integers
           __m256i zp = _mm256_set1_epi16(offset[i]);
           bv_epi16 = _mm256_sub_epi16(bv_epi16, zp);
-        }
-        else {
+        } else {
           // Subtract 8 from the integers
           const __m256i eight = _mm256_set1_epi16(8);
           bv_epi16 = _mm256_sub_epi16(bv_epi16, eight);
@@ -266,8 +260,7 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
       acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(bias_ptr));
     }
     _mm_storeu_ps(sum_ptr, acc_x);
-  }
-  else {
+  } else {
     UnrolledLoop<NCols>([&](size_t i) {
       __m128 vlow = _mm256_castps256_ps128(acc[i]);
       __m128 vhigh = _mm256_extractf128_ps(acc[i], 1); // Extract high 128 bit
@@ -459,8 +452,7 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
           // Subtract zero-point from the integers
           __m256i zp = _mm256_set1_epi8(offset[i]);
           bv_32_epi8 = _mm256_sub_epi8(bv_32_epi8, zp);
-        }
-        else {
+        } else {
           // Subtract 8 from the integers
           const __m256i eight = _mm256_set1_epi8(8);
           bv_32_epi8 = _mm256_sub_epi8(bv_32_epi8, eight);
@@ -508,8 +500,7 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
       acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(bias_ptr));
     }
     _mm_storeu_ps(sum_ptr, acc_x);
-  }
-  else {
+  } else {
     UnrolledLoop<NCols>([&](size_t i) {
       __m128 vlow = _mm256_castps256_ps128(acc[i]);
       __m128 vhigh = _mm256_extractf128_ps(acc[i], 1); // Extract high 128 bit
@@ -635,8 +626,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx2(
         BlockStrideQuantB,
         Bias
       );
-    }
-    else {
+    } else {
       SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2<false>(
         A,
         QuantBData,
@@ -649,8 +639,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx2(
         Bias
       );
     }
-  }
-  else {
+  } else {
     if (QuantBZeroPoint != nullptr) {
       SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<true>(
         BlkLen,
@@ -664,8 +653,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx2(
         BlockStrideQuantB,
         Bias
       );
-    }
-    else {
+    } else {
       SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<false>(
         BlkLen,
         A,
@@ -745,8 +733,7 @@ QuantizeARow_CompInt8_avx2(
       if (n_to_read <= 0)
       {
         v1 = _mm256_setzero_ps();
-      }
-      else {
+      } else {
         v1 = load_float_n_avx2(A + k + kk + 8, n_to_read);
         v1 = _mm256_mul_ps(v1, mul);
         v1 = _mm256_round_ps(v1, _MM_ROUND_NEAREST);

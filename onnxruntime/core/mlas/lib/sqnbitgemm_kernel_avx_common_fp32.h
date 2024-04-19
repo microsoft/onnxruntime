@@ -128,8 +128,7 @@ MlasQ4GemmKernelBlkLen16Avx512f(
           zp_packed = QuantBZeroPointColPtr[3 * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
           zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
           bytes3 = _mm_sub_epi8(bytes3, _mm_set1_epi8(zp));
-        }
-        else {
+        } else {
           // Subtract 8 from the integers
           const __m128i eight = _mm_set1_epi8(8);
           bytes0 = _mm_sub_epi8(bytes0, eight);
@@ -244,11 +243,10 @@ MlasQ4GemmKernelBlkLen16Avx512f(
             bool is_lower = (QuantBZeroPointIdx & 1) == 0;
 
             // TODO: void condition on is_lower
-            std::byte zp_packed = QuantBZeroPointColPtr[0 * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
+            std::byte zp_packed = QuantBZeroPointColPtr[nn * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
             uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
             bytes = _mm_sub_epi8(bytes, _mm_set1_epi8(zp));
-          }
-          else {
+          } else {
             // Subtract 8 from the integers
             const __m128i eight = _mm_set1_epi8(8);
             bytes = _mm_sub_epi8(bytes, eight);
@@ -415,8 +413,7 @@ MlasQ4GemmKernelBlkLen32PlusAvx512f(
             zp_packed = QuantBZeroPointColPtr[3 * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
             zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
             bytes3 = _mm256_sub_epi8(bytes3, _mm256_set1_epi8(zp));
-          }
-          else {
+          } else {
             // Subtract 8 from the integers
             const __m256i eight = _mm256_set1_epi8(8);
             bytes0 = _mm256_sub_epi8(bytes0, eight);
@@ -559,11 +556,10 @@ MlasQ4GemmKernelBlkLen32PlusAvx512f(
               bool is_lower = (QuantBZeroPointIdx & 1) == 0;
 
               // TODO: void condition on is_lower
-              std::byte zp_packed = QuantBZeroPointColPtr[0 * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
+              std::byte zp_packed = QuantBZeroPointColPtr[nn * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
               uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
               bytes = _mm256_sub_epi8(bytes, _mm256_set1_epi8(zp));
-            }
-            else {
+            } else {
               // Subtract 8 from the integers
               const __m256i eight = _mm256_set1_epi8(8);
               bytes = _mm256_sub_epi8(bytes, eight);

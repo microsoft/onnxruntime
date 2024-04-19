@@ -108,8 +108,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
       UnrolledLoop<NCols>([&](size_t i) {
         bv_epi16[i] = _mm256_sub_epi16(bv_epi16[i], _mm256_set1_epi16(offset[i]));
         });
-    }
-    else {
+    } else {
       const __m256i eight = _mm256_set1_epi16(8);
       UnrolledLoop<NCols>([&](size_t i) {
         bv_epi16[i] = _mm256_sub_epi16(bv_epi16[i], eight);
@@ -136,8 +135,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
       acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(BiasPtr));
     }
     _mm_storeu_ps(SumPtr, acc_x);
-  }
-  else {
+  } else {
     UnrolledLoop<NCols>([&](size_t i) {
       __m128 vlow = _mm256_castps256_ps128(acc[i]);
       __m128 vhigh = _mm256_extractf128_ps(acc[i], 1); // Extract high 128 bit
@@ -528,8 +526,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen64_NCols4(
       zp2 = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
       zp_packed = QuantBZeroPointColPtr[3 * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
       zp3 = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
-    }
-    else {
+    } else {
       zp0 = 8; zp1 = 8; zp2 = 8; zp3 = 8;
     }
 
@@ -641,8 +638,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen64_NCols1(
       bool is_lower = (QuantBZeroPointIdx & 1) == 0;
       std::byte zp_packed = QuantBZeroPointColPtr[0 * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
       zp0 = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
-    }
-    else {
+    } else {
       zp0 = 8;
     }
 

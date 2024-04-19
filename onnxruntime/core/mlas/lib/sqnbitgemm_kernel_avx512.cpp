@@ -62,8 +62,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx512(
         0,
         0
       );
-    }
-    else {
+    } else {
       MlasQ4GemmKernelBlkLen32PlusAvx512f<false>(
         BlkLen,
         A,
@@ -80,8 +79,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx512(
         0
       );
     }
-  }
-  else {
+  } else {
     if (QuantBZeroPoint != nullptr) {
       MlasQ4GemmKernelBlkLen16Avx512f<true>(
         A,
@@ -97,8 +95,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx512(
         0,
         0
       );
-    }
-    else {
+    } else {
       MlasQ4GemmKernelBlkLen16Avx512f<false>(
         A,
         QuantBData,
@@ -169,15 +166,13 @@ MLAS_FORCEINLINE void
             std::byte zp_packed = *(zp_ptr + col_ * zp_col_stride_in_bytes);
             uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
             weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, _mm_set1_epi8(zp));
-          }
-          else {
+          } else {
             const __m128i eight = _mm_set1_epi8(8);
             weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, eight);
           }
           weight_16_epi16[col_] = _mm256_cvtepi8_epi16(weight_16_epi8);
           scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
-        }
-        else {
+        } else {
           weight_16_epi16[col_] = _mm256_setzero_si256();
           scale_8_ps[col_] = _mm256_setzero_ps();
         }
@@ -189,13 +184,11 @@ MLAS_FORCEINLINE void
             if (i_of_2 == 0) {
               __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 0));
               weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
-            }
-            else {
+            } else {
               __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 1));
               weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
             }
-          }
-          else {
+          } else {
             weight_8_ps[col_] = _mm256_setzero_ps();
           }
         }
@@ -297,15 +290,13 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32(
               std::byte zp_packed = *(zp_ptr + col_ * zp_col_stride_in_bytes);
               uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
               weight_32_epi8[col_] = _mm256_sub_epi8(weight_32_epi8[col_], _mm256_set1_epi8(zp));
-            }
-            else {
+            } else {
               const __m256i eight = _mm256_set1_epi8(8);
               weight_32_epi8[col_] = _mm256_sub_epi8(weight_32_epi8[col_], eight);
             }
 
             scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
-          }
-          else {
+          } else {
             weight_32_epi8[col_] = _mm256_setzero_si256();
             scale_8_ps[col_] = _mm256_setzero_ps();
           }
@@ -318,24 +309,20 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32(
                 __m256i weight_i_16_epi16 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_32_epi8[col_], 0));
                 __m256i weight_i_j_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_i_16_epi16, 0));
                 weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_j_8_epi32), scale_8_ps[col_]);
-              }
-              else if (i_of_4 == 1) {
+              } else if (i_of_4 == 1) {
                 __m256i weight_i_16_epi16 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_32_epi8[col_], 0));
                 __m256i weight_i_j_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_i_16_epi16, 1));
                 weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_j_8_epi32), scale_8_ps[col_]);
-              }
-              else if (i_of_4 == 2) {
+              } else if (i_of_4 == 2) {
                 __m256i weight_i_16_epi16 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_32_epi8[col_], 1));
                 __m256i weight_i_j_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_i_16_epi16, 0));
                 weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_j_8_epi32), scale_8_ps[col_]);
-              }
-              else if (i_of_4 == 3) {
+              } else if (i_of_4 == 3) {
                 __m256i weight_i_16_epi16 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(weight_32_epi8[col_], 1));
                 __m256i weight_i_j_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_i_16_epi16, 1));
                 weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_j_8_epi32), scale_8_ps[col_]);
               }
-            }
-            else {
+            } else {
               weight_8_ps[col_] = _mm256_setzero_ps();
             }
           }
@@ -398,8 +385,7 @@ MLAS_FORCEINLINE void
   if (BlkLen >= 32) {
     Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32(
       BlkLen, FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB);
-  }
-  else { // if (BlkLen == 16)
+  } else { // if (BlkLen == 16)
     Q4BitBlkDequantBForSgemmBlkLen16_CompFp32(
       FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB);
   }

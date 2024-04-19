@@ -375,7 +375,6 @@ Return Value:
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
                 this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
 
-
                 //
                 // Check if the processor supports Hybrid core architecture.
                 //

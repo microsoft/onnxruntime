@@ -114,6 +114,20 @@ Q4BitBlkDequantBForSgemm_CompFp32_avx2(
   const size_t BlockStrideQuantB
 );
 
+void
+SQ4BitGemmM1Kernel_CompInt8_avx2(
+  size_t BlkLen,
+  const std::byte* QuantA,
+  const std::byte* QuantBData,
+  const float* QuantBScale,
+  const std::byte* QuantBZeroPoint,
+  float* C,
+  size_t CountN,
+  size_t CountK,
+  size_t BlockStrideQuantB,
+  const float* Bias
+);
+
 //
 // General helpers.
 //

@@ -24,6 +24,7 @@ Abstract:
 #include "sqnbitgemm_kernel_avx_common.h"
 #include "sqnbitgemm_kernel_avx_common_int8.h"
 #include "sqnbitgemm_kernel_avx_common_fp32.h"
+#include "sqnbitgemm_kernel_avx_common_int8.h"
 
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompFp32(
@@ -57,8 +58,7 @@ SQ4BitGemmM1Kernel_CompFp32(
         0,
         0
       );
-    }
-    else {
+    } else {
       MlasQ4GemmKernelBlkLen32PlusAvx512f<false>(
         BlkLen,
         A,
@@ -75,8 +75,7 @@ SQ4BitGemmM1Kernel_CompFp32(
         0
       );
     }
-  }
-  else {
+  } else {
     if (QuantBZeroPoint != nullptr) {
       MlasQ4GemmKernelBlkLen16Avx512f<true>(
         A,
@@ -92,8 +91,7 @@ SQ4BitGemmM1Kernel_CompFp32(
         0,
         0
       );
-    }
-    else {
+    } else {
       MlasQ4GemmKernelBlkLen16Avx512f<false>(
         A,
         QuantBData,
