@@ -276,113 +276,139 @@ bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t
   return true;
 }
 
-bool QnnModelWrapper::ProcessOffset(const std::string& offset_name,
-                                    int32_t& offset_value) const {
+Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
+                                         std::vector<int32_t>& zero_points) const {
   const auto& graph_initializers = GetInitializerTensors();
-  auto offset_it = graph_initializers.find(offset_name);
-  if (offset_it == graph_initializers.end()) {
-    LOGS(logger_, ERROR) << "Not able to find initializer: " << offset_name;
-    return false;
-  }
-  const auto offset_tensor = offset_it->second;
-  const int32_t onnx_data_type = offset_tensor->data_type();
+  auto iter = graph_initializers.find(initializer_name);
+  ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for zero-point(s): ",
+                initializer_name.c_str());
+  gsl::not_null<const onnx::TensorProto*> zp_tensor_proto = iter->second;
 
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_THROW_IF_ERROR(UnpackInitializerData(*offset_tensor, unpacked_tensor));
+  ORT_RETURN_IF_NOT(zp_tensor_proto->has_data_type(), "Expected zero-point initializer ", initializer_name.c_str(),
+                    " to have a proto data type.");
+
+  const int32_t onnx_data_type = zp_tensor_proto->data_type();
+  std::vector<uint8_t> initializer_bytes;
+
+  ORT_RETURN_IF_ERROR(UnpackInitializerData(*zp_tensor_proto, initializer_bytes));
+
   switch (onnx_data_type) {
     // QNN use -offset for some reason
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpacked_tensor));
-      offset_value = -(int8_span.data()[0]);
+      auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(initializer_bytes));
+      std::transform(int8_span.begin(), int8_span.end(), std::back_inserter(zero_points),
+                     [](int8_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-      auto uint8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(unpacked_tensor));
-      offset_value = 0 - (uint8_span.data()[0]);
+      auto uint8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(initializer_bytes));
+      std::transform(uint8_span.begin(), uint8_span.end(), std::back_inserter(zero_points),
+                     [](uint8_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
-      auto uint16_span = ReinterpretAsSpan<const uint16_t>(gsl::make_span(unpacked_tensor));
-      offset_value = -static_cast<int32_t>(uint16_span.data()[0]);
+      auto uint16_span = ReinterpretAsSpan<const uint16_t>(gsl::make_span(initializer_bytes));
+      std::transform(uint16_span.begin(), uint16_span.end(), std::back_inserter(zero_points),
+                     [](uint16_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
-      auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpacked_tensor));
-      offset_value = -static_cast<int32_t>(int16_span.data()[0]);
+      auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(initializer_bytes));
+      std::transform(int16_span.begin(), int16_span.end(), std::back_inserter(zero_points),
+                     [](int16_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-      auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpacked_tensor));
-      offset_value = -(int32_span.data()[0]);
+      auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(initializer_bytes));
+      std::transform(int32_span.begin(), int32_span.end(), std::back_inserter(zero_points),
+                     [](int32_t zp) -> int32_t {
+                       return -zp;
+                     });
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {
-      auto uint32_span = ReinterpretAsSpan<const uint32_t>(gsl::make_span(unpacked_tensor));
-      offset_value = 0 - (uint32_span.data()[0]);
+      auto uint32_span = ReinterpretAsSpan<const uint32_t>(gsl::make_span(initializer_bytes));
+      std::transform(uint32_span.begin(), uint32_span.end(), std::back_inserter(zero_points),
+                     [](uint32_t zp) -> int32_t {
+                       return -static_cast<int32_t>(zp);
+                     });
       break;
     }
     default: {
-      LOGS(logger_, ERROR) << "Data type not supported!";
-      return false;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Zero-point ONNX data type `", onnx_data_type,
+                             "` is not supported.");
     }
   }
-  return true;
+
+  return Status::OK();
 }
 
-bool QnnModelWrapper::ProcessScale(const std::string& scale_name,
-                                   float& scale_value) const {
+Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const {
   const auto& graph_initializers = GetInitializerTensors();
-  auto offset_it = graph_initializers.find(scale_name);
-  if (offset_it == graph_initializers.end()) {
-    LOGS(logger_, ERROR) << "Not able to find initializer: " << scale_name;
-    return false;
-  }
-  const auto scale_tensor = offset_it->second;
-  std::vector<uint8_t> unpacked_tensor;
+  auto iter = graph_initializers.find(initializer_name);
+  ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
+                initializer_name.c_str());
+  gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
 
-  ORT_THROW_IF_ERROR(UnpackInitializerData(*scale_tensor, unpacked_tensor));
-  const float* scale_data = reinterpret_cast<float*>(unpacked_tensor.data());
-  scale_value = scale_data[0];
-  return true;
+  ORT_RETURN_IF_NOT(scale_tensor_proto->has_data_type(), "Expected scale initializer ", initializer_name.c_str(),
+                    " to have a proto data type.");
+  ORT_RETURN_IF_NOT(scale_tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                    "Expected scale initializer to be of type FLOAT");
+
+  std::vector<uint8_t> initializer_bytes;
+
+  ORT_RETURN_IF_ERROR(UnpackInitializerData(*scale_tensor_proto, initializer_bytes));
+
+  gsl::span<const float> src = gsl::make_span(reinterpret_cast<const float*>(initializer_bytes.data()),
+                                              initializer_bytes.size() / sizeof(float));
+
+  scales.insert(scales.end(), src.begin(), src.end());
+  return Status::OK();
 }
 
-bool QnnModelWrapper::ProcessQuantizationParameter(const std::optional<NodeUnitIODef::QuantParam>& quant_param,
-                                                   float& scale_value,
-                                                   int32_t& offset_value) const {
-  if (quant_param.has_value()) {
-    // Parse scale & zero_point
-    const auto& scale_name = quant_param->scale.Name();
-    bool rt = ProcessScale(scale_name, scale_value);
-    if (!rt) {
-      return rt;
-    }
-
-    if (quant_param->zero_point) {
-      const auto& zero_point_name = quant_param->zero_point->Name();
-      return ProcessOffset(zero_point_name, offset_value);
-    }
+// Checks if a tensor in the ONNX graph is per-channel quantized.
+Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
+                                              /*out*/ bool& is_per_axis) const {
+  if (!io_def.quant_param) {
+    is_per_axis = false;
+    return Status::OK();
   }
-  return true;
+
+  const std::string& scale_name = io_def.quant_param->scale.Name();
+  const auto& graph_initializers = GetInitializerTensors();
+  auto iter = graph_initializers.find(scale_name);
+  ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
+                scale_name.c_str());
+  gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
+  TensorShape scale_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(*scale_tensor_proto);
+
+  // Check the number of scale values to determine if the tensor is per-channel.
+  // This is consistent with CPU EP's Quant/Dequant logic. We can't use the presence of an axis because even a
+  // per-channel DQ/Q op may not have an explicit axis attribute (assumed to default to 1 if missing).
+  const bool is_scalar_or_1_elem_vector = scale_shape.NumDimensions() == 0 ||
+                                          (scale_shape.NumDimensions() == 1 && scale_shape.Size() == 1);
+
+  is_per_axis = !is_scalar_or_1_elem_vector;
+  return Status::OK();
 }
 
 Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& tensor_info) const {
   const std::string& name = input.node_arg.Name();
 
   // Fill in quantization param info.
-  tensor_info.quant_param = QNN_QUANTIZE_PARAMS_INIT;
-  bool is_quantized_tensor = input.quant_param.has_value();
-  utils::InitializeQuantizeParam(tensor_info.quant_param, is_quantized_tensor);
-
-  if (is_quantized_tensor) {
-    ORT_RETURN_IF_NOT(ProcessQuantizationParameter(input.quant_param,
-                                                   tensor_info.quant_param.scaleOffsetEncoding.scale,
-                                                   tensor_info.quant_param.scaleOffsetEncoding.offset),
-                      "QNN EP: Cannot get quantization parameters for input ", name.c_str());
-  }
+  ORT_RETURN_IF_ERROR(tensor_info.quant_param.Init(*this, input));
 
   // Fill in QNN data type.
   tensor_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, input.node_arg.TypeAsProto(),
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(input.quant_param.has_value(), input.node_arg.TypeAsProto(),
                                             tensor_info.qnn_data_type));
 
   // Fill in shape.
@@ -402,14 +428,19 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
                                        const std::vector<uint32_t>& input_shape,
                                        const std::vector<uint32_t>& output_shape,
                                        const Qnn_DataType_t& tensor_data_type,
-                                       const Qnn_QuantizeParams_t& quantize_param,
+                                       const QnnQuantParamsWrapper& quantize_param,
                                        bool do_op_validation,
                                        bool is_for_input,
                                        bool is_for_output) {
+  // Do not allow QNN EP to insert Reshape nodes with per-channel quantization on dynamic tensors.
+  // We could technically support this by shifting the quantization param's axis value, but
+  // we don't need this right now.
+  ORT_RETURN_IF(quantize_param.IsPerChannel(),
+                "Do not support inserted Reshape nodes with per-channel quantization");
   QnnTensorWrapper input_tensorwrapper(input_name,
                                        is_for_input ? QNN_TENSOR_TYPE_APP_WRITE : QNN_TENSOR_TYPE_NATIVE,
                                        tensor_data_type,
-                                       quantize_param,
+                                       quantize_param.Copy(),
                                        std::vector<uint32_t>(input_shape));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)),
                     "QNN EP: Failed to add input tensor for inserted Reshape.");
@@ -418,7 +449,7 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         tensor_data_type,
-                                        quantize_param,
+                                        quantize_param.Copy(),
                                         std::vector<uint32_t>(output_shape));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)),
                     "QNN EP: Failed to add output tensor for inserted Reshape.");
@@ -442,17 +473,22 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          const std::vector<uint32_t>& transpose_perm,
                                          const std::vector<uint32_t>& output_shape,
                                          const Qnn_DataType_t& tensor_data_type,
-                                         const Qnn_QuantizeParams_t& quantize_param,
+                                         const QnnQuantParamsWrapper& quantize_param,
                                          bool do_op_validation,
                                          bool is_for_input,
                                          bool is_for_output) {
+  // Do not allow QNN EP to insert transpose nodes with per-channel quantization on dynamic tensors.
+  // We could technically support this by transposing the quantization param's axis value, but
+  // we don't need this right now.
+  ORT_RETURN_IF(quantize_param.IsPerChannel(),
+                "Do not support inserted Transpose nodes with per-channel quantization");
   // No need to add this for output nodes as it is added as output tensor for previous node
   if (is_for_input) {
     Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_APP_WRITE;
     QnnTensorWrapper input_tensorwrapper(input_name,
                                          tensor_type,
                                          tensor_data_type,
-                                         quantize_param,
+                                         quantize_param.Copy(),
                                          std::vector<uint32_t>(input_shape));
     ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
@@ -469,7 +505,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         tensor_data_type,
-                                        quantize_param,
+                                        quantize_param.Copy(),
                                         std::move(output_shape_copy));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   const static std::string qnn_node_type = "Transpose";

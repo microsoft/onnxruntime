@@ -1233,11 +1233,16 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # VitisAI and OpenVINO providers currently only support
-    # full_protobuf option. TensorRT provider only requires it if built with oss_parser
+    # VitisAI and OpenVINO providers currently only support full_protobuf option.
+    # TensorRT provider only requires it if built with oss_parser, and
+    # it implicitly uses oss_parser with debug build on Windows.
+    #
+    # Note: oss_parser will support protobuf-lite in TRT 10 GA, so TRT EP will fully
+    # support protobuf-lite then.
     if (
         args.use_full_protobuf
         or (args.use_tensorrt and args.use_tensorrt_oss_parser)
+        or (args.use_tensorrt and is_windows() and "Debug" in args.config)
         or args.use_openvino
         or args.use_vitisai
         or args.gen_doc
@@ -2078,6 +2083,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.use_cuda:
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
+
+            if args.use_dml:
+                log.info("Testing DML Graph feature")
+                run_subprocess([sys.executable, "onnxruntime_test_python_dmlgraph.py"], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
