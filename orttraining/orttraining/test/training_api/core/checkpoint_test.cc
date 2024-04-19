@@ -536,8 +536,9 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_WithExternalData) {
   ASSERT_TRUE(std::filesystem::exists(checkpoint_path));
   ASSERT_TRUE(std::filesystem::exists(external_data_for_checkpoint_path));
 
-  ASSERT_EQ(std::filesystem::file_size(checkpoint_path), 856);
-  ASSERT_EQ(std::filesystem::file_size(external_data_for_checkpoint_path), 200192);
+  // minor difference across platforms. check it's in the right ballpark
+  ASSERT_LT(std::filesystem::file_size(checkpoint_path), 1000);
+  ASSERT_GT(std::filesystem::file_size(external_data_for_checkpoint_path), 200000);
 
   /// Phase 3 - Run load checkpoint APIs.
   /// And check the result comparable with initial parameter values.

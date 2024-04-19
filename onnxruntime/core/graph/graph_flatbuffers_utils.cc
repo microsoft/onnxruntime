@@ -506,7 +506,7 @@ struct UnpackTensorWithType {
 
       const size_t raw_data_len = fbs::utils::GetSizeInBytesFromFbsTensor(fbs_tensor);
 
-      std::unique_ptr<uint8_t[]> raw_buf = std::make_unique<uint8_t[]>(raw_data_len);
+      auto raw_buf = std::make_unique<uint8_t[]>(raw_data_len);
       gsl::span<uint8_t> raw_buf_span(raw_buf.get(), raw_data_len);
 
       ORT_RETURN_IF_ERROR(external_reader(fbs_tensor_external_data_offset, raw_buf_span));

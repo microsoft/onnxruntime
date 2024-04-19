@@ -631,7 +631,7 @@ Status FromFile(const PathString& checkpoint_path, InlinedVector<uint8_t>& check
  *
  * @param fbs_module_state Flatbuffer module state.
  * @param module_state Module state to be populated.
- * @param external_reader delegate to read initializer data from an external file or buffer
+ * @param external_data_reader delegate to read initializer data from an external file or buffer
  * @return Status of the operation.
  */
 Status ToModuleState(

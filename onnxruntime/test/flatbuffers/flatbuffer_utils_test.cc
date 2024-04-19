@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include <fstream>
 #include <iostream>
 
@@ -383,3 +385,5 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
 #endif  // ENABLE_TRAINING_APIS
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // ORT_MINIMAL_BUILD
