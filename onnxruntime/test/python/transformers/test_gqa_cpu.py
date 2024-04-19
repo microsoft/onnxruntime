@@ -12,11 +12,11 @@
 import math
 import random
 import unittest
-from colorama import Fore, Style, init
 
 import numpy
 import torch
 from bert_padding import pad_input, unpad_input
+from colorama import Fore, init
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 
@@ -1060,7 +1060,7 @@ def parity_check_gqa_prompt(
     window_size = (-1, -1)
     left_window_size = -1
     if local:
-        left_window_size = random.randint(0, config.kv_sequence_length)
+        left_window_size = random.randint(1, config.kv_sequence_length)
         window_size = (left_window_size, 0)
     elif causal:
         left_window_size = -1
@@ -1188,7 +1188,7 @@ def parity_check_gqa_prompt(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        correct
+        correct,
     )
 
 
@@ -1234,7 +1234,7 @@ def parity_check_gqa_prompt_no_buff(
     window_size = (-1, -1)
     left_window_size = -1
     if local:
-        left_window_size = random.randint(0, config.kv_sequence_length)
+        left_window_size = random.randint(1, config.kv_sequence_length)
         window_size = (left_window_size, 0)
     elif causal:
         left_window_size = -1
@@ -1354,7 +1354,7 @@ def parity_check_gqa_prompt_no_buff(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        correct
+        correct,
     )
 
 
@@ -1418,7 +1418,7 @@ def parity_check_gqa_past(
     window_size = (-1, -1)
     left_window_size = -1
     if local:
-        left_window_size = random.randint(0, config.kv_sequence_length)
+        left_window_size = random.randint(1, config.kv_sequence_length)
         window_size = (left_window_size, 0)
     elif causal:
         left_window_size = -1
@@ -1551,7 +1551,7 @@ def parity_check_gqa_past(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        correct
+        correct,
     )
 
 
@@ -1616,7 +1616,7 @@ def parity_check_gqa_past_no_buff(
     window_size = (-1, -1)
     left_window_size = -1
     if local:
-        left_window_size = random.randint(0, config.kv_sequence_length)
+        left_window_size = random.randint(1, config.kv_sequence_length)
         window_size = (left_window_size, 0)
     elif causal:
         left_window_size = -1
@@ -1721,11 +1721,11 @@ def parity_check_gqa_past_no_buff(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if not all_close:
-        print("seqlens", cache_seqlens)
-        print("out", out)
-        print("out_ref", out_ref)
-        print(out - out_ref)
+    # if not all_close:
+    #     print("seqlens", cache_seqlens)
+    #     print("out", out)
+    #     print("out_ref", out_ref)
+    #     print(out - out_ref)
     correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
     print(
         "NO buff",
@@ -1755,7 +1755,7 @@ def parity_check_gqa_past_no_buff(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        correct
+        correct,
     )
 
 

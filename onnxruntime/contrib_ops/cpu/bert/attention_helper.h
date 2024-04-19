@@ -165,11 +165,6 @@ void PrepareMaskGQA(T* mask_data,
   T* p_mask = mask_data;
   // TODO: parallelize this
   for (int b_i = 0; b_i < batch_size; b_i++) {
-    // Broadcast mask from (Bx)T to (Bx)SxT
-    for (ptrdiff_t s_i = 1; s_i < sequence_length; s_i++) {
-      memcpy(p_mask + s_i * buffer_sequence_length, p_mask, buffer_sequence_length * sizeof(T));
-    }
-
     if (sequence_length > 1) {
       // Apply causal/local mask for prompt case.
       for (int s_i = 0; s_i < sequence_length; s_i++) {

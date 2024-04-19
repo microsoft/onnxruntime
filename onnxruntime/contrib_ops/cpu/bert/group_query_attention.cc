@@ -182,6 +182,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     }
   }
 
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q.Get<Tensor>().Data<T>(), packed_qkv ? nullptr : K.Get<Tensor>().Data<T>(),
                         packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(), past_key, past_value, output, present_k, present_v,

@@ -12,18 +12,18 @@ namespace contrib {
 
 // Reshape Q/K/V from BxSxD to BxSxNxH
 inline Status Reshape_BSD_to_BSNH(Tensor* qkv,
-                           int batch_size,
-                           int sequence_length,
-                           int num_heads,
-                           int head_size) {
+                                  int batch_size,
+                                  int sequence_length,
+                                  int num_heads,
+                                  int head_size) {
   qkv->Reshape(TensorShape({batch_size, sequence_length, num_heads, head_size}));
   return Status::OK();
 }
 
 // Transpose Q/K/V from BxSxNxH to BxNxSxH
 inline Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
-                              OrtValue& qkv_transposed,
-                              concurrency::ThreadPool* tp) {
+                                     OrtValue& qkv_transposed,
+                                     concurrency::ThreadPool* tp) {
   std::vector<size_t> permutations({0, 2, 1, 3});
   gsl::span<const size_t> permutations_span{permutations};
   size_t from = 2, to = 1;
