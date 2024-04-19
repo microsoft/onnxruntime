@@ -35,13 +35,14 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto doc_string = SaveStringToOrtFormat(builder, initializer.has_doc_string(), initializer.doc_string());
   auto dims = SaveDims(builder, initializer.dims());
 
-  // we have to set these prior to creating the TensorBuilder instance.
+  // we have to populate string_data or raw_data prior to creating the TensorBuilder instance to avoid vtable offset
+  // issues.
   flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> string_data;
   flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
   int64_t external_data_offset = -1;
 
   auto src_type = initializer.data_type();
-  bool has_string_data = src_type == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+  const bool has_string_data = src_type == ONNX_NAMESPACE::TensorProto_DataType_STRING;
 
   if (has_string_data) {
     std::vector<std::string> string_data_vec(initializer.string_data().size());
@@ -496,9 +497,6 @@ template <typename T>
 struct UnpackTensorWithType {
   Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const fbs::Tensor& fbs_tensor,
                     onnxruntime::Tensor& ort_tensor, const ExternalDataReader& external_reader) const {
-    const uint8_t* raw_data;
-    size_t raw_data_len;
-
     if (fbs_tensor.external_data_offset() >= 0) {
       auto fbs_tensor_external_data_offset = fbs_tensor.external_data_offset();
       ORT_RETURN_IF_NOT(external_reader, "Tensor has external data but a data reader was not provided.");
@@ -506,21 +504,21 @@ struct UnpackTensorWithType {
       // no external data. should have had raw data.
       ORT_RETURN_IF(fbs_tensor_external_data_offset < 0, "Missing raw data for initializer. Invalid ORT format model.");
 
-      raw_data_len = fbs::utils::GetSizeInBytesFromFbsTensor(fbs_tensor);
+      const size_t raw_data_len = fbs::utils::GetSizeInBytesFromFbsTensor(fbs_tensor);
 
       std::unique_ptr<uint8_t[]> raw_buf = std::make_unique<uint8_t[]>(raw_data_len);
       gsl::span<uint8_t> raw_buf_span(raw_buf.get(), raw_data_len);
 
       ORT_RETURN_IF_ERROR(external_reader(fbs_tensor_external_data_offset, raw_buf_span));
-      raw_data = raw_buf.get();
+      const uint8_t* raw_data = raw_buf.get();
       return onnxruntime::utils::UnpackTensor(
           tensor_proto, raw_data,
           raw_data_len,
           ort_tensor.MutableData<T>(),
           static_cast<size_t>(ort_tensor.Shape().Size()));
     } else if (fbs_tensor.raw_data()) {
-      raw_data = fbs_tensor.raw_data()->Data();
-      raw_data_len = fbs_tensor.raw_data()->size();
+      const uint8_t* raw_data = fbs_tensor.raw_data()->Data();
+      const size_t raw_data_len = fbs_tensor.raw_data()->size();
       return onnxruntime::utils::UnpackTensor(
           tensor_proto, raw_data,
           raw_data_len,

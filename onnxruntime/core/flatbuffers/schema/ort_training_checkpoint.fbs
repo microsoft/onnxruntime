@@ -13,7 +13,6 @@ table ModuleState {
   // without any meaningful data.
   is_nominal_state:bool;
   // Tensors use external data file
-  // TODO: use bool or external data filename?
   has_external_data:bool;
 }
 

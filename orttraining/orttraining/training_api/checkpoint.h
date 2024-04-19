@@ -30,14 +30,14 @@ struct CheckpointState {
   ModuleCheckpointState module_checkpoint_state;
   OptimizerCheckpointState optimizer_checkpoint_state;
   PropertyBag property_bag;
-  boolean has_external_data = false;
+  bool has_external_data = false;
 };
 
 /**
  * @brief Get the external data path for a given checkpoint path.
  *
  * @param checkpoint_path file where checkpoint is stored.
-*/
+ */
 PathString ExternalCheckpointDataPath(const PathString& checkpoint_path);
 
 /**

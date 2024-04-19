@@ -17,6 +17,48 @@ PathString ExternalCheckpointDataPath(const PathString& checkpoint_path) {
 
 namespace {
 
+Status ReadFromExternalFileHelper(std::ifstream& external_data_stream,
+                                  uint64_t offset, gsl::span<uint8_t> output_buffer) {
+  external_data_stream.seekg(offset);
+  external_data_stream.read(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
+
+  ORT_RETURN_IF(external_data_stream.fail(), "Failed reading external checkpoint data.");
+
+  return Status::OK();
+}
+
+Status WriteToExternalFileHelper(std::ofstream& external_data_stream,
+                                 int32_t data_type, gsl::span<const uint8_t> bytes, uint64_t& offset) {
+  // for now align everything to 4 or 8 bytes. we can optimize this later if needed.
+  int32_t alignment = 4;
+
+  // TODO: Add more special-cased 8 byte types if needed.
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
+      data_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
+    alignment = 8;
+  }
+
+  int64_t pos = external_data_stream.tellp();
+
+  if (pos % alignment != 0) {
+    // 8 bytes of 0's so we can pad to alignment 8 in a single `write`
+    constexpr static const uint64_t zeros = 0;
+    int64_t padding = alignment - (pos % alignment);
+    // skipping validation of this write. doesn't matter if this or the 'real' write below fails. if this does the
+    // other will as well as nothing will clear the failure bit in the ofstream in between the calls.
+    external_data_stream.write(reinterpret_cast<const char*>(&zeros), padding);
+    pos += padding;
+  }
+
+  external_data_stream.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+  // TODO: include error code/message for why it failed. requires platform specific code
+  ORT_RETURN_IF(external_data_stream.fail(), "Failed writing external checkpoint data.");
+
+  offset = pos;
+
+  return Status::OK();
+}
+
 /**
  * @brief Sort keys of a hash map.
  * @param hash_map Hash map to sort.
@@ -189,7 +231,7 @@ Status ToFile(const PathString& checkpoint_path, flatbuffers::FlatBufferBuilder&
 Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
                         gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
                         const PathString& checkpoint_path, const bool nominal_checkpoint,
-                        const int32_t external_data_threshold = 1800) {
+                        const int32_t external_data_threshold = 1800 * 1024 * 1024) {
   const auto check_unique = [](gsl::span<const ONNX_NAMESPACE::TensorProto> tensor_protos,
                                InlinedHashSet<std::string>& unique_names) {
     for (const auto& tensor_proto : tensor_protos) {
@@ -269,36 +311,7 @@ Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_t
     // setup the data writer to write aligned data to external_data_stream
     external_data_writer = [&external_data_stream](int32_t data_type, gsl::span<const uint8_t> bytes,
                                                    uint64_t& offset) {
-      // for now align everything to 4 or 8 bytes. we can optimize this later if needed.
-      int32_t alignment = 4;
-
-      // TODO: Add more special-cased 8 byte types if needed.
-      if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-          data_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-        alignment = 8;
-      }
-
-      int64_t pos = external_data_stream->tellp();
-
-      if (pos % alignment != 0) {
-        // 8 bytes of 0's so we can pad to alignment 8 in a single `write`
-        constexpr static const uint64_t zeros = 0;
-        int64_t padding = alignment - (pos % alignment);
-        // skipping validation of this write. doesn't matter if this or the 'real' write below fails. if this does the
-        // other will as well as nothing will clear the failure bit in the ofstream in between the calls.
-        external_data_stream->write(reinterpret_cast<const char*>(&zeros), padding);
-        pos += padding;
-      }
-
-      external_data_stream->write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-      // TODO: include error code/message for why it failed. requires platform specific code
-      ORT_RETURN_IF(external_data_stream->fail(), "Failed writing external checkpoint data.");
-
-      // temporary sanity check. remove when code is unit tested
-      assert(pos + int64_t(bytes.size()) == external_data_stream->tellp());
-
-      offset = pos;
-      return Status::OK();
+      return WriteToExternalFileHelper(external_data_stream.value(), data_type, bytes, offset);
     };
   }
 
@@ -550,36 +563,7 @@ Status FromCheckpointState(
     // setup the data writer to write aligned data to external_data_stream
     external_data_writer = [&external_data_stream](int32_t data_type, gsl::span<const uint8_t> bytes,
                                                    uint64_t& offset) {
-      // for now align everything to 4 or 8 bytes. we can optimize this later if needed.
-      int32_t alignment = 4;
-
-      // TODO: Add more special-cased 8 byte types if needed.
-      if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-          data_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-        alignment = 8;
-      }
-
-      int64_t pos = external_data_stream->tellp();
-
-      if (pos % alignment != 0) {
-        // 8 bytes of 0's so we can pad to alignment 8 in a single `write`
-        constexpr static const uint64_t zeros = 0;
-        int64_t padding = alignment - (pos % alignment);
-        // skipping validation of this write. doesn't matter if this or the 'real' write below fails. if this does the
-        // other will as well as nothing will clear the failure bit in the ofstream in between the calls.
-        external_data_stream->write(reinterpret_cast<const char*>(&zeros), padding);
-        pos += padding;
-      }
-
-      external_data_stream->write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-      // TODO: include error code/message for why it failed. requires platform specific code
-      ORT_RETURN_IF(external_data_stream->fail(), "Failed writing external checkpoint data.");
-
-      // temporary sanity check. remove when code is unit tested
-      assert(pos + int64_t(bytes.size()) == external_data_stream->tellp());
-
-      offset = pos;
-      return Status::OK();
+      return WriteToExternalFileHelper(external_data_stream.value(), data_type, bytes, offset);
     };
   }
 
@@ -823,14 +807,7 @@ Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
                   "Failed to open checkpoint's external data file: ", ToUTF8String(data_path));
 
     external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
-      external_data_stream->seekg(offset);
-      external_data_stream->read(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
-
-      // TODO: Add platform specific code to get reason for failure and include in error message.
-      ORT_RETURN_IF(external_data_stream->fail(),
-                    "Failed to read external checkpoint data. Offset:", offset, " Bytes:", output_buffer.size());
-
-      return Status::OK();
+      return ReadFromExternalFileHelper(external_data_stream.value(), offset, output_buffer);
     };
   }
 
@@ -907,14 +884,7 @@ Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointSt
                   " error: ", strerror_s(errbuf, sizeof(errbuf), errno));
 
     external_data_reader = [&external_data_stream](uint64_t offset, gsl::span<uint8_t> output_buffer) {
-      external_data_stream->seekg(offset);
-      external_data_stream->read(reinterpret_cast<char*>(output_buffer.data()), output_buffer.size());
-
-      // TODO: Add platform specific code to get reason for failure and include in error message.
-      ORT_RETURN_IF(external_data_stream->fail(),
-                    "Failed to read external checkpoint data. Offset:", offset, " Bytes:", output_buffer.size());
-
-      return Status::OK();
+      return ReadFromExternalFileHelper(external_data_stream.value(), offset, output_buffer);
     };
   }
 

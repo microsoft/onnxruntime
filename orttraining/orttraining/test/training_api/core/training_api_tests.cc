@@ -132,6 +132,80 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   ASSERT_EQ(outputs.size(), 1U);
 }
 
+
+void TestModuleExportWithExternalData(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
+  auto training_model_uri = MODEL_FOLDER "training_model.onnx";
+  auto eval_model_uri = MODEL_FOLDER "eval_model.onnx";
+
+  onnxruntime::training::api::CheckpointState state;
+  auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
+  ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
+  state.has_external_data = true;
+
+  std::unique_ptr<Environment> env;
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(training_model_uri),
+                                           std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_uri)),
+                                           std::nullopt);
+  auto model = std::make_unique<onnxruntime::training::api::Module>(
+      model_identifier, &state, onnxruntime::SessionOptions(),
+      *env, providers);
+
+  std::string inference_model_path = "inference_model.onnx";
+  std::string external_data_for_inference_model = inference_model_path + ".data";
+
+  // if exported inference model and corresponding data already exists, then delete it
+  if (std::filesystem::exists(inference_model_path)) {
+    std::filesystem::remove(inference_model_path);
+  }
+  if (std::filesystem::exists(external_data_for_inference_model)) {
+    std::filesystem::remove(external_data_for_inference_model);
+  }
+
+  std::vector<std::string> graph_output_names({"output-0"});
+
+  ASSERT_STATUS_OK(model->ExportModelForInferencing(inference_model_path, graph_output_names));
+
+  // check that exported files exist
+  ASSERT_TRUE(std::filesystem::exists(inference_model_path));
+  ASSERT_TRUE(std::filesystem::exists(external_data_for_inference_model));
+
+  ASSERT_EQ(std::filesystem::file_size(inference_model_path), 1198);
+  ASSERT_EQ(std::filesystem::file_size(external_data_for_inference_model), 1590000);
+
+  // Load model
+  ONNX_NAMESPACE::ModelProto eval_model;
+  ONNX_NAMESPACE::ModelProto inference_model;
+  ORT_THROW_IF_ERROR(Model::Load(eval_model_uri, eval_model));
+  ORT_THROW_IF_ERROR(Model::Load(ToPathString(inference_model_path), inference_model));
+
+  // Check it has only one graph input
+  ASSERT_EQ(eval_model.graph().input().size(), 6);
+  ASSERT_EQ(inference_model.graph().input().size(), 1);
+  ASSERT_EQ(inference_model.graph().input()[0].name(), "input-0");
+
+  // Check that it does not have any node which has op type SoftmaxCrossEntropyLoss
+  auto softmaxceloss_node_found = [](auto& model) -> bool {
+    for (auto& node : model.graph().node()) {
+      if (node.op_type() == "SoftmaxCrossEntropyLoss") {
+        return true;
+      }
+    }
+    return false;
+  };
+  ASSERT_EQ(softmaxceloss_node_found(eval_model), true);
+  ASSERT_EQ(softmaxceloss_node_found(inference_model), false);
+
+  // Try running an inference session
+  auto inference_session = std::make_unique<onnxruntime::InferenceSession>(onnxruntime::SessionOptions(), *env);
+  ASSERT_STATUS_OK(inference_session->Load(inference_model_path));
+  ASSERT_STATUS_OK(inference_session->Initialize());
+  std::vector<std::string> input_names({"input-0"});
+  OrtValue graph_input;
+  GenerateRandomInput(std::array<int64_t, 2>{2, 784}, graph_input);
+  std::vector<OrtValue> feeds;
+  feeds.emplace_back(graph_input);
+}
 }  // namespace
 
 TEST(TrainingApiTest, ModuleParametersSize) {
@@ -440,6 +514,11 @@ TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_ResumeFromCheckpoint_Test)
 TEST(TrainingApiTest, ModuleExportModelForInferencingCPU) {
   std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCpuExecutionProvider()};
   TestModuleExport(providers);
+}
+
+TEST(TrainingApiTest, ModuleExportModelForInferencingCPU_WithExternalData) {
+  std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCpuExecutionProvider()};
+  TestModuleExportWithExternalData(providers);
 }
 
 #if defined(USE_CUDA)
