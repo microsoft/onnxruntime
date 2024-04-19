@@ -402,7 +402,7 @@ stages:
         docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
-           -e OMP_FFMPEG_PATH=$(Agent.TempDirectory)/ompffmpeg
+           -e OMP_FFMPEG_PATH=$(Agent.TempDirectory)/ompffmpeg \
            onnxruntimepackagestest_ompffmpeg \
             bash -c '
               set -ex; \
