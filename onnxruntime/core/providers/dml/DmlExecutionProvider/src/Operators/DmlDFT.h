@@ -4,7 +4,7 @@
 #include "../../../OperatorAuthorHelper/OperatorHelper.h"
 
 #include "../External/D3DX12/d3dx12.h"
-#include <d3d12.h>
+#include "directx/d3d12.h"
 
 // NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
 //       should be removed from IsCustomOpShader(...) in

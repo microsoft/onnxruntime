@@ -85,6 +85,12 @@ class TensorrtLogger : public nvinfer1::ILogger {
       }
     }
   }
+  void set_level(Severity verbosity) {
+    verbosity_ = verbosity;
+  }
+  Severity get_level() const {
+    return verbosity_;
+  }
 };
 
 namespace tensorrt_ptr {
@@ -134,6 +140,10 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
   std::vector<int64_t> output_shapes;
 };
 
+/*
+ * This map saves the dimension range of the shape of the shape tensor or execution tensor:
+ * tensor name -> ( dimension -> [min, max, opt] )
+ */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
 // Information to construct kernel function state.
@@ -548,6 +558,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * Get the pointer to the IBuilder instance.
    * This function only creates the instance at the first time it's being called."
    */
-  nvinfer1::IBuilder* GetBuilder() const;
+  nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
 };
 }  // namespace onnxruntime

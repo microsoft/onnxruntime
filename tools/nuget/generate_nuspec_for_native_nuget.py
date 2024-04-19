@@ -219,7 +219,7 @@ def add_common_dependencies(xml_text, package_name, version):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.13.1"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.14.0"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -484,7 +484,7 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\dnnl\\dnnl_provider_factory.h")
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\dnnl\\dnnl_provider_options.h")
             + '" target="build\\native\\include" />'
         )
 

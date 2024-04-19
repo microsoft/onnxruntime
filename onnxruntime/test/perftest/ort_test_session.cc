@@ -335,9 +335,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       std::string key(token.substr(0, pos));
       std::string value(token.substr(pos + 1));
 
-      if (key == "backend_path") {
+      if (key == "backend_path" || key == "profiling_file_path") {
         if (value.empty()) {
-          ORT_THROW("Please provide the QNN backend path.");
+          ORT_THROW("Please provide the valid file path.");
         }
       } else if (key == "profiling_level") {
         std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
@@ -393,7 +393,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
-'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
+'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
 'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
       }
@@ -520,7 +520,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     dml_options["performance_preference"] = "high_performance";
     dml_options["device_filter"] = "gpu";
     dml_options["disable_metacommands"] = "false";
-    dml_options["enable_dynamic_graph_fusion"] = "false";
+    dml_options["enable_graph_capture"] = "false";
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
@@ -564,16 +564,16 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           dml_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong value for the key 'disable_metacommands'. "
+              "[ERROR] [DML] You have selected a wrong value for the key 'disable_metacommands'. "
               "Select from 'true' or 'false' \n");
         }
-      } else if (key == "enable_dynamic_graph_fusion") {
+      } else if (key == "enable_graph_capture") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
           dml_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
+              "[ERROR] [DML] You have selected a wrong value for the key 'enable_graph_capture'. "
               "Select from 'true' or 'false' \n");
         }
       } else if (key == "enable_graph_serialization") {
@@ -582,7 +582,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           session_options.AddConfigEntry(kOrtSessionOptionsConfigEnableGraphSerialization, value.data());
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong value for the key 'enable_graph_serialization'. "
+              "[ERROR] [DML] You have selected a wrong value for the key 'enable_graph_serialization'. "
               "Select from 'true' or 'false' \n");
         }
       }

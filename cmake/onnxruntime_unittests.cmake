@@ -779,6 +779,13 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
   target_include_directories(onnxruntime_providers_cuda_ut PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
   target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
+  if (MSVC)
+    # Cutlass code has an issue with the following:
+    # warning C4100: 'magic': unreferenced formal parameter
+    target_compile_options(onnxruntime_providers_cuda_ut PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4100>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
+  endif()
+
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
@@ -975,41 +982,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 
   if (onnxruntime_USE_QNN)
-    if (NOT QNN_ARCH_ABI)
-      string(TOLOWER ${onnxruntime_target_platform} GEN_PLATFORM)
-      if(MSVC)
-          message(STATUS "Building MSVC for architecture ${CMAKE_SYSTEM_PROCESSOR} with CMAKE_GENERATOR_PLATFORM as ${GEN_PLATFORM}")
-          if (${GEN_PLATFORM} STREQUAL "arm64")
-            set(QNN_ARCH_ABI aarch64-windows-msvc)
-          else()
-            set(QNN_ARCH_ABI x86_64-windows-msvc)
-          endif()
-      else()
-          if (${CMAKE_SYSTEM_NAME} STREQUAL "Android")
-            set(QNN_ARCH_ABI aarch64-android-clang6.0)
-          elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-            if (${GEN_PLATFORM} STREQUAL "x86_64")
-              set(QNN_ARCH_ABI x86_64-linux-clang)
-            else()
-              set(QNN_ARCH_ABI aarch64-android)
-            endif()
-          endif()
-      endif()
-    endif()
-
     if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-        file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/*.so" "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/*.dll")
-        if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc")
-          file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so"
-		  "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so"
-		  "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libqnnhtpv73.cat")
-          list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
-        endif()
-        message(STATUS "QNN lib files: " ${QNN_LIB_FILES})
-        add_custom_command(
-          TARGET ${test_data_target} POST_BUILD
-          COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${test_data_target}>
-          )
+      add_custom_command(
+        TARGET ${test_data_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${test_data_target}>
+        )
     endif()
   endif()
 
@@ -1277,6 +1254,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
     if (onnxruntime_USE_TENSORRT)
       list(APPEND onnxruntime_shared_lib_test_LIBS ${TENSORRT_LIBRARY_INFER})
+    endif()
+    if (onnxruntime_USE_DML)
+      list(APPEND onnxruntime_shared_lib_test_LIBS d3d12.lib)
     endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
