@@ -15,10 +15,13 @@ namespace onnxruntime {
 
 static OpKernelTypeStrMap::const_iterator LookUpOpId(const OpIdentifier& op_id,
                                                      const OpKernelTypeStrMap& map) {
-  if (op_id.domain == kMSInternalNHWCDomain) {
-    // Special case for kMSInternalNHWCDomain:
-    // This domain is set, replacing the original domain, by ORT during layout transformation.
-    // It maps to one of these alternate domains, so try them all.
+  auto op_it = map.find(op_id);
+
+  if (op_it == map.end() && op_id.domain == kMSInternalNHWCDomain) {
+    // Special case for kMSInternalNHWCDomain.
+    // kMSInternalNHWCDomain is set (replacing the original domain) by ORT during layout transformation.
+    // However, ORT format models contain kernel type string information with the original domain.
+    // kMSInternalNHWCDomain maps to one of these alternate domains, so fall back to them.
     constexpr std::array alternate_domains{
         std::string_view{kOnnxDomain},
         std::string_view{kMSDomain},
@@ -26,16 +29,14 @@ static OpKernelTypeStrMap::const_iterator LookUpOpId(const OpIdentifier& op_id,
 
     for (auto alternate_domain : alternate_domains) {
       const auto alternate_op_id = OpIdentifier{std::string{alternate_domain}, op_id.op_type, op_id.since_version};
-      const auto it = map.find(alternate_op_id);
-      if (it != map.end()) {
-        return it;
+      op_it = map.find(alternate_op_id);
+      if (op_it != map.end()) {
+        break;
       }
     }
-
-    return map.end();
   }
 
-  return map.find(op_id);
+  return op_it;
 }
 
 Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
