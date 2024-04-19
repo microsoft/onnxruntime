@@ -151,9 +151,7 @@ struct OpenVINO_Provider : Provider {
     } else if (device_type == "GPU") {
       if (precision == "") {
         precision = "FP16";
-      }
-      if (precision != "ACCURACY" && precision != "FP16" && precision != "FP32") {
-        std::cout << " precision = " << precision << std::endl;
+      } else if (precision != "ACCURACY" && precision != "FP16" && precision != "FP32") {
         ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. GPU only supports FP32 / FP16. \n");
       }
     }

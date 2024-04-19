@@ -276,28 +276,24 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         auto device_type = ov_options["device_type"];
         if (device_type == "CPU") {
           if (value == "" || value == "ACCURACY" || value == "FP32") {
-            value = "FP32";
-            ov_options[key] = value;
+            ov_options[key] = "FP32";
             continue;
           } else {
             ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
           }
         } else if (device_type == "NPU") {
           if (value == "" || value == "ACCURACY" || value == "FP16") {
-            value = "FP16";
-            ov_options[key] = value;
+            ov_options[key] = "FP16";
             continue;
           } else {
             ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
           }
         } else if (device_type == "GPU") {
-          if (value == "")
-            value = "FP16";
-          ov_options[key] = value;
-          continue;
-          if (value == "ACCURACY" || value == "FP16" || value == "FP32") {
+          if (value == "") {
+            ov_options[key] = "FP16";
+            continue;
+          } else if (value == "ACCURACY" || value == "FP16" || value == "FP32") {
             ov_options[key] = value;
-            std::cout << " Set value for GPU = " << ov_options[key] << std::endl;
             continue;
           } else {
             ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. GPU only supported FP32 / FP16. \n");
