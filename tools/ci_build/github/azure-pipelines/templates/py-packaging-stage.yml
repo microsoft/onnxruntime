@@ -56,6 +56,11 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+- name: Codeql.SkipTaskAutoInjection
+  type: boolean
+  displayName: 'Skip Task Auto Injection for CodeQL'
+  default: false
+
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
   - stage: Python_Packaging_Windows_CPU
