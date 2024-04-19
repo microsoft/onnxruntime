@@ -44,9 +44,8 @@ Status ConvTranspose<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
 }
 
 template <typename T, bool NHWC>
-Status ConvTranspose<T, NHWC>::PrePack([[maybe_unused]] const Tensor& tensor, int input_idx,
-                                       [[maybe_unused]] AllocatorPtr alloc, bool& is_packed,
-                                       [[maybe_unused]] PrePackedWeights* prepacked_weights) {
+Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed,
+                                       PrePackedWeights* prepacked_weights) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
   if constexpr (NHWC) {  // InputTensors::IN_W
@@ -80,6 +79,11 @@ Status ConvTranspose<T, NHWC>::PrePack([[maybe_unused]] const Tensor& tensor, in
       CUDA_CALL_THROW(cudaStreamSynchronize(DefaultCudaStream()));
       is_packed = true;
     }
+  } else {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
   }
 
   return Status::OK();
