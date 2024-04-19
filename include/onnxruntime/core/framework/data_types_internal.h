@@ -272,7 +272,7 @@ inline bool IsDataTypeString(MLDataType dt_type) {
 template <class T>
 inline bool IsPrimitiveDataType(MLDataType dt_type) {
   auto prim_type = dt_type->AsPrimitiveDataType();
-  return  (prim_type != nullptr && prim_type->GetDataType() == ToTensorProtoElementType<T>());
+  return (prim_type != nullptr && prim_type->GetDataType() == ToTensorProtoElementType<T>());
 }
 
 // Use after AsPrimitiveDataType() is successful
