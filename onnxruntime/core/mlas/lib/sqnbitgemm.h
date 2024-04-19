@@ -168,6 +168,10 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      *
      * @param       BlkLen              Number of values in a block.
      * @param[out]  FpData              Supplies the output buffer for the dequantized B float data.
+     *                                  It should have enough space for
+     *                                      (CountN + 16 - 1) / 16 * 16 * (CountK + BlkLen - 1) / BlkLen * BlkLen
+     *                                  elements. Only the first (CountN + 16 - 1) / 16 * 16 * CountK elements are
+     *                                  useful, but the kernel implementation can be simplified with the extra space.
      * @param       QuantBData          Supplies the quantized B matrix block data.
      * @param       QuantBScale         Supplies the quantized B matrix block scale values.
      * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
