@@ -96,10 +96,10 @@ jobs:
       WithCache: ${{parameters.WITH_CACHE}}
       Today: $(Today)
 
-  - ${{ if eq(parameters.isX86, true) }}:
-    - task: UseDotNet@2
-      inputs:
-        version: '7.x'
+  - task: UseDotNet@2
+    inputs:
+      version: '7.x'
+    ${{ if eq(parameters.isX86, true) }}:
       env:
         PROCESSOR_ARCHITECTURE: 'x86'
 
