@@ -60,7 +60,6 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  type: string
   default: 2.19.2.240210
 
 stages:
