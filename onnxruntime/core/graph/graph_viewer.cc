@@ -45,15 +45,21 @@ struct PriorityNodeCompare {
 };
 #endif
 
-GraphViewer::GraphViewer(const Graph& graph)
-    : GraphViewer(graph, nullptr) {
+GraphViewer::GraphViewer(const Graph& graph,
+                         bool need_memory_efficient_topo_order,
+                         bool need_priority_based_topo_order)
+    : GraphViewer(graph, nullptr, need_memory_efficient_topo_order, need_priority_based_topo_order) {
 }
 
-GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph& filter_info)
-    : GraphViewer(graph, &filter_info) {
+GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph& filter_info,
+                         bool need_memory_efficient_topo_order,
+                         bool need_priority_based_topo_order)
+    : GraphViewer(graph, &filter_info, need_memory_efficient_topo_order, need_priority_based_topo_order) {
 }
 
-GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
+GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info,
+                         bool need_memory_efficient_topo_order,
+                         bool need_priority_based_topo_order)
     : graph_{&graph},
       // we can setup the filter here if needed. filtered_node_indices_ will have been populated by the time it's used
       graph_nodes_{graph_->FilteredNodes(
@@ -99,8 +105,8 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
 #endif
   }
 
+  if (need_memory_efficient_topo_order) {
 #ifdef ENABLE_TRAINING
-  if (yield_node) {
     // This is ORTModule training specific branch.
     std::vector<NodeIndex> node_orders;
     const size_t num_of_nodes = NumberOfNodes();
@@ -109,49 +115,55 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
         yield_node,
         shape_size_parents,
         node_orders);
-    nodes_in_topological_order_ = std::move(node_orders);
-    ORT_ENFORCE(nodes_in_topological_order_.size() == num_of_nodes,
-                "Topological sort failed.", nodes_in_topological_order_.size(), "!=", num_of_nodes);
-  }
+    nodes_in_mem_efficient_topological_order_ = std::move(node_orders);
+    ORT_ENFORCE(nodes_in_mem_efficient_topological_order_.size() == num_of_nodes,
+                "Topological sort failed.", nodes_in_mem_efficient_topological_order_.size(), "!=", num_of_nodes);
+    is_memory_efficient_topo_order_available_ = true;
+#else
+    ORT_THROW("Memory efficient topological order is not enabled for non-training build.");
 #endif
+  }
 
-  if (!yield_node) {
-    graph.ReverseDFSFrom(
-        leaf_nodes,
-        nullptr,
-        [this](const Node* n) {
-          nodes_in_topological_order_.push_back(n->Index());
-        },
-        NodeCompare());
+  graph.ReverseDFSFrom(
+      leaf_nodes,
+      nullptr,
+      [this](const Node* n) {
+        nodes_in_topological_order_.push_back(n->Index());
+      },
+      NodeCompare());
 
 #ifdef ENABLE_TRAINING
-    auto original = std::move(nodes_in_topological_order_);
-    nodes_in_topological_order_.reserve(original.size());
-    InlinedHashSet<NodeIndex> visited;
-    for (auto& node : original) {
-      if (visited.find(node) != visited.end()) {
-        continue;
-      }
-      nodes_in_topological_order_.push_back(node);
-      visited.insert(node);
-      if (shape_size_parents.find(node) != shape_size_parents.end()) {
-        for (auto& following_node : shape_size_parents[node]) {
-          nodes_in_topological_order_.push_back(following_node);
-          visited.insert(following_node);
-        }
+  auto original = std::move(nodes_in_topological_order_);
+  nodes_in_topological_order_.reserve(original.size());
+  InlinedHashSet<NodeIndex> visited;
+  for (auto& node : original) {
+    if (visited.find(node) != visited.end()) {
+      continue;
+    }
+    nodes_in_topological_order_.push_back(node);
+    visited.insert(node);
+    if (shape_size_parents.find(node) != shape_size_parents.end()) {
+      for (auto& following_node : shape_size_parents[node]) {
+        nodes_in_topological_order_.push_back(following_node);
+        visited.insert(following_node);
       }
     }
-
-#endif
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
-  graph.KahnsTopologicalSort(
-      [this](const Node* n) {
-        nodes_in_topological_order_with_priority_.push_back(n->Index());
-      },
-      PriorityNodeCompare());
 #endif
+
+  if (need_priority_based_topo_order) {
+#if !defined(ORT_MINIMAL_BUILD)
+    graph.KahnsTopologicalSort(
+        [this](const Node* n) {
+          nodes_in_topological_order_with_priority_.push_back(n->Index());
+        },
+        PriorityNodeCompare());
+    is_priority_order_available_ = true;
+#else
+    ORT_THROW("Priority based topological order is not enabled for ORT minimal build.");
+#endif
+  }
 
   if (filter_info_) {
     // validate. if something is off here it's a bug in our code
@@ -208,16 +220,27 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
         }
       }
     }
-
-#if !defined(ORT_MINIMAL_BUILD)
-    auto orig_priority_order = std::move(nodes_in_topological_order_with_priority_);
-    nodes_in_topological_order_with_priority_.reserve(filter_info->nodes.size());
-    std::copy_if(orig_priority_order.cbegin(), orig_priority_order.cend(),
-                 std::back_inserter(nodes_in_topological_order_with_priority_),
-                 [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
+    if (need_memory_efficient_topo_order) {
+#ifdef ENABLE_TRAINING
+      auto orig_mem_efficient_order = std::move(nodes_in_mem_efficient_topological_order_);
+      nodes_in_mem_efficient_topological_order_.reserve(filter_info->nodes.size());
+      std::copy_if(orig_mem_efficient_order.cbegin(), orig_mem_efficient_order.cend(),
+                   std::back_inserter(nodes_in_mem_efficient_topological_order_),
+                   [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
 #endif
+    }
+
+    if (need_priority_based_topo_order) {
+#if !defined(ORT_MINIMAL_BUILD)
+      auto orig_priority_order = std::move(nodes_in_topological_order_with_priority_);
+      nodes_in_topological_order_with_priority_.reserve(filter_info->nodes.size());
+      std::copy_if(orig_priority_order.cbegin(), orig_priority_order.cend(),
+                   std::back_inserter(nodes_in_topological_order_with_priority_),
+                   [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
+#endif
+    }
   }
-}
+}  // namespace onnxruntime
 
 // Graph name.
 const std::string& GraphViewer::Name() const noexcept {
@@ -309,7 +332,19 @@ const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder(ExecutionO
       return nodes_in_topological_order_;
 #if !defined(ORT_MINIMAL_BUILD)
     case ExecutionOrder::PRIORITY_BASED:
+      ORT_ENFORCE(is_priority_order_available_,
+                  "Priority based topological order is not available, ",
+                  "consider to set need_priority_based_topo_orde=True when construct the GraphViewer.");
       return nodes_in_topological_order_with_priority_;
+#endif
+#ifdef ENABLE_TRAINING
+    case ExecutionOrder::MEMORY_EFFICIENT:
+      ORT_ENFORCE(is_memory_efficient_topo_order_available_,
+                  "Memory efficient topological order is not available, ",
+                  "consider to set need_memory_efficient_topo_order=True when construct the GraphViewer.");
+      return nodes_in_mem_efficient_topological_order_;
+#else
+      ORT_THROW("Memory efficient topological order is not enabled for non-training build.");
 #endif
     default:
       ORT_THROW("Invalid ExecutionOrder");

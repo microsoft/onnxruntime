@@ -163,7 +163,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   InlinedHashMap<NodeIndex, ptrdiff_t> node_index_to_its_order_in_topological_sort_map;
 
   // The first pass - find the candidate subgraphs.
-  GraphViewer graph_viewer(graph);
+  GraphViewer graph_viewer(graph, true /*need_memory_efficient_topo_order*/, false);
   optimizer::memory_optimizer::MemoryOptimizationPlanner memory_opt_planner;
   ORT_ENFORCE(optimizer::memory_optimizer::FindORTModuleMemoryOpportunity(
                   graph_viewer,
@@ -186,7 +186,8 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
                   .IsOK());
 
   // The second pass - apply the transformation.
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids =
+      graph_viewer.GetNodesInTopologicalOrder(optimizer::memory_optimizer::TOPOLOGICAL_SORT_ALGORITHM);
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     Node* p_node = graph.GetNode(node_ids[i]);
     if (p_node == nullptr) {

@@ -255,7 +255,16 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.enable_mem_pattern = False
         session_options.enable_mem_reuse = False
         session_options.use_deterministic_compute = _are_deterministic_algorithms_enabled()
-        session_options.execution_order = onnxruntime.ExecutionOrder.DEFAULT
+        # Enable  memory efficient execution order for training if 1). memory efficient grad management is enabled
+        # or 2). memory optimizer is enabled.
+        use_memory_efficient_topo_sort = (self._export_mode == torch.onnx.TrainingMode.TRAINING) and (
+            self._mem_efficient_grad_management_is_enabled or self._runtime_options.use_memory_efficient_gradient
+        )
+        session_options.execution_order = (
+            onnxruntime.ExecutionOrder.MEMORY_EFFICIENT
+            if use_memory_efficient_topo_sort
+            else onnxruntime.ExecutionOrder.DEFAULT
+        )
 
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)

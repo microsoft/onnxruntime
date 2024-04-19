@@ -49,7 +49,7 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
                               ActivationUsedMap& fw_op_output_arg_used_map,
                               InlinedHashMap<const Node*, bool>& is_forward_nodes) {
   ORT_ENFORCE(boundary_op_order_in_topological_sort >= 0);
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(TOPOLOGICAL_SORT_ALGORITHM);
   is_forward_nodes.clear();
   is_forward_nodes.reserve(node_ids.size());
 
@@ -128,7 +128,7 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
     return Status::OK();
   }
 
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(TOPOLOGICAL_SORT_ALGORITHM);
 
   InlinedHashMap<NodeIndex, size_t> node_index_to_its_order_in_topological_sort_map;
   for (size_t i = 0; i < node_ids.size(); ++i) {
@@ -180,7 +180,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                           candidate_output_args_map,
                                       MemoryOptimizationPlanner& memory_opt_planner) {
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(TOPOLOGICAL_SORT_ALGORITHM);
 
   // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
   yield_op_order_in_topological_sort = -1;

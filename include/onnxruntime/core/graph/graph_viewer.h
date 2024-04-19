@@ -29,12 +29,16 @@ class GraphViewer {
   /**
   Construct a GraphViewer from the provided Graph instance.
   */
-  explicit GraphViewer(const Graph& graph);
+  explicit GraphViewer(const Graph& graph,
+                       bool need_memory_efficient_topo_order = false,
+                       bool need_priority_based_topo_order = true);
 
   /**
   Construct a GraphViewer from the provided Graph instance, filtering to the nodes specified in the IndexedSubGraph
   */
-  explicit GraphViewer(const Graph& graph, const IndexedSubGraph& filter_info);
+  explicit GraphViewer(const Graph& graph, const IndexedSubGraph& filter_info,
+                       bool need_memory_efficient_topo_order = false,
+                       bool need_priority_based_topo_order = true);
 
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
@@ -194,7 +198,9 @@ class GraphViewer {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
-  GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info);
+  GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info,
+              bool need_memory_efficient_topo_order = false,
+              bool need_priority_based_topo_order = false);
 
   const Graph* graph_;
   ConstGraphNodes graph_nodes_;
@@ -205,6 +211,13 @@ class GraphViewer {
 #if !defined(ORT_MINIMAL_BUILD)
   // The NodeIndex values of the graph nodes sorted in topological order with priority.
   std::vector<NodeIndex> nodes_in_topological_order_with_priority_;
+  bool is_priority_order_available_{false};
+#endif
+
+#ifdef ENABLE_TRAINING
+  // The NodeIndex values of the graph nodes sorted in memory efficient topological order.
+  std::vector<NodeIndex> nodes_in_mem_efficient_topological_order_;
+  bool is_memory_efficient_topo_order_available_{false};
 #endif
 
   // Graph root nodes.

@@ -22,8 +22,9 @@
 namespace onnxruntime {
 
 enum class ExecutionOrder {
-  DEFAULT = 0,        // default topological sort
-  PRIORITY_BASED = 1  // priority-based topological sort
+  DEFAULT = 0,           // default topological sort
+  PRIORITY_BASED = 1,    // priority-based topological sort
+  MEMORY_EFFICIENT = 2,  // memory-efficient topological sort for training purposes.
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ExecutionOrder& order) {
@@ -33,6 +34,9 @@ inline std::ostream& operator<<(std::ostream& os, const ExecutionOrder& order) {
       break;
     case ExecutionOrder::PRIORITY_BASED:
       os << "PRIORITY_BASED";
+      break;
+    case ExecutionOrder::MEMORY_EFFICIENT:
+      os << "MEMORY_EFFICIENT";
       break;
     default:
       os << "UNKNOWN";
