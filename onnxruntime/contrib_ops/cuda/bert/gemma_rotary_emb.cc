@@ -22,6 +22,7 @@ namespace cuda {
       GemmaRotaryEmbedding<T, U>);
 
 REGISTER_KERNEL_TYPED(MLFloat16, float)
+REGISTER_KERNEL_TYPED(float, float)
 
 template <typename T, typename U>
 GemmaRotaryEmbedding<T, U>::GemmaRotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info) {

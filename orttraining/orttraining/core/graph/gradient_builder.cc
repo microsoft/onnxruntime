@@ -2217,8 +2217,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetResizeGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetGemmaRotaryEmbGrad) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{"GemmaRotaryEmbGrad", kMSDomain, 1},
-              {GO(0), GO(1), GO(2), I(0)},
-              {GI(0), GI(1), GI(2), GI(3)},
+              {GO(0), GO(1), I(0)}, // Mul4_Grad, Add_1_output_1_grad, emb
+              {GI(0), GI(1), GI(2), GI(3), GI(4)}, // q_grad, q_rot_grad, k_grad, k_rot_grad
               SrcNodeAttributes())};
 }
 

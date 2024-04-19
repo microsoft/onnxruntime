@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "contrib_ops/cuda/bert/gemma_rotary_emb_grad.h"
-#include "contrib_ops/cuda/bert/gemma_rotary_emb_grad_impl.h"
+#include "orttraining/training_ops/cuda/math/gemma_rotary_emb_grad.h"
+#include "orttraining/training_ops/cuda/math/gemma_rotary_emb_grad_impl.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -35,7 +35,6 @@ template <typename T, typename U>
 Status GemmaRotaryEmbeddingGrad<T, U>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* go0 = context->Input<Tensor>(0);
   const Tensor* go1 = context->Input<Tensor>(1);
-  const Tensor* go2 = context->Input<Tensor>(2);
   const Tensor* emb = context->Input<Tensor>(3);
 
 
@@ -69,7 +68,6 @@ Status GemmaRotaryEmbeddingGrad<T, U>::ComputeInternal(OpKernelContext* context)
       reinterpret_cast<CudaT*>(k_rot_grad->template MutableData<T>()),
       reinterpret_cast<const CudaT*>(go0->template Data<T>()),
       reinterpret_cast<const CudaT*>(go1->template Data<T>()),
-      reinterpret_cast<const CudaT*>(go2->template Data<T>()),
       reinterpret_cast<const CudaU*>(emb->template Data<U>()),
       batch_size,
       num_heads,

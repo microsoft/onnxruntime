@@ -99,6 +99,20 @@ template Status LaunchGemmaRotaryEmbeddingKernel<half, float>(
     const int seq_len,
     const int dim);
 
+template Status LaunchGemmaRotaryEmbeddingKernel<float, float>(
+    cudaStream_t stream,
+    float* output1,
+    float* output2,
+    const float* emb,
+    const float* q,
+    const float* q_rot,
+    const float* k,
+    const float* k_rot,
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int dim);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -18,7 +18,6 @@ Status LaunchGemmaRotaryEmbeddingGradKernel(
     T* k_rot_grad,
     const T* go0,
     const T* go1,
-    const T* go2, 
     const U* emb,
     const int batch_size,
     const int num_heads,
