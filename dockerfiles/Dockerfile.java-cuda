@@ -8,15 +8,13 @@ RUN yum install -y zlib-devel python39-devel python39-numpy python39-setuptools 
     wget https://services.gradle.org/distributions/gradle-8.6-bin.zip && unzip gradle-8.6-bin.zip -d /opt/ && rm -f gradle-8.6-bin.zip
 
 ENV JAVA_HOME=/usr/lib/jvm/java-1.8.0
-
 ENV GRADLE_HOME=/opt/gradle-8.6
 ENV PATH=${GRADLE_HOME}/bin:${PATH}
 
 COPY ./onnxruntime /onnxruntime
 WORKDIR /onnxruntime
 
-RUN python3 -m pip install -r tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/requirements.txt && \
-    ./build.sh --allow_running_as_root --compile_no_warning_as_error --skip_tests \
+RUN ./build.sh --allow_running_as_root --compile_no_warning_as_error --skip_tests \
                --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib64/ --config Release --build_java --update --build --parallel --cmake_extra_defines \
                ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) CMAKE_CUDA_ARCHITECTURES="52;60;61;70;75;86" CMAKE_CXX_STANDARD=17 CMAKE_CXX_STANDARD_REQUIRED=ON \
                ONNX_USE_PROTOBUF_SHARED_LIBS=OFF onnxruntime_BUILD_UNIT_TESTS=OFF
