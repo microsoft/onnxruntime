@@ -10,6 +10,10 @@
 
 namespace onnxruntime {
 struct Int4x2 {
+  using unpacked_type = int8_t;
+  static constexpr unpacked_type min_val = -8;
+  static constexpr unpacked_type max_val = 7;
+
   int8_t val_0 : 4;
   int8_t val_1 : 4;
 
@@ -23,14 +27,6 @@ struct Int4x2 {
   inline int8_t operator[](size_t index) const {
     assert(index <= 1);
     return index == 0 ? val_0 : val_1;
-  }
-
-  inline bool operator==(const Int4x2& other) const {
-    return this->val_0 == other.val_0 && this->val_1 == other.val_1;
-  }
-
-  inline bool operator!=(const Int4x2& other) const {
-    return !(*this == other);
   }
 
   inline uint8_t ToBits() const {
@@ -74,6 +70,10 @@ struct Int4x2 {
 static_assert(sizeof(Int4x2) == sizeof(int8_t));
 
 struct UInt4x2 {
+  using unpacked_type = uint8_t;
+  static constexpr unpacked_type min_val = 0;
+  static constexpr unpacked_type max_val = 15;
+
   uint8_t val_0 : 4;
   uint8_t val_1 : 4;
 
@@ -87,14 +87,6 @@ struct UInt4x2 {
   inline uint8_t operator[](size_t index) const {
     assert(index <= 1);
     return index == 0 ? val_0 : val_1;
-  }
-
-  inline bool operator==(const UInt4x2& other) const {
-    return this->val_0 == other.val_0 && this->val_1 == other.val_1;
-  }
-
-  inline bool operator!=(const UInt4x2& other) const {
-    return !(*this == other);
   }
 
   inline uint8_t ToBits() const {
