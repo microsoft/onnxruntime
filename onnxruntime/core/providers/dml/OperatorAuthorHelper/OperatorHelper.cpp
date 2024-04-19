@@ -256,7 +256,7 @@ namespace OperatorHelper
         // Read the tensor bytes of a scalar value into the output data,
         // validating dimensions and byte size.
         const uint32_t elementCount = ComputeElementCountFromDimensions(tensor.GetShape());
-        const size_t elementByteSize = GetByteSizeFromMlDataType(tensor.GetTensorDataType());
+        const size_t elementByteSize = (GetBitSizeFromMlDataType(tensor.GetTensorDataType()) + CHAR_BIT - 1) / CHAR_BIT;
         ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be a CPU Tensor.");
         ML_CHECK_VALID_ARGUMENT(elementCount == 1, "Scalar tensors must have exactly 1 element.");
         ML_CHECK_VALID_ARGUMENT(dataByteSize >= elementByteSize, "Scalar tensor element byte size is too large.");
