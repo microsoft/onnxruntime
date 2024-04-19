@@ -59,7 +59,7 @@ Status WriteToExternalFileHelper(std::ofstream& external_data_stream,
   if (pos % alignment != 0) {
     // 8 bytes of 0's so we can pad to alignment 8 in a single `write`
     constexpr static const uint64_t zeros = 0;
-    int64_t padding = alignment - (pos % alignment);
+    std::streamsize padding = alignment - (pos % alignment);
     // skipping validation of this write. doesn't matter if this or the 'real' write below fails. if this does the
     // other will as well as nothing will clear the failure bit in the ofstream in between the calls.
     external_data_stream.write(reinterpret_cast<const char*>(&zeros), padding);
