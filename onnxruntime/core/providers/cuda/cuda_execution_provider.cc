@@ -2395,7 +2395,7 @@ static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
 }
 
 static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node, const logging::Logger& logger,
-                                           const GraphViewer& graph_viewer, const bool prefer_nhwc) {
+                                           const GraphViewer& graph_viewer, [[maybe_unused]] const bool prefer_nhwc) {
   const auto& node_attributes = node.GetAttributes();
   // Check attributes
   for (auto& attr : node_attributes) {

@@ -839,14 +839,14 @@ namespace OperatorHelper
 
             if (outputShape.size() > 2)
             {
-                ML_CHECK_VALID_ARGUMENT(outputShape[C] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]), 
+                ML_CHECK_VALID_ARGUMENT(outputShape[C] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]),
                     "Output channel must be equivalent to filter channel.");
-            }
+            } 
 
             for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i)
             {
                 size_t outputIndex = outputShape.size() - m_kernel.spatialDimensionCount + i;
-                ML_CHECK_VALID_ARGUMENT(outputShape[outputIndex] >= gsl::narrow_cast<int>(inputDimensions[H + i]), 
+                ML_CHECK_VALID_ARGUMENT(outputShape[outputIndex] >= gsl::narrow_cast<int>(inputDimensions[H + i]),
                     "Output dimension cannot be smaller than input dimension.");
                 m_outputShapes[0].GetShape()[H + i] = outputShape[outputIndex];
             }
