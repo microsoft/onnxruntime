@@ -352,9 +352,10 @@ stages:
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - powershell: |
+    - script: |
         mkdir -p $(Agent.TempDirectory)/ompffmpeg
         azcopy cp --recursive "https://lotusscus.blob.core.windows.net/models/ffmpeg/runtimes/linux-x64" $(Agent.TempDirectory)/ompffmpeg
+        ls $(Agent.TempDirectory)/ompffmpeg
       displayName: 'Download OMP FFmpeg'
 
     - template: templates/get-docker-image-steps.yml
