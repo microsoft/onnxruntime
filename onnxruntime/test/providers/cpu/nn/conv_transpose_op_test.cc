@@ -103,7 +103,8 @@ TEST(ConvTransposeTest, ConvTranspose_1D) {
   vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
   vector<int64_t> W_shape = {1, 2, 3};
   vector<int64_t> Y_shape = {1, 2, 5};
-  auto expected_vals = {0.0f, 1.0f, 3.0f, 3.0f, 2.0f, 0.0f, 1.0f, 3.0f, 3.0f, 2.0f};
+  auto expected_vals = {0.0f, 1.0f, 3.0f, 3.0f, 2.0f,
+                        0.0f, 1.0f, 3.0f, 3.0f, 2.0f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
