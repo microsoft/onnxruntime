@@ -14,6 +14,7 @@
 #include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -23,7 +24,7 @@ namespace qnn {
 struct TensorInfo {
   std::vector<uint32_t> shape;
   Qnn_DataType_t qnn_data_type;
-  Qnn_QuantizeParams_t quant_param;
+  QnnQuantParamsWrapper quant_param;
   bool is_initializer;
   const ONNX_NAMESPACE::TensorProto* initializer_tensor;
 };
@@ -97,16 +98,6 @@ class QnnModelWrapper {
 
   static bool GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape);
 
-  bool ProcessOffset(const std::string& offset_name,
-                     int32_t& offset_value) const;
-
-  bool ProcessScale(const std::string& scale_name,
-                    float& scale_value) const;
-
-  bool ProcessQuantizationParameter(const std::optional<NodeUnitIODef::QuantParam>& quant_param,
-                                    float& scale_value,
-                                    int32_t& offset_value) const;
-
   bool IsQnnTensorWrapperExist(const std::string& tensor_name) const;
 
   bool IsGraphOutput(const std::string& tensor_name) const {
@@ -124,7 +115,7 @@ class QnnModelWrapper {
                         const std::vector<uint32_t>& input_shape,
                         const std::vector<uint32_t>& output_shape,
                         const Qnn_DataType_t& tensor_data_type,
-                        const Qnn_QuantizeParams_t& quantize_param,
+                        const QnnQuantParamsWrapper& quantize_param,
                         bool do_op_validation,
                         bool is_for_input = true,
                         bool is_for_output = false);
@@ -136,7 +127,7 @@ class QnnModelWrapper {
                           const std::vector<uint32_t>& transpose_perm,
                           const std::vector<uint32_t>& output_shape,
                           const Qnn_DataType_t& tensor_data_type,
-                          const Qnn_QuantizeParams_t& quantize_param,
+                          const QnnQuantParamsWrapper& quantize_param,
                           bool do_op_validation,
                           bool is_for_input = true,
                           bool is_for_output = false);
@@ -148,7 +139,7 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& input_shape,
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
-                                const Qnn_QuantizeParams_t& quantize_param,
+                                const QnnQuantParamsWrapper& quantize_param,
                                 bool do_op_validation,
                                 bool is_for_input = true,
                                 bool is_for_output = false) {
@@ -165,7 +156,7 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& input_shape,
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
-                                const Qnn_QuantizeParams_t& quantize_param,
+                                const QnnQuantParamsWrapper& quantize_param,
                                 bool do_op_validation,
                                 bool is_for_input = true,
                                 bool is_for_output = false) {
@@ -181,6 +172,15 @@ class QnnModelWrapper {
   QnnBackendType GetQnnBackendType() const { return qnn_backend_type_; }
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
+
+  // Unpack float scales from initializer (1 scale for per-tensor, > 1 for per-axis).
+  Status UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
+
+  // Unpack zero-points from initializer and convert to int32_t (1 zero-point for per-tensor, > 1 for per-channel).
+  Status UnpackZeroPoints(const std::string& initializer_name, std::vector<int32_t>& zero_points) const;
+
+  // Checks if a tensor in the ONNX graph is per-axis quantized.
+  Status IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def, /*out*/ bool& is_per_axis) const;
 
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,

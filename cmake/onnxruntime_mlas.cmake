@@ -197,6 +197,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/sgemma.asm
       ${MLAS_SRC_DIR}/amd64/cvtfp16a.asm
       ${MLAS_SRC_DIR}/amd64/SoftmaxKernelAvx.asm
+      ${MLAS_SRC_DIR}/amd64/SoftmaxKernelAvx512F.asm
       ${MLAS_SRC_DIR}/amd64/TransKernelFma3.asm
       ${MLAS_SRC_DIR}/amd64/TransKernelAvx512F.asm
       ${MLAS_SRC_DIR}/amd64/LogisticKernelFma3.asm
@@ -536,6 +537,7 @@ else()
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SconvKernelAvx512F.S
+          ${MLAS_SRC_DIR}/x86_64/SoftmaxKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SpoolKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/TransKernelAvx512F.S
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp

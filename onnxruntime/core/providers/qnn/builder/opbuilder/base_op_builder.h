@@ -6,6 +6,7 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder.h"
+#include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 #include "core/framework/allocator.h"
 
 #include "QnnOpDef.h"
@@ -57,7 +58,7 @@ class BaseOpBuilder : public IOpBuilder {
                                           const std::vector<std::string>& input_names,
                                           size_t output_index,
                                           Qnn_DataType_t qnn_data_type,
-                                          Qnn_QuantizeParams_t& quant_param) const ORT_MUST_USE_RESULT {
+                                          QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT {
     // Do nothing by default. Op builders like Split implement this function to override output quant params.
     ORT_UNUSED_PARAMETER(qnn_model_wrapper);
     ORT_UNUSED_PARAMETER(node_unit);
@@ -110,7 +111,7 @@ class BaseOpBuilder : public IOpBuilder {
                                                   size_t input_index,
                                                   size_t output_index,
                                                   Qnn_DataType_t qnn_data_type,
-                                                  Qnn_QuantizeParams_t& quant_param) const ORT_MUST_USE_RESULT;
+                                                  QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT;
 
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
     // TODO: Use QNN operator names defined in "QnnOpDef.h"
@@ -320,6 +321,8 @@ class BaseOpBuilder : public IOpBuilder {
 
  private:
   std::string op_builder_type_;
+
+ protected:
   const std::vector<size_t> nchw2nhwc_perm{0, 2, 3, 1};
   const std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
   const std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};

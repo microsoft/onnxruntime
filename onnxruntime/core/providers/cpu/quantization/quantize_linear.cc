@@ -80,7 +80,7 @@ static void PrepareForQDQ(const TensorShape& input_shape,
 #define REGISTER_DEQUANTIZELINEAR(T)                                         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                            \
       DequantizeLinear,                                                      \
-      19,                                                                    \
+      21,                                                                    \
       T,                                                                     \
       KernelDefBuilder()                                                     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
@@ -88,7 +88,19 @@ static void PrepareForQDQ(const TensorShape& input_shape,
                                  DataTypeImpl::GetTensorType<MLFloat16>()}), \
       DequantizeLinear<T>);
 
-#define REGISTER_DEQUANTIZELINEAR_VERSIONED(T)                    \
+#define REGISTER_DEQUANTIZELINEAR_VERSIONED(T)                               \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                  \
+      DequantizeLinear,                                                      \
+      19,                                                                    \
+      20,                                                                    \
+      T,                                                                     \
+      KernelDefBuilder()                                                     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),       \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}), \
+      DequantizeLinear<T>);
+
+#define REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_19(T)             \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                       \
       DequantizeLinear,                                           \
       13,                                                         \
@@ -107,8 +119,12 @@ static void PrepareForQDQ(const TensorShape& input_shape,
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DequantizeLinear<T>);
 
+// Opset 21 added 16-bit and 4-bit int to DQ.
+// TODO(adrianlizarraga): Also support 4-bit int types and 'block' quantization.
 REGISTER_DEQUANTIZELINEAR(int8_t)
 REGISTER_DEQUANTIZELINEAR(uint8_t)
+REGISTER_DEQUANTIZELINEAR(int16_t)
+REGISTER_DEQUANTIZELINEAR(uint16_t)
 REGISTER_DEQUANTIZELINEAR(int32_t)
 #if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FN)
@@ -116,9 +132,22 @@ REGISTER_DEQUANTIZELINEAR(Float8E4M3FNUZ)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2FNUZ)
 #endif
+
+// Opset 19 added 8-bit float inputs and 16-bit float outputs to DQ.
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t)
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FN)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ)
+#endif
+
+// Before opset 19, DQ only supported int8, uint8 and int32.
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_19(int8_t)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_19(uint8_t)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_19(int32_t)
 
 #if !defined(DISABLE_CONTRIB_OPS)
 namespace contrib {
@@ -265,7 +294,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 #define REGISTER_QUANTIZELINEAR(T)                                          \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                           \
       QuantizeLinear,                                                       \
-      19,                                                                   \
+      21,                                                                   \
       T,                                                                    \
       KernelDefBuilder()                                                    \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
@@ -273,7 +302,19 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T>);
 
-#define REGISTER_QUANTIZELINEAR_VERSIONED(T)                          \
+#define REGISTER_QUANTIZELINEAR_VERSIONED(T)                                \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                 \
+      QuantizeLinear,                                                       \
+      19,                                                                   \
+      20,                                                                   \
+      T,                                                                    \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
+      QuantizeLinear<T>);
+
+#define REGISTER_QUANTIZELINEAR_VERSIONED_PRE_19(T)                   \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
       QuantizeLinear,                                                 \
       13,                                                             \
@@ -294,8 +335,12 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T>);
 
+// Opset 21 added 16-bit and 4-bit int support to Q ops.
+// TODO(adrianlizarraga): Support int4 and block quantization.
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
+REGISTER_QUANTIZELINEAR(int16_t)
+REGISTER_QUANTIZELINEAR(uint16_t)
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_QUANTIZELINEAR(Float8E4M3FN)
@@ -304,8 +349,20 @@ REGISTER_QUANTIZELINEAR(Float8E5M2)
 REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
 #endif
 
+// Opset 19 added 8-bit floats to Q ops.
 REGISTER_QUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t)
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FN)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ)
+#endif
+
+// Before opset 19, Q only supported int8 and uint8.
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_19(int8_t)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_19(uint8_t)
 
 #if !defined(DISABLE_CONTRIB_OPS)
 namespace contrib {

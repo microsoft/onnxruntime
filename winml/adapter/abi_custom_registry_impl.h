@@ -26,11 +26,12 @@ class AbiCustomRegistryImpl : public AbiCustomRegistry {
     _In_opt_ IMLOperatorShapeInferrer* shape_inferrer,
     _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
     bool is_internal_operator,
-    bool can_alias_first_input,
     bool supports_graph,
     const uint32_t* required_input_count_for_graph = nullptr,
     _In_reads_(constant_cpu_input_count) const uint32_t* required_constant_cpu_inputs = nullptr,
-    uint32_t constant_cpu_input_count = 0
+    uint32_t constant_cpu_input_count = 0,
+    _In_reads_(aliasCount) const std::pair<uint32_t, uint32_t>* aliases = nullptr,
+    uint32_t aliasCount = 0
   ) const noexcept override;
 
   HRESULT STDMETHODCALLTYPE RegisterOperatorKernel(

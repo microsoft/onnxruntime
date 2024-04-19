@@ -382,8 +382,12 @@ std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() c
 }
 
 // Per TensorRT documentation, logger needs to be a singleton.
-TensorrtLogger& GetTensorrtLogger() {
-  static TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
+  const auto log_level = verbose_log ? nvinfer1::ILogger::Severity::kVERBOSE : nvinfer1::ILogger::Severity::kWARNING;
+  static TensorrtLogger trt_logger(log_level);
+  if (log_level != trt_logger.get_level()) {
+    trt_logger.set_level(verbose_log ? nvinfer1::ILogger::Severity::kVERBOSE : nvinfer1::ILogger::Severity::kWARNING);
+  }
   return trt_logger;
 }
 
@@ -400,7 +404,11 @@ Status GetShapeOfShapeTensor(Ort::ConstValue& input_tensor,
                              void* shape_values,
                              int shape_size,
                              cudaStream_t stream) {
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(shape_values, input_tensor.GetTensorData<T>(), shape_size * sizeof(T), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(shape_values,
+                                       input_tensor.GetTensorData<T>(),
+                                       shape_size * sizeof(T),
+                                       cudaMemcpyDeviceToHost,
+                                       stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   return Status::OK();
 }
@@ -522,14 +530,16 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
  * This function supports single/multiple profile(s).
  * (Note: An optimization profile describes a range of dimensions for each network input)
  *
+ * @param shape_tensor_values holds "shape tensor -> shape values" for the INT32 shape tensor input across this inference run
+ * @param shape_tensor_values_int64 holds "shape tensor -> shape values" for the INT64 shape tensor input across this inference run
  */
 Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
                                               Ort::KernelContext ctx,
                                               nvinfer1::ITensor* input,
                                               ShapeRangesMap& shape_ranges,
                                               const std::unordered_map<std::string, size_t>& input_indexes,
-                                              std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values, // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
-                                              std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64, // same as above but for int64 shape tensor input
+                                              std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values,
+                                              std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64,
                                               cudaStream_t stream,
                                               bool* engine_update) {
   for (size_t i = 0; i < trt_profiles.size(); i++) {
@@ -582,8 +592,10 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     if (input->isShapeTensor()) {
       // Get shape values for shape tensor input
       const auto tensor_type = tensor_info.GetElementType();
-      int shape_size = dims.nbDims == 0 ? 1 : static_cast<int>(tensor_shapes[0]); // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
-      std::vector<int32_t> values(shape_size); // For setting TRT optimization profile. Note: the min/opt/max profile values are still int32 even though int64 is supported after TRT 10.
+      // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
+      int shape_size = dims.nbDims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
+      // For setting TRT optimization profile. (Note: the min/opt/max profile values are still int32 even though int64 is supported after TRT 10)
+      std::vector<int32_t> values(shape_size);
 
       switch (tensor_type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
@@ -776,14 +788,16 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
  * There are two types of input tensor: (1) shape tensor and (2) execution tensor.
  * The input buffer binding needs to be handled differently.
  *
+ * @param shape_tensor_values holds "shape tensor -> shape values" for the INT32 shape tensor input across this inference run
+ * @param shape_tensor_values_int64 holds "shape tensor -> shape values" for the INT64 shape tensor input across this inference run
  */
 Status BindContextInput(Ort::KernelContext& ctx,
                         nvinfer1::ICudaEngine* trt_engine,
                         nvinfer1::IExecutionContext* trt_context,
                         const char* input_name,
                         size_t input_index,
-                        std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values, // only use for int32 shape tensor
-                        std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64, // only use for int64 shape tensor
+                        std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values,
+                        std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64,
                         std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                         OrtAllocator* alloc,
                         cudaStream_t stream) {
@@ -805,7 +819,9 @@ Status BindContextInput(Ort::KernelContext& ctx,
 
   if (trt_engine->isShapeInferenceIO(input_name)) {
     // Bind "shape tensor" input buffer
-    int shape_size = trt_engine->getTensorShape(input_name).nbDims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);  // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
+
+    // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
+    int shape_size = trt_engine->getTensorShape(input_name).nbDims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
     switch (tensor_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
         // get shape tensor value if not present
@@ -823,8 +839,10 @@ Status BindContextInput(Ort::KernelContext& ctx,
 
         if (!trt_context->setTensorAddress(input_name, &shape_tensor_values[input_name][0])) {
           std::string error_input_name = input_name;
-          ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                             "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" + error_input_name + "'"));
+          std::string error_msg =
+              "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
+              error_input_name + "'";
+          ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, error_msg));
         }
         break;
       }
@@ -844,8 +862,10 @@ Status BindContextInput(Ort::KernelContext& ctx,
 
         if (!trt_context->setTensorAddress(input_name, &shape_tensor_values_int64[input_name][0])) {
           std::string error_input_name = input_name;
-          ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                             "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" + error_input_name + "'"));
+          std::string error_msg =
+              "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
+              error_input_name + "'";
+          ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, error_msg));
         }
         break;
       }
@@ -1582,7 +1602,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   {
     auto lock = GetApiLock();
-    runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
+    runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
   }
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
@@ -1719,9 +1739,8 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::
 // Get the pointer to the IBuilder instance.
 // Note: This function is not thread safe. Calls to this function from different threads must be serialized
 // even though it doesn't make sense to have multiple threads initializing the same inference session.
-nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder() const {
+nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder(TensorrtLogger& trt_logger) const {
   if (!builder_) {
-    TensorrtLogger& trt_logger = GetTensorrtLogger();
     {
       auto lock = GetApiLock();
       builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
@@ -2098,10 +2117,14 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
-        TensorrtLogger& trt_logger = GetTensorrtLogger();
-        auto trt_builder = GetBuilder();
-        const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-        auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+        TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
+        auto trt_builder = GetBuilder(trt_logger);
+        auto network_flags = 0;
+#if NV_TENSORRT_MAJOR > 8
+        network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#endif
+        network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+        auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
@@ -2487,10 +2510,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     model_proto->SerializeToOstream(dump);
   }
 
-  TensorrtLogger& trt_logger = GetTensorrtLogger();
-  auto trt_builder = GetBuilder();
-  const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-  auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+  TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
+  auto trt_builder = GetBuilder(trt_logger);
+  auto network_flags = 0;
+#if NV_TENSORRT_MAJOR > 8
+  network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#endif
+  network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+  auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
   trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
@@ -3060,8 +3087,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // The info is used for both shape tensor and execution tensor:
     // tensor name->(dimension->[min, max, opt])
     auto& shape_ranges = trt_state->input_shape_ranges;
-    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values; // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
-    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64; // same as above but for int64 shape tensor input
+    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
+    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
     auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_builder = trt_state->builder;
     auto trt_engine = trt_state->engine->get();
@@ -3637,8 +3664,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     auto trt_context = trt_state->context->get();
     auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
     int num_outputs = static_cast<int>(output_indexes.size());
-    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values; // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
-    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64; // same as above but for int64 shape tensor input
+    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
+    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
 
     OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
     OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);

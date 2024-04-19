@@ -96,7 +96,7 @@ Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         input_tensor_wrapper.GetTensorDataType(),
-                                        GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor()),
+                                        input_tensor_wrapper.GetQnnQuantParams().Copy(),
                                         std::move(output_shape));
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
