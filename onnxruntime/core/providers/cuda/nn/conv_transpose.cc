@@ -56,18 +56,20 @@ Status ConvTranspose<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, Allo
       InlinedVector<size_t> perm;
       TensorShapeVector new_dims;
 
+      // Input is { N, C, ...}. Output is { N, M, ...}. 'input channels' is C. 'output channels' is M.
+      // Transpose the output channels related dimension (M/group) to be last. Leave the input channels as-is.
       if (rank == 3) {
-        // Transpose from {C, M/group, k1} to {M/group, k1, C}
-        perm = {1, 2, 0};
-        new_dims = TensorShapeVector{orig_shape[1], orig_shape[2], orig_shape[0]};
+        // Transpose from {C, M/group, k1} to {C, k1, M/group}
+        perm = {0, 2, 1};
+        new_dims = TensorShapeVector{orig_shape[0], orig_shape[2], orig_shape[1]};
       } else if (rank == 4) {
-        // Transpose from {C, M/group, kH, kW} to {M/group, kH, kW, C}
-        perm = {1, 2, 3, 0};
-        new_dims = TensorShapeVector{orig_shape[1], orig_shape[2], orig_shape[3], orig_shape[0]};
+        // Transpose from {C, M/group, kH, kW} to {C, kH, kW, M/group}
+        perm = {0, 2, 3, 1};
+        new_dims = TensorShapeVector{orig_shape[0], orig_shape[2], orig_shape[3], orig_shape[1]};
       } else if (rank == 5) {
-        // Transpose from {C, M/group, k1, k2, k3} to {M/group, k1, k2, k3, C}
-        perm = {1, 2, 3, 4, 0};
-        new_dims = TensorShapeVector{orig_shape[1], orig_shape[2], orig_shape[3], orig_shape[4], orig_shape[0]};
+        // Transpose from {C, M/group, k1, k2, k3} to {C, k1, k2, k3, M/group}
+        perm = {0, 2, 3, 4, 1};
+        new_dims = TensorShapeVector{orig_shape[0], orig_shape[2], orig_shape[3], orig_shape[4], orig_shape[1]};
       }
 
       gsl::span<size_t> permutation(perm.data(), rank);
@@ -121,8 +123,8 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
   if (x_dimensions == 3) {
     const auto insert_at = NHWC ? 1 : 2;
 
-    // NCHW: N, C, k1, C -> N, C, 1, k1
-    // NHWC: N, k1, C -> N, 1, k1, C
+    // NCHW: N, C, d1 -> N, C, 1, d1
+    // NHWC: N, d1, C -> N, 1, d1, C
     x_dims.insert(x_dims.begin() + insert_at, 1);
 
     // NCHW: C, M/g, k1  -> C, M/g, 1, k1
@@ -147,8 +149,10 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
       }
 
       ConvTransposeAttributes::Prepare p;
+      // PrePack moves the M/group dimension of W to the end, with 'M' being interpreted as 'output channels'
+      const bool transposed_input_channels = false;
       ORT_RETURN_IF_ERROR(
-          conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding, &w_shape, NHWC));
+          conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding, &w_shape, NHWC, transposed_input_channels));
 
       auto y_dims = p.Y->Shape().AsShapeVector();
       if (x_dimensions == 3) {
@@ -165,7 +169,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
       if (w_dims_changed) {
         if constexpr (NHWC) {
           ORT_RETURN_IF_ERROR(s_.w_desc.Set(CUDNN_TENSOR_NHWC, CudnnTensor::GetDataType<CudaT>(),
-                                            static_cast<int>(w_dims[3]), static_cast<int>(w_dims[0]),
+                                            static_cast<int>(w_dims[0]), static_cast<int>(w_dims[3]),
                                             static_cast<int>(w_dims[1]), static_cast<int>(w_dims[2])));
         } else {
           ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
