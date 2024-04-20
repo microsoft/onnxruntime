@@ -97,7 +97,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
     // Load 4 B column vectors (quantized to int4 blobs)
     __m128i bvi[NCols];
     UnrolledLoop<NCols>([&](size_t i) {
-      bvi[i] = _mm_loadu_si64((__m128i const*)bptr[i]);
+      bvi[i] = _mm_loadl_epi64((__m128i const*)bptr[i]);
       bptr[i] += SubBlkStep;
       });
 

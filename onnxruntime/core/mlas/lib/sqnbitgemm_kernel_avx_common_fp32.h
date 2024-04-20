@@ -84,10 +84,10 @@ MlasQ4GemmKernelBlkLen16Avx512f(
 
         // Load B col vectors of 16 of 4b
         // SubBlkLen = 16: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
-        const __m128i bvi4_0 = _mm_loadu_si64(b0ptr++);
-        const __m128i bvi4_1 = _mm_loadu_si64(b1ptr++);
-        const __m128i bvi4_2 = _mm_loadu_si64(b2ptr++);
-        const __m128i bvi4_3 = _mm_loadu_si64(b3ptr++);
+        const __m128i bvi4_0 = _mm_loadl_epi64(b0ptr++);
+        const __m128i bvi4_1 = _mm_loadl_epi64(b1ptr++);
+        const __m128i bvi4_2 = _mm_loadl_epi64(b2ptr++);
+        const __m128i bvi4_3 = _mm_loadl_epi64(b3ptr++);
 
         // expand 4b into byte array
         __m128i lower = _mm_and_si128(bvi4_0, lowMask);
@@ -231,7 +231,7 @@ MlasQ4GemmKernelBlkLen16Avx512f(
         for (int64_t nn = 0; nn < nblk; nn++) {
           // Load B col vectors of 16 of 4b
           // SubBlkLen = 16: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
-          const __m128i bvi4_0 = _mm_loadu_si64(b_ptr[nn]++);
+          const __m128i bvi4_0 = _mm_loadl_epi64(b_ptr[nn]++);
 
           // expand 4b into byte array
           __m128i lower = _mm_and_si128(bvi4_0, lowMask);

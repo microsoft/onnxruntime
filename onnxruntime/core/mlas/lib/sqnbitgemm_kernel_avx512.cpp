@@ -157,7 +157,7 @@ MLAS_FORCEINLINE void
       UnrolledLoop<NCols8>([&](size_t col_) {
         if ((int)col_ < cols) {
           // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
-          __m128i bvi = _mm_loadu_si64((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
+          __m128i bvi = _mm_loadl_epi64((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
           const __m128i lower = _mm_and_si128(bvi, low_mask);
           const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask), 8);
           __m128i weight_16_epi8 = _mm_add_epi8(upper, lower);

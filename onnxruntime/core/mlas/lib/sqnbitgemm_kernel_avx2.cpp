@@ -210,7 +210,7 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
         // SubBlkLen = 16: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
         // SubBlkLen = 32: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
         // Load B col vectors. get SubBlkLen(16) 4 bits quantized features from each column
-        __m128i bvi4 = _mm_loadu_si64(b_blk_data_col_ptr[i]);
+        __m128i bvi4 = _mm_loadl_epi64(b_blk_data_col_ptr[i]);
         b_blk_data_col_ptr[i] += SubBlkStep8;
 
         // TODO: avoid _mm_set1_epi8
