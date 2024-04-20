@@ -234,6 +234,35 @@ TEST_F(QnnHTPBackendTests, BatchNorm_FP16) {
                        ExpectedEPNodeAssignment::All);
 }
 
+// Test FP32 BatchNormalization on the HTP backend with the enable_htp_fp16_precision option enabled
+// to run it with fp16 precision.
+TEST_F(QnnHTPBackendTests, BatchNorm_FP32_as_FP16) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  provider_options["enable_htp_fp16_precision"] = "1";
+
+  constexpr int64_t num_channels = 2;
+  std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
+                                   -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};
+
+  auto input_def = TestInputDef<float>({2, num_channels, 2, 2}, false, input_data);
+  auto scale_def = TestInputDef<float>({num_channels}, true, {1.0f, 2.0f});
+  auto bias_def = TestInputDef<float>({num_channels}, true, {1.1f, 2.1f});
+  auto model_fn = BuildBatchNormTestCase<float>(input_def, scale_def, bias_def);
+
+  RunQnnModelTest(model_fn,
+                  provider_options,
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All,
+                  0.01f);  // abs err
+}
+
 // Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
 // Use an input of rank 5. QNN BatchNormalization doesn't support 5D on HTP
 TEST_F(QnnHTPBackendTests, BatchNorm3D) {
