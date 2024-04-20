@@ -276,7 +276,7 @@ size_t GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor) {
 
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& initializer,
                                 const OrtFormatLoadOptions& load_options,
-                                const ExternalDataReader& external_reader) {
+                                const ExternalDataReader& external_data_reader) {
   initializer.Clear();
 
   LOAD_STR_FROM_ORT_FORMAT(initializer, name, fbs_tensor.name());
@@ -329,7 +329,7 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
       ORT_RETURN_IF(external_data_offset < 0, "Missing raw data for initializer. Invalid ORT format model.");
 
       // external data but no reader
-      ORT_RETURN_IF(!external_reader, "Tensor has external data but a data reader was not provided.");
+      ORT_RETURN_IF(!external_data_reader, "Tensor has external data but a data reader was not provided.");
 
       // FUTURE: This could be setup similarly to can_use_flatbuffer_for_initializers above if the external data file
       // is memory mapped and guaranteed to remain valid. This would avoid the copy.
@@ -340,7 +340,7 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
       raw_data.resize(num_bytes);
       auto output_buffer = gsl::make_span<uint8_t>(reinterpret_cast<uint8_t*>(raw_data.data()), num_bytes);
 
-      ORT_RETURN_IF_ERROR(external_reader(external_data_offset, output_buffer));
+      ORT_RETURN_IF_ERROR(external_data_reader(external_data_offset, output_buffer));
     }
   }
 
@@ -496,10 +496,10 @@ Status SaveOrtTensorOrtFormat(
 template <typename T>
 struct UnpackTensorWithType {
   Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const fbs::Tensor& fbs_tensor,
-                    onnxruntime::Tensor& ort_tensor, const ExternalDataReader& external_reader) const {
+                    onnxruntime::Tensor& ort_tensor, const ExternalDataReader& external_data_reader) const {
     if (fbs_tensor.external_data_offset() >= 0) {
       auto fbs_tensor_external_data_offset = fbs_tensor.external_data_offset();
-      ORT_RETURN_IF_NOT(external_reader, "Tensor has external data but a data reader was not provided.");
+      ORT_RETURN_IF_NOT(external_data_reader, "Tensor has external data but a data reader was not provided.");
 
       // no external data. should have had raw data.
       ORT_RETURN_IF(fbs_tensor_external_data_offset < 0, "Missing raw data for initializer. Invalid ORT format model.");
@@ -509,19 +509,16 @@ struct UnpackTensorWithType {
       auto raw_buf = std::make_unique<uint8_t[]>(raw_data_len);
       gsl::span<uint8_t> raw_buf_span(raw_buf.get(), raw_data_len);
 
-      ORT_RETURN_IF_ERROR(external_reader(fbs_tensor_external_data_offset, raw_buf_span));
-      const uint8_t* raw_data = raw_buf.get();
+      ORT_RETURN_IF_ERROR(external_data_reader(fbs_tensor_external_data_offset, raw_buf_span));
       return onnxruntime::utils::UnpackTensor(
-          tensor_proto, raw_data,
-          raw_data_len,
+          tensor_proto, raw_buf_span.data(),
+          raw_buf_span.size(),
           ort_tensor.MutableData<T>(),
           static_cast<size_t>(ort_tensor.Shape().Size()));
     } else if (fbs_tensor.raw_data()) {
-      const uint8_t* raw_data = fbs_tensor.raw_data()->Data();
-      const size_t raw_data_len = fbs_tensor.raw_data()->size();
       return onnxruntime::utils::UnpackTensor(
-          tensor_proto, raw_data,
-          raw_data_len,
+          tensor_proto, fbs_tensor.raw_data()->Data(),
+          fbs_tensor.raw_data()->size(),
           ort_tensor.MutableData<T>(),
           static_cast<size_t>(ort_tensor.Shape().Size()));
     } else {
@@ -534,7 +531,7 @@ struct UnpackTensorWithType {
 
 Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr allocator,
                               std::string& tensor_name, onnxruntime::Tensor& ort_tensor,
-                              const ExternalDataReader& external_reader) {
+                              const ExternalDataReader& external_data_reader) {
   auto* fbs_tensor_name = fbs_tensor.name();
   ORT_RETURN_IF_NOT(fbs_tensor_name, "Flatbuffer tensor is invalid. Expected: A valid tensor name. Actual: nullptr.");
   tensor_name = fbs_tensor_name->str();
@@ -565,7 +562,7 @@ Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr 
   onnxruntime::utils::MLTypeCallDispatcher<float, bool, double, int8_t, uint8_t, int16_t, uint16_t,
                                            int32_t, uint32_t, int64_t, uint64_t>
       dispatcher(tensor_data_type);
-  return dispatcher.InvokeRet<Status, UnpackTensorWithType>(unused_tensor_proto, fbs_tensor, ort_tensor, external_reader);
+  return dispatcher.InvokeRet<Status, UnpackTensorWithType>(unused_tensor_proto, fbs_tensor, ort_tensor, external_data_reader);
 }
 
 #endif  // ENABLE_TRAINING_APIS

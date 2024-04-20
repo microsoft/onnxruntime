@@ -95,12 +95,12 @@ Status SaveAttributeOrtFormat(
 /// <param name="fbs_tensor">Flatbuffer Tensor</param>
 /// <param name="initializer">TensorProto to load data into</param>
 /// <param name="load_options">ORT format load options</param>
-/// <param name="external_reader">Optional delegate to read from external data file.</param>
+/// <param name="external_data_reader">Optional delegate to read from external data file.</param>
 /// <returns>Status</returns>
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
                                 ONNX_NAMESPACE::TensorProto& initializer,
                                 const OrtFormatLoadOptions& load_options,
-                                const ExternalDataReader& external_reader = nullptr);
+                                const ExternalDataReader& external_data_reader = nullptr);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor,
@@ -138,11 +138,11 @@ Status SaveOrtTensorOrtFormat(
 /// @param[in] allocator Allocator to use for creating the ORT tensor
 /// @param[out] tensor_name Name of the tensor
 /// @param[out] ort_tensor ORT tensor to load the flatbuffer tensor into
-/// @param[in] external_reader Optional delegate to read from an external data file
+/// @param[in] external_data_reader Optional delegate to read from an external data file
 /// @return Status indicating success or providing error information
 Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr allocator,
                               std::string& tensor_name, onnxruntime::Tensor& ort_tensor,
-                              const ExternalDataReader& external_reader = nullptr);
+                              const ExternalDataReader& external_data_reader = nullptr);
 
 #endif
 

@@ -347,8 +347,6 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
     loaded_tensors.push_back(std::move(ort_tensor));
   }
 
-  bool data_validated = true;
-
   ASSERT_EQ(initializers.size(), loaded_tensors.size());
 
   // convert expected initializers (TensorProtos) to Tensors for easier comparison
@@ -379,8 +377,6 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
 
     ASSERT_EQ(expected_data, loaded_data);
   }
-
-  ASSERT_TRUE(data_validated);
 }
 #endif  // ENABLE_TRAINING_APIS
 }  // namespace test

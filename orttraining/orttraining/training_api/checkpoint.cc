@@ -135,12 +135,12 @@ Status FlatbufferTensorFromOrtValue(
  * @param fbs_tensor Flatbuffer tensor.
  * @param tensor_name Name of the tensor.
  * @param ort_value OrtValue object to be populated.
- * @param external_reader delegate to read initializer data from an external file or buffer
+ * @param external_data_reader delegate to read initializer data from an external file or buffer
  * @return Status of the operation.
  */
 Status OrtValueFromFlatbufferTensor(const fbs::Tensor& fbs_tensor,
                                     std::string& tensor_name, OrtValue& ort_value,
-                                    const fbs::utils::ExternalDataReader& external_reader) {
+                                    const fbs::utils::ExternalDataReader& external_data_reader) {
   // The assumption is that the flatbuffer buffer will be destructed once the checkpoint has been loaded.
   // And so, we must allocate a buffer where the tensor data can be copied using the cpu allocator.
   // This buffer is owned by the OrtValue.
@@ -149,7 +149,7 @@ Status OrtValueFromFlatbufferTensor(const fbs::Tensor& fbs_tensor,
   AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
 
   std::unique_ptr<Tensor> ort_tensor = std::make_unique<Tensor>();
-  ORT_RETURN_IF_ERROR(fbs::utils::LoadOrtTensorOrtFormat(fbs_tensor, cpu_allocator, tensor_name, *ort_tensor, external_reader));
+  ORT_RETURN_IF_ERROR(fbs::utils::LoadOrtTensorOrtFormat(fbs_tensor, cpu_allocator, tensor_name, *ort_tensor, external_data_reader));
 
   ort_value.Init(ort_tensor.release(), DataTypeImpl::GetType<onnxruntime::Tensor>(),
                  DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
@@ -195,18 +195,18 @@ Status FlatbufferTensorsFromOrtValues(
  *
  * @param flatbuffer_tensors Flatbuffer tensors.
  * @param name_to_ort_value Name to OrtValue map to be populated.
- * @param external_reader delegate to read initializer data from an external file or buffer
+ * @param external_data_reader delegate to read initializer data from an external file or buffer
  * @return Status of the operation.
  */
 Status OrtValuesFromFlatbufferTensors(
     const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>& flatbuffer_tensors,
-    InlinedHashMap<std::string, OrtValue>& name_to_ort_value, const fbs::utils::ExternalDataReader& external_reader) {
+    InlinedHashMap<std::string, OrtValue>& name_to_ort_value, const fbs::utils::ExternalDataReader& external_data_reader) {
   for (const auto* fbs_tensor : flatbuffer_tensors) {
     ORT_RETURN_IF_NOT(fbs_tensor, "Encountered a nullptr flatbuffer tensor. Checkpoint file is invalid.");
 
     std::string tensor_name;
     OrtValue ort_value;
-    ORT_RETURN_IF_ERROR(OrtValueFromFlatbufferTensor(*fbs_tensor, tensor_name, ort_value, external_reader));
+    ORT_RETURN_IF_ERROR(OrtValueFromFlatbufferTensor(*fbs_tensor, tensor_name, ort_value, external_data_reader));
     name_to_ort_value.emplace(std::move(tensor_name), std::move(ort_value));
   }
 
@@ -673,12 +673,12 @@ Status ToModuleState(
  *
  * @param optimizer_groups Flatbuffer optimizer groups.
  * @param optimizer_state Optimizer state to be populated.
- * @param external_reader delegate to read initializer data from an external file or buffer
+ * @param external_data_reader delegate to read initializer data from an external file or buffer
  * @return Status of the operation.
  */
 Status ToOptimizerState(
     const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>& optimizer_groups,
-    OptimizerCheckpointState& optimizer_state, const fbs::utils::ExternalDataReader& external_reader) {
+    OptimizerCheckpointState& optimizer_state, const fbs::utils::ExternalDataReader& external_data_reader) {
   for (const auto* optimizer_group : optimizer_groups) {
     ORT_RETURN_IF_NOT(optimizer_group, "Expected: Valid optimizer groups flatbuffer.",
                       " Actual: Encountered a nullptr. Checkpoint file is invalid");
@@ -706,7 +706,7 @@ Status ToOptimizerState(
       ORT_RETURN_IF_NOT(momentums, "Expected: Valid optimizer momentum tensors flatbuffer.",
                         " Actual: Encountered a nullptr. Checkpoint file is invalid");
       ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(
-          *momentums, optimizer_state_it->second->param_named_optimizer_states[param_name], external_reader));
+          *momentums, optimizer_state_it->second->param_named_optimizer_states[param_name], external_data_reader));
     }
   }
 
@@ -772,6 +772,7 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
  *
  * @param checkpoint_path Path to the checkpoint file.
  * @param model_proto Model proto to be populated.
+ * @param checkpoint_path Path to the checkpoint file.
  * @return Status of the operation.
  */
 Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
