@@ -143,7 +143,6 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   if (!all_constant_) {
     return Status::OK();
   }
-
   MLAS_THREADPOOL* pool = NULL;
   if (nbits_ != 4) {
     return Status::OK();
@@ -184,6 +183,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     }
     is_packed = true;
   }
+
 #else  // defined(ORT_NEURAL_SPEED)
 
   if (input_idx == 1) {
@@ -284,7 +284,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-#else   // defined(ORT_NEURAL_SPEED)
+#endif  // defined(ORT_NEURAL_SPEED)
 
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->InputCount() > 3 ? ctx->Input<Tensor>(3) : nullptr;
@@ -314,6 +314,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
+#ifndef ORT_NEURAL_SPEED
   const bool has_single_b_matrix =
       (!act_order_) && (!zero_point_is_not_quant_) &&
       std::all_of(helper.RightOffsets().begin(), helper.RightOffsets().end(), [](size_t offset) { return offset == 0; });
@@ -357,34 +358,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       return Status::OK();
     }
   }
-#endif  // defined(ORT_NEURAL_SPEED)
-  const Tensor* scales = ctx->Input<Tensor>(2);
-  const Tensor* zero_points = ctx->InputCount() > 3 ? ctx->Input<Tensor>(3) : nullptr;
-  const Tensor* reorder_idx = ctx->InputCount() > 4 ? ctx->Input<Tensor>(4) : nullptr;
-
-  const auto* scales_data = scales->Data<float>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
-
-  TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
-  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
-
-  MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
-
-  Tensor* y = ctx->Output(0, helper.OutputShape());
-
-  // Bail out early if the output is going to be empty
-  if (y->Shape().Size() == 0) {
-    return Status::OK();
-  }
-
-  auto* y_data = y->MutableData<float>();
-
-  const size_t batch_count = helper.OutputOffsets().size();
-  const size_t M = static_cast<size_t>(helper.M());
-  const size_t N = static_cast<size_t>(helper.N());
-  const size_t K = static_cast<size_t>(helper.K());
-  const size_t lda = helper.Lda(false);
+#endif  // not defined(ORT_NEURAL_SPEED)
 
   const Tensor* b = ctx->Input<Tensor>(1);
   const uint8_t* b_data = b->Data<uint8_t>();
