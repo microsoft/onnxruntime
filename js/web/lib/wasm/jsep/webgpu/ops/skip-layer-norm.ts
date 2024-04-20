@@ -4,12 +4,12 @@
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {castToF32, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
 
-export interface SkipLayerNormAttributes extends AttributeWithCacheKey {
+export interface SkipLayerNormAttributes {
+  simplified: boolean;
   epsilon: number;
 }
 
@@ -73,13 +73,15 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 const createSkipLayerNormProgramInfo =
     (inputs: readonly TensorView[], attributes: SkipLayerNormAttributes, outputCount: number, isTraining: boolean):
         ProgramInfo => {
+          const simplified = attributes.simplified;
+
           const inputShape = inputs[0].dims;
           const inputSize = ShapeUtil.size(inputShape);
           const outputShape = inputShape;
           const outputSize = inputSize;
           const hiddenSize = inputShape.slice(-1)[0];
           const meanInvStdDevDim = isTraining ? inputShape.slice(0, -1).concat(1) : [];
-          const hasBetaInput = inputs.length > 3;
+          const hasBetaInput = !simplified && inputs.length > 3;
           const hasBiasInput = inputs.length > 4;
           const hasMeanOutput = isTraining && outputCount > 1;
           const hasInvStdDevOutput = isTraining && outputCount > 2;
@@ -134,7 +136,7 @@ const createSkipLayerNormProgramInfo =
         var squareSum = ${fillVector('f32', components)};
         for (var i: u32 = 0; i < hidden_size_vectorized; i++) {
           let skip_value = skip[offset + i];
-          let bias_value = ${hasBiasInput ? 'bias[i]' : '0.0'};
+          let bias_value = ${hasBiasInput ? 'bias[i]' : dataType + '(0.0)'};
           let input_value = x[offset + i];
           let value = input_value + skip_value + bias_value;
           ${hasInputSkipBiasSumOutput ? 'input_skip_bias_sum[offset + i] = value;' : ''}
@@ -144,13 +146,13 @@ const createSkipLayerNormProgramInfo =
           squareSum += f32_value * f32_value;
         }
         let mean = ${sumVector('sum', components)} / f32(uniforms.hidden_size);
-        let inv_std_dev = inverseSqrt(${
-                sumVector('squareSum', components)} / f32(uniforms.hidden_size) - mean * mean + uniforms.epsilon);
+        let inv_std_dev = inverseSqrt(${sumVector('squareSum', components)} / f32(uniforms.hidden_size) ${
+                simplified ? '' : '- mean * mean'} + uniforms.epsilon);
         ${hasMeanOutput ? 'mean_output[global_idx] = mean;' : ''}
         ${hasInvStdDevOutput ? 'inv_std_output[global_idx] = inv_std_dev;' : ''}
         for (var i: u32 = 0; i < hidden_size_vectorized; i++) {
-          output[offset + i] = (output[offset + i] - ${dataType}(mean)) * ${dataType}(inv_std_dev) * gamma[i] + ${
-                hasBetaInput ? 'beta[i]' : '0.0'};
+          output[offset + i] = (output[offset + i] ${simplified ? '' : `- ${dataType}(mean)`}) * ${
+                dataType}(inv_std_dev) * gamma[i] ${hasBetaInput ? '+ beta[i]' : ''};
         }
       }`;
           };

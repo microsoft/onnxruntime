@@ -110,8 +110,8 @@ inline void SetValue(TensorProto& t_proto, T value,
 }
 
 template <class T>
-void RunTypedTest(TensorProto::DataType dt, T value) {
-  OpTester test("ConstantOfShape", 9);
+static void RunTypedTest(TensorProto::DataType dt, T value, int opset) {
+  OpTester test("ConstantOfShape", opset);
 
   TensorProto t_proto;
   t_proto.set_data_type(dt);
@@ -140,17 +140,20 @@ TEST(ConstantOfShape, TypeTests) {
   // and does not have a continuous buffer implementation
   // RunTypedTest(TensorProto::BOOL, true);
 
-  RunTypedTest(TensorProto::INT8, int8_t(8));
-  RunTypedTest(TensorProto::INT16, int16_t(16));
-  RunTypedTest(TensorProto::FLOAT, 1.f);
-  RunTypedTest(TensorProto::FLOAT16, MLFloat16::FromBits(static_cast<uint16_t>(5)));
-  RunTypedTest(TensorProto::DOUBLE, 1.0);
-  RunTypedTest(TensorProto::INT32, int32_t(32));
-  RunTypedTest(TensorProto::INT64, int64_t(64));
-  RunTypedTest(TensorProto::UINT8, uint8_t(8U));
-  RunTypedTest(TensorProto::UINT16, uint16_t(6U));
-  RunTypedTest(TensorProto::UINT32, uint32_t(32U));
-  RunTypedTest(TensorProto::UINT64, uint64_t(64U));
+  constexpr std::array<int, 3> opsets = {9, 20, 21};
+  for (auto opset : opsets) {
+    RunTypedTest(TensorProto::INT8, int8_t(8), opset);
+    RunTypedTest(TensorProto::INT16, int16_t(16), opset);
+    RunTypedTest(TensorProto::FLOAT, 1.f, opset);
+    RunTypedTest(TensorProto::FLOAT16, MLFloat16::FromBits(static_cast<uint16_t>(5)), opset);
+    RunTypedTest(TensorProto::DOUBLE, 1.0, opset);
+    RunTypedTest(TensorProto::INT32, int32_t(32), opset);
+    RunTypedTest(TensorProto::INT64, int64_t(64), opset);
+    RunTypedTest(TensorProto::UINT8, uint8_t(8U), opset);
+    RunTypedTest(TensorProto::UINT16, uint16_t(6U), opset);
+    RunTypedTest(TensorProto::UINT32, uint32_t(32U), opset);
+    RunTypedTest(TensorProto::UINT64, uint64_t(64U), opset);
+  }
 }
 
 }  // namespace test

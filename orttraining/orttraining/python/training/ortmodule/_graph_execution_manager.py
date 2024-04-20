@@ -21,7 +21,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.training.utils import ORTModelInputOutputSchemaType, PTable, onnx_dtype_to_pytorch_dtype
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
+from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils, export_context
 from ._fallback import (
     ORTModuleDeviceException,
     ORTModuleONNXModelException,
@@ -33,7 +33,8 @@ from ._fallback import (
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo
-from ._runtime_inspector import RuntimeInspector
+from ._logger import LogColor
+from ._runtime_inspector import FlagPaddingElimination, RuntimeInspector
 from ._utils import check_function_has_param, get_rank
 from .options import DebugOptions, LogLevel, _MemoryOptimizationLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
@@ -305,11 +306,16 @@ class GraphExecutionManager(GraphExecutionInterface):
             # All required models have already been exported previously
             return False
         self._set_device_from_module(inputs, kwargs)
+        # TODO: move it into runtime_inspector
+        embedding_hook_handles = self._add_check_embedding_sparsity_hook()
 
         from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
 
-        with no_increase_global_step():
+        with export_context(), no_increase_global_step():
             self._onnx_models.exported_model = self._get_exported_model(schema, *inputs, **kwargs)
+
+        for hook in embedding_hook_handles:
+            hook.remove()
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(
                 self._debug_options.save_onnx_models.path,
@@ -441,12 +447,49 @@ class GraphExecutionManager(GraphExecutionInterface):
                     **self._export_extra_kwargs,
                 )
         except Exception as e:
+            message = _utils.get_exception_as_string(e)
+
+            # Special handling when Huggingface transformers gradient checkpoint usage pattern found.
+            # For new versions of PyTorch 2, tracing torch.utils.checkpoint.checkpoint will be failed like this:
+            #   File "microsoft/phi-2/b10c3eba545ad279e7208ee3a5d644566f001670/modeling_phi.py", line 919, in forward
+            #     layer_outputs = self._gradient_checkpointing_func(
+            #   File "/site-packages/torch/_compile.py", line 24, in inner
+            #     return torch._dynamo.disable(fn, recursive)(*args, **kwargs)
+            #   File "/site-packages/torch/_dynamo/eval_frame.py", line 470, in _fn
+            #     raise RuntimeError(
+            #   RuntimeError: Detected that you are using FX to torch.jit.trace a dynamo-optimized function. This is not supported at the moment.
+            if (
+                "_gradient_checkpointing_func" in message
+                and "Detected that you are using FX to torch.jit.trace a dynamo-optimized function" in message
+            ):
+                is_ckpt_activation_allowed = int(os.getenv("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", "0")) == 1
+                notes = (
+                    " Your model is running with gradient checkpointing, yet the PyTorch exporter\n"
+                    " failed during tracing the graph. Try to enable ORTModule's\n"
+                    " gradient checkpointing (a.k.a. Transformer layerwise subgraph recompute)\n"
+                    " using `export ORTMODULE_MEMORY_OPT_LEVEL=1` for similar or even better memory efficiency.\n"
+                )
+                if is_ckpt_activation_allowed:
+                    # If the user allows the gradient checkpointing export, we should inform the user to disable it,
+                    # to make layerwise recompute work.
+                    notes += (
+                        " We also notice your setting `export ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=1`,\n"
+                        " which enables gradient checkpointing torch.autograd.Functions(s) to export.\n"
+                        " To enable ORTModule's layerwise recompute, it needs to be turned OFF by\n"
+                        " `export ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=0`.\n"
+                    )
+
+                self._logger.error(
+                    f"{LogColor.RED}\n"
+                    "******************************** IMPORTANT NOTE *******************************\n"
+                    f"{notes}"
+                    "*******************************************************************************\n"
+                    f"{LogColor.ENDC}\n"
+                )
+
             raise wrap_exception(  # noqa: B904
                 ORTModuleONNXModelException,
-                RuntimeError(
-                    f"There was an error while exporting the PyTorch model to ONNX: "
-                    f"\n\n{_utils.get_exception_as_string(e)}"
-                ),
+                RuntimeError(f"There was an error while exporting the PyTorch model to ONNX: \n\n{message}"),
             )
         exported_model = onnx.load_model_from_string(f.getvalue())
 
@@ -633,6 +676,58 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         _utils.reinitialize_graph_execution_manager(self)
 
+    def _add_check_embedding_sparsity_hook(self):
+        """
+        Add hook to check embedding sparsity and enable padding elimination if applicable.
+        1. Iterate through all modules to find Embedding modules with padding_idx >= 0.
+        2. Register forward hook to the Embedding module and the hook will check sparsity of the embedding input.
+        3. If the sparsity is below a threshold, enable padding elimination by adding FlagPaddingElimination after the
+           output. GraphTransformer of PaddingElimination will check the FlagPaddingElimination and do the actual
+           padding elimination graph modification.
+        4. Return the hook handles for later removal.
+
+        """
+        if (
+            not self._runtime_options.enable_sparse_optimizer
+            or not self._runtime_options.enable_embedding_sparse_optimizer
+            or self._device.type != "cuda"
+        ):
+            return []
+
+        def _embedding_hook(module, args, output):
+            ebd_input = args[0]
+            if ebd_input is None or not isinstance(ebd_input, torch.Tensor):
+                self._logger.warning("Embedding input is not a tensor.")
+                return None
+
+            valid_token = torch.count_nonzero(ebd_input - module.padding_idx)
+            total_token = ebd_input.numel()
+            embed_density = float(valid_token) / float(total_token) * 100
+            if embed_density < 90:
+                self._logger.info("Embedding sparsity-based optimization is ON for density: %.0f%%", embed_density)
+                if module not in self._runtime_inspector._embedding_module_to_padding_density_map:
+                    self._logger.warning("Found Embedding module not in the map. %s", module)
+                    return None
+                if self._runtime_inspector._embedding_module_to_padding_density_map[module][1] != -1:
+                    self._logger.warning(
+                        "Found duplicate Embedding module. %s",
+                        self._runtime_inspector._embedding_module_to_padding_density_map[module][0],
+                    )
+                self._runtime_inspector._embedding_module_to_padding_density_map[module][1] = embed_density
+                return FlagPaddingElimination.apply(output)
+            else:
+                self._logger.info("Embedding sparsity-based optimization is OFF for density: %.0f%%", embed_density)
+                return None
+
+        embedding_hook_handles = []
+        for name, sub_module in self._flattened_module.named_modules():
+            if isinstance(sub_module, torch.nn.modules.sparse.Embedding):
+                if sub_module.padding_idx is not None and sub_module.padding_idx >= 0:
+                    self._runtime_inspector._embedding_module_to_padding_density_map[sub_module] = [name, -1]
+                    embedding_hook_handles.append(sub_module.register_forward_hook(_embedding_hook))
+
+        return embedding_hook_handles
+
     @_logger.TrackTime(_logger.ORTModuleInitPhase.DETECTION)
     def _enable_conditional_optimizations(
         self, graph_transformer_config: C.TrainingGraphTransformerConfiguration, inputs: Tuple, kwargs: Dict
@@ -671,7 +766,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 else:
                     param_to_append_as_onnx_graph_inputs = self._graph_initializers
 
-                _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
+                _, _, label_sparsity_results = _io._combine_input_buffers_initializers(
                     param_to_append_as_onnx_graph_inputs,
                     self._graph_builder.get_graph_info().user_input_names,
                     self._input_info,
@@ -691,16 +786,13 @@ class GraphExecutionManager(GraphExecutionInterface):
                         [f"{k}:{v:.0f}%" for k, v in label_sparsity_results.items()]
                     )
 
-                if self._runtime_options.enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
-                    if detected_device.type == "cuda":
-                        # Embedding sparsity optimization is only supported on CUDA devices.
-                        graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
-                        self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
-                        self._runtime_options.embed_sparsity_ratio = ",".join(
-                            [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
-                        )
-                    else:
-                        self._logger.info("Embedding sparsity-based optimization is not supported on non-CUDA devices.")
+                if self._runtime_inspector._embedding_module_to_padding_density_map:
+                    self._runtime_options.embed_sparsity_ratio = ",".join(
+                        [
+                            f"{v[0]}:{v[1]:.0f}%"
+                            for v in self._runtime_inspector._embedding_module_to_padding_density_map.values()
+                        ]
+                    )
 
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
@@ -773,17 +865,21 @@ class GraphExecutionManager(GraphExecutionInterface):
         else:
             opt_config_to_display = self._runtime_options.memory_optimizer_config
 
+        mem_infos = ""
+        if self._runtime_options.memory_optimizer_is_enabled():
+            mem_infos += (
+                f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
+                f"Optimization Config: [{opt_config_to_display}]"
+            )
+        else:
+            mem_infos = "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+
         mem_row = _add_record(
             tbl,
             [
                 "Memory Optimizer",
-                len(self._runtime_options.memory_optimizer_config) > 0,
-                (
-                    f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
-                    f"Optimization Config: [{opt_config_to_display}]"
-                    if len(self._runtime_options.memory_optimizer_config) > 0
-                    else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
-                ),
+                self._runtime_options.memory_optimizer_is_enabled(),
+                mem_infos,
             ],
         )
 
@@ -794,7 +890,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
             if mem_tbl is not None:
                 mem_row.append_annotation_table(mem_tbl)
-                notes.extend(mem_notes)
+                notes.extend([f"[{mem_row._columns[0]}] {n}" for n in mem_notes])
 
         compute_opt_row = _add_record(
             tbl,
@@ -819,13 +915,21 @@ class GraphExecutionManager(GraphExecutionInterface):
             if len(self._runtime_options.label_sparsity_ratio) > 0:
                 _add_record(
                     compute_opt_annotation_tbl,
-                    [" - Label Sparsity Opt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}"],
+                    [
+                        " - Label Sparsity",
+                        True,
+                        f"[AUTO ENABLED] Input density: {self._runtime_options.label_sparsity_ratio}",
+                    ],
                 )
 
             if len(self._runtime_options.embed_sparsity_ratio) > 0:
                 _add_record(
                     compute_opt_annotation_tbl,
-                    [" - Embed Sparsity Opt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}"],
+                    [
+                        " - Embed Sparsity",
+                        True,
+                        f"[AUTO ENABLED] Input density: {self._runtime_options.embed_sparsity_ratio}",
+                    ],
                 )
 
         compute_opt_row.append_annotation_table(compute_opt_annotation_tbl)
