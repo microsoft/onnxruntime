@@ -143,10 +143,10 @@ ONNX_NAMESPACE::TensorProto CreateInitializer<std::string>(const std::string& na
 
 std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializers() {
   std::vector<ONNX_NAMESPACE::TensorProto> initializers;
-  // create data of various sizes. order is chosen to require padding between most but not all
-  // assuming our writer aligns to 4 bytes unless it's 64-bit data (which is aligned to 8 bytes)
-  // buffer: <16-bit><pad 2><32-bit><8-bit><pad 7><64-bit>
-  // need 128 bytes to write to external data
+  // create data of various sizes. order is chosen to require padding between most but not all.
+  // our writer aligns to 4 bytes unless it's 64-bit data (which is aligned to 8 bytes).
+  // buffer: <16-bit data><pad 2 bytes><32-bit data><8-bit data><pad 7 bytes><64-bit data>
+  // 128 bytes is required to write to external data. each data type has enough elements to satisfy this.
 
   // 16-bit. 81 elements so we're 2 bytes past 4 byte alignment
   initializers.emplace_back(
@@ -164,13 +164,13 @@ std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializers() {
   initializers.emplace_back(
       CreateInitializer<uint8_t>("tensor_8", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {3, 43}));
 
-  // 64-bit, 36 elements
-  initializers.emplace_back(
-      CreateInitializer<int64_t>("tensor_64", ONNX_NAMESPACE::TensorProto_DataType_INT64, {6, 6}));
-
   // small (should not use external)
   initializers.emplace_back(
       CreateInitializer<int32_t>("tensor_32_small", ONNX_NAMESPACE::TensorProto_DataType_INT32, {2, 2}));
+
+  // 64-bit, 36 elements
+  initializers.emplace_back(
+      CreateInitializer<int64_t>("tensor_64", ONNX_NAMESPACE::TensorProto_DataType_INT64, {6, 6}));
 
   return initializers;
 }
