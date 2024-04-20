@@ -224,7 +224,7 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
                  [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
 #endif
   }
-}  // namespace onnxruntime
+}
 
 // Graph name.
 const std::string& GraphViewer::Name() const noexcept {
