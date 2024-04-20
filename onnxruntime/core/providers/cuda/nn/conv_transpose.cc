@@ -119,17 +119,36 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
   CudaT* y_data = nullptr;
 
+  const auto* cuda_ep = static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider());
+
   // convert 1D to 2D
   if (x_dimensions == 3) {
-    const auto insert_at = NHWC ? 1 : 2;
+    // we can either add a fake H or W dimension with a value of 1. to be consistent with the Conv behavior we use
+    // GetCudnnConv1dPadToNc1d to determine which is added.
+    // see Conv<T, NHWC>::UpdateState in /onnxruntime/core/providers/cuda/nn/conv.cc for more details.
+    if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+      // add fake H. NCd -> NC1d or NdC -> N1dC
+      const auto insert_at = NHWC ? 1 : 2;
 
-    // NCHW: N, C, d1 -> N, C, 1, d1
-    // NHWC: N, d1, C -> N, 1, d1, C
-    x_dims.insert(x_dims.begin() + insert_at, 1);
+      // NCHW: N, C, d1 -> N, C, 1, d1
+      // NHWC: N, d1, C -> N, 1, d1, C
+      x_dims.insert(x_dims.begin() + insert_at, 1);
 
-    // NCHW: C, M/g, k1  -> C, M/g, 1, k1
-    // NHWC: M/g, k1, C -> M/g, 1, k1, C
-    w_dims.insert(w_dims.begin() + insert_at, 1);
+      // NCHW: C, M/g, k1  -> C, M/g, 1, k1
+      // NHWC: M/g, k1, C -> M/g, 1, k1, C
+      w_dims.insert(w_dims.begin() + insert_at, 1);
+    } else {
+      // add fake W. NCd -> NCd1 or NdC -> Nd1C
+      const auto insert_at = NHWC ? 2 : 3;
+
+      // NCHW: N, C, d1 -> N, C, d1, 1
+      // NHWC: N, d1, C -> N, d1, 1, C
+      x_dims.insert(x_dims.begin() + insert_at, 1);
+
+      // NCHW: C, M/g, k1 -> C, M/g, k1, 1
+      // NHWC: M/g, k1, C -> M/g, k1, 1, C
+      w_dims.insert(w_dims.begin() + insert_at, 1);
+    }
   }
 
   {
@@ -156,12 +175,27 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
 
       auto y_dims = p.Y->Shape().AsShapeVector();
       if (x_dimensions == 3) {
-        y_dims.insert(y_dims.begin() + (NHWC ? 1 : 2), 1);
-        p.kernel_shape.insert(p.kernel_shape.begin(), 1);
-        p.pads.insert(p.pads.begin(), 0);
-        p.pads.insert(p.pads.begin() + 2, 0);
-        p.strides.insert(p.strides.begin(), 1);
-        p.dilations.insert(p.dilations.begin(), 1);
+        if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+          // add fake H dimension of 1
+          // NCHW: N, M, d1 -> N, M, 1, d1 or
+          // NHWC: N, d1, M -> N, 1, d1, M
+          y_dims.insert(y_dims.begin() + (NHWC ? 1 : 2), 1);
+          p.kernel_shape.insert(p.kernel_shape.begin(), 1);
+          p.pads.insert(p.pads.begin(), 0);
+          p.pads.insert(p.pads.begin() + 2, 0);
+          p.strides.insert(p.strides.begin(), 1);
+          p.dilations.insert(p.dilations.begin(), 1);
+        } else {
+          // add fake W dimension of 1
+          // NCHW: N, M, d1 -> N, M, d1, 1 or
+          // NHWC: N, d1, M -> N, d1, 1, M
+          y_dims.insert(y_dims.begin() + (NHWC ? 2 : 3), 1);
+          p.kernel_shape.push_back(1);
+          p.pads.insert(p.pads.begin() + 1, 0);
+          p.pads.push_back(0);
+          p.strides.push_back(1);
+          p.dilations.push_back(1);
+        }
       }
 
       s_.y_dims = gsl::make_span(y_dims);
@@ -208,7 +242,9 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
         TensorShapeVector b_dims(2 + p.kernel_shape.size());
         b_dims[0] = 1;                      // N
         b_dims[NHWC ? 3 : 1] = b_shape[0];  // C
-        for (size_t i = 0; i < p.kernel_shape.size(); i++) b_dims[(NHWC ? 1 : 2) + i] = 1;
+        for (size_t i = 0; i < p.kernel_shape.size(); i++) {
+          b_dims[(NHWC ? 1 : 2) + i] = 1;
+        }
 
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>(), NHWC));
       }
