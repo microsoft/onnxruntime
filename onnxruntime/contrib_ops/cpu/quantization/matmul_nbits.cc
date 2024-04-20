@@ -121,7 +121,6 @@ class MatMulNBits final : public OpKernel {
   const int64_t accuracy_level_;
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_;
-  bool mlas_packed_b_{ false };
   size_t packed_b_size_{0};
 
 #if defined(ORT_NEURAL_SPEED)
@@ -141,54 +140,51 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
 #if defined(ORT_NEURAL_SPEED)
 
-  if (all_constant_) {
-
-    MLAS_THREADPOOL* pool = NULL;
-    if (nbits_ != 4) {
-      return Status::OK();
-    }
-    auto comp_type = static_cast<NS_SQNBIT_COMPUTE_TYPE>(accuracy_level_);
-    auto nbits = static_cast<int>(nbits_);
-    if (input_idx == 1) {
-      packed_b_size_ = NSNBitsGemmPackBSize(N_, K_, block_size_, nbits, is_asym_, comp_type);
-      if (packed_b_size_ == 0) return Status::OK();
-      auto qptr = tensor.Data<uint8_t>();
-      packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-      std::memset(packed_b_.get(), 0, packed_b_size_);
-      NSNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, nbits, is_asym_, false,
-        comp_type, pool);
-      if (prepacked_weights) {
-        prepacked_weights->buffers_.push_back(std::move(packed_b_));
-        prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-      }
-      is_packed = true;
-    }
-    if (input_idx == 2 && packed_b_ != nullptr) {
-      auto sptr = tensor.Data<float>();
-      NSNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, nbits, is_asym_, !is_asym_,
-        comp_type, pool);
-      if (prepacked_weights) {
-        prepacked_weights->buffers_.push_back(std::move(packed_b_));
-        prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-      }
-      is_packed = true;
-    }
-    if (input_idx == 3 && packed_b_ != nullptr) {
-      auto zptr = tensor.Data<uint8_t>();
-      NSNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, nbits, is_asym_, is_asym_,
-        comp_type, pool);
-      if (prepacked_weights) {
-        prepacked_weights->buffers_.push_back(std::move(packed_b_));
-        prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-      }
-      is_packed = true;
-    }
-
-    if (is_packed) {
-      return Status::OK();
-    }
+  if (!all_constant_) {
+    return Status::OK();
   }
-#endif  // defined(ORT_NEURAL_SPEED)
+
+  MLAS_THREADPOOL* pool = NULL;
+  if (nbits_ != 4) {
+    return Status::OK();
+  }
+  auto comp_type = static_cast<NS_SQNBIT_COMPUTE_TYPE>(accuracy_level_);
+  auto nbits = static_cast<int>(nbits_);
+  if (input_idx == 1) {
+    packed_b_size_ = NSNBitsGemmPackBSize(N_, K_, block_size_, nbits, is_asym_, comp_type);
+    if (packed_b_size_ == 0) return Status::OK();
+    auto qptr = tensor.Data<uint8_t>();
+    packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+    std::memset(packed_b_.get(), 0, packed_b_size_);
+    NSNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, nbits, is_asym_, false,
+      comp_type, pool);
+    if (prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
+    is_packed = true;
+  }
+  if (input_idx == 2 && packed_b_ != nullptr) {
+    auto sptr = tensor.Data<float>();
+    NSNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, nbits, is_asym_, !is_asym_,
+      comp_type, pool);
+    if (prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
+    is_packed = true;
+  }
+  if (input_idx == 3 && packed_b_ != nullptr) {
+    auto zptr = tensor.Data<uint8_t>();
+    NSNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, nbits, is_asym_, is_asym_,
+      comp_type, pool);
+    if (prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
+    is_packed = true;
+  }
+#else  // defined(ORT_NEURAL_SPEED)
 
   if (input_idx == 1) {
     const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
@@ -207,8 +203,8 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
     }
     is_packed = true;
-    mlas_packed_b_ = true;
   }
+#endif  // defined(ORT_NEURAL_SPEED)
 
   return Status::OK();
 }
@@ -252,7 +248,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 
 #if defined(ORT_NEURAL_SPEED)
 
-  if (packed_b_ && !mlas_packed_b_) {
+  if (packed_b_) {
     TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
 
     MatMulComputeHelper helper;
@@ -288,7 +284,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-#endif  // defined(ORT_NEURAL_SPEED)
+#else   // defined(ORT_NEURAL_SPEED)
 
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->InputCount() > 3 ? ctx->Input<Tensor>(3) : nullptr;
@@ -361,6 +357,34 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       return Status::OK();
     }
   }
+#endif  // defined(ORT_NEURAL_SPEED)
+  const Tensor* scales = ctx->Input<Tensor>(2);
+  const Tensor* zero_points = ctx->InputCount() > 3 ? ctx->Input<Tensor>(3) : nullptr;
+  const Tensor* reorder_idx = ctx->InputCount() > 4 ? ctx->Input<Tensor>(4) : nullptr;
+
+  const auto* scales_data = scales->Data<float>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+
+  TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
+
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
+  auto* y_data = y->MutableData<float>();
+
+  const size_t batch_count = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = helper.Lda(false);
 
   const Tensor* b = ctx->Input<Tensor>(1);
   const uint8_t* b_data = b->Data<uint8_t>();
