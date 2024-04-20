@@ -61,9 +61,10 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
                       : ConstGraphNodes::NodeFilterFunc(nullptr))},
       filter_info_{filter_info} {
   std::vector<const Node*> leaf_nodes;
-  const Node* yield_node = nullptr;
 
 #ifdef ENABLE_TRAINING
+  const Node* yield_node = nullptr;
+
   // Keep the info of shape and size nodes and their parents so that after topological sort, we can move them
   // right after their parents. This is to make sure the shape and size nodes are executed right after their parents
   // so it's possible the input tensor memory can be released as soon as possible. This is especially important
@@ -149,7 +150,6 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
   } else {
     nodes_in_mem_efficient_topological_order_ = nodes_in_topological_order_;
   }
-
 #endif
 
   if (filter_info_) {
