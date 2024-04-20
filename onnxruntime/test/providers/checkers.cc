@@ -176,7 +176,7 @@ struct TensorCheck<Int4x2> {
     cur_actual = actual.Data<Int4x2>();
 
     for (size_t i = 0; i < static_cast<size_t>(size); ++i) {
-      size_t r = i >> 2;
+      size_t r = i >> 1;
       size_t c = i & 0x1;
       EXPECT_EQ(cur_expected[r][c], cur_actual[r][c]) << "i:" << i;
     }
@@ -196,7 +196,7 @@ struct TensorCheck<UInt4x2> {
     cur_actual = actual.Data<UInt4x2>();
 
     for (size_t i = 0; i < static_cast<size_t>(size); ++i) {
-      size_t r = i >> 2;
+      size_t r = i >> 1;
       size_t c = i & 0x1;
       EXPECT_EQ(cur_expected[r][c], cur_actual[r][c]) << "i:" << i;
     }

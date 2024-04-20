@@ -388,7 +388,7 @@ TEST(QuantizeLinearOpTest, Int4) {
                                       -16.0f,  // Close to qmin
                                       -3.0f,   // round
                                       0.0f,    // Zero-point
-                                      3.0f,    // round
+                                      2.9f,    // round
                                       12.0f,   // qmax
                                       20.0f,   // Clamp to qmax
                                   });
@@ -411,14 +411,14 @@ TEST(QuantizeLinearOpTest, UInt4) {
                                       -8.0f,   // qmin
                                       -3.0f,   // round
                                       0.0f,    // Zero-point
-                                      3.0f,    // round
+                                      2.9f,    // round
                                       22.0f,   // qmax
-                                      20.0f,   // Clamp to qmax
+                                      30.0f,   // Clamp to qmax
                                   });
   test.AddInput<float>("scale", {}, {2.0f}, true);
   test.AddInput<UInt4x2>("zero_point", {}, {UInt4x2(4, unused_val)}, true);
   test.AddOutput<UInt4x2>("y", dims,
-                          {UInt4x2(0, 0), UInt4x2(2, 4), UInt4x2(6, 15),
+                          {UInt4x2(0, 0), UInt4x2(2, 4), UInt4x2(5, 15),
                            UInt4x2(15, unused_val)});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
