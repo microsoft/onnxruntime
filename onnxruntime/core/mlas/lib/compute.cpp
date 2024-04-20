@@ -862,9 +862,6 @@ Return Value:
         for (size_t i = 0; i * ElementsPerCacheLine < D; i++) {
             _mm_prefetch((char*)(Input + D) + i * CacheLineSize, _MM_HINT_T0);
         }
-        //for (size_t i = 0; i < D; i += ElementsPerCacheLine) {
-        //    _mm_prefetch(reinterpret_cast<char const*>(Input + D) + i * sizeof(float), _MM_HINT_T0);
-        //}
 
         //
         // Find the maximum value for the row.
