@@ -165,10 +165,13 @@ def get_qnn_qdq_config(
         "WeightSymmetric": weight_symmetric,
     }
 
-    # TODO: Remove this extra option once ORT uses an ONNX version that supports 16-bit Q/DQ ops.
-    overrides_have_int16 = any(t in Q16_TYPES for t in overrides_helper.get_quant_types())
-    if activation_type in Q16_TYPES or weight_type in Q16_TYPES or overrides_have_int16:
-        extra_options["UseQDQContribOps"] = True
+    # ONNX opset < 21 does not support 16-bit quantization, so must use 'com.microsoft' domain
+    # on Q/DQ operators if using 16-bit quantization.
+    onnx_opset = next(x for x in model.opset_import if x.domain == "" or x.domain == "ai.onnx")
+    if onnx_opset.version < 21:
+        overrides_have_int16 = any(t in Q16_TYPES for t in overrides_helper.get_quant_types())
+        if activation_type in Q16_TYPES or weight_type in Q16_TYPES or overrides_have_int16:
+            extra_options["UseQDQContribOps"] = True
 
     return StaticQuantConfig(
         calibration_data_reader,
