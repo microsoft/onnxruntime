@@ -204,16 +204,12 @@ class GraphViewer {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // The NodeIndex values of the graph nodes sorted in topological order with priority.
-  // Using mutable once_flag for lazy initialization.
-  mutable std::vector<NodeIndex> nodes_in_topological_order_with_priority_;
-  mutable std::once_flag priority_based_topo_sort_init_flag_;
+  std::vector<NodeIndex> nodes_in_topological_order_with_priority_;
 #endif
 
 #ifdef ENABLE_TRAINING
   // The NodeIndex values of the graph nodes sorted in memory efficient topological order.
-  // Using mutable once_flag for lazy initialization.
-  mutable std::vector<NodeIndex> nodes_in_mem_efficient_topological_order_;
-  mutable std::once_flag mem_efficient_topo_sort_init_flag_;
+  std::vector<NodeIndex> nodes_in_mem_efficient_topological_order_;
 #endif
 
   // Graph root nodes.
