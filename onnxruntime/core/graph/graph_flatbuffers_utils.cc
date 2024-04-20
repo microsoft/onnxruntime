@@ -471,9 +471,11 @@ Status SaveOrtTensorOrtFormat(
   const auto fbs_tensor_dims = SaveDims(builder, ort_tensor.Shape().GetDims());
   // To avoid issues with vtable offsets, raw_data fbs::vector must be constructed before the TensorBuilder begins
   // building the tensor. See flatbuffer_builder.h's NotNested() function for more details.
-  flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(
-      static_cast<const uint8_t*>(ort_tensor.DataRaw()),
-      ort_tensor.SizeInBytes());
+  flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
+  if (!external_data_writer) {
+    raw_data = builder.CreateVector(static_cast<const uint8_t*>(ort_tensor.DataRaw()),
+                                    ort_tensor.SizeInBytes());
+  }
 
   fbs::TensorBuilder tb(builder);
   tb.add_name(fbs_tensor_name);
@@ -522,9 +524,9 @@ struct UnpackTensorWithType {
           ort_tensor.MutableData<T>(),
           static_cast<size_t>(ort_tensor.Shape().Size()));
     } else {
-      ORT_RETURN_IF_NOT(false, "Invalid tensor. Expected: raw data or external data offset. Actual: ",
-                        fbs_tensor.string_data() ? "string data" : "nullptr", " for tensor named: ",
-                        fbs_tensor.name()->str());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid tensor. Expected: raw data or external data offset. Actual: ",
+                             fbs_tensor.string_data() ? "string data" : "nullptr", " for tensor named: ",
+                             fbs_tensor.name()->str());
     }
   }
 };

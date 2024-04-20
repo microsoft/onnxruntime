@@ -496,7 +496,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_WithExternalData) {
   // expected_trainable_param_name_to_ort_value is used to compare with the values after restoring from checkpoint.
   auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
   std::shared_ptr<Model> p_model;
-  ORT_ENFORCE(Model::Load(model_uri, p_model, nullptr, *logger_ptr).IsOK());
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_ptr));
   Graph& graph = p_model->MainGraph();
 
   std::vector<ONNX_NAMESPACE::TensorProto> trainable_param_values;
@@ -513,8 +513,8 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_WithExternalData) {
   }
 
   std::unordered_map<std::string, OrtValue> expected_trainable_param_name_to_ort_value;
-  ORT_ENFORCE(CreateOrtValuesFromTensorProtos(trainable_param_values, expected_trainable_param_name_to_ort_value)
-                  .IsOK());
+  ASSERT_STATUS_OK(
+      CreateOrtValuesFromTensorProtos(trainable_param_values, expected_trainable_param_name_to_ort_value));
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");

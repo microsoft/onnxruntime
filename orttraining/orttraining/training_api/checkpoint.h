@@ -69,7 +69,7 @@ Status SaveCheckpoint(const CheckpointState& state, const PathString& checkpoint
 Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
                       gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
                       const PathString& checkpoint_path, const bool nominal_checkpoint,
-                      const int32_t external_data_threshold = 1800 * 1024 * 1024);  // 1.8GB default
+                      const size_t external_data_threshold = 1800 * 1024 * 1024);  // 1.8GB default
 #endif
 
 /**

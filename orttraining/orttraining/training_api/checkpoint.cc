@@ -18,7 +18,7 @@ PathString ExternalCheckpointDataPath(const PathString& checkpoint_path) {
 namespace {
 
 /**
- * @brief Helper method to create a function object that reads data from an external file.
+ * @brief Helper method to read data from an external file.
  * @param external_data_stream Stream that data will be read from.
  * @param offset Offset in the external data file to begin reading from.
  * @param output_buffer Buffer to store the read data.
@@ -36,7 +36,7 @@ Status ReadFromExternalFileHelper(std::ifstream& external_data_stream,
 }
 
 /**
- * @brief Helper method to create a function object that writes data to an external file.
+ * @brief Helper method to write data to an external file.
  * @param external_data_stream Stream where data will be written to.
  * @param data_type data type to write -- used to determine alignment.
  * @param bytes information to write in bytes.
@@ -249,7 +249,7 @@ Status ToFile(const PathString& checkpoint_path, flatbuffers::FlatBufferBuilder&
 Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
                         gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
                         const PathString& checkpoint_path, const bool nominal_checkpoint,
-                        const int32_t external_data_threshold) {
+                        const size_t external_data_threshold) {
   const auto check_unique = [](gsl::span<const ONNX_NAMESPACE::TensorProto> tensor_protos,
                                InlinedHashSet<std::string>& unique_names) {
     for (const auto& tensor_proto : tensor_protos) {
@@ -938,7 +938,7 @@ InlinedVector<ONNX_NAMESPACE::TensorProto> Nominalize(gsl::span<const ONNX_NAMES
 Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
                       gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
                       const PathString& checkpoint_path, const bool nominal_checkpoint,
-                      const int32_t external_data_threshold) {
+                      const size_t external_data_threshold) {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
   return nominal_checkpoint
              ? save::FromTensorProtos(Nominalize(trainable_tensor_protos), Nominalize(non_trainable_tensor_protos),
