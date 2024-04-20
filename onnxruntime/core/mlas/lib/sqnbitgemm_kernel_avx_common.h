@@ -236,13 +236,18 @@ namespace
 
   template<bool HasZeroPoint>
   int8_t MLAS_FORCEINLINE get_zp(bool is_lower_half_byte_zp, const std::byte* QuantBZeroPointPtr) {
-      if constexpr (HasZeroPoint) {
-          return is_lower_half_byte_zp ?
-              std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{ 0x0F }) :
-              std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4);
-      } else {
-          return 8;
-      }
+    if constexpr (!HasZeroPoint) {
+      // Suppress unused variable warnings
+      (void)QuantBZeroPointPtr;
+    }
+
+    if constexpr (HasZeroPoint) {
+      return is_lower_half_byte_zp ?
+        std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{ 0x0F }) :
+        std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4);
+    } else {
+      return 8;
+    }
   }
 
   // this function load and unpack 32 4b weights (packed for BlkLen32) and dot product it with 32

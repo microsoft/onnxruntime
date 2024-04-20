@@ -149,6 +149,12 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
   const float* bias_ptr
 )
 {
+  if constexpr (!HasZeroPoint) {
+    // Suppress unused variable warnings
+    (void)QuantBZeroPointColPtr;
+    (void)StrideQuantBZeroPoint;
+  }
+
   constexpr size_t BlkBitWidth4 = 4;
   constexpr size_t SubBlkLen16 = 16;
   constexpr size_t SubBlkStep8 = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, SubBlkLen16);
@@ -377,6 +383,12 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
   const float* bias_ptr
 )
 {
+  if constexpr (!HasZeroPoint) {
+    // Suppress unused variable warnings
+    (void)QuantBZeroPointColPtr;
+    (void)StrideQuantBZeroPoint;
+  }
+
   constexpr size_t BlkBitWidth4 = 4;
   constexpr size_t SubBlkLen32 = 32;
   constexpr size_t SubBlkStep16 = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, SubBlkLen32);

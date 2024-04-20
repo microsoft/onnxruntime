@@ -37,6 +37,12 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
   const float* BiasPtr
 )
 {
+  if constexpr (!HasZeroPoint) {
+    // Suppress unused variable warnings
+    (void)QuantBZeroPointColPtr;
+    (void)StrideQuantBZeroPoint;
+  }
+
   assert(BlkLen == 16);
   constexpr size_t SubBlkLen = 16;
   const __m128i low_mask = _mm_set1_epi8(0xF);
