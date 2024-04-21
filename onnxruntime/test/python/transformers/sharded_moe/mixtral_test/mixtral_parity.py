@@ -36,8 +36,8 @@ NP_TYPE = np.float16 if ORT_DTYPE == TensorProto.FLOAT16 else np.float32
 THRESHOLD_TP = 3e-2
 THRESHOLD_EP = 1e-6
 
-onnx_model_full = "/wy/ORT_GENAI/wangye/mixtral/src/python/py/models/example-models/mixtral_2layer/model.onnx"
-onnx_model_local = f"/wy/ORT_GENAI/wangye/mixtral/src/python/py/models/example-models/mixtral_2layer_rank_{local_rank}/model.onnx"
+onnx_model_full = "/wy/ORT_GENAI/wangye/shard/src/python/py/models/example-models/phi2/model.onnx"
+onnx_model_local = f"/wy/ORT_GENAI/wangye/shard/src/python/py/models/example-models/phi2_rank_{local_rank}/model.onnx"
 
 num_heads = 32
 head_size = 80
@@ -48,7 +48,7 @@ past_sequence_length = 31
 ort_inputs = {
     "input_ids": np.random.randint(0, 32000, (batch_size, sequence_length)).astype(np.int64),
     "attention_mask": np.ones((batch_size, sequence_length + past_sequence_length)).astype(np.int64),
-    "position_ids": np.arange(0, sequence_length).repeat(batch_size).reshape(batch_size, sequence_length).astype(np.int64),
+    #"position_ids": np.arange(0, sequence_length).repeat(batch_size).reshape(batch_size, sequence_length).astype(np.int64),
     "past_key_values.0.key": np.random.normal(0, 0.1, batch_size*num_heads*past_sequence_length*head_size).reshape(batch_size, num_heads, past_sequence_length, head_size).astype(NP_TYPE),
     "past_key_values.0.value": np.random.normal(0, 0.1, batch_size*num_heads*past_sequence_length*head_size).reshape(batch_size, num_heads, past_sequence_length, head_size).astype(NP_TYPE),
     "past_key_values.1.key": np.random.normal(0, 0.1, batch_size*num_heads*past_sequence_length*head_size).reshape(batch_size, num_heads, past_sequence_length, head_size).astype(NP_TYPE),
@@ -60,7 +60,7 @@ nh_end = (local_rank + 1) * num_heads // get_size()
 local_ort_inputs = {
     "input_ids": ort_inputs["input_ids"],
     "attention_mask": ort_inputs["attention_mask"],
-    "position_ids": ort_inputs["position_ids"],
+    #"position_ids": ort_inputs["position_ids"],
     "past_key_values.0.key": ort_inputs["past_key_values.0.key"][:, nh_start : nh_end, :, :],
     "past_key_values.0.value": ort_inputs["past_key_values.0.value"][:, nh_start : nh_end, :, :],
     "past_key_values.1.key": ort_inputs["past_key_values.1.key"][:, nh_start : nh_end, :, :],

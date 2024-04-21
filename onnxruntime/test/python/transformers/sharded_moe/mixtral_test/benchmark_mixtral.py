@@ -32,7 +32,7 @@ tensor_parallel_size = get_size()
 
 input_ids_name = "input_ids"
 attn_mask_name = "attention_mask"
-pos_ids_name = "position_ids"
+#pos_ids_name = "position_ids"
 
 logits_name = "logits"
 past_name = "past_key_values"
@@ -46,21 +46,22 @@ pt_to_np = {
     "torch.float16": np.float16
 }
 
+max_sequence_length = 1024 + 16 # subject to change
+
 def get_initial_inputs_and_outputs_for_bench(batch_size, sequence_length, tensor_parallel_size, device: torch.device, use_fp16: bool, use_buffer_share: bool):
     torch_dtype = torch.float16 if use_fp16 else torch.float32
 
     input_ids = torch.randint(0, 32000, (batch_size, sequence_length), device=device, dtype=torch.int64)
     attention_mask = torch.ones(batch_size, sequence_length, device=device, dtype=torch.int64)
-    position_ids = torch.arange(0, sequence_length, device=device, dtype=torch.int64).repeat(batch_size, 1)
+    #position_ids = torch.arange(0, sequence_length, device=device, dtype=torch.int64).repeat(batch_size, 1)
 
     inputs = {
         input_ids_name: input_ids.contiguous(),
         attn_mask_name: attention_mask.contiguous(),
-        pos_ids_name: position_ids.contiguous(),
+        #pos_ids_name: position_ids.contiguous(),
     }
 
     batch_size, sequence_length = input_ids.shape
-    max_sequence_length = 10 * 1024 # subject to change
     num_heads, head_size = int(8 / tensor_parallel_size), 128
     for i in range(32):
         past_key = torch.zeros(batch_size, num_heads, max_sequence_length if use_buffer_share else 0, head_size, device=device, dtype=torch_dtype)
@@ -140,9 +141,9 @@ def infer_model(tensor_parallel_size, rank, model_or_sess):
     use_fp16 = True
     use_buffer_share = True # buffer sharing is not supported now
     eos_token_id = 50256 # never let it reach eos for benchmark
-    for token_num in [1]:
-        for batch_size in [16]:
-            for seq_len in [4096]:
+    for token_num in [16]:
+        for batch_size in [1]:
+            for seq_len in [1024, 1024, 1024]:
                 max_length = seq_len + token_num
                 if rank == 0:
                     print("batch size:", batch_size, "seq len:", seq_len, "token_num:", token_num)
@@ -192,9 +193,9 @@ def infer_model(tensor_parallel_size, rank, model_or_sess):
                     inputs[attn_mask_name] = torch.cat(
                         [inputs[attn_mask_name], (~has_eos).to(torch.int64).reshape(batch_size, 1)], 1
                     )
-                    inputs[pos_ids_name] = (
-                        torch.max(inputs[pos_ids_name], dim=1)[0].reshape(batch_size, 1) + 1
-                    )
+                    # inputs[pos_ids_name] = (
+                    #     torch.max(inputs[pos_ids_name], dim=1)[0].reshape(batch_size, 1) + 1
+                    # )
 
                     current_length += 1
                     count += 1
@@ -220,7 +221,7 @@ def infer_model(tensor_parallel_size, rank, model_or_sess):
 
 session_options = ort.SessionOptions()
 provider_opt = {"device_id": rank, }
-onnx_model_path = f"/wy/ORT_GENAI/wangye/mixtral/src/python/py/models/example-models/mixtral_rank_{rank}_world_2/model.onnx"
+onnx_model_path = f"/wy/ORT_GENAI/wangye/shard/src/python/py/models/example-models/mixtral_rank_{rank}/model.onnx"
 sess = ort.InferenceSession(str(onnx_model_path), providers=[(
     "CUDAExecutionProvider", provider_opt)], sess_options=session_options)
 

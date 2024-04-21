@@ -4,7 +4,7 @@ MPI="mpirun --allow-run-as-root
     --tag-output --npernode 2 --bind-to numa
     -x MIOPEN_FIND_MODE=1"
 
-CMD="$MPI python mixtral_parity.py"
+CMD="$MPI python benchmark_mixtral.py"
 
 set -x
 $CMD
