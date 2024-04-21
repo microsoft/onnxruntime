@@ -130,7 +130,6 @@ ParQuantizeLinearStd(const float* Input,
     auto begin_idx = begin * block_size;
     auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);
     MlasQuantizeLinear(&(Input[begin_idx]), &(Output[begin_idx]), end_idx - begin_idx, Scale, ZeroPoint);
-    N -= (end_idx - begin_idx);
   });
 }
 
@@ -205,7 +204,7 @@ ParQuantizeLinearStd(const float* Input,
                     Scale,                                                                                       \
                     ZeroPoint.val_0);                                                                            \
                                                                                                                  \
-          N -= (end_idx - begin_idx);                                                                            \
+          N -= static_cast<size_t>(end_idx - begin_idx);                                                         \
         });                                                                                                      \
   }
 

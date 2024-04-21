@@ -571,14 +571,13 @@ MlasQuantizeLinearS4Kernel(
 
         MlasQuantizeLinearStoreSingleValue(IntegerVector, &TmpOutput[0]);
 
-        size_t output_index = n >> 1;  // which byte
-        size_t nibble_index = n & 0x1; // which 4-bit elem in the byte
+        size_t OutputIndex = n >> 1;  // which byte
+        size_t NibbleIndex = n & 0x1; // which 4-bit elem in the byte
+        uint8_t Shift = 4 * static_cast<uint8_t>(NibbleIndex);
+        int8_t Mask = 0xF << Shift;
 
-        if (nibble_index == 0) {
-            Output[output_index] = static_cast<int8_t>(TmpOutput[0] & 0xF);
-        } else {
-            Output[output_index] |= static_cast<int8_t>((TmpOutput[0] & 0xF) << 4);
-        }
+        Output[OutputIndex] &= ~Mask; // Clear 4-bit lane
+        Output[OutputIndex] |= static_cast<int8_t>((TmpOutput[0] & 0xF) << Shift); // Set 4-bit lane
     }
 }
 
@@ -634,14 +633,13 @@ MlasQuantizeLinearU4Kernel(
 
         MlasQuantizeLinearStoreSingleValue(IntegerVector, &TmpOutput[0]);
 
-        size_t output_index = n >> 1;  // which byte
-        size_t nibble_index = n & 0x1; // which 4-bit elem in the byte
+        size_t OutputIndex = n >> 1;  // which byte
+        size_t NibbleIndex = n & 0x1; // which 4-bit elem in the byte
+        uint8_t Shift = 4 * static_cast<uint8_t>(NibbleIndex);
+        uint8_t Mask = 0xF << Shift;
 
-        if (nibble_index == 0) {
-            Output[output_index] = static_cast<uint8_t>(TmpOutput[0] & 0xF);
-        } else {
-            Output[output_index] |= static_cast<uint8_t>((TmpOutput[0] & 0xF) << 4);
-        }
+        Output[OutputIndex] &= ~Mask; // Clear 4-bit lane
+        Output[OutputIndex] |= static_cast<uint8_t>((TmpOutput[0] & 0xF) << Shift); // Set 4-bit lane
     }
 }
 

@@ -102,16 +102,15 @@ class MlasQuantizeLinear4BitTest : public MlasTestBase {
       FloatValue = std::max(FloatValue, static_cast<float>(MinVal()));
       FloatValue = std::min(FloatValue, static_cast<float>(MaxVal()));
 
-      size_t i = n >> 1;
-      size_t j = n & 0x1;
-
       UnpackedType IntValue = static_cast<UnpackedType>(FloatValue);
 
-      if (j == 0) {
-        OutputReference[i] = IntValue & 0xF;
-      } else {
-        OutputReference[i] |= static_cast<UnpackedType>((IntValue & 0xF) << 4);
-      }
+      size_t i = n >> 1;
+      size_t j = n & 0x1;
+      uint8_t Shift = 4 * static_cast<uint8_t>(j);
+      UnpackedType Mask = 0xF << Shift;
+
+      OutputReference[i] &= ~Mask; // Clear 4-bit lane
+      OutputReference[i] |= static_cast<UnpackedType>((IntValue & 0xF) << Shift); // Set 4-bit lane
     }
   }
 
