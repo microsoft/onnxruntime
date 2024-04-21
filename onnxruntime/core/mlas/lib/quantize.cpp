@@ -1005,20 +1005,18 @@ MlasQuantizeLinearS4(
     constexpr int32_t MaximumValue = 7;
 
     for (size_t n = 0; n < N; n++) {
-
         float FloatValue = std::nearbyintf(Input[n] / Scale) + static_cast<float>(ZeroPoint);
         FloatValue = std::max(FloatValue, static_cast<float>(MinimumValue));
         FloatValue = std::min(FloatValue, static_cast<float>(MaximumValue));
         int8_t IntValue = static_cast<int8_t>(FloatValue);
 
-        size_t i = n >> 1;  // which byte
-        size_t j = n & 0x1; // which 4-bit elem in the byte
+        size_t OutputIndex = n >> 1;  // which byte
+        size_t NibbleIndex = n & 0x1; // which 4-bit elem in the byte
+        uint8_t Shift = 4 * static_cast<uint8_t>(NibbleIndex);
+        int8_t Mask = 0xF << Shift;
 
-        if (j == 0) {
-          Output[i] = IntValue & 0xF;
-        } else {
-          Output[i] |= static_cast<int8_t>((IntValue & 0xF) << 4);
-        }
+        Output[OutputIndex] &= ~Mask; // Clear 4-bit lane
+        Output[OutputIndex] |= static_cast<int8_t>((IntValue & 0xF) << Shift); // Set 4-bit lane
     }
 }
 
@@ -1037,20 +1035,18 @@ MlasQuantizeLinearU4(
     constexpr int32_t MaximumValue = 15;
 
     for (size_t n = 0; n < N; n++) {
-
         float FloatValue = std::nearbyintf(Input[n] / Scale) + static_cast<float>(ZeroPoint);
         FloatValue = std::max(FloatValue, static_cast<float>(MinimumValue));
         FloatValue = std::min(FloatValue, static_cast<float>(MaximumValue));
         uint8_t IntValue = static_cast<uint8_t>(FloatValue);
 
-        size_t i = n >> 1;  // which byte
-        size_t j = n & 0x1; // which 4-bit elem in the byte
+        size_t OutputIndex = n >> 1;  // which byte
+        size_t NibbleIndex = n & 0x1; // which 4-bit elem in the byte
+        uint8_t Shift = 4 * static_cast<uint8_t>(NibbleIndex);
+        uint8_t Mask = 0xF << Shift;
 
-        if (j == 0) {
-          Output[i] = IntValue & 0xF;
-        } else {
-          Output[i] |= static_cast<uint8_t>((IntValue & 0xF) << 4);
-        }
+        Output[OutputIndex] &= ~Mask; // Clear 4-bit lane
+        Output[OutputIndex] |= static_cast<uint8_t>((IntValue & 0xF) << Shift); // Set 4-bit lane
     }
 }
 #endif
