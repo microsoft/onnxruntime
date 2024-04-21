@@ -127,18 +127,19 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
     // GetCudnnConv1dPadToNc1d to determine which is added.
     // see Conv<T, NHWC>::UpdateState in /onnxruntime/core/providers/cuda/nn/conv.cc for more details.
     if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
-      // add fake H. NCd -> NC1d or NdC -> N1dC
+      // add fake H dimension
       const auto insert_at = NHWC ? 1 : 2;
 
       // NCHW: N, C, d1 -> N, C, 1, d1
       // NHWC: N, d1, C -> N, 1, d1, C
       x_dims.insert(x_dims.begin() + insert_at, 1);
 
+      // 'M' is channels dim in CUDA implementation
       // NCHW: C, M/g, k1  -> C, M/g, 1, k1
-      // NHWC: M/g, k1, C -> M/g, 1, k1, C
+      // NHWC: C, k1, M/g -> C, 1, k1, M/g
       w_dims.insert(w_dims.begin() + insert_at, 1);
     } else {
-      // add fake W. NCd -> NCd1 or NdC -> Nd1C
+      // add fake W dimension
       const auto insert_at = NHWC ? 2 : 3;
 
       // NCHW: N, C, d1 -> N, C, d1, 1
@@ -146,7 +147,7 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
       x_dims.insert(x_dims.begin() + insert_at, 1);
 
       // NCHW: C, M/g, k1 -> C, M/g, k1, 1
-      // NHWC: M/g, k1, C -> M/g, k1, 1, C
+      // NHWC: C, k1, M/g -> C, k1, 1, M/g
       w_dims.insert(w_dims.begin() + insert_at, 1);
     }
   }
@@ -283,7 +284,13 @@ Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dy
     if (!y_data) {
       auto y_dims = s_.y_dims.AsShapeVector();
       if (x_dimensions == 3) {
-        y_dims.erase(y_dims.begin() + (NHWC ? 1 : 2));
+        if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+          // erase the fake H dimension
+          y_dims.erase(y_dims.begin() + (NHWC ? 1 : 2));
+        } else {
+          // erase the fake W dimension
+          y_dims.erase(y_dims.begin() + (NHWC ? 2 : 3));
+        }
       }
 
       Tensor* Y = context->Output(0, TensorShape(y_dims));
