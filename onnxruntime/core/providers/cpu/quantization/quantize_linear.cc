@@ -522,7 +522,7 @@ void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const
         QUANT_FUNC(input, output, output_index, output_index + static_cast<size_t>(block_size),               \
                    scale[bd], INT4_TYPE(zp, 0), ctx->GetOperatorThreadPool());                                \
         input += block_size;                                                                                  \
-        output_index += block_size;                                                                           \
+        output_index += static_cast<size_t>(block_size);                                                      \
       }                                                                                                       \
     }                                                                                                         \
     assert(output_index == static_cast<size_t>(N * broadcast_dim * block_size));                              \
