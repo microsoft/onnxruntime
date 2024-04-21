@@ -121,7 +121,7 @@ cp build/MacOS/Release/libonnxruntime*.dylib* <ORT_HOME>/lib
 ### Build for CPU
 
 ```bash
-cd ..
+cd onnxruntime-genai
 python build.py [--ort_home <ORT_HOME>]
 ```
 
@@ -130,14 +130,14 @@ python build.py [--ort_home <ORT_HOME>]
 These instructions assume you already have CUDA installed.
 
 ```bash
-cd ..
+cd onnxruntime-genai
 python build.py --cuda_home <path to cuda home> [--ort_home <ORT_HOME>]
 ```
 
 ### Build for DirectML
 
 ```bash
-cd ..
+cd onnxruntime-genai
 python build.py --use_dml
 ```
    
