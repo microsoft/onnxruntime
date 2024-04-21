@@ -138,16 +138,21 @@ size_t get_out_accum_size(int num_splits, int batch_size, int num_heads, int seq
   return bytes;
 }
 
-void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream, bool force_split_kernel = false) {
-  FP16_SWITCH(!params.is_bf16, [&] {
-    FWD_HEADDIM_SWITCH(params.d, [&] {
-      if (params.num_splits <= 1 && !force_split_kernel) {  // If we don't set it num_splits == 0
-        run_mha_fwd_<elem_type, kHeadDim>(params, stream);
-      } else {
-        run_mha_fwd_splitkv_dispatch<elem_type, kHeadDim>(params, stream);
-      }
-    });
-  });
+void run_mha_fwd(Flash_fwd_params& /*params*/, cudaStream_t /*stream*/, bool /*force_split_kernel = false*/) {
+  // FP16_SWITCH(!params.is_bf16, [&] {
+  //   FWD_HEADDIM_SWITCH(params.d, [&] {
+  //     if (params.num_splits <= 1 && !force_split_kernel) {  // If we don't set it num_splits == 0
+  //       run_mha_fwd_<elem_type, kHeadDim>(params, stream);
+  //     } else {
+  //       run_mha_fwd_splitkv_dispatch<elem_type, kHeadDim>(params, stream);
+  //     }
+  //   });
+  // });
+  ;
+}
+
+void run_mha_fwd(Flash_fwd_params& /*params*/, cudaStream_t /*stream*/) {
+  ;
 }
 
 // Find the number of splits that maximizes the occupancy. For example, if we have
@@ -260,7 +265,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    num_heads, num_heads_k,
                    head_size, head_size_rounded,
                    q, k, v, out,
-                   /*cu_seqlens_q*/ nullptr,
+                   /*cu_seqlens_q*/
+                   nullptr,
                    /*cu_seqlens_k*/ nullptr,
                    nullptr,
                    softmax_lse,

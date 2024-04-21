@@ -120,10 +120,10 @@ struct Flash_fwd_params : public Qkv_params {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename T, int Headdim>
-void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);
-template <typename T, int Headdim>
-void run_mha_fwd_splitkv_dispatch(Flash_fwd_params& params, cudaStream_t stream);
+// template <typename T, int Headdim>
+// void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);
+// template <typename T, int Headdim>
+// void run_mha_fwd_splitkv_dispatch(Flash_fwd_params& params, cudaStream_t stream);
 
 }  // namespace flash
 }  // namespace onnxruntime
