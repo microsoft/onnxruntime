@@ -238,8 +238,8 @@ void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weig
       if constexpr (arch::kMinComputeCapability >= 75) {
         dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<16, 128, 64>,
                              cutlass::gemm::GemmShape<16, 32, 64>>(
-            A, B, weight_scales, biases, C, total_rows_before_expert, gemm_n, gemm_k, num_experts, gemm_config,
-            multi_processor_count, stream, occupancy);
+            A, B, weight_scales, biases, C, total_rows_before_expert, gemm_n, gemm_k, num_experts,
+            gemm_config, multi_processor_count, stream, occupancy);
       }
       break;
     case CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64:
@@ -247,27 +247,27 @@ void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weig
       if constexpr (arch::kMinComputeCapability >= 75) {
         dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<16, 256, 64>,
                              cutlass::gemm::GemmShape<16, 64, 64>>(
-            A, B, weight_scales, biases, C, total_rows_before_expert, gemm_n, gemm_k, num_experts, gemm_config,
-            multi_processor_count, stream, occupancy);
+            A, B, weight_scales, biases, C, total_rows_before_expert, gemm_n, gemm_k, num_experts,
+            gemm_config, multi_processor_count, stream, occupancy);
       }
       break;
     case CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
       dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<32, 128, 64>,
-                           cutlass::gemm::GemmShape<32, 32, 64>>(A, B, weight_scales, biases, C,
-                                                                 total_rows_before_expert, gemm_n, gemm_k, num_experts,
-                                                                 gemm_config, multi_processor_count, stream, occupancy);
+                           cutlass::gemm::GemmShape<32, 32, 64>>(
+          A, B, weight_scales, biases, C, total_rows_before_expert, gemm_n, gemm_k, num_experts,
+          gemm_config, multi_processor_count, stream, occupancy);
       break;
     case CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64:
       dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<64, 128, 64>,
-                           cutlass::gemm::GemmShape<32, 64, 64>>(A, B, weight_scales, biases, C,
-                                                                 total_rows_before_expert, gemm_n, gemm_k, num_experts,
-                                                                 gemm_config, multi_processor_count, stream, occupancy);
+                           cutlass::gemm::GemmShape<32, 64, 64>>(
+          A, B, weight_scales, biases, C, total_rows_before_expert, gemm_n, gemm_k, num_experts,
+          gemm_config, multi_processor_count, stream, occupancy);
       break;
     case CutlassTileConfig::CtaShape128x128x64_WarpShape64x32x64:
       dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<128, 128, 64>,
-                           cutlass::gemm::GemmShape<64, 32, 64>>(A, B, weight_scales, biases, C,
-                                                                 total_rows_before_expert, gemm_n, gemm_k, num_experts,
-                                                                 gemm_config, multi_processor_count, stream, occupancy);
+                           cutlass::gemm::GemmShape<64, 32, 64>>(
+          A, B, weight_scales, biases, C, total_rows_before_expert, gemm_n, gemm_k, num_experts,
+          gemm_config, multi_processor_count, stream, occupancy);
       break;
     case CutlassTileConfig::Undefined:
       ORT_THROW("GEMM config undefined.");
@@ -288,36 +288,54 @@ template <
     typename T, typename WeightType, typename arch, typename EpilogueTag,
     typename std::enable_if<!std::is_same<T, float>::value && !std::is_same<T, WeightType>::value>::type* = nullptr>
 void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
-                                  int64_t* total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
-                                  int num_experts, CutlassGemmConfig gemm_config, int sm_version,
+                                  int64_t* total_rows_before_expert, int64_t /*total_rows*/, int64_t gemm_n,
+                                  int64_t gemm_k, int num_experts, CutlassGemmConfig gemm_config, int sm_version,
                                   int multi_processor_count, cudaStream_t stream, int* occupancy = nullptr) {
   switch (gemm_config.tile_config) {
+    case CutlassTileConfig::CtaShape16x128x64_WarpShape16x32x64:
+      ORT_ENFORCE(arch::kMinComputeCapability >= 75, "Invalid config on Volta");
+      if constexpr (arch::kMinComputeCapability >= 75) {
+        dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<16, 128, 64>,
+                             cutlass::gemm::GemmShape<16, 32, 64>>(
+            A, B, weight_scales, biases, C, total_rows_before_expert,
+            gemm_n, gemm_k, num_experts, gemm_config, multi_processor_count, stream, occupancy);
+      }
+      break;
+    case CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64:
+      ORT_ENFORCE(arch::kMinComputeCapability >= 75, "Invalid config on Volta");
+      if constexpr (arch::kMinComputeCapability >= 75) {
+        dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<16, 256, 64>,
+                             cutlass::gemm::GemmShape<16, 64, 64>>(
+            A, B, weight_scales, biases, C, total_rows_before_expert,
+            gemm_n, gemm_k, num_experts, gemm_config, multi_processor_count, stream, occupancy);
+      }
+      break;
     case CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
       dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<32, 128, 64>,
-                           cutlass::gemm::GemmShape<32, 32, 64>>(A, B, weight_scales, biases, C,
-                                                                 total_rows_before_expert, gemm_n, gemm_k, num_experts,
-                                                                 gemm_config, multi_processor_count, stream, occupancy);
+                           cutlass::gemm::GemmShape<32, 32, 64>>(
+          A, B, weight_scales, biases, C, total_rows_before_expert,
+          gemm_n, gemm_k, num_experts, gemm_config, multi_processor_count, stream, occupancy);
       break;
     case CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64:
       dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<64, 128, 64>,
-                           cutlass::gemm::GemmShape<64, 32, 64>>(A, B, weight_scales, biases, C,
-                                                                 total_rows_before_expert, gemm_n, gemm_k, num_experts,
-                                                                 gemm_config, multi_processor_count, stream, occupancy);
+                           cutlass::gemm::GemmShape<64, 32, 64>>(
+          A, B, weight_scales, biases, C, total_rows_before_expert,
+          gemm_n, gemm_k, num_experts, gemm_config, multi_processor_count, stream, occupancy);
       break;
     case CutlassTileConfig::CtaShape128x128x64_WarpShape128x32x64:
       dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<128, 128, 64>,
                            cutlass::gemm::GemmShape<128, 32, 64>>(
-          A, B, weight_scales, biases, C, total_rows_before_expert, gemm_n, gemm_k, num_experts, gemm_config,
-          multi_processor_count, stream, occupancy);
+          A, B, weight_scales, biases, C, total_rows_before_expert,
+          gemm_n, gemm_k, num_experts, gemm_config, multi_processor_count, stream, occupancy);
       break;
     case CutlassTileConfig::Undefined:
-      ORT_THROW("[FT Error][dispatch_moe_gemm_to_cutlass] gemm config undefined.");
+      ORT_THROW("GEMM config undefined.");
       break;
     case CutlassTileConfig::ChooseWithHeuristic:
-      ORT_THROW("[FT Error][dispatch_moe_gemm_to_cutlass] gemm config should have already been set by heuristic.");
+      ORT_THROW("GEMM config should have already been set by heuristic.");
       break;
     default:
-      ORT_THROW("[FT Error][dispatch_moe_gemm_to_cutlass] Config is invalid for mixed type tensorop GEMM.");
+      ORT_THROW("Config is invalid for mixed type tensorop GEMM.");
       break;
   }
 }
@@ -332,19 +350,18 @@ void dispatch_moe_gemm_to_cutlass(const T* A, const WeightType* B, const T* weig
   switch (gemm_config.tile_config) {
     case CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8:
       dispatch_gemm_config<T, WeightType, arch, EpilogueTag, cutlass::gemm::GemmShape<128, 128, 8>,
-                           cutlass::gemm::GemmShape<64, 64, 8>>(A, B, weight_scales, biases, C,
-                                                                total_rows_before_expert, gemm_n, gemm_k, num_experts,
-                                                                gemm_config, multi_processor_count, stream, occupancy);
+                           cutlass::gemm::GemmShape<64, 64, 8>>(
+          A, B, weight_scales, biases, C, total_rows_before_expert,
+          gemm_n, gemm_k, num_experts, gemm_config, multi_processor_count, stream, occupancy);
       break;
     case CutlassTileConfig::Undefined:
-      ORT_THROW("[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] gemm config undefined.");
+      ORT_THROW("GEMM config undefined.");
       break;
     case CutlassTileConfig::ChooseWithHeuristic:
-      ORT_THROW(
-          "[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] gemm config should have already been set by heuristic.");
+      ORT_THROW("GEMM config should have already been set by heuristic.");
       break;
     default:
-      ORT_THROW("[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] Unsupported config for float MoE gemm.");
+      ORT_THROW("Unsupported config for float MoE gemm.");
       break;
   }
 }
