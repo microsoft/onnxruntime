@@ -87,10 +87,16 @@ Build from source and copy the include and libraries into `ORT_HOME`
 On Windows
 
 ```cmd
-build.bat --build_shared_lib --skip_tests --parallel [--use_cuda] --config Release
+build.bat --build_shared_lib --skip_tests --parallel [--use_dml | --use_cuda] --config Release
 copy include\onnxruntime\core\session\onnxruntime_c_api.h <ORT_HOME>\include
 copy build\Windows\Release\Release\*.dll <ORT_HOME>\lib
 copy build\Windows\Release\Release\onnxruntime.lib <ORTHOME>\lib
+```
+
+If building for DirectML
+
+```cmd
+copy include\onnxruntime\core\providers\dml\dml_provider_factory.h <ORT_HOME>\include
 ```
 
 On Linux
@@ -126,6 +132,13 @@ These instructions assume you already have CUDA installed.
 ```bash
 cd ..
 python build.py --cuda_home <path to cuda home> [--ort_home <ORT_HOME>]
+```
+
+### Build for DirectML
+
+```bash
+cd ..
+python build.py --use_dml
 ```
    
 ## Install the library into your application
