@@ -58,7 +58,7 @@ class GQAAttentionBase : public AttentionBase {
     void* mask_data = nullptr;
     size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * seqlen_present_kv_cache * sizeof(T);
     mask_data = allocator->Alloc(mask_data_bytes);
-    memset(mask_data, 0.0, mask_data_bytes);
+    memset(mask_data, 0, mask_data_bytes);
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
     const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
