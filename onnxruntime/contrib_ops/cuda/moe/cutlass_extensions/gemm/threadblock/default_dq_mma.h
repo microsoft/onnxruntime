@@ -16,12 +16,15 @@
  */
 #pragma once
 
-#include "contrib_ops/cuda/moe/cutlass_extensions/arch/mma.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/interleaved_numeric_conversion.h"
+#include "cutlass_extensions/arch/mma.h"
+#include "cutlass_extensions/interleaved_numeric_conversion.h"
 
-namespace cutlass {
-namespace gemm {
-namespace threadblock {
+namespace cutlass
+{
+namespace gemm
+{
+namespace threadblock
+{
 ////////////////////////////////////////////////////////////////////////////////
 
 // We need to distinguish here, since we want volta support. It is too much effort
@@ -35,7 +38,9 @@ template <
     typename MmaOperator,
     /// Math operation perform by warp level operator
     typename MathOperator>
-struct SetConverters {};
+struct SetConverters
+{
+};
 
 // Dequantize after LDG, so set transforms accordingly
 template <
@@ -43,14 +48,14 @@ template <
     typename IteratorB,
     /// Mma Policy
     typename MmaOperator>
-struct SetConverters<IteratorB, MmaOperator, arch::OpMultiplyAdd> {
-  using TransformAfterLDG =
-      FastInterleavedAndBiasedNumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
-                                                    typename IteratorB::Element, IteratorB::Fragment::kElements>;
+struct SetConverters<IteratorB, MmaOperator, arch::OpMultiplyAdd>
+{
+    using TransformAfterLDG
+        = FastInterleavedAndBiasedNumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
+            typename IteratorB::Element, IteratorB::Fragment::kElements>;
 
-  using TransformAfterLDS =
-      NumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
-                            typename MmaOperator::ArchMmaOperator::ElementB, MmaOperator::FragmentB::kElements>;
+    using TransformAfterLDS = NumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
+        typename MmaOperator::ArchMmaOperator::ElementB, MmaOperator::FragmentB::kElements>;
 };
 
 // Dequantize after LDS, so set transforms accordingly
@@ -60,14 +65,14 @@ template <
     typename IteratorB,
     /// Mma Policy
     typename MmaOperator>
-struct SetConverters<IteratorB, MmaOperator, arch::OpMultiplyAddDequantizeInterleavedBToA> {
-  using TransformAfterLDG =
-      NumericArrayConverter<typename IteratorB::Element, typename IteratorB::Element, IteratorB::Fragment::kElements>;
+struct SetConverters<IteratorB, MmaOperator, arch::OpMultiplyAddDequantizeInterleavedBToA>
+{
+    using TransformAfterLDG = NumericArrayConverter<typename IteratorB::Element, typename IteratorB::Element,
+        IteratorB::Fragment::kElements>;
 
-  using TransformAfterLDS =
-      FastInterleavedAndBiasedNumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
-                                                    typename TransformAfterLDG::result_type::Element,
-                                                    MmaOperator::FragmentB::kElements>;
+    using TransformAfterLDS
+        = FastInterleavedAndBiasedNumericArrayConverter<typename MmaOperator::ArchMmaOperator::ElementB,
+            typename TransformAfterLDG::result_type::Element, MmaOperator::FragmentB::kElements>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -115,6 +120,6 @@ template <
     typename Enable = void>
 struct DqMma;
 
-}  // namespace threadblock
-}  // namespace gemm
-}  // namespace cutlass
+} // namespace threadblock
+} // namespace gemm
+} // namespace cutlass

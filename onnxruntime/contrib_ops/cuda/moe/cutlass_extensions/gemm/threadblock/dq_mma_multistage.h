@@ -42,15 +42,18 @@
 #include "cutlass/matrix_shape.h"
 #include "cutlass/numeric_types.h"
 
-#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/dq_mma_base.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/warp/mma_tensorop_dequantizer.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/interleaved_numeric_conversion.h"
+#include "cutlass_extensions/gemm/threadblock/dq_mma_base.h"
+#include "cutlass_extensions/gemm/warp/mma_tensorop_dequantizer.h"
+#include "cutlass_extensions/interleaved_numeric_conversion.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace cutlass {
-namespace gemm {
-namespace threadblock {
+namespace cutlass
+{
+namespace gemm
+{
+namespace threadblock
+{
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -99,9 +102,9 @@ template <
     typename Enable = void>
 class DqMmaMultistage;
 
-}  // namespace threadblock
-}  // namespace gemm
-}  // namespace cutlass
+} // namespace threadblock
+} // namespace gemm
+} // namespace cutlass
 
-#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/dq_mma_multistage_finegrained.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/dq_mma_multistage_percol.h"
+#include "cutlass_extensions/gemm/threadblock/dq_mma_multistage_finegrained.h"
+#include "cutlass_extensions/gemm/threadblock/dq_mma_multistage_percol.h"
