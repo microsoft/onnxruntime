@@ -87,10 +87,10 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   const auto& inputs = node_unit.Inputs();
   for (size_t input_i = 0; input_i < inputs.size(); ++input_i) {
-    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-    bool is_quantized_tensor = inputs[input_i].quant_param.has_value();
-    utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
+    QnnQuantParamsWrapper quantize_param;
+    ORT_RETURN_IF_ERROR(quantize_param.Init(qnn_model_wrapper, inputs[input_i]));
 
+    bool is_quantized_tensor = inputs[input_i].quant_param.has_value();
     const auto& input_name = inputs[input_i].node_arg.Name();
 
     // Only skip if the input tensor has already been added (by producer op) *and* we don't need
@@ -107,16 +107,12 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[input_i].node_arg, input_shape), "Cannot get shape");
 
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(inputs[input_i].quant_param,
-                                                                     quantize_param.scaleOffsetEncoding.scale,
-                                                                     quantize_param.scaleOffsetEncoding.offset),
-                      "Cannot get quantization parameter");
-
     std::vector<uint8_t> unpacked_tensor;
     bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
     if (is_initializer_input) {
       const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       if (1 == input_trans_flag.at(input_i)) {
+        ORT_RETURN_IF_ERROR(quantize_param.HandleTranspose<size_t>(std::vector<size_t>({1, 0})));
         ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
                                                   input_shape,
                                                   *input_tensor,
@@ -128,6 +124,8 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     std::string input_tensor_name = input_name;
     if (1 == input_trans_flag.at(input_i) && !is_initializer_input) {
+      ORT_RETURN_IF(quantize_param.IsPerChannel(), "Non-constant Gemm inputs only support per-tensor quantization");
+
       // Add Transpose node
       std::vector<uint32_t> old_input_shape(input_shape);
       input_shape[0] = old_input_shape[1];
@@ -148,7 +146,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     input_names.push_back(input_tensor_name);
     Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_tensor_name);
-    QnnTensorWrapper input_tensorwrapper(input_tensor_name, tensor_type, qnn_data_type, quantize_param,
+    QnnTensorWrapper input_tensorwrapper(input_tensor_name, tensor_type, qnn_data_type, std::move(quantize_param),
                                          std::move(input_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
