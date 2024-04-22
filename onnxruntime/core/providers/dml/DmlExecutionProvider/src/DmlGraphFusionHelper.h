@@ -6,7 +6,9 @@
 #include "GraphPartitioner.h"
 #include "FusedGraphKernel.h"
 #include "MLOperatorAuthorImpl.h"
+#include "DmlReusedCommandListState.h"
 
+using Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider;
 
 namespace Dml
 {
@@ -100,5 +102,24 @@ namespace DmlGraphFusionHelper
         const std::unordered_set<std::string>& dynamicCpuInputMap,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
         std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>&& isInitializerTransferable);
+
+    std::unique_ptr<DmlReusedCommandListState> BuildReusableCommandList(
+        IExecutionProvider* provider,
+        IDMLCompiledOperator* compiledExecutionPlanOperator,
+        ID3D12Resource* persistentResource,
+        std::optional<DML_BUFFER_BINDING> persistentResourceBinding);
+
+    void ExecuteReusableCommandList(
+        onnxruntime::OpKernelContext* kernelContext,
+        DmlReusedCommandListState& commandListState,
+        IDMLCompiledOperator* compiledExecutionPlanOperator,
+        const onnxruntime::OpKernelInfo& kernelInfo,
+        gsl::span<const uint8_t> isInputsUploadedByDmlEP,
+        const std::vector<bool>& inputsUsed,
+        gsl::span<const Microsoft::WRL::ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers,
+        const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
+        IWinmlExecutionProvider* winmlProvider,
+        IExecutionProvider* provider,
+        IUnknown* persistentResourceAllocatorUnknown);
 }
 }

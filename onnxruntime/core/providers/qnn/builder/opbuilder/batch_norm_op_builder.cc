@@ -7,6 +7,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/framework/float16.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
@@ -87,9 +88,13 @@ class BatchNormOpBuilder : public BaseOpBuilder {
         offset += sizeof(float);
         break;
       }
+      case QNN_DATATYPE_FLOAT_16: {
+        value = static_cast<double>(reinterpret_cast<const MLFloat16*>(raw_ptr)->ToFloat());
+        offset += sizeof(MLFloat16);
+        break;
+      }
       case QNN_DATATYPE_BOOL_8:
       case QNN_DATATYPE_STRING:
-      case QNN_DATATYPE_FLOAT_16:
       default:
         ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
     }
@@ -102,60 +107,64 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     switch (qnn_data_type) {
       case QNN_DATATYPE_INT_8:
       case QNN_DATATYPE_SFIXED_POINT_8: {
-        ORT_ENFORCE(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(int8_t)),
-                    "initializer size not match Qnn data type.");
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(int8_t)),
+                          "initializer size not match Qnn data type.");
         break;
       }
       case QNN_DATATYPE_INT_16:
       case QNN_DATATYPE_SFIXED_POINT_16: {
-        ORT_ENFORCE(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(int16_t)),
-                    "initializer size not match Qnn data type.");
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(int16_t)),
+                          "initializer size not match Qnn data type.");
         break;
       }
       case QNN_DATATYPE_INT_32:
       case QNN_DATATYPE_SFIXED_POINT_32: {
-        ORT_ENFORCE(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(int32_t)),
-                    "initializer size not match Qnn data type.");
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(int32_t)),
+                          "initializer size not match Qnn data type.");
         break;
       }
       case QNN_DATATYPE_INT_64: {
-        ORT_ENFORCE(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(int64_t)),
-                    "initializer size not match Qnn data type.");
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(int64_t)),
+                          "initializer size not match Qnn data type.");
         break;
       }
       case QNN_DATATYPE_UINT_8:
       case QNN_DATATYPE_UFIXED_POINT_8: {
-        ORT_ENFORCE(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(uint8_t)),
-                    "initializer size not match Qnn data type.");
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(uint8_t)),
+                          "initializer size not match Qnn data type.");
         break;
       }
       case QNN_DATATYPE_UINT_16:
       case QNN_DATATYPE_UFIXED_POINT_16: {
-        ORT_ENFORCE(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(uint16_t)),
-                    "initializer size not match Qnn data type.");
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(uint16_t)),
+                          "initializer size not match Qnn data type.");
         break;
       }
       case QNN_DATATYPE_UINT_32:
       case QNN_DATATYPE_UFIXED_POINT_32: {
-        ORT_ENFORCE(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(uint32_t)),
-                    "initializer size not match Qnn data type.");
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(uint32_t)),
+                          "initializer size not match Qnn data type.");
         break;
       }
       case QNN_DATATYPE_UINT_64: {
-        ORT_ENFORCE(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(uint64_t)),
-                    "initializer size not match Qnn data type.");
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(uint64_t)),
+                          "initializer size not match Qnn data type.");
         break;
       }
       case QNN_DATATYPE_FLOAT_32: {
-        ORT_ENFORCE(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(float)),
-                    "initializer size not match Qnn data type.");
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(float)),
+                          "initializer size not match Qnn data type.");
+        break;
+      }
+      case QNN_DATATYPE_FLOAT_16: {
+        ORT_RETURN_IF_NOT(channel == static_cast<uint32_t>(raw_ptr_length / sizeof(MLFloat16)),
+                          "initializer size not match Qnn data type.");
         break;
       }
       case QNN_DATATYPE_BOOL_8:
       case QNN_DATATYPE_STRING:
-      case QNN_DATATYPE_FLOAT_16:
       default:
-        ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Qnn Data Type: ", qnn_data_type, " is not supported yet.");
     }
     return Status::OK();
   }
@@ -236,6 +245,14 @@ class BatchNormOpBuilder : public BaseOpBuilder {
         }
         break;
       }
+      case QNN_DATATYPE_FLOAT_16: {
+        raw_tensor.resize(double_tensor.size() * sizeof(MLFloat16));
+        MLFloat16* raw_ptr = reinterpret_cast<MLFloat16*>(raw_tensor.data());
+        for (size_t i = 0; i < double_tensor.size(); ++i) {
+          raw_ptr[i] = MLFloat16(static_cast<float>(double_tensor[i]));
+        }
+        break;
+      }
       case QNN_DATATYPE_UFIXED_POINT_32:
       case QNN_DATATYPE_UFIXED_POINT_16:
       case QNN_DATATYPE_UFIXED_POINT_8:
@@ -244,15 +261,13 @@ class BatchNormOpBuilder : public BaseOpBuilder {
       case QNN_DATATYPE_SFIXED_POINT_8:
       case QNN_DATATYPE_BOOL_8:
       case QNN_DATATYPE_STRING:
-      case QNN_DATATYPE_FLOAT_16:
       default:
-        ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Qnn Data Type: ", qnn_data_type, " is not supported yet.");
     }
     return Status::OK();
   }
 
   Status PreprocessMean(const TensorInfo& mean_info,
-                        const bool is_npu_backend,
                         const uint8_t* mean_raw_ptr,
                         const size_t mean_raw_ptr_length,
                         std::vector<double>& mean_out) const {
@@ -260,7 +275,9 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     uint32_t channel = mean_info.shape[0];
     mean_out.resize(channel);
     ORT_RETURN_IF_ERROR(AssertUnpackedTensorSize(mean_info.qnn_data_type, channel, mean_raw_ptr_length));
-    ORT_RETURN_IF_NOT(!is_npu_backend || mean_info.quant_param.IsPerTensor(),
+
+    const bool is_quantized = mean_info.quant_param.IsQuantized();
+    ORT_RETURN_IF_NOT(!is_quantized || mean_info.quant_param.IsPerTensor(),
                       "BatchNormalization's input_mean does not support per-channel quantization");
     int i = 0;
     int offset = 0;
@@ -268,16 +285,15 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double mean_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(mean_info.qnn_data_type, mean_raw_ptr + offset, mean_value, offset));
-      mean_out[i] = (is_npu_backend) ? utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
-                                                         quant_param.scaleOffsetEncoding.scale,
-                                                         mean_value)
-                                     : mean_value;
+      mean_out[i] = (is_quantized) ? utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                       quant_param.scaleOffsetEncoding.scale,
+                                                       mean_value)
+                                   : mean_value;
     }
     return Status::OK();
   }
 
   Status PreprocessStd(const TensorInfo& var_info,
-                       const bool is_npu_backend,
                        const uint8_t* var_raw_ptr,
                        const size_t var_raw_ptr_length,
                        const float epsilon,
@@ -286,7 +302,9 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     uint32_t channel = var_info.shape[0];
     std_out.resize(channel);
     ORT_RETURN_IF_ERROR(AssertUnpackedTensorSize(var_info.qnn_data_type, channel, var_raw_ptr_length));
-    ORT_RETURN_IF_NOT(!is_npu_backend || var_info.quant_param.IsPerTensor(),
+
+    const bool is_quantized = var_info.quant_param.IsQuantized();
+    ORT_RETURN_IF_NOT(!is_quantized || var_info.quant_param.IsPerTensor(),
                       "BatchNormalization's input_var does not support per-channel quantization");
     int i = 0;
     int offset = 0;
@@ -294,17 +312,16 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double var_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(var_info.qnn_data_type, var_raw_ptr + offset, var_value, offset));
-      std_out[i] = (is_npu_backend) ? utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
-                                                        quant_param.scaleOffsetEncoding.scale,
-                                                        var_value)
-                                    : var_value;
+      std_out[i] = (is_quantized) ? utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                      quant_param.scaleOffsetEncoding.scale,
+                                                      var_value)
+                                  : var_value;
       std_out[i] = std::sqrt(std_out[i] + static_cast<double>(epsilon));
     }
     return Status::OK();
   }
 
   Status PreprocessScale(const TensorInfo& scale_info,
-                         const bool is_npu_backend,
                          const uint8_t* scale_raw_ptr,
                          const size_t scale_raw_ptr_length,
                          const std::vector<double>& std_double_tensor,
@@ -315,7 +332,9 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     uint32_t channel = scale_info.shape[0];
     scale_out.resize(channel);
     ORT_RETURN_IF_ERROR(AssertUnpackedTensorSize(scale_info.qnn_data_type, channel, scale_raw_ptr_length));
-    ORT_RETURN_IF_NOT(!is_npu_backend || scale_info.quant_param.IsPerTensor(),
+
+    const bool is_quantized = scale_info.quant_param.IsQuantized();
+    ORT_RETURN_IF_NOT(!is_quantized || scale_info.quant_param.IsPerTensor(),
                       "BatchNormalization's scale input does not support per-channel quantization");
     int i = 0;
     int offset = 0;
@@ -323,10 +342,10 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double scale_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(scale_info.qnn_data_type, scale_raw_ptr + offset, scale_value, offset));
-      scale_out[i] = (is_npu_backend) ? utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
-                                                          quant_param.scaleOffsetEncoding.scale,
-                                                          scale_value)
-                                      : scale_value;
+      scale_out[i] = (is_quantized) ? utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                        quant_param.scaleOffsetEncoding.scale,
+                                                        scale_value)
+                                    : scale_value;
       scale_out[i] = scale_out[i] / std_double_tensor[i];
       rmax = std::max(rmax, scale_out[i]);
       rmin = std::min(rmin, scale_out[i]);
@@ -335,7 +354,6 @@ class BatchNormOpBuilder : public BaseOpBuilder {
   }
 
   Status PreprocessBias(const TensorInfo& bias_info,
-                        const bool is_npu_backend,
                         const uint8_t* bias_raw_ptr,
                         const size_t bias_raw_ptr_length,
                         const std::vector<double>& scale_double_tensor,
@@ -347,7 +365,9 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     uint32_t channel = bias_info.shape[0];
     bias_out.resize(channel);
     ORT_RETURN_IF_ERROR(AssertUnpackedTensorSize(bias_info.qnn_data_type, channel, bias_raw_ptr_length));
-    ORT_RETURN_IF_NOT(!is_npu_backend || bias_info.quant_param.IsPerTensor(),
+
+    const bool is_quantized = bias_info.quant_param.IsQuantized();
+    ORT_RETURN_IF_NOT(!is_quantized || bias_info.quant_param.IsPerTensor(),
                       "BatchNormalization's bias input does not support per-channel quantization");
     int i = 0;
     int offset = 0;
@@ -355,10 +375,10 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     for (; i < static_cast<int>(channel); ++i) {
       double bias_value = 0.0;
       ORT_RETURN_IF_ERROR(GetValueOnQnnDataType(bias_info.qnn_data_type, bias_raw_ptr + offset, bias_value, offset));
-      bias_out[i] = (is_npu_backend) ? utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
-                                                         quant_param.scaleOffsetEncoding.scale,
-                                                         bias_value)
-                                     : bias_value;
+      bias_out[i] = (is_quantized) ? utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                       quant_param.scaleOffsetEncoding.scale,
+                                                       bias_value)
+                                   : bias_value;
       bias_out[i] = bias_out[i] - (mean_double_tensor[i] * scale_double_tensor[i]);
       rmax = std::max(rmax, bias_out[i]);
       rmin = std::min(rmin, bias_out[i]);
@@ -367,13 +387,12 @@ class BatchNormOpBuilder : public BaseOpBuilder {
   }
 
   Status Postprocess(const TensorInfo& info,
-                     const bool is_npu_backend,
                      const std::vector<double>& double_tensor,
                      const double rmax,
                      const double rmin,
                      QnnQuantParamsWrapper& quant_param,
                      std::vector<uint8_t>& raw_tensor) const {
-    if (is_npu_backend) {
+    if (info.quant_param.IsQuantized()) {
       raw_tensor.resize(double_tensor.size());
       float scale = 0.0f;
       int zero_point = 0;
@@ -474,7 +493,6 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_UNUSED_PARAMETER(logger);
 
   const auto& inputs = node_unit.Inputs();
-  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   //
   // Input 0
   //
@@ -527,18 +545,15 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     // Calculate and convert new scale, new bias, mean and std to double array (may be dequantized)
     ORT_RETURN_IF_ERROR(PreprocessMean(mean_info,
-                                       is_npu_backend,
                                        mean_unpacked_tensor.data(),
                                        mean_unpacked_tensor.size(),
                                        mean_double_tensor));
     ORT_RETURN_IF_ERROR(PreprocessStd(var_info,
-                                      is_npu_backend,
                                       var_unpacked_tensor.data(),
                                       var_unpacked_tensor.size(),
                                       epsilon,
                                       std_double_tensor));
     ORT_RETURN_IF_ERROR(PreprocessScale(scale_info,
-                                        is_npu_backend,
                                         scale_unpacked_tensor.data(),
                                         scale_unpacked_tensor.size(),
                                         std_double_tensor,
@@ -546,7 +561,6 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                         scale_rmin,
                                         scale_double_tensor));
     ORT_RETURN_IF_ERROR(PreprocessBias(bias_info,
-                                       is_npu_backend,
                                        bias_unpacked_tensor.data(),
                                        bias_unpacked_tensor.size(),
                                        scale_double_tensor,
@@ -559,7 +573,6 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       std::vector<uint8_t> scale_raw_tensor;
       QnnQuantParamsWrapper scale_quant_param = scale_info.quant_param;
       ORT_RETURN_IF_ERROR(Postprocess(scale_info,
-                                      is_npu_backend,
                                       scale_double_tensor,
                                       scale_rmax,
                                       scale_rmin,
@@ -577,7 +590,6 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       std::vector<uint8_t> bias_raw_tensor;
       QnnQuantParamsWrapper bias_quant_param = bias_info.quant_param;
       ORT_RETURN_IF_ERROR(Postprocess(bias_info,
-                                      is_npu_backend,
                                       bias_double_tensor,
                                       bias_rmax,
                                       bias_rmin,

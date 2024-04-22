@@ -553,7 +553,7 @@
         "test_reduce_max_bool_inputs_cpu",
         "test_gelu_default_1_cpu", // Disabled due to accuracy mismatch
         "test_gelu_default_2_cpu"
-        
+
     ],
     "current_failing_tests_OPENVINO_NPU": [
         "^test_prelu_broadcast",
