@@ -142,13 +142,13 @@ struct OpenVINO_Provider : Provider {
       } else if (precision != "ACCURACY" && precision != "FP16" && precision != "FP32") {
         ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. GPU only supports FP32 / FP16. \n");
       }
-    } else if (device_type.find("NPU") != std:: string::npos) {
+    } else if (device_type.find("NPU") != std::string::npos) {
       if (precision == "" || precision == "ACCURACY" || precision == "FP16") {
         precision = "FP16";
       } else {
         ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
       }
-    } else if (device_type.find("CPU")!=std::string::npos) {
+    } else if (device_type.find("CPU") != std::string::npos) {
       if (precision == "" || precision == "ACCURACY" || precision == "FP32") {
         precision = "FP32";
       } else {
