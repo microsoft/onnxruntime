@@ -36,7 +36,7 @@ class ScatterNDDisjointAndNoReduction final : public CudaKernel {
 class ScatterNDWithAtomicReduction final : public CudaKernel {
  public:
   explicit ScatterNDWithAtomicReduction(const OpKernelInfo& info) : CudaKernel(info) {
-    std::string reduction = info.GetAttrOrDefault<std::string>("reduction", "none");
+    std::string reduction;
 
     if (info.GetAttr<std::string>("reduction", &reduction).IsOK()) {
       if (reduction == "add") {
