@@ -140,6 +140,7 @@ MLAS_FORCEINLINE void
   for (size_t col = 0; col < CountN; col += NCols8) {
     const int cols = std::min((int)NCols8, (int)CountN - (int)col);
     for (size_t k = 0; k < BlockCountK; k++) {
+      int klen = std::min((int)BlkLen16, (int)(CountK - (int)k * BlkLen16));
       // count # of tiles plus blks of the current tile from top
       const size_t tile_count = col / GemmFloatKernelWidth16;
       float* dst_ptr = FpData + (tile_count * CountK + k * BlkLen16) * GemmFloatKernelWidth16;
@@ -178,6 +179,9 @@ MLAS_FORCEINLINE void
         }
         });
       for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
+        int kklen = klen - i_of_2 * 8;
+        if (kklen <= 0)
+            break;
         __m256 weight_8_ps[8];
         for (size_t col_ = 0; col_ < 8; col_++) {
           if ((int)col_ < cols) {
@@ -215,20 +219,34 @@ MLAS_FORCEINLINE void
         const size_t ij_offset_in_k = i_of_2 * 8 * GemmFloatKernelWidth16;
         __m256 weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x20);
         _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 0 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x20);
-        _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 1 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x20);
-        _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 2 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x20);
-        _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 3 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x31);
-        _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 4 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x31);
-        _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 5 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x31);
-        _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 6 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x31);
-        _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 7 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 1 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 2 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 3 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 4 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 5 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 6 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 7 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
       }
     }
   }

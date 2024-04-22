@@ -343,17 +343,17 @@ SQ4BitGemm_CompFp32(
         // Step through each slice of matrix A along the M dimension.
         //
         const float* a_row = A;
-        //const std::byte* b_col = QuantBData + n * ldb;
-        //const float* b_col_scale = QuantBScale + n * k_blks;
-        //const std::byte* b_col_zp =
-        //    (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+        const std::byte* b_col = QuantBData + n * ldb;
+        const float* b_col_scale = QuantBScale + n * k_blks;
+        const std::byte* b_col_zp =
+            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-        //GetMlasPlatform().SQNBitGemmDispatch->Q4BitBlkDequantBForSgemm_CompFp32(
-        //    BlkLen,
-        //    dequant_b, b_col, b_col_scale, b_col_zp, CountN, K, k_blks
-        //);
+        GetMlasPlatform().SQNBitGemmDispatch->Q4BitBlkDequantBForSgemm_CompFp32(
+            BlkLen,
+            dequant_b, b_col, b_col_scale, b_col_zp, CountN, K, k_blks
+        );
 
         size_t RowsRemaining = RangeCountM;
         while (RowsRemaining > 0) {
