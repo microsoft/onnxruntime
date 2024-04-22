@@ -8,8 +8,10 @@
 #include "onnx_ctx_model_helper.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/framework/execution_provider.h"
+#include "tensorrt_execution_provider.h"
 
 namespace onnxruntime {
+extern TensorrtLogger& GetTensorrtLogger();
 
 /*
  *  Check whether the graph has the EP context contrib op.
@@ -67,7 +69,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            char* engine_data,
                                            size_t size,
                                            const int64_t embed_mode,
-                                           std::string compute_capability,
+                                           const std::string compute_capability,
+                                           const std::string onnx_model_path,
                                            const logging::Logger* logger) {
   auto model_build = graph_viewer.CreateModel(*logger);
   auto& graph_build = model_build->MainGraph();
@@ -88,6 +91,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   auto attr_0 = ONNX_NAMESPACE::AttributeProto::Create();  // embed_mode
   auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();  // ep_cache_context
   auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();  // hardware_architecture
+  auto attr_3 = ONNX_NAMESPACE::AttributeProto::Create();  // onnx_model_filename
   std::string engine_data_str = "";
   attr_0->set_name(EMBED_MODE);
   attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
@@ -106,13 +110,17 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   attr_2->set_name(COMPUTE_CAPABILITY);
   attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
   attr_2->set_s(compute_capability);
+  attr_3->set_name(ONNX_MODEL_FILENAME);
+  attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_3->set_s(std::filesystem::path(onnx_model_path).filename());
 
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-  int num_attributes = 3;
+  constexpr int num_attributes = 4;
   node_attributes->reserve(num_attributes);
   node_attributes->emplace(EMBED_MODE, *attr_0);
   node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
   node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
+  node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
 
   // Create EP context node
   graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
@@ -205,7 +213,7 @@ void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Dumped " + ctx_model_path;
 }
 
-bool IsAbsolutePath(std::string& path_string) {
+bool IsAbsolutePath(const std::string& path_string) {
 #ifdef _WIN32
   onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
   auto path = std::filesystem::path(ort_path_string.c_str());
@@ -219,7 +227,7 @@ bool IsAbsolutePath(std::string& path_string) {
 }
 
 // Like "../file_path"
-bool IsRelativePathToParentPath(std::string& path_string) {
+bool IsRelativePathToParentPath(const std::string& path_string) {
 #ifdef _WIN32
   onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
   auto path = std::filesystem::path(ort_path_string.c_str());
@@ -290,6 +298,42 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                              "TensorRT EP could not deserialize engine from cache: " + engine_cache_path.string());
     }
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
+  }
+  if (weightless_engine_refit_) {
+#if NV_TENSORRT_MAJOR >= 10
+    const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
+    std::filesystem::path onnx_model_path{onnx_model_folder_path_};
+    onnx_model_path.append(onnx_model_filename);
+    if (IsAbsolutePath(onnx_model_path.string())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "For security purpose, the ONNX model path should be set with "
+                                                    "a relative path, but it is an absolute path: "
+                                                    + onnx_model_path.string());
+    }
+    if (IsRelativePathToParentPath(onnx_model_path.string())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The ONNX model path has '..'. For security purpose, it's not "
+                                                   "allowed to point outside the directory.");
+    }
+
+    // Weightless engine refit logic
+    TensorrtLogger& trt_logger = GetTensorrtLogger();
+    auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(**trt_engine_, trt_logger));
+    auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
+                            nvonnxparser::createParserRefitter(*refitter, trt_logger));
+    if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+          "TensorRT EP's IParserRefitter could not refit deserialized weightless engine with weights contained in: "
+          + onnx_model_path.string());
+    }
+    if (refitter->refitCudaEngine()) {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weightless engine.";
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+          "TensorRT EP's IRefitter could not refit deserialized weightless engine with weights contained in: "
+          + onnx_model_path.string());
+    }
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");
+#endif
   }
   return Status::OK();
 }

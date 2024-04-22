@@ -27,6 +27,8 @@ constexpr const char* kDLACore = "trt_dla_core";
 constexpr const char* kDumpSubgraphs = "trt_dump_subgraphs";
 constexpr const char* kEngineCacheEnable = "trt_engine_cache_enable";
 constexpr const char* kEngineCachePath = "trt_engine_cache_path";
+constexpr const char* kWeightlessEngineEnable = "trt_weightless_engine_enable";
+constexpr const char* kOnnxModelFolderPath = "trt_onnx_model_folder_path";
 constexpr const char* kEngineCachePrefix = "trt_engine_cache_prefix";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
@@ -92,6 +94,8 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCacheEnable, info.engine_cache_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCachePath, info.engine_cache_path)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kWeightlessEngineEnable, info.weightless_engine_enable)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kOnnxModelFolderPath, info.onnx_model_folder_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCachePrefix, info.engine_cache_prefix)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionEnable, info.engine_decryption_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionLibPath, info.engine_decryption_lib_path)
@@ -139,6 +143,8 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.dump_subgraphs)},
       {tensorrt::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.engine_cache_enable)},
       {tensorrt::provider_option_names::kEngineCachePath, MakeStringWithClassicLocale(info.engine_cache_path)},
+      {tensorrt::provider_option_names::kWeightlessEngineEnable, MakeStringWithClassicLocale(info.weightless_engine_enable)},
+      {tensorrt::provider_option_names::kOnnxModelFolderPath, MakeStringWithClassicLocale(info.onnx_model_folder_path)},
       {tensorrt::provider_option_names::kEngineCachePrefix, MakeStringWithClassicLocale(info.engine_cache_prefix)},
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, MakeStringWithClassicLocale(info.engine_decryption_lib_path)},
@@ -180,6 +186,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
   const std::string kProfilesMaxShapes_ = empty_if_null(info.trt_profile_max_shapes);
   const std::string kProfilesOptShapes_ = empty_if_null(info.trt_profile_opt_shapes);
   const std::string kEpContextFilePath_ = empty_if_null(info.trt_ep_context_file_path);
+  const std::string kOnnxModelFolderPath_ = empty_if_null(info.trt_onnx_model_folder_path);
 
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
@@ -198,6 +205,8 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.trt_engine_cache_enable)},
       {tensorrt::provider_option_names::kEngineCachePath, kEngineCachePath_},
       {tensorrt::provider_option_names::kEngineCachePrefix, kEngineCachePrefix_},
+      {tensorrt::provider_option_names::kWeightlessEngineEnable, MakeStringWithClassicLocale(info.trt_weightless_engine_enable)},
+      {tensorrt::provider_option_names::kOnnxModelFolderPath, kOnnxModelFolderPath_},
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.trt_engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, kDecryptionLibPath_},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.trt_force_sequential_engine_build)},
@@ -289,6 +298,8 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_dla_core = internal_options.dla_core;
   trt_provider_options_v2.trt_dump_subgraphs = internal_options.dump_subgraphs;
   trt_provider_options_v2.trt_engine_cache_enable = internal_options.engine_cache_enable;
+  trt_provider_options_v2.trt_weightless_engine_enable = internal_options.weightless_engine_enable;
+  trt_provider_options_v2.trt_onnx_model_folder_path = copy_string_if_needed(internal_options.onnx_model_folder_path);
 
   trt_provider_options_v2.trt_engine_cache_path = copy_string_if_needed(internal_options.engine_cache_path);
   trt_provider_options_v2.trt_engine_cache_prefix = copy_string_if_needed(internal_options.engine_cache_prefix);

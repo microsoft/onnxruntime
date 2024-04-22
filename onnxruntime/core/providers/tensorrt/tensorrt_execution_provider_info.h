@@ -32,6 +32,8 @@ struct TensorrtExecutionProviderInfo {
   bool dump_subgraphs{false};
   bool engine_cache_enable{false};
   std::string engine_cache_path{""};
+  bool weightless_engine_enable{false};
+  std::string onnx_model_folder_path{""};
   bool engine_decryption_enable{false};
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};
