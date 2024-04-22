@@ -963,7 +963,7 @@ class ONNXQuantizer(BaseQuantizer):
             if not isinstance(td, TensorData):
                 raise TypeError(f"Unexpected type {type(td)} for {tensor_name!r}.")
 
-            quant_overrides = self.tensor_quant_overrides.get_per_tensor_overrides(tensor_name)
+            quant_overrides = self.tensor_quant_overrides.get_per_tensor_overrides(tensor_name, default_val={})
 
             quant_type = self.activation_qType
             if "quant_type" in quant_overrides:

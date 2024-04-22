@@ -47,6 +47,15 @@
 #include <hip/hip_runtime.h>
 #endif
 
+#ifdef USE_DML
+#include <wrl/client.h>
+#include <wil/result.h>
+#include <DirectML.h>
+#include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
+
+using Microsoft::WRL::ComPtr;
+#endif
+
 // Once we use C++17 this could be replaced with std::size
 template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
@@ -94,6 +103,201 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
     }
   }
 }
+
+#ifdef USE_DML
+struct DmlObjects {
+  ComPtr<ID3D12Device> d3d12_device;
+  ComPtr<ID3D12CommandQueue> command_queue;
+  ComPtr<ID3D12CommandAllocator> command_allocator;
+  ComPtr<ID3D12GraphicsCommandList> command_list;
+  ComPtr<ID3D12Resource> upload_buffer;
+  ComPtr<IDMLDevice> dml_device;
+};
+
+static DmlObjects CreateDmlObjects() {
+  D3D12_COMMAND_QUEUE_DESC command_queue_description =
+      {
+          D3D12_COMMAND_LIST_TYPE_DIRECT,
+          0,
+          D3D12_COMMAND_QUEUE_FLAG_NONE,
+          0,
+      };
+
+  DmlObjects dml_objects;
+
+  THROW_IF_FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&dml_objects.d3d12_device)));
+  THROW_IF_FAILED(DMLCreateDevice(dml_objects.d3d12_device.Get(), DML_CREATE_DEVICE_FLAG_NONE, IID_PPV_ARGS(&dml_objects.dml_device)));
+  THROW_IF_FAILED(dml_objects.d3d12_device->CreateCommandQueue(&command_queue_description, IID_PPV_ARGS(&dml_objects.command_queue)));
+  THROW_IF_FAILED(dml_objects.d3d12_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&dml_objects.command_allocator)));
+  THROW_IF_FAILED(dml_objects.d3d12_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, dml_objects.command_allocator.Get(), nullptr, IID_PPV_ARGS(&dml_objects.command_list)));
+
+  return dml_objects;
+}
+
+static ComPtr<ID3D12Resource> CreateD3D12ResourceOfByteSize(
+    ID3D12Device* d3d_device,
+    size_t resource_byte_size,
+    D3D12_HEAP_TYPE heap_type = D3D12_HEAP_TYPE_DEFAULT,
+    D3D12_RESOURCE_STATES resource_state = D3D12_RESOURCE_STATE_COMMON,
+    D3D12_RESOURCE_FLAGS resource_flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) {
+  resource_byte_size = std::max(resource_byte_size, size_t(DML_MINIMUM_BUFFER_TENSOR_ALIGNMENT));
+
+  // DML needs the resources' sizes to be a multiple of 4 bytes
+  (resource_byte_size += 3) &= ~3;
+
+  D3D12_HEAP_PROPERTIES heap_properties = {};
+  heap_properties.Type = heap_type;
+  heap_properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+  heap_properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+  heap_properties.CreationNodeMask = 1;
+  heap_properties.VisibleNodeMask = 1;
+
+  D3D12_RESOURCE_DESC resource_desc = {};
+  resource_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+  resource_desc.Alignment = 0;
+  resource_desc.Width = static_cast<uint64_t>(resource_byte_size);
+  resource_desc.Height = 1;
+  resource_desc.DepthOrArraySize = 1;
+  resource_desc.MipLevels = 1;
+  resource_desc.Format = DXGI_FORMAT_UNKNOWN;
+  resource_desc.SampleDesc = {1, 0};
+  resource_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+  resource_desc.Flags = resource_flags;
+
+  ComPtr<ID3D12Resource> gpu_resource;
+  THROW_IF_FAILED(d3d_device->CreateCommittedResource(
+      &heap_properties,
+      D3D12_HEAP_FLAG_NONE,
+      &resource_desc,
+      resource_state,
+      nullptr,
+      IID_PPV_ARGS(&gpu_resource)));
+
+  return gpu_resource;
+}
+
+static void WaitForQueueToComplete(ID3D12CommandQueue* queue) {
+  ComPtr<ID3D12Device> device;
+  THROW_IF_FAILED(queue->GetDevice(IID_PPV_ARGS(device.GetAddressOf())));
+  ComPtr<ID3D12Fence> fence;
+  THROW_IF_FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
+  THROW_IF_FAILED(queue->Signal(fence.Get(), 1));
+  THROW_IF_FAILED(fence->SetEventOnCompletion(1, nullptr));
+}
+
+static void UploadDataToDml(
+    DmlObjects& dml_objects,
+    ID3D12Resource* destination_resource,
+    gsl::span<const std::byte> source_data) {
+  // Get the size of the resource.
+  D3D12_RESOURCE_DESC resource_desc = destination_resource->GetDesc();
+  assert(resource_desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER);
+  const size_t data_size_in_bytes = static_cast<size_t>(resource_desc.Width);
+
+  // Create intermediate upload resource visible to both CPU and GPU.
+  dml_objects.upload_buffer = CreateD3D12ResourceOfByteSize(dml_objects.d3d12_device.Get(), data_size_in_bytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_FLAG_NONE);
+
+  // Copy CPU-side data to shared memory that is both CPU and GPU visible.
+  size_t clamped_data_byte_size = std::min(data_size_in_bytes, source_data.size());
+  std::byte* upload_buffer_data = nullptr;
+  THROW_IF_FAILED(dml_objects.upload_buffer->Map(0, nullptr, reinterpret_cast<void**>(&upload_buffer_data)));
+  memcpy(upload_buffer_data, source_data.data(), clamped_data_byte_size);
+  dml_objects.upload_buffer->Unmap(0, nullptr);
+
+  D3D12_RESOURCE_BARRIER resource_barrier{};
+  resource_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  resource_barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+  resource_barrier.Transition = {};
+  resource_barrier.Transition.pResource = destination_resource;
+  resource_barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  resource_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+  resource_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+  // Issue deferred command to copy from the intermediate shared resource to the final GPU resource,
+  // and then execute the commands.
+  dml_objects.command_list->CopyResource(destination_resource, dml_objects.upload_buffer.Get());
+  dml_objects.command_list->ResourceBarrier(1, &resource_barrier);
+  THROW_IF_FAILED(dml_objects.command_list->Close());
+  ID3D12CommandList* command_lists[] = {dml_objects.command_list.Get()};
+  dml_objects.command_queue->ExecuteCommandLists(ARRAYSIZE(command_lists), command_lists);
+
+  THROW_IF_FAILED(dml_objects.command_allocator->Reset());
+  THROW_IF_FAILED(dml_objects.command_list->Reset(dml_objects.command_allocator.Get(), nullptr));
+}
+
+static void DownloadDataFromDml(
+    DmlObjects& dml_objects,
+    ID3D12Resource* source_resource,
+    gsl::span<std::byte> destination_data) {
+  // Get the size of the resource.
+  D3D12_RESOURCE_DESC resource_desc = source_resource->GetDesc();
+  assert(resource_desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER);
+  const size_t data_size_in_bytes = static_cast<size_t>(resource_desc.Width);
+
+  // Create intermediate upload resource visible to both CPU and GPU.
+  ComPtr<ID3D12Resource> download_buffer = CreateD3D12ResourceOfByteSize(dml_objects.d3d12_device.Get(), data_size_in_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAG_NONE);
+
+  D3D12_RESOURCE_BARRIER resource_barrier = {};
+  resource_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  resource_barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+  resource_barrier.Transition = {};
+  resource_barrier.Transition.pResource = source_resource;
+  resource_barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  resource_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  resource_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+  // Copy GPU data into the download buffer.
+  dml_objects.command_list->ResourceBarrier(1, &resource_barrier);
+  dml_objects.command_list->CopyResource(download_buffer.Get(), source_resource);
+  THROW_IF_FAILED(dml_objects.command_list->Close());
+  ID3D12CommandList* command_lists[] = {dml_objects.command_list.Get()};
+  dml_objects.command_queue->ExecuteCommandLists(static_cast<uint32_t>(std::size(command_lists)), command_lists);
+  WaitForQueueToComplete(dml_objects.command_queue.Get());
+  THROW_IF_FAILED(dml_objects.command_allocator->Reset());
+  THROW_IF_FAILED(dml_objects.command_list->Reset(dml_objects.command_allocator.Get(), nullptr));
+
+  // Copy from shared GPU/CPU memory to ordinary system RAM.
+  size_t clamped_data_byte_size = std::min(data_size_in_bytes, destination_data.size());
+  std::byte* sourceData = nullptr;
+  D3D12_RANGE range = {0, clamped_data_byte_size};
+  THROW_IF_FAILED(download_buffer->Map(0, &range, reinterpret_cast<void**>(&sourceData)));
+  memcpy(destination_data.data(), sourceData, clamped_data_byte_size);
+  download_buffer->Unmap(0, nullptr);
+}
+
+Ort::Value CreateTensorValueFromExistingD3DResource(
+    const OrtDmlApi& ort_dml_api,
+    Ort::MemoryInfo const& memory_information,
+    ID3D12Resource* d3d_resource,
+    gsl::span<const int64_t> tensor_dimensions,
+    ONNXTensorElementDataType element_data_type,
+    /*out*/ void** dml_ep_resource_wrapper  // Must stay alive with Ort::Value.
+) {
+  *dml_ep_resource_wrapper = nullptr;
+
+  void* dml_allocator_resource;
+  Ort::ThrowOnError(ort_dml_api.CreateGPUAllocationFromD3DResource(d3d_resource, &dml_allocator_resource));
+  auto deleter = [&](void*) { ort_dml_api.FreeGPUAllocation(dml_allocator_resource); };
+  std::unique_ptr<void, std::function<void(void*)>> dml_allocator_resource_cleanup(dml_allocator_resource, deleter);
+
+  size_t tensor_byte_size = static_cast<size_t>(d3d_resource->GetDesc().Width);
+  Ort::Value new_value(
+      Ort::Value::CreateTensor(
+          memory_information,
+          dml_allocator_resource,
+          tensor_byte_size,
+          tensor_dimensions.data(),
+          tensor_dimensions.size(),
+          element_data_type));
+
+  // Return values and the wrapped resource.
+  *dml_ep_resource_wrapper = dml_allocator_resource;
+  dml_allocator_resource_cleanup.release();
+
+  return new_value;
+}
+
+#endif
 
 template <typename OutT, typename InT = float, typename InputT = Input>
 static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
@@ -180,7 +384,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) || defined(USE_DML)
 static constexpr PATH_TYPE CUDA_GRAPH_ANNOTATION_MODEL_URI = TSTR("testdata/mul_1_dynamic.onnx");
 #endif
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
@@ -1458,9 +1662,12 @@ TEST(CApiTest, test_custom_op_library) {
 #elif USE_ROCM
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 3, nullptr, lib_name.c_str());
-#else
+#elif USE_DML
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 0, nullptr, lib_name.c_str());
+                         expected_values_y, 4, nullptr, lib_name.c_str());
+#else
+TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                       expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
 }
 
@@ -1966,7 +2173,7 @@ TEST(CApiTest, io_binding_cuda) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM) || defined(USE_DML)
 TEST(CApiTest, basic_cuda_graph) {
   const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
@@ -2010,6 +2217,14 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_rocm_options.get()) == nullptr);
+#elif defined(USE_DML)
+  // Enable dynamic DML graph in DML provider option.
+  session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+
+  auto dml_objects = CreateDmlObjects();
+  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
@@ -2019,6 +2234,8 @@ TEST(CApiTest, basic_cuda_graph) {
 #define cudaMemcpyHostToDevice hipMemcpyHostToDevice
 #define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
   Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#elif defined(USE_DML)
+  Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 #else
   Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #endif
@@ -2032,7 +2249,14 @@ TEST(CApiTest, basic_cuda_graph) {
   auto input_data = allocator.GetAllocation(x_values.size() * sizeof(float));
 
   ASSERT_NE(input_data.get(), nullptr);
+
+#ifdef USE_DML
+  ComPtr<ID3D12Resource> input_resource;
+  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
+  UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
+#else
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+#endif
 
   // Create an OrtValue tensor backed by data on CUDA memory
   Ort::Value bound_x = Ort::Value::CreateTensor(info_mem, reinterpret_cast<float*>(input_data.get()), x_values.size(),
@@ -2058,21 +2282,48 @@ TEST(CApiTest, basic_cuda_graph) {
 
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
+
+#ifdef USE_DML
+  ComPtr<ID3D12Resource> output_resource;
+  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
+  auto output_cpu_bytes = reinterpret_cast<std::byte*>(y_values.data());
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
+#else
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+#endif
+
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
+
+#ifdef USE_DML
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
+#else
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+#endif
+
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Change the input and replay the CUDA graph again.
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+
+#ifdef USE_DML
+  UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
+#else
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+#endif
+
   binding.SynchronizeInputs();
 
   session.Run(Ort::RunOptions(), binding);
+
+#ifdef USE_DML
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
+#else
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+#endif
+
   expected_y = {10.0f, 40.0f, 90.0f, 160.0f, 250.0f, 360.0f};
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
@@ -2086,7 +2337,7 @@ TEST(CApiTest, basic_cuda_graph) {
 #endif
 }
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) || defined(USE_DML)
 struct CudaGraphInputOutputData_0 {
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -2124,13 +2375,28 @@ template <typename T>
 static void RunWithCudaGraphAnnotation(T& cg_data,
                                        Ort::Session& session,
                                        Ort::MemoryInfo& info_mem,
+#ifdef USE_DML
+                                       DmlObjects& dml_objects,
+#endif
                                        Ort::MemoryAllocation& input_data,
                                        Ort::MemoryAllocation& output_data,
                                        const char* cuda_graph_annotation) {
+#ifdef USE_DML
+  Ort::SessionOptions session_options;
+  Ort::Allocator allocator(session, info_mem);
+  const auto& api = Ort::GetApi();
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+
+  ComPtr<ID3D12Resource> input_resource;
+  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
+  UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(cg_data.x_values.data()), sizeof(float) * cg_data.x_values.size()));
+#else
   (void)cudaMemcpy(input_data.get(),
                    cg_data.x_values.data(),
                    sizeof(float) * cg_data.x_values.size(),
                    cudaMemcpyHostToDevice);
+#endif
 
   // Create an OrtValue tensor backed by data on CUDA memory
   Ort::Value bound_x = Ort::Value::CreateTensor(info_mem,
@@ -2160,32 +2426,59 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
   session.Run(run_option, binding);
 
   // Check the values against the bound raw memory (needs copying from device to host first)
+#ifdef USE_DML
+  ComPtr<ID3D12Resource> output_resource;
+  Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
+  auto output_cpu_bytes = reinterpret_cast<std::byte*>(cg_data.y_values.data());
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * cg_data.y_values.size()));
+#else
   (void)cudaMemcpy(cg_data.y_values.data(),
                    output_data.get(),
                    sizeof(float) * cg_data.y_values.size(),
                    cudaMemcpyDeviceToHost);
+#endif
+
   ASSERT_THAT(cg_data.y_values, ::testing::ContainerEq(cg_data.expected_y));
 
   // Replay the captured CUDA graph
   session.Run(run_option, binding);
+
+#ifdef USE_DML
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * cg_data.y_values.size()));
+#else
   (void)cudaMemcpy(cg_data.y_values.data(),
                    output_data.get(),
                    sizeof(float) * cg_data.y_values.size(),
                    cudaMemcpyDeviceToHost);
+#endif
   ASSERT_THAT(cg_data.y_values, ::testing::ContainerEq(cg_data.expected_y));
 
   // Change the input and replay the CUDA graph again.
+#ifdef USE_DML
+  UploadDataToDml(dml_objects,
+                  input_resource.Get(),
+                  gsl::make_span(reinterpret_cast<const std::byte*>(cg_data.new_x_values.data()),
+                                 sizeof(float) * cg_data.new_x_values.size()));
+#else
   (void)cudaMemcpy(input_data.get(),
                    cg_data.new_x_values.data(),
                    sizeof(float) * cg_data.new_x_values.size(),
                    cudaMemcpyHostToDevice);
+#endif
+
   binding.SynchronizeInputs();
 
   session.Run(run_option, binding);
+
+#ifdef USE_DML
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * cg_data.y_values.size()));
+#else
   (void)cudaMemcpy(cg_data.y_values.data(),
                    output_data.get(),
                    sizeof(float) * cg_data.y_values.size(),
                    cudaMemcpyDeviceToHost);
+#endif
+
   ASSERT_THAT(cg_data.y_values, ::testing::ContainerEq(cg_data.new_expected_y));
 
   // Clean up
@@ -2197,6 +2490,15 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
 
+#ifdef USE_DML
+  session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+  auto dml_objects = CreateDmlObjects();
+  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
+
+  Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+#else
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
@@ -2209,9 +2511,10 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_cuda_options.get()) == nullptr);
+  Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#endif
 
   Ort::Session session(*ort_env, CUDA_GRAPH_ANNOTATION_MODEL_URI, session_options);
-  Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 
   Ort::Allocator allocator(session, info_mem);
   auto allocator_info = allocator.GetInfo();
@@ -2226,9 +2529,15 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   ASSERT_NE(input_data.get(), nullptr);
   ASSERT_NE(output_data.get(), nullptr);
 
+#ifdef USE_DML
+  RunWithCudaGraphAnnotation(cg_data_0, session, info_mem, dml_objects, input_data, output_data, nullptr);
+  RunWithCudaGraphAnnotation(cg_data_1, session, info_mem, dml_objects, input_data, output_data, "1");
+  RunWithCudaGraphAnnotation(cg_data_2, session, info_mem, dml_objects, input_data, output_data, "2");
+#else
   RunWithCudaGraphAnnotation(cg_data_0, session, info_mem, input_data, output_data, nullptr);
   RunWithCudaGraphAnnotation(cg_data_1, session, info_mem, input_data, output_data, "1");
   RunWithCudaGraphAnnotation(cg_data_2, session, info_mem, input_data, output_data, "2");
+#endif
 }
 #endif
 
@@ -2279,6 +2588,22 @@ TEST(CApiTest, hip_graph_with_shape_nodes) {
   Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
 }
 #endif  // defined(USE_ROCM)
+
+#if defined(USE_DML)
+TEST(CApiTest, dml_graph_with_shape_nodes) {
+  const auto& api = Ort::GetApi();
+
+  // Enable hip graph in rocm provider option.
+  const OrtDmlApi* ort_dml_api;
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+  ort_dml_api->SessionOptionsAppendExecutionProvider_DML(session_options, 0);
+
+  // Successful loading of the ONNX model with shape nodes with dml graph feature enabled
+  Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
+}
+#endif  // defined(USE_DML)
 
 #endif  // REDUCED_OPS_BUILD
 

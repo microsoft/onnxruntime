@@ -43,8 +43,6 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   // TODO keep_dims is not implemented, default behavior is to keep ones for reduced dimensions
   ASSERT_NE(keep_dims, 0);
 
-  const std::vector<int64_t>& stats_dims = keep_dims ? n_and_ones_dims : n_dims;
-
   CompareOpTester test(op.c_str(), opset);
   test.AddAttribute("axis", axis);
   test.AddAttribute("keep_dims", keep_dims);
@@ -65,16 +63,20 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   }
 
   std::vector<float> Y_data = FillZeros<float>(n_x_m_dims);
+  test.AddOutput<float>("output", n_x_m_dims, Y_data);
+
+#ifndef USE_DML
+  // DML doesn't support more than one output for these ops yet
+  const std::vector<int64_t>& stats_dims = keep_dims ? n_and_ones_dims : n_dims;
   std::vector<float> mean_data = FillZeros<float>(stats_dims);
   std::vector<float> var_data = FillZeros<float>(stats_dims);
-
-  test.AddOutput<float>("output", n_x_m_dims, Y_data);
 
   // the Main and InvStdDev outputs are training specific
   if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0) {
     test.AddOutput<float>("mean", stats_dims, mean_data);
   }
   test.AddOutput<float>("var", stats_dims, var_data);
+#endif
 
 #ifdef USE_CUDA
   test.CompareWithCPU(kCudaExecutionProvider);

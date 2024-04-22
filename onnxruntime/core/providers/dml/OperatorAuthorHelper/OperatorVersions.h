@@ -124,6 +124,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Upsample = 7;
         static const int sc_sinceVer_Xor = 7;
         static const int sc_sinceVer_LayerNormalization = 1;
+        static const int sc_sinceVer_SimplifiedLayerNormalization = 1;
 
         // Special operators
         static const int sc_sinceVer_MemcpyToHost = 1;
@@ -445,6 +446,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_QLinearAdd = 1;
         static const int sc_sinceVer_Gelu = 1;
         static const int sc_sinceVer_BiasGelu = 1;
+        static const int sc_sinceVer_FastGelu = 1;
         static const int sc_sinceVer_FusedMatMul = 1;
         static const int sc_sinceVer_FusedMatMulActivation = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
@@ -452,7 +454,9 @@ namespace OperatorHelper
         static const int sc_sinceVer_Attention = 1;
         static const int sc_sinceVer_MatMulIntegerToFloat = 1;
         static const int sc_sinceVer_MultiHeadAttention = 1;
+        static const int sc_sinceVer_GroupQueryAttention = 1;
         static const int sc_sinceVer_SkipLayerNormalization = 1;
+        static const int sc_sinceVer_SkipSimplifiedLayerNormalization = 1;
         static const int sc_sinceVer_EmbedLayerNormalization = 1;
         static const int sc_sinceVer_BiasSplitGelu = 1;
         static const int sc_sinceVer_NhwcConv = 1;
@@ -463,6 +467,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_RotaryEmbedding = 1;
         static const int sc_sinceVer_QLinearAveragePool = 1;
         static const int sc_sinceVer_QLinearGlobalAveragePool = 1;
+        static const int sc_sinceVer_MatMulNBits = 1;
         static const int sc_sinceVer_DynamicQuantizeMatMul = 1;
     } // namespace MsftOperatorSet1
 
