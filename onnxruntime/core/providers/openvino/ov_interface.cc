@@ -134,7 +134,7 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
 }
 
 void OVCore::SetCache(std::string cache_dir_path, std::string device_type) {
-  if (device_type == "AUTO:GPU,CPU") {
+  if (device_type != "AUTO:GPU,CPU") {
     oe.set_property(ov::cache_dir(cache_dir_path));
   }
 }
