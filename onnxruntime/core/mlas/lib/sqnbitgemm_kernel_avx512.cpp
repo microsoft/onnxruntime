@@ -178,8 +178,8 @@ MLAS_FORCEINLINE void
           weight_16_epi16[col_] = _mm256_setzero_si256();
           scale_8_ps[col_] = _mm256_setzero_ps();
         }
-        std::cout << scale_8_ps[col_].m256_f32 << std::endl;
-        std::cout << weight_16_epi16[col_].m256i_i16 << std::endl;
+        std::cout << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
+        std::cout << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
       });
       //for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
       //  int kklen = klen - i_of_2 * 8;
