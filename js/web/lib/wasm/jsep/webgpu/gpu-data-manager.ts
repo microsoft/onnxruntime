@@ -77,34 +77,14 @@ interface StorageCacheValue {
 }
 
 /* eslint-disable */
-const bucketFreelist: {[key: number]: number} = {
-  64: 250,
-  128: 200,
-  256: 200,
-  512: 200,
-  2048: 230,
-  4096: 200,
-  8192: 50,
-  16384: 50,
-  32768: 50,
-  65536: 50,
-  131072: 50,
-  262144: 50,
-  524288: 50,
-  1048576: 50,
-  2097152: 30,
-  4194304: 20,
-  8388608: 10,
-  12582912: 10,
-  16777216: 10,
-  26214400: 10,
-  33554432: 22,
-  44236800: 2,
-  58982400: 6,
-  67108864: 0,
-  134217728: 0,
-  167772160: 6,
-};
+const bucketFreelist: Map<number, number> = new Map([
+  [64, 250], [128, 200], [256, 200], [512, 200], [2048, 230], [4096, 200], [8192, 50], [16384, 50], [32768, 50],
+  [65536, 50], [131072, 50], [262144, 50], [524288, 50], [1048576, 50], [2097152, 30], [4194304, 20], [8388608, 10],
+  [12582912, 10], [16777216, 10], [26214400, 15], [33554432, 22], [44236800, 2], [58982400, 6],
+  // we don't want to cache the bucket sizes below but not caching them
+  // results in some major performance hits for models like sd-turbo.
+  [67108864, 6], [134217728, 6], [167772160, 6]
+]);
 /* eslint-enable */
 
 const bucketArr: number[] = [];
@@ -206,10 +186,10 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.capturedPendingBuffers = new Map();
 
     // eslint-disable-next-line guard-for-in
-    for (const s in bucketFreelist) {
-      bucketArr.push(Number(s));
-      this.freeBuffers.set(Number(s), []);
-      this.freeUniformBuffers.set(Number(s), []);
+    for (const [key, ] of bucketFreelist) {
+      bucketArr.push(key);
+      this.freeBuffers.set(key, []);
+      this.freeUniformBuffers.set(key, []);
     }
   }
 
@@ -389,13 +369,13 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     if (this.backend.sessionStatus === 'default') {
       for (const buffer of this.buffersPending) {
-        const length = bucketFreelist[buffer.size];
+        const maxInFreeList = bucketFreelist.get(buffer.size);
 
         // eslint-disable-next-line no-bitwise
         if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
           // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
           const freelist = this.freeBuffers.get(buffer.size) || [];
-          if (length === undefined || freelist.length >= length) {
+          if (maxInFreeList === undefined || freelist.length >= maxInFreeList) {
             buffer.destroy();
           } else {
             freelist.push(buffer);
@@ -403,9 +383,8 @@ class GpuDataManagerImpl implements GpuDataManager {
           // eslint-disable-next-line no-bitwise
         } else if ((buffer.usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM) {
           // Put the pending buffer to freeUniformBuffers list instead of really destroying it for buffer reusing.
-          const length = bucketFreelist[buffer.size];
           const freelist = this.freeUniformBuffers.get(buffer.size) || [];
-          if (length === undefined || freelist.length >= length) {
+          if (maxInFreeList === undefined || freelist.length >= maxInFreeList) {
             buffer.destroy();
           } else {
             freelist.push(buffer);
