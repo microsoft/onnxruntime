@@ -203,8 +203,6 @@ ParQuantizeLinearStd(const float* Input,
                     end_idx - begin_idx,                                                                         \
                     Scale,                                                                                       \
                     ZeroPoint.val_0);                                                                            \
-                                                                                                                 \
-          N -= static_cast<size_t>(end_idx - begin_idx);                                                         \
         });                                                                                                      \
   }
 
