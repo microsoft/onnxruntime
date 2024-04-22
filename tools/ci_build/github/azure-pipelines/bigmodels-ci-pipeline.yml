@@ -352,13 +352,21 @@ stages:
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
+    - script: |
+        mkdir -p $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/ompffmpeg/
+        azcopy cp --recursive "https://lotusscus.blob.core.windows.net/models/ffmpeg/runtimes/linux-x64/native" $(Agent.TempDirectory)/ompffmpeg
+        cp $(Agent.TempDirectory)/ompffmpeg/native/* $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/ompffmpeg/
+        # we need to copy the files to the docker context
+        ls $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/ompffmpeg/
+      displayName: 'Download OMP FFmpeg'
+
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu_ffmpeg
         Context: tools/ci_build/github/linux/docker/
         ScriptName: tools/ci_build/get_docker_image.py
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimepackagestest
+        DockerBuildArgs: '--build-arg BUILD_UID=$( id -u )'
+        Repository: onnxruntimepackagestest_ompffmpeg
         UpdateDepsTxt: false
 
     - task: DownloadPackage@1
@@ -376,7 +384,7 @@ stages:
         docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
-           onnxruntimepackagestest \
+           onnxruntimepackagestest_ompffmpeg \
             bash -c '
               set -ex; \
               pushd /workspace/onnxruntime/python/tools/transformers/ ; \
@@ -391,4 +399,36 @@ stages:
               popd ; \
             '
       displayName: 'Convert Whisper Model'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
+           onnxruntimepackagestest_ompffmpeg \
+            bash -c '
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/whisper ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              ls whisperlargev3; \
+              export LD_LIBRARY_PATH=/tmp/ompffmpeg:${LD_LIBRARY_PATH}; \
+              ffmpeg -version; \
+              python3 -m models.whisper.benchmark \
+                  --benchmark-type ort \
+                  --audio-path models/whisper/test/1272-141231-0002.mp3 \
+                  --model-name openai/whisper-large-v3 \
+                  --ort-model-path /workspace/onnxruntime/python/tools/transformers/whisperlargev3/whisper_large_v3_beamsearch.onnx \
+                  --precision fp32 \
+                  --device cuda > ort_output.txt ; \
+              cat ort_output.txt ; \
+              diff ort_output.txt /workspace/onnxruntime/python/tools/transformers/models/whisper/test/whisper_ort_output.txt && exit 0 || exit 1
+              popd ; \
+            '
+      displayName: 'Test Whisper ONNX Model'
       workingDirectory: $(Build.SourcesDirectory)
