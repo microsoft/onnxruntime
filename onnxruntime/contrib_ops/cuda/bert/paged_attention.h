@@ -19,8 +19,6 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-struct InputMetadata;
-
 struct SelectResult {
   size_t workSpaceSize = 0;
   void* fused_runner = nullptr;
@@ -54,26 +52,34 @@ class PagedAttention final : public TrtFusedAttention<T>, public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  Status CheckInputs(
-      OpKernelContext* context,
-      const InputMetadata* input_metadata,
-      PackedAttentionParameters& parameters) const;
-  Status RunMultiHeadAttention(Tensor* output, OpKernelContext* context, InputMetadata* input_metadata,
-                               PackedAttentionParameters parameters, IAllocatorUniquePtr<T>& gemm_buffer) const;
-  Status DoQKVProjectionIfNeed(OpKernelContext* context, InputMetadata* input_metadata, PackedAttentionParameters parameters,
-                               IAllocatorUniquePtr<T>& gemm_buffer) const;
+  Status RotaryEmbeddings(const GroupQueryAttentionParameters& parameters,
+                          const Tensor* query, const Tensor* key,
+                          const Tensor* cos_cache, const Tensor* sin_cache) const;
 
-  int32_t num_heads_;                  // number of attention heads
-  int32_t num_kv_heads_;                  // number of attention kv_heads
-  int32_t head_size_;                      // number of attention heads
-  float scale_;                            // sqrt(head_size_)
-  std::string mask_type_;                  // position embedding type
-  void* flash_attention_v2_kernel_ = nullptr;  // cuda kernel
-  IAllocatorUniquePtr<int32_t> head_mapping_;
-  int32_t num_queries_per_kv_;
+  Status GroupQueryAttention(const GroupQueryAttentionParameters& parameters,
+                             const Tensor* query, const Tensor* key, const Tensor* value,
+                             const Tensor* seqlens_k, const Tensor* cos_cache,
+                             const Tensor* sin_cache, Tensor* output,
+                             OpKernelContext* context) const;
 
-  AttentionSelector<T> selector_;
-  friend struct AttentionSelector<T>;
+  Status WriteToPagedCache(const GroupQueryAttentionParameters& parameters,
+                           OpKernelContext* context,
+                           const Tensor* key, const Tensor* value,
+                           const Tensor* slot_mappings,
+                           Tensor* key_cache, Tensor* value_cache) const;
+
+  int num_heads_;     // number of attention heads
+  int kv_num_heads_;  // different for k and v for group query attention
+  int local_window_size_;
+  bool is_unidirectional_;
+  bool is_past_bsnh_;
+  bool do_rotary_;
+  bool rotary_interleaved_;
+  float scale_;
+  bool disable_flash_attention_;
+  bool disable_memory_efficient_attention_;
+  static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
+  IAllocatorUniquePtr<int> zeros_;
 };
 
 }  // namespace cuda

@@ -669,7 +669,6 @@ __global__ void repeat_key_value_kernel(
   }
 }
 
-
 }  // namespace vllm
 
 #define LAUNCH_PAGED_ATTENTION_V1(HEAD_SIZE)                                  \
@@ -715,10 +714,10 @@ void paged_attention_v1_launcher(
   int num_seqs = query_shapes[0];
   int num_heads = query_shapes[1];
   int head_size = query_shapes[2];
-  //int max_num_blocks_per_seq = block_tables.size(1);
-  int q_stride = num_heads * head_size;  // query.stride(0);
+  // int max_num_blocks_per_seq = block_tables.size(1);
+  int q_stride = num_heads * head_size;                              // query.stride(0);
   int kv_block_stride = q_stride / num_queries_per_kv * BLOCK_SIZE;  // key_cache.stride(0);
-  int kv_head_stride = head_size * BLOCK_SIZE;//key_cache.stride(1);
+  int kv_head_stride = head_size * BLOCK_SIZE;                       // key_cache.stride(1);
 
 #ifndef NDEBUG
   int thread_group_size = MAX(WARP_SIZE / BLOCK_SIZE, 1);
@@ -1061,210 +1060,80 @@ void paged_attention_v2(
     int num_queries_per_kv,
     int dtype) {
   if (dtype == 0) {  // Float
-      CALL_V2_LAUNCHER_BLOCK_SIZE(float);
+    CALL_V2_LAUNCHER_BLOCK_SIZE(float);
   } else if (dtype == 1) {  // Half
-      CALL_V2_LAUNCHER_BLOCK_SIZE(uint16_t);
+    CALL_V2_LAUNCHER_BLOCK_SIZE(uint16_t);
   } else if (dtype == 2) {  // BFloat16
     // CALL_V2_LAUNCHER_BLOCK_SIZE(__nv_bfloat16);
   } else {
-    //TORCH_CHECK(false, "Unsupported data type: ", query.dtype());
+    // TORCH_CHECK(false, "Unsupported data type: ", query.dtype());
   }
 }
 
-
-void reshape_and_cache_quant(
-    const cudaStream_t stream,
-    const void* key,          // [num_tokens, num_heads, head_size]
-    const void* value,        // [num_tokens, num_heads, head_size]
-    const void* key_cache,    // [num_blocks, num_heads, head_size/x, block_size, x]
-    const void* value_cache,  // [num_blocks, num_heads, head_size, block_size]
-    const int* slot_mapping,  // [num_tokens]
-    const int64_t* key_shapes,
-    const int64_t* value_shapes,
-    const int64_t block_size,
-    const int vec_x,
-    const int dtype,
-    void* kv_quant_param,
-    const int kv_quant_chunk_size,
-    const int kv_quant_param_dtype);
-
-
-void reshape_and_cache(
-    const cudaStream_t stream,
-    const void* key,          // [num_tokens, num_heads, head_size]
-    const void* value,        // [num_tokens, num_heads, head_size]
-    const void* key_cache,    // [num_blocks, num_heads, head_size/x, block_size, x]
-    const void* value_cache,  // [num_blocks, num_heads, head_size, block_size]
-    const int* slot_mapping,  // [num_tokens]
-    const int64_t* key_shapes,
-    const int64_t* value_shapes,
-    const int64_t block_size,
-    const int vec_x,
-    const int dtype,
-    void* kv_quant_param,
-    const int kv_quant_chunk_size,
-    const int kv_quant_param_dtype) {
-  if (kv_quant_param != nullptr) {
-    reshape_and_cache_quant(
-        stream,
-        key,
-        value,
-        key_cache,
-        value_cache,
-        slot_mapping,
-        key_shapes,
-        value_shapes,
-        block_size,
-        vec_x,
-        dtype,
-        kv_quant_param,
-        kv_quant_chunk_size,
-        kv_quant_param_dtype);
+template <typename scalar_t>
+__global__ void Cache(const scalar_t* key,      // [batch_size, sequence_length, kv_hidden_size]
+                      const scalar_t* value,    // [batch_size, sequence_length, kv_hidden_size]
+                      scalar_t* key_cache,      // [num_blocks, block_size * kv_hidden_size]
+                      scalar_t* value_cache,    // [num_blocks, block_size * kv_hidden_siz]
+                      const int* slot_mapping,  // [batch_size, sequence_length]
+                      const int sequence_length,
+                      const int kv_hidden_size) {
+  const int64_t sequence_id = blockIdx.x;
+  const int64_t token_id = blockIdx.y;
+  const int64_t slot_idx = slot_mapping[sequence_id * sequence_length + token_id];
+  if (slot_idx < 0) {
+    // This slot idx corresponds to padding token. Ignore it.
     return;
   }
-  int num_tokens = key_shapes[0];
-  int num_heads = key_shapes[1];
-  int head_size = key_shapes[2];
-  // int block_size = key_cache.size(3);
-  int x = vec_x;
 
-  int key_stride = key_shapes[1] * key_shapes[2];
-  int value_stride = value_shapes[1] * value_shapes[2];
+  for (int i = 0; i < kv_hidden_size; i++) {
+    const int64_t src_idx = sequence_id * sequence_length * kv_hidden_size + token_id * kv_hidden_size + i;
+    const int64_t tgt_idx = slot_idx * kv_hidden_size + i;
 
-  // static_assert(std::is_same_v<T, MLFloat16>, "Unsupported data type: ");
-
-  dim3 grid(num_tokens);
-  dim3 block(std::min(num_heads * head_size, 512));
-  // if constexpr (std::is_same_v<T, MLFloat16>) {
-  if (dtype == 1) {
-    vllm::reshape_and_cache_kernel<half><<<grid, block, 0, stream>>>(
-        (const half*)key,
-        (const half*)value,
-        (half*)key_cache,
-        (half*)value_cache,
-        slot_mapping,
-        key_stride,
-        value_stride,
-        num_heads,
-        head_size,
-        block_size,
-        x);
+    key_cache[tgt_idx] = key[src_idx];
+    value_cache[tgt_idx] = value[src_idx];
   }
 }
 
-void rotary_embedding_neox(
-    const cudaStream_t stream,
-    const int64_t* positions,  // [num_tokens]
-    void* query,               // [num_tokens, num_heads * head_size]
-    void* key,                 // [num_tokens, num_kv_heads * head_size]
-    int head_size,
-    const void* cos_sin_cache,  // [max_position, rot_dim]
-    int num_tokens,
-    int rot_dim,
-    int num_heads,
-    int num_kv_heads,
-    int dtype) {
-  // int num_tokens = query.size(0);
-  // int rot_dim = cos_sin_cache.size(1);
-  // int num_heads = query.size(1) / head_size;
-  // int num_kv_heads = key.size(1) / head_size;
-  const bool is_neox = true;
-  int query_stride = num_heads * head_size;
-  int key_stride = num_kv_heads * head_size;
-  // TORCH_CHECK(stride == key.stride(0));
-
-  dim3 grid(num_tokens);
-  dim3 block(std::min(num_heads * rot_dim / 2, 512));
-  // const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-
-  if (dtype == 0) {
-    // float
-    // CALL_KERNEL_LAUNCHER_BLOCK_SIZE(float);
-    // } else if constexpr (std::is_same_v<T, MLFloat16>) {
-  } else if (dtype == 1) {
-    // half
-    using scalar_t = half;
-    if (is_neox) {
-      vllm::rotary_embedding_kernel<scalar_t, true><<<grid, block, 0, stream>>>(
-          positions,
-          static_cast<scalar_t*>(query),
-          static_cast<scalar_t*>(key),
-          static_cast<const scalar_t*>(cos_sin_cache),
-          rot_dim,
-          query_stride,
-          key_stride,
-          num_heads,
-          num_kv_heads,
-          head_size);
-    } else {
-      vllm::rotary_embedding_kernel<scalar_t, false><<<grid, block, 0, stream>>>(
-          positions,
-          static_cast<scalar_t*>(query),
-          static_cast<scalar_t*>(key),
-          static_cast<const scalar_t*>(cos_sin_cache),
-          rot_dim,
-          query_stride,
-          key_stride,
-          num_heads,
-          num_kv_heads,
-          head_size);
-    }
-    //} else if constexpr (std::is_same_v<T, BFloat16>) {
-  } else if (dtype == 2) {
-    // CALL_KERNEL_LAUNCHER_BLOCK_SIZE(__nv_bfloat16);
-  }
-}
 template <typename scalar_t>
-void LaunchRepeatKeyValue(
+void ReshapeAndCache(
     const cudaStream_t stream,
-    scalar_t* key_out,      // [num_tokens, repeat*num_heads * head_size]
-    scalar_t* value_out,    // [num_tokens, repeat*num_heads * head_size]
-    const scalar_t* key,    // [num_tokens, num_heads * head_size]
-    const scalar_t* value,  // [num_tokens, num_heads * head_size]
-    const int64_t* input_shape,
-    int repeat) {
-  const int unroll_len = 2;
-  dim3 grid(input_shape[0] * input_shape[1] / unroll_len);
-  dim3 block(input_shape[2] > 256 ? 256 : input_shape[2]);
-  if (repeat == 8) {
-    vllm::repeat_key_value_kernel<scalar_t, 8, unroll_len><<<grid, block, 0, stream>>>(
-        static_cast<scalar_t*>(key_out),
-        static_cast<scalar_t*>(value_out),
-        static_cast<const scalar_t*>(key),
-        static_cast<const scalar_t*>(value),
-        input_shape[2], 0);
-  }else if (repeat == 4) {
-    vllm::repeat_key_value_kernel<scalar_t, 4, unroll_len><<<grid, block, 0, stream>>>(
-        static_cast<scalar_t*>(key_out),
-        static_cast<scalar_t*>(value_out),
-        static_cast<const scalar_t*>(key),
-        static_cast<const scalar_t*>(value),
-        input_shape[2], 0);
-  } else {
-    vllm::repeat_key_value_kernel<scalar_t, 0, unroll_len><<<grid, block, 0, stream>>>(
-        static_cast<scalar_t*>(key_out),
-        static_cast<scalar_t*>(value_out),
-        static_cast<const scalar_t*>(key),
-        static_cast<const scalar_t*>(value),
-        input_shape[2], repeat);
-  }
+    const scalar_t* key,          // [batch_size, sequence_length, kv_hidden_size]
+    const scalar_t* value,        // [batch_size, sequence_length, kv_hidden_size]
+    const int32_t* slot_mapping,  // [batch_size, sequence_length]
+    const int64_t batch_size,
+    const int64_t sequence_length,
+    const int64_t kv_hidden_size,
+    scalar_t* key_cache,  // [num_blocks, block_size * kv_hidden_size]
+    scalar_t* value_cache) {
+  dim3 grid(batch_size, sequence_length);
+  dim3 block(std::min(static_cast<int>(kv_hidden_size), 512));
+  Cache<scalar_t><<<grid, block, 0, stream>>>(key, value, key_cache, value_cache,
+                                              slot_mapping, sequence_length, kv_hidden_size);
 }
-template void LaunchRepeatKeyValue<half>(
+
+template void ReshapeAndCache<half>(
     const cudaStream_t stream,
-    half* key_out,      // [num_tokens, repeat*num_heads * head_size]
-    half* value_out,    // [num_tokens, repeat*num_heads * head_size]
-    const half* key,    // [num_tokens, num_heads * head_size]
-    const half* value,  // [num_tokens, num_heads * head_size]
-    const int64_t* input_shape,
-    int repeat);
-template void LaunchRepeatKeyValue<float>(
+    const half* key,              // [batch_size, sequence_length, kv_hidden_size]
+    const half* value,            // [batch_size, sequence_length, kv_hidden_size]
+    const int32_t* slot_mapping,  // [batch_size, sequence_length]
+    const int64_t batch_size,
+    const int64_t sequence_length,
+    const int64_t kv_hidden_size,
+    half* key_cache,  // [num_blocks, block_size * kv_hidden_size]
+    half* value_cache);
+
+template void ReshapeAndCache<float>(
     const cudaStream_t stream,
-    float* key_out,      // [num_tokens, repeat*num_heads * head_size]
-    float* value_out,    // [num_tokens, repeat*num_heads * head_size]
-    const float* key,    // [num_tokens, num_heads * head_size]
-    const float* value,  // [num_tokens, num_heads * head_size]
-    const int64_t* input_shape,
-    int repeat);
+    const float* key,             // [batch_size, sequence_length, kv_hidden_size]
+    const float* value,           // [batch_size, sequence_length, kv_hidden_size]
+    const int32_t* slot_mapping,  // [batch_size, sequence_length]
+    const int64_t batch_size,
+    const int64_t sequence_length,
+    const int64_t kv_hidden_size,
+    float* key_cache,  // [num_blocks, block_size * kv_hidden_size]
+    float* value_cache);
+
 #undef DIVIDE_ROUND_UP
 #undef WARP_SIZE
 #undef MAX

@@ -701,30 +701,53 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     PagedAttention, 1,
     OpSchema()
         .SetDomain(kMSDomain)
-        .SetDoc(PagedAttention_ver1_doc)
-        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-        .Attr("num_kv_heads", "Number of attention  kv heads, GQA/MQA, shared heads", AttributeProto::INT, OPTIONAL_VALUE)
-        .Attr("head_size", "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size", AttributeProto::INT)
-        .Attr("scale", "Custom scale will be used if specified. Default value is 1/sqrt(head_size)", AttributeProto::FLOAT)
-        .Attr("mask_type", "position_mask_type, support [normal, alibi, RoPE]", AttributeProto::STRING)
-        //.AllowUncheckedAttributes()
-        .Input(0, "query", "The input Q-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
-        .Input(1, "key", "The input K-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
-        .Input(2, "value", "The input V-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
-        .Input(3, "key_cache", "Blocked key cache in this layer.", "T2")
-        .Input(4, "value_cache", "Blocked value cache in this layer.", "T2")
-        .Input(5, "block_tables", "Block mappings for each sequence in the batch. Tensor of shape [batch_size, max_num_blocks_per_sequence]", "T1", OpSchema::Optional)
-        .Input(6, "slot_mappings", "Id of the output slot for each sequence in the batch. Tensor of shape [batch_size]", "T1", OpSchema::Optional)
-        .Input(7, "positions", "positions used for RoPE embedding", "T1", OpSchema::Optional)
-        .Input(8, "cos_sin_cache_or_alibi_bais", "cos_sin_cache used for RoPE embedding, alibi for alibi embinding", "T3", OpSchema::Optional)
-        .Input(8, "kv_quant_param", "quantization param for kvcache, like scale and zeropoint", "S", OpSchema::Optional)
-        .Output(0, "output", "Attention output", "T")
+        .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "query",
+               "Query with shape (batch_size, sequence_length, hidden_size)",
+               "T")
+        .Input(1,
+               "key",
+               "Key with shape (batch_size, kv_sequence_length, kv_hidden_size) ",
+               "T")
+        .Input(2,
+               "value",
+               "Value with shape (batch_size, kv_sequence_length, kv_hidden_size)",
+               "T")
+        .Input(3,
+               "key_cache",
+               "Block based key cache with shape (num_blocks, block_size)",
+               "T")
+        .Input(4,
+               "value_cache",
+               "Block based value cache with shape (num_blocks, block_size)",
+               "T")
+        .Input(5,
+               "block_tables",
+               "Mapping of sequence id to block ids where the key and value cache contains the data "
+               "for the sequence. Shape (batch_size, max_num_blocks_per_sequence)",
+               "T1")
+        .Input(6,
+               "slot_mappings",
+               "Slots indices where data assiciated with the sequence is stored in the cache. "
+               "Tensor of shape [batch_size, sequence_length]",
+               "T1")
+        .Input(7,
+               "context_lens",
+               "Context length of each sequence in the batch. Tensor of shape [batch_size]",
+               "T1",
+               OpSchema::Optional)
+        .Output(0,
+                "output", "Attention output",
+                "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"},
                         "Constrain input and output types to float/ tensors.")
-        .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input META types to pointer tensors.")
-        .TypeConstraint("T2", {"tensor(int8)", "tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "kvcache and quant scale")
-        .TypeConstraint("T3", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "alibi scopt or cos_sin_cache")
-        .TypeConstraint("S", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "Constrain kv quant scales (zero-points if used) to float tensors.")
+        .TypeConstraint("T1", {"tensor(int32)"}, "Constrain the index types to int32 tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateShapeAndTypeFromFirstInputAndParam(ctx);
         }));

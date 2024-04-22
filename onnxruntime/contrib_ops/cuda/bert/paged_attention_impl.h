@@ -91,14 +91,16 @@ void rotary_embedding_neox(
     int dtype);
 
 template <typename scalar_t>
-void LaunchRepeatKeyValue(
+void ReshapeAndCache(
     const cudaStream_t stream,
-    scalar_t* key_out,      // [num_tokens, repeat*num_heads * head_size]
-    scalar_t* value_out,    // [num_tokens, repeat*num_heads * head_size]
-    const scalar_t* key,    // [num_tokens, num_heads * head_size]
-    const scalar_t* value,  // [num_tokens, num_heads * head_size]
-    const int64_t* input_shape,
-    int repeat);
+    const scalar_t* key,          // [batch_size, sequence_length, kv_hidden_size]
+    const scalar_t* value,        // [batch_size, sequence_length, kv_hidden_size]
+    const int32_t* slot_mapping,  // [batch_size, sequence_length]
+    const int64_t batch_size,
+    const int64_t sequence_length,
+    const int64_t kv_hidden_size,
+    scalar_t* key_cache,     // [num_blocks, block_size * kv_hidden_size]
+    scalar_t* value_cache);  // [num_blocks, block_size * kv_hidden_siz]
 
 }  // namespace cuda
 }  // namespace contrib
