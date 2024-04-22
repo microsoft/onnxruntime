@@ -218,10 +218,10 @@ namespace utils {
     case ONNX_NAMESPACE::TensorProto_DataType_INT4:               \
       function<Int4x2>(__VA_ARGS__);                              \
       break;                                                      \
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT4               \
-    function<UInt4x2>(__VA_ARGS__);                               \
-        break;                                                    \
-        default:                                                  \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:              \
+      function<UInt4x2>(__VA_ARGS__);                             \
+      break;                                                      \
+    default:                                                      \
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type); \
   }
 
