@@ -5059,7 +5059,7 @@ Return true if all elements are true and false otherwise.
         }
       });
   
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GemmaRotaryEmbGrad)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GemmaRotaryEmbeddingGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "dY1", "Gradient of output Y1.", "T")

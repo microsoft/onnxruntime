@@ -10,7 +10,6 @@ using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T, U)                               \
@@ -26,6 +25,7 @@ namespace cuda {
       GemmaRotaryEmbeddingGrad<T, U>);
 
 REGISTER_KERNEL_TYPED(MLFloat16, float)
+REGISTER_KERNEL_TYPED(float, float)
 
 template <typename T, typename U>
 GemmaRotaryEmbeddingGrad<T, U>::GemmaRotaryEmbeddingGrad(const OpKernelInfo& info) : CudaKernel(info) {
@@ -35,7 +35,7 @@ template <typename T, typename U>
 Status GemmaRotaryEmbeddingGrad<T, U>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* go0 = context->Input<Tensor>(0);
   const Tensor* go1 = context->Input<Tensor>(1);
-  const Tensor* emb = context->Input<Tensor>(3);
+  const Tensor* emb = context->Input<Tensor>(2);
 
 
   const auto& emb_dims = emb->Shape().GetDims();
@@ -76,5 +76,4 @@ Status GemmaRotaryEmbeddingGrad<T, U>::ComputeInternal(OpKernelContext* context)
 }
 
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime

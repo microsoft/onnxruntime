@@ -6,7 +6,6 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
 template <typename T, typename U>
@@ -25,5 +24,4 @@ Status LaunchGemmaRotaryEmbeddingGradKernel(
     const int dim);
 
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime

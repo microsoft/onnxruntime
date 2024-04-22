@@ -16,14 +16,13 @@ This implementation below subgraph
 using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
 // constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
 constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 
 template <typename T, typename U>
-__global__ void GemmaRotaryEmbGrad(
+__global__ void GemmaRotaryEmbeddingGrad(
                                     T* q_grad, 
                                     T* q_rot_grad, 
                                     T* k_grad, 
@@ -66,7 +65,7 @@ Status LaunchGemmaRotaryEmbeddingGradKernel(
     ) {
   int blocksPerGrid = static_cast<int>(ceil(float(batch_size * num_heads * seq_len * dim) / kThreadsPerBlock));
 
-  GemmaRotaryEmbGrad<<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(
+  GemmaRotaryEmbeddingGrad<<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(
     q_grad, q_rot_grad, k_grad, k_rot_grad,
     go0, go1, emb,
     batch_size, num_heads, seq_len, dim
@@ -89,6 +88,19 @@ template Status LaunchGemmaRotaryEmbeddingGradKernel<half, float>(
     const int seq_len,
     const int dim);
 
+template Status LaunchGemmaRotaryEmbeddingGradKernel<float, float>(
+    cudaStream_t stream,
+    float* q_grad,
+    float* q_rot_grad,
+    float* k_grad,
+    float* k_rot_grad,
+    const float* go0,
+    const float* go1,
+    const float* emb,
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int dim);
+
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime

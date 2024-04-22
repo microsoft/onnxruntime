@@ -6,7 +6,6 @@
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
@@ -19,5 +18,4 @@ class GemmaRotaryEmbeddingGrad final : public CudaKernel {
 };
 
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime
