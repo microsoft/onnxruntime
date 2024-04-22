@@ -170,7 +170,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // potentially will optimize out some nodes defined in the subgraph patterns. So we put it after ReshapeFusion.
       transformers.emplace_back(std::make_unique<ShapeOptimizer>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
-      transformers.emplace_back(std::make_unique<CastSceLossFusion>(compatible_eps));
 
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
@@ -190,6 +189,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
                                                                      config.propagate_cast_ops_config.allow,
                                                                      cuda_execution_provider));
       }
+      transformers.emplace_back(std::make_unique<CastSceLossFusion>(compatible_eps));
 
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));

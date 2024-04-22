@@ -30,7 +30,7 @@ Status CastSceLossFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    Node* input_node = graph.GetNode(node.InputNodesBegin()->Index());
+    Node* input_node = graph.GetMutableProducerNode(node.MutableInputDefs()[0]->Name());
 
     if (!(graph_utils::IsSupportedOptypeVersionAndDomain(*input_node, "Cast", {9, 13, 19}))) {
       continue;
