@@ -16,7 +16,14 @@ import unittest
 import numpy
 import torch
 from bert_padding import pad_input, unpad_input
-from colorama import Fore, init
+
+try:
+    from colorama import Fore, init
+
+    init(autoreset=True)
+except ImportError:
+    print("colorama is not installed, please install it to get prettier output")
+    Fore = None
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 
@@ -25,9 +32,6 @@ from onnxruntime import InferenceSession, OrtValue, SessionOptions
 torch.manual_seed(0)
 
 pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
-
-# Initialize colorama
-init(autoreset=True)
 
 
 class Formats:
@@ -1159,7 +1163,10 @@ def parity_check_gqa_prompt(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    if Fore is not None:
+        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    else:
+        correct = "True" if all_close else "False"
     print(
         "KV-buffer",
         " packed:",
@@ -1325,7 +1332,10 @@ def parity_check_gqa_prompt_no_buff(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    if Fore is not None:
+        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    else:
+        correct = "True" if all_close else "False"
     print(
         "No buff",
         " packed:",
@@ -1522,7 +1532,10 @@ def parity_check_gqa_past(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    if Fore is not None:
+        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    else:
+        correct = "True" if all_close else "False"
     print(
         "KV-buffer",
         "past kv format:",
@@ -1726,7 +1739,10 @@ def parity_check_gqa_past_no_buff(
     #     print("out", out)
     #     print("out_ref", out_ref)
     #     print(out - out_ref)
-    correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    if Fore is not None:
+        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    else:
+        correct = "True" if all_close else "False"
     print(
         "NO buff",
         " packed:",
@@ -1790,7 +1806,7 @@ class TestGQA(unittest.TestCase):
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
                                 for packed in [False, True]:
-                                    config = PromptConfig(3, sq, skv, sq + skv + 8, n, n2, h)
+                                    config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
                                     past_kv_format = Formats.BNSH
                                     parity_check_gqa_prompt(
                                         config,
