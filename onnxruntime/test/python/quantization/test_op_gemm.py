@@ -318,7 +318,7 @@ class TestOpGemm(unittest.TestCase):
             weight_type=QuantType.QUInt8,
         )
 
-    @unittest.skip(reason="Shape inference bug, see onnx PR #6049")
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
     def test_quantize_qop_gemm_s8s8(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
@@ -366,7 +366,7 @@ class TestOpGemm(unittest.TestCase):
             calibrate_method=CalibrationMethod.Distribution,
         )
 
-    @unittest.skip(reason="Shape inference bug, see onnx PR #6049")
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
     def test_quantize_qop_gemm_e4m3fn_same(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
@@ -397,7 +397,7 @@ class TestOpGemm(unittest.TestCase):
             calibrate_method=CalibrationMethod.Distribution,
         )
 
-    @unittest.skip(reason="Shape inference bug, see onnx PR #6049")
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
     def test_quantize_qop_gemm_e4m3fn_p3(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"

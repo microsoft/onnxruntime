@@ -5,11 +5,11 @@
 #include <sstream>
 #include <fstream>
 
-#include "ov_interface.h"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/pass/constant_folding.hpp"
 #include "core/providers/shared_library/provider_api.h"
-#include "backend_utils.h"
+#include "core/providers/openvino/backend_utils.h"
+#include "core/providers/openvino/ov_interface.h"
 
 using Exception = ov::Exception;
 
