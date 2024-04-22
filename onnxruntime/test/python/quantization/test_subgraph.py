@@ -25,7 +25,7 @@ class TestDynamicQuantizationSubgraph(unittest.TestCase):
             except urllib.request.HTTPError as e:
                 # The unit test should not fail for this kind of issue.
                 # TODO: use another way to retrieve the model.
-                raise unittest.SkipTest(f"Unable to fetch {url!r} due to {e}")
+                raise unittest.SkipTest(f"Unable to fetch {url!r} due to {e}")  # noqa: B904
 
             quantize_dynamic(
                 model_input=onnx_path,
