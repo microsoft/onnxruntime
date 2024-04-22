@@ -30,6 +30,15 @@ const char* CudaErrString<cudaError_t>(cudaError_t x) {
   return cudaGetErrorString(x);
 }
 
+template <>
+const char* CudaErrString<CUresult>(CUresult x) {
+  cudaDeviceSynchronize();
+  const char* str;
+  auto status = cuGetErrorString(x, &str);
+  ORT_UNUSED_PARAMETER(status);
+  return str;
+}
+
 #ifndef USE_CUDA_MINIMAL
 template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
@@ -132,6 +141,8 @@ std::conditional_t<THRW, void, Status> CudaCall(
   }
 }
 
+template Status CudaCall<CUresult, false>(CUresult retCode, const char* exprString, const char* libName, CUresult successCode, const char* msg, const char* file, const int line);
+template void CudaCall<CUresult, true>(CUresult retCode, const char* exprString, const char* libName, CUresult successCode, const char* msg, const char* file, const int line);
 template Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
 #ifndef USE_CUDA_MINIMAL
