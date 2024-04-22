@@ -255,14 +255,12 @@ else()
       "SHELL:-s ASSERTIONS=2"
       "SHELL:-s SAFE_HEAP=1"
       "SHELL:-s STACK_OVERFLOW_CHECK=2"
-      "SHELL:-s DEMANGLE_SUPPORT=1"
     )
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ASSERTIONS=0"
       "SHELL:-s SAFE_HEAP=0"
       "SHELL:-s STACK_OVERFLOW_CHECK=0"
-      "SHELL:-s DEMANGLE_SUPPORT=0"
       --closure 1
     )
   endif()

@@ -156,7 +156,15 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
     test.SetOutputAbsErr("Y", fp16_abs_error);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+
+#ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+
+#ifdef USE_DML
+    execution_providers.push_back(DefaultDmlExecutionProvider());
+#endif
+
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else {
     test.AddInput<float>("A", {M, K}, input0_vals, false);
@@ -205,7 +213,7 @@ TEST(MatMulNBits, Float32) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
-#ifdef ORT_NEURAL_SPEED
+#if defined(ORT_NEURAL_SPEED) || defined(USE_DML)
           for (auto accuracy_level : {0, 1, 4}) {
             RunTest(M, N, K, block_size, accuracy_level, false, false);
             RunTest(M, N, K, block_size, accuracy_level, true, false);
@@ -224,15 +232,25 @@ TEST(MatMulNBits, Float32) {
   }
 }
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) || defined(USE_DML)
 TEST(MatMulNBits, Float16) {
+#ifdef USE_CUDA
+  auto has_gidx_options = {true, false};
+#else
+  auto has_gidx_options = {false};
+#endif
+
   for (auto M : {1, 2, 100}) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
-          for (auto has_gidx : {true, false}) {
+          for (auto has_gidx : has_gidx_options) {
+#ifdef USE_DML
+            RunTest(M, N, K, block_size, 0, false, true, has_gidx, true, 0.04f);
+#else
             RunTest(M, N, K, block_size, 0, false, true, has_gidx);
             RunTest(M, N, K, block_size, 0, true, true, has_gidx, false);
+#endif
           }
         }
       }
@@ -241,11 +259,21 @@ TEST(MatMulNBits, Float16) {
 }
 
 TEST(MatMulNBits, Float16Large) {
+#ifdef USE_DML
+  // For some reason, the A10 machine that runs these tests during CI has a much bigger error than all retail
+  // machines we tested on. All consumer-grade machines from Nvidia/AMD/Intel seem to pass these tests with an
+  // absolute error of 0.08, but the A10 has errors going as high as 0.22. Ultimately, given the large number
+  // of elements in this test, ULPs should probably be used instead of absolute/relative tolerances.
+  float abs_error = 0.3f;
+#else
+  float abs_error = 0.05f;
+#endif
+
   for (auto block_size : {16, 32, 64, 128}) {
     for (auto symmetric : {false, true}) {
-      RunTest(1, 4096, 4096, block_size, 0, symmetric, true, false, true, 0.05f);
-      RunTest(1, 4096, 11008, block_size, 0, symmetric, true, false, true, 0.05f);
-      RunTest(1, 11008, 4096, block_size, 0, symmetric, true, false, true, 0.05f);
+      RunTest(1, 4096, 4096, block_size, 0, symmetric, true, false, true, abs_error);
+      RunTest(1, 4096, 11008, block_size, 0, symmetric, true, false, true, abs_error);
+      RunTest(1, 11008, 4096, block_size, 0, symmetric, true, false, true, abs_error);
     }
   }
 }

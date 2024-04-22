@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/float16.h"
 #include "core/util/qmath.h"
 
 #include "test/optimizer/qdq_test_utils.h"
@@ -266,6 +267,9 @@ struct TestInputDef {
   bool has_range_override_{false};
   std::pair<T, T> range_override_;
 };
+
+// Convert a float input definition to a float16 input definition.
+TestInputDef<MLFloat16> ConvertToFP16InputDef(const TestInputDef<float>& input_def);
 
 template <typename QType>
 inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& input_def, bool symmetric = false) {
