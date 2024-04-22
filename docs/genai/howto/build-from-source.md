@@ -86,7 +86,7 @@ Build from source and copy the include and libraries into `ORT_HOME`
 
 On Windows
 
-```cmd
+```bash
 build.bat --build_shared_lib --skip_tests --parallel [--use_dml | --use_cuda] --config Release
 copy include\onnxruntime\core\session\onnxruntime_c_api.h <ORT_HOME>\include
 copy build\Windows\Release\Release\*.dll <ORT_HOME>\lib
@@ -95,7 +95,7 @@ copy build\Windows\Release\Release\onnxruntime.lib <ORTHOME>\lib
 
 If building for DirectML
 
-```cmd
+```bash
 copy include\onnxruntime\core\providers\dml\dml_provider_factory.h <ORT_HOME>\include
 ```
 
