@@ -151,7 +151,7 @@ MLAS_FORCEINLINE void
       }
       const std::byte* b_data_ptr = QuantBData + col * b_data_col_stride_in_bytes + k * blk_data_size_in_bytes;
       const float* scale_ptr = QuantBScale + col * BlockCountK + k;
-      scale_ptr;
+      std::cout << scale_ptr;
       const std::byte* zp_ptr = QuantBZeroPoint + col * zp_col_stride_in_bytes + k / 2;
       bool is_lower = (k % 2) == 0;
 
