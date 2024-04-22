@@ -424,6 +424,74 @@ TEST(QuantizeLinearOpTest, UInt4) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+template <typename T>
+static void GetExpectedInt4Quant(const float* input, Int4x2Base<T>* output, size_t num_elems, float scale,
+                                 T zero_point) {
+  for (size_t n = 0; n < num_elems; n++) {
+    float float_val = std::nearbyintf(input[n] / scale) + float(zero_point);
+    float_val = std::max(float_val, static_cast<float>(Int4x2Base<T>::min_val));
+    float_val = std::min(float_val, static_cast<float>(Int4x2Base<T>::max_val));
+
+    T int_val = static_cast<T>(float_val);
+
+    size_t i = n >> 1;
+    size_t j = n & 0x1;
+    output[i].SetElem(j, int_val);
+  }
+}
+
+// Test int4 QuantizeLinear (per tensor) with a "large" and odd number of input elements.
+// This exercises the TryParallelFor call which splits the input into blocks of even size.
+TEST(QuantizeLinearOpTest, OddLarge_Int4) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{1017};
+  constexpr int8_t unused_val = 0;
+  constexpr std::array<float, 6> pattern = {-20.0f, -14.0f, -4.1f, -0.0f, 3.0f, 3.3f};
+  std::vector<float> input_f32s(static_cast<size_t>(dims[0]));
+  std::vector<Int4x2> output((input_f32s.size() + 1) / 2);
+
+  for (size_t i = 0; i < input_f32s.size(); ++i) {
+    input_f32s[i] = pattern[i % pattern.size()];
+  }
+
+  float scale = 2.0f;
+  int8_t zp = 1;
+  GetExpectedInt4Quant(input_f32s.data(), &output[0], input_f32s.size(), scale, zp);
+
+  test.AddInput<float>("x", dims, input_f32s);
+  test.AddInput<float>("scale", {}, {scale}, true);
+  test.AddInput<Int4x2>("zero_point", {}, {Int4x2(zp, unused_val)}, true);
+  test.AddOutput<Int4x2>("y", dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test uint4 QuantizeLinear (per tensor) with a "large" and odd number of input elements.
+// This exercises the TryParallelFor call which splits the input into blocks of even size.
+TEST(QuantizeLinearOpTest, OddLarge_UInt4) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{1017};
+  constexpr uint8_t unused_val = 0;
+  constexpr std::array<float, 6> pattern = {-20.0f, -14.0f, -4.1f, -0.0f, 3.0f, 3.3f};
+  std::vector<float> input_f32s(static_cast<size_t>(dims[0]));
+  std::vector<UInt4x2> output((input_f32s.size() + 1) / 2);
+
+  for (size_t i = 0; i < input_f32s.size(); ++i) {
+    input_f32s[i] = pattern[i % pattern.size()];
+  }
+
+  float scale = 2.0f;
+  uint8_t zp = 1;
+  GetExpectedInt4Quant(input_f32s.data(), &output[0], input_f32s.size(), scale, zp);
+
+  test.AddInput<float>("x", dims, input_f32s);
+  test.AddInput<float>("scale", {}, {scale}, true);
+  test.AddInput<UInt4x2>("zero_point", {}, {UInt4x2(zp, unused_val)}, true);
+  test.AddOutput<UInt4x2>("y", dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // quantize with scalar zero point and scale
 TEST(QuantizeLinearOpTest, Int8_NegativeZeroPoint) {
   // TODO: Unskip when fixed #41968513

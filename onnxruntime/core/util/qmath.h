@@ -147,12 +147,13 @@ ParQuantizeLinearStd(const float* Input,
     /* If starting at an int4 element in the middle of a byte, quantize it by itself. */                         \
     if (out_start & 0x1) {                                                                                       \
       int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_start] / Scale)) +                           \
-                     static_cast<int32_t>(ZeroPoint.val_0);                                                      \
+                     static_cast<int32_t>(ZeroPoint.GetElem0());                                                 \
       size_t output_index = out_start >> 1;                                                                      \
                                                                                                                  \
-      Output[output_index].val_1 = static_cast<INT4_TYPE::unpacked_type>(                                        \
+      INT4_TYPE::unpacked_type quant_val = static_cast<INT4_TYPE::unpacked_type>(                                \
           std::min(static_cast<int32_t>(INT4_TYPE::max_val),                                                     \
                    std::max(static_cast<int32_t>(INT4_TYPE::min_val), ival)));                                   \
+      Output[output_index].SetElem(1, quant_val);                                                                \
                                                                                                                  \
       out_start += 1;                                                                                            \
       inp_start += 1;                                                                                            \
@@ -161,12 +162,13 @@ ParQuantizeLinearStd(const float* Input,
     /* If ending at element that ends in the middle of a byte, quantize it by itself. */                         \
     if (out_end & 0x1) {                                                                                         \
       int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_end - 1] / Scale)) +                         \
-                     static_cast<int32_t>(ZeroPoint.val_0);                                                      \
+                     static_cast<int32_t>(ZeroPoint.GetElem0());                                                 \
       size_t output_index = (out_end - 1) >> 1;                                                                  \
                                                                                                                  \
-      Output[output_index].val_0 = static_cast<INT4_TYPE::unpacked_type>(                                        \
+      INT4_TYPE::unpacked_type quant_val = static_cast<INT4_TYPE::unpacked_type>(                                \
           std::min(static_cast<int32_t>(INT4_TYPE::max_val),                                                     \
                    std::max(static_cast<int32_t>(INT4_TYPE::min_val), ival)));                                   \
+      Output[output_index].SetElem(0, quant_val);                                                                \
                                                                                                                  \
       out_end -= 1;                                                                                              \
       inp_end -= 1;                                                                                              \
@@ -202,7 +204,7 @@ ParQuantizeLinearStd(const float* Input,
                     reinterpret_cast<INT4_TYPE::unpacked_type*>(&(Output[out_idx >> 1])),                        \
                     end_idx - begin_idx,                                                                         \
                     Scale,                                                                                       \
-                    ZeroPoint.val_0);                                                                            \
+                    ZeroPoint.GetElem0());                                                                       \
         });                                                                                                      \
   }
 

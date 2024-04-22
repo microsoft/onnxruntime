@@ -238,27 +238,29 @@ struct DequantizeLinearApply {
   }
 };
 
-#define DEQUANTIZE_LINEAR_APPLY_INT4(T)                                                                                                   \
-  template <typename OutT>                                                                                                                \
-  struct DequantizeLinearApply<T, OutT> {                                                                                                 \
-    void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) { \
-      size_t input_index = 0;                                                                                                             \
-      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                                                               \
-        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                                                              \
-          size_t bd_i = bd >> 1;  /*bd / 2*/                                                                                              \
-          size_t bd_j = bd & 0x1; /*bd % 2*/                                                                                              \
-          auto zp = zero_point ? static_cast<int32_t>(zero_point[bd_i][bd_j]) : 0;                                                        \
-          auto sc = static_cast<float>(scale[bd]);                                                                                        \
-          for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {                                                               \
-            size_t input_i = input_index >> 1;                                                                                            \
-            size_t input_j = input_index & 0x1;                                                                                           \
-            *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(input[input_i][input_j]) - zp) * sc);                   \
-            input_index += 1;                                                                                                             \
-          }                                                                                                                               \
-        }                                                                                                                                 \
-      }                                                                                                                                   \
-      assert(input_index == static_cast<size_t>(N * broadcast_dim * block_size));                                                         \
-    }                                                                                                                                     \
+#define DEQUANTIZE_LINEAR_APPLY_INT4(T)                                                              \
+  template <typename OutT>                                                                           \
+  struct DequantizeLinearApply<T, OutT> {                                                            \
+    void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, \
+            OutT* output, const T* zero_point) {                                                     \
+      size_t input_index = 0;                                                                        \
+      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                          \
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                         \
+          size_t bd_i = bd >> 1;  /*bd / 2*/                                                         \
+          size_t bd_j = bd & 0x1; /*bd % 2*/                                                         \
+          auto zp = zero_point ? static_cast<int32_t>(zero_point[bd_i].GetElem(bd_j)) : 0;           \
+          auto sc = static_cast<float>(scale[bd]);                                                   \
+          for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {                          \
+            size_t input_i = input_index >> 1;                                                       \
+            size_t input_j = input_index & 0x1;                                                      \
+            int32_t val = static_cast<int32_t>(input[input_i].GetElem(input_j));                     \
+            *output++ = static_cast<OutT>(static_cast<float>(val - zp) * sc);                        \
+            input_index += 1;                                                                        \
+          }                                                                                          \
+        }                                                                                            \
+      }                                                                                              \
+      assert(input_index == static_cast<size_t>(N * broadcast_dim * block_size));                    \
+    }                                                                                                \
   };
 
 DEQUANTIZE_LINEAR_APPLY_INT4(Int4x2);
@@ -518,7 +520,7 @@ void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const
       for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                                    \
         size_t bd_i = bd >> 1;  /*bd / 2*/                                                                    \
         size_t bd_j = bd & 0x1; /*bd % 2*/                                                                    \
-        INT4_TYPE::unpacked_type zp = zero_point ? zero_point[bd_i][bd_j] : 0;                                \
+        INT4_TYPE::unpacked_type zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                        \
         QUANT_FUNC(input, output, output_index, output_index + static_cast<size_t>(block_size),               \
                    scale[bd], INT4_TYPE(zp, 0), ctx->GetOperatorThreadPool());                                \
         input += block_size;                                                                                  \
@@ -549,7 +551,7 @@ DEFINE_COMPUTE_LOOP_FP32_TO_INT4(UInt4x2, ParQuantizeLinearStdU4)
       for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                                      \
         size_t bd_i = bd >> 1;  /*bd / 2*/                                                                      \
         size_t bd_j = bd & 0x1; /*bd % 2*/                                                                      \
-        INT4_TYPE::unpacked_type zp = zero_point ? zero_point[bd_i][bd_j] : 0;                                  \
+        INT4_TYPE::unpacked_type zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                          \
         ParQuantizeLinearStd<INT4_TYPE::unpacked_type>(input, tmp_buf.get() + tmp_buf_index,                    \
                                                        static_cast<size_t>(block_size), scale[bd],              \
                                                        zp, ctx->GetOperatorThreadPool());                       \

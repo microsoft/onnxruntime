@@ -109,8 +109,8 @@ class MlasQuantizeLinear4BitTest : public MlasTestBase {
       uint8_t Shift = 4 * static_cast<uint8_t>(j);
       UnpackedType Mask = 0xF << Shift;
 
-      OutputReference[i] &= ~Mask; // Clear 4-bit lane
-      OutputReference[i] |= static_cast<UnpackedType>((IntValue & 0xF) << Shift); // Set 4-bit lane
+      OutputReference[i] &= ~Mask;                                                 // Clear 4-bit lane
+      OutputReference[i] |= static_cast<UnpackedType>((IntValue & 0xF) << Shift);  // Set 4-bit lane
     }
   }
 
