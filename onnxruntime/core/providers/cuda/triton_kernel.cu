@@ -157,10 +157,72 @@ Status LaunchTritonKernel(cudaStream_t stream, size_t idx, int grid0, int grid1,
   void* config[] = {CU_LAUNCH_PARAM_BUFFER_POINTER, args, CU_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
                     CU_LAUNCH_PARAM_END};
 
+
+  int value;
+  ORT_TRITON_CHECK(cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, metadata.func), "Failed to get CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK");
+  printf("CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK=%d\n", value);
+
+  ORT_TRITON_CHECK(cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES, metadata.func), "Failed to get CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES");
+  printf("CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES=%d\n", value);
+
+  ORT_TRITON_CHECK(cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES, metadata.func), "Failed to get CU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES");
+  printf("CU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES=%d\n", value);
+
+  ORT_TRITON_CHECK(cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES, metadata.func), "Failed to get CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES");
+  printf("CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES=%d\n", value);
+
+  ORT_TRITON_CHECK(cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_NUM_REGS, metadata.func), "Failed to get CU_FUNC_ATTRIBUTE_NUM_REGS");
+  printf("CU_FUNC_ATTRIBUTE_NUM_REGS=%d\n", value);
+
+  ORT_TRITON_CHECK(cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_PTX_VERSION, metadata.func), "Failed to get CU_FUNC_ATTRIBUTE_PTX_VERSION");
+  printf("CU_FUNC_ATTRIBUTE_PTX_VERSION=%d\n", value);
+
+  ORT_TRITON_CHECK(cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_BINARY_VERSION, metadata.func), "Failed to get CU_FUNC_ATTRIBUTE_BINARY_VERSION");
+  printf("CU_FUNC_ATTRIBUTE_BINARY_VERSION=%d\n", value);
+
+  ORT_TRITON_CHECK(cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, metadata.func), "Failed to get CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES");
+  printf("CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES=%d\n", value);
+
+  ORT_TRITON_CHECK(cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT, metadata.func), "Failed to get CU_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT");
+  printf("CU_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT=%d\n", value);
+
+  //ORT_TRITON_CHECK(cuFuncSetAttribute(metadata.func, CU_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT, 50), "Failed to cudaFuncSetAttribute");
+
+  //ORT_TRITON_CHECK(cuFuncSetAttribute(metadata.func, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, metadata.shared_mem_size),  "Failed to cudaFuncSetAttribute");
+  size_t stack_size_limit;
+  if (cudaDeviceGetLimit(&stack_size_limit, cudaLimitStackSize) == cudaSuccess) {
+    printf("cudaLimitStackSize=%d\n", static_cast<int>(stack_size_limit));
+  }
+
+  constexpr int DEFAULT_SMEM_SIZE = 48 * 1024;
+  if (metadata.shared_mem_size >= DEFAULT_SMEM_SIZE) {
+    int32_t deviceID{0};
+    cudaGetDevice(&deviceID);
+
+    int32_t sharedMemPerMultiprocessor{0};
+    if (cudaDeviceGetAttribute(
+            &sharedMemPerMultiprocessor, cudaDevAttrMaxSharedMemoryPerBlockOptin, deviceID) != cudaSuccess ||
+        sharedMemPerMultiprocessor < static_cast<int32_t>(metadata.shared_mem_size)) {
+      // skip load function because not enough shared memory to launch the kernel
+      printf("skip loading triton kernel because no enough shared memory");
+    }
+  }
+  if (metadata.shared_mem_size >= DEFAULT_SMEM_SIZE) {
+    if (CUDA_SUCCESS != cuFuncSetAttribute(metadata.func,
+                                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                                           metadata.shared_mem_size)) {
+      printf("skip loading triton kernel because no enough shared memory");
+    }
+  }
+
   ORT_TRITON_CHECK(cuLaunchKernel(metadata.func,
-                                  grid0, grid1, grid2,
-                                  threads_per_block, 1, 1,
-                                  metadata.shared_mem_size,
+                                  static_cast<uint32_t>(grid0),
+                                  static_cast<uint32_t>(grid1),
+                                  static_cast<uint32_t>(grid2),
+                                  static_cast<uint32_t>(threads_per_block),
+                                  static_cast<uint32_t>(1),
+                                  static_cast<uint32_t>(1),
+                                  static_cast<uint32_t>(metadata.shared_mem_size),
                                   stream,
                                   nullptr,
                                   (void**)&config),
