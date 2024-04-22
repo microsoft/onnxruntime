@@ -157,36 +157,39 @@ MLAS_FORCEINLINE void
       const float* scale_ptr = QuantBScale + col * BlockCountK + k;
       const std::byte* zp_ptr = QuantBZeroPoint + col * zp_col_stride_in_bytes + k / 2;
       bool is_lower = (k % 2) == 0;
-      std::cout << is_lower << zp_ptr << scale_ptr << b_data_ptr << dst_ptr << tile_count << cols;
+      std::cout << is_lower << zp_ptr << scale_ptr
+                << b_data_ptr << dst_ptr << tile_count << cols << std::endl;
 
       //__m256i weight_16_epi16[NCols8];
       //__m256 scale_8_ps[NCols8];
-      //UnrolledLoop<NCols8>([&](size_t col_) {
-      //  if ((int)col_ < cols) {
-      //    // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
-      //    __m128i bvi = _mm_loadl_epi64((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
-      //    const __m128i lower = _mm_and_si128(bvi, low_mask);
-      //    const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask), 8);
-      //    __m128i weight_16_epi8 = _mm_add_epi8(upper, lower);
+      UnrolledLoop<NCols8>([&](size_t col_) {
+        if ((int)col_ < cols) {
+          // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
+          std::cout << col_ << std::endl;
+          __m128i bvi = _mm_loadl_epi64((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
+          std::cout << _mm_extract_epi16(bvi, 0) << std::endl;
+          //const __m128i lower = _mm_and_si128(bvi, low_mask);
+          //const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask), 8);
+          //__m128i weight_16_epi8 = _mm_add_epi8(upper, lower);
 
-      //    if (HasZeroPoint) {
-      //      std::byte zp_packed = *(zp_ptr + col_ * zp_col_stride_in_bytes);
-      //      uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
-      //      weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, _mm_set1_epi8(zp));
-      //    } else {
-      //      const __m128i eight = _mm_set1_epi8(8);
-      //      weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, eight);
-      //    }
-      //    std::cout << _mm_extract_epi8(weight_16_epi8, 0) << std::endl;
-      //    //weight_16_epi16[col_] = _mm256_cvtepi8_epi16(weight_16_epi8);
-      //    //scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
-      //  } else {
-      //    //weight_16_epi16[col_] = _mm256_setzero_si256();
-      //    //scale_8_ps[col_] = _mm256_setzero_ps();
-      //  }
-      //  //std::cout << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
-      //  //std::cout << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
-      //});
+          //if (HasZeroPoint) {
+          //  std::byte zp_packed = *(zp_ptr + col_ * zp_col_stride_in_bytes);
+          //  uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
+          //  weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, _mm_set1_epi8(zp));
+          //} else {
+          //  const __m128i eight = _mm_set1_epi8(8);
+          //  weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, eight);
+          //}
+          //std::cout << _mm_extract_epi8(weight_16_epi8, 0) << std::endl;
+          //weight_16_epi16[col_] = _mm256_cvtepi8_epi16(weight_16_epi8);
+          //scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
+        } else {
+          //weight_16_epi16[col_] = _mm256_setzero_si256();
+          //scale_8_ps[col_] = _mm256_setzero_ps();
+        }
+        //std::cout << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
+        //std::cout << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
+      });
       //for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
       //  int kklen = klen - i_of_2 * 8;
       //  if (kklen <= 0)
