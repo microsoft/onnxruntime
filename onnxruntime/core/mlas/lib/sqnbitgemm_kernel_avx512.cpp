@@ -140,7 +140,7 @@ MLAS_FORCEINLINE void
   for (size_t col = 0; col < CountN; col += NCols8) {
     const int cols = std::min((int)NCols8, (int)CountN - (int)col);
     for (size_t k = 0; k < BlockCountK; k++) {
-      int klen = std::min((int)BlkLen16, (int)(CountK - (int)k * BlkLen16));
+      //int klen = std::min((int)BlkLen16, (int)(CountK - (int)k * BlkLen16));
       // count # of tiles plus blks of the current tile from top
       const size_t tile_count = col / GemmFloatKernelWidth16;
       float* dst_ptr = FpData + (tile_count * CountK + k * BlkLen16) * GemmFloatKernelWidth16;
@@ -178,76 +178,76 @@ MLAS_FORCEINLINE void
           scale_8_ps[col_] = _mm256_setzero_ps();
         }
         });
-      for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
-        int kklen = klen - i_of_2 * 8;
-        if (kklen <= 0)
-            break;
-        __m256 weight_8_ps[8];
-        for (size_t col_ = 0; col_ < 8; col_++) {
-          if ((int)col_ < cols) {
-            if (i_of_2 == 0) {
-              __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 0));
-              weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
-            } else {
-              __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 1));
-              weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
-            }
-          } else {
-            weight_8_ps[col_] = _mm256_setzero_ps();
-          }
-        }
-        // transpose and store
-        __m256 a0 = _mm256_unpacklo_ps(weight_8_ps[0], weight_8_ps[1]);
-        __m256 a1 = _mm256_unpackhi_ps(weight_8_ps[0], weight_8_ps[1]);
-        __m256 a2 = _mm256_unpacklo_ps(weight_8_ps[2], weight_8_ps[3]);
-        __m256 a3 = _mm256_unpackhi_ps(weight_8_ps[2], weight_8_ps[3]);
-        __m256 a4 = _mm256_unpacklo_ps(weight_8_ps[4], weight_8_ps[5]);
-        __m256 a5 = _mm256_unpackhi_ps(weight_8_ps[4], weight_8_ps[5]);
-        __m256 a6 = _mm256_unpacklo_ps(weight_8_ps[6], weight_8_ps[7]);
-        __m256 a7 = _mm256_unpackhi_ps(weight_8_ps[6], weight_8_ps[7]);
+      //for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
+      //  int kklen = klen - i_of_2 * 8;
+      //  if (kklen <= 0)
+      //      break;
+      //  __m256 weight_8_ps[8];
+      //  for (size_t col_ = 0; col_ < 8; col_++) {
+      //    if ((int)col_ < cols) {
+      //      if (i_of_2 == 0) {
+      //        __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 0));
+      //        weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
+      //      } else {
+      //        __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 1));
+      //        weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
+      //      }
+      //    } else {
+      //      weight_8_ps[col_] = _mm256_setzero_ps();
+      //    }
+      //  }
+      //  // transpose and store
+      //  __m256 a0 = _mm256_unpacklo_ps(weight_8_ps[0], weight_8_ps[1]);
+      //  __m256 a1 = _mm256_unpackhi_ps(weight_8_ps[0], weight_8_ps[1]);
+      //  __m256 a2 = _mm256_unpacklo_ps(weight_8_ps[2], weight_8_ps[3]);
+      //  __m256 a3 = _mm256_unpackhi_ps(weight_8_ps[2], weight_8_ps[3]);
+      //  __m256 a4 = _mm256_unpacklo_ps(weight_8_ps[4], weight_8_ps[5]);
+      //  __m256 a5 = _mm256_unpackhi_ps(weight_8_ps[4], weight_8_ps[5]);
+      //  __m256 a6 = _mm256_unpacklo_ps(weight_8_ps[6], weight_8_ps[7]);
+      //  __m256 a7 = _mm256_unpackhi_ps(weight_8_ps[6], weight_8_ps[7]);
 
-        __m256 b0 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(1, 0, 1, 0));
-        __m256 b1 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(3, 2, 3, 2));
-        __m256 b2 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(1, 0, 1, 0));
-        __m256 b3 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(3, 2, 3, 2));
-        __m256 b4 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(1, 0, 1, 0));
-        __m256 b5 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(3, 2, 3, 2));
-        __m256 b6 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(1, 0, 1, 0));
-        __m256 b7 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(3, 2, 3, 2));
+      //  __m256 b0 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(1, 0, 1, 0));
+      //  __m256 b1 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(3, 2, 3, 2));
+      //  __m256 b2 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(1, 0, 1, 0));
+      //  __m256 b3 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(3, 2, 3, 2));
+      //  __m256 b4 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(1, 0, 1, 0));
+      //  __m256 b5 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(3, 2, 3, 2));
+      //  __m256 b6 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(1, 0, 1, 0));
+      //  __m256 b7 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(3, 2, 3, 2));
 
-        // next i_of_2th row
-        const size_t ij_offset_in_k = i_of_2 * 8 * GemmFloatKernelWidth16;
-        __m256 weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x20);
-        _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 0 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        if (--kklen > 0) {
-          weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x20);
-          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 1 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        }
-        if (--kklen > 0) {
-          weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x20);
-          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 2 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        }
-        if (--kklen > 0) {
-          weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x20);
-          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 3 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        }
-        if (--kklen > 0) {
-          weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x31);
-          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 4 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        }
-        if (--kklen > 0) {
-          weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x31);
-          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 5 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        }
-        if (--kklen > 0) {
-          weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x31);
-          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 6 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        }
-        if (--kklen > 0) {
-          weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x31);
-          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 7 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-        }
-      }
+      //  // next i_of_2th row
+      //  const size_t ij_offset_in_k = i_of_2 * 8 * GemmFloatKernelWidth16;
+      //  __m256 weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x20);
+      //  _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 0 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+      //  if (--kklen > 0) {
+      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x20);
+      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 1 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+      //  }
+      //  if (--kklen > 0) {
+      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x20);
+      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 2 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+      //  }
+      //  if (--kklen > 0) {
+      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x20);
+      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 3 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+      //  }
+      //  if (--kklen > 0) {
+      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x31);
+      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 4 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+      //  }
+      //  if (--kklen > 0) {
+      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x31);
+      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 5 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+      //  }
+      //  if (--kklen > 0) {
+      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x31);
+      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 6 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+      //  }
+      //  if (--kklen > 0) {
+      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x31);
+      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 7 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+      //  }
+      //}
     }
   }
 }
