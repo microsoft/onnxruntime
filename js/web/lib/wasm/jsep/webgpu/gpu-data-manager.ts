@@ -76,7 +76,6 @@ interface StorageCacheValue {
   originalSize: number;
 }
 
-/* eslint-disable */
 const bucketFreelist: Map<number, number> = new Map([
   [64, 250],
   [128, 200],
@@ -107,7 +106,6 @@ const bucketFreelist: Map<number, number> = new Map([
   [134217728, 6],
   [167772160, 6],
 ]);
-/* eslint-enable */
 
 const bucketArr: number[] = [];
 
