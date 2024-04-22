@@ -205,7 +205,6 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.externalBuffers = new Map();
     this.capturedPendingBuffers = new Map();
 
-    // eslint-disable-next-line guard-for-in
     for (const [key, ] of bucketFreelist) {
       bucketArr.push(key);
       this.freeBuffers.set(key, []);
