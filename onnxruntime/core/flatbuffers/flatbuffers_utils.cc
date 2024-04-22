@@ -315,5 +315,4 @@ bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
   return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
          fbs::InferenceSessionBufferHasIdentifier(bytes);
 }
-
 }  // namespace onnxruntime::fbs::utils
