@@ -35,6 +35,7 @@ from .quant_utils import (
     find_by_name,
     get_qmin_qmax_for_qType,
     ms_domain,
+    normalize_axis,
     tensor_proto_to_array,
 )
 from .registry import CreateQDQQuantizer
@@ -186,20 +187,22 @@ class QDQQuantizer(BaseQuantizer):
 
         self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else None
 
-        # The ONNX spec does not yet support 16-bit Q/DQ ops. So, must override the Q/DQ op domain to 'com.microsoft'
-        # if the activation or weight types are 16-bit integers.
-        # TODO: Remove this override (and use only the 'UseQDQContribOps' option) if/when ONNX adds 16-bit support.
-        int16_types = (TensorProto.UINT16, TensorProto.INT16)
-        overrides_have_int16 = any(t.tensor_type in int16_types for t in self.tensor_quant_override_qtypes)
-        if not self.qdq_op_domain and (
-            self.activation_qType in int16_types or self.weight_qType in int16_types or overrides_have_int16
-        ):
-            logging.warning(
-                "ONNX QuantizeLinear and DequantizeLinear operators do not support 16-bit integer quantization types. "
-                f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
-                "enable support."
-            )
-            self.qdq_op_domain = ms_domain
+        # The ONNX spec did not support 16-bit Q/DQ ops before opset 21.
+        # So, may have to override the Q/DQ op domain to 'com.microsoft' if the activation or weight types
+        # are 16-bit integers.
+        if self.opset_version < 21:
+            int16_types = (TensorProto.UINT16, TensorProto.INT16)
+            overrides_have_int16 = any(t.tensor_type in int16_types for t in self.tensor_quant_override_qtypes)
+            if not self.qdq_op_domain and (
+                self.activation_qType in int16_types or self.weight_qType in int16_types or overrides_have_int16
+            ):
+                logging.warning(
+                    "ONNX QuantizeLinear and DequantizeLinear operators do not support "
+                    "16-bit integer quantization types prior to opset 21. "
+                    f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
+                    "enable support."
+                )
+                self.qdq_op_domain = ms_domain
 
         self.quantization_params = self.calc_graph_quant_params()
 
@@ -335,8 +338,9 @@ class QDQQuantizer(BaseQuantizer):
             logging.info(
                 f"Quantizing bias tensor '{bias_name}' as a weight due to the presence of user-specified overrides"
             )
-            if self.per_channel:
-                self.quantize_weight_tensor_per_channel(bias_name, 0)
+            is_per_channel, axis = self.is_tensor_per_channel(bias_name, default_axis=0)
+            if is_per_channel:
+                self.quantize_weight_tensor_per_channel(bias_name, axis)
             else:
                 self.quantize_weight_tensor(bias_name)
             return
@@ -471,6 +475,7 @@ class QDQQuantizer(BaseQuantizer):
             qtype = self.activation_qType
             if self.activation_qType == onnx.onnx_pb.TensorProto.UINT8:
                 qtype = onnx_proto.TensorProto.INT8
+
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
                 weight_name,
                 # Quantization type is forced to be TensorProto.INT8.
@@ -930,6 +935,56 @@ class QDQQuantizer(BaseQuantizer):
         self.quantized_value_map[weight.name] = QDQTensorQuantizedValue(quantized_value, None, None)
         return q_weight_name, zp_name, scale_name
 
+    def is_tensor_per_channel(
+        self,
+        tensor_name: str,
+        default_axis: int,
+        op_type: str | None = None,
+    ) -> tuple[bool, int | None]:
+        """
+        Checks if a given tensor is configured to be quantized per-channel. If so, also returns the channel axis.
+
+        ORT only supports per-channel quantization on static weights (i.e., ONNX initializers). If the user did not provide
+        tensor quantization overrides for this tensor, then the value of self.per_channel determines if the weight
+        is to be quantized per-channel.
+
+        Params:
+            tensor_name: The name of the tensor to check.
+            default_axis: The default channel axis. This method checks if the normalized axis is within bounds.
+                          Can be overridden via the extra_options 'QDQOpTypePerChannelSupportToAxis'
+                          and 'TensorQuantOverrides'.
+            op_type: Optional, defaults to None. The operator type that is the only consumer of this weight.
+                     Used to access the extra option 'QDQOpTypePerChannelSupportToAxis'.
+        Returns:
+            A tuple (is_per_channel, axis) in which the first element indicates whether the tensor is
+            quantized per-channel and the second element is the channel axis.
+            The returned axis is only None if the tensor is not per-channel or the axis is out of bounds.
+        """
+        weight_initializer = self.initializers.get(tensor_name)
+        if weight_initializer is None:
+            return False, None  # Only support per-channel weights
+
+        if self.tensor_quant_overrides.has_per_tensor_overrides(tensor_name):
+            return False, None  # User provided per-tensor overrides for this initializer
+
+        has_per_chan_overrides = self.tensor_quant_overrides.has_per_channel_overrides(tensor_name)
+        if not self.per_channel and not has_per_chan_overrides:
+            return False, None  # global self.per_channel is off and user did not provide per-channel overrides.
+
+        axis = self.qdq_op_type_per_channel_support_to_axis.get(op_type, default_axis) if op_type else default_axis
+        if has_per_chan_overrides:
+            per_chan_overrides = self.tensor_quant_overrides.get_per_channel_overrides(tensor_name)
+            axis = per_chan_overrides[0]["axis"]  # Prefer axis from user-specified tensor-level overrides if available
+
+        weight_nparray = tensor_proto_to_array(weight_initializer)
+        weight_rank = len(weight_nparray.shape)
+        axis_valid, axis = normalize_axis(axis, weight_rank)
+        if not axis_valid:
+            logging.warning(f"Axis {axis} is out-of-range for weight '{tensor_name}' with rank {weight_rank}")
+            return False, None
+
+        return True, axis
+
     def quantize_weight_per_channel(
         self,
         weight_name: str,
@@ -1106,7 +1161,7 @@ class QDQQuantizer(BaseQuantizer):
             if not isinstance(td, TensorData):
                 raise TypeError(f"Unexpected type {type(td)} for {tensor_name!r}.")
 
-            quant_overrides = self.tensor_quant_overrides.get_per_tensor_overrides(tensor_name)
+            quant_overrides = self.tensor_quant_overrides.get_per_tensor_overrides(tensor_name, default_val={})
             original = self.calc_quant_params(td, quant_overrides)
             converted = None
             converted_recv_nodes = None

@@ -318,7 +318,8 @@ class TestOpGemm(unittest.TestCase):
             weight_type=QuantType.QUInt8,
         )
 
-    def test_quantize_gemm_s8s8(self):
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
+    def test_quantize_qop_gemm_s8s8(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
         self.construct_model_gemm(model_fp32_path)
@@ -331,6 +332,17 @@ class TestOpGemm(unittest.TestCase):
             weight_type=QuantType.QInt8,
             extra_options={"ActivationSymmetric": True},
         )
+
+        # dynamic quantization doesn't support activation:int8
+        # self.dynamic_quant_test(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
+        #                        extra_options={'ActivationSymmetric': True})
+
+    def test_quantize_qdq_gemm_s8s8(self):
+        np.random.seed(1)
+        model_fp32_path = "gemm_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
         self.static_quant_test_qdq(
             model_fp32_path,
             data_reader,
@@ -339,11 +351,7 @@ class TestOpGemm(unittest.TestCase):
             extra_options={"ActivationSymmetric": True},
         )
 
-        # dynamic quantization doesn't support activation:int8
-        # self.dynamic_quant_test(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
-        #                        extra_options={'ActivationSymmetric': True})
-
-    def test_quantize_gemm_e4m3fn_same(self):
+    def test_quantize_qdq_gemm_e4m3fn_same(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
         self.construct_model_gemm(model_fp32_path, add_clip=False)
@@ -357,6 +365,14 @@ class TestOpGemm(unittest.TestCase):
             extra_options={"scenario": "same"},
             calibrate_method=CalibrationMethod.Distribution,
         )
+
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
+    def test_quantize_qop_gemm_e4m3fn_same(self):
+        np.random.seed(1)
+        model_fp32_path = "gemm_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path, add_clip=False)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
         self.static_quant_test(
             model_fp32_path,
             data_reader,
@@ -366,7 +382,7 @@ class TestOpGemm(unittest.TestCase):
             calibrate_method=CalibrationMethod.Distribution,
         )
 
-    def test_quantize_gemm_e4m3fn_p3(self):
+    def test_quantize_qdq_gemm_e4m3fn_p3(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
         self.construct_model_gemm(model_fp32_path, add_clip=False)
@@ -380,6 +396,14 @@ class TestOpGemm(unittest.TestCase):
             extra_options={"scenario": "p3"},
             calibrate_method=CalibrationMethod.Distribution,
         )
+
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
+    def test_quantize_qop_gemm_e4m3fn_p3(self):
+        np.random.seed(1)
+        model_fp32_path = "gemm_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path, add_clip=False)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
         self.static_quant_test(
             model_fp32_path,
             data_reader,
