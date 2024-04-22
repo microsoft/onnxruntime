@@ -98,7 +98,7 @@ class MlasQuantizeLinear4BitTest : public MlasTestBase {
   void GenerateReference(const float* Input, UnpackedType* OutputReference, size_t N, float Scale,
                          UnpackedType ZeroPoint) {
     for (size_t n = 0; n < N; n++) {
-      float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
+      float FloatValue = std::nearbyintf(Input[n] / Scale) + static_cast<float>(ZeroPoint);
       FloatValue = std::max(FloatValue, static_cast<float>(MinVal()));
       FloatValue = std::min(FloatValue, static_cast<float>(MaxVal()));
 
@@ -150,16 +150,13 @@ class MlasQuantizeLinear4BitTest : public MlasTestBase {
     for (size_t n = 0; n < N; n++) {
       size_t i = n >> 1;
       size_t j = n & 0x1;
-
-      if (j == 0) {
-        ASSERT_EQ(Output[i] & 0xF, OutputReference[i] & 0xF) << ", size=" << N
-                                                             << ", index=" << n
-                                                             << ", nibble=" << j;
-      } else {
-        ASSERT_EQ((Output[i] >> 4) & 0xF, (OutputReference[i] >> 4) & 0xF) << ", size=" << N
-                                                                           << ", index=" << n
-                                                                           << ", nibble=" << j;
-      }
+      const uint8_t Shift = 4 * static_cast<uint8_t>(j);
+      const uint8_t Unshift = 4 - Shift;
+      UnpackedType actual_val = static_cast<UnpackedType>((Output[i] >> Shift) << Unshift) >> Unshift;
+      UnpackedType expected_val = static_cast<UnpackedType>((OutputReference[i] >> Shift) << Unshift) >> Unshift;
+      ASSERT_EQ(actual_val, expected_val) << ", size=" << N
+                                          << ", index=" << n
+                                          << ", nibble=" << j;
     }
   }
 

@@ -5,6 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#include <utility>
 #include "core/framework/node_unit.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 

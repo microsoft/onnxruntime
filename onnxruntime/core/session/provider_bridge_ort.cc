@@ -844,8 +844,12 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>(); }
 #endif
-  MLDataType DataTypeImpl__GetSparseTensorType_Int4x2() override { return DataTypeImpl::GetSparseTensorType<Int4x2>(); }
-  MLDataType DataTypeImpl__GetSparseTensorType_UInt4x2() override { return DataTypeImpl::GetSparseTensorType<UInt4x2>(); }
+  MLDataType DataTypeImpl__GetSparseTensorType_Int4x2() override {
+    return DataTypeImpl::GetSparseTensorType<Int4x2>();
+  }
+  MLDataType DataTypeImpl__GetSparseTensorType_UInt4x2() override {
+    return DataTypeImpl::GetSparseTensorType<UInt4x2>();
+  }
 #endif
 
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }

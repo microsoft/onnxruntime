@@ -428,7 +428,7 @@ template <typename T>
 static void GetExpectedInt4Quant(const float* input, Int4x2Base<T>* output, size_t num_elems, float scale,
                                  T zero_point) {
   for (size_t n = 0; n < num_elems; n++) {
-    float float_val = std::nearbyintf(input[n] / scale) + float(zero_point);
+    float float_val = std::nearbyintf(input[n] / scale) + static_cast<float>(zero_point);
     float_val = std::max(float_val, static_cast<float>(Int4x2Base<T>::min_val));
     float_val = std::min(float_val, static_cast<float>(Int4x2Base<T>::max_val));
 

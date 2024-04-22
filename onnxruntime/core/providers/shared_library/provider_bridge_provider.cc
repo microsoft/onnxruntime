@@ -257,9 +257,13 @@ template <>
 MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ(); }
 #endif
 template <>
-MLDataType DataTypeImpl::GetSparseTensorType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Int4x2(); }
+MLDataType DataTypeImpl::GetSparseTensorType<Int4x2>() {
+  return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Int4x2();
+}
 template <>
-MLDataType DataTypeImpl::GetSparseTensorType<UInt4x2>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_UInt4x2(); }
+MLDataType DataTypeImpl::GetSparseTensorType<UInt4x2>() {
+  return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_UInt4x2();
+}
 
 #endif
 

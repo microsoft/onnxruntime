@@ -217,7 +217,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
 
   auto elem_count = narrow<size_t>(tensor_shape.Size());
 
-  // TODO: Handle this more cleanly.
+  // TODO(adrianlizarraga): Handle this more cleanly.
   if (utils::IsPrimitiveDataType<Int4x2>(ml_type) || utils::IsPrimitiveDataType<UInt4x2>(ml_type)) {
     elem_count = (elem_count + 1) / 2;
   }

@@ -5,7 +5,6 @@
 
 #include <cassert>
 #include <type_traits>
-#include "endian.h"
 #include "core/common/common.h"
 #include "core/common/gsl.h"
 
@@ -35,7 +34,7 @@ struct Int4x2Base {
   unpacked_type elems{};
 
   Int4x2Base() = default;
-  Int4x2Base(uint8_t bits) {
+  explicit Int4x2Base(uint8_t bits) {
     elems = static_cast<unpacked_type>(bits);
   }
   Int4x2Base(unpacked_type val0, unpacked_type val1) {

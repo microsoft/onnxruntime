@@ -350,9 +350,13 @@ template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
 #endif
 template <>
-constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4; }
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
+}
 template <>
-constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4; }
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
+}
 }  // namespace utils
 
 // This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.

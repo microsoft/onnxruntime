@@ -22,7 +22,7 @@ TEST(CPUExecutionProviderTest, MetadataTest) {
   ASSERT_EQ(provider->GetOrtDeviceByMemType(OrtMemTypeDefault).Type(), OrtDevice::CPU);
 }
 
-// TODO: Remove. This is a throwaway test for Int4
+// TODO(adrianlizarraga): Remove. This is a throwaway test for Int4
 TEST(CPUExecutionProviderTest, Example_Conv_Int4) {
   Ort::SessionOptions so;
 

@@ -533,8 +533,8 @@ MlasQuantizeLinearS4Kernel(
     constexpr int32_t MaximumValue = 7;
 
     auto ScaleVector = MlasBroadcastFloat32x4(Scale);
-    auto MinimumValueVector = MlasBroadcastFloat32x4(float(MinimumValue - ZeroPoint));
-    auto MaximumValueVector = MlasBroadcastFloat32x4(float(MaximumValue - ZeroPoint));
+    auto MinimumValueVector = MlasBroadcastFloat32x4(static_cast<float>(MinimumValue - ZeroPoint));
+    auto MaximumValueVector = MlasBroadcastFloat32x4(static_cast<float>(MaximumValue - ZeroPoint));
     auto ZeroPointVector = MlasBroadcastInt32x4(ZeroPoint);
 
     // Holds 4 quantized 8bit values that will be packed into the output as packed 4bit values.
@@ -595,8 +595,8 @@ MlasQuantizeLinearU4Kernel(
     constexpr int32_t MaximumValue = 15;
 
     auto ScaleVector = MlasBroadcastFloat32x4(Scale);
-    auto MinimumValueVector = MlasBroadcastFloat32x4(float(MinimumValue - ZeroPoint));
-    auto MaximumValueVector = MlasBroadcastFloat32x4(float(MaximumValue - ZeroPoint));
+    auto MinimumValueVector = MlasBroadcastFloat32x4(static_cast<float>(MinimumValue - ZeroPoint));
+    auto MaximumValueVector = MlasBroadcastFloat32x4(static_cast<float>(MaximumValue - ZeroPoint));
     auto ZeroPointVector = MlasBroadcastInt32x4(ZeroPoint);
 
     // Holds 4 quantized 8bit values that will be packed into the output as packed 4bit values.

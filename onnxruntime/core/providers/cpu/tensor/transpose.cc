@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/tensor/transpose.h"
 
+#include <memory>
 #include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
 #include "core/framework/transpose_helper.h"
