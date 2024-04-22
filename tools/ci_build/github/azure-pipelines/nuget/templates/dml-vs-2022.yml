@@ -76,6 +76,13 @@ stages:
         inputs:
           versionSpec: '18.x'
 
+      - task: UseDotNet@2
+        inputs:
+          version: '7.x'
+        ${{ if eq(parameters.BuildArch, 'x86') }}:
+          env:
+              PROCESSOR_ARCHITECTURE: 'x86'
+
       - task: onebranch.pipeline.tsaoptions@1
         displayName: 'OneBranch TSAOptions'
         inputs:
