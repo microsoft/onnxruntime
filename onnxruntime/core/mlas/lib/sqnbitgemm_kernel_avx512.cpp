@@ -151,11 +151,12 @@ MLAS_FORCEINLINE void
       }
       const std::byte* b_data_ptr = QuantBData + col * b_data_col_stride_in_bytes + k * blk_data_size_in_bytes;
       const float* scale_ptr = QuantBScale + col * BlockCountK + k;
+      scale_ptr;
       const std::byte* zp_ptr = QuantBZeroPoint + col * zp_col_stride_in_bytes + k / 2;
       bool is_lower = (k % 2) == 0;
 
-      __m256i weight_16_epi16[NCols8];
-      __m256 scale_8_ps[NCols8];
+      //__m256i weight_16_epi16[NCols8];
+      //__m256 scale_8_ps[NCols8];
       UnrolledLoop<NCols8>([&](size_t col_) {
         if ((int)col_ < cols) {
           // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
@@ -172,14 +173,15 @@ MLAS_FORCEINLINE void
             const __m128i eight = _mm_set1_epi8(8);
             weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, eight);
           }
-          weight_16_epi16[col_] = _mm256_cvtepi8_epi16(weight_16_epi8);
-          scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
+          std::cout << _mm_extract_epi8(weight_16_epi8, 0) << std::endl;
+          //weight_16_epi16[col_] = _mm256_cvtepi8_epi16(weight_16_epi8);
+          //scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
         } else {
-          weight_16_epi16[col_] = _mm256_setzero_si256();
-          scale_8_ps[col_] = _mm256_setzero_ps();
+          //weight_16_epi16[col_] = _mm256_setzero_si256();
+          //scale_8_ps[col_] = _mm256_setzero_ps();
         }
-        std::cout << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
-        std::cout << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
+        //std::cout << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
+        //std::cout << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
       });
       //for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
       //  int kklen = klen - i_of_2 * 8;
