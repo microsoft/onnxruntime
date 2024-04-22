@@ -37,7 +37,6 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
 
-
 # Build final image from base.
 FROM base as final
 ARG BUILD_USER=onnxruntimedev
