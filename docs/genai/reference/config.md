@@ -102,6 +102,10 @@ These are the options that are passed to ONNX Runtime, which runs the model on e
 
 * **_provider_options_**: a prioritized list of execution targets on which to run the model. If running on CPU, this option is not present. A list of execution provider specific configurations can be specified inside the provider item.
 
+  Supported provider options:
+  * `cuda`
+  * `dml`
+
 * **_log_id_**: a prefix to output when logging.
 
 

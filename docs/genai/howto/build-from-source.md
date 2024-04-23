@@ -70,62 +70,82 @@ cp build/linux-x64/native/libonnxruntime*.so* <ORT_HOME>/lib
       
 ### Option 3: Build from source
 
-```
+#### Clone the repo 
+
+```bash
 git clone https://github.com/microsoft/onnxruntime.git
 cd onnxruntime
 ```
 
-Create include and lib folders in the `ORT_HOME` directory
+#### Build ONNX Runtime for DirectML on Windows
 
 ```bash
-mkdir <ORT HOME>/include
-mkdir <ORT_HOME>/lib
+build.bat --build_shared_lib --skip_tests --parallel --use_dml --config Release
 ```
 
-Build from source and copy the include and libraries into `ORT_HOME`
+#### Build ONNX Runtime for CPU on Windows
 
-On Windows
-
-```cmd
-build.bat --build_shared_lib --skip_tests --parallel [--use_cuda] --config Release
-copy include\onnxruntime\core\session\onnxruntime_c_api.h <ORT_HOME>\include
-copy build\Windows\Release\Release\*.dll <ORT_HOME>\lib
-copy build\Windows\Release\Release\onnxruntime.lib <ORTHOME>\lib
+```bash
+build.bat --build_shared_lib --skip_tests --parallel --config Release
 ```
 
-On Linux
+#### Build ONNX Runtime for CUDA on Windows
+
+```bash
+build.bat --build_shared_lib --skip_tests --parallel --use_cuda --config Release
+```
+
+#### Build ONNX Runtine on Linux
 
 ```bash
 ./build.sh --build_shared_lib --skip_tests --parallel [--use_cuda] --config Release
-cp include/onnxruntime/core/session/onnxruntime_c_api.h <ORT_HOME>/include
-cp build/Linux/Release/libonnxruntime*.so* <ORT_HOME>/lib
 ```
 
-On Mac
+You may need to provide extra command line options for building with CUDA on Linux. An example full command is as follows.
+
+```bash
+./build.sh --parallel --build_shared_lib --use_cuda --cuda_version 11.8 --cuda_home /usr/local/cuda-11.8 --cudnn_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="80" --cmake_extra_defines CMAKE_CUDA_COMPILER=/usr/local/cuda-11.8/bin/nvcc
+```
+
+Replace the values given above for different versions and locations of CUDA.
+
+#### Build ONNX Runtime on Mac
 
 ```bash
 ./build.sh --build_shared_lib --skip_tests --parallel --config Release
-cp include/onnxruntime/core/session/onnxruntime_c_api.h <ORT_HOME>/include
-cp build/MacOS/Release/libonnxruntime*.dylib* <ORT_HOME>/lib
 ```
 
+## Build the generate() API
 
-## Build onnxruntime-genai
+### Build on Windows
 
-### Build for CPU
+If building for DirectML
 
 ```bash
-cd ..
-python build.py [--ort_home <ORT_HOME>]
+copy ..\onnxruntime\include\onnxruntime\core\providers\dml\dml_provider_factory.h ort\include
 ```
 
-### Build for CUDA
+```bash
+copy ..\onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h ort\include
+copy ..\onnxruntime\build\Windows\Release\Release\*.dll ort\lib
+copy ..\onnxruntime\build\Windows\Release\Release\onnxruntime.lib ort\lib
+python build.py [--use_dml | --use_cuda]
+```
 
-These instructions assume you already have CUDA installed.
+### Build on Linux
 
 ```bash
-cd ..
-python build.py --cuda_home <path to cuda home> [--ort_home <ORT_HOME>]
+cp ../onnxruntime/include/onnxruntime/core/session/onnxruntime_c_api.h ort/include
+cp ../onnxruntime/build/Linux/Release/libonnxruntime*.so* ort/lib
+python build.py [--use_cuda]
+```
+
+### Build on Mac
+
+```bash
+cp ../onnxruntime/include/onnxruntime/core/session/onnxruntime_c_api.h ort/include
+cp ../onnxruntime/build/MacOS/Release/libonnxruntime*.dylib* ort/lib
+python build.py
 ```
    
 ## Install the library into your application
