@@ -41,7 +41,8 @@
       PATH_SUFFIXES include)
     MESSAGE(STATUS "Found TensorRT headers at ${TENSORRT_INCLUDE_DIR}")
 
-    # For TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows.
+    # For TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
+    # for example, nvinfer_10.dll, nvinfer_plugin_10.dll, nvonnxparser_10.dll ...
     if (WIN32)
       file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
       string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
