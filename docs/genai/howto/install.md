@@ -13,11 +13,17 @@ nav_order: 1
 * TOC placeholder
 {:toc}
 
-## Python package release candidates
+## Python package
 
 ```bash
 pip install numpy
-pip install onnxruntime-genai --pre --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
+pip install onnxruntime-genai --pre
+```
+Append `-directml` for the library that is optimized for DirectML on Windows
+
+```bash
+pip install numpy
+pip install onnxruntime-genai-directml --pre
 ```
 
 Append `-cuda` for the library that is optimized for CUDA environments
