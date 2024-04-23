@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#include "QnnTypes.h"
-#include "core/session/onnxruntime_cxx_api.h"
+#pragma once
 
 #include <functional>
 #include <numeric>
-#include <vector>
 #include <string>
+#include <type_traits>
+#include <vector>
 
+#include "QnnTypes.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/node_unit.h"
 #include "core/util/qmath.h"
 
 namespace onnxruntime {
@@ -30,11 +32,28 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
 
 bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
 
-inline void InitializeQuantizeParam(Qnn_QuantizeParams_t& quantize_param, bool is_quantized_tensor, float scale = 0.0f, int32_t offset = 0) {
-  quantize_param.encodingDefinition = is_quantized_tensor ? QNN_DEFINITION_DEFINED : QNN_DEFINITION_UNDEFINED;
-  quantize_param.quantizationEncoding = is_quantized_tensor ? QNN_QUANTIZATION_ENCODING_SCALE_OFFSET : QNN_QUANTIZATION_ENCODING_UNDEFINED;
-  quantize_param.scaleOffsetEncoding.scale = scale;
-  quantize_param.scaleOffsetEncoding.offset = offset;
+inline Status GetOnnxTensorElemDataType(const NodeArg& node_arg, /*out*/ int32_t& onnx_data_type) {
+  auto type_proto = node_arg.TypeAsProto();
+  ORT_RETURN_IF_NOT(type_proto != nullptr && type_proto->has_tensor_type() && type_proto->tensor_type().has_elem_type(),
+                    "NodeArg must have a tensor TypeProto");
+  onnx_data_type = type_proto->tensor_type().elem_type();
+  return Status::OK();
+}
+
+template <typename IntType>
+static Status InvertPerm(gsl::span<const IntType> perm, /*out*/ gsl::span<IntType> perm_inv) {
+  static_assert(std::is_integral<IntType>::value, "permutation arrays must contain integer elements");
+
+  size_t rank = perm.size();
+  ORT_RETURN_IF_NOT(perm_inv.size() == rank, "perm.size() != perm_inv.size()");
+
+  for (size_t i = 0; i < rank; ++i) {
+    size_t j = static_cast<size_t>(perm[i]);
+    ORT_RETURN_IF_NOT(j < rank, "perm element out of range [0, rank - 1]");
+    perm_inv[j] = static_cast<IntType>(i);
+  }
+
+  return Status::OK();
 }
 
 // Utility function that checks if an array of strings contains a specific string.

@@ -127,7 +127,7 @@ def get_merged_sample_with_past_kv_inputs(
     past_seq_len: int,
     max_seq_len: int,
     use_fp16: bool = False,
-    use_gqa: bool = False,
+    use_buffer_share: bool = False,
     engine: str = "pt",
     return_dict: bool = False,
     world_size: int = 1,
@@ -162,7 +162,7 @@ def get_merged_sample_with_past_kv_inputs(
         assert isinstance(past_kv, dict)
         inputs.update(past_kv)
 
-        if use_gqa:
+        if use_buffer_share:
             inputs = enable_past_present_share_buffer(inputs, past_seq_len, max_seq_len)
 
     else:
@@ -180,7 +180,7 @@ def get_msft_sample_inputs(
     seq_len: int,
     max_seq_len: int,
     use_fp16: bool,
-    use_gqa: bool,
+    use_buffer_share: bool,
     split_kv: bool,
 ):
     np_dtype = np.float16 if use_fp16 else np.float32
@@ -218,7 +218,7 @@ def get_msft_sample_inputs(
                 }
             )
 
-        if use_gqa:
+        if use_buffer_share:
             ort_inputs = enable_past_present_share_buffer(ort_inputs, past_seq_len, max_seq_len)
 
     return ort_inputs
@@ -252,7 +252,7 @@ def flatten_past_kv_inputs(past_key_values: list[tuple[torch.Tensor, torch.Tenso
 # Format PyTorch inputs to ONNX Runtime inputs
 def convert_inputs_for_ort(
     pt_inputs: dict,
-    use_gqa: bool = False,
+    use_buffer_share: bool = False,
     past_seq_len: int = 0,
     max_seq_len: int = 2048,
     device: str = "",
@@ -268,7 +268,7 @@ def convert_inputs_for_ort(
             ort_inputs[k] = v.detach().cpu().numpy()
 
     # Reshape KV caches if using past-present-share-buffer
-    if use_gqa and device != "" and device != "cpu" and device_id > -1:
+    if use_buffer_share and device != "" and device != "cpu" and device_id > -1:
         ort_inputs = enable_past_present_share_buffer(ort_inputs, past_seq_len, max_seq_len)
 
     return ort_inputs
@@ -311,7 +311,12 @@ def verify_ort_inputs(model: InferenceSession, ort_inputs: dict):
 # Add IO bindings for execution providers using OrtValue
 # Use when you need to run inference once or twice to save memory
 def add_io_bindings_as_ortvalues(
-    model: InferenceSession, ort_inputs: dict, device: str, device_id: int, use_gqa: bool, kv_cache_ortvalues: dict
+    model: InferenceSession,
+    ort_inputs: dict,
+    device: str,
+    device_id: int,
+    use_buffer_share: bool,
+    kv_cache_ortvalues: dict,
 ):
     io_binding = model.io_binding()
 
@@ -324,7 +329,7 @@ def add_io_bindings_as_ortvalues(
             continue
 
         # Bind OrtValue inputs to device
-        if use_gqa and ("cache" in k or "past_key_values" in k):
+        if use_buffer_share and ("cache" in k or "past_key_values" in k):
             if k not in kv_cache_ortvalues:
                 v_device = OrtValue.ortvalue_from_numpy(v, device_type=device, device_id=device_id)
                 io_binding.bind_ortvalue_input(k, v_device)
@@ -338,7 +343,7 @@ def add_io_bindings_as_ortvalues(
 
     for output in model.get_outputs():
         name = output.name
-        if use_gqa and ("out" in name or "present" in name):
+        if use_buffer_share and ("out" in name or "present" in name):
             # Bind present KV cache outputs to past KV cache inputs in order to buffer share
             input_name = name.replace("out", "cache").replace("present", "past_key_values")
             io_binding.bind_ortvalue_output(name, kv_cache_ortvalues[input_name])
