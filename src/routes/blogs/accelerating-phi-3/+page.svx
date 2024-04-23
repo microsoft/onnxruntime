@@ -38,7 +38,7 @@ In addition to supporting both Phi-3 Mini models on various GPUs, ONNX Runtime c
 ONNX Runtime Mobile empowers developers to perform on-device inference with AI models on mobile and edge devices. By removing client-server communications, ORT Mobile provides privacy protection and has zero cost. Using RTN INT4 quantization, we significantly reduce the size of the state-of-the-art Phi-3 Mini models and can run both on a Samsung Galaxy S21 at a moderate speed. When applying RTN INT4 quantization, there is a tuning parameter for the int4 accuracy level. This parameter specifies the minimum accuracy level required for the activation of MatMul in int4 quantization, balancing performance and accuracy trade-offs. Two versions of RTN quantized models have been released with int4_accuracy_level=1, optimized for accuracy, and int4_accuracy_level=4, optimized for performance. If you prefer better performance with a slight trade-off in accuracy, we recommend using the model with int4_accuracy_level=4.
 
 
-## ONNX Runtime for server scenarios
+## ONNX Runtime for Server Scenarios
 
 For Linux developers and beyond, ONNX Runtime with CUDA is a great solution that supports a wide range of NVIDIA GPUs, including both consumer and data center GPUs. Phi-3 Mini-128K-Instruct performs better for ONNX Runtime with CUDA than PyTorch for all batch size, prompt length combinations.
 
