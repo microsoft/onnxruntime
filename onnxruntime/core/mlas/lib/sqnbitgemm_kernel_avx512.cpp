@@ -145,8 +145,7 @@ MLAS_FORCEINLINE void
   for (size_t col = 0; col < CountN; col += NCols8) {
     const int cols = std::min((int)NCols8, (int)CountN - (int)col);
     for (size_t k = 0; k < BlockCountK; k++) {
-      int klen = std::min((int)BlkLen16, (int)(CountK - (int)k * BlkLen16));
-      klen;
+      //int klen = std::min((int)BlkLen16, (int)(CountK - (int)k * BlkLen16));
       // count # of tiles plus blks of the current tile from top
       const size_t tile_count = col / GemmFloatKernelWidth16;
       float* dst_ptr = FpData + (tile_count * CountK + k * BlkLen16) * GemmFloatKernelWidth16;
@@ -169,6 +168,7 @@ MLAS_FORCEINLINE void
           std::cout << col_ << std::endl;
           __m128i bvi = _mm_loadl_epi64((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
           std::cout << _mm_extract_epi16(bvi, 0) << std::endl;
+          // passed
           const __m128i lower = _mm_and_si128(bvi, low_mask);
           std::cout << "lower" << _mm_extract_epi16(lower, 0) << std::endl;
           const __m128i bvi4 = _mm_srli_epi16(bvi, 4);
