@@ -68,7 +68,11 @@
 	<article class="">
 		<h1 class="text-5xl pb-2">{title}</h1>
 		<p class="text-neutral">
-			By:
+			{#if authors.length === 0}
+				<br/>
+			{:else}
+				<p>By:</p>
+			{/if}
 			{#each authors as author, i}
 				<a href={authorsLink[i]} class="text-blue-500">{author}</a>{i + 1 === authors.length
 					? ''

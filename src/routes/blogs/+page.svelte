@@ -10,6 +10,7 @@
 	import LlamaImage from '../../images/blogs/accelerating-llama-2/Figure1-LLaMA-2-7B-E2E-Throughput.png';
 	import SDXLTurboImage from '../../images/blogs/sdxl_blog_thumbnail.png';
 	import Phi2Image from '../../routes/blogs/accelerating-phi-2/Phi2_Int4_TokenGenerationTP.png';
+	import Phi3Image from '../../routes/blogs/accelerating-phi-3/Phi3_Thumbnail.png';
 	import { createEventDispatcher } from 'svelte';
 	import ORT117Thumbnail from '../../images/blogs/ort-1-17-thumbnail.png';
 	import WebGPUImage from '../../images/blogs/webgpu_blog_thumbnail.jpg';
@@ -42,6 +43,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'ONNX Runtime supports Phi-3 mini models across platforms and devices',
+			date: 'April 22nd, 2024',
+			blurb:
+				"You can now run Microsoft's latest home-grown Phi-3 models across a huge range of devices and platforms thanks to ONNX Runtime and DirectML.",
+			link: 'blogs/accelerating-phi-3',
+			image: Phi3Image,
+			imgalt:
+				'Phi-3 + ONNX Runtime with the prompt "Tell me a joke" and Phi-3 answering: "Why don\'t scientists trust atoms?" "Because they make up everything!"'
+		},
+		{
 			title: 'ONNX Runtime Web unleashes generative AI in the browser using WebGPU',
 			date: 'February 29th, 2024',
 			blurb:
@@ -60,6 +71,9 @@
 			image: ORT117Thumbnail,
 			imgalt: 'ONNX Runtime 1.17 release logo'
 		},
+		
+	];
+	let blogs = [
 		{
 			title: 'Accelerating Phi-2, CodeLlama, Gemma and other Gen AI models with ONNX Runtime',
 			date: 'February 26th, 2024',
@@ -67,9 +81,7 @@
 			link: 'blogs/accelerating-phi-2',
 			image: Phi2Image,
 			imgalt: 'Phi2 float16 token generation throughput comparison'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title: 'On-Device Training: Training a model in browser',
 			date: 'February 6th, 2024',
