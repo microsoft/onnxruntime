@@ -10,12 +10,16 @@ class Model(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsModel(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = Model()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsModel(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def ModelBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -134,17 +138,86 @@ class Model(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(22))
         return o == 0
 
-def ModelStart(builder): builder.StartObject(10)
-def ModelAddIrVersion(builder, irVersion): builder.PrependInt64Slot(0, irVersion, 0)
-def ModelAddOpsetImport(builder, opsetImport): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(opsetImport), 0)
-def ModelStartOpsetImportVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def ModelAddProducerName(builder, producerName): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(producerName), 0)
-def ModelAddProducerVersion(builder, producerVersion): builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(producerVersion), 0)
-def ModelAddDomain(builder, domain): builder.PrependUOffsetTRelativeSlot(4, flatbuffers.number_types.UOffsetTFlags.py_type(domain), 0)
-def ModelAddModelVersion(builder, modelVersion): builder.PrependInt64Slot(5, modelVersion, 0)
-def ModelAddDocString(builder, docString): builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
-def ModelAddGraph(builder, graph): builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(graph), 0)
-def ModelAddGraphDocString(builder, graphDocString): builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(graphDocString), 0)
-def ModelAddMetadataProps(builder, metadataProps): builder.PrependUOffsetTRelativeSlot(9, flatbuffers.number_types.UOffsetTFlags.py_type(metadataProps), 0)
-def ModelStartMetadataPropsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def ModelEnd(builder): return builder.EndObject()
+def ModelStart(builder):
+    builder.StartObject(10)
+
+def Start(builder):
+    ModelStart(builder)
+
+def ModelAddIrVersion(builder, irVersion):
+    builder.PrependInt64Slot(0, irVersion, 0)
+
+def AddIrVersion(builder, irVersion):
+    ModelAddIrVersion(builder, irVersion)
+
+def ModelAddOpsetImport(builder, opsetImport):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(opsetImport), 0)
+
+def AddOpsetImport(builder, opsetImport):
+    ModelAddOpsetImport(builder, opsetImport)
+
+def ModelStartOpsetImportVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartOpsetImportVector(builder, numElems: int) -> int:
+    return ModelStartOpsetImportVector(builder, numElems)
+
+def ModelAddProducerName(builder, producerName):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(producerName), 0)
+
+def AddProducerName(builder, producerName):
+    ModelAddProducerName(builder, producerName)
+
+def ModelAddProducerVersion(builder, producerVersion):
+    builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(producerVersion), 0)
+
+def AddProducerVersion(builder, producerVersion):
+    ModelAddProducerVersion(builder, producerVersion)
+
+def ModelAddDomain(builder, domain):
+    builder.PrependUOffsetTRelativeSlot(4, flatbuffers.number_types.UOffsetTFlags.py_type(domain), 0)
+
+def AddDomain(builder, domain):
+    ModelAddDomain(builder, domain)
+
+def ModelAddModelVersion(builder, modelVersion):
+    builder.PrependInt64Slot(5, modelVersion, 0)
+
+def AddModelVersion(builder, modelVersion):
+    ModelAddModelVersion(builder, modelVersion)
+
+def ModelAddDocString(builder, docString):
+    builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
+
+def AddDocString(builder, docString):
+    ModelAddDocString(builder, docString)
+
+def ModelAddGraph(builder, graph):
+    builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(graph), 0)
+
+def AddGraph(builder, graph):
+    ModelAddGraph(builder, graph)
+
+def ModelAddGraphDocString(builder, graphDocString):
+    builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(graphDocString), 0)
+
+def AddGraphDocString(builder, graphDocString):
+    ModelAddGraphDocString(builder, graphDocString)
+
+def ModelAddMetadataProps(builder, metadataProps):
+    builder.PrependUOffsetTRelativeSlot(9, flatbuffers.number_types.UOffsetTFlags.py_type(metadataProps), 0)
+
+def AddMetadataProps(builder, metadataProps):
+    ModelAddMetadataProps(builder, metadataProps)
+
+def ModelStartMetadataPropsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartMetadataPropsVector(builder, numElems: int) -> int:
+    return ModelStartMetadataPropsVector(builder, numElems)
+
+def ModelEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return ModelEnd(builder)

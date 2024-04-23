@@ -5,9 +5,9 @@ parameters:
   default: 'onnxruntime-qnn-windows-vs-2022-arm64'
 
 - name: QNN_SDK
-  displayName: QNN Windows SDK path
+  displayName: QNN SDK Version
   type: string
-  default: qnn-v2.19.2.240210_win
+  default: 2.19.2.240210
 
 - name: PYTHON_VERSION
   type: string
@@ -37,17 +37,12 @@ jobs:
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
-    QNN_SDK_ROOTDIR: 'C:\data\qnnsdk\${{parameters.QNN_SDK}}'
   steps:
       - checkout: self
         clean: true
         submodules: recursive
 
       - template: telemetry-steps.yml
-
-      - script: |
-          DIR C:\data\qnnsdk
-        displayName: Check available QNN SDKs
 
       - script: |
           MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
@@ -81,6 +76,10 @@ jobs:
 
       - template: set-nightly-build-option-variable-step.yml
 
+      - template: jobs/download_win_qnn_sdk.yml
+        parameters:
+          QnnSDKVersion: ${{ parameters.QNN_SDK }}
+
       - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
@@ -91,7 +90,7 @@ jobs:
             --skip_submodule_sync
             --cmake_generator "$(VSGenerator)"
             --use_qnn
-            --qnn_home $(QNN_SDK_ROOTDIR)
+            --qnn_home $(QnnSDKRootDir)
             --enable_pybind
             --parallel --update
             --numpy_version ${{ parameters.NUMPY_VERSION }}
