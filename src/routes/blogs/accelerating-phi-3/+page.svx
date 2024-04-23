@@ -37,7 +37,7 @@ For Linux developers and beyond, ONNX Runtime with CUDA is a great solution that
 
 For FP16 CUDA and INT4 CUDA, ORT performs up to 5X faster and up to 9X faster than PyTorch, respectively. Phi-3 Mini-128K-Instruct is currently not supported by Llama.cpp.
 
-For FP16 and INT4 CUDA, Phi-3 Mini-4K-Instruct performs with ORT performs up to 5X faster and up to 10X faster than PyTorch, respectively. Phi-3 Mini-4K-Instruct is also up to 3X faster than Llama.cpp for large sequence lengths.
+For FP16 and INT4 CUDA, Phi-3 Mini-4K-Instruct with ORT performs up to 5X faster and up to 10X faster than PyTorch, respectively. Phi-3 Mini-4K-Instruct is also up to 3X faster than Llama.cpp for large sequence lengths.
 
 In addition to supporting both Phi-3 Mini models on various GPUs, ONNX Runtime can help run these models on Mobile, Windows, and Mac CPUs, making it a truly cross-platform framework. ONNX Runtime also supports quantization techniques like RTN to enable these models to run across many different hardware.
 
