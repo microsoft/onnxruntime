@@ -15,15 +15,10 @@ Details on OS versions, compilers, language versions, dependent libraries, etc c
 under [Compatibility](../reference/compatibility).
 
 ## Contents
+{: .no_toc }
 
-1. [Requirements](#requirements)
-2. [Python Installs](#python)
-3. [C#/C/C++/WinML Installs](#c-winml)
-4. [Install on web and mobile](#web-mobile)
-5. [Install for On-Device Training](#on-device-training)
-6. [Large Model Training](#large-model-training)
-7. [Inference install table for all languages](#inference-table)
-8. [Training install table for all languages](#training-table)
+* TOC placeholder
+{:toc}
 
 ## Requirements <a name="requirements"></a>
 
