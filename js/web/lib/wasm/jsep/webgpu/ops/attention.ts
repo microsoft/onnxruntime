@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ComputeContext, GpuDataType, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {castToF32, createTensorShapeVariables, fillVector, getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType, tensorTypeToWsglValueType, UniformDataElementType, UniformsArrayType} from './common';
+import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, tensorTypeToWsglValueType, UniformDataElementType, UniformsArrayType} from './common';
 import {createConcatProgramInfo} from './concat';
 
 export const enum AttentionQkvFormat {
@@ -238,70 +238,86 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
   } else if (dComp / 8 < 64) {
     WG = Math.ceil(dComp / 8);
   }
-  const elementsPerWG = Math.ceil(d / components / WG);
+  const elementsPerThread = Math.ceil(d / components / WG);
   const programUniforms: ProgramUniform[] = [
     {type: input.dataType, data: 1 / d}, {type: DataType.uint32, data: dComp},
-    {type: DataType.uint32, data: elementsPerWG}
+    {type: DataType.uint32, data: elementsPerThread}
   ];
   const dataType = tensorTypeToWsglStorageType(input.dataType, components);
+  const f32Type = tensorTypeToWsglValueType(DataType.float, components);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const inputHelper = outputVariable('x', input.dataType, input.dims, components);
-    let threadMaxValue = 'thread_max_vector';
-    if (components === 2) {
-      threadMaxValue = 'max(thread_max_vector.x, thread_max_vector.y)';
-    } else if (components === 4) {
-      threadMaxValue =
-          'max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))';
-    }
     const elemValueType = tensorTypeToWsglValueType(input.dataType);
     const uniforms: UniformsArrayType = [
       {name: 'd_inv', type: elemValueType as UniformDataElementType}, {name: 'd_comp', type: 'u32'},
-      {name: 'elements_per_wg', type: 'u32'}
+      {name: 'elements_per_thread', type: 'u32'}
     ];
 
     return `
-  var<workgroup> wgMax: array<f32, ${WG}>;
-  var<workgroup> wgSum: array<f32, ${WG}>;
+  var<workgroup> thread_max: array<f32, ${WG}>;
+  var<workgroup> thread_sum: array<f32, ${WG}>;
   ${shaderHelper.registerUniforms(uniforms).declareVariables(inputHelper)}
   ${shaderHelper.mainStart([
       WG, 1, 1
     ])}
-    let localOffset = local_idx * uniforms.elements_per_wg;
-    let offset: u32 = workgroup_id.x * uniforms.d_comp + localOffset;
+    let local_offset = local_idx * uniforms.elements_per_thread;
+    let offset = workgroup_id.x * uniforms.d_comp + local_offset;
 
-    var thread_max_vector = ${fillVector('f32', components, '-3.402823e+38f')};
-    for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
-      thread_max_vector = max(${castToF32(elemValueType, components, 'x[offset + i]')}, thread_max_vector);
+    var thread_max_vector = ${inputHelper.type.value}(-3.402823e+38f);
+    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
+      thread_max_vector = max(${f32Type}(x[offset + i]), thread_max_vector);
     }
-    wgMax[local_idx] = ${threadMaxValue};
+    thread_max[local_idx] = ${(() => {
+      switch (components) {
+        case 1:
+          return 'thread_max_vector';
+        case 2:
+          return 'max(thread_max_vector.x, thread_max_vector.y)';
+        case 4:
+          return 'max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))';
+        default:
+          throw new Error(`Unsupported components: ${components}`);
+      }
+    })()};
     workgroupBarrier();
 
-    var maxValue = -3.402823e+38f;
+    var max_value: f32 = -3.402823e+38f;
     for (var i = 0u; i < ${WG}; i++) {
-      maxValue = max(wgMax[i], maxValue);
+      max_value = max(thread_max[i], max_value);
     }
 
-    var sumVector = ${fillVector('f32', components, '0')};
-    for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
-      sumVector += exp(${castToF32(elemValueType, components, 'x[offset + i]')} - maxValue);
+    var sum_vector = ${inputHelper.type.value}(${0});
+    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + offset < uniforms.d_comp; i++) {
+      sum_vector += exp(${f32Type}(x[offset + i]) - max_value);
     }
-    wgSum[local_idx] = ${sumVector('sumVector', components)};
+    thread_sum[local_idx] = ${(() => {
+      switch (components) {
+        case 1:
+          return 'sum_vector';
+        case 2:
+          return 'sum_vector.x + sum_vector.y';
+        case 4:
+          return 'sum_vector.x + sum_vector.y + sum_vector.z + sum_vector.w';
+        default:
+          throw new Error(`Unsupported components: ${components}`);
+      }
+    })()};
     workgroupBarrier();
 
     var sum: f32 = 0;
     for (var i = 0u; i < ${WG}; i++) {
-      sum += wgSum[i];
+      sum += thread_sum[i];
     }
 
     if (sum == 0) {
-      for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
-        x[offset + i] = ${fillVector(elemValueType, components, 'uniforms.d_inv')};
+      for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
+        x[offset + i] = ${inputHelper.type.value}(uniforms.d_inv);
       }
     } else {
-      for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
-        let f32input = ${castToF32(elemValueType, components, 'x[offset + i]')};
-        x[offset + i] = ${inputHelper.type.value}(exp(f32input - maxValue) / sum);
+      for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
+        var f32input = ${f32Type}(x[offset + i]);
+        x[offset + i] = ${inputHelper.type.value}(exp(f32input - max_value) / sum);
       }
     }
   }`;
@@ -380,7 +396,7 @@ const createAttentionProbsProgramInfo =
     let qOffset = uniforms.M * uniforms.K * headIdx + m * uniforms.K;
     let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx + n * uniforms.K;
 
-    var value = ${fillVector(dataType, components)};
+    var value = ${output.type.value}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
@@ -400,7 +416,19 @@ const createAttentionProbsProgramInfo =
     let headOffset = headIdx * uniforms.M * uniforms.N;
     if (global_id.y < uniforms.M && global_id.x < uniforms.N) {
       let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;
-      output[outputIdx] = ${sumVector('value', components)} * uniforms.alpha;
+      var sum = ${(() => {
+          switch (components) {
+            case 1:
+              return 'value';
+            case 2:
+              return 'value.x + value.y';
+            case 4:
+              return 'value.x + value.y + value.z + value.w';
+            default:
+              throw new Error(`Unsupported components: ${components}`);
+          }
+        })()};
+      output[outputIdx] = sum * uniforms.alpha;
   ${(() => {
           if (relativePositionBiasInput) {
             return `
