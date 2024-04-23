@@ -171,7 +171,7 @@ MLAS_FORCEINLINE void
           // passed
           const __m128i lower = _mm_and_si128(bvi, low_mask);
           std::cout << "lower" << _mm_extract_epi16(lower, 0) << std::endl;
-          // ?
+          // falied
           //const __m128i bvi4 = _mm_srli_epi16(bvi, 4);
           //std::cout << "bvi4" << _mm_extract_epi16(bvi4, 0) << std::endl;
           // failed
