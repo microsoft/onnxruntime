@@ -41,10 +41,6 @@ onnxruntime_genai.Model(model_folder: str) -> onnxruntime_genai.Model
 #### Parameters
 
 - `model_folder`: Location of model and configuration on disk
-- `device`: The device to run on. One of:
-   - onnxruntime_genai.CPU
-   - onnxruntime_genai.CUDA
-   If not specified, defaults to CPU.
 
 #### Returns
 
@@ -57,7 +53,7 @@ onnxruntime_genai.Model.generate(params: GeneratorParams) -> numpy.ndarray[int, 
 ```
 
 #### Parameters
-- `params`: (Required) Created by the `GenerateParams` method.
+- `params`: (Required) Created by the `GeneratorParams` method.
 
 #### Returns
 
@@ -191,7 +187,7 @@ onnxruntime_genai.TokenizerStream.decode(token: int32) -> str
 
 ## GeneratorParams class
 
-### Create a Generator Params
+### Create a Generator Params object
 
 ```python
 onnxruntime_genai.GeneratorParams(model: Model) -> GeneratorParams
@@ -208,8 +204,6 @@ onnxruntime_genai.GeneratorParams.input_ids = numpy.ndarray[numpy.int32, numpy.i
 ```python
 onnxruntime_genai.GeneratorParams.set_search_options(options: dict[str, Any])
 ```
-
-### 
 
 ## Generator class
 
@@ -254,30 +248,6 @@ Using the current set of logits and the specified generator parameters, calculat
 
 ```python
 onnxruntime_genai.Generator.generate_next_token()
-```
-
-### Generate next token with Top P sampling
-
-Using the current set of logits and the specified generator parameters, calculates the next batch of tokens, using Top P sampling.
-
-```python
-onnxruntime_genai.Generator.generate_next_token_top_p()
-```
-
-### Generate next token with Top K sampling
-
-Using the current set of logits and the specified generator parameters, calculates the next batch of tokens, using Top K sampling.
-
-```python
-onnxruntime_genai.Generator.generate_next_token_top_k()
-```
-
-### Generate next token with Top K and Top P sampling
-
-Using the current set of logits and the specified generator parameters, calculates the next batch of tokens, using both Top K then Top P sampling.
-
-```python
-onnxruntime_genai.Generator.generate_next_token_top_k_top_p()
 ```
 
 ### Get next tokens
