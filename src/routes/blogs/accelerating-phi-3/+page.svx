@@ -75,7 +75,7 @@ Please watch this space for more updates on AMD, and additional optimization wit
     <div class="col-span-1">
 We measured ONNX Runtime + DirectML performance of Phi-3 Mini (4k sequence length) quantized with AWQ and with a block size of 128 on Windows. Our test machine had an NVIDIA GeForce RTX 4090 GPU and an Intel Core i9-13900K CPU. As you can see in the table, DirectML offers high token throughput even at longer prompts and generation lengths.
 <br/><br/>
-DirectML lets developers not only achieve great performance but also lets developers deploy models across the entire Windows ecosystem with support from AMD, Intel and NVIDIA. Best of all, AWQ means that developers get this scale while also maintaining high model accuracy.
+DirectML lets developers not only achieve great performance but also deploy models across the entire Windows ecosystem with support from AMD, Intel and NVIDIA. Best of all, AWQ means that developers get this scale while also maintaining high model accuracy.
 <br/><br/>
 Stay tuned for additional performance improvements in the coming weeks thanks to optimized drivers from our hardware partners and additional updates to the ONNX Generate() API.
 
