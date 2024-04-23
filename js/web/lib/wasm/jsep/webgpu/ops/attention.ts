@@ -264,7 +264,7 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
     let local_offset = local_idx * uniforms.elements_per_thread;
     let offset = workgroup_id.x * uniforms.d_comp + local_offset;
 
-    var thread_max_vector : f32 = -3.402823e+38f;
+    var thread_max_vector = ${f32Type}(-3.402823e+38f);
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
       thread_max_vector = max(${f32Type}(x[offset + i]), thread_max_vector);
     }
@@ -282,14 +282,14 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
     })()};
     workgroupBarrier();
 
-    var max_value: f32 = -3.402823e+38f;
+    var max_value = -3.402823e+38f;
     for (var i = 0u; i < ${WG}; i++) {
       max_value = max(thread_max[i], max_value);
     }
 
-    var sum_vector = f32(${0});
+    var sum_vector = ${f32Type}(${0});
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
-      sum_vector += exp(f32(x[offset + i]) - max_value);
+      sum_vector += exp(${f32Type}(x[offset + i]) - max_value);
     }
     thread_sum[local_idx] = ${(() => {
       switch (components) {
