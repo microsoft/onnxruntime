@@ -122,10 +122,10 @@ Performance is improved across CPU and other devices as well.
 
 ## Safety
 
-Safety metrics and RAI are in alignment with the base Phi-3 models. See [here](https://aka.ms/phi3blog-april) for more details.
+Safety metrics and RAI align with the base Phi-3 models. See[here](https://aka.ms/phi3blog-april) for more details.
 
 ## Try ONNX Runtime for Phi3 
 
-This blog post introduces how ONNX Runtime and DirectML optimizes the Phi-3 model. Benchmark results  indicate improvements, along with instructions to assist you in getting started with ONNX Runtime on Windows and other platforms. Further  improvements and perf optimizations are underway, so stay tuned for ONNX Runtime 1.18 [release](https://github.com/microsoft/onnxruntime/releases), Early May!   
+This blog post introduces how ONNX Runtime and DirectML optimize the Phi-3 model. We've included instructions for running Phi-3 across Windows and other platforms, as well as early benchmarking results. Further improvements and perf optimizations are underway, so stay tuned for ONNX Runtime 1.18 [release](https://github.com/microsoft/onnxruntime/releases), Early May!   
 
 We encourage you to try out Phi3 and share your feedback in the [ONNX Runtime GitHub repository](https://github.com/microsoft/onnxruntime)!
