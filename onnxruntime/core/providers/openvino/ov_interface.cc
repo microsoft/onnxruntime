@@ -90,6 +90,7 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
 
 OVExeNetwork OVCore::CompileModel(const std::string onnx_model_path,
                                   std::string& hw_target,
+                                  std::string precision,
                                   std::string cache_dir,
                                   ov::AnyMap& device_config,
                                   std::string name) {
@@ -99,7 +100,8 @@ OVExeNetwork OVCore::CompileModel(const std::string onnx_model_path,
       obj = oe.compile_model(onnx_model_path,
                              "AUTO",
                              ov::device::priorities("GPU", "CPU"),
-                             ov::device::properties("GPU", ov::cache_dir(cache_dir)));
+                             ov::device::properties("GPU", {ov::cache_dir(cache_dir),
+                                                            ov::hint::inference_precision(precision)}));
     } else {
       obj = oe.compile_model(onnx_model_path, hw_target, device_config);
     }
@@ -134,7 +136,7 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
 }
 
 void OVCore::SetCache(std::string cache_dir_path, std::string device_type) {
-  if (device_type == "AUTO:GPU,CPU") {
+  if (device_type != "AUTO:GPU,CPU") {
     oe.set_property(ov::cache_dir(cache_dir_path));
   }
 }
