@@ -794,7 +794,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                     self._runtime_options.embed_sparsity_ratio = ",".join(
                         [
                             f"{v[0]}:{v[1]:.0f}%"
-                            for v in self._runtime_inspector._embedding_module_to_padding_density_map.values() if v[1] != -1
+                            for v in self._runtime_inspector._embedding_module_to_padding_density_map.values()
+                            if v[1] != -1
                         ]
                     )
 
