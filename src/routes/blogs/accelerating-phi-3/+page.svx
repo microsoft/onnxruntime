@@ -46,6 +46,8 @@ For FP16 CUDA and INT4 CUDA, Phi-3 Mini-128K-Instruct with ORT performs up to 5X
 
 For FP16 and INT4 CUDA, Phi-3 Mini-4K-Instruct with ORT performs up to 5X faster and up to 10X faster than PyTorch, respectively. Phi-3 Mini-4K-Instruct is also up to 3X faster than Llama.cpp for large sequence lengths.
 
+Whether it's Windows, Linux, Android, or Mac, there's a path to infer models efficiently with ONNX Runtime!
+
 ## Try the ONNX Runtime Generate() API
 
 We are pleased to announce our new Generate() API, which makes it easier to run the Phi-3 models across a range of devices, platforms, and EP backends by wrapping several aspects of generative AI inferencing. The Generate() API makes it easy to drag and drop LLMs straight into your app. To run the early version of these models with ONNX, follow the steps [here](http://aka.ms/generate-tutorial).
