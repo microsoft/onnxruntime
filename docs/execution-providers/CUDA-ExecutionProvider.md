@@ -536,7 +536,7 @@ UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), keys.size())
 cudaStream_t cuda_stream;
 cudaStreamCreate(&cuda_stream);
 // this implicitly sets "has_user_compute_stream"
-UpdateCUDAProviderOptionsWithValue(cuda_options, "user_compute_stream", cuda_stream)
+UpdateCUDAProviderOptionsWithValue(cuda_options, "user_compute_stream", cuda_stream);
 OrtSessionOptions* session_options = /* ... */;
 SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
 

@@ -85,13 +85,13 @@ sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
 sessionOptions.AppendExecutionProvider_DML(0);
 ```
 
-### `OrtSessionOptionsAppendExecutionProviderEx_DML` function
+### `SessionOptionsAppendExecutionProvider_DML1` function
 {: .no_toc }
 
 Creates a DirectML Execution Provider using the given DirectML device, and which executes work on the supplied D3D12 command queue. The DirectML device and D3D12 command queue must have the same parent [ID3D12Device](https://docs.microsoft.com/windows/win32/api/d3d12/nn-d3d12-id3d12device), or an error will be returned. The D3D12 command queue must be of type `DIRECT` or `COMPUTE` (see [D3D12_COMMAND_LIST_TYPE](https://docs.microsoft.com/windows/win32/api/d3d12/ne-d3d12-d3d12_command_list_type)). If this function succeeds, the inference session once created will maintain a strong reference on both the `dml_device` and `command_queue` objects.
 
 ```c
-OrtStatus* OrtSessionOptionsAppendExecutionProviderEx_DML(
+OrtStatus* SessionOptionsAppendExecutionProvider_DML1(
     _In_ OrtSessionOptions* options,
     _In_ IDMLDevice* dml_device,
     _In_ ID3D12CommandQueue* cmd_queue
