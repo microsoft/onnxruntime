@@ -153,6 +153,49 @@ void PrepareMask(const int32_t* mask_index,
   }
 }
 
+// Applies causal mask and past seqlens right pad to the mask_data buffer.
+template <typename T>
+void PrepareMaskGQA(T* mask_data,
+                    int batch_size,
+                    int sequence_length,
+                    int buffer_sequence_length,
+                    int local_window_size,
+                    const int32_t* seqlens_k) {
+  // mask_data has been filled with 0, and its shape is BxSxT
+  T* p_mask = mask_data;
+  // TODO: parallelize this
+  for (int b_i = 0; b_i < batch_size; b_i++) {
+    if (sequence_length > 1) {
+      // Apply causal/local mask for prompt case.
+      for (int s_i = 0; s_i < sequence_length; s_i++) {
+        for (int m_i = s_i + 1; m_i < buffer_sequence_length; m_i++) {
+          p_mask[s_i * buffer_sequence_length + m_i] = std::numeric_limits<T>::lowest();
+        }
+        // Apply local mask.
+        if (local_window_size > 0) {
+          for (int m_i = 0; m_i < s_i - local_window_size; m_i++) {
+            p_mask[s_i * buffer_sequence_length + m_i] = std::numeric_limits<T>::lowest();
+          }
+        }
+      }
+    } else if (sequence_length == 1) {
+      // Apply right padding to mask for token gen case.
+      int total_seqlen = seqlens_k[b_i] + 1;
+      for (int m_i = total_seqlen; m_i < buffer_sequence_length; m_i++) {
+        p_mask[m_i] = std::numeric_limits<T>::lowest();
+      }
+      // Apply local mask.
+      if (local_window_size > 0) {
+        for (int m_i = 0; m_i < total_seqlen - local_window_size - 1; m_i++) {
+          p_mask[m_i] = std::numeric_limits<T>::lowest();
+        }
+      }
+    }
+    ptrdiff_t mask_to_advance = SafeInt<ptrdiff_t>(sequence_length) * buffer_sequence_length;
+    p_mask += mask_to_advance;
+  }
+}
+
 // Concatenate a past state chunk PxH with input state chunk LxH into present state chunk TxH
 // Returns a pointer to the start of present state chunk.
 template <typename T>
@@ -172,6 +215,33 @@ T* ConcatStateChunk(const T* past,
   }
 
   memcpy(p, chunk, (present_chunk_length - past_chunk_length) * sizeof(T));
+  return start;
+}
+
+// GQA version of ConcatStateChunk
+template <typename T>
+T* ConcatStateChunkGQA(const T* past,
+                       const T* chunk,
+                       T* present,
+                       size_t present_buff_chunk_length,
+                       size_t past_buff_chunk_length,
+                       size_t past_chunk_length,
+                       size_t new_chunk_length,
+                       bool is_prompt,
+                       bool past_present_share_buffer,
+                       std::ptrdiff_t i) {
+  T* start = present + i * present_buff_chunk_length;
+
+  T* p = start;
+  if (!is_prompt) {
+    if (!past_present_share_buffer) {
+      const T* src_past = past + i * past_buff_chunk_length;
+      memcpy(p, src_past, past_chunk_length * sizeof(T));
+    }
+    p += past_chunk_length;
+  }
+
+  memcpy(p, chunk, new_chunk_length * sizeof(T));
   return start;
 }
 
