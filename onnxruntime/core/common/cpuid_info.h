@@ -54,7 +54,7 @@ class CPUIDInfo {
    */
   int32_t GetCoreUarch(uint32_t coreId) const {
     if (coreId >= core_uarchs_.size()) {
-      lin return -1;
+      return -1;
     }
     return core_uarchs_[coreId];
   }
