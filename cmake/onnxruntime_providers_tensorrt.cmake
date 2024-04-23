@@ -40,15 +40,70 @@
       HINTS ${TENSORRT_ROOT}
       PATH_SUFFIXES include)
     MESSAGE(STATUS "Found TensorRT headers at ${TENSORRT_INCLUDE_DIR}")
-    find_library(TENSORRT_LIBRARY_INFER nvinfer
+
+    # For TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows.
+    if (WIN32)
+      file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
+      string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
+      string(REGEX REPLACE "define NV_TENSORRT_MAJOR * +([0-9]+)" "\\1" NV_TENSORRT_MAJOR "${NV_TENSORRT_MAJOR}")
+      string(REGEX MATCH "define NV_TENSORRT_PATCH * +([0-9]+)" NV_TENSORRT_PATCH "${NVINFER_VER_CONTENT}")
+      string(REGEX REPLACE "define NV_TENSORRT_PATCH * +([0-9]+)" "\\1" NV_TENSORRT_PATCH "${NV_TENSORRT_PATCH}")
+      math(EXPR NV_TENSORRT_MAJOR_INT "${NV_TENSORRT_MAJOR}")
+      math(EXPR NV_TENSORRT_PATCH_INT "${NV_TENSORRT_PATCH}")
+
+      if (NV_TENSORRT_MAJOR)
+        MESSAGE(STATUS "NV_TENSORRT_MAJOR is ${NV_TENSORRT_MAJOR}")
+      else()
+        MESSAGE(STATUS "Can't find NV_TENSORRT_MAJOR macro")
+      endif()
+
+      # Here we only check TRT version > TRT 10 GA
+      # Note: TRT 10 EA is 10.0.0.6 but with no major version appended to the end
+      if ((NV_TENSORT_MAJOR_INT GREATER 10) OR (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_PATCH_INT GREATER 0))
+         set(NVINFER_LIB "nvinfer_${NV_TENSORRT_MAJOR}")
+         set(NVINFER_PLUGIN_LIB "nvinfer_plugin_${NV_TENSORRT_MAJOR}")
+         set(PARSER_LIB "nvonnxparser_${NV_TENSORRT_MAJOR}")
+      endif()
+    endif()
+
+    if (NOT NVINFER_LIB)
+       set(NVINFER_LIB "nvinfer")
+    endif()
+
+    if (NOT NVINFER_PLUGIN_LIB)
+       set(NVINFER_PLUGIN_LIB "nvinfer_plugin")
+    endif()
+
+    if (NOT PARSER_LIB)
+       set(PARSER_LIB "nvonnxparser")
+    endif()
+
+    MESSAGE(STATUS "Search for ${NVINFER_LIB}, ${NVINFER_PLUGIN_LIB} and ${PARSER_LIB}")
+
+    find_library(TENSORRT_LIBRARY_INFER ${NVINFER_LIB}
       HINTS ${TENSORRT_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
-    find_library(TENSORRT_LIBRARY_INFER_PLUGIN nvinfer_plugin
+
+    if (NOT TENSORRT_LIBRARY_INFER)
+      MESSAGE(STATUS "Can't find ${NVINFER_LIB}")
+    endif()
+
+    find_library(TENSORRT_LIBRARY_INFER_PLUGIN ${NVINFER_PLUGIN_LIB}
       HINTS  ${TENSORRT_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
-    find_library(TENSORRT_LIBRARY_NVONNXPARSER nvonnxparser
+
+    if (NOT TENSORRT_LIBRARY_INFER_PLUGIN)
+      MESSAGE(STATUS "Can't find ${NVINFER_PLUGIN_LIB}")
+    endif()
+
+    find_library(TENSORRT_LIBRARY_NVONNXPARSER ${PARSER_LIB}
       HINTS  ${TENSORRT_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
+
+    if (NOT TENSORRT_LIBRARY_NVONNXPARSER)
+      MESSAGE(STATUS "Can't find ${PARSER_LIB}")
+    endif()
+
     set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
     MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   else()
