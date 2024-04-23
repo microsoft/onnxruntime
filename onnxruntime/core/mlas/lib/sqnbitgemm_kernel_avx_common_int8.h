@@ -106,7 +106,6 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
     __m256i bv_epi16[NCols];
     UnrolledLoop<NCols>([&](size_t i) {
       const __m128i lower = _mm_and_si128(bvi[i], low_mask);
-      std::cout << "lower" << _mm_extract_epi16(lower, 0) << std::endl;
       const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi[i], 4), low_mask), 8);
       bv_epi16[i] = _mm256_cvtepu8_epi16(_mm_add_epi8(upper, lower));
       });
