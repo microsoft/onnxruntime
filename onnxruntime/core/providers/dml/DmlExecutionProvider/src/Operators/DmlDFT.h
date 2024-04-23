@@ -405,7 +405,7 @@ public:
 
             // Get the input and output shape sizes
             auto inputDims = GetTensorDimensions(inputTensor.Get());
-            int32_t rank = static_cast<int32_t>(inputDims.size());
+            auto rank = static_cast<int32_t>(inputDims.size());
             ComPtr<IMLOperatorTensor> axisTensor;
             if (SUCCEEDED(context->GetInputTensor(2, &axisTensor)) && axisTensor != nullptr)
             {
@@ -1121,11 +1121,8 @@ public:
         {
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float },
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Double },
         };
-        if (version == 20)
-        {
-            t1AllowedEdges.push_back(MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Double });
-        }
         t1Constraint.allowedTypes = t1AllowedEdges.data();
         t1Constraint.allowedTypeCount = static_cast<uint32_t>(t1AllowedEdges.size());
 
@@ -1134,12 +1131,9 @@ public:
         t2Constraint.typeLabel = "T2";
         std::vector<MLOperatorEdgeDescription> t2AllowedEdges
         {
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int32 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int64 },
         };
-        if (version == 20)
-        {
-            t2AllowedEdges.push_back(MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int32 });
-        }
         t2Constraint.allowedTypes = t2AllowedEdges.data();
         t2Constraint.allowedTypeCount = static_cast<uint32_t>(t2AllowedEdges.size());
 
