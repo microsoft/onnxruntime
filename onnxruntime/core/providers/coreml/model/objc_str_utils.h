@@ -11,4 +11,4 @@ namespace onnxruntime::coreml::util {
 // Prefer this to directly calling [NSString stringWithUTF8String:] as that may return nil.
 NSString* _Nonnull Utf8StringToNSString(const char* _Nonnull utf8_str);
 
-}  // onnxruntime::coreml::util
+}  // namespace onnxruntime::coreml::util
