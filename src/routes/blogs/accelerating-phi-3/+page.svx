@@ -77,7 +77,7 @@ We measured ONNX Runtime + DirectML performance of Phi-3 Mini (4k sequence lengt
 <br/><br/>
 DirectML lets developers not only achieve great performance but also lets developers deploy models across the entire Windows ecosystem with support from AMD, Intel and NVIDIA. Best of all, AWQ means that developers get this scale while also maintaining high model accuracy.
 <br/><br/>
-Stay tuned for additional performance improvements in the coming weeks thanks to optimized drivers from our hardware partners, along with additional updates to the ONNX Generate() API.
+Stay tuned for additional performance improvements in the coming weeks thanks to optimized drivers from our hardware partners and additional updates to the ONNX Generate() API.
 
     </div>
     <div class="col-span-1">
