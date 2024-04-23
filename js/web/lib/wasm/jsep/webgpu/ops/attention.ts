@@ -288,7 +288,7 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
     }
 
     var sum_vector = ${inputHelper.type.value}(${0});
-    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + offset < uniforms.d_comp; i++) {
+    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
       sum_vector += exp(${f32Type}(x[offset + i]) - max_value);
     }
     thread_sum[local_idx] = ${(() => {
@@ -396,7 +396,7 @@ const createAttentionProbsProgramInfo =
     let qOffset = uniforms.M * uniforms.K * headIdx + m * uniforms.K;
     let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx + n * uniforms.K;
 
-    var value = ${output.type.value}(0);
+    var value = ${qInput.type.value}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
