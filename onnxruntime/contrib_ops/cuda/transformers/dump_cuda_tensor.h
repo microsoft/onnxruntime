@@ -23,7 +23,6 @@
 #define DUMP_TENSOR_D(...)
 #endif
 
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {

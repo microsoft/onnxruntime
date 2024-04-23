@@ -27,7 +27,7 @@ namespace cuda {
       SparseAttention<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
-//REGISTER_KERNEL_TYPED(BFloat16)
+// REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 SparseAttention<T>::SparseAttention(const OpKernelInfo& info)

@@ -13,11 +13,11 @@ def block_sparse_attention_kernel(
     Q,  # query [B, H, M, D]
     K,  # key [B, H_kv, N, D]. Note that N is max_seq_len for kv cache, H_kv is num_kv_heads
     V,  # value [B, H_kv, N, D]
-    layout_csr_row_indices,  # block mask CSR format. Shape is [H, num_rows + 1] where num_rows = max_seq_len / BLOCK_M
-    layout_csr_col_indices,  # block mask CSR format. Shape is [H, num_rows * num_cols] where num_cols = max_seq_len / BLOCK_N
+    layout_csr_row_indices,  # block mask CSR format. Shape is [L, num_rows + 1] where num_rows = max_seq_len / BLOCK_M
+    layout_csr_col_indices,  # block mask CSR format. Shape is [L, num_rows * num_cols] where num_cols = max_seq_len / BLOCK_N
     layout_csr_row_stride_h,  # stride per head for csr_row_indices, i.e. num_rows + 1
     layout_csr_col_stride_h,  # stride per head for csr_col_indices, i.e. num_rows * num_cols
-    num_layout,  # number of sparse layout
+    num_layout,  # number of sparse layout (L)
     softmax_scale,
     stride_qb,
     stride_qh,
@@ -61,9 +61,9 @@ def block_sparse_attention_kernel(
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_D)
-    off_q = offs_m[:, None] * stride_qm + offs_d[None, :]
-    off_k = offs_n[None, :] * stride_kn + offs_d[:, None]
-    off_v = offs_n[:, None] * stride_vn + offs_d[None, :]
+    off_q = offs_m[:, None] * stride_qm + offs_d[None, :]  # [BLOCK_M, BLOCK_D]
+    off_k = offs_n[None, :] * stride_kn + offs_d[:, None]  # [BLOCK_D, BLOCK_N]
+    off_v = offs_n[:, None] * stride_vn + offs_d[None, :]  # [BLOCK_N, BLOCK_D]
 
     # Initialize pointers to query, key, value
     q_ptrs = Q + off_q

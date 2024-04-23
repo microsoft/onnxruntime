@@ -330,7 +330,11 @@ def run_relevance_no_past(device, dtype=torch.float16):
     print("key_total_sequence_lengths", feed_dict["key_total_sequence_lengths"])
 
     expected_out = scaled_dot_product_gqa(
-        query.clone(), key.clone(), value.clone(), scale=1.0 / scale, mask=dense_mask.repeat(config.batch_size, 1, 1, 1).bool()
+        query.clone(),
+        key.clone(),
+        value.clone(),
+        scale=1.0 / scale,
+        mask=dense_mask.repeat(config.batch_size, 1, 1, 1).bool(),
     )
 
     # Run ORT
