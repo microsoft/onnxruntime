@@ -161,18 +161,23 @@ MLAS_FORCEINLINE void
       std::cout << is_lower << zp_ptr << scale_ptr
                 << b_data_ptr << dst_ptr << tile_count << cols << std::endl;
 
-      __m256i weight_16_epi16[NCols8];
-      __m256 scale_8_ps[NCols8];
+      //__m256i weight_16_epi16[NCols8];
+      //__m256 scale_8_ps[NCols8];
       UnrolledLoop<NCols8>([&](size_t col_) {
         if ((int)col_ < cols) {
-          // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
+            // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
           std::cout << col_ << std::endl;
           __m128i bvi = _mm_loadl_epi64((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
           std::cout << _mm_extract_epi16(bvi, 0) << std::endl;
           const __m128i lower = _mm_and_si128(bvi, low_mask);
           std::cout << "lower" << _mm_extract_epi16(lower, 0) << std::endl;
-          const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask), 8);
-          std::cout << "upper" << _mm_extract_epi16(upper, 0) << std::endl;
+          const __m128i bvi4 = _mm_srli_epi16(bvi, 4);
+          std::cout << "bvi4" << _mm_extract_epi16(bvi4, 0) << std::endl;
+          // const __m128i bvi4_masked = _mm_and_si128(bvi4, low_mask);
+          // std::cout << "bvi4_masked" << _mm_extract_epi16(bvi4_masked, 0) << std::endl;
+
+          // const __m128i upper = _mm_bslli_si128(bvi4_masked, 8);
+          // std::cout << "upper" << _mm_extract_epi16(upper, 0) << std::endl;
           //__m128i weight_16_epi8 = _mm_add_epi8(upper, lower);
           //std::cout << "weight_16_epi8" << _mm_extract_epi16(weight_16_epi8, 0) << std::endl;
 
@@ -193,10 +198,10 @@ MLAS_FORCEINLINE void
           //scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
           //std::cout << "scale_8_ps[col_]" << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
         } else {
-          weight_16_epi16[col_] = _mm256_setzero_si256();
-          std::cout << "weight_16_epi16[col_]_2" << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
-          scale_8_ps[col_] = _mm256_setzero_ps();
-          std::cout << "scale_8_ps[col_]_2" << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
+          //weight_16_epi16[col_] = _mm256_setzero_si256();
+          //std::cout << "weight_16_epi16[col_]_2" << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
+          //scale_8_ps[col_] = _mm256_setzero_ps();
+          //std::cout << "scale_8_ps[col_]_2" << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
         }
         //std::cout << "weight_16_epi16[col_]_3" << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
         //std::cout << "scale_8_ps[col_]_3" << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
