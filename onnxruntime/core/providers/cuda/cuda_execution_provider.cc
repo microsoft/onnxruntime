@@ -2394,7 +2394,9 @@ static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
   return false;
 }
 
-static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node, const logging::Logger& logger) {
+static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node, const logging::Logger& logger,
+                                           [[maybe_unused]] const GraphViewer& graph_viewer,
+                                           [[maybe_unused]] const bool prefer_nhwc) {
   const auto& node_attributes = node.GetAttributes();
   // Check attributes
   for (auto& attr : node_attributes) {
@@ -2441,6 +2443,15 @@ static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node, const 
       }
     }
   }
+
+#ifdef ENABLE_CUDA_NHWC_OPS
+  if (prefer_nhwc) {
+    // NHWC implementation doesn't handle transpose of W if it's not an initializer
+    if (!graph_viewer.IsConstantInitializer(node.InputDefs()[1]->Name(), true)) {
+      return true;
+    }
+  }
+#endif
 
   return false;
 }
@@ -2510,7 +2521,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
       force_inside = !not_supported;
     } else if ("ConvTranspose" == node.OpType()) {
-      not_supported = ConvTransposeNeedFallbackToCPU(node, logger);
+      not_supported = ConvTransposeNeedFallbackToCPU(node, logger, graph, IsNHWCPreferred());
       force_inside = !not_supported;
     } else if ("Cast" == node.OpType()) {
       not_supported = CastNeedFallbackToCPU(node);
