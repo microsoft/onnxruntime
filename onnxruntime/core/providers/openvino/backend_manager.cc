@@ -125,6 +125,14 @@ BackendManager::BackendManager(const GlobalContext& global_context,
 // the EPContext node.
 Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& graph_body_viewer,
                                                      const logging::Logger& logger) {
+  if (GetGlobalContext().disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape) {
+    std::string exception_str =
+        "Exporting dynamically compiled models at runtime is not supported. "
+        "Cannot export blobs of dynamic models that request static shape inference. "
+        "To export this model, set disable_dynamic_shapes to False";
+    ORT_THROW(exception_str);
+  }
+
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
   auto graph_name = global_context_.onnx_model_path_name;

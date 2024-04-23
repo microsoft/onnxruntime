@@ -1381,7 +1381,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::enum_<ExecutionOrder>(m, "ExecutionOrder")
       .value("DEFAULT", ExecutionOrder::DEFAULT)
-      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED);
+      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED)
+      .value("MEMORY_EFFICIENT", ExecutionOrder::MEMORY_EFFICIENT);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)

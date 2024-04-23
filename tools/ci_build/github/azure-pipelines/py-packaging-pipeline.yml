@@ -55,6 +55,12 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+# Only applies to QNN packages.
+- name: qnn_sdk_version
+  type: string
+  displayName: 'QNN SDK version. Only for QNN packages.'
+  default: 2.19.2.240210
+
 trigger: none
 
 resources:
@@ -78,3 +84,4 @@ stages:
     enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
     build_py_parameters: ${{ parameters.build_py_parameters }}
     cmake_build_type: ${{ parameters.cmake_build_type }}
+    qnn_sdk_version: ${{ parameters.qnn_sdk_version }}
