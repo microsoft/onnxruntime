@@ -137,7 +137,7 @@ MLAS_FORCEINLINE void
 
   constexpr size_t NCols8 = 8;  // process NCols8 columns of QuantB at a time
   constexpr size_t GemmFloatKernelWidth16 = 16; // mlas GemmFloatKernel requires B with width 16
-  //const __m128i low_mask = _mm_set1_epi8(0xF);
+  const __m128i low_mask = _mm_set1_epi8(0xF);
   std::cout << GemmFloatKernelWidth16 << NCols8 << zp_col_stride_in_bytes << HasZeroPoint
             << b_data_col_stride_in_bytes << blk_data_size_in_bytes << BlkBitWidth4
             << BlkLen16;
@@ -145,7 +145,7 @@ MLAS_FORCEINLINE void
   for (size_t col = 0; col < CountN; col += NCols8) {
     const int cols = std::min((int)NCols8, (int)CountN - (int)col);
     for (size_t k = 0; k < BlockCountK; k++) {
-      //int klen = std::min((int)BlkLen16, (int)(CountK - (int)k * BlkLen16));
+      int klen = std::min((int)BlkLen16, (int)(CountK - (int)k * BlkLen16));
       // count # of tiles plus blks of the current tile from top
       const size_t tile_count = col / GemmFloatKernelWidth16;
       float* dst_ptr = FpData + (tile_count * CountK + k * BlkLen16) * GemmFloatKernelWidth16;
@@ -160,106 +160,122 @@ MLAS_FORCEINLINE void
       std::cout << is_lower << zp_ptr << scale_ptr
                 << b_data_ptr << dst_ptr << tile_count << cols << std::endl;
 
-      //__m256i weight_16_epi16[NCols8];
-      //__m256 scale_8_ps[NCols8];
+      __m256i weight_16_epi16[NCols8];
+      __m256 scale_8_ps[NCols8];
       UnrolledLoop<NCols8>([&](size_t col_) {
         if ((int)col_ < cols) {
           // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
           std::cout << col_ << std::endl;
           __m128i bvi = _mm_loadl_epi64((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
           std::cout << _mm_extract_epi16(bvi, 0) << std::endl;
-          //const __m128i lower = _mm_and_si128(bvi, low_mask);
-          //const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask), 8);
-          //__m128i weight_16_epi8 = _mm_add_epi8(upper, lower);
+          const __m128i lower = _mm_and_si128(bvi, low_mask);
+          std::cout << "lower" << _mm_extract_epi16(lower, 0) << std::endl;
+          const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask), 8);
+          std::cout << "upper" << _mm_extract_epi16(upper, 0) << std::endl;
+          __m128i weight_16_epi8 = _mm_add_epi8(upper, lower);
+          std::cout << "weight_16_epi8" << _mm_extract_epi16(weight_16_epi8, 0) << std::endl;
 
-          //if (HasZeroPoint) {
-          //  std::byte zp_packed = *(zp_ptr + col_ * zp_col_stride_in_bytes);
-          //  uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
-          //  weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, _mm_set1_epi8(zp));
-          //} else {
-          //  const __m128i eight = _mm_set1_epi8(8);
-          //  weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, eight);
-          //}
-          //std::cout << _mm_extract_epi8(weight_16_epi8, 0) << std::endl;
-          //weight_16_epi16[col_] = _mm256_cvtepi8_epi16(weight_16_epi8);
-          //scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
+          if (HasZeroPoint) {
+            std::byte zp_packed = *(zp_ptr + col_ * zp_col_stride_in_bytes);
+            uint8_t zp = std::to_integer<int8_t>(is_lower ? (zp_packed & std::byte{ 0x0F }) : (zp_packed >> 4));
+            std::cout << "zp" << zp << std::endl;
+            weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, _mm_set1_epi8(zp));
+            std::cout << "weight_16_epi8_2" << _mm_extract_epi16(weight_16_epi8, 0) << std::endl;
+          } else {
+            const __m128i eight = _mm_set1_epi8(8);
+            weight_16_epi8 = _mm_sub_epi8(weight_16_epi8, eight);
+            std::cout << "weight_16_epi8_2" << _mm_extract_epi16(weight_16_epi8, 0) << std::endl;
+          }
+          std::cout << _mm_extract_epi8(weight_16_epi8, 0) << std::endl;
+          weight_16_epi16[col_] = _mm256_cvtepi8_epi16(weight_16_epi8);
+          std::cout << "weight_16_epi16[col_]" << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
+          scale_8_ps[col_] = _mm256_set1_ps(*(scale_ptr + col_ * BlockCountK));
+          std::cout << "scale_8_ps[col_]" << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
         } else {
-          //weight_16_epi16[col_] = _mm256_setzero_si256();
-          //scale_8_ps[col_] = _mm256_setzero_ps();
+          weight_16_epi16[col_] = _mm256_setzero_si256();
+          std::cout << "weight_16_epi16[col_]_2" << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
+          scale_8_ps[col_] = _mm256_setzero_ps();
+          std::cout << "scale_8_ps[col_]_2" << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
         }
-        //std::cout << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
-        //std::cout << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
+        std::cout << "weight_16_epi16[col_]_3" << _mm256_extract_epi16(weight_16_epi16[col_], 0) << std::endl;
+        std::cout << "scale_8_ps[col_]_3" << _mm256_cvtss_f32(scale_8_ps[col_]) << std::endl;
       });
-      //for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
-      //  int kklen = klen - i_of_2 * 8;
-      //  if (kklen <= 0)
-      //      break;
-      //  __m256 weight_8_ps[8];
-      //  for (size_t col_ = 0; col_ < 8; col_++) {
-      //    if ((int)col_ < cols) {
-      //      if (i_of_2 == 0) {
-      //        __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 0));
-      //        weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
-      //      } else {
-      //        __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 1));
-      //        weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
-      //      }
-      //    } else {
-      //      weight_8_ps[col_] = _mm256_setzero_ps();
-      //    }
-      //  }
-      //  // transpose and store
-      //  __m256 a0 = _mm256_unpacklo_ps(weight_8_ps[0], weight_8_ps[1]);
-      //  __m256 a1 = _mm256_unpackhi_ps(weight_8_ps[0], weight_8_ps[1]);
-      //  __m256 a2 = _mm256_unpacklo_ps(weight_8_ps[2], weight_8_ps[3]);
-      //  __m256 a3 = _mm256_unpackhi_ps(weight_8_ps[2], weight_8_ps[3]);
-      //  __m256 a4 = _mm256_unpacklo_ps(weight_8_ps[4], weight_8_ps[5]);
-      //  __m256 a5 = _mm256_unpackhi_ps(weight_8_ps[4], weight_8_ps[5]);
-      //  __m256 a6 = _mm256_unpacklo_ps(weight_8_ps[6], weight_8_ps[7]);
-      //  __m256 a7 = _mm256_unpackhi_ps(weight_8_ps[6], weight_8_ps[7]);
+      for (int i_of_2 = 0; i_of_2 < 2; i_of_2++) {
+        std::cout << "i_of_2 " << i_of_2 << std::endl;
+        int kklen = klen - i_of_2 * 8;
+        if (kklen <= 0)
+            break;
+        __m256 weight_8_ps[8];
+        for (size_t col_ = 0; col_ < 8; col_++) {
+          if ((int)col_ < cols) {
+            if (i_of_2 == 0) {
+              __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 0));
+              std::cout << "weight_i_8_epi32 " << _mm256_extract_epi16(weight_i_8_epi32, 0) << std::endl;
+              weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
+              std::cout << "weight_8_ps[col_]" << _mm256_cvtss_f32(weight_8_ps[col_]) << std::endl;
+            } else {
+              __m256i weight_i_8_epi32 = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(weight_16_epi16[col_], 1));
+              std::cout << "weight_i_8_epi32_2 " << _mm256_extract_epi16(weight_i_8_epi32, 0) << std::endl;
+              weight_8_ps[col_] = _mm256_mul_ps(_mm256_cvtepi32_ps(weight_i_8_epi32), scale_8_ps[col_]);
+              std::cout << "weight_8_ps[col_]_2" << _mm256_cvtss_f32(weight_8_ps[col_]) << std::endl;
+            }
+          } else {
+            weight_8_ps[col_] = _mm256_setzero_ps();
+            std::cout << "weight_8_ps[col_]_3" << _mm256_cvtss_f32(weight_8_ps[col_]) << std::endl;
+          }
+        }
+        // transpose and store
+        __m256 a0 = _mm256_unpacklo_ps(weight_8_ps[0], weight_8_ps[1]);
+        __m256 a1 = _mm256_unpackhi_ps(weight_8_ps[0], weight_8_ps[1]);
+        __m256 a2 = _mm256_unpacklo_ps(weight_8_ps[2], weight_8_ps[3]);
+        __m256 a3 = _mm256_unpackhi_ps(weight_8_ps[2], weight_8_ps[3]);
+        __m256 a4 = _mm256_unpacklo_ps(weight_8_ps[4], weight_8_ps[5]);
+        __m256 a5 = _mm256_unpackhi_ps(weight_8_ps[4], weight_8_ps[5]);
+        __m256 a6 = _mm256_unpacklo_ps(weight_8_ps[6], weight_8_ps[7]);
+        __m256 a7 = _mm256_unpackhi_ps(weight_8_ps[6], weight_8_ps[7]);
 
-      //  __m256 b0 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(1, 0, 1, 0));
-      //  __m256 b1 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(3, 2, 3, 2));
-      //  __m256 b2 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(1, 0, 1, 0));
-      //  __m256 b3 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(3, 2, 3, 2));
-      //  __m256 b4 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(1, 0, 1, 0));
-      //  __m256 b5 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(3, 2, 3, 2));
-      //  __m256 b6 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(1, 0, 1, 0));
-      //  __m256 b7 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(3, 2, 3, 2));
+        __m256 b0 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(1, 0, 1, 0));
+        __m256 b1 = _mm256_shuffle_ps(a0, a2, _MM_SHUFFLE(3, 2, 3, 2));
+        __m256 b2 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(1, 0, 1, 0));
+        __m256 b3 = _mm256_shuffle_ps(a1, a3, _MM_SHUFFLE(3, 2, 3, 2));
+        __m256 b4 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(1, 0, 1, 0));
+        __m256 b5 = _mm256_shuffle_ps(a4, a6, _MM_SHUFFLE(3, 2, 3, 2));
+        __m256 b6 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(1, 0, 1, 0));
+        __m256 b7 = _mm256_shuffle_ps(a5, a7, _MM_SHUFFLE(3, 2, 3, 2));
 
-      //  // next i_of_2th row
-      //  const size_t ij_offset_in_k = i_of_2 * 8 * GemmFloatKernelWidth16;
-      //  __m256 weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x20);
-      //  _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 0 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-      //  if (--kklen > 0) {
-      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x20);
-      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 1 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-      //  }
-      //  if (--kklen > 0) {
-      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x20);
-      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 2 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-      //  }
-      //  if (--kklen > 0) {
-      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x20);
-      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 3 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-      //  }
-      //  if (--kklen > 0) {
-      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x31);
-      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 4 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-      //  }
-      //  if (--kklen > 0) {
-      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x31);
-      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 5 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-      //  }
-      //  if (--kklen > 0) {
-      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x31);
-      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 6 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-      //  }
-      //  if (--kklen > 0) {
-      //    weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x31);
-      //    _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 7 * GemmFloatKernelWidth16, weight_transposed_8_ps);
-      //  }
-      //}
+        // next i_of_2th row
+        const size_t ij_offset_in_k = i_of_2 * 8 * GemmFloatKernelWidth16;
+        __m256 weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x20);
+        _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 0 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 1 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 2 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x20);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 3 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b0, b4, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 4 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b1, b5, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 5 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b2, b6, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 6 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+        if (--kklen > 0) {
+          weight_transposed_8_ps = _mm256_permute2f128_ps(b3, b7, 0x31);
+          _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 7 * GemmFloatKernelWidth16, weight_transposed_8_ps);
+        }
+      }
     }
   }
 }
