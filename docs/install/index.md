@@ -15,11 +15,10 @@ Details on OS versions, compilers, language versions, dependent libraries, etc c
 under [Compatibility](../reference/compatibility).
 
 ## Contents
-
 {: .no_toc }
 
 * TOC placeholder
-  {:toc}
+{:toc}
 
 ## Requirements
 
