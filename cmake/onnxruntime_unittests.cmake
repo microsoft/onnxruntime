@@ -250,9 +250,14 @@ file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/logging/*.h"
 )
 
-file(GLOB onnxruntime_test_quantiztion_src CONFIGURE_DEPENDS
+file(GLOB onnxruntime_test_quantization_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/quantization/*.cc"
   "${TEST_SRC_DIR}/quantization/*.h"
+)
+
+file(GLOB onnxruntime_test_flatbuffers_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/flatbuffers/*.cc"
+  "${TEST_SRC_DIR}/flatbuffers/*.h"
 )
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
@@ -767,7 +772,8 @@ if(NOT IOS)
 endif()
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
-        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantiztion_src})
+        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantization_src}
+        ${onnxruntime_test_flatbuffers_src})
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS

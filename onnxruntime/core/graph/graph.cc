@@ -1879,6 +1879,389 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
   }
 }
 
+#ifdef ENABLE_TRAINING
+
+namespace {
+
+/**
+ * @brief The data struct to store the group of nodes.
+ *
+ * The group contains a set of nodes, its execution depends on either of backward input leaf nodes,
+ * graph inputs/initializers or other group node's output.
+ */
+struct GroupNode {
+  GroupNode(const InlinedVector<const Node*>& node_list) {
+    nodes = node_list;
+
+    InlinedHashSet<const NodeArg*> intermediate_args;
+    for (const Node* node : nodes) {
+      for (const NodeArg* arg : node->InputDefs()) {
+        if (intermediate_args.find(arg) == intermediate_args.end()) {
+          input_args.push_back(arg);
+        }
+      }
+
+      for (const NodeArg* arg : node->OutputDefs()) {
+        intermediate_args.insert(arg);
+      }
+
+      for (auto output_edge_it = node->OutputEdgesBegin(); output_edge_it != node->OutputEdgesEnd();
+           ++output_edge_it) {
+        const Node* output_node = &output_edge_it->GetNode();
+        // Only if the output arg is used by nodes outside the group, then it is an output arg.
+        if (std::find(nodes.begin(), nodes.end(), output_node) == nodes.end()) {
+          output_args.push_back(node->OutputDefs()[output_edge_it->GetSrcArgIndex()]);
+        }
+      }
+    }
+  }
+
+  bool is_outputted{false};
+
+  InlinedVector<const NodeArg*> input_args;
+  InlinedVector<const NodeArg*> output_args;
+
+  InlinedVector<const Node*> nodes;
+};
+
+void SortForwardNodesByReverseDFS(const Graph* graph,
+                                  const InlinedVector<const Node*>& forward_output_nodes,
+                                  const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
+                                  InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
+                                  std::vector<NodeIndex>& node_orders) {
+  // Note 1: YieldOp is the separator of forward and backward nodes.
+  // Note 2: While it is also possible some nodes not contributing to the forward output nodes will be
+  //   executed before YieldOp, for example, if one forward node's output is used by Shape/Size, then
+  //   the Shape/Size node should be executed before YieldOp to release the memory as soon as possible.
+
+  // Reverse DFS from forward output nodes to find all "forward" nodes.
+  // The forward nodes are ordered by Reverse DFS tranverse.
+  graph->ReverseDFSFrom(
+      forward_output_nodes,
+      nullptr,
+      [&nodes_to_execute_before_yieldop, &node_orders](const Node* n) {
+        nodes_to_execute_before_yieldop.insert(n);
+        node_orders.push_back(n->Index());
+      },
+      NodeCompare());
+
+  for (const auto& parent_to_children_pair : shape_size_parents) {
+    const NodeIndex& parent_index = parent_to_children_pair.first;
+    if (nodes_to_execute_before_yieldop.find(graph->GetNode(parent_index)) == nodes_to_execute_before_yieldop.end()) {
+      continue;
+    }
+
+    for (const NodeIndex& shape_size_node_index : parent_to_children_pair.second) {
+      const Node* shape_size_node = graph->GetNode(shape_size_node_index);
+      // If the Shape/Size is already in the node_orders, then skip it.
+      if (nodes_to_execute_before_yieldop.find(shape_size_node) != nodes_to_execute_before_yieldop.end()) {
+        continue;
+      }
+
+      auto it = std::find(node_orders.begin(), node_orders.end(), parent_index);
+      ORT_ENFORCE(it != node_orders.end(), "Cannot find the parent node in the node orders.");
+
+      node_orders.insert(it + 1, shape_size_node_index);
+      nodes_to_execute_before_yieldop.insert(shape_size_node);
+    }
+  }
+}
+
+void PrepareToFindBranchGraph(const Graph* graph,
+                              const InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
+                              InlinedVector<const Node*>& branch_graph_input_nodes,
+                              InlinedVector<size_t>& backward_node_in_degree,
+                              std::queue<const Node*>& to_visit) {
+  for (auto& node : graph->Nodes()) {
+    // Ignore forward.
+    if (nodes_to_execute_before_yieldop.find(&node) != nodes_to_execute_before_yieldop.end()) {
+      continue;
+    }
+
+    if (node.OpType() == "YieldOp") {
+      backward_node_in_degree[node.Index()] = 0;
+      to_visit.push(&node);
+      continue;
+    }
+
+    size_t input_edge_count = node.GetInputEdgesCount();
+    backward_node_in_degree[node.Index()] = input_edge_count;
+
+    // A shortcut: input_edge_count could be 0 if it takes graph input directly.
+    if (input_edge_count == 0) {
+      branch_graph_input_nodes.push_back(&node);
+      continue;
+    }
+
+    for (auto input_edge_it = node.InputEdgesBegin(); input_edge_it != node.InputEdgesEnd(); ++input_edge_it) {
+      const Node* input_node = &input_edge_it->GetNode();
+      // If the input edge connect to forward nodes, then we remove the in_degree of the node.
+      if (nodes_to_execute_before_yieldop.find(input_node) != nodes_to_execute_before_yieldop.end()) {
+        input_edge_count--;
+      }
+    }
+
+    backward_node_in_degree[node.Index()] = input_edge_count;
+    if (input_edge_count == 0) {
+      branch_graph_input_nodes.push_back(&node);
+    }
+  }
+}
+
+void FindBranchGraph(
+    const InlinedVector<const Node*>& branch_graph_input_nodes,
+    const InlinedVector<size_t>& backward_node_in_degree,
+    InlinedVector<const Node*>& branch_graph,
+    InlinedVector<std::pair<const Node*, size_t>>& branch_subgraph_consumers) {
+  // Loop through the branch_graph_input_nodes to find the branch subgraphs by its output edges in BFS,
+  // and find the maximum self_contained subgraph taking the branch_graph_input_nodes as input nodes.
+  std::queue<const Node*> to_visit_queue;
+  InlinedVector<size_t> in_degree_copy = backward_node_in_degree;
+
+  // Add all nodes in branch_graph_input_nodes to the queue
+  for (auto branch_input_node : branch_graph_input_nodes) {
+    to_visit_queue.push(branch_input_node);
+    branch_graph.push_back(branch_input_node);
+  }
+
+  while (!to_visit_queue.empty()) {
+    const Node* current = to_visit_queue.front();
+    to_visit_queue.pop();
+
+    if (!current) continue;
+
+    for (auto node_it = current->OutputNodesBegin(); node_it != current->OutputNodesEnd(); ++node_it) {
+      auto& node_in_degree = in_degree_copy[node_it->Index()];
+      node_in_degree--;
+
+      if (node_in_degree == 0) {
+        to_visit_queue.push(&*node_it);
+        branch_graph.push_back(&*node_it);
+      }
+    }
+  }
+
+  // At this point, branch_graph is a big subgraph that contains all the nodes that are purely
+  // triggered by the branch_graph_input_nodes, other graph input/initializers and leaf nodes (for example Constant).
+  for (const Node* n : branch_graph) {
+    for (auto output_it = n->OutputEdgesBegin(); output_it != n->OutputEdgesEnd(); ++output_it) {
+      const Node* output_node = &output_it->GetNode();
+      const size_t dest_in_port = output_it->GetDstArgIndex();
+      if (std::find(branch_graph.begin(), branch_graph.end(), output_node) == branch_graph.end()) {
+        branch_subgraph_consumers.push_back({output_node, dest_in_port});
+      }
+    }
+  }
+}
+
+void TagNodeToAssociatedOutputs(const Graph* graph,
+                                const InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
+                                const InlinedVector<std::pair<const Node*, size_t>>& branch_subgraph_consumers,
+                                const InlinedVector<const Node*>& branch_graph,
+                                InlinedVector<GroupNode>& group_node_collection,
+                                InlinedHashMap<const NodeArg*, GroupNode*>& output_arg_to_grouped_node) {
+  // Reverse DFS from branch graph outputs (e.g. branch_subgraph_consumers) to tag each nodes:
+  // If one node N contributes to a graph output A, then we will tag A to N.
+  // If the node N contributes to multiple graph outputs A, B, C, then we will tag the A, B, C to N.
+  InlinedHashMap<const Node*, std::set<const NodeArg*>> node_to_its_associated_outputs;
+  node_to_its_associated_outputs.reserve(branch_graph.size());
+  for (const auto& consumer : branch_subgraph_consumers) {
+    const NodeArg* output_arg = consumer.first->InputDefs()[consumer.second];
+    const Node* end_node = graph->GetProducerNode(output_arg->Name());
+    InlinedVector<const Node*> end_nodes{end_node};
+    graph->ReverseDFSFrom(
+        end_nodes,
+        nullptr,
+        [&node_to_its_associated_outputs, &output_arg](const Node* n) {
+          node_to_its_associated_outputs[n].insert(output_arg);
+        },
+        nullptr,
+        [&nodes_to_execute_before_yieldop](const Node*, const Node* to) -> bool {
+          if (nodes_to_execute_before_yieldop.find(to) != nodes_to_execute_before_yieldop.end()) {
+            return true;  // Skip forward nodes.
+          }
+
+          return false;
+        });
+  }
+
+  // Cluster the nodes in the branch_graph based on the associated outputs.
+  InlinedHashMap<std::set<const NodeArg*>, InlinedVector<const Node*>> associated_outputs_to_nodes;
+  associated_outputs_to_nodes.reserve(node_to_its_associated_outputs.size());
+  for (const auto& node : branch_graph) {
+    const std::set<const NodeArg*>& associated_outputs = node_to_its_associated_outputs[node];
+    associated_outputs_to_nodes[associated_outputs].push_back(node);
+  }
+
+  // Finalize the subgraph inputs/output information.
+  group_node_collection.reserve(associated_outputs_to_nodes.size());
+  for (auto& [associated_outputs, nodes] : associated_outputs_to_nodes) {
+    group_node_collection.push_back(nodes);
+    // Flatten the key into NodeArg* for better search.
+    GroupNode& grouped_node = group_node_collection.back();
+    for (const auto& output_arg : grouped_node.output_args) {
+      output_arg_to_grouped_node.insert({output_arg, &grouped_node});
+    }
+  }
+}
+
+void UpdateBackwardInDegree(InlinedVector<size_t>& backward_node_in_degree,
+                            InlinedVector<std::pair<const Node*, size_t>>& branch_subgraph_consumers) {
+  // For each GroupNode, its execution is non-blocking main critical path rooting from YieldOp.
+  // The only dependencies of a GroupNode is either graph input/initializer/forward nodes, or
+  // the output nodes of another GroupNode.
+  // So we treat those GroupNode(s) as a single unit that can be executed anytime when it is
+  // firstly needed by the main critipath path.
+  for (auto& [output_node, dest_in_port] : branch_subgraph_consumers) {
+    ORT_ENFORCE(backward_node_in_degree[output_node->Index()] > 0);
+    backward_node_in_degree[output_node->Index()]--;
+  }
+}
+
+void OutputGroupedNodes(const Graph* graph,
+                        const NodeArg* output_arg,
+                        const InlinedHashMap<const NodeArg*, GroupNode*>& output_arg_to_grouped_node,
+                        std::vector<NodeIndex>& node_orders,
+                        InlinedVector<NodeIndex>& topo_order) {
+  ORT_ENFORCE(output_arg_to_grouped_node.find(output_arg) != output_arg_to_grouped_node.end(),
+              "output_arg_to_grouped_node does not contain output_arg named ", output_arg->Name());
+
+  GroupNode* grouped_node = output_arg_to_grouped_node.at(output_arg);
+
+  if (grouped_node->is_outputted) {
+    return;
+  }
+
+  for (const NodeArg* input_arg : grouped_node->input_args) {
+    if (!input_arg->Exists()) {
+      continue;
+    }
+
+    auto it = output_arg_to_grouped_node.find(input_arg);
+    if (it != output_arg_to_grouped_node.end() && !it->second->is_outputted) {
+      OutputGroupedNodes(graph, input_arg, output_arg_to_grouped_node, node_orders, topo_order);
+    }
+  }
+
+  for (const Node* n : grouped_node->nodes) {
+    node_orders.push_back(n->Index());
+    topo_order.push_back(n->Index());
+  }
+
+  grouped_node->is_outputted = true;
+}
+
+}  // namespace
+
+void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
+                                           const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
+                                           std::vector<NodeIndex>& node_orders) const {
+  /// Firstly, sort the forward nodes with customized ReverseDFS.
+
+  const size_t num_nodes = NumberOfNodes();
+  InlinedVector<const Node*> forward_output_nodes;
+  forward_output_nodes.reserve(yield_op->GetInputEdgesCount());
+  for (auto input_it = yield_op->InputNodesBegin(); input_it != yield_op->InputNodesEnd(); ++input_it) {
+    forward_output_nodes.push_back(&*input_it);
+  }
+
+  // Create a hash map (paired with node_orders) for cheaper search.
+  InlinedHashSet<const Node*> nodes_to_execute_before_yieldop;
+  nodes_to_execute_before_yieldop.reserve(num_nodes);
+
+  SortForwardNodesByReverseDFS(this, forward_output_nodes,
+                               shape_size_parents,
+                               nodes_to_execute_before_yieldop,
+                               node_orders);
+
+  /// Secondly, sort the backward nodes with customized Kahn's algorithm.
+
+  size_t num_of_backward_nodes = num_nodes - node_orders.size();
+  InlinedVector<size_t> backward_node_in_degree(MaxNodeIndex(), 0);
+  InlinedVector<NodeIndex> topo_order;
+  topo_order.reserve(num_of_backward_nodes);
+  std::queue<const Node*> to_visit;
+
+  InlinedVector<const Node*> branch_graph_input_nodes;
+  branch_graph_input_nodes.reserve(num_of_backward_nodes);
+  PrepareToFindBranchGraph(this,
+                           nodes_to_execute_before_yieldop,
+                           branch_graph_input_nodes,
+                           backward_node_in_degree,
+                           to_visit);
+
+  InlinedVector<const Node*> branch_graph;
+  branch_graph.reserve(num_of_backward_nodes);
+  InlinedVector<std::pair<const Node*, size_t>> branch_subgraph_consumers;
+  FindBranchGraph(branch_graph_input_nodes,
+                  backward_node_in_degree,
+                  branch_graph,
+                  branch_subgraph_consumers);
+
+  // Cluster the nodes in the branch_graph based on the associated outputs.
+  InlinedVector<GroupNode> group_node_collection;
+  InlinedHashMap<const NodeArg*, GroupNode*> output_arg_to_grouped_node;
+  TagNodeToAssociatedOutputs(this,
+                             nodes_to_execute_before_yieldop,
+                             branch_subgraph_consumers,
+                             branch_graph,
+                             group_node_collection,
+                             output_arg_to_grouped_node);
+
+  UpdateBackwardInDegree(backward_node_in_degree, branch_subgraph_consumers);
+
+  while (!to_visit.empty()) {
+    const Node* current = to_visit.front();
+    to_visit.pop();
+
+    if (!current) continue;
+
+    for (auto input_edge_it = current->InputEdgesBegin(); input_edge_it != current->InputEdgesEnd();
+         ++input_edge_it) {
+      const NodeArg* input_arg = current->InputDefs()[input_edge_it->GetDstArgIndex()];
+      if (!input_arg->Exists()) {
+        continue;
+      }
+
+      auto it = output_arg_to_grouped_node.find(input_arg);
+      if (it != output_arg_to_grouped_node.end() && !it->second->is_outputted) {
+        OutputGroupedNodes(this, input_arg, output_arg_to_grouped_node, node_orders, topo_order);
+      }
+    }
+
+    node_orders.push_back(current->Index());
+
+    for (auto output_edge_it = current->OutputEdgesBegin(); output_edge_it != current->OutputEdgesEnd();
+         ++output_edge_it) {
+      const Node* out_node = &output_edge_it->GetNode();
+      auto& node_in_degree = backward_node_in_degree[out_node->Index()];
+      node_in_degree--;
+      if (node_in_degree == 0) {
+        to_visit.push(out_node);
+      }
+    }
+
+    topo_order.push_back(current->Index());
+  }
+
+  // For the group nodes that are not outputted, we need to output them.
+  // Hitting this code path means some nodes are consuming outputs of forward nodes, and their outputs
+  // are not used by main branch backward nodes.
+  for (const auto& [output_arg, grouped_node] : output_arg_to_grouped_node) {
+    if (!grouped_node->is_outputted) {
+      OutputGroupedNodes(this, output_arg, output_arg_to_grouped_node, node_orders, topo_order);
+    }
+  }
+
+  if (num_of_backward_nodes != topo_order.size()) {
+    ORT_THROW("Some nodes for backward are not included in the topological sort: " +
+              std::to_string(num_of_backward_nodes) + " vs " +
+              std::to_string(topo_order.size()));
+  }
+}
+
+#endif  // ENABLE_TRAINING
+
 GSL_SUPPRESS(es.84)  // noisy warning about ignoring return value from insert(...)
 Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
   nodes_in_topological_order_.clear();
