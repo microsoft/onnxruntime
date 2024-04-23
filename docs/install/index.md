@@ -20,7 +20,7 @@ under [Compatibility](../reference/compatibility).
 * TOC placeholder
 {:toc}
 
-## Requirements <a name="requirements"></a>
+## Requirements
 
 * All builds require the English language package with `en_US.UTF-8` locale. On Linux,
   install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
@@ -36,7 +36,7 @@ For ONNX Runtime GPU package, it is required to install [CUDA](https://developer
 * The path of CUDA bin directory must be added to the PATH environment variable. 
 * In Windows, the path of cuDNN bin directory must be added to the PATH environment variable.
 
-## Python Installs <a name="python"></a>
+## Python Installs
 
 ### Install ONNX Runtime (ORT)
 
@@ -77,7 +77,7 @@ pip install tf2onnx
 pip install skl2onnx
 ```
 
-## C#/C/C++/WinML Installs <a name="c-winml"></a>
+## C#/C/C++/WinML Installs
 
 ### Install ONNX Runtime (ORT)
 
@@ -139,7 +139,7 @@ dotnet add package Microsoft.ML.OnnxRuntime.DirectML
 dotnet add package Microsoft.AI.MachineLearning
 ```
 
-## Install on web and mobile <a name="web-mobile"></a>
+## Install on web and mobile
 
 Unless stated otherwise, the installation instructions in this section refer to pre-built packages that include support
 for selected operators and ONNX opset versions based on the requirements of popular models. These packages may be
@@ -250,7 +250,7 @@ your NDK project.
 
 Refer to the instructions for creating a [custom Android package](../build/custom.md#android).
 
-## Install for On-Device Training <a name="on-device-training"></a>
+## Install for On-Device Training
 
 Unless stated otherwise, the installation instructions in this section refer to pre-built packages designed to perform
 on-device training.
@@ -398,7 +398,7 @@ pod 'onnxruntime-training-objc'
   </tr>
 </table>
 
-## Large Model Training <a name="large-model-training"></a>
+## Large Model Training
 
 ```bash
 pip install torch-ort
@@ -408,7 +408,7 @@ python -m torch_ort.configure
 **Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to
 specific versions of the CUDA libraries. Refer to the install options in [onnxruntime.ai](https://onnxruntime.ai).
 
-## Inference install table for all languages <a name="inference-table"></a>
+## Inference install table for all languages
 
 The table below lists the build variants available as officially supported packages. Others can
 be [built from source](../build/inferencing) from each [release branch](https://github.com/microsoft/onnxruntime/tags).
@@ -443,7 +443,7 @@ below:
 Please use these at your own risk. We strongly advise against deploying these to production workloads as support is
 limited for dev builds.*
 
-## Training install table for all languages <a name="training-table"></a>
+## Training install table for all languages
 
 Refer to the getting started with [Optimized Training](https://onnxruntime.ai/getting-started) page for more
 fine-grained installation instructions.
