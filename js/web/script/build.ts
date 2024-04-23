@@ -147,7 +147,7 @@ async function buildOrt({
   // - [bundle-name][.min].[m]js
   // - [bundle-name].proxy[.min].mjs
   // - ort[-training]-wasm[-simd][-threaded][.jsep].mjs
-  // - ort-wasm[-simd]-threaded[.jsep].worker.js
+  // - ort-wasm[-simd]-threaded[.jsep].worker.mjs
   const platform = isNode ? 'node' : 'browser';
   const external = isNode ? ['onnxruntime-common'] : ['node:fs/promises', 'node:fs', 'node:os'];
   const plugins: esbuild.Plugin[] = [];

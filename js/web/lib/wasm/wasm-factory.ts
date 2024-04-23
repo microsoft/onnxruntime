@@ -116,9 +116,9 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule> =
       (await dynamicImportDefault(`${wasmFileName}.mjs`, wasmPrefixOverride));
 
-  const wasmWorkerFileName = !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads ? `${wasmFileName}.worker.js` : '';
+  const wasmWorkerFileName = !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads ? `${wasmFileName}.worker.mjs` : '';
   const wasmWorkerUrl = !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads ?
-      await preloadWorker(`${wasmFileName}.worker.js`, wasmPrefixOverride ?? scriptSrc) :
+      await preloadWorker(`${wasmFileName}.worker.mjs`, wasmPrefixOverride ?? scriptSrc) :
       '';
 
   let isTimeout = false;
