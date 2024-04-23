@@ -16,7 +16,7 @@ stages:
     displayName: "Build iOS package for variant: ${{ parameters.packageVariant}}"
 
     pool:
-      vmImage: "macOS-latest-large"
+      vmImage: "macOS-latest"
 
     variables:
       xcodeVersion: "14.2"
@@ -38,7 +38,7 @@ stages:
         cPodName: onnxruntime-training-c
         objcPodName: onnxruntime-training-objc
 
-    timeoutInMinutes: 210
+    timeoutInMinutes: 240
 
     steps:
     - script: |
