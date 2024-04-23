@@ -301,7 +301,7 @@ Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_t
   fbs_buffer_size = std::max(fbs_buffer_size, m_bytes);
   fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
 
-  const bool use_external_data = fbs_buffer_size >= external_data_threshold * m_bytes;
+  const bool use_external_data = fbs_buffer_size >= external_data_threshold;
 
   fbs::utils::ExternalDataWriter external_data_writer = nullptr;
   std::optional<std::ofstream> external_data_stream;

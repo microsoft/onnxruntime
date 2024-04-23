@@ -65,7 +65,8 @@
     "source-map": "^0.7.4",
     "strip-json-comments": "^5.0.0"
   },
-  "main": "dist/ort-web.node.js",
+  "main": "dist/ort.node.min.js",
+  "browser": "dist/ort.min.js",
   "exports": {
     ".": {
       "node": {

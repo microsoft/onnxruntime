@@ -6,7 +6,7 @@
 
   <PropertyGroup>
     <IncludeMobileTargets>true</IncludeMobileTargets>
-    <BaseTargets>netstandard2.0;netcoreapp3.1;net7.0</BaseTargets>
+    <BaseTargets>netstandard2.0;netcoreapp3.1;net6.0</BaseTargets>
     <MobileTargets></MobileTargets>
   </PropertyGroup>
 
@@ -39,12 +39,12 @@
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Azure') AND
                             '$(IncludeMobileTargets)' == 'true'">
-    <MobileTargets>$(MobileTargets);net7.0-android;net7.0-ios;net7.0-maccatalyst</MobileTargets>
+    <MobileTargets>$(MobileTargets);net6.0-android;net6.0-ios</MobileTargets>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training' AND
                             '$(IncludeMobileTargets)' == 'true'">
-    <MobileTargets>$(MobileTargets);net7.0-android</MobileTargets>
+    <MobileTargets>$(MobileTargets);net6.0-android</MobileTargets>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -121,9 +121,9 @@
     <IsAndroidTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' OR
                                 $(TargetFramework.StartsWith('monoandroid'))">true</IsAndroidTarget>
     <IsIOSTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' OR
-                            $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst' OR
                             $(TargetFramework.StartsWith('xamarinios'))">true</IsIOSTarget>
-    <IsMacTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos'">true</IsMacTarget>
+    <IsMacTarget Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos' OR
+                            $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">true</IsMacTarget>
   </PropertyGroup>
 
   <!-- Enable training APIs for the build. The native package must be
@@ -175,7 +175,7 @@
   </PropertyGroup>
 
   <!-- CoreML may be valid for one of these targets as they support macOS. we do a runtime check that the OS is
-       macOS before attempting to enable CoreML. This includes netcoreapp3.1 and net7.0
+       macOS before attempting to enable CoreML. This includes netcoreapp3.1 and net6.0
        NOTE: $(TargetFrameworkIdentitier) may not be set yet, so we need to call GetTargetFrameworkIdentifier
   -->
   <PropertyGroup Condition="$([MSBuild]::GetTargetFrameworkIdentifier('$(TargetFramework)'))=='.NETCoreApp' AND
