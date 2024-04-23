@@ -113,7 +113,7 @@ The table below shows improvement on the average throughput of the first 256 tok
 <br/>
 
 
-The table below shows improvement on the average throughput of the first 256 tokens generated (tps) for Phi-3 Mini 4K Instruct ONNX model. The comparisons are for FP16 and INT4 precisions on CUDA, as measured on 1 A100 80GB GPU (SKU: Standard_ND96amsr_A100_v4).
+The table below shows improvement on the average throughput of the first 256 tokens generated (tps) for Phi-3 Mini 4K Instruct ONNX model. The comparisons are for FP16 and INT4 precisions on CUDA, as measured on 1 A100 80GB GPU (SKU: [Standard_ND96amsr_A100_v4](https://learn.microsoft.com/en-us/azure/virtual-machines/ndm-a100-v4-series)).
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 <img class="m-auto" src="./Phi3-4k-Int4CUDA.png" alt="Average throughput of int4 Phi-3 Mini 4K Instruct ONNX model.">
 
