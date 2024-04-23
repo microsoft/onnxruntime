@@ -964,8 +964,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
     if (IsGradientRequiredForSrcNodeInput(0)) {
       output.push_back(
           NodeDef("Mul",
-                  {GO(0), I(1)},  // Input
-                  {GI(0)}));      // Output
+                  {GO(0), I(1)},
+                  {GI(0)}));
     }
 
     if (IsGradientRequiredForSrcNodeInput(1)) {
@@ -2217,7 +2217,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetResizeGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetGemmaRotaryEmbeddingGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{"GemmaRotaryEmbeddingGrad", kMSDomain, 1},
-              {GO(0), GO(1), I(0)}, // Mul4_Grad, Add_1_output_1_grad, emb
+              {GO(0), GO(1), I(0)}, // output1, output2, emb
               {GI(1), GI(2), GI(3), GI(4)} // q_grad, q_rot_grad, k_grad, k_rot_grad
               )};
 }
