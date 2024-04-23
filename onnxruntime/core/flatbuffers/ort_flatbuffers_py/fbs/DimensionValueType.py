@@ -6,3 +6,4 @@ class DimensionValueType(object):
     UNKNOWN = 0
     VALUE = 1
     PARAM = 2
+

@@ -10,16 +10,12 @@ class StringStringEntry(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAs(cls, buf, offset=0):
+    def GetRootAsStringStringEntry(cls, buf, offset):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = StringStringEntry()
         x.Init(buf, n + offset)
         return x
 
-    @classmethod
-    def GetRootAsStringStringEntry(cls, buf, offset=0):
-        """This method is deprecated. Please switch to GetRootAs."""
-        return cls.GetRootAs(buf, offset)
     @classmethod
     def StringStringEntryBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -42,26 +38,7 @@ class StringStringEntry(object):
             return self._tab.String(o + self._tab.Pos)
         return None
 
-def StringStringEntryStart(builder):
-    builder.StartObject(2)
-
-def Start(builder):
-    StringStringEntryStart(builder)
-
-def StringStringEntryAddKey(builder, key):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(key), 0)
-
-def AddKey(builder, key):
-    StringStringEntryAddKey(builder, key)
-
-def StringStringEntryAddValue(builder, value):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
-
-def AddValue(builder, value):
-    StringStringEntryAddValue(builder, value)
-
-def StringStringEntryEnd(builder):
-    return builder.EndObject()
-
-def End(builder):
-    return StringStringEntryEnd(builder)
+def StringStringEntryStart(builder): builder.StartObject(2)
+def StringStringEntryAddKey(builder, key): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(key), 0)
+def StringStringEntryAddValue(builder, value): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
+def StringStringEntryEnd(builder): return builder.EndObject()

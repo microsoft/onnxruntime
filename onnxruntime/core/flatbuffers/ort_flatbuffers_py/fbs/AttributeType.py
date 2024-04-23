@@ -16,3 +16,4 @@ class AttributeType(object):
     GRAPHS = 10
     SPARSE_TENSOR = 11
     SPARSE_TENSORS = 12
+

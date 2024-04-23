@@ -10,16 +10,12 @@ class InferenceSession(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAs(cls, buf, offset=0):
+    def GetRootAsInferenceSession(cls, buf, offset):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = InferenceSession()
         x.Init(buf, n + offset)
         return x
 
-    @classmethod
-    def GetRootAsInferenceSession(cls, buf, offset=0):
-        """This method is deprecated. Please switch to GetRootAs."""
-        return cls.GetRootAs(buf, offset)
     @classmethod
     def InferenceSessionBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -57,32 +53,8 @@ class InferenceSession(object):
             return obj
         return None
 
-def InferenceSessionStart(builder):
-    builder.StartObject(4)
-
-def Start(builder):
-    InferenceSessionStart(builder)
-
-def InferenceSessionAddOrtVersion(builder, ortVersion):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(ortVersion), 0)
-
-def AddOrtVersion(builder, ortVersion):
-    InferenceSessionAddOrtVersion(builder, ortVersion)
-
-def InferenceSessionAddModel(builder, model):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(model), 0)
-
-def AddModel(builder, model):
-    InferenceSessionAddModel(builder, model)
-
-def InferenceSessionAddKernelTypeStrResolver(builder, kernelTypeStrResolver):
-    builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(kernelTypeStrResolver), 0)
-
-def AddKernelTypeStrResolver(builder, kernelTypeStrResolver):
-    InferenceSessionAddKernelTypeStrResolver(builder, kernelTypeStrResolver)
-
-def InferenceSessionEnd(builder):
-    return builder.EndObject()
-
-def End(builder):
-    return InferenceSessionEnd(builder)
+def InferenceSessionStart(builder): builder.StartObject(4)
+def InferenceSessionAddOrtVersion(builder, ortVersion): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(ortVersion), 0)
+def InferenceSessionAddModel(builder, model): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(model), 0)
+def InferenceSessionAddKernelTypeStrResolver(builder, kernelTypeStrResolver): builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(kernelTypeStrResolver), 0)
+def InferenceSessionEnd(builder): return builder.EndObject()

@@ -10,16 +10,12 @@ class FloatProperty(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAs(cls, buf, offset=0):
+    def GetRootAsFloatProperty(cls, buf, offset):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = FloatProperty()
         x.Init(buf, n + offset)
         return x
 
-    @classmethod
-    def GetRootAsFloatProperty(cls, buf, offset=0):
-        """This method is deprecated. Please switch to GetRootAs."""
-        return cls.GetRootAs(buf, offset)
     @classmethod
     def FloatPropertyBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x44\x54\x43", size_prefixed=size_prefixed)
@@ -42,26 +38,7 @@ class FloatProperty(object):
             return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
         return 0.0
 
-def FloatPropertyStart(builder):
-    builder.StartObject(2)
-
-def Start(builder):
-    FloatPropertyStart(builder)
-
-def FloatPropertyAddName(builder, name):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
-
-def AddName(builder, name):
-    FloatPropertyAddName(builder, name)
-
-def FloatPropertyAddValue(builder, value):
-    builder.PrependFloat32Slot(1, value, 0.0)
-
-def AddValue(builder, value):
-    FloatPropertyAddValue(builder, value)
-
-def FloatPropertyEnd(builder):
-    return builder.EndObject()
-
-def End(builder):
-    return FloatPropertyEnd(builder)
+def FloatPropertyStart(builder): builder.StartObject(2)
+def FloatPropertyAddName(builder, name): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
+def FloatPropertyAddValue(builder, value): builder.PrependFloat32Slot(1, value, 0.0)
+def FloatPropertyEnd(builder): return builder.EndObject()

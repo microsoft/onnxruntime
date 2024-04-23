@@ -5,3 +5,4 @@
 class NodeType(object):
     Primitive = 0
     Fused = 1
+
