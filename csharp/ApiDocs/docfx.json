@@ -14,7 +14,7 @@
       "disableDefaultFilter": false,
       "properties": {
         "AllowUnsafeBlocks": true,
-        "TargetFramework" : "net7.0",
+        "TargetFramework" : "net6.0",
         "Nullable" : "enable",
         "LangVersion": "8.0",
         "EnableTrainingApis": "true"
