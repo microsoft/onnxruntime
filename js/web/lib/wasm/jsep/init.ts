@@ -120,7 +120,8 @@ class ComputeContextImpl implements ComputeContext {
       const gpuDataId = bufferSize > 0 ? this.backend.gpuDataManager.create(bufferSize).id : 0;
       return new TensorViewImpl(this.module, dataType, gpuDataId, dims);
     };
-    return this.backend.run(program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput);
+    return this.backend.run(
+        program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput, this.outputCount);
   }
 
   output(index: number, dims: readonly number[]): number {
