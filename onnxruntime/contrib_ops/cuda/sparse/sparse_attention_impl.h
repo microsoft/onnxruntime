@@ -64,8 +64,7 @@ Status QkvToContext(
     cublasHandle_t& cublas,
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
-    SparseAttentionData<T>& data,
-    CudaTuningContext* tuning_ctx);
+    SparseAttentionData<T>& data);
 
 }  // namespace cuda
 }  // namespace contrib

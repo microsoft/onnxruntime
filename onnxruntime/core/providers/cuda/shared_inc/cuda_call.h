@@ -15,6 +15,7 @@ template <typename ERRTYPE, bool THRW>
 std::conditional_t<THRW, void, Status> CudaCall(
     ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg, const char* file, const int line);
 
+#define CU_CALL(expr) (CudaCall<CUresult, false>((expr), #expr, "CUDA", CUDA_SUCCESS, "", __FILE__, __LINE__))
 #define CUDA_CALL(expr) (CudaCall<cudaError, false>((expr), #expr, "CUDA", cudaSuccess, "", __FILE__, __LINE__))
 #define CUBLAS_CALL(expr) (CudaCall<cublasStatus_t, false>((expr), #expr, "CUBLAS", CUBLAS_STATUS_SUCCESS, "", __FILE__, __LINE__))
 
@@ -25,6 +26,7 @@ std::conditional_t<THRW, void, Status> CudaCall(
 
 #define CUFFT_CALL(expr) (CudaCall<cufftResult, false>((expr), #expr, "CUFFT", CUFFT_SUCCESS, "", __FILE__, __LINE__))
 
+#define CU_CALL_THROW(expr) (CudaCall<CUresult, true>((expr), #expr, "CUDA", CUDA_SUCCESS, "", __FILE__, __LINE__))
 #define CUDA_CALL_THROW(expr) (CudaCall<cudaError, true>((expr), #expr, "CUDA", cudaSuccess, "", __FILE__, __LINE__))
 #define CUBLAS_CALL_THROW(expr) (CudaCall<cublasStatus_t, true>((expr), #expr, "CUBLAS", CUBLAS_STATUS_SUCCESS, "", __FILE__, __LINE__))
 

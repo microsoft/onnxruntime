@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifdef USE_TRITON_KERNEL
 
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
 #include "contrib_ops/cuda/sparse/sparse_attention.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_helper.h"
 #include "contrib_ops/cuda/sparse/block_mask.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_trition/sparse_attention_api.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,7 +27,7 @@ namespace cuda {
       SparseAttention<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
+//REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
@@ -52,12 +52,6 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
-  auto* tuning_ctx = GetTuningContext();
-  if (!tuning_ctx->IsTunableOpEnabled()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparseAttention requires enabling tunable in provider option");
-  }
-
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -94,14 +88,19 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            total_seq_len));
 
   // Some limitations of CUDA kernels
-  if (parameters.head_size != 128) {
+  if (!is_supported_sparse_attention(device_prop)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparseAttention in CUDA does not support the input: head_size=", parameters.head_size);
+                           "SparseAttention only support CUDA device with compute capacity 8.*. Got ", device_prop.major);
+  }
+  if (!is_supported_sparse_attention(parameters.head_size, sparse_block_size_)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "SparseAttention only support head_size=128 and sparse_block_size=64. Got head_size=", parameters.head_size, ", sparse_block_size=", sparse_block_size_);
   }
   if (device_prop.maxThreadsPerBlock > 0 && num_heads_ > device_prop.maxThreadsPerBlock) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "num_heads should be no larger than ", device_prop.maxThreadsPerBlock);
   }
+  load_sparse_attention_fp16();
 
   // Compute output shape and get output tensors.
   TensorShapeVector output_shape(3);
@@ -207,12 +206,9 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
-  return QkvToContext<CudaT>(
-      device_prop, cublas, stream, parameters, data, tuning_ctx);
+  return QkvToContext<CudaT>(device_prop, cublas, stream, parameters, data);
 }
 
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif  // USE_TRITON_KERNEL

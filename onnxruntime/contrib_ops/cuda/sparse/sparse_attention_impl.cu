@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifdef USE_TRITON_KERNEL
 
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
-#include "contrib_ops/cuda/sparse/sparse_attention_tunable.h"
 #include "contrib_ops/cuda/sparse/block_mask.h"
-#include "contrib_ops/cpu/utils/console_dumper.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_trition/sparse_attention_common.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_trition/sparse_attention_api.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -108,8 +108,7 @@ Status QkvToContext(
     cublasHandle_t& cublas,
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
-    SparseAttentionData<T>& data,
-    CudaTuningContext* tuning_ctx) {
+    SparseAttentionData<T>& data) {
   cudaStream_t stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
@@ -122,6 +121,8 @@ Status QkvToContext(
   const void* query;
   const void* key;
   const void* value;
+
+  DUMP_TENSOR_INIT();
 
   if (!parameters.is_packed_qkv) {
     static_assert(sizeof(T) == 2);
@@ -152,6 +153,18 @@ Status QkvToContext(
   constexpr bool q_layout = LAYOUT_BNSH;
   bool kv_layout = parameters.is_packed_qkv ? LAYOUT_BNSH : LAYOUT_BSNH;
 
+  DUMP_TENSOR("query", reinterpret_cast<const T*>(query), batch_size, num_heads, sequence_length, head_size);
+
+#if DUMP_TENSOR_LEVEL > 0
+  if (LAYOUT_BNSH == kv_layout) {
+    DUMP_TENSOR("key", reinterpret_cast<const T*>(key), batch_size, kv_num_heads, sequence_length, head_size);
+    DUMP_TENSOR("value", reinterpret_cast<const T*>(value), batch_size, kv_num_heads, sequence_length, head_size);
+  } else {
+    DUMP_TENSOR("key", reinterpret_cast<const T*>(key), batch_size, sequence_length, kv_num_heads, head_size);
+    DUMP_TENSOR("value", reinterpret_cast<const T*>(value), batch_size, sequence_length, kv_num_heads, head_size);
+  }
+#endif
+
   if (parameters.do_rotary) {
     size_t bsh = static_cast<size_t>(parameters.batch_size * parameters.sequence_length * parameters.head_size);
     size_t q_size = bsh * static_cast<size_t>(parameters.num_heads);
@@ -161,7 +174,7 @@ Status QkvToContext(
     auto position_ids_buff = reinterpret_cast<int64_t*>(k_buffer + k_size);
     ORT_RETURN_IF_ERROR(FillPositionIds(parameters, data.seqlens_k_total, position_ids_buff, stream,
                                         max_threads_per_block));
-    DUMP_TENSOR_INIT();
+
     DUMP_TENSOR("position_ids", position_ids_buff, batch_size, sequence_length);
 
     // Launch rotary embedding kernel. This requires separated Q, K and V
@@ -181,6 +194,15 @@ Status QkvToContext(
                                                        max_threads_per_block, kv_layout));
     query = reinterpret_cast<const void*>(q_buffer);
     key = reinterpret_cast<const void*>(k_buffer);
+
+#if DUMP_TENSOR_LEVEL > 0
+    DUMP_TENSOR("query after rotary", reinterpret_cast<const T*>(query), batch_size, num_heads, sequence_length, head_size);
+    if (LAYOUT_BNSH == kv_layout) {
+      DUMP_TENSOR("key after rotary", reinterpret_cast<const T*>(key), batch_size, kv_num_heads, sequence_length, head_size);
+    } else {
+      DUMP_TENSOR("key after rotary", reinterpret_cast<const T*>(key), batch_size, sequence_length, kv_num_heads, head_size);
+    }
+#endif
   }
 
   // Concat new key and value to kv buffers (in BNSH format) in place
@@ -188,19 +210,23 @@ Status QkvToContext(
   ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(
       parameters, data, key, value, kv_layout, stream, max_threads_per_block));
 
-  SparseAttentionTunableParams<T> params(
-      tuning_ctx,
+  // TODO: only dump to total sequence length instead of max sequence length.
+  DUMP_TENSOR("key cache", data.present_key, batch_size, kv_num_heads, parameters.max_sequence_length, head_size);
+  DUMP_TENSOR("value cache", data.present_value, batch_size, kv_num_heads, parameters.max_sequence_length, head_size);
+
+  SparseAttentionParams params(
       ort_stream,
       data.output,
-      reinterpret_cast<const T*>(query),
-      reinterpret_cast<const T*>(data.present_key),
-      reinterpret_cast<const T*>(data.present_value),
+      reinterpret_cast<const void*>(query),
+      reinterpret_cast<const void*>(data.present_key),
+      reinterpret_cast<const void*>(data.present_value),
       parameters.batch_size,
       parameters.sequence_length,
       parameters.num_heads,
       parameters.kv_num_heads,
       parameters.head_size,
       parameters.total_sequence_length,
+      parameters.max_sequence_length,
       parameters.scale,
       data.kernel_layout.block_size,                                      // kernel_block_size
       data.kernel_layout.csr_row_indices + data.kernel_layout.start_row,  // skip past_seq_len in row indices
@@ -209,9 +235,9 @@ Status QkvToContext(
       data.kernel_layout.num_rows * data.kernel_layout.num_cols,          // stride per head in col indices
       data.kernel_layout.num_layout);
 
-  assert(tuning_ctx->IsTunableOpEnabled());
-  static SparseAttentionTunableOp<T> op;
-  return op(&params);
+  ORT_RETURN_IF_ERROR(run_sparse_attention_fp16(params));
+
+  return Status::OK();
 }
 
 template Status QkvToContext<half>(
@@ -219,19 +245,15 @@ template Status QkvToContext<half>(
     cublasHandle_t& cublas,
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
-    SparseAttentionData<half>& data,
-    CudaTuningContext* tuning_ctx);
+    SparseAttentionData<half>& data);
 
 template Status QkvToContext<BFloat16>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
-    SparseAttentionData<BFloat16>& data,
-    CudaTuningContext* tuning_ctx);
+    SparseAttentionData<BFloat16>& data);
 
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif  // USE_TRITON_KERNEL
