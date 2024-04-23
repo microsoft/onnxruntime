@@ -147,6 +147,13 @@ cp ../onnxruntime/include/onnxruntime/core/session/onnxruntime_c_api.h ort/inclu
 cp ../onnxruntime/build/MacOS/Release/libonnxruntime*.dylib* ort/lib
 python build.py
 ```
+
+### Build for DirectML
+
+```bash
+cd ..
+python build.py --use_dml
+```
    
 ## Install the library into your application
 
