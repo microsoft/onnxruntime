@@ -54,7 +54,7 @@ class CPUIDInfo {
    */
   int32_t GetCoreUarch(uint32_t coreId) const {
     if (coreId >= core_uarchs_.size()) {
-      return -1;
+      lin return -1;
     }
     return core_uarchs_[coreId];
   }
@@ -123,7 +123,7 @@ class CPUIDInfo {
   void X86Init();
 #elif defined(CPUIDINFO_ARCH_ARM)
   // Now the following var is only used in ARM build, but later one we may expand the usage.
-[[maybe_unused]] bool pytorch_cpuinfo_init_{false};
+  [[maybe_unused]] bool pytorch_cpuinfo_init_{false};
 #endif
 
 #ifdef __linux__
