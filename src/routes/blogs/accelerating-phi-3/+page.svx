@@ -13,7 +13,7 @@ image: 'Phi3_Thumbnail.png'
 url: 'https://onnxruntime.ai/blogs/accelerating-phi-3'
 ---
 
-You can now run Microsoft's latest home-grown [Phi-3 models](https://aka.ms/phi3blog-april) across a huge range of devices and platforms thanks to ONNX Runtime and DirectML. Today we're proud to announce day 1 support for both flavors of Phi-3, [phi3-mini-4k-instruct](https://aka.ms/phi3-mini-4k-instruct%20) and [phi3-mini-128k-instruct](https://aka.ms/phi3-mini-128k-instruct%20%20). The optimized ONNX models are available at [phi3-mini-4k-instruct-onnx](https://aka.ms/phi3-mini-4k-instruct-onnx%20) and [phi3-mini-128k-instruct-onnx](https://aka.ms/phi3-mini-128k-instruct-onnx%29%20).
+You can now run Microsoft's latest home-grown [Phi-3 models](https://aka.ms/phi3blog-april) across a huge range of devices and platforms thanks to ONNX Runtime and DirectML. Today we're proud to announce day 1 support for both flavors of Phi-3, [phi3-mini-4k-instruct](https://aka.ms/phi3-mini-4k-instruct) and [phi3-mini-128k-instruct](https://aka.ms/phi3-mini-128k-instruct). The optimized ONNX models are available at [phi3-mini-4k-instruct-onnx](https://aka.ms/phi3-mini-4k-instruct-onnx) and [phi3-mini-128k-instruct-onnx](https://aka.ms/phi3-mini-128k-instruct-onnx).
 
 Many language models are too large to run locally on most devices, but Phi-3 represents a significant exception to this rule: this small but mighty suite of models achieves comparable performance to models 10 times larger! Phi-3-mini is also the first model in its weight class to support long contexts of up to 128K tokens. To learn more about how Microsoft's strategic data curation and innovative scaling achieved these remarkable results, see [here](https://aka.ms/phi3-tech-report).
 
@@ -122,10 +122,10 @@ Performance is improved across CPU and other devices as well.
 
 ## Safety
 
-Safety metrics and RAI align with the base Phi-3 models. See[here](https://aka.ms/phi3blog-april) for more details.
+Safety metrics and RAI align with the base Phi-3 models. See [here](https://aka.ms/phi3blog-april) for more details.
 
 ## Try ONNX Runtime for Phi3 
 
 This blog post introduces how ONNX Runtime and DirectML optimize the Phi-3 model. We've included instructions for running Phi-3 across Windows and other platforms, as well as early benchmarking results. Further improvements and perf optimizations are underway, so stay tuned for ONNX Runtime 1.18 [release](https://github.com/microsoft/onnxruntime/releases), Early May!   
 
-We encourage you to try out Phi3 and share your feedback in the [ONNX Runtime GitHub repository](https://github.com/microsoft/onnxruntime)!
+We encourage you to try out Phi3 and share your feedback in the [ONNX Runtime](https://github.com/microsoft/onnxruntime) GitHub repository!
