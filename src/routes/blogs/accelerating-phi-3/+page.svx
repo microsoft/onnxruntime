@@ -17,6 +17,8 @@ You can now run Microsoft's latest home-grown [Phi-3 models](https://aka.ms/phi3
 
 Many language models are too large to run locally on most devices, but Phi-3 represents a significant exception to this rule: this small but mighty suite of models achieves comparable performance to models 10 times larger! Phi-3-mini is also the first model in its weight class to support long contexts of up to 128K tokens. To learn more about how Microsoft's strategic data curation and innovative scaling achieved these remarkable results, see [here](https://aka.ms/phi3-tech-report).
 
+You can easily get started with Phi-3 with our newly introduced ONNX runtime Generate() API, found [here](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi-3-tutorial.md)!
+
 ## DirectML and ONNX Runtime scales Phi-3 Mini on Windows
 
 By itself, Phi-3 is already small enough to run on many Windows devices, but why stop there? Making Phi-3 even smaller with quantization would dramatically expand the model's reach on Windows, but not all quantization techniques are created equal. We wanted to ensure scalability while also maintaining model accuracy.
@@ -50,18 +52,21 @@ We are pleased to announce our new Generate() API, which makes it easier to run 
 This API makes it easy to drag and drop LLMs straight into your app. To run the early version of these models with ONNX, follow the steps [here](http://aka.ms/generate-tutorial).
 
 Example:
+<pre>
+<code>
+python model-qa.py -m /***YourModelPath***/onnx/cpu_and_mobile/phi-3-mini-4k-instruct-int4-cpu -k 40 -p 0.95 -t 0.8 -r 1.0
 
-\- python model-qa.py -m /***YourModelPath***/onnx/cpu_and_mobile/phi-3-mini-4k-instruct-int4-cpu -k 40 -p 0.95 -t 0.8 -r 1.0
+Input: &lt;user&gt; Tell me a joke &lt;end&gt;
 
-\- Input: &lt;user&gt;Tell me a joke&lt;end&gt;&lt;assistant&gt;
-
-\- Output: Why don't scientists trust atoms?
+Output: &lt;assistant&gt; Why don't scientists trust atoms?
 
 Because they make up everything!
 
-\- This joke plays on the double meaning of "make up." In science, atoms are the fundamental building blocks of matter, literally making up everything. However, in a colloquial sense, "to make up" can mean to fabricate or lie, hence the humor.
-
-Please watch this space for more updates on AMD, and additional optimization with ORT 1.18. Also, Check out our [Build Talk](https://build.microsoft.com/en-US/sessions/e6d21a49-2efb-4a39-8c26-f6eef1410c7a?source=sessions) in late May to learn more about this API!
+This joke plays on the double meaning of "make up." In science, atoms are the fundamental building blocks of matter,
+literally making up everything. However, in a colloquial sense, "to make up" can mean to fabricate or lie, hence the humor. &lt;end&gt;
+</code>
+</pre>
+Please watch this space for more updates on AMD, and additional optimization with ORT 1.18. Also, check out our [Build Talk](https://build.microsoft.com/en-US/sessions/e6d21a49-2efb-4a39-8c26-f6eef1410c7a?source=sessions) in late May to learn more about this API!
 
 ## Performance Metrics
 
@@ -91,6 +96,7 @@ Stay tuned for additional performance improvements in the coming weeks thanks to
 <tr><td>64</td><td>512</td><td>272.47</td></tr>
 <tr><td>64</td><td>1024</td><td>245.67</td></tr>
 <tr><td>64</td><td>2048</td><td>220.55</td></tr>
+<i>Results computed with Batch size = 1</i>
 </table>
 
     </div>
