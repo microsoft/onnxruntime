@@ -32,7 +32,7 @@ void TestUnpackFloatTensor(TensorProto_DataType type, const Path& model_path) {
   }
   float_tensor_proto.set_raw_data(rawdata, len);
   if constexpr (endian::native != endian::little) {
-       utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&float_tensor_proto);
+    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&float_tensor_proto);
   }
   T float_data2[4];
   auto status = UnpackTensor(float_tensor_proto, model_path, float_data2, 4);

@@ -244,7 +244,7 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
         memcpy(raw_data_ptr, input, input_num_bytes);
         char* start_byte = raw_data_ptr;
         char* end_byte = start_byte + input_num_bytes - 1;
-        for (int count = 0; count < input_num_bytes/2; ++count) {
+        for (size_t count = 0; count < static_cast<size_t>(input_num_bytes/2); ++count) {
           std::swap(*start_byte++,*end_byte--);
         }
 
