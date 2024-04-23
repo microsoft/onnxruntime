@@ -13,11 +13,10 @@ redirect_from: /docs/reference/execution-providers/CUDA-ExecutionProvider
 The CUDA Execution Provider enables hardware accelerated computation on Nvidia CUDA-enabled GPUs.
 
 ## Contents
-
 {: .no_toc }
 
 * TOC placeholder
-  {:toc}
+{:toc}
 
 ## Install
 
