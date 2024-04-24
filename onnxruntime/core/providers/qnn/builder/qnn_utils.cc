@@ -43,6 +43,8 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
 }
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
   const static std::unordered_map<ONNXTensorElementDataType, size_t> elem_type_to_size = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, sizeof(Int4x2)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, sizeof(UInt4x2)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, sizeof(int8_t)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, sizeof(int16_t)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, sizeof(int32_t)},
@@ -216,6 +218,10 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
     if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
       out << " scale=" << quantize_params.scaleOffsetEncoding.scale;
       out << " offset=" << quantize_params.scaleOffsetEncoding.offset;
+    } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET) {
+      out << " bitwidth=" << quantize_params.bwScaleOffsetEncoding.bitwidth;
+      out << " scale=" << quantize_params.bwScaleOffsetEncoding.scale;
+      out << " offset=" << quantize_params.bwScaleOffsetEncoding.offset;
     } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
       out << " axis=" << quantize_params.axisScaleOffsetEncoding.axis;
       size_t num_elems = quantize_params.axisScaleOffsetEncoding.numScaleOffsets;
@@ -417,10 +423,12 @@ bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn
   };
 
   const std::unordered_map<int32_t, Qnn_DataType_t> onnx_to_qnn_data_type_quantized = {
+      {ONNX_NAMESPACE::TensorProto_DataType_INT4, QNN_DATATYPE_SFIXED_POINT_8},
       {ONNX_NAMESPACE::TensorProto_DataType_INT8, QNN_DATATYPE_SFIXED_POINT_8},
       {ONNX_NAMESPACE::TensorProto_DataType_INT16, QNN_DATATYPE_SFIXED_POINT_16},
       {ONNX_NAMESPACE::TensorProto_DataType_INT32, QNN_DATATYPE_SFIXED_POINT_32},
       {ONNX_NAMESPACE::TensorProto_DataType_INT64, QNN_DATATYPE_INT_64},
+      {ONNX_NAMESPACE::TensorProto_DataType_UINT4, QNN_DATATYPE_UFIXED_POINT_8},
       {ONNX_NAMESPACE::TensorProto_DataType_UINT8, QNN_DATATYPE_UFIXED_POINT_8},
       {ONNX_NAMESPACE::TensorProto_DataType_UINT16, QNN_DATATYPE_UFIXED_POINT_16},
       {ONNX_NAMESPACE::TensorProto_DataType_UINT32, QNN_DATATYPE_UFIXED_POINT_32},

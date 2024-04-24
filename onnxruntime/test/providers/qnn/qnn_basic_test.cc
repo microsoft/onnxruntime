@@ -188,6 +188,245 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
   Ort::Session session(*ort_env, ort_model_path, so);
 }
 
+TEST_F(QnnCPUBackendTests, TestCPUEP_Conv_Int4) {
+  Ort::SessionOptions so;
+
+  // Ensure all type/shape inference warnings result in errors!
+  so.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1");
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_bias_odd.int4.qdq.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  std::array<float, 1 * 3 * 8 * 8> input0_data = {};
+  for (size_t i = 0; i < input0_data.size(); i++) {
+    input0_data[i] = 0.2f;
+  }
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add input0
+  std::array<int64_t, 4> inputs_shape{1, 3, 8, 8};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), inputs_shape.data(), inputs_shape.size()));
+  ort_input_names.push_back("input_0");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = typeshape.GetShape();
+
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 5, 6, 6));
+  const float* results = ort_output.GetTensorData<float>();
+
+  for (size_t i = 0; i < typeshape.GetElementCount(); i++) {
+    std::cout << i << ": " << results[i] << std::endl;
+  }
+}
+
+TEST_F(QnnHTPBackendTests, TestQNNHTP_Conv_Int4) {
+  Ort::SessionOptions so;
+
+  // Ensure all type/shape inference warnings result in errors!
+  so.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1");
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  // so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  so.AppendExecutionProvider("QNN", options);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_bias_odd.int4.qdq.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  std::array<float, 1 * 3 * 8 * 8> input0_data = {};
+  for (auto& elem : input0_data) {
+    elem = 0.2f;
+  }
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add input0
+  std::array<int64_t, 4> inputs_shape{1, 3, 8, 8};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), inputs_shape.data(), inputs_shape.size()));
+  ort_input_names.push_back("input_0");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = typeshape.GetShape();
+
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 5, 6, 6));
+  const float* results = ort_output.GetTensorData<float>();
+
+  for (size_t i = 0; i < typeshape.GetElementCount(); i++) {
+    std::cout << i << ": " << results[i] << std::endl;
+  }
+}
+
+TEST_F(QnnHTPBackendTests, TestQNNHTP_MatMul_Int4) {
+  Ort::SessionOptions so;
+
+  // Ensure all type/shape inference warnings result in errors!
+  so.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1");
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  // so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+  // ort_env->UpdateEnvWithCustomLogLevel(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE);
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  so.AppendExecutionProvider("QNN", options);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "matmul.int4.qdq.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  std::array<float, 1 * 1 * 2 * 3> input0_data = {};
+  for (auto& elem : input0_data) {
+    elem = 0.2f;
+  }
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add input0
+  std::array<int64_t, 4> inputs_shape{1, 1, 2, 3};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), inputs_shape.data(), inputs_shape.size()));
+  ort_input_names.push_back("input_0");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = typeshape.GetShape();
+
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 2, 2, 2));
+  const float* results = ort_output.GetTensorData<float>();
+
+  for (size_t i = 0; i < typeshape.GetElementCount(); i++) {
+    std::cout << i << ": " << results[i] << std::endl;
+  }
+}
+
+TEST_F(QnnHTPBackendTests, TestCPUEP_MatMul_Int4) {
+  Ort::SessionOptions so;
+
+  // Ensure all type/shape inference warnings result in errors!
+  so.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1");
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  // so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "matmul.int4.qdq.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  std::array<float, 1 * 1 * 2 * 3> input0_data = {};
+  for (auto& elem : input0_data) {
+    elem = 0.2f;
+  }
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add input0
+  std::array<int64_t, 4> inputs_shape{1, 1, 2, 3};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), inputs_shape.data(), inputs_shape.size()));
+  ort_input_names.push_back("input_0");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = typeshape.GetShape();
+
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 2, 2, 2));
+  const float* results = ort_output.GetTensorData<float>();
+
+  for (size_t i = 0; i < typeshape.GetElementCount(); i++) {
+    std::cout << i << ": " << results[i] << std::endl;
+  }
+}
+
+TEST_F(QnnHTPBackendTests, TestCPUEP_MatMul_FP32_Int4) {
+  Ort::SessionOptions so;
+
+  // Ensure all type/shape inference warnings result in errors!
+  so.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1");
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  // so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "matmul.fp32.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  std::array<float, 1 * 1 * 2 * 3> input0_data = {};
+  for (auto& elem : input0_data) {
+    elem = 0.2f;
+  }
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add input0
+  std::array<int64_t, 4> inputs_shape{1, 1, 2, 3};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), inputs_shape.data(), inputs_shape.size()));
+  ort_input_names.push_back("input_0");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = typeshape.GetShape();
+
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 2, 2, 2));
+  const float* results = ort_output.GetTensorData<float>();
+
+  for (size_t i = 0; i < typeshape.GetElementCount(); i++) {
+    std::cout << i << ": " << results[i] << std::endl;
+  }
+}
+
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
 // Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
