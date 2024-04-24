@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {softmax} from '@xenova/transformers';
+
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ComputeContext, GpuDataType, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
@@ -393,7 +395,7 @@ const createAttentionProbsProgramInfo =
     let m = workgroup_id.y * TILE_SIZE;
     let n = workgroup_id.x * TILE_SIZE;
     let qOffset = uniforms.M * uniforms.K * headIdx + m * uniforms.K;
-    let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx + n * uniforms.K;
+    let kOffset = uniforms.N * uniforms.K * headIdx + n * uniforms.K;
 
     var value = ${qInput.type.value}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
