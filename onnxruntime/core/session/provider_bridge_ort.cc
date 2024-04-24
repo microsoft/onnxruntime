@@ -1670,9 +1670,6 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
     ov_options_converted_map["enable_npu_fast_compile"] = "true";
   }
 
-  if (legacy_ov_options->device_id != nullptr)
-    ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
-
   if (legacy_ov_options->num_of_threads != '\0')
     ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
 
@@ -1695,6 +1692,8 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
 
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
+  ov_options_converted_map["export_ep_ctx_blob"] = "false";
+  ov_options_converted_map["model_priority"] = "DEFAULT";
   return ov_options_converted_map;
 }
 
@@ -1704,7 +1703,6 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
 }
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions* provider_options_map) {
-  // std::cout << provider_options_map.at("num_streams") << std::endl;
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
 }
 

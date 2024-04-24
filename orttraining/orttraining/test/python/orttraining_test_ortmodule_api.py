@@ -5776,10 +5776,14 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     _ = run_step(ort_model, input, label)
 
     found_embed_is_sparse = False
+    found_embed_is_dense = False
     found_label_is_sparse = False
     for record in caplog.records:
         if "Label sparsity-based optimization is ON for" in record.getMessage():
             found_label_is_sparse = True
+
+        if "Embedding sparsity-based optimization is OFF for" in record.getMessage():
+            found_embed_is_dense = True
 
         if "Embedding sparsity-based optimization is ON for" in record.getMessage():
             found_embed_is_sparse = True
@@ -5788,7 +5792,9 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         assert found_label_is_sparse
 
     if embed_is_sparse:
-        assert found_embed_is_sparse
+        assert found_embed_is_sparse and not found_embed_is_dense
+    else:
+        assert not found_embed_is_sparse and found_embed_is_dense
 
 
 @pytest.mark.parametrize(

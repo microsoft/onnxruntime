@@ -22,7 +22,7 @@ import {instanceNorm} from './ops/instance-norm';
 import {layerNorm} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
 import {matMulNBits, parseMatMulNBitsAttributes} from './ops/matmulnbits';
-import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multi-head-attentiion';
+import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multihead-attentiion';
 import {pad} from './ops/pad';
 import * as pool from './ops/pool';
 import {range} from './ops/range';

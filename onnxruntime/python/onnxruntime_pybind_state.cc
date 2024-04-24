@@ -928,6 +928,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (option.first == "device_type") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "precision") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "enable_npu_fast_compile") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
@@ -960,10 +963,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             value = "true";
           }
           OV_provider_options_map["disable_dynamic_shapes"] = value;
-        } else if (option.first == "device_id") {
+        } else if (option.first == "num_of_threads") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if (option.first == "num_of_threads") {
+        } else if (option.first == "model_priority") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "num_streams") {
@@ -973,6 +976,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "context") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "export_ep_ctx_blob") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else {
@@ -1375,7 +1381,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::enum_<ExecutionOrder>(m, "ExecutionOrder")
       .value("DEFAULT", ExecutionOrder::DEFAULT)
-      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED);
+      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED)
+      .value("MEMORY_EFFICIENT", ExecutionOrder::MEMORY_EFFICIENT);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)
