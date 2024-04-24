@@ -34,19 +34,39 @@
     MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
   endif()
 
-  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
-    # Add TensorRT library
-    find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+  find_path(TENSORRT_INCLUDE_DIR NvInfer.h
       HINTS ${TENSORRT_ROOT}
       PATH_SUFFIXES include)
-    MESSAGE(STATUS "Found TensorRT headers at ${TENSORRT_INCLUDE_DIR}")
-    find_library(TENSORRT_LIBRARY_INFER nvinfer
+
+  file(STRINGS "${TENSORRT_INCLUDE_DIR}/NvInferVersion.h" VERSION_STRINGS REGEX "#define NV_TENSORRT_.*")
+
+  foreach(TYPE MAJOR MINOR PATCH BUILD)
+      string(REGEX MATCH "NV_TENSORRT_${TYPE} [0-9]+" TRT_TYPE_STRING ${VERSION_STRINGS})
+      string(REGEX MATCH "[0-9]+" TRT_${TYPE} ${TRT_TYPE_STRING})
+  endforeach(TYPE)
+
+  # Windows library names have major version appended starting from TRT 10.
+  if (MSVC AND TRT_MAJOR STREQUAL "10")
+      set(nvinfer_lib_name "nvinfer_${TRT_MAJOR}")
+      set(nvinfer_plugin_lib_name "nvinfer_plugin_${TRT_MAJOR}")
+      set(nvonnxparser_lib_name "nvonnxparser_${TRT_MAJOR}")
+  else()
+      set(nvinfer_lib_name "nvinfer")
+      set(nvinfer_plugin_lib_name "nvinfer_plugin")
+      set(nvonnxparser_lib_name "nvonnxparser")
+  endif()
+
+  MESSAGE(STATUS "Looking for TensorRT libraries: ${nvinfer_lib_name}, ${nvinfer_plugin_lib_name}, ${nvonnxparser_lib_name}")
+
+  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
+    # Add TensorRT library
+    find_library(TENSORRT_LIBRARY_INFER ${nvinfer_lib_name}
       HINTS ${TENSORRT_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
-    find_library(TENSORRT_LIBRARY_INFER_PLUGIN nvinfer_plugin
+    find_library(TENSORRT_LIBRARY_INFER_PLUGIN ${nvinfer_plugin_lib_name}
       HINTS  ${TENSORRT_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
-    find_library(TENSORRT_LIBRARY_NVONNXPARSER nvonnxparser
+    find_library(TENSORRT_LIBRARY_NVONNXPARSER ${nvonnxparser_lib_name}
       HINTS  ${TENSORRT_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
     set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
@@ -73,11 +93,11 @@
       unset(PROTOBUF_LIBRARY)
       unset(OLD_CMAKE_CXX_FLAGS)
       unset(OLD_CMAKE_CUDA_FLAGS)
-      set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
-      target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
-      target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
+      set_target_properties(${nvonnxparser_lib_name} PROPERTIES LINK_FLAGS "/ignore:4199")
+      target_compile_options(${nvonnxparser_lib_name}_static PRIVATE /FIio.h /wd4100)
+      target_compile_options(${nvonnxparser_lib_name} PRIVATE /FIio.h /wd4100)
     endif()
-    set(onnxparser_link_libs nvonnxparser_static)
+    set(onnxparser_link_libs ${nvonnxparser_lib_name}_static)
   endif()
 
   include_directories(${TENSORRT_INCLUDE_DIR})
