@@ -3640,10 +3640,15 @@ struct OrtApi {
    *     - "73"
    *     - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
-       "enable_htp_fp16_precision": Only used for float32 model.
-       Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-         - "0": Default. With fp32 precision.
-         - "1": With fp16 precision.
+   *   "enable_htp_fp16_precision": Only used for float32 model.
+   *                                Enable the float32 model to be inferenced with fp16 precision.
+                                    Otherwise, it will be fp32 precision.
+   *      - "0": Default. With fp32 precision.
+   *      - "1": With fp16 precision.
+   *   "enable_qnn_graph_dump": Set to "1" to enable dumping of QNN graphs as JSON files. Each graph partition
+   *                            assigned to QNN EP is dumped to a separate file.
+   *   "qnn_graph_dump_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
+   *                         program's current working directory. Ignored if "enable_json_graphs_dump" is not set.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

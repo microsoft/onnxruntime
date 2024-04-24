@@ -90,7 +90,8 @@ const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
 
 Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                               const onnxruntime::Node& fused_node,
-                              const QnnGraph_Config_t** graph_configs) {
+                              const QnnGraph_Config_t** graph_configs,
+                              const std::string& debug_json_graph_path) {
   LOGS(logger_, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
@@ -165,7 +166,20 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     handled_node_units.insert(&node_unit);
   }
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(), "Failed to compose Qnn graph.");
+  const bool build_debug_json_graph = !debug_json_graph_path.empty();
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(build_debug_json_graph), "Failed to compose Qnn graph.");
+
+  if (build_debug_json_graph) {
+    const nlohmann::json& json_graph = qnn_model_wrapper.GetQnnJSONGraph();
+    std::ofstream ofs(debug_json_graph_path);
+
+    if (ofs.is_open()) {
+      ofs << json_graph.dump();
+      ofs.close();
+    } else {
+      LOGS(logger_, WARNING) << "Could not open JSON graph file: " << debug_json_graph_path;
+    }
+  }
 
   rt = GetGraphInfoFromModel(qnn_model_wrapper);
   if (!rt) {

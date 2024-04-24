@@ -37,7 +37,8 @@ class QnnModel {
 
   Status ComposeGraph(const GraphViewer& graph_viewer,
                       const onnxruntime::Node& fused_node,
-                      const QnnGraph_Config_t** graph_configs = nullptr);
+                      const QnnGraph_Config_t** graph_configs = nullptr,
+                      const std::string& debug_json_graph_path = "");
 
   Status FinalizeGraphs();
 

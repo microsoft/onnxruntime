@@ -85,6 +85,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;
   bool enable_HTP_FP16_precision_ = false;
+  bool enable_qnn_graph_dump_ = false;
+  std::string qnn_graph_dump_dir_ = "";
 
   class PerThreadContext final {
    public:

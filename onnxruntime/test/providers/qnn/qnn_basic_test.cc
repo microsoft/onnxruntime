@@ -188,6 +188,26 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
   Ort::Session session(*ort_env, ort_model_path, so);
 }
 
+TEST_F(QnnHTPBackendTests, DumpQNNJsonGraph) {
+  Ort::SessionOptions so;
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  options["enable_qnn_graph_dump"] = "1";
+
+  so.AppendExecutionProvider("QNN", options);
+
+  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+
+  Ort::Session session(*ort_env, ort_model_path, so);
+}
+
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
 // Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
