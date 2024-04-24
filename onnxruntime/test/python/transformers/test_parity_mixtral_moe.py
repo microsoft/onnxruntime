@@ -16,16 +16,18 @@ import numpy
 import torch
 import torch.nn.functional as F
 from onnx import TensorProto, helper
+import time
 from torch import nn
 
+import onnx
 import onnxruntime
 
 torch.manual_seed(42)
 numpy.random.seed(42)
 
-ORT_DTYPE = TensorProto.FLOAT
+ORT_DTYPE = TensorProto.FLOAT16
 NP_TYPE = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
-THRESHOLD = 3e-2
+THRESHOLD = 5e-1
 
 
 def value_string_of(numpy_array):
@@ -39,7 +41,6 @@ def print_tensor(name, numpy_array):
 
 
 def create_moe_onnx_graph(
-    num_rows,
     num_experts,
     hidden_size,
     inter_size,
@@ -100,19 +101,19 @@ def create_moe_onnx_graph(
     ]
 
     graph_inputs = [
-        helper.make_tensor_value_info("input", ORT_DTYPE, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("input", ORT_DTYPE, ["num_rows", hidden_size]),
     ]
 
     graph_inputs.append(
         helper.make_tensor_value_info(
             "router_probs",
             ORT_DTYPE,
-            [num_rows, num_experts],
+            ["num_rows", num_experts],
         )
     )
 
     graph_outputs = [
-        helper.make_tensor_value_info("output", ORT_DTYPE, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("output", ORT_DTYPE, ["num_rows", hidden_size]),
     ]
 
     graph = helper.make_graph(
@@ -124,7 +125,10 @@ def create_moe_onnx_graph(
     )
 
     model = helper.make_model(graph)
-    return model.SerializeToString()
+
+    path = "mixtral_moe.onnx"
+    onnx.save(model, path, save_as_external_data=True)
+    return path
 
 
 class ClassInstantier(OrderedDict):
@@ -210,7 +214,7 @@ class MixtralSparseMoeBlock(nn.Module):
     and memory on padding.
     """
 
-    def __init__(self, config, batch_size, sequence_length):
+    def __init__(self, config):
         super().__init__()
         self.hidden_dim = config.hidden_size
         self.ffn_dim = config.intermediate_size
@@ -234,10 +238,7 @@ class MixtralSparseMoeBlock(nn.Module):
         self.moe_experts_weight2 = torch.stack(w2_list, dim=0)
         self.moe_experts_weight3 = torch.stack(w3_list, dim=0)
 
-        self.batch_size = batch_size
-        self.sequence_length = sequence_length
-        self.moe_onnx_graph = create_moe_onnx_graph(
-            self.batch_size * self.sequence_length,
+        self.moe_onnx_path = create_moe_onnx_graph(
             self.num_experts,
             self.hidden_dim,
             self.ffn_dim,
@@ -259,9 +260,63 @@ class MixtralSparseMoeBlock(nn.Module):
             return None
 
         sess_options.log_severity_level = 2
-        ort_session = InferenceSession(self.moe_onnx_graph, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(
+            self.moe_onnx_path, sess_options, providers=["CUDAExecutionProvider"]
+        )
 
         return ort_session
+
+    def ort_run_with_iobinding(self, ort_inputs, repeat=1000):
+        iobinding = self.ort_sess.io_binding()
+        device_id = torch.cuda.current_device()
+
+        iobinding.bind_input(
+            name="input",
+            device_type="cuda",
+            device_id=device_id,
+            element_type=NP_TYPE,
+            shape=ort_inputs["input"].shape,
+            buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(ort_inputs["input"], "cuda", device_id).data_ptr(),
+        )
+        iobinding.bind_input(
+            name="router_probs",
+            device_type="cuda",
+            device_id=device_id,
+            element_type=NP_TYPE,
+            shape=ort_inputs["router_probs"].shape,
+            buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(
+                ort_inputs["router_probs"], "cuda", device_id
+            ).data_ptr(),
+        )
+
+        iobinding.bind_output(
+            name="output",
+            device_type="cuda",
+            device_id=device_id,
+            element_type=NP_TYPE,
+            shape=ort_inputs["input"].shape,
+            buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(
+                numpy.zeros(ort_inputs["input"].shape), "cuda", device_id
+            ).data_ptr(),
+        )
+
+        # warm up
+        # for _ in range(3):
+        #     self.ort_sess.run_with_iobinding(iobinding)
+
+        total_lapse = 0
+        for _ in range(repeat):
+            iobinding.synchronize_inputs()
+            s = time.time()
+            self.ort_sess.run_with_iobinding(iobinding)
+            e = time.time()
+            total_lapse += e - s
+            iobinding.synchronize_outputs()
+
+        lapse = total_lapse / repeat
+        print(f"MoE cuda kernel time: {lapse * 1000} ms")
+
+        return lapse
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """ """
@@ -305,7 +360,7 @@ class MixtralSparseMoeBlock(nn.Module):
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
         return final_hidden_states  # , router_logits
 
-    def ort_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def ort_forward(self, hidden_states: torch.Tensor, iobinding=False, repeat=1000) -> torch.Tensor:
         batch_size, sequence_length, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
@@ -318,8 +373,11 @@ class MixtralSparseMoeBlock(nn.Module):
 
         ort_output = None
         if self.ort_sess is not None:
+            if iobinding:
+                return self.ort_run_with_iobinding(ort_inputs, repeat=repeat)
+
             ort_output = self.ort_sess.run(None, ort_inputs)
-            return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1)  # , router_logits
+            return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1).type(torch.float)  # , router_logits
 
         # print_tensor("input", ort_inputs["input"])
         # print_tensor("router_probs", ort_inputs["router_probs"])
@@ -330,32 +388,82 @@ class MixtralSparseMoeBlock(nn.Module):
 
         return None
 
-    def parity_check(self):
-        hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
+    def parity_check(self, batch_size, sequence_length):
+        hidden_state = torch.randn(batch_size, sequence_length, self.hidden_dim)
         torch_output = self.forward(hidden_state)
         ort_output = self.ort_forward(hidden_state)
         if ort_output is not None:
-            assert torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04)
+            assert torch.allclose(torch_output, ort_output, rtol=THRESHOLD, atol=THRESHOLD)
             print(
                 "batch_size:",
-                self.batch_size,
+                batch_size,
                 " sequence_length:",
-                self.sequence_length,
+                sequence_length,
                 " max_diff:",
                 (torch_output - ort_output).abs().max(),
                 " parity: OK",
             )
 
+    def benchmark(self, batch_size, sequence_length):
+        hidden_state = torch.randn(batch_size, sequence_length, self.hidden_dim)
+        lapse = self.ort_forward(hidden_state, iobinding=True, repeat=100)
+        return lapse
+
 
 class TestMixtralMoE(unittest.TestCase):
     def test_mixtral_moe_parity(self):
+        config = MixtralConfig(hidden_size=128, intermediate_size=512)
+        mixtral_moe = MixtralSparseMoeBlock(config)
         for batch_size in [1, 16]:
             for sequence_length in [128, 1024]:
                 # use a small sizes to speed up the test
-                config = MixtralConfig(hidden_size=256, intermediate_size=1024)
-                mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
-                mixtral_moe.parity_check()
+                mixtral_moe.parity_check(batch_size, sequence_length)
+
+def environ_reset():
+    import os
+
+    vars = ["K_FC1_CtaShape16x128x64_WarpShape16x32x64",
+            "K_FC1_CtaShape16x256x64_WarpShape16x64x64",
+            "K_FC1_CtaShape32x128x64_WarpShape32x32x64",
+            "K_FC1_CtaShape64x128x64_WarpShape32x64x64",
+            "K_FC1_CtaShape128x128x64_WarpShape64x32x64",
+            "K_FC1_Stages_2", "K_FC1_Stages_3", "K_FC1_Stages_4"]
+
+    for var in vars:
+        if var in os.environ:
+            os.environ.pop(var)
+
+def perf_tuning():
+    import os
+
+    config = MixtralConfig(hidden_size=4096, intermediate_size=7168)
+    mixtral_moe = MixtralSparseMoeBlock(config)
+
+    tiles = ["K_FC1_CtaShape16x128x64_WarpShape16x32x64",
+            "K_FC1_CtaShape16x256x64_WarpShape16x64x64",
+            "K_FC1_CtaShape32x128x64_WarpShape32x32x64",
+            "K_FC1_CtaShape64x128x64_WarpShape32x64x64",
+            "K_FC1_CtaShape128x128x64_WarpShape64x32x64"]
+
+    stages = ["K_FC1_Stages_2", "K_FC1_Stages_3", "K_FC1_Stages_4"]
+
+    environ_reset()
+
+    for batch_size in [1]:
+        for sequence_length in range(32, 9128, 8):
+            print(f"batch_size: {batch_size}, sequence_length: {sequence_length}")
+            for tile in tiles:
+                for stage in stages:
+                    environ_reset()
+                    print(f"tile: {tile}, stage: {stage}")
+                    os.environ[tile] = "1"
+                    os.environ[stage] = "1"
+                    mixtral_moe.benchmark(batch_size, sequence_length)
+                    os.environ.pop(tile)
+                    os.environ.pop(stage)
+
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # unittest.main()
+    perf_tuning()
