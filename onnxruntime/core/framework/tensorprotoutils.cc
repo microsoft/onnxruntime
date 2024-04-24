@@ -247,60 +247,65 @@ void ConvertRawDataInTensorProto(TensorProto* tensor)
     case TensorProto_DataType_FLOAT:
       bytes = (char*)(tensor->mutable_float_data()->mutable_data());
       num_elements = tensor->float_data_size();
-      element_size=4;
+      element_size = sizeof(float);
       break;
 
     case TensorProto_DataType_INT32:
       bytes = (char*)(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
-      element_size=4;
+      element_size = sizeof(int32_t);
       break;
 
     case TensorProto_DataType_UINT32:
       bytes = (char*)(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
-      element_size=4;
+      element_size = sizeof(uint32_t);
       break;
 
     case TensorProto_DataType_UINT8:
     case TensorProto_DataType_INT8:
-      element_size=1;
+      bytes = (char*)(tensor->mutable_int32_data()->mutable_data());
+      num_elements = tensor->int32_data_size();
+      element_size = sizeof(uint8_t);
       break;
 
     case TensorProto_DataType_UINT16:
     case TensorProto_DataType_INT16:
     case TensorProto_DataType_FLOAT16:
     case TensorProto_DataType_BFLOAT16:
-      element_size=2;
+      bytes = (char*)(tensor->mutable_int32_data()->mutable_data());
+      num_elements = tensor->int32_data_size();
+      element_size = sizeof(uint16_t);
       break;
 
     case TensorProto_DataType_UINT64:
       bytes = (char*)(tensor->mutable_uint64_data()->mutable_data());
       num_elements = tensor->uint64_data_size();
-      element_size=8;
+      element_size = sizeof(uint64_t);
       break;
 
     case TensorProto_DataType_DOUBLE:
       bytes = (char*)(tensor->mutable_double_data()->mutable_data());
       num_elements = tensor->double_data_size();
-      element_size=8;
+      element_size = sizeof(double);
       break;
 
     case TensorProto_DataType_INT64:
       bytes = (char*)(tensor->mutable_int64_data()->mutable_data());
       num_elements = tensor->int64_data_size();
-      element_size=8;
+      element_size = sizeof(int64_t);
       break;
 
     case TensorProto_DataType_COMPLEX64:
-      element_size=8;
+      bytes = (char*)(tensor->mutable_float_data()->mutable_data());
+      num_elements = tensor->float_data_size();
+      element_size = sizeof(float);
       break;
   }
   if (tensor->has_raw_data()) {
     num_elements = (tensor->raw_data().size()) / element_size;
     bytes = (char*)(tensor->mutable_raw_data()->c_str());
   }
-
   for (size_t i = 0; i < num_elements; ++i) {
     char* start_byte = bytes + i * element_size;
     char* end_byte = start_byte + element_size - 1;
