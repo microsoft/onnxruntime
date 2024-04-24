@@ -2,14 +2,15 @@
 title: ONNX Runtime supports Phi-3 mini models across platforms and devices
 date: '22nd April, 2024'
 description: 'Thanks to day one ONNX Runtime and DirectML support, developers can now deploy Phi-3 Mini at scale'
-keywords: 'GenAI , LLM, ONNXRuntime, ORT, Phi, DirectML, Windows'
+keywords: 'GenAI , LLM, ONNXRuntime, ORT, Phi, DirectML, Windows, phi3, phi-3, ONNX, SLM, edge, gpu'
 authors:
   [
     ]
 authorsLink:
   [
    ]
-image: 'Phi3_Thumbnail.png'
+image: 'https://iili.io/JSQDdog.png'
+imageSquare: 'https://iili.io/JSDovQn.png'
 url: 'https://onnxruntime.ai/blogs/accelerating-phi-3'
 ---
 
