@@ -82,7 +82,7 @@ __global__ void MaskToCSR(const int* mask, int* csr_row_indices, int* csr_col_in
 
   // The first thread will calculate the accumulated partial sum of non-zero counts.
   if (row == 0) {
-    for (int i = 1; i < row; i++) {
+    for (int i = 1; i < num_rows; i++) {
       non_zero_counts[i] += non_zero_counts[i - 1];
     }
   }

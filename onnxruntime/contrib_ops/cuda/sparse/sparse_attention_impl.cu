@@ -211,8 +211,44 @@ Status QkvToContext(
       parameters, data, key, value, kv_layout, stream, max_threads_per_block));
 
   // TODO: only dump to total sequence length instead of max sequence length.
+#if DUMP_TENSOR_LEVEL > 0
   DUMP_TENSOR("key cache", data.present_key, batch_size, kv_num_heads, parameters.max_sequence_length, head_size);
   DUMP_TENSOR("value cache", data.present_value, batch_size, kv_num_heads, parameters.max_sequence_length, head_size);
+
+  DUMP_TENSOR("block_mask",
+              data.kernel_layout.mask,
+              data.kernel_layout.num_layout,
+              data.kernel_layout.num_rows,
+              data.kernel_layout.num_cols);
+
+  DUMP_TENSOR("csr_col_indices",
+              data.kernel_layout.csr_col_indices,
+              data.kernel_layout.num_layout,
+              data.kernel_layout.num_rows,
+              data.kernel_layout.num_cols);
+
+  DUMP_TENSOR("csr_row_indices",
+              data.kernel_layout.csr_row_indices,
+              data.kernel_layout.num_layout,
+              data.kernel_layout.num_rows + 1);
+
+  printf("batch_size=%d, sequence_length=%d, num_heads=%d, kv_num_heads=%d head_size=%d, "
+         "total_sequence_length=%d, max_sequence_length=%d scale=%f block_size=%d "
+         "row_stride=%d col_stride=%d num_layout=%d start_row=%d\n",
+         parameters.batch_size,
+         parameters.sequence_length,
+         parameters.num_heads,
+         parameters.kv_num_heads,
+         parameters.head_size,
+         parameters.total_sequence_length,
+         parameters.max_sequence_length,
+         parameters.scale,
+         data.kernel_layout.block_size,
+         data.kernel_layout.num_rows + 1,
+         data.kernel_layout.num_rows * data.kernel_layout.num_cols,
+         data.kernel_layout.num_layout,
+         data.kernel_layout.start_row);
+#endif
 
   SparseAttentionParams params(
       ort_stream,

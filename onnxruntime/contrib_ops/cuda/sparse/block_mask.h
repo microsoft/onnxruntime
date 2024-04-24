@@ -29,6 +29,16 @@ void ExpandBlockMask(cudaStream_t stream,
                      int max_threads_per_block);
 
 // Convert mask to compressed sparse row (CSR) format ( https://en.wikipedia.org/wiki/Sparse_matrix)
+// For example, num_layout=1, num_rows=4 and num_cols=4, and the mask is like
+//      1, 0, 0, 0
+//      1, 1, 0, 0
+//      0, 1, 1, 0
+//      0, 1, 1, 1
+// The CSR format is like:
+//  csr_col_indices:
+//      0,  0, 1,  1, 2,  1, 2, 3,  0*, 0*, 0*, 0*, 0*, 0*, 0*, 0* (* is padding)
+//  csr_row_indices:
+//      0, 1, 3, 5, 8
 void ConvertMaskToCSR(cudaStream_t stream,
                       const int* mask,       // input mask with shape (num_layout, num_rows, num_cols)
                       int num_layout,        // number of layout

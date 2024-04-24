@@ -6,8 +6,7 @@
 #include <cstdio>
 #include <cuda.h>
 #include "core/providers/cuda/cuda_common.h"
-// #include "core/framework/stream_handles.h"
-// #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 #define CU_CHECK(expr) ORT_RETURN_IF_ERROR(CU_CALL(expr))
 
@@ -37,9 +36,9 @@ struct SparseAttentionParams {
   int kernel_block_size;
 
   // CSR format of block mask
-  const int* layout_crow;
-  const int* layout_col;
-  int layout_crow_stride_h;
+  const int* layout_csr_row_indices;
+  const int* layout_csr_col_indices;
+  int layout_row_stride_h;
   int layout_col_stride_h;
   int num_layout;
 
@@ -72,9 +71,9 @@ struct SparseAttentionParams {
       int max_sequence_length,
       float softmax_scale,
       int kernel_block_size,
-      const int* layout_crow,
-      const int* layout_col,
-      int layout_crow_stride_h,
+      const int* layout_csr_row_indices,
+      const int* layout_csr_col_indices,
+      int layout_row_stride_h,
       int layout_col_stride_h,
       int num_layout) {
     this->ort_stream = ort_stream;
@@ -92,9 +91,9 @@ struct SparseAttentionParams {
     this->max_sequence_length = max_sequence_length;
     this->softmax_scale = softmax_scale == 0.0f ? 1.0f / sqrtf(static_cast<float>(head_size)) : softmax_scale;
     this->kernel_block_size = kernel_block_size;
-    this->layout_crow = layout_crow;
-    this->layout_col = layout_col;
-    this->layout_crow_stride_h = layout_crow_stride_h;
+    this->layout_csr_row_indices = layout_csr_row_indices;
+    this->layout_csr_col_indices = layout_csr_col_indices;
+    this->layout_row_stride_h = layout_row_stride_h;
     this->layout_col_stride_h = layout_col_stride_h;
     this->num_layout = num_layout;
 
@@ -124,7 +123,7 @@ struct SparseAttentionParams {
 
     void* args[26] = {
         &output, &q, &k, &v,
-        &layout_crow, &layout_col, &layout_crow_stride_h, &layout_col_stride_h, &num_layout, &softmax_scale,
+        &layout_csr_row_indices, &layout_csr_col_indices, &layout_row_stride_h, &layout_col_stride_h, &num_layout, &softmax_scale,
         &stride_qb, &stride_qh, &stride_qm, &stride_kb, &stride_kh, &stride_kn,
         &stride_vb, &stride_vh, &stride_vn, &stride_ob, &stride_oh, &stride_om,
         &num_heads, &kv_num_heads, &total_sequence_length, &past_sequence_length};
@@ -132,6 +131,35 @@ struct SparseAttentionParams {
     unsigned int gridDimX = (sequence_length + block_m - 1) / block_m;
     unsigned int gridDimY = batch_size * num_heads;
     constexpr unsigned int gridDimZ = 1;
+
+#if DUMP_TENSOR_LEVEL > 0
+    DUMP_TENSOR_INIT();
+    DUMP_TENSOR("q", reinterpret_cast<const half*>(q), batch_size, num_heads, sequence_length, head_size);
+    DUMP_TENSOR("k", reinterpret_cast<const half*>(k), batch_size, kv_num_heads, max_sequence_length, head_size);
+    DUMP_TENSOR("v", reinterpret_cast<const half*>(v), batch_size, kv_num_heads, max_sequence_length, head_size);
+    DUMP_TENSOR("csr_col_indices",
+                layout_csr_col_indices,
+                num_layout,
+                layout_col_stride_h);
+
+    // TODO: might have skip some rows if past_seq_len > 0
+    DUMP_TENSOR("csr_row_indices",
+                layout_csr_row_indices,
+                num_layout,
+                layout_row_stride_h);
+    printf(
+        "layout_row_stride_h=%d, layout_col_stride_h=%d, num_layout=%d, softmax_scale=%f,\n "
+        "stride_qb=%d, stride_qh=%d, stride_qm=%d, stride_kb=%d, stride_kh=%d, stride_kn=%d,\n "
+        "stride_vb=%d, stride_vh=%d, stride_vn=%d, stride_ob=%d, stride_oh=%d, stride_om=%d,\n "
+        "num_heads=%d, kv_num_heads=%d, total_sequence_length=%d, past_sequence_length=%d\n",
+        layout_row_stride_h, layout_col_stride_h, num_layout, softmax_scale,
+        stride_qb, stride_qh, stride_qm, stride_kb, stride_kh, stride_kn,
+        stride_vb, stride_vh, stride_vn, stride_ob, stride_oh, stride_om,
+        num_heads, kv_num_heads, total_sequence_length, past_sequence_length);
+
+    printf("block_m=%d gridDimX=%d gridDimY=%d threads_per_block=%d sharedMemBytes=%d\n",
+           block_m, gridDimX, gridDimY, threads_per_block, sharedMemBytes);
+#endif
 
     return CU_CALL(cuLaunchKernel(f, gridDimX, gridDimY, gridDimZ, threads_per_block, 1, 1, sharedMemBytes,
                                   static_cast<CUstream>(this->ort_stream->GetHandle()),
@@ -143,8 +171,8 @@ struct SparseAttentionParams {
             reinterpret_cast<size_t>(q) % 16 == 0 &&
             reinterpret_cast<size_t>(k) % 16 == 0 &&
             reinterpret_cast<size_t>(v) % 16 == 0 &&
-            reinterpret_cast<size_t>(layout_crow) % 16 == 0 &&
-            reinterpret_cast<size_t>(layout_col) % 16 == 0 &&
+            reinterpret_cast<size_t>(layout_csr_row_indices) % 16 == 0 &&
+            reinterpret_cast<size_t>(layout_csr_col_indices) % 16 == 0 &&
             this->head_size % 16 == 0);
   }
 };

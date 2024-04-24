@@ -175,8 +175,8 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                    data.kernel_layout.num_layout,
                    data.kernel_layout.num_rows,
                    data.kernel_layout.num_cols,
-                   csr_col_indices_buffer.get(),
                    csr_row_indices_buffer.get(),
+                   csr_col_indices_buffer.get(),
                    device_prop.maxThreadsPerBlock);
 
   size_t rotary_buffer_bytes = 0;
