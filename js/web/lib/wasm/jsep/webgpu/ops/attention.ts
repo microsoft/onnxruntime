@@ -353,7 +353,7 @@ const createAttentionProbsProgramInfo =
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: parameters.sequenceLength}, {type: DataType.uint32, data: vectorizedHeadSize},
         {type: DataType.uint32, data: totalSequenceLength}, {type: DataType.uint32, data: parameters.numHeads},
-        {type: DataType.uint32, data: parameters.kvSequenceLength}, {type: q.dataType, data: alpha}
+        {type: q.dataType, data: alpha}
       ];
 
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
@@ -377,8 +377,7 @@ const createAttentionProbsProgramInfo =
 
         const uniforms: UniformsArrayType = [
           {name: 'M', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
-          {name: 'num_heads', type: 'u32'}, {name: 'kv_sequence_length', type: 'u32'},
-          {name: 'alpha', type: dataType as UniformDataElementType}
+          {name: 'num_heads', type: 'u32'}, {name: 'alpha', type: dataType as UniformDataElementType}
         ];
         return `
   const beta: ${dataType} = 1.0;
