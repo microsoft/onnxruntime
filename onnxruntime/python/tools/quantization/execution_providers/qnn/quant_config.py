@@ -159,7 +159,7 @@ def get_qnn_qdq_config(
     for node in model.graph.node:
         op_types.add(node.op_type)
 
-        if node.name in int4_per_channel_convs and node.op_type in ("Conv", "ConvTranspose"):
+        if int4_per_channel_convs and node.name in int4_per_channel_convs and node.op_type in ("Conv", "ConvTranspose"):
             if node.input[1] and node.input[1] in name_to_initializer:
                 weight = name_to_initializer[node.input[1]]
                 if len(weight.dims) >= 3:
@@ -173,18 +173,18 @@ def get_qnn_qdq_config(
                         overrides_helper[weight.name] = [
                             {"quant_type": QuantType.QInt4, "axis": axis, "symmetric": True}
                         ]
-        elif node.name in int4_matmuls and node.op_type == "MatMul":
+        elif int4_matmuls and node.name in int4_matmuls and node.op_type == "MatMul":
             for input_name in node.input:
                 has_initializer = False
                 if input_name and input_name in name_to_initializer:
                     has_initializer = True
                     overrides_helper[input_name] = [{"quant_type": QuantType.QInt4, "symmetric": True}]
 
-                if not has_initializer:
-                    raise ValueError(
-                        f"Expected MatMul node {node.name} to have an initializer input to quantize to int4, "
-                        "but all inputs are dynamic."
-                    )
+            if not has_initializer:
+                raise ValueError(
+                    f"Expected MatMul node {node.name} to have an initializer input to quantize to int4, "
+                    "but all inputs are dynamic."
+                )
         else:
             qnn_compat.process_node(node)
 
