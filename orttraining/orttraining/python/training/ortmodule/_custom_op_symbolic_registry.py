@@ -846,6 +846,7 @@ def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
 
     return res
 
+
 # Adapted from torch.onnx.symbolic_opset9._convolution -
 # https://github.com/pytorch/pytorch/blob/cf06189a2d2785ac493bcd0d55e520af5a0e3b97/torch/onnx/symbolic_opset9.py#L2334
 # We override aten::_convolution here to support bf16 for phimm model from GenAI team.
@@ -903,6 +904,7 @@ def convolution(
         g.op("Cast", n, to_i=torch.onnx.TensorProtoDataType.BFLOAT16) if input.type().scalarType() == "BFloat16" else n
     )
     return n_casted
+
 
 # Adapted from torch.onnx.symbolic_opset9._convolution_mode -
 # https://github.com/pytorch/pytorch/blob/cf06189a2d2785ac493bcd0d55e520af5a0e3b97/torch/onnx/symbolic_opset9.py#L2406

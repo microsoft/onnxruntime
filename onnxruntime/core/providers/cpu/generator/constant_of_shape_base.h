@@ -16,7 +16,7 @@
 namespace onnxruntime {
 
 // Add bf16 support for ConstantOfShape operator for phimm model.
-// Although ONNX don't have bf16 support in opset-9 for ConstantOfShape we add support here: 
+// Although ONNX don't have bf16 support in opset-9 for ConstantOfShape we add support here:
 // https://github.com/onnx/onnx/blob/main/docs/Changelog.md#constantofshape-9
 using ConstantOfShapeDefaultOutputTypes =
     TypeList<
