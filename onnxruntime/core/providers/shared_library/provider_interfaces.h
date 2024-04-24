@@ -602,6 +602,8 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetType_Float8E5M2() = 0;
   virtual MLDataType DataTypeImpl__GetType_Float8E5M2FNUZ() = 0;
 #endif
+  virtual MLDataType DataTypeImpl__GetType_Int4x2() = 0;
+  virtual MLDataType DataTypeImpl__GetType_UInt4x2() = 0;
 
   virtual MLDataType DataTypeImpl__GetTensorType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_int8() = 0;
@@ -622,6 +624,8 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetTensorType_Float8E5M2() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_Float8E5M2FNUZ() = 0;
 #endif
+  virtual MLDataType DataTypeImpl__GetTensorType_Int4x2() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_UInt4x2() = 0;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   virtual MLDataType DataTypeImpl__GetSparseTensorType_bool() = 0;
@@ -644,6 +648,8 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() = 0;
 #endif
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Int4x2() = 0;
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_UInt4x2() = 0;
 #endif
 
   virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
@@ -943,6 +949,8 @@ struct ProviderHost {
   virtual Float8E5M2* Tensor__MutableData_Float8E5M2(Tensor* p) = 0;
   virtual Float8E5M2FNUZ* Tensor__MutableData_Float8E5M2FNUZ(Tensor* p) = 0;
 #endif
+  virtual Int4x2* Tensor__MutableData_Int4x2(Tensor* p) = 0;
+  virtual UInt4x2* Tensor__MutableData_UInt4x2(Tensor* p) = 0;
 
   virtual const bool* Tensor__Data_bool(const Tensor* p) = 0;
   virtual const int8_t* Tensor__Data_int8(const Tensor* p) = 0;
@@ -964,6 +972,8 @@ struct ProviderHost {
   virtual const Float8E5M2* Tensor__Data_Float8E5M2(const Tensor* p) = 0;
   virtual const Float8E5M2FNUZ* Tensor__Data_Float8E5M2FNUZ(const Tensor* p) = 0;
 #endif
+  virtual const Int4x2* Tensor__Data_Int4x2(const Tensor* p) = 0;
+  virtual const UInt4x2* Tensor__Data_UInt4x2(const Tensor* p) = 0;
 
   virtual gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) = 0;
 
@@ -995,6 +1005,8 @@ struct ProviderHost {
   virtual bool Tensor__IsDataType_Float8E5M2(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_Float8E5M2FNUZ(const Tensor* p) noexcept = 0;
 #endif
+  virtual bool Tensor__IsDataType_Int4x2(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_UInt4x2(const Tensor* p) noexcept = 0;
 
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;
   virtual void Tensor__Reshape(Tensor* p, const TensorShape& new_shape) = 0;

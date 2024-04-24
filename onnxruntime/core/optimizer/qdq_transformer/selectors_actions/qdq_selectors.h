@@ -5,6 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#include <utility>
 #include "core/framework/node_unit.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
@@ -131,8 +132,8 @@ class SplitNodeGroupSelector : public NodeGroupSelector {
 class ConvNodeGroupSelector : public NodeGroupSelector {
  public:
   // default to 'true'
-  ConvNodeGroupSelector(bool int8_allowed = true, bool allow_16bit = true)
-      : int8_allowed_(int8_allowed), allow_16bit_(allow_16bit) {}
+  ConvNodeGroupSelector(bool int8_allowed = true, bool allow_16bit = true, bool allow_4bit_weight = true)
+      : int8_allowed_(int8_allowed), allow_16bit_(allow_16bit), allow_4bit_weight_(allow_4bit_weight) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
@@ -141,6 +142,7 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
 
   bool int8_allowed_;
   bool allow_16bit_;
+  bool allow_4bit_weight_;
 };
 
 class WhereNodeGroupSelector : public NodeGroupSelector {
@@ -172,10 +174,12 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
  public:
   MatMulNodeGroupSelector(bool int8_allowed = true,
                           bool matmulintegertofloat_allowed = false,
-                          bool allow_16bit = true)
+                          bool allow_16bit = true,
+                          bool allow_4bit = true)
       : int8_allowed_(int8_allowed),
         matmulintegertofloat_allowed_(matmulintegertofloat_allowed),
-        allow_16bit_(allow_16bit) {
+        allow_16bit_(allow_16bit),
+        allow_4bit_(allow_4bit) {
   }
 
  private:
@@ -185,6 +189,7 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
   bool int8_allowed_;
   bool matmulintegertofloat_allowed_;
   bool allow_16bit_;
+  bool allow_4bit_;
 };
 
 // Input: DQ nodes for A, B and optional C
@@ -316,8 +321,8 @@ class SplitSelector : public BaseSelector {
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvSelector : public BaseSelector {
  public:
-  ConvSelector(bool int8_allowed = false, bool allow_16bit = false)
-      : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, allow_16bit)) {}
+  ConvSelector(bool int8_allowed = false, bool allow_16bit = false, bool allow_4bit_weight = false)
+      : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, allow_16bit, allow_4bit_weight)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -331,9 +336,9 @@ class WhereSelector : public BaseSelector {
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
  public:
-  MatMulSelector(bool int8_allowed, bool allow_16bit = false)
+  MatMulSelector(bool int8_allowed, bool allow_16bit = false, bool allow_4bit = false)
       : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true,
-                                                               allow_16bit)) {}
+                                                               allow_16bit, allow_4bit)) {}
 };
 
 // Input: DQ nodes for A, B and optional C

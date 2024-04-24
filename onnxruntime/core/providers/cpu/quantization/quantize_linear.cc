@@ -5,6 +5,7 @@
 #include "core/framework/element_type_lists.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/int4.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
@@ -126,6 +127,8 @@ REGISTER_DEQUANTIZELINEAR(uint8_t)
 REGISTER_DEQUANTIZELINEAR(int16_t)
 REGISTER_DEQUANTIZELINEAR(uint16_t)
 REGISTER_DEQUANTIZELINEAR(int32_t)
+REGISTER_DEQUANTIZELINEAR(Int4x2)
+REGISTER_DEQUANTIZELINEAR(UInt4x2)
 #if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FN)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FNUZ)
@@ -199,6 +202,24 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
     DequantizeLinear<int32_t>);
 
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    DequantizeLinear,
+    1,
+    Int4x2,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<Int4x2>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
+    DequantizeLinear<Int4x2>);
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    DequantizeLinear,
+    1,
+    UInt4x2,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<UInt4x2>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
+    DequantizeLinear<UInt4x2>);
+
 }  // namespace contrib
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
@@ -216,6 +237,34 @@ struct DequantizeLinearApply {
     }
   }
 };
+
+#define DEQUANTIZE_LINEAR_APPLY_INT4(T)                                                              \
+  template <typename OutT>                                                                           \
+  struct DequantizeLinearApply<T, OutT> {                                                            \
+    void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, \
+            OutT* output, const T* zero_point) {                                                     \
+      size_t input_index = 0;                                                                        \
+      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                          \
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                         \
+          size_t bd_i = bd >> 1;  /*bd / 2*/                                                         \
+          size_t bd_j = bd & 0x1; /*bd % 2*/                                                         \
+          auto zp = zero_point ? static_cast<int32_t>(zero_point[bd_i].GetElem(bd_j)) : 0;           \
+          auto sc = static_cast<float>(scale[bd]);                                                   \
+          for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {                          \
+            size_t input_i = input_index >> 1;                                                       \
+            size_t input_j = input_index & 0x1;                                                      \
+            int32_t val = static_cast<int32_t>(input[input_i].GetElem(input_j));                     \
+            *output++ = static_cast<OutT>(static_cast<float>(val - zp) * sc);                        \
+            input_index += 1;                                                                        \
+          }                                                                                          \
+        }                                                                                            \
+      }                                                                                              \
+      assert(input_index == static_cast<size_t>(N * broadcast_dim * block_size));                    \
+    }                                                                                                \
+  };
+
+DEQUANTIZE_LINEAR_APPLY_INT4(Int4x2);
+DEQUANTIZE_LINEAR_APPLY_INT4(UInt4x2);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
@@ -341,6 +390,8 @@ REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
 REGISTER_QUANTIZELINEAR(int16_t)
 REGISTER_QUANTIZELINEAR(uint16_t)
+REGISTER_QUANTIZELINEAR(Int4x2)
+REGISTER_QUANTIZELINEAR(UInt4x2)
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_QUANTIZELINEAR(Float8E4M3FN)
@@ -404,6 +455,24 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int16_t>()),
     QuantizeLinear<int16_t>);
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    QuantizeLinear,
+    1,
+    Int4x2,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<Int4x2>()),
+    QuantizeLinear<Int4x2>);
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    QuantizeLinear,
+    1,
+    UInt4x2,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<UInt4x2>()),
+    QuantizeLinear<UInt4x2>);
 }  // namespace contrib
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
@@ -429,7 +498,8 @@ void ParQuantizeLinear(const InputType* Input,
 }
 
 template <typename T, typename InT>
-void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const T* zero_point, T* output, int64_t N, int64_t broadcast_dim, int64_t block_size, bool saturate) {
+void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const T* zero_point, T* output, int64_t N,
+                 int64_t broadcast_dim, int64_t block_size, bool saturate) {
   for (size_t n = 0; n < static_cast<size_t>(N); n++) {
     for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
       ParQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], bd, zero_point, saturate, ctx->GetOperatorThreadPool());
@@ -438,6 +508,72 @@ void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const
     }
   }
 }
+
+// Quantizes float32 to INT4 (in-place) using MLAS kernel.
+#define DEFINE_COMPUTE_LOOP_FP32_TO_INT4(INT4_TYPE, QUANT_FUNC)                                               \
+  template <>                                                                                                 \
+  void ComputeLoop(OpKernelContext* ctx, const float* input, const float* scale, const INT4_TYPE* zero_point, \
+                   INT4_TYPE* output, int64_t N, int64_t broadcast_dim, int64_t block_size, bool saturate) {  \
+    ORT_UNUSED_PARAMETER(saturate);                                                                           \
+    size_t output_index = 0;                                                                                  \
+    for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                                     \
+      for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                                    \
+        size_t bd_i = bd >> 1;  /*bd / 2*/                                                                    \
+        size_t bd_j = bd & 0x1; /*bd % 2*/                                                                    \
+        INT4_TYPE::unpacked_type zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                        \
+        QUANT_FUNC(input, output, output_index, output_index + static_cast<size_t>(block_size),               \
+                   scale[bd], INT4_TYPE(zp, 0), ctx->GetOperatorThreadPool());                                \
+        input += block_size;                                                                                  \
+        output_index += static_cast<size_t>(block_size);                                                      \
+      }                                                                                                       \
+    }                                                                                                         \
+    assert(output_index == static_cast<size_t>(N * broadcast_dim * block_size));                              \
+  }
+
+DEFINE_COMPUTE_LOOP_FP32_TO_INT4(Int4x2, ParQuantizeLinearStdS4)
+DEFINE_COMPUTE_LOOP_FP32_TO_INT4(UInt4x2, ParQuantizeLinearStdU4)
+
+// Defines functions to quantize MLFloat16 to INT4.
+// This is not an efficient implementation: we allocate a buffer, quantize to INT8, and then copy/clamp/pack
+// into output INT4 buffer.
+#define DEFINE_COMPUTE_LOOP_FP16_TO_INT4(INT4_TYPE)                                                             \
+  template <>                                                                                                   \
+  void ComputeLoop<INT4_TYPE, MLFloat16>(OpKernelContext * ctx, const MLFloat16* input, const MLFloat16* scale, \
+                                         const INT4_TYPE* zero_point, INT4_TYPE* output, int64_t N,             \
+                                         int64_t broadcast_dim, int64_t block_size, bool saturate) {            \
+    ORT_UNUSED_PARAMETER(saturate);                                                                             \
+                                                                                                                \
+    size_t total_size = static_cast<size_t>(N * broadcast_dim * block_size);                                    \
+    auto tmp_buf = std::make_unique<INT4_TYPE::unpacked_type[]>(total_size);                                    \
+    size_t tmp_buf_index = 0;                                                                                   \
+                                                                                                                \
+    for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                                       \
+      for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                                      \
+        size_t bd_i = bd >> 1;  /*bd / 2*/                                                                      \
+        size_t bd_j = bd & 0x1; /*bd % 2*/                                                                      \
+        INT4_TYPE::unpacked_type zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                          \
+        ParQuantizeLinearStd<INT4_TYPE::unpacked_type>(input, tmp_buf.get() + tmp_buf_index,                    \
+                                                       static_cast<size_t>(block_size), scale[bd],              \
+                                                       zp, ctx->GetOperatorThreadPool());                       \
+        input += block_size;                                                                                    \
+        tmp_buf_index += static_cast<size_t>(block_size);                                                       \
+      }                                                                                                         \
+    }                                                                                                           \
+                                                                                                                \
+    for (size_t i = 0; i < total_size; i++) {                                                                   \
+      tmp_buf[i] = std::min<INT4_TYPE::unpacked_type>(INT4_TYPE::max_val,                                       \
+                                                      std::max<INT4_TYPE::unpacked_type>(INT4_TYPE::min_val,    \
+                                                                                         tmp_buf[i]));          \
+    }                                                                                                           \
+                                                                                                                \
+    size_t num_int4_pairs = (total_size + 1) / 2;                                                               \
+    auto dst = gsl::make_span<INT4_TYPE>(output, num_int4_pairs);                                               \
+    auto src = gsl::make_span<const INT4_TYPE::unpacked_type>(tmp_buf.get(), total_size);                       \
+    INT4_TYPE::Pack(dst, src);                                                                                  \
+  }
+
+DEFINE_COMPUTE_LOOP_FP16_TO_INT4(Int4x2)
+DEFINE_COMPUTE_LOOP_FP16_TO_INT4(UInt4x2)
 
 // formula is Y = X / Scale + ZeroPoint
 template <typename T>

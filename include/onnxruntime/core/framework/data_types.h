@@ -15,6 +15,7 @@
 #include "core/framework/endian.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/int4.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 
@@ -280,7 +281,8 @@ struct IsAnyOf<T, H, Tail...> {
 template <typename T>
 struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                               int32_t, int64_t, std::string, bool, MLFloat16,
-                                              double, uint32_t, uint64_t, BFloat16
+                                              double, uint32_t, uint64_t, BFloat16,
+                                              Int4x2, UInt4x2
 #if !defined(DISABLE_FLOAT8_TYPES)
                                               ,
                                               Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
@@ -295,7 +297,8 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
 template <typename T>
 struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                                     int32_t, int64_t, std::string, bool, MLFloat16,
-                                                    double, uint32_t, uint64_t, BFloat16
+                                                    double, uint32_t, uint64_t, BFloat16,
+                                                    Int4x2, UInt4x2
 #if !defined(DISABLE_FLOAT8_TYPES)
                                                     ,
                                                     Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ

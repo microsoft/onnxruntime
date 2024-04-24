@@ -34,6 +34,12 @@ size_t Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape
 
   if (shape_size > 0) {
     SafeInt<size_t> len = 0;
+
+    // TODO(adrianlizarraga): Handle more cleanly.
+    if (utils::IsPrimitiveDataType<Int4x2>(elt_type) || utils::IsPrimitiveDataType<UInt4x2>(elt_type)) {
+      shape_size = (shape_size + 1) / 2;
+    }
+
     if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_size), elt_type->Size(), &len))
       ORT_THROW("tensor failed memory size calculation");
 
@@ -104,7 +110,13 @@ size_t Tensor::SizeInBytes() const {
 #else
   int64_t size = shape_.Size();
 #endif
-  size_t ret;
+  size_t ret = 0;
+
+  // TODO(adrianlizarraga): Handle more cleanly.
+  if (utils::IsPrimitiveDataType<Int4x2>(dtype_) || utils::IsPrimitiveDataType<UInt4x2>(dtype_)) {
+    size = (size + 1) / 2;
+  }
+
   if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(size), dtype_->Size(), &ret)) {
     ORT_THROW("tensor size overflow");
   }

@@ -200,7 +200,12 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     T* data = reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
-    return gsl::make_span(data, static_cast<size_t>(shape_.Size()));
+    int64_t num_elems = shape_.Size();
+    if (utils::IsPrimitiveDataType<Int4x2>(dtype_) || utils::IsPrimitiveDataType<UInt4x2>(dtype_)) {
+      num_elems = (num_elems + 1) / 2;
+    }
+
+    return gsl::make_span(data, static_cast<size_t>(num_elems));
   }
 
   template <typename T>
@@ -217,7 +222,11 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     const T* data = reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
-    return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(shape_.Size()));
+    int64_t num_elems = shape_.Size();
+    if (utils::IsPrimitiveDataType<Int4x2>(dtype_) || utils::IsPrimitiveDataType<UInt4x2>(dtype_)) {
+      num_elems = (num_elems + 1) / 2;
+    }
+    return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(num_elems));
   }
 
   void* MutableDataRaw(MLDataType type) {

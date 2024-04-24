@@ -20,6 +20,11 @@ constexpr bool Is16BitIntType(int32_t data_type) {
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
 }
 
+constexpr bool Is4BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4);
+}
+
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
@@ -312,6 +317,10 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
+  if (!allow_4bit_weight_ && Is4BitIntType(dt_weight)) {
+    return false;
+  }
+
   if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
     if (!int8_allowed_ || dt_weight != dt_input) {
       return false;
@@ -356,6 +365,11 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   // 16-bit int types must be explicitly allowed.
   if (!allow_16bit_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
+    return false;
+  }
+
+  // 4-bit int types must be explicitly allowed.
+  if (!allow_4bit_ && (Is4BitIntType(dt_input) || Is4BitIntType(dt_weight))) {
     return false;
   }
 
