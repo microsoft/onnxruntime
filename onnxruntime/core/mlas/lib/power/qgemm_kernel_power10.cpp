@@ -537,14 +537,14 @@ MlasGemmQuantCopyPackB8x8(
     Vtype vmask = reinterpret_cast<Vtype>(vec_splats(BitFlipValue));
     vec_t mask = {0,4,8,12,1,5,9,13,2,6,10,14,3,7,11,15};
 
-    // Process 16 columns of matrix B in a loop.
-    ///home/ckerchner/anaconda3/envs/ort/lib/python3.11/site-packages)
     // Copy columns from matrix B to the packed buffer. Signed buffers are
     // converted to unsigned buffers in order to share a common kernel.
     //
     // If CountK is not aligned to a multiple of four, then the packed buffer
     // is padded with zero vectors.
 
+    // Process 16 columns of matrix B in a loop.
+    //
     size_t PackedK = ((CountK + 4 - 1) / 4) * 16;
     size_t k2 = PackedK;
     size_t k3 = PackedK*2;
@@ -634,7 +634,7 @@ MlasGemmQuantCopyPackB8x8(
         *ColumnSumBuffer++ = vsum4[3];
         B += 16;
         CountN -= 16;
-	D += k4;
+        D += k4;
     }
 
     // Process four columns of matrix B in a loop.
