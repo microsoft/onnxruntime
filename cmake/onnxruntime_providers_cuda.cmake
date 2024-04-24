@@ -207,6 +207,7 @@
       target_compile_definitions(${target} PRIVATE USE_TRITON_KERNEL)
       target_include_directories(${target} PRIVATE ${triton_kernel_header_dir})
       target_link_libraries(${target} PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
+      # lib cuda needed by cuLaunchKernel
       target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
     endif()
 
