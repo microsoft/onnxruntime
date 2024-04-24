@@ -205,8 +205,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
 
-  cublasHandle_t cublas = GetCublasHandle(context);
-  return QkvToContext<CudaT>(device_prop, cublas, stream, parameters, data);
+  return QkvToContext<CudaT>(device_prop, stream, parameters, data);
 }
 
 }  // namespace cuda

@@ -61,7 +61,6 @@ struct SparseAttentionData {
 template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
-    cublasHandle_t& cublas,
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
     SparseAttentionData<T>& data);

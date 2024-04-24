@@ -105,7 +105,6 @@ Status LaunchConcatKVInPlace(contrib::SparseAttentionParameters& parameters,
 template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
-    cublasHandle_t& cublas,
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
     SparseAttentionData<T>& data) {
@@ -278,14 +277,12 @@ Status QkvToContext(
 
 template Status QkvToContext<half>(
     const cudaDeviceProp& device_prop,
-    cublasHandle_t& cublas,
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
     SparseAttentionData<half>& data);
 
 template Status QkvToContext<BFloat16>(
     const cudaDeviceProp& device_prop,
-    cublasHandle_t& cublas,
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
     SparseAttentionData<BFloat16>& data);
