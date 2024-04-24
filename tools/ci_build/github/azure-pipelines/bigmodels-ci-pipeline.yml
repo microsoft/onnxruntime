@@ -229,7 +229,7 @@ stages:
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Generated Image Artifact'
       inputs:
-          artifactName: 'Generated-Image-$(Get-Date -format yyyyMMdd-Hmmss)'
+          artifactName: Generated-Image-$(System.JobAttempt)
           targetPath: '$(GenerateImage_DIR)'
 
     - task: Cache@2
