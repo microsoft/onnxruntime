@@ -14,7 +14,7 @@ import numpy as np
 import onnx
 
 from ...calibrate import CalibrationDataReader, CalibrationMethod
-from ...quant_utils import QuantType, normalize_axis
+from ...quant_utils import QuantType
 from ...quantize import StaticQuantConfig
 from ...tensor_quant_overrides import TensorQuantOverridesHelper
 from .mixed_precision_overrides_utils import MixedPrecisionTensorQuantOverridesFixer
@@ -178,9 +178,7 @@ def get_qnn_qdq_config(
                 has_initializer = False
                 if input_name and input_name in name_to_initializer:
                     has_initializer = True
-                    overrides_helper[input_name] = [
-                        {"quant_type": QuantType.QInt4, "symmetric": True}
-                    ]
+                    overrides_helper[input_name] = [{"quant_type": QuantType.QInt4, "symmetric": True}]
 
                 if not has_initializer:
                     raise ValueError(
