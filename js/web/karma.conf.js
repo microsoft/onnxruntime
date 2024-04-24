@@ -81,6 +81,7 @@ module.exports = function(config) {
     browsers: [],
     captureTimeout: 120000,
     reportSlowerThan: 100,
+    retryLimit: 0,
     browserDisconnectTimeout: 600000,
     browserNoActivityTimeout: 300000,
     browserDisconnectTolerance: 0,
