@@ -25,7 +25,7 @@ authorsLink:
     'https://www.linkedin.com/in/natkershaw/',
     ''
   ]
-image: ''
+image: 'https://iili.io/JSZcw3F.png'
 url: 'https://onnxruntime.ai/blogs/ort-1_17-release-blog'
 ---
 

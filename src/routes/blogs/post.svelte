@@ -42,6 +42,10 @@
 	/**
 	 * @type {any}
 	 */
+	export let image;
+	/**
+	 * @type {string}
+	 */
 </script>
 
 <svelte:head>
@@ -56,11 +60,10 @@
 	<meta name="og:url" content={url} />
 	<meta name="twitter:title" content={title} />
 	<meta name="twitter:description" content={description} />
-	<!-- <meta name="image" content={image} />
+	<meta name="image" content={image} />
 	<meta name="og:image" content={image}  />
 	<meta name="twitter:card" content={image}  />
-	<meta name="twitter:image" content={image}  /> -->
-
+	<meta name="twitter:image" content={image}  />
 	<meta name="robots" content={robots} />
 </svelte:head>
 <Header pathvar="" />
