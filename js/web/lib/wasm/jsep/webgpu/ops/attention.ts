@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {softmax} from '@xenova/transformers';
-
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ComputeContext, GpuDataType, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
