@@ -14,7 +14,7 @@ import numpy as np
 import onnx
 
 from ...calibrate import CalibrationDataReader, CalibrationMethod
-from ...quant_utils import QuantType
+from ...quant_utils import QuantType, normalize_axis
 from ...quantize import StaticQuantConfig
 from ...tensor_quant_overrides import TensorQuantOverridesHelper
 from .mixed_precision_overrides_utils import MixedPrecisionTensorQuantOverridesFixer
@@ -50,6 +50,8 @@ def get_qnn_qdq_config(
     add_qtype_converts: bool = True,
     activation_symmetric: bool = False,
     weight_symmetric: bool | None = None,
+    int4_per_channel_convs: dict[str, int] | None = None,
+    int4_matmuls: list[str] | None = None,
 ) -> StaticQuantConfig:
     """
     Returns a static quantization configuration suitable for running QDQ models on QNN EP.
@@ -121,6 +123,7 @@ def get_qnn_qdq_config(
         if isinstance(model_input, onnx.ModelProto)
         else onnx.load_model(model_input, load_external_data=False)
     )
+    model = onnx.shape_inference.infer_shapes(model)
 
     op_types = set()
     model_has_external_data = False
@@ -155,7 +158,37 @@ def get_qnn_qdq_config(
 
     for node in model.graph.node:
         op_types.add(node.op_type)
-        qnn_compat.process_node(node)
+
+        if node.name in int4_per_channel_convs and node.op_type in ("Conv", "ConvTranspose"):
+            if node.input[1] and node.input[1] in name_to_initializer:
+                weight = name_to_initializer[node.input[1]]
+                if len(weight.dims) >= 3:
+                    axis = 0 if node.op_type == "Conv" else 1
+                    if int4_per_channel_convs[node.name] != axis:
+                        raise ValueError(
+                            f"{node.op_type} only supports per-channel quantization on axis {axis} of input[1]"
+                        )
+                    num_chans = weight.dims[axis]
+                    if num_chans > 1:
+                        overrides_helper[weight.name] = [
+                            {"quant_type": QuantType.QInt4, "axis": axis, "symmetric": True}
+                        ]
+        elif node.name in int4_matmuls and node.op_type == "MatMul":
+            for input_name in node.input:
+                has_initializer = False
+                if input_name and input_name in name_to_initializer:
+                    has_initializer = True
+                    overrides_helper[input_name] = [
+                        {"quant_type": QuantType.QInt4, "symmetric": True}
+                    ]
+
+                if not has_initializer:
+                    raise ValueError(
+                        f"Expected MatMul node {node.name} to have an initializer input to quantize to int4, "
+                        "but all inputs are dynamic."
+                    )
+        else:
+            qnn_compat.process_node(node)
 
     extra_options = {
         "MinimumRealRange": 0.0001,
