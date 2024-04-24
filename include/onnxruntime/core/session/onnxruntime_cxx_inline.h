@@ -782,6 +782,27 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializers(con
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFromFilesInMemory(const std::vector<std::basic_string<ORTCHAR_T>>& file_names,
+                                                                                              const std::vector<char*>& buffer_array,
+                                                                                              const std::vector<size_t>& file_lengths) {
+  const size_t inputs_num = file_names.size();
+  if (inputs_num != buffer_array.size()) {
+    ORT_CXX_API_THROW("Expecting names and buffer_array to have the same length", ORT_INVALID_ARGUMENT);
+  }
+  if (inputs_num != file_lengths.size()) {
+    ORT_CXX_API_THROW("Expecting names and file_lengths to have the same length", ORT_INVALID_ARGUMENT);
+  }
+  std::vector<const ORTCHAR_T*> names_ptr;
+  names_ptr.reserve(inputs_num);
+  for (size_t i = 0; i < inputs_num; ++i) {
+    names_ptr.push_back(file_names[i].c_str());
+  }
+  ThrowOnError(GetApi().AddExternalInitializersFromFilesInMemory(this->p_, names_ptr.data(), buffer_array.data(),
+                                                                 file_lengths.data(), inputs_num));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CUDA(this->p_, &provider_options));
   return *this;

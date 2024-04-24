@@ -92,6 +92,17 @@ class ComputeContextImpl implements ComputeContext {
     this.inputs = inputs;
   }
 
+  getMaxComputeWorkgroupSizes(): [number, number, number] {
+    return [
+      this.backend.device.limits.maxComputeWorkgroupSizeX, this.backend.device.limits.maxComputeWorkgroupSizeY,
+      this.backend.device.limits.maxComputeWorkgroupSizeZ
+    ];
+  }
+
+  getMaxComputeWorkgroupStoragesize(): number {
+    return this.backend.device.limits.maxComputeWorkgroupStorageSize;
+  }
+
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[] {
     // prepare inputs. inputs should always be valid data.
     const mappedInputs =
@@ -109,7 +120,8 @@ class ComputeContextImpl implements ComputeContext {
       const gpuDataId = bufferSize > 0 ? this.backend.gpuDataManager.create(bufferSize).id : 0;
       return new TensorViewImpl(this.module, dataType, gpuDataId, dims);
     };
-    return this.backend.run(program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput);
+    return this.backend.run(
+        program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput, this.outputCount);
   }
 
   output(index: number, dims: readonly number[]): number {

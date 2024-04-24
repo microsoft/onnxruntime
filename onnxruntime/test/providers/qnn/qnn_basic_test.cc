@@ -703,6 +703,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
 
 // Test shape inference of QDQ NHWC Resize operator (opset 18) that uses
 // the sizes input. Use the QNN HTP backend.
+// Maps to QNN's ResizeBilinear operator.
 TEST_F(QnnHTPBackendTests, TestNHWCResizeShapeInference_qdq_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", true);
 }

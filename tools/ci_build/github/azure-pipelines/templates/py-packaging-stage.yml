@@ -56,11 +56,17 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+# Only applies to QNN packages.
+- name: qnn_sdk_version
+  type: string
+  displayName: 'QNN SDK version. Only for QNN packages.'
+  default: 2.19.2.240210
+
 stages:
-- stage: Python_Packaging_Windows_CPU
-  dependsOn: []
-  jobs:
-  - ${{ if eq(parameters.enable_windows_cpu, true) }}:
+- ${{ if eq(parameters.enable_windows_cpu, true) }}:
+  - stage: Python_Packaging_Windows_CPU
+    dependsOn: []
+    jobs:
     - job: Windows_py_Wheels
       pool: 'onnxruntime-Win-CPU-2022'
       strategy:
@@ -393,6 +399,15 @@ stages:
         parameters:
           xcodeVersion: 14.2
 
+      - template: download-deps.yml
+
+      - task: PythonScript@0
+        displayName: 'Update deps.txt'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+          arguments: --new_dir $(Build.BinariesDirectory)/deps
+          workingDirectory: $(Build.BinariesDirectory)
+
       - script: |
           set -e -x
           export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-universal2
@@ -475,9 +490,9 @@ stages:
       - template: py-win-arm64-qnn.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
-          QNN_SDK: 'qnn-v2.18.0.240101_win'
+          QNN_SDK: ${{ parameters.qnn_sdk_version }}
           PYTHON_VERSION: '3.11'
-          NUMPY_VERSION: '1.25.2'
+          NUMPY_VERSION: '1.26.4'
 
   - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
     - stage: Python_Packaging_Windows_x64_QNN
@@ -486,4 +501,4 @@ stages:
         - template: py-win-x64-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-            QNN_SDK: 'qnn-v2.18.0.240101_win'
+            QNN_SDK: ${{ parameters.qnn_sdk_version }}
