@@ -365,7 +365,7 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
                                parameters.head_size,
                                max_sequence_length,
                                past_seqlens_k,
-                               nullptr,  // total_seqlens_k is not avaiable
+                               nullptr,  // total_seqlens_k is not available
                                parameters.sequence_length,
                                reinterpret_cast<const T*>(new_key),
                                reinterpret_cast<const T*>(new_value),
