@@ -674,11 +674,20 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
 
   // The cloned model's inputs are transformed such that the model has only user defined inputs. All parameters
   // are moved to be constant initializers for the model.
-  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(), state_->module_checkpoint_state.named_parameters,
+  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(),
+                                                       state_->module_checkpoint_state.named_parameters,
                                                        eval_sess_->GetDataTransferManager()));
 
+  if (state_->has_external_data) {
+    std::string external_data_name =
+        ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(ExternalCheckpointDataPath(ToPathString(inference_model_path)));
+    PathString inference_model_pathstring = ToPathString(inference_model_path);
+    ORT_THROW_IF_ERROR(
+        Model::SaveWithExternalInitializers(*inference_model, inference_model_pathstring, external_data_name, 64));
+  } else {
+    ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
+  }
   // Save the model at the desired location.
-  ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
   return Status::OK();
 }
 #endif

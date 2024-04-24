@@ -56,6 +56,12 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+# Only applies to QNN packages.
+- name: qnn_sdk_version
+  type: string
+  displayName: 'QNN SDK version. Only for QNN packages.'
+  default: 2.19.2.240210
+
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
   - stage: Python_Packaging_Windows_CPU
@@ -484,7 +490,7 @@ stages:
       - template: py-win-arm64-qnn.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
-          QNN_SDK: 'qnn-v2.19.2.240210_win'
+          QNN_SDK: ${{ parameters.qnn_sdk_version }}
           PYTHON_VERSION: '3.11'
           NUMPY_VERSION: '1.26.4'
 
@@ -495,4 +501,4 @@ stages:
         - template: py-win-x64-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-            QNN_SDK: 'qnn-v2.19.2.240210_win'
+            QNN_SDK: ${{ parameters.qnn_sdk_version }}

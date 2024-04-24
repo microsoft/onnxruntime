@@ -101,8 +101,8 @@ For example, to build a CUDA GPU package, just run:
     --cudnn_home=/usr \
   --build_nuget \
   --msbuild_extra_options \
-    /p:SelectedTargets=Net7 \
-    /p:Net6Targets=net7.0 \
+    /p:SelectedTargets=Net6 \
+    /p:Net6Targets=net6.0 \
     /p:TargetFrameworks=netstandard2.0 \
     /p:IsLinuxBuild=true
 ```

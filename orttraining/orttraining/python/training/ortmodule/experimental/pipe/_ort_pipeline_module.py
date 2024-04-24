@@ -142,6 +142,18 @@ class ORTPipelineModule(PipelineModule):
             elif isinstance(layer, LayerSpec):
                 module = layer.build()
                 name = str(layer_idx)
+
+                if "debug_options" in self.ort_kwargs:
+                    new_onnx_prefix = name + "_" + self.ort_kwargs["debug_options"].onnx_prefix
+                    parallel_debug_options = DebugOptions(
+                        self.ort_kwargs["debug_options"].log_level,
+                        self.ort_kwargs["debug_options"].save_onnx,
+                        new_onnx_prefix,
+                    )
+                    module = ORTModule(module, parallel_debug_options)
+                else:
+                    module = ORTModule(module)
+
                 self.forward_funcs.append(module)
                 self.fwd_map.update({name: len(self.forward_funcs) - 1})
                 self.add_module(name, module)
