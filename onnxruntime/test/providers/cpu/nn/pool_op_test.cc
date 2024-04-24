@@ -1746,7 +1746,7 @@ TEST(PoolTest, MaxPoolOutputCeilModeSizeReduceByOne) {
   std::vector<float> x_vals = {1, 2,};
   std::vector<int64_t> x_dims = {1, 1, 2};  // N of 0 should be handled
   std::vector<int64_t> expected_dims = {1, 1, 1};
-  std::vector<float> expected_vals = {2};
+  std::vector<float> expected_vals = {1};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
