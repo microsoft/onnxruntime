@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "multi_head_attention.h"
+#include "multihead_attention.h"
 #include "core/providers/js/js_data_types.h"
 
 namespace onnxruntime {

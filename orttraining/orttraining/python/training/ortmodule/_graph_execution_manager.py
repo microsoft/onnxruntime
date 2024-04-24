@@ -706,11 +706,12 @@ class GraphExecutionManager(GraphExecutionInterface):
             valid_token = torch.count_nonzero(ebd_input - module.padding_idx)
             total_token = ebd_input.numel()
             embed_density = float(valid_token) / float(total_token) * 100
+            if module not in self._runtime_inspector._embedding_module_to_padding_density_map:
+                self._logger.warning("Found Embedding module not in the map. %s", module)
+                return None
+
             if embed_density < 90:
                 self._logger.info("Embedding sparsity-based optimization is ON for density: %.0f%%", embed_density)
-                if module not in self._runtime_inspector._embedding_module_to_padding_density_map:
-                    self._logger.warning("Found Embedding module not in the map. %s", module)
-                    return None
                 if self._runtime_inspector._embedding_module_to_padding_density_map[module][1] != -1:
                     self._logger.warning(
                         "Found duplicate Embedding module. %s",
@@ -794,6 +795,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                         [
                             f"{v[0]}:{v[1]:.0f}%"
                             for v in self._runtime_inspector._embedding_module_to_padding_density_map.values()
+                            if v[1] != -1
                         ]
                     )
 
