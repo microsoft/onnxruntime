@@ -34,6 +34,10 @@
     MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
   endif()
 
+  find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+    HINTS ${TENSORRT_ROOT}
+    PATH_SUFFIXES include)
+
   # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
   # for example, nvinfer_10.dll, nvinfer_plugin_10.dll, nvonnxparser_10.dll ...
   if (WIN32)
@@ -78,10 +82,6 @@
 
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     # Add TensorRT library
-    find_path(TENSORRT_INCLUDE_DIR NvInfer.h
-      HINTS ${TENSORRT_ROOT}
-      PATH_SUFFIXES include)
-    MESSAGE(STATUS "Found TensorRT headers at ${TENSORRT_INCLUDE_DIR}")
     MESSAGE(STATUS "Search for ${NVINFER_LIB}, ${NVINFER_PLUGIN_LIB} and ${PARSER_LIB}")
 
     find_library(TENSORRT_LIBRARY_INFER ${NVINFER_LIB}
@@ -132,11 +132,12 @@
       unset(PROTOBUF_LIBRARY)
       unset(OLD_CMAKE_CXX_FLAGS)
       unset(OLD_CMAKE_CUDA_FLAGS)
-      set_target_properties(${PARSER_LIB} PROPERTIES LINK_FLAGS "/ignore:4199")
-      target_compile_options(${PARSER_LIB}_static PRIVATE /FIio.h /wd4100)
-      target_compile_options(${PARSER_LIB} PRIVATE /FIio.h /wd4100)
+      set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
+      target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
+      target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
     endif()
-    set(onnxparser_link_libs ${PARSER_LIB}_static)
+    # Static libraries are just nvonnxparser_static on all platforms
+    set(onnxparser_link_libs nvonnxparser_static)
   endif()
 
   include_directories(${TENSORRT_INCLUDE_DIR})
