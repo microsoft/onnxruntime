@@ -27,7 +27,7 @@ SQ4BitGemmPackQuantBData(
   size_t N,
   size_t K,
   size_t BlkLen,
-  MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+  MLAS_SQNBIT_GEMM_COMPUTE_TYPE/* ComputeType*/,
   const std::byte* QuantBDataBegin,
   std::byte* PackedQuantBDataBegin,
   MLAS_THREADPOOL* ThreadPool
@@ -41,10 +41,7 @@ SQ4BitGemmPackQuantBData(
   const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
   const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-  size_t SubBlkLen = (BlkLen == 16) ? 16 : 32;
-
-  if (BlkLen >= 64 && ComputeType == CompInt8)
-    SubBlkLen = 64;
+  size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
 
   const size_t SubBlkDataSize = SubBlkLen / 2;
   const size_t SubBlkBytePairCount = SubBlkLen / 4;

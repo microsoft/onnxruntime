@@ -158,6 +158,7 @@ Q4BitBlkDequantBForSgemmBlkLen16_CompFp32_avx2(
     }
 }
 
+template<bool IsBlkLen64Layout>
 MLAS_FORCEINLINE void
 Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
     const size_t BlkLen,
@@ -182,7 +183,7 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
     /*constexpr*/ const bool HasZeroPoint = QuantBZeroPoint != nullptr;
     const size_t zp_col_stride_in_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth4>(BlockCountK);
 
-    const __m128i low_mask = _mm_set1_epi8(0xF);
+    const __m256i low_mask = _mm256_set1_epi8(0xF);
     for (size_t col = 0; col < CountN; col += NCols8) {
         // TODO: handle last tile with cols < NCols8
         const size_t cols = std::min(NCols8, CountN - col);
@@ -204,11 +205,24 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
                 __m256 scale_8_ps[NCols8];
                 UnrolledLoop<NCols8>([&](size_t col_) {
                     if (col_ < cols) {
+                      if constexpr (IsBlkLen64Layout) {
+                        // dst: | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
+                        // load 64 weights at once, parse to get v0 - v31 if subblk % 2 == 0, otherwise get v32 - v63
+                        // at the end of subblk loop, increment b_data_ptr by 2 * subblk_data_size_in_bytes if subblk % 2 == 1
+                        // so that all v0-64 of the pack are dequantized.
+                        const __m256i bvi = _mm256_loadu_si256((__m256i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
+                        if (subblk % 2 == 0) {
+                          weight_32_epi8[col_] = _mm256_and_si256(bvi, low_mask);
+                        } else {
+                          weight_32_epi8[col_] = _mm256_and_si256(_mm256_srli_epi16(bvi, 4), low_mask);
+                        }
+                      } else{
                         // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
                         __m128i bvi = _mm_loadu_si128((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
-                        __m128i lower = _mm_and_si128(bvi, low_mask);
-                        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi, 4), low_mask);
+                        __m128i lower = _mm_and_si128(bvi, _mm256_castsi256_si128(low_mask));
+                        __m128i upper = _mm_and_si128(_mm_srli_epi16(bvi, 4), _mm256_castsi256_si128(low_mask));
                         weight_32_epi8[col_] = _mm256_set_m128i(upper, lower);
+                      }
 
                         if (HasZeroPoint) {
                             std::byte zp_packed = *(zp_ptr + col_ * zp_col_stride_in_bytes);
@@ -288,7 +302,13 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
                     _mm256_storeu_ps(dst_ptr + ij_offset_in_k + 7 * GemmFloatKernelWidth16, weight_transposed_8_ps);
                 }
                 dst_ptr += SubblkLen32 * GemmFloatKernelWidth16;
-                b_data_ptr += subblk_data_size_in_bytes;
+                if constexpr (IsBlkLen64Layout) {
+                  if (subblk % 2 == 1) {
+                    b_data_ptr += 2 * subblk_data_size_in_bytes;
+                  }
+                } else {
+                  b_data_ptr += subblk_data_size_in_bytes;
+                }
             }  // subblk
         }
     }
@@ -306,15 +326,16 @@ Q4BitBlkDequantBForSgemm_CompFp32_avx2(
     const size_t BlockStrideQuantB
 )
 {
-    if (BlkLen >= 32) {
-        Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
-            BlkLen, FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB
-        );
-    } else {  // if (BlkLen == 16)
-        Q4BitBlkDequantBForSgemmBlkLen16_CompFp32_avx2(
-            FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB
-        );
-    }
+  if (BlkLen == 16) {
+    Q4BitBlkDequantBForSgemmBlkLen16_CompFp32_avx2(
+      FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB);
+  } else if (BlkLen == 32) {
+    Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2<false>(
+      BlkLen, FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB);
+  } else {
+    Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2<true>(
+    BlkLen, FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB);
+  }
 }
 
 MLAS_FORCEINLINE
@@ -646,7 +667,7 @@ SQ4BitGemmM1Kernel_BlkLen16_CompFp32_avx2(
 }
 
 // TODO: flow MlasQ4GemmKernelBlkLen32PlusAvx512f to improve perf
-template <size_t NCols, bool HasZeroPoint>
+template <size_t NCols, bool HasZeroPoint, bool IsBlkLen64Layout>
 MLAS_FORCEINLINE void
 ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
   size_t BlkLen,
@@ -729,14 +750,28 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
       __m256 av3_8_ps = load_float_n_avx2(ARowPtr + k + kk + 24, n_to_read);
 
       UnrolledLoop<NCols>([&](size_t i) {
-        // SubBlkLen = 16: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
-        // SubBlkLen = 32: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
         // Load B col vectors. get SubBlkLen32 4b quantized weights from each column
-        __m128i bvi4 = _mm_loadu_si128((const __m128i*)(b_blk_data_col_ptr[i]));
-        b_blk_data_col_ptr[i] += SubBlkStep16;
+          __m256i bv_32_epi8;
+        if constexpr (IsBlkLen64Layout) {
+          // dst: | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
+          // load 64 weights at once, parse to get v0 - v31 if subblk % 2 == 0, otherwise get v32 - v63
+          // increment b_data_ptr by 2 * SubBlkStep16 if kk % (2 * SubBlkLen32) == 1
+          // so that all v0-63 of the pack are processed.
+          const __m256i bvi4 = _mm256_loadu_si256((__m256i const*)(b_blk_data_col_ptr[i]));
+          if ((kk % (2 * SubBlkLen32)) == 0) {
+              bv_32_epi8 = _mm256_and_si256(bvi4, lowMask);
+          } else {
+              bv_32_epi8 = _mm256_and_si256(_mm256_srli_epi16(bvi4, 4), lowMask);
+              b_blk_data_col_ptr[i] += 2 * SubBlkStep16;
+          }
+        } else {
+          // SubBlkLen = 32: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
+          __m128i bvi4 = _mm_loadu_si128((const __m128i*)(b_blk_data_col_ptr[i]));
+          b_blk_data_col_ptr[i] += SubBlkStep16;
 
-        __m256i bv_32_epi8 = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
-        bv_32_epi8 = _mm256_and_si256(lowMask, bv_32_epi8);
+          bv_32_epi8 = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
+          bv_32_epi8 = _mm256_and_si256(lowMask, bv_32_epi8);
+        }
 
         // Subtract zero-point from the integers
         if constexpr (HasZeroPoint) {
@@ -845,14 +880,20 @@ SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2(
   float* SumPtr = CRowPtr;
 
   int64_t nblk = static_cast<int64_t>(CountN) - NCols4;
-
   while (nblk >= 0) {
-    ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<NCols4, HasZeroPoint>(
-      BlkLen,
-      ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-      StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-      BiasPtr
-    );
+    if (BlkLen >= 64) {
+      ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<NCols4, HasZeroPoint, true>(
+          BlkLen,
+          ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+          StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+          BiasPtr);
+    } else {
+      ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<NCols4, HasZeroPoint, false>(
+        BlkLen,
+        ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+        StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+        BiasPtr);
+    }
 
     // move to next `NCols` columns
 
@@ -871,12 +912,21 @@ SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2(
   // left over columns less than `NCols`?
   nblk += NCols4;
   for (int64_t n = 0; n < nblk; ++n) {
-    ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<1, HasZeroPoint>(
-      BlkLen,
-      ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-      StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-      BiasPtr
-    );
+    if (BlkLen >= 64) {
+      ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<1, HasZeroPoint, true>(
+          BlkLen,
+          ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+          StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+          BiasPtr
+      );
+    } else {
+      ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<1, HasZeroPoint, false>(
+          BlkLen,
+          ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+          StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+          BiasPtr
+      );
+    }
 
     // move to next column
 

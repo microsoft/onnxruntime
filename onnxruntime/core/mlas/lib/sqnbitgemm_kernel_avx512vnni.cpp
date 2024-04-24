@@ -40,10 +40,42 @@ SQ4BitGemmM1Kernel_CompFp32(
   const float* Bias
 )
 {
-  if (BlkLen >= 32)
+  if (BlkLen == 16) {
+    if (QuantBZeroPoint != nullptr) {
+        MlasQ4GemmKernelBlkLen16Avx512f<true>(
+            A,
+            QuantBData,
+            QuantBScale,
+            QuantBZeroPoint,
+            C,
+            1,
+            CountN,
+            CountK,
+            BlockStrideQuantB,
+            Bias,
+            0,
+            0
+        );
+    } else {
+        MlasQ4GemmKernelBlkLen16Avx512f<false>(
+            A,
+            QuantBData,
+            QuantBScale,
+            QuantBZeroPoint,
+            C,
+            1,
+            CountN,
+            CountK,
+            BlockStrideQuantB,
+            Bias,
+            0,
+            0
+        );
+    }    
+  } else if (BlkLen == 32)
   {
     if (QuantBZeroPoint != nullptr) {
-      MlasQ4GemmKernelBlkLen32PlusAvx512f<true>(
+      MlasQ4GemmKernelBlkLen32PlusAvx512f<true, false>(
         BlkLen,
         A,
         QuantBData,
@@ -59,7 +91,7 @@ SQ4BitGemmM1Kernel_CompFp32(
         0
       );
     } else {
-      MlasQ4GemmKernelBlkLen32PlusAvx512f<false>(
+      MlasQ4GemmKernelBlkLen32PlusAvx512f<false, false>(
         BlkLen,
         A,
         QuantBData,
@@ -75,37 +107,39 @@ SQ4BitGemmM1Kernel_CompFp32(
         0
       );
     }
-  } else {
+  } else /*if (BlkLen >= 64)*/ {
     if (QuantBZeroPoint != nullptr) {
-      MlasQ4GemmKernelBlkLen16Avx512f<true>(
-        A,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        1,
-        CountN,
-        CountK,
-        BlockStrideQuantB,
-        Bias,
-        0,
-        0
-      );
+        MlasQ4GemmKernelBlkLen32PlusAvx512f<true, true>(
+            BlkLen,
+            A,
+            QuantBData,
+            QuantBScale,
+            QuantBZeroPoint,
+            C,
+            1,
+            CountN,
+            CountK,
+            BlockStrideQuantB,
+            Bias,
+            0,
+            0
+        );
     } else {
-      MlasQ4GemmKernelBlkLen16Avx512f<false>(
-        A,
-        QuantBData,
-        QuantBScale,
-        QuantBZeroPoint,
-        C,
-        1,
-        CountN,
-        CountK,
-        BlockStrideQuantB,
-        Bias,
-        0,
-        0
-      );
+        MlasQ4GemmKernelBlkLen32PlusAvx512f<false, true>(
+            BlkLen,
+            A,
+            QuantBData,
+            QuantBScale,
+            QuantBZeroPoint,
+            C,
+            1,
+            CountN,
+            CountK,
+            BlockStrideQuantB,
+            Bias,
+            0,
+            0
+        );
     }
   }
 }

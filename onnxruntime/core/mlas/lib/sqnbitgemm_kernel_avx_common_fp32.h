@@ -286,7 +286,7 @@ MlasQ4GemmKernelBlkLen16Avx512f(
   return CountM;
 }
 
-template<bool HasZeroPoint>
+template <bool HasZeroPoint, bool IsBlkLen64Layout>
 MLAS_FORCEINLINE
 size_t
 MlasQ4GemmKernelBlkLen32PlusAvx512f(
@@ -376,20 +376,47 @@ MlasQ4GemmKernelBlkLen32PlusAvx512f(
             : _mm512_maskz_loadu_ps(__mmask16(mask), A + k + kk + 16);
 
           // Load B col vectors
-          const __m128i bvi4_0 = _mm_loadu_si128(b0ptr++);
-          const __m128i bvi4_1 = _mm_loadu_si128(b1ptr++);
-          const __m128i bvi4_2 = _mm_loadu_si128(b2ptr++);
-          const __m128i bvi4_3 = _mm_loadu_si128(b3ptr++);
+          __m256i bytes0, bytes1, bytes2, bytes3;
+          if constexpr (IsBlkLen64Layout) {
+            // dst: | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
+            // load 64 weights at once, parse to get v0 - v31 if subblk is even, otherwise get v32 - v63
+            // increment b_data_ptr by 2 * MLAS_QUANT4_BLK_UNIT32 if subblk is odd
+            // so that all v0-63 of the pack are processed.
+            const __m256i bvi4_0 = _mm256_loadu_si256((__m256i const*)(b0ptr));
+            const __m256i bvi4_1 = _mm256_loadu_si256((__m256i const*)(b1ptr));
+            const __m256i bvi4_2 = _mm256_loadu_si256((__m256i const*)(b2ptr));
+            const __m256i bvi4_3 = _mm256_loadu_si256((__m256i const*)(b3ptr));
+            if ((kk % (2 * MLAS_QUANT4_BLK_UNIT32)) == 0) {
+                bytes0 = _mm256_and_si256(bvi4_0, lowMask);
+                bytes1 = _mm256_and_si256(bvi4_1, lowMask);
+                bytes2 = _mm256_and_si256(bvi4_2, lowMask);
+                bytes3 = _mm256_and_si256(bvi4_3, lowMask);
+            } else {
+                bytes0 = _mm256_and_si256(_mm256_srli_epi16(bvi4_0, 4), lowMask);
+                bytes1 = _mm256_and_si256(_mm256_srli_epi16(bvi4_1, 4), lowMask);
+                bytes2 = _mm256_and_si256(_mm256_srli_epi16(bvi4_2, 4), lowMask);
+                bytes3 = _mm256_and_si256(_mm256_srli_epi16(bvi4_3, 4), lowMask);
+                b0ptr += 2;
+                b1ptr += 2;
+                b2ptr += 2;
+                b3ptr += 2;
+            }
+          } else {
+            const __m128i bvi4_0 = _mm_loadu_si128(b0ptr++);
+            const __m128i bvi4_1 = _mm_loadu_si128(b1ptr++);
+            const __m128i bvi4_2 = _mm_loadu_si128(b2ptr++);
+            const __m128i bvi4_3 = _mm_loadu_si128(b3ptr++);
 
-          // expand 4b into byte array
-          __m256i bytes0 = _mm256_set_m128i(_mm_srli_epi16(bvi4_0, 4), bvi4_0);
-          __m256i bytes1 = _mm256_set_m128i(_mm_srli_epi16(bvi4_1, 4), bvi4_1);
-          __m256i bytes2 = _mm256_set_m128i(_mm_srli_epi16(bvi4_2, 4), bvi4_2);
-          __m256i bytes3 = _mm256_set_m128i(_mm_srli_epi16(bvi4_3, 4), bvi4_3);
-          bytes0 = _mm256_and_si256(lowMask, bytes0);
-          bytes1 = _mm256_and_si256(lowMask, bytes1);
-          bytes2 = _mm256_and_si256(lowMask, bytes2);
-          bytes3 = _mm256_and_si256(lowMask, bytes3);
+            // expand 4b into byte array
+            bytes0 = _mm256_set_m128i(_mm_srli_epi16(bvi4_0, 4), bvi4_0);
+            bytes1 = _mm256_set_m128i(_mm_srli_epi16(bvi4_1, 4), bvi4_1);
+            bytes2 = _mm256_set_m128i(_mm_srli_epi16(bvi4_2, 4), bvi4_2);
+            bytes3 = _mm256_set_m128i(_mm_srli_epi16(bvi4_3, 4), bvi4_3);
+            bytes0 = _mm256_and_si256(lowMask, bytes0);
+            bytes1 = _mm256_and_si256(lowMask, bytes1);
+            bytes2 = _mm256_and_si256(lowMask, bytes2);
+            bytes3 = _mm256_and_si256(lowMask, bytes3);
+          }
 
           // Subtract zero-point from the integers
           if constexpr (HasZeroPoint) {
@@ -547,10 +574,24 @@ MlasQ4GemmKernelBlkLen32PlusAvx512f(
             : _mm512_maskz_loadu_ps(__mmask16(mask), A + k + kk + 16);
 
           for (int64_t nn = 0; nn < nblk; nn++) {
-            const __m128i bvi4 = _mm_loadu_si128(b_ptr[nn]++);
-            __m256i bytes = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
-            bytes = _mm256_and_si256(lowMask, bytes);
-
+              __m256i bytes;
+            if constexpr (IsBlkLen64Layout) {
+                // dst: | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
+                // load 64 weights at once, parse to get v0 - v31 if subblk is even, otherwise get v32 - v63
+                // increment b_data_ptr by 2 * MLAS_QUANT4_BLK_UNIT32 if subblk is odd
+                // so that all v0-63 of the pack are processed.
+                const __m256i bvi4 = _mm256_loadu_si256((__m256i const*)(b_ptr[nn]));
+                if ((kk % (2 * MLAS_QUANT4_BLK_UNIT32)) == 0) {
+                    bytes = _mm256_and_si256(bvi4, lowMask);
+                } else {
+                    bytes = _mm256_and_si256(_mm256_srli_epi16(bvi4, 4), lowMask);
+                    b_ptr[nn] += 2;
+                }
+            } else {
+                const __m128i bvi4 = _mm_loadu_si128(b_ptr[nn]++);
+                bytes = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
+                bytes = _mm256_and_si256(lowMask, bytes);
+            }
             if constexpr (HasZeroPoint) {
               // Subtract zero-point from the integers
               bool is_lower = (QuantBZeroPointIdx & 1) == 0;
