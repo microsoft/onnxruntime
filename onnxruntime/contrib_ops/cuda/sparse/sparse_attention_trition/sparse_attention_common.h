@@ -2,13 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <cstdint>
-#include <cstdio>
-#include <cuda.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cudaDriverWrapper.h"
 
-#define CU_CHECK(expr) ORT_RETURN_IF_ERROR(CU_CALL(expr))
+#define CU_CHECK(expr, driver) cuErrCheck(expr, *driver)
 
 namespace onnxruntime {
 namespace contrib {
@@ -161,9 +159,12 @@ struct SparseAttentionParams {
            block_m, gridDimX, gridDimY, threads_per_block, sharedMemBytes);
 #endif
 
-    return CU_CALL(cuLaunchKernel(f, gridDimX, gridDimY, gridDimZ, threads_per_block, 1, 1, sharedMemBytes,
-                                  static_cast<CUstream>(this->ort_stream->GetHandle()),
-                                  args, NULL));
+    const CUDADriverWrapper* driver = CUDADriverWrapper::GetInstance();
+    CU_CHECK(driver->cuLaunchKernel(f, gridDimX, gridDimY, gridDimZ, threads_per_block, 1, 1, sharedMemBytes,
+                                    static_cast<CUstream>(this->ort_stream->GetHandle()),
+                                    args, NULL),
+             driver);
+    return Status::OK();
   }
 
   bool Valididate() {
@@ -177,15 +178,15 @@ struct SparseAttentionParams {
   }
 };
 
-inline void SetKernelSharedMemory(CUfunction func) {
+inline void SetKernelSharedMemory(const CUDADriverWrapper* driver, CUfunction func) {
   int device = 0;
   CUDA_CALL_THROW(cudaGetDevice(&device));
 
   int shared_optin = 0;
-  CU_CALL_THROW(cuDeviceGetAttribute(&shared_optin, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN, device));
+  CU_CHECK(driver->cuDeviceGetAttribute(&shared_optin, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN, device), driver);
   if (shared_optin > 49152) {
-    CU_CALL_THROW(cuFuncSetCacheConfig(func, CU_FUNC_CACHE_PREFER_SHARED));
-    CU_CALL_THROW(cuFuncSetAttribute(func, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, shared_optin));
+    CU_CHECK(driver->cuFuncSetCacheConfig(func, CU_FUNC_CACHE_PREFER_SHARED), driver);
+    CU_CHECK(driver->cuFuncSetAttribute(func, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, shared_optin), driver);
   }
 }
 

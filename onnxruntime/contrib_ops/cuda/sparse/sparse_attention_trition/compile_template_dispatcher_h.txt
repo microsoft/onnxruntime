@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-/*PLACEHOLDER*/
+PLACEHOLDER
 
 }  // namespace cuda
 }  // namespace contrib

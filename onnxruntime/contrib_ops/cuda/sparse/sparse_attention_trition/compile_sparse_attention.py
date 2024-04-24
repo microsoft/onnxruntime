@@ -103,7 +103,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
         "from pathlib import Path;"
         "template=Path('../compile_template_dispatcher_h.txt').read_text();"
         f"code=Path('{dispatcher}.h').read_text();"
-        "text=template.replace('/*PLACEHOLDER*/', code); print(text)\" "
+        "text=template.replace('PLACEHOLDER', code); print(text)\" "
         f"> ../{dispatcher}.h"
     )
     # rename *.c to *.cc

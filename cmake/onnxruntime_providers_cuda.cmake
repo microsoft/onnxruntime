@@ -191,8 +191,7 @@
       target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
       target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
     else()
-      # cuda_driver is needed since cuLaunchKernel is used by triton kernel and sparse attention.
-      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn CUDA::curand CUDA::cufft CUDA::cudart CUDA::cuda_driver
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn CUDA::curand CUDA::cufft CUDA::cudart
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
       if(onnxruntime_CUDNN_HOME)
           target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
@@ -208,6 +207,7 @@
       target_compile_definitions(${target} PRIVATE USE_TRITON_KERNEL)
       target_include_directories(${target} PRIVATE ${triton_kernel_header_dir})
       target_link_libraries(${target} PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
+      target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
     endif()
 
     include(cutlass)
