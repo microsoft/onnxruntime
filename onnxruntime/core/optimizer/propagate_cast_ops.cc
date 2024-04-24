@@ -46,7 +46,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 // NodeArg to Select consumer node map.
 using NodeArgToConsumerMap = InlinedHashMap<NodeArg*, InlinedVector<Node*>>;
-
+#define _TensorProto_DataType_HALF TensorProto_DataType_BFLOAT16
 /*
  * ConcatNames
  * Collects all the names from the pointers of the objects stores in the container class C
@@ -137,7 +137,7 @@ static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
     const NodeArg* input = node->InputDefs()[0];
     auto input_data_type = static_cast<TensorProto_DataType>(input->TypeAsProto()->tensor_type().elem_type());
     // Allow cast nodes with same input and output type float/float16 to eliminate such casts.
-    return (input_data_type == TensorProto::FLOAT16 || input_data_type == TensorProto::FLOAT) &&
+    return (input_data_type == _TensorProto_DataType_HALF || input_data_type == TensorProto::FLOAT) &&
            attr_hit->second.i() == static_cast<int64_t>(data_type);
   }
   return false;
@@ -156,7 +156,7 @@ static bool SoftmaxCanBeFP16(const Node& node) {
   if (node.GetOutputEdgesCount() != 1)
     return false;
   const Node* output_node = &(*node.OutputNodesBegin());
-  if (!(output_node && IsCastTo(output_node, TensorProto::FLOAT16)))
+  if (!(output_node && IsCastTo(output_node, _TensorProto_DataType_HALF)))
     return false;
 
   return true;
@@ -225,13 +225,13 @@ static Status InsertCastNodes(Graph& graph,
       continue;
     }
     // data_type is the data type of the Cast output.
-    TensorProto_DataType data_type = is_fp16 ? TensorProto_DataType_FLOAT16 : TensorProto_DataType_FLOAT;
+    TensorProto_DataType data_type = is_fp16 ? _TensorProto_DataType_HALF : TensorProto_DataType_FLOAT;
     TypeProto type_proto;
     bool is_node_arg_cast_output = IsType(*node_arg, data_type);  // true if the producer node_arg is being replaced
     TensorProto_DataType new_node_arg_data_type = data_type;
 
     if (is_node_arg_cast_output) {
-      new_node_arg_data_type = (data_type == TensorProto_DataType_FLOAT) ? TensorProto_DataType_FLOAT16 : TensorProto_DataType_FLOAT;
+      new_node_arg_data_type = (data_type == TensorProto_DataType_FLOAT) ? _TensorProto_DataType_HALF : TensorProto_DataType_FLOAT;
     }
     // The below code assumes that the node is a tensor
     type_proto.mutable_tensor_type()->set_elem_type(new_node_arg_data_type);
@@ -478,7 +478,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
     if (children.size() == 1) {
       Node* child = children[0];
       if (!Contains(removed_nodes, child->Index())) {
-        if (IsCastTo(child, TensorProto::FLOAT16)) {
+        if (IsCastTo(child, _TensorProto_DataType_HALF)) {
           // The parent and child cancel out
           LOGS(logger, VERBOSE) << "RemoveBackToBackCasts: Removed Cast nodes  " << parent->Name() << " and " << child->Name();
           ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({parent, child}), removed_nodes));
@@ -498,7 +498,7 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
       size_t children_count = children.size();
       for (Node* child : children) {
         if (!Contains(removed_nodes, child->Index())) {
-          if (IsCastTo(child, TensorProto::FLOAT16)) {
+          if (IsCastTo(child, _TensorProto_DataType_HALF)) {
             // The parent and child cancell out
             // Remove the child node without effecting the other nodes.
             // move all the consumers to the producer.
@@ -700,7 +700,7 @@ static void ChangeTypeToFP16(Graph& graph, InlinedHashSet<NodeArg*>& require_typ
                              const NodeIndices& inserted_nodes,
                              const logging::Logger& logger) {
   ONNX_NAMESPACE::TypeProto type_proto;
-  type_proto.mutable_tensor_type()->set_elem_type(TensorProto::FLOAT16);
+  type_proto.mutable_tensor_type()->set_elem_type(_TensorProto_DataType_HALF);
   for (NodeArg* node_arg : require_type_change) {
     if (IsType(*node_arg, TensorProto::FLOAT)) {
       ORT_THROW_IF_ERROR(node_arg->UpdateTypeAndShape(type_proto, true, true, logger));
@@ -898,7 +898,7 @@ static bool FuseSiblingCasts(Graph& graph, const NodeArg* node_arg,
         graph.IsOutput(node->OutputDefs()[0])) {
       continue;
     }
-    if (IsCastTo(node, TensorProto::FLOAT16)) {
+    if (IsCastTo(node, _TensorProto_DataType_HALF)) {
       cast_fp16_siblings.push_back(node);
     } else if (IsCastTo(node, TensorProto::FLOAT)) {
       cast_fp32_siblings.push_back(node);
@@ -1121,7 +1121,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
         Node* consumer = *node_iter;
         if (nullptr != consumer &&
             !Contains(removed_nodes, consumer->Index())) {
-          if (IsCastTo(consumer, TensorProto::FLOAT16)) {
+          if (IsCastTo(consumer, _TensorProto_DataType_HALF)) {
             casts.push_back(consumer);
           } else {
             non_cast_consumers_map[output].push_back(consumer);
@@ -1173,7 +1173,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
 static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType data_type,
                         NodeIndices& inserted_nodes, bool is_graph_output = false) {
   TypeProto type_proto;
-  type_proto.mutable_tensor_type()->set_elem_type(is_graph_output ? (data_type == TensorProto::FLOAT ? TensorProto::FLOAT16 : TensorProto::FLOAT) : data_type);
+  type_proto.mutable_tensor_type()->set_elem_type(is_graph_output ? (data_type == TensorProto::FLOAT ? _TensorProto_DataType_HALF : TensorProto::FLOAT) : data_type);
   NodeArg& new_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_arg->Name()), &type_proto);
 
   NodeArg& cast_input = is_graph_output ? new_node_arg : *node_arg;
@@ -1222,7 +1222,7 @@ static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType da
  */
 static void InsertFP16Cast(Graph& graph, NodeArg* input_arg, Node* node,
                            NodeIndices& inserted_nodes, const logging::Logger& logger) {
-  Node& cast = CreateCast(graph, input_arg, TensorProto::FLOAT16, inserted_nodes);
+  Node& cast = CreateCast(graph, input_arg, _TensorProto_DataType_HALF, inserted_nodes);
   NodeArg* new_input_arg = cast.MutableOutputDefs()[0];
   auto& inputs = node->MutableInputDefs();
   Node* producer = graph.GetMutableProducerNode(input_arg->Name());
@@ -1302,7 +1302,7 @@ static void InsertFP32Casts(Graph& graph, NodeArg* output_arg,
     LOGS(logger, VERBOSE) << "Inserted FP32 Cast " << cast.Name() << " for the node arg " << output_arg->Name();
   } else {
     ONNX_NAMESPACE::TypeProto type_proto;
-    type_proto.mutable_tensor_type()->set_elem_type(TensorProto::FLOAT16);
+    type_proto.mutable_tensor_type()->set_elem_type(_TensorProto_DataType_HALF);
     ORT_THROW_IF_ERROR(output_arg->UpdateTypeAndShape(type_proto, true, true, logger));
   }
   // Create a new cast node for each consumer
@@ -1456,7 +1456,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
         Node* node = graph.GetNode(node_index);
         if (nullptr != node &&
             !Contains(removed_nodes, node->Index()) &&
-            IsCastTo(node, TensorProto::FLOAT16)) {
+            IsCastTo(node, _TensorProto_DataType_HALF)) {
           local_modified |= PropagateBackwards(graph, node, removed_nodes, level_, fp16_allow_ops_0_, converted_nodes, inserted_nodes, logger);
         }
       }
