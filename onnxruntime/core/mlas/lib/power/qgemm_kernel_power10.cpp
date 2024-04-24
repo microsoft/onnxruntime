@@ -537,13 +537,108 @@ MlasGemmQuantCopyPackB8x8(
     Vtype vmask = reinterpret_cast<Vtype>(vec_splats(BitFlipValue));
     vec_t mask = {0,4,8,12,1,5,9,13,2,6,10,14,3,7,11,15};
 
-    // Process 4 columns of matrix B in a loop.
-    //
+    // Process 16 columns of matrix B in a loop.
+    ///home/ckerchner/anaconda3/envs/ort/lib/python3.11/site-packages)
     // Copy columns from matrix B to the packed buffer. Signed buffers are
     // converted to unsigned buffers in order to share a common kernel.
     //
     // If CountK is not aligned to a multiple of four, then the packed buffer
     // is padded with zero vectors.
+
+    size_t PackedK = ((CountK + 4 - 1) / 4) * 16;
+    size_t k2 = PackedK;
+    size_t k3 = PackedK*2;
+    size_t k4 = PackedK*3;
+
+    while (CountN >= 16) {
+
+        const uint8_t* b = B;
+        __vector unsigned int vsum = {0};
+        __vector unsigned int vsum2 = {0};
+        __vector unsigned int vsum3 = {0};
+        __vector unsigned int vsum4 = {0};
+        size_t y = CountK;
+        if(y >= 4) {
+            do {
+                Vtype b1 = *reinterpret_cast<const Vtype *>(&b[0]);
+                Vtype b2 = *reinterpret_cast<const Vtype *>(&b[ldb]);
+                Vtype b3 = *reinterpret_cast<const Vtype *>(&b[ldb*2]);
+                Vtype b4 = *reinterpret_cast<const Vtype *>(&b[ldb*3]);
+                Vtype t1 = vec_mergeh(b1, b3);
+                Vtype t2 = vec_mergel(b1, b3);
+                Vtype t3 = vec_mergeh(b2, b4);
+                Vtype t4 = vec_mergel(b2, b4);
+                b1 = vec_mergeh(t1, t3);
+                b2 = vec_mergel(t1, t3);
+                b3 = vec_mergeh(t2, t4);
+                b4 = vec_mergel(t2, t4);
+                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b1, vmask)) : reinterpret_cast<vec_t>(b1);
+                vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b2, vmask)) : reinterpret_cast<vec_t>(b2);
+                vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b3, vmask)) : reinterpret_cast<vec_t>(b3);
+                vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b4, vmask)) : reinterpret_cast<vec_t>(b4);
+                *reinterpret_cast<vec_t *>(&D[0]) = vx1;
+                *reinterpret_cast<vec_t *>(&D[k2]) = vx2;
+                *reinterpret_cast<vec_t *>(&D[k3]) = vx3;
+                *reinterpret_cast<vec_t *>(&D[k4]) = vx4;
+                vsum = vec_sum4s (vx1, vsum);
+                vsum2 = vec_sum4s (vx2, vsum2);
+                vsum3 = vec_sum4s (vx3, vsum3);
+                vsum4 = vec_sum4s (vx4, vsum4);
+                D += 16;
+                b += ldb*4;
+                y -= 4;
+            } while (y >= 4);
+        }
+        if (y >= 1) {
+            Vtype b1 = *reinterpret_cast<const Vtype *>(&b[0]);
+            Vtype b2 = (y >= 2) ? *reinterpret_cast<const Vtype *>(&b[ldb]) : vmask;
+            Vtype b3 = (y >= 3) ? *reinterpret_cast<const Vtype *>(&b[ldb*2]) : vmask;
+            Vtype b4 = vmask;
+            Vtype t1 = vec_mergeh(b1, b3);
+            Vtype t2 = vec_mergel(b1, b3);
+            Vtype t3 = vec_mergeh(b2, b4);
+            Vtype t4 = vec_mergel(b2, b4);
+            b1 = vec_mergeh(t1, t3);
+            b2 = vec_mergel(t1, t3);
+            b3 = vec_mergeh(t2, t4);
+            b4 = vec_mergel(t2, t4);
+            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b1, vmask)) : reinterpret_cast<vec_t>(b1);
+            vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b2, vmask)) : reinterpret_cast<vec_t>(b2);
+            vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b3, vmask)) : reinterpret_cast<vec_t>(b3);
+            vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b4, vmask)) : reinterpret_cast<vec_t>(b4);
+            *reinterpret_cast<vec_t *>(&D[0]) = vx1;
+            *reinterpret_cast<vec_t *>(&D[k2]) = vx2;
+            *reinterpret_cast<vec_t *>(&D[k3]) = vx3;
+            *reinterpret_cast<vec_t *>(&D[k4]) = vx4;
+            vsum = vec_sum4s (vx1, vsum);
+            vsum2 = vec_sum4s (vx2, vsum2);
+            vsum3 = vec_sum4s (vx3, vsum3);
+            vsum4 = vec_sum4s (vx4, vsum4);
+            D += 16;
+        }
+        *ColumnSumBuffer++ = vsum[0];
+        *ColumnSumBuffer++ = vsum[1];
+        *ColumnSumBuffer++ = vsum[2];
+        *ColumnSumBuffer++ = vsum[3];
+        *ColumnSumBuffer++ = vsum2[0];
+        *ColumnSumBuffer++ = vsum2[1];
+        *ColumnSumBuffer++ = vsum2[2];
+        *ColumnSumBuffer++ = vsum2[3];
+        *ColumnSumBuffer++ = vsum3[0];
+        *ColumnSumBuffer++ = vsum3[1];
+        *ColumnSumBuffer++ = vsum3[2];
+        *ColumnSumBuffer++ = vsum3[3];
+        *ColumnSumBuffer++ = vsum4[0];
+        *ColumnSumBuffer++ = vsum4[1];
+        *ColumnSumBuffer++ = vsum4[2];
+        *ColumnSumBuffer++ = vsum4[3];
+        B += 16;
+        CountN -= 16;
+	D += k4;
+    }
+
+    // Process four columns of matrix B in a loop.
+    //
     while (CountN >= 4) {
 
         const uint8_t* b = B;
