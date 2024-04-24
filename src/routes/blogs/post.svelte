@@ -46,6 +46,10 @@
 	/**
 	 * @type {string}
 	 */
+	 export let imageSquare;
+	/**
+	 * @type {string}
+	 */
 </script>
 
 <svelte:head>
@@ -61,8 +65,8 @@
 	<meta name="twitter:title" content={title} />
 	<meta name="twitter:description" content={description} />
 	<meta name="image" content={image} />
-	<meta name="og:image" content={image}  />
-	<meta name="twitter:card" content={image}  />
+	<meta name="og:image" content={imageSquare ? imageSquare : image}  />
+	<meta name="twitter:card" content={imageSquare ? imageSquare : image}  />
 	<meta name="twitter:image" content={image}  />
 	<meta name="robots" content={robots} />
 </svelte:head>
@@ -74,7 +78,7 @@
 			{#if authors.length === 0}
 				<br/>
 			{:else}
-				<p>By:</p>
+				<p class="inline">By:</p>
 			{/if}
 			{#each authors as author, i}
 				<a href={authorsLink[i]} class="text-blue-500">{author}</a>{i + 1 === authors.length

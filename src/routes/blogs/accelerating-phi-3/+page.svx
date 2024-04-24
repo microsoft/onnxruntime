@@ -10,6 +10,7 @@ authorsLink:
   [
    ]
 image: 'https://iili.io/JSQDdog.png'
+imageSquare: 'https://iili.io/JSDovQn.png'
 url: 'https://onnxruntime.ai/blogs/accelerating-phi-3'
 ---
 
