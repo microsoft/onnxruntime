@@ -486,6 +486,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
             }
+          } else if (option.first == "user_compute_stream") {
+            if (!option.second.empty()) {
+              auto stream = std::stoull(option.second, nullptr, 0);
+              params.user_compute_stream = reinterpret_cast<void*>(stream);
+              params.has_user_compute_stream = true;
+            } else {
+              params.has_user_compute_stream = false;
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'user_compute_stream' should be a string to define the compute stream for the inference to run on.\n");
+            }
           } else if (option.first == "trt_max_partition_iterations") {
             if (!option.second.empty()) {
               params.trt_max_partition_iterations = std::stoi(option.second);
@@ -919,6 +928,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (option.first == "device_type") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "precision") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "enable_npu_fast_compile") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
@@ -951,10 +963,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             value = "true";
           }
           OV_provider_options_map["disable_dynamic_shapes"] = value;
-        } else if (option.first == "device_id") {
+        } else if (option.first == "num_of_threads") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if (option.first == "num_of_threads") {
+        } else if (option.first == "model_priority") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "num_streams") {
@@ -964,6 +976,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "context") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "export_ep_ctx_blob") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else {
@@ -1021,7 +1036,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
     return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+               session_options.config_options, cit == provider_options_map.end() ? ProviderOptions{} : cit->second, true)
         ->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
@@ -1366,7 +1381,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::enum_<ExecutionOrder>(m, "ExecutionOrder")
       .value("DEFAULT", ExecutionOrder::DEFAULT)
-      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED);
+      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED)
+      .value("MEMORY_EFFICIENT", ExecutionOrder::MEMORY_EFFICIENT);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)

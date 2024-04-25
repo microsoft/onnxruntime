@@ -12,8 +12,8 @@
 #include <string>
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "contexts.h"
-#include "ov_interface.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/ov_interface.h"
 #ifdef _WIN32
 #include <direct.h>
 #define GetCurrentDir _getcwd

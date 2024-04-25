@@ -140,6 +140,10 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
   std::vector<int64_t> output_shapes;
 };
 
+/*
+ * This map saves the dimension range of the shape of the shape tensor or execution tensor:
+ * tensor name -> ( dimension -> [min, max, opt] )
+ */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
 // Information to construct kernel function state.

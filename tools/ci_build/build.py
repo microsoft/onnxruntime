@@ -73,13 +73,11 @@ _check_python_version()
 
 
 def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "NPU"]
+    choices = ["CPU", "GPU", "NPU"]
 
     choices1 = [
-        "CPU_FP32_NO_PARTITION",
-        "CPU_FP16_NO_PARTITION",
-        "GPU_FP32_NO_PARTITION",
-        "GPU_FP16_NO_PARTITION",
+        "CPU_NO_PARTITION",
+        "GPU_NO_PARTITION",
         "NPU_NO_PARTITION",
     ]
     status_hetero = True
@@ -399,9 +397,10 @@ def parse_arguments():
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
 
-    parser.add_argument("--ios", action="store_true", help="build for ios")
-
-    parser.add_argument(
+    platform_group = parser.add_mutually_exclusive_group()
+    platform_group.add_argument("--ios", action="store_true", help="build for ios")
+    platform_group.add_argument("--visionos", action="store_true", help="build for visionOS")
+    platform_group.add_argument(
         "--macos",
         choices=["MacOSX", "Catalyst"],
         help="Specify the target platform for macOS build. Only specify this argument when --build_apple_framework is present.",
@@ -414,6 +413,11 @@ def parse_arguments():
         "--ios_toolchain_file",
         default="",
         help="Path to ios toolchain file, or cmake/onnxruntime_ios.toolchain.cmake will be used",
+    )
+    parser.add_argument(
+        "--visionos_toolchain_file",
+        default="",
+        help="Path to visionos toolchain file, or cmake/onnxruntime_visionos.toolchain.cmake will be used",
     )
     parser.add_argument(
         "--xcode_code_signing_team_id", default="", help="The development team ID used for code signing in Xcode"
@@ -458,7 +462,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.51", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.57", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -534,7 +538,7 @@ def parse_arguments():
     parser.add_argument(
         "--use_openvino",
         nargs="?",
-        const="CPU_FP32",
+        const="CPU",
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.",
     )
@@ -904,7 +908,7 @@ def use_dev_mode(args):
         return False
     if args.use_armnn:
         return False
-    if args.ios and is_macOS():
+    if (args.ios or args.visionos) and is_macOS():
         return False
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
     if SYSTEM_COLLECTIONURI and SYSTEM_COLLECTIONURI != "https://dev.azure.com/onnxruntime/":
@@ -1223,19 +1227,11 @@ def generate_build_tree(
     if args.use_openvino:
         cmake_args += [
             "-Donnxruntime_USE_OPENVINO=ON",
-            "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_CPU_FP16=" + ("ON" if args.use_openvino == "CPU_FP16" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_GPU=" + ("ON" if args.use_openvino == "GPU" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU=" + ("ON" if args.use_openvino == "CPU" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_NPU=" + ("ON" if args.use_openvino == "NPU" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_GPU_FP32_NP="
-            + ("ON" if args.use_openvino == "GPU_FP32_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_GPU_FP16_NP="
-            + ("ON" if args.use_openvino == "GPU_FP16_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_CPU_FP32_NP="
-            + ("ON" if args.use_openvino == "CPU_FP32_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_CPU_FP16_NP="
-            + ("ON" if args.use_openvino == "CPU_FP16_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_GPU_NP=" + ("ON" if args.use_openvino == "GPU_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU_NP=" + ("ON" if args.use_openvino == "CPU_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_NPU_NP=" + ("ON" if args.use_openvino == "NPU_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_HETERO=" + ("ON" if args.use_openvino.startswith("HETERO") else "OFF"),
             "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
@@ -1243,11 +1239,16 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # VitisAI and OpenVINO providers currently only support
-    # full_protobuf option. TensorRT provider only requires it if built with oss_parser
+    # VitisAI and OpenVINO providers currently only support full_protobuf option.
+    # TensorRT provider only requires it if built with oss_parser, and
+    # it implicitly uses oss_parser with debug build on Windows.
+    #
+    # Note: oss_parser will support protobuf-lite in TRT 10 GA, so TRT EP will fully
+    # support protobuf-lite then.
     if (
         args.use_full_protobuf
         or (args.use_tensorrt and args.use_tensorrt_oss_parser)
+        or (args.use_tensorrt and is_windows() and "Debug" in args.config)
         or args.use_openvino
         or args.use_vitisai
         or args.gen_doc
@@ -1332,12 +1333,12 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    if args.macos or args.ios:
+    if args.macos or args.ios or args.visionos:
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
         if args.macos == "Catalyst" and args.cmake_generator == "Xcode":
             raise BuildError("Xcode CMake generator ('--cmake_generator Xcode') doesn't support Mac Catalyst build.")
 
-        if (args.ios or args.macos == "MacOSX") and not args.cmake_generator == "Xcode":
+        if (args.ios or args.visionos or args.macos == "MacOSX") and not args.cmake_generator == "Xcode":
             raise BuildError(
                 "iOS/MacOS framework build requires use of the Xcode CMake generator ('--cmake_generator Xcode')."
             )
@@ -1385,6 +1386,17 @@ def generate_build_tree(
                 f"-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
                 f"-DCMAKE_CC_FLAGS=--target={macabi_target}",
                 f"-DCMAKE_CC_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+            ]
+        if args.visionos:
+            cmake_args += [
+                "-DCMAKE_SYSTEM_NAME=visionOS",
+                "-DCMAKE_TOOLCHAIN_FILE="
+                + (
+                    args.visionos_toolchain_file
+                    if args.visionos_toolchain_file
+                    else "../cmake/onnxruntime_visionos.toolchain.cmake"
+                ),
+                "-Donnxruntime_ENABLE_CPUINFO=OFF",
             ]
 
     if args.build_wasm:
@@ -2089,6 +2101,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
 
+            if args.use_dml:
+                log.info("Testing DML Graph feature")
+                run_subprocess([sys.executable, "onnxruntime_test_python_dmlgraph.py"], cwd=cwd, dll_path=dll_path)
+
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
 
@@ -2627,7 +2643,7 @@ def main():
         raise BuildError("Using --get-api-doc requires a single build config")
 
     # Disabling unit tests for GPU on nuget creation
-    if args.use_openvino and args.use_openvino != "CPU_FP32" and args.build_nuget:
+    if args.use_openvino and args.use_openvino != "CPU" and args.build_nuget:
         args.test = False
 
     # GDK builds don't support testing
@@ -2767,7 +2783,7 @@ def main():
 
         if is_macOS():
             if (
-                not args.ios
+                not (args.ios or args.visionos)
                 and args.macos != "Catalyst"
                 and not args.android
                 and args.osx_arch == "arm64"
