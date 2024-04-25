@@ -211,11 +211,8 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
                         // at the end of subblk loop, increment b_data_ptr by 2 * subblk_data_size_in_bytes if subblk % 2 == 1
                         // so that all v0-64 of the pack are dequantized.
                         const __m256i bvi = _mm256_loadu_si256((__m256i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
-                        if (subblk % 2 == 0) {
-                          weight_32_epi8[col_] = _mm256_and_si256(bvi, low_mask);
-                        } else {
-                          weight_32_epi8[col_] = _mm256_and_si256(_mm256_srli_epi16(bvi, 4), low_mask);
-                        }
+                        const int count_half_4 = 4 * (subblk % 2);
+                        weight_32_epi8[col_] = _mm256_and_si256(_mm256_srli_epi16(bvi, count_half_4), low_mask);
                       } else{
                         // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
                         __m128i bvi = _mm_loadu_si128((__m128i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
@@ -303,9 +300,7 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
                 }
                 dst_ptr += SubblkLen32 * GemmFloatKernelWidth16;
                 if constexpr (IsBlkLen64Layout) {
-                  if (subblk % 2 == 1) {
-                    b_data_ptr += 2 * subblk_data_size_in_bytes;
-                  }
+                  b_data_ptr += (subblk % 2) * 2 * subblk_data_size_in_bytes;
                 } else {
                   b_data_ptr += subblk_data_size_in_bytes;
                 }
@@ -758,12 +753,9 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
           // increment b_data_ptr by 2 * SubBlkStep16 if kk % (2 * SubBlkLen32) == 1
           // so that all v0-63 of the pack are processed.
           const __m256i bvi4 = _mm256_loadu_si256((__m256i const*)(b_blk_data_col_ptr[i]));
-          if ((kk % (2 * SubBlkLen32)) == 0) {
-              bv_32_epi8 = _mm256_and_si256(bvi4, lowMask);
-          } else {
-              bv_32_epi8 = _mm256_and_si256(_mm256_srli_epi16(bvi4, 4), lowMask);
-              b_blk_data_col_ptr[i] += 2 * SubBlkStep16;
-          }
+          const int count_half_4 = 4 * (int)((kk % (2 * SubBlkLen32)) / SubBlkLen32);
+          bv_32_epi8 = _mm256_and_si256(_mm256_srli_epi16(bvi4, count_half_4), lowMask);
+          b_blk_data_col_ptr[i] += count_half_4 / 2 * SubBlkStep16;
         } else {
           // SubBlkLen = 32: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
           __m128i bvi4 = _mm_loadu_si128((const __m128i*)(b_blk_data_col_ptr[i]));

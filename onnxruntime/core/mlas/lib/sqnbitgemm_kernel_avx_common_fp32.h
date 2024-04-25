@@ -386,21 +386,12 @@ MlasQ4GemmKernelBlkLen32PlusAvx512f(
             const __m256i bvi4_1 = _mm256_loadu_si256((__m256i const*)(b1ptr));
             const __m256i bvi4_2 = _mm256_loadu_si256((__m256i const*)(b2ptr));
             const __m256i bvi4_3 = _mm256_loadu_si256((__m256i const*)(b3ptr));
-            if ((kk % (2 * MLAS_QUANT4_BLK_UNIT32)) == 0) {
-                bytes0 = _mm256_and_si256(bvi4_0, lowMask);
-                bytes1 = _mm256_and_si256(bvi4_1, lowMask);
-                bytes2 = _mm256_and_si256(bvi4_2, lowMask);
-                bytes3 = _mm256_and_si256(bvi4_3, lowMask);
-            } else {
-                bytes0 = _mm256_and_si256(_mm256_srli_epi16(bvi4_0, 4), lowMask);
-                bytes1 = _mm256_and_si256(_mm256_srli_epi16(bvi4_1, 4), lowMask);
-                bytes2 = _mm256_and_si256(_mm256_srli_epi16(bvi4_2, 4), lowMask);
-                bytes3 = _mm256_and_si256(_mm256_srli_epi16(bvi4_3, 4), lowMask);
-                b0ptr += 2;
-                b1ptr += 2;
-                b2ptr += 2;
-                b3ptr += 2;
-            }
+            const int count_half_4 =
+              4 * ((kk % (2 * MLAS_QUANT4_BLK_UNIT32)) / MLAS_QUANT4_BLK_UNIT32);
+            bytes0 = _mm256_and_si256(_mm256_srli_epi16(bvi4_0, count_half_4), lowMask);
+            bytes1 = _mm256_and_si256(_mm256_srli_epi16(bvi4_1, count_half_4), lowMask);
+            bytes2 = _mm256_and_si256(_mm256_srli_epi16(bvi4_2, count_half_4), lowMask);
+            bytes3 = _mm256_and_si256(_mm256_srli_epi16(bvi4_3, count_half_4), lowMask);
           } else {
             const __m128i bvi4_0 = _mm_loadu_si128(b0ptr++);
             const __m128i bvi4_1 = _mm_loadu_si128(b1ptr++);
@@ -581,12 +572,9 @@ MlasQ4GemmKernelBlkLen32PlusAvx512f(
                 // increment b_data_ptr by 2 * MLAS_QUANT4_BLK_UNIT32 if subblk is odd
                 // so that all v0-63 of the pack are processed.
                 const __m256i bvi4 = _mm256_loadu_si256((__m256i const*)(b_ptr[nn]));
-                if ((kk % (2 * MLAS_QUANT4_BLK_UNIT32)) == 0) {
-                    bytes = _mm256_and_si256(bvi4, lowMask);
-                } else {
-                    bytes = _mm256_and_si256(_mm256_srli_epi16(bvi4, 4), lowMask);
-                    b_ptr[nn] += 2;
-                }
+                const int count_half_4 =
+                  4 * ((kk % (2 * MLAS_QUANT4_BLK_UNIT32)) / MLAS_QUANT4_BLK_UNIT32);
+                bytes = _mm256_and_si256(_mm256_srli_epi16(bvi4, count_half_4), lowMask);
             } else {
                 const __m128i bvi4 = _mm_loadu_si128(b_ptr[nn]++);
                 bytes = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
