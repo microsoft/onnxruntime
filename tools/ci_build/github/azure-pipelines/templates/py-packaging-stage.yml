@@ -366,7 +366,7 @@ stages:
     dependsOn: []
     jobs:
     - job: MacOS_py_Wheels
-      timeoutInMinutes: 180
+      timeoutInMinutes: 360
       workspace:
         clean: all
       pool:
