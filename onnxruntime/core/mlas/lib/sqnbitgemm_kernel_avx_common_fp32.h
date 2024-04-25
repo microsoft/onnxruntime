@@ -392,6 +392,10 @@ MlasQ4GemmKernelBlkLen32PlusAvx512f(
             bytes1 = _mm256_and_si256(_mm256_srli_epi16(bvi4_1, count_half_4), lowMask);
             bytes2 = _mm256_and_si256(_mm256_srli_epi16(bvi4_2, count_half_4), lowMask);
             bytes3 = _mm256_and_si256(_mm256_srli_epi16(bvi4_3, count_half_4), lowMask);
+            b0ptr += count_half_4 / 2;
+            b1ptr += count_half_4 / 2;
+            b2ptr += count_half_4 / 2;
+            b3ptr += count_half_4 / 2;
           } else {
             const __m128i bvi4_0 = _mm_loadu_si128(b0ptr++);
             const __m128i bvi4_1 = _mm_loadu_si128(b1ptr++);
@@ -575,6 +579,7 @@ MlasQ4GemmKernelBlkLen32PlusAvx512f(
                 const int count_half_4 =
                   4 * ((kk % (2 * MLAS_QUANT4_BLK_UNIT32)) / MLAS_QUANT4_BLK_UNIT32);
                 bytes = _mm256_and_si256(_mm256_srli_epi16(bvi4, count_half_4), lowMask);
+                b_ptr[nn] += count_half_4 / 2;
             } else {
                 const __m128i bvi4 = _mm_loadu_si128(b_ptr[nn]++);
                 bytes = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
