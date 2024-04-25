@@ -181,6 +181,8 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
     /*constexpr*/ const bool HasZeroPoint = QuantBZeroPoint != nullptr;
     const size_t zp_col_stride_in_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth4>(BlockCountK);
 
+    [[maybe_unused]] int count_half_4 = 0;
+
     const __m256i low_mask = _mm256_set1_epi8(0xF);
     for (size_t col = 0; col < CountN; col += NCols8) {
         // TODO: handle last tile with cols < NCols8
@@ -201,6 +203,9 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
             for (size_t subblk = 0; subblk < BlkLen / SubblkLen32; subblk++) {
                 __m256i weight_32_epi8[NCols8];
                 __m256 scale_8_ps[NCols8];
+                if constexpr (IsBlkLen64Layout) {
+                    count_half_4 = 4 * (subblk % 2);
+                }
                 UnrolledLoop<NCols8>([&](size_t col_) {
                     if (col_ < cols) {
                         if constexpr (IsBlkLen64Layout) {
@@ -209,7 +214,6 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_avx2(
                             // at the end of subblk loop, increment b_data_ptr by 2 * subblk_data_size_in_bytes if subblk % 2 == 1
                             // so that all v0-64 of the pack are dequantized.
                             const __m256i bvi = _mm256_loadu_si256((__m256i const*)(b_data_ptr + col_ * b_data_col_stride_in_bytes));
-                            const int count_half_4 = 4 * (subblk % 2);
                             weight_32_epi8[col_] = _mm256_and_si256(_mm256_srli_epi16(bvi, count_half_4), low_mask);
                         } else {
                             // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
@@ -702,6 +706,7 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
     const float* s = QuantBScaleColPtr;
 
     [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
+    [[maybe_unused]] int count_half_4 = 0;
     // only used if HasZeroPoint == true
 
     for (size_t k = 0; k < CountK; k += BlkLen) {
@@ -746,6 +751,9 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
             n_to_read = std::min(kklen - 24, 8);
             __m256 av3_8_ps = load_float_n_avx2(ARowPtr + k + kk + 24, n_to_read);
 
+            if constexpr (IsBlkLen64Layout) {
+                count_half_4 = 4 * (int)((kk % (2 * SubBlkLen32)) / SubBlkLen32);
+            }
             UnrolledLoop<NCols>([&](size_t i) {
                 // Load B col vectors. get SubBlkLen32 4b quantized weights from each column
                 __m256i bv_32_epi8;
@@ -755,7 +763,6 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_avx2(
                     // increment b_data_ptr by 2 * SubBlkStep16 if kk % (2 * SubBlkLen32) == 1
                     // so that all v0-63 of the pack are processed.
                     const __m256i bvi4 = _mm256_loadu_si256((__m256i const*)(b_blk_data_col_ptr[i]));
-                    const int count_half_4 = 4 * (int)((kk % (2 * SubBlkLen32)) / SubBlkLen32);
                     bv_32_epi8 = _mm256_and_si256(_mm256_srli_epi16(bvi4, count_half_4), lowMask);
                     b_blk_data_col_ptr[i] += count_half_4 / 2 * SubBlkStep16;
                 } else {
