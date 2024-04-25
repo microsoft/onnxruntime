@@ -63,7 +63,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
 
     // handle outer scope value which is a constant initializer
     if (include_outer_scope_args) {
-      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder(order)) {
         const auto& node = graph_view.GetNode(node_idx);
         for (const auto& input : node->InputDefs()) {
           if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
