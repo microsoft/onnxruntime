@@ -27,7 +27,7 @@ namespace cuda {
       SparseAttention<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
-// REGISTER_KERNEL_TYPED(BFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
@@ -41,13 +41,15 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
 
   int64_t sparse_block_size = 0;
   ORT_ENFORCE(info.GetAttr("sparse_block_size", &sparse_block_size).IsOK());
-  ORT_ENFORCE(sparse_block_size == 16 || sparse_block_size == 32 || sparse_block_size == 64 || sparse_block_size == 128);
+  ORT_ENFORCE(sparse_block_size == 64 || sparse_block_size == 128);
   sparse_block_size_ = static_cast<int>(sparse_block_size);
 
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
 
   softmax_scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+
+  kernel_loaded_ = false;
 }
 
 template <typename T>
@@ -90,17 +92,34 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Some limitations of CUDA kernels
   if (!is_supported_sparse_attention(device_prop)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparseAttention only support CUDA device with compute capacity 8.*. Got ", device_prop.major);
+                           "SparseAttention only support CUDA device with compute capacity 8.*. Got ",
+                           device_prop.major);
   }
   if (!is_supported_sparse_attention(parameters.head_size, sparse_block_size_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparseAttention only support head_size=128 and sparse_block_size=64. Got head_size=", parameters.head_size, ", sparse_block_size=", sparse_block_size_);
+                           "SparseAttention only support head_size=128 and sparse_block_size=64. Got head_size=",
+                           parameters.head_size,
+                           ",sparse_block_size=",
+                           sparse_block_size_);
   }
   if (device_prop.maxThreadsPerBlock > 0 && num_heads_ > device_prop.maxThreadsPerBlock) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "num_heads should be no larger than ", device_prop.maxThreadsPerBlock);
   }
-  load_sparse_attention_fp16();
+
+  if constexpr (std::is_same<T, MLFloat16>::value) {
+    if (!kernel_loaded_) {
+      // std::call_once is used in load_sparse_attention_fp16 so no need to use mutex here.
+      // After kernel is loaded, it will stay in memory until the process exits. We do not unload explicitly.
+      load_sparse_attention_fp16();
+      kernel_loaded_ = true;
+    }
+  } else {
+    if (!kernel_loaded_) {
+      load_sparse_attention_bf16();
+      kernel_loaded_ = true;
+    }
+  }
 
   // Compute output shape and get output tensors.
   TensorShapeVector output_shape(3);
@@ -181,7 +200,8 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t rotary_buffer_bytes = 0;
   if (do_rotary_) {
-    rotary_buffer_bytes = 2 * sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.sequence_length * parameters.head_size;
+    rotary_buffer_bytes = 2 * sizeof(T) * parameters.batch_size * parameters.num_heads *
+                          parameters.sequence_length * parameters.head_size;
     rotary_buffer_bytes += sizeof(int64_t) * parameters.batch_size * parameters.sequence_length;
   }
   auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, context->GetComputeStream());
@@ -189,7 +209,8 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t transposed_q_bytes = 0;
   if (!parameters.is_packed_qkv) {
-    transposed_q_bytes = (parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size * sizeof(T));
+    transposed_q_bytes = parameters.batch_size * parameters.sequence_length *
+                         parameters.num_heads * parameters.head_size * sizeof(T);
   }
   auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, context->GetComputeStream());
   if (transposed_q_buffer) {
@@ -198,7 +219,9 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t unpacked_qkv_bytes = 0;
   if (parameters.is_packed_qkv) {
-    unpacked_qkv_bytes = (parameters.batch_size * parameters.sequence_length * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T));
+    unpacked_qkv_bytes = (parameters.batch_size * parameters.sequence_length *
+                          (parameters.num_heads + 2 * parameters.kv_num_heads) *
+                          parameters.head_size * sizeof(T));
   }
   auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
   if (unpacked_qkv_buffer) {

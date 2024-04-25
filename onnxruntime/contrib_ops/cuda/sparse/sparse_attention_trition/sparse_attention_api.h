@@ -14,6 +14,10 @@ Status run_sparse_attention_fp16(SparseAttentionParams& params);
 void load_sparse_attention_fp16();
 void unload_sparse_attention_fp16();
 
+Status run_sparse_attention_bf16(SparseAttentionParams& params);
+void load_sparse_attention_bf16();
+void unload_sparse_attention_bf16();
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -38,6 +38,8 @@ class Config:
     # TODO: test performance with rotary embedding.
     do_rotary = False
 
+    is_fp16 = True  # True for float16; False for bfloat16.
+
     def __init__(
         self,
         batch_size: int,
@@ -50,6 +52,7 @@ class Config:
         sparse_block_size: int,
         num_layout: int,
         share_buffer: bool = True,
+        is_fp16: bool = True,
     ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
@@ -61,7 +64,7 @@ class Config:
         self.sparse_block_size = sparse_block_size
         self.num_layout = num_layout
         self.share_buffer = share_buffer
-
+        self.is_fp16 = is_fp16
         self.do_rotary = False
 
         # Derived values
@@ -131,6 +134,9 @@ def get_random_inputs(shape_dict: Dict, total_sequence_length, block_mask, devic
 
 
 def create_graph(config):
+    assert config.is_fp16  # python does not support bfloat16 for I/O binding.
+
+    float_type = TensorProto.FLOAT16
     nodes = [
         helper.make_node(
             "SparseAttention",
@@ -158,11 +164,11 @@ def create_graph(config):
 
     shape_dict = get_shape_dict(config)
     graph_input = [
-        helper.make_tensor_value_info("query", TensorProto.FLOAT16, list(shape_dict["query"])),
-        helper.make_tensor_value_info("key", TensorProto.FLOAT16, list(shape_dict["key"])),
-        helper.make_tensor_value_info("value", TensorProto.FLOAT16, list(shape_dict["value"])),
-        helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, list(shape_dict["past_key"])),
-        helper.make_tensor_value_info("past_value", TensorProto.FLOAT16, list(shape_dict["past_value"])),
+        helper.make_tensor_value_info("query", float_type, list(shape_dict["query"])),
+        helper.make_tensor_value_info("key", float_type, list(shape_dict["key"])),
+        helper.make_tensor_value_info("value", float_type, list(shape_dict["value"])),
+        helper.make_tensor_value_info("past_key", float_type, list(shape_dict["past_key"])),
+        helper.make_tensor_value_info("past_value", float_type, list(shape_dict["past_value"])),
         helper.make_tensor_value_info("block_mask", TensorProto.INT32, list(shape_dict["block_mask"])),
         helper.make_tensor_value_info(
             "total_sequence_length", TensorProto.INT32, list(shape_dict["total_sequence_length"])
@@ -173,9 +179,9 @@ def create_graph(config):
     ]
 
     graph_output = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT16, list(shape_dict["output"])),
-        helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, list(shape_dict["present_key"])),
-        helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, list(shape_dict["present_value"])),
+        helper.make_tensor_value_info("output", float_type, list(shape_dict["output"])),
+        helper.make_tensor_value_info("present_key", float_type, list(shape_dict["present_key"])),
+        helper.make_tensor_value_info("present_value", float_type, list(shape_dict["present_value"])),
     ]
 
     graph = helper.make_graph(
@@ -292,7 +298,7 @@ def group_query_attention_reference(
     return out
 
 
-def run_relevance_no_past(device, dtype=torch.float16):
+def run_relevance_no_past(device):
     local_blocks = 2
     vert_stride = 2
     config = Config(
@@ -306,7 +312,7 @@ def run_relevance_no_past(device, dtype=torch.float16):
         sparse_block_size=64,
         num_layout=2,
     )
-
+    dtype = torch.float16
     block_mask = get_block_mask(config.num_layout, config.max_blocks, local_blocks, vert_stride).to(device)
     shape_dict = get_shape_dict(config)
     feed_dict = get_random_inputs(shape_dict, config.total_sequence_length, block_mask, device, dtype=dtype)
@@ -354,16 +360,16 @@ def run_relevance_no_past(device, dtype=torch.float16):
         print("expected_out", expected_out)
 
     if torch.allclose(expected_out, actual_out, atol=1e-2, rtol=0):
-        print("Relevance test passed.")
+        print("Relevance test passed")
     else:
-        print("Relevance test not passed.")
+        print("Relevance test not passed")
 
 
-def run_relevance_test(dtype=torch.float16):
+def run_relevance_test():
     device_id = torch.cuda.current_device()
     device = torch.device("cuda", device_id)
     with torch.no_grad():
-        run_relevance_no_past(device, dtype)
+        run_relevance_no_past(device)
 
 
 def run_ort_performance(config: Config, local_blocks, vert_stride, device, dtype=torch.float16, repeats: int = 100):

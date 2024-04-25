@@ -5544,7 +5544,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.SparseAttention"></a><a name="com.microsoft.sparseattention">**com.microsoft.SparseAttention**</a>
 
-  Block Sparse Attention used in Sparse Transformers (https://arxiv.org/pdf/1904.10509) and BigBird (https://arxiv.org/pdf/2007.14062).
+  Block Sparse Attention used in Phi-3-small (https://arxiv.org/pdf/2404.14219).
+  
+  It is inspired by Sparse Transformers (https://arxiv.org/pdf/1904.10509) and BigBird (https://arxiv.org/pdf/2007.14062).
   
   block_mask can be used to configure sparse layout for different head.
   When number of sparse layout is 1, all heads have same sparse layout. Otherwise, different layouts are used cyclically.
@@ -5582,17 +5584,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape is(batch_size, sequence_length, d) where d is (num_heads + 2 * kv_num_heads) * head_size.</dd>
+<dd>Query with shape (batch_size, sequence_length, num_heads * head_size), or packed QKV with shape is(batch_size, sequence_length, d) where d is (num_heads + 2 * kv_num_heads) * head_size.</dd>
 <dt><tt>key</tt> (optional) : T</dt>
-<dd>Key with shape (batch_size, sequence_length, kv_hidden_size)</dd>
+<dd>Key with shape (batch_size, sequence_length, kv_num_heads * head_size)</dd>
 <dt><tt>value</tt> (optional) : T</dt>
-<dd>Value with shape (batch_size, sequence_length, kv_hidden_size)</dd>
+<dd>Value with shape (batch_size, sequence_length, kv_num_heads * head_size)</dd>
 <dt><tt>past_key</tt> (optional) : T</dt>
 <dd>Key cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>past_value</tt> (optional) : T</dt>
 <dd>Value cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>block_mask</tt> : M</dt>
-<dd>block mask. 1 indicates attention and 0 no attention. Its shape is (num_layout, max_blocks, max_blocks), where num_layout is divisible by num_layout, and max_blocks is max_sequence_length / block_size.</dd>
+<dd>block mask. 1 indicates attention and 0 no attention. Its shape is (num_layout, max_blocks, max_blocks), where num_heads is divisible by num_layout, and max_blocks is max_sequence_length / sparse_block_size.</dd>
 <dt><tt>total_sequence_length</tt> : M</dt>
 <dd>Scalar tensor of maximum total sequence length (past_sequence_length + sequence_length) among keys.</dd>
 <dt><tt>key_total_sequence_lengths</tt> : M</dt>
@@ -5607,7 +5609,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, num_heads * head_size)</dd>
 <dt><tt>present_key</tt> : T</dt>
 <dd>Updated key cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size).</dd>
 <dt><tt>present_value</tt> : T</dt>

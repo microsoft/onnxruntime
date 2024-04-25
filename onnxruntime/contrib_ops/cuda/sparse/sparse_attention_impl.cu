@@ -270,7 +270,11 @@ Status QkvToContext(
       data.kernel_layout.num_rows * data.kernel_layout.num_cols,          // stride per head in col indices
       data.kernel_layout.num_layout);
 
-  ORT_RETURN_IF_ERROR(run_sparse_attention_fp16(params));
+  if constexpr (std::is_same<T, BFloat16>::value) {
+    ORT_RETURN_IF_ERROR(run_sparse_attention_bf16(params));
+  } else {
+    ORT_RETURN_IF_ERROR(run_sparse_attention_fp16(params));
+  }
 
   return Status::OK();
 }

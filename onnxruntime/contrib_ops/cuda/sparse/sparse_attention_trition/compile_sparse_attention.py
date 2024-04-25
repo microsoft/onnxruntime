@@ -6,10 +6,12 @@
 # Use triton AoT compiler to convert sparse_attention_triton.py to C source files including cubin and dispatcher.
 # Example to use this script (Tested with CUDA 12.3 in Ubuntu 20.04):
 #    python3 -m pip install triton==2.3.0
-#    python3 compile_sparse_attention.py | sh
+#    python3 compile_sparse_attention.py --dtype fp16 | sh
+#    python3 compile_sparse_attention.py --dtype bf16 | sh
 #
 # Note that sparse_attention_kernel_*.cc and sparse_attention_dispatcher_*.h are the generated files.
 
+import argparse
 import math
 from itertools import product
 
@@ -121,5 +123,12 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     print("echo Done")
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Compile block sparse attention triton kernel")
+    parser.add_argument("--dtype", default="fp16", type=str, choices=["fp16", "bf16"])
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    generate_triton_compile_shell_script("fp16")
+    args = parse_arguments()
+    generate_triton_compile_shell_script(args.dtype)
