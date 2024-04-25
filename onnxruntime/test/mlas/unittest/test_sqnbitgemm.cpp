@@ -197,7 +197,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
  public:
   void Test(size_t M, size_t N, size_t K,
             MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
-            bool WithBias, bool Symmetric, bool WithThreadpool) {
+            bool WithThreadpool, bool Symmetric, bool WithBias) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
     const float* A = BufferA.GetBuffer(K * M);
