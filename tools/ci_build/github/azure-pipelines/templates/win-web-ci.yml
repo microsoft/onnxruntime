@@ -158,7 +158,8 @@ jobs:
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\01
-     npm test -- -e=chrome -b=webgl,wasm --user-data-dir=$(Agent.TempDirectory)\web\test\01
+     dir $(Agent.TempDirectory)\web\test\01
+     npm test -- -e=chrome -b=webgl,wasm --user-data-dir=$(Agent.TempDirectory)\web\test\01 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (wasm,webgl backend)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'false'))
@@ -168,7 +169,8 @@ jobs:
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\02
-     npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\02
+     dir $(Agent.TempDirectory)\web\test\02
+     npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\02 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
@@ -178,7 +180,8 @@ jobs:
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\03
-     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\03
+     dir $(Agent.TempDirectory)\web\test\03
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\03 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
@@ -188,7 +191,8 @@ jobs:
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\04
-     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\04
+     dir $(Agent.TempDirectory)\web\test\04
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\04 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
@@ -198,7 +202,8 @@ jobs:
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\05
-     npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\05
+     dir $(Agent.TempDirectory)\web\test\05
+     npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\05 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
@@ -207,7 +212,8 @@ jobs:
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
      mkdir $(Agent.TempDirectory)\web\test\06
-     npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\06
+     dir $(Agent.TempDirectory)\web\test\06
+     npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\06 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
@@ -241,6 +247,16 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: 'Publish Pipeline Artifact'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - script: |
+      if exist 01 (echo ------------------- BEGIN 01 -------------------&&type 01\chrome_debug.log&&echo ------------------- END 01 ------------------- )
+      if exist 02 (echo ------------------- BEGIN 02 -------------------&&type 02\chrome_debug.log&&echo ------------------- END 02 ------------------- )
+      if exist 03 (echo ------------------- BEGIN 03 -------------------&&type 03\chrome_debug.log&&echo ------------------- END 03 ------------------- )
+      if exist 04 (echo ------------------- BEGIN 04 -------------------&&type 04\chrome_debug.log&&echo ------------------- END 04 ------------------- )
+      if exist 05 (echo ------------------- BEGIN 05 -------------------&&type 05\chrome_debug.log&&echo ------------------- END 05 ------------------- )
+      if exist 06 (echo ------------------- BEGIN 06 -------------------&&type 06\chrome_debug.log&&echo ------------------- END 06 ------------------- )
+    displayName: 'Log Chrome processes (after test)'
+    workingDirectory: '$(Agent.TempDirectory)\web\test'
+    condition: always()
   - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'

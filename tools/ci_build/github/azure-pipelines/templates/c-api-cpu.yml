@@ -409,7 +409,7 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          dotnet workload install android ios maccatalyst
+          dotnet workload install android ios
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1

@@ -46,6 +46,7 @@ class OVCore {
                             std::string name);
   OVExeNetwork CompileModel(const std::string onnx_model_path,
                             std::string& hw_target,
+                            std::string precision,
                             std::string cache_dir,
                             ov::AnyMap& device_config,
                             std::string name);
