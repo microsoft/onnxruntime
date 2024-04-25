@@ -6610,6 +6610,42 @@ def test_overridden_softmax_export(softmax_compute_type):
     assert to_value == pytorch_type_to_onnx_dtype(softmax_compute_type), "Cast to attribute is not as expected"
 
 
+def test_aten_conv_bf16():
+    class NeuralNetConv(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.conv = torch.nn.Conv2d(
+                in_channels=3,
+                out_channels=1024,
+                kernel_size=14,
+                stride=14,
+                bias=False,
+                dtype=torch.bfloat16,
+            )
+
+        def forward(self, input):
+            return self.conv(input)
+
+    device = "cuda"
+    pt_model = NeuralNetConv().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = torch.randn([2, 3, 336, 336], dtype=torch.bfloat16, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
 @pytest.mark.parametrize("memory_optimization_level", [None, 0, 1, 2])
 @pytest.mark.parametrize("allow_gradient_checkpoint_export", [None, 0, 1])
 @pytest.mark.parametrize("fx", ["torch", "deepspeed"])
