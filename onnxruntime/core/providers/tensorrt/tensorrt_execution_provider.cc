@@ -2103,7 +2103,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto graph_viewer = graph_build.CreateGraphViewer();
         auto model = graph_viewer->CreateModel(*GetLogger());
         auto model_proto = model->ToProto();
-        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
+
+        // ORT's default topological sort is using reversed DFS.
+        // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
+        // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
+        // the model proto that has different node ordering compared to original onnx model.
+        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/);
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
         std::string string_buf;
@@ -2499,7 +2504,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // Reconstruct graph proto from fused node's function body
   auto model = graph_body_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
-  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
+
+  // ORT's default topological sort is using reversed DFS.
+  // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
+  // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
+  // the model proto that has different node ordering compared to original onnx model.
+  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string string_buf;
   model_proto->SerializeToString(string_buf);
