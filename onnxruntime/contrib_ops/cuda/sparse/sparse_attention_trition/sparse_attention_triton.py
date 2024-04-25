@@ -42,11 +42,20 @@ def block_sparse_attention_kernel(
     BLOCK_D: tl.constexpr,  # block size for D
     NUM_D_BLOCKS: tl.constexpr,  # number of data blocks =  D / BLOCK_D
 ):
+    # tl.static_print(f"{BLOCK_M=} {BLOCK_N=} {BLOCK_D=} {EVEN_M=} {EVEN_N=} {NUM_D_BLOCKS=}")
+
     q_seq_len = total_seq_len - past_seq_len
 
     # Grid is [CDiv(q_seq_len, BLOCK_M), batch_size * num_heads]
     start_m = tl.program_id(0)
     off_bh = tl.program_id(1)
+
+    # if start_m == 0 and off_bh == 0:
+    #     tl.device_print("num_heads", num_heads)
+    #     tl.device_print("total_seq_len", total_seq_len)
+    #     tl.device_print("past_seq_len", past_seq_len)
+    #     tl.device_print("q_seq_len", q_seq_len)
+
     off_h = off_bh % num_heads
     off_b = off_bh // num_heads
 
@@ -108,10 +117,7 @@ def block_sparse_attention_kernel(
             if EVEN_N:
                 k = tl.load(k_ptrs + start_n * stride_kn + BLOCK_D)
             else:
-                k = tl.load(
-                    k_ptrs + start_n * stride_kn + BLOCK_D,
-                    mask=offs_n[None, :] + start_n < total_seq_len,
-                )
+                k = tl.load(k_ptrs + start_n * stride_kn + BLOCK_D, mask=offs_n[None, :] + start_n < total_seq_len)
             qk += tl.dot(q2, k)
 
         qk *= softmax_scale
@@ -146,10 +152,7 @@ def block_sparse_attention_kernel(
             if EVEN_N:
                 v = tl.load(v_ptrs + start_n * stride_vn + BLOCK_D)
             else:
-                v = tl.load(
-                    v_ptrs + start_n * stride_vn + BLOCK_D,
-                    mask=offs_n[:, None] + start_n < total_seq_len,
-                )
+                v = tl.load(v_ptrs + start_n * stride_vn + BLOCK_D, mask=offs_n[:, None] + start_n < total_seq_len)
             acc2 += tl.dot(p, v)
 
         # update m_i and l_i

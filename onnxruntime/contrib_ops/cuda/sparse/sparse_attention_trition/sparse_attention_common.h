@@ -95,21 +95,25 @@ struct SparseAttentionParams {
     this->layout_col_stride_h = layout_col_stride_h;
     this->num_layout = num_layout;
 
-    // When kv buffer has max sequence length, stride should match max sequence length.
-    int kv_buffer_sequence_length = max_sequence_length;
-
     this->stride_qb = this->num_heads * this->sequence_length * this->head_size;
     this->stride_qh = this->sequence_length * this->head_size;
     this->stride_qm = this->head_size;
+
+    // When kv buffer has max sequence length, stride should match max sequence length.
+    int kv_buffer_sequence_length = max_sequence_length;
+
+    // KV cache is in BNSH format
     this->stride_kb = this->kv_num_heads * kv_buffer_sequence_length * this->head_size;
     this->stride_kh = kv_buffer_sequence_length * this->head_size;
     this->stride_kn = this->head_size;
     this->stride_vb = this->kv_num_heads * kv_buffer_sequence_length * this->head_size;
     this->stride_vh = kv_buffer_sequence_length * this->head_size;
     this->stride_vn = this->head_size;
-    this->stride_ob = this->num_heads * this->sequence_length * this->head_size;
-    this->stride_oh = this->sequence_length * this->head_size;
-    this->stride_om = this->head_size;
+
+    // Output is BSNH format
+    this->stride_ob = this->sequence_length * this->num_heads * this->head_size;
+    this->stride_oh = this->head_size;
+    this->stride_om = this->num_heads * this->head_size;
   }
 
   Status LaunchKernel(CUfunction f, int block_m, int threads_per_block, unsigned int sharedMemBytes) {

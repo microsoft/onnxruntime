@@ -4,10 +4,9 @@
 # --------------------------------------------------------------------------
 
 """
-Benchmark performance of SparseAttention. It supports Nvidia GPU of Compute Capability 8.x in Linux.
+Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of Compute Capability 8.x.
 """
 
-import math
 import statistics
 import time
 from typing import Dict, Optional
@@ -20,6 +19,8 @@ from torch import Tensor
 
 from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime.transformers.io_binding_helper import CudaSession, GpuBindingManager
+
+ENABLE_DEBUG = False
 
 
 class Config:
@@ -81,10 +82,11 @@ def get_block_mask(num_layout, max_blocks, local_blocks, vert_stride):
     block_mask = (q_pos >= k_pos) & ((q_pos - k_pos < local_blocks) | mask_vert_strided)
     block_mask = block_mask.to(torch.int32)
 
-    torch.set_printoptions(profile="full")
-    torch.set_printoptions(edgeitems=100)
-    torch.set_printoptions(linewidth=200)
-    print(block_mask)
+    if ENABLE_DEBUG:
+        torch.set_printoptions(profile="full")
+        torch.set_printoptions(edgeitems=100)
+        torch.set_printoptions(linewidth=200)
+        print(block_mask)
 
     return block_mask
 
@@ -218,7 +220,7 @@ def benchmark_op(gpu_binding, feed_dict, repeats=100):
     return statistics.mean(latency_list)
 
 
-def scaled_dot_product_gqa(
+def group_query_attention_reference(
     query: Tensor,
     key: Tensor,
     value: Tensor,
@@ -226,9 +228,10 @@ def scaled_dot_product_gqa(
     mask: Optional[Tensor] = None,
     is_causal: Optional[bool] = None,
 ):
-    """Reference implementation of group query.
+    """Reference implementation of group query attention.
         - b: batch size
-        - n / s: sequence length
+        - n: query_sequence_length
+        - s: kv_sequence_length
         - h: number of heads
         - g: number of groups
         - d: hidden dimension per head of query/key/value
@@ -237,7 +240,7 @@ def scaled_dot_product_gqa(
         query: Query tensor of shape (b, n, h, d)
         key: Key tensor of shape (b, s, h, d)
         value: Value tensor of shape (b, s, h, d)
-        scale: Scale factor for query (default: d_query ** 0.5)
+        scale: Scale multiplied before softmax. default: 1.0 / sqrt(d)
         mask: Mask tensor of shape (b, h, n, s), (b, n, s) or (b, s).
 
     Returns:
@@ -246,7 +249,7 @@ def scaled_dot_product_gqa(
     assert (mask is None) or (is_causal is None)
     assert query.ndim == key.ndim == value.ndim == 4
     if scale is None:
-        scale = query.size(-1) ** 0.5
+        scale = 1.0 / (query.size(-1) ** 0.5)
 
     query = rearrange(query, "b n h d -> b h n d")
     key = rearrange(key, "b s h d -> b h s d")
@@ -280,7 +283,7 @@ def scaled_dot_product_gqa(
             mask = rearrange(mask, "b n s -> b () n s")
         similarity.masked_fill_(~mask, torch.finfo(similarity.dtype).min)
 
-    attention = F.softmax(similarity / scale, dim=-1)
+    attention = F.softmax(similarity * scale, dim=-1)
 
     out = einsum(attention, value, "b h n s, b h s d -> b h n d")
 
@@ -304,45 +307,35 @@ def run_relevance_no_past(device, dtype=torch.float16):
         num_layout=2,
     )
 
-    # Use a custom scale that is different from the default 1/sqrt(head_size).
-    scale = 1.0 / math.sqrt(config.head_size) / 2.0
-
     block_mask = get_block_mask(config.num_layout, config.max_blocks, local_blocks, vert_stride).to(device)
     shape_dict = get_shape_dict(config)
     feed_dict = get_random_inputs(shape_dict, config.total_sequence_length, block_mask, device, dtype=dtype)
 
-    # Reference implementation using torch SDPA
+    # Run GQA implementation by Torch as reference
     dense_mask = get_dense_mask(
         block_mask, config.total_sequence_length, config.sequence_length, config.sparse_block_size
     )
-
-    torch.set_printoptions(precision=6, edgeitems=3, linewidth=1000, profile="full", sci_mode=False)
-    print("dense_mask", dense_mask)
-
     query = feed_dict["query"].view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
     key = feed_dict["key"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
     value = feed_dict["value"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
-    print("query(BNSH)", query.clone().transpose(1, 2))
-    print("key(BNSH)", key.clone().transpose(1, 2))
-    print("value(BNSH)", value.clone().transpose(1, 2))
-    print("block_mask", feed_dict["block_mask"])
-    print("total_sequence_length", feed_dict["total_sequence_length"])
-    print("key_total_sequence_lengths", feed_dict["key_total_sequence_lengths"])
-
-    expected_out = scaled_dot_product_gqa(
-        query.clone(),
-        key.clone(),
-        value.clone(),
-        scale=1.0 / scale,
-        mask=dense_mask.repeat(config.batch_size, 1, 1, 1).bool(),
+    expected_out = group_query_attention_reference(
+        query.clone(), key.clone(), value.clone(), mask=dense_mask.repeat(config.batch_size, 1, 1, 1).bool()
     )
 
-    # Run ORT
+    if ENABLE_DEBUG:
+        torch.set_printoptions(precision=6, edgeitems=3, linewidth=1000, profile="full", sci_mode=False)
+        print("query(BNSH)", query.clone().transpose(1, 2))
+        print("key(BNSH)", key.clone().transpose(1, 2))
+        print("value(BNSH)", value.clone().transpose(1, 2))
+        print("block_mask", feed_dict["block_mask"])
+        print("dense_mask", dense_mask)
+        print("total_sequence_length", feed_dict["total_sequence_length"])
+        print("key_total_sequence_lengths", feed_dict["key_total_sequence_lengths"])
+
+    # Run SparseAttention by ORT
     cuda_provider_options = CudaSession.get_cuda_provider_options(
         torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
     )
-    # cuda_provider_options["tunable_op_enable"] = True
-    # cuda_provider_options["tunable_op_tuning_enable"] = True
     ort_session = create_session(config, cuda_provider_options=cuda_provider_options)
     gpu_binding_manager = GpuBindingManager(
         ort_session=ort_session,
@@ -354,16 +347,13 @@ def run_relevance_no_past(device, dtype=torch.float16):
     gpu_binding = gpu_binding_manager.get_binding(shape_dict, use_cuda_graph=False, buffer_sharing=buffer_sharing)
     ort_outputs = gpu_binding.infer(feed_dict)
     ort_output = ort_outputs["output"]
-
     actual_out = ort_output.view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
 
-    print("ort_output", actual_out.shape)
-    print(actual_out)
+    if ENABLE_DEBUG:
+        print("ort_output", actual_out)
+        print("expected_out", expected_out)
 
-    print("expected_out shape", expected_out.shape)
-    print(expected_out)
-
-    if torch.allclose(expected_out, actual_out, atol=0.005, rtol=0.001):
+    if torch.allclose(expected_out, actual_out, atol=1e-2, rtol=0):
         print("Relevance test passed.")
     else:
         print("Relevance test not passed.")
@@ -380,8 +370,6 @@ def run_ort_performance(config: Config, local_blocks, vert_stride, device, dtype
     cuda_provider_options = CudaSession.get_cuda_provider_options(
         torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
     )
-    # cuda_provider_options["tunable_op_enable"] = True
-    # cuda_provider_options["tunable_op_tuning_enable"] = True
     ort_session = create_session(config, cuda_provider_options=cuda_provider_options)
     gpu_binding_manager = GpuBindingManager(
         ort_session=ort_session,
@@ -447,4 +435,4 @@ if __name__ == "__main__":
     s = torch.cuda.Stream()
     with torch.cuda.stream(s):
         run_relevance_test()
-        # run_performance_test()
+        run_performance_test()
