@@ -6,14 +6,8 @@
 
 namespace onnxruntime {
 
-// This node comparison function will be used in Graph::ReverseDFSFrom where
-// the input nodes of the current node will be sorted based on node index.
-// Due to the sorted nodes will be pushed into a stack which later determines the
-// final topological node order in a "first in, last out" approach, the larger
-// node index should be pushed into the stack first. So that we can get a
-// topological node order aligns with smaller index node comes first.
 bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
-  return n1->Index() > n2->Index();
+  return n1->Index() < n2->Index();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
