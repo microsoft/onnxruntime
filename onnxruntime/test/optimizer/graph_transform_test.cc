@@ -576,6 +576,31 @@ TEST_F(GraphTransformationTests, SliceElimination) {
   }
 }
 
+// Test Split + QuickGeLU Fusion
+// What is level 1 or level 2 in TransformerLevel?
+TEST_F(GraphTransformationTests, SplitQuickGeluFusionTest) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/split_quickgelu_fusion.onnx";
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SplitQuickGeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Split"], 0);
+  ASSERT_EQ(op_to_count["QuickGelu"], 0);
+  ASSERT_EQ(op_to_count["Mul"], 0);
+  ASSERT_EQ(op_to_count["S2SModelSplitQuickGelu"], 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "S2SModelSplitQuickGelu") {
+      // S2SModelSplitQuickGelu should have only 1 input
+      EXPECT_EQ(node.InputDefs().size(), 1u) << "S2SModelSplitQuickGelu number of inputs does not equal to 1. Got:" << node.InputDefs().size();
+    }
+  }
+}
+
 TEST_F(GraphTransformationTests, ConstantFolding) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;

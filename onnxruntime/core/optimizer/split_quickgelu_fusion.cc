@@ -92,7 +92,6 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // Compare if the two mul_nodes are same
   // Figure this out?
 
-
   // pattern match succeeded
   split = &split_node;
   quickgelu = &quickgelu_node;
