@@ -850,8 +850,10 @@ Return Value:
     const float* Input = WorkBlock->Input + n * D;
     float* Output = WorkBlock->Output + n * D;
 
-    constexpr size_t CacheLineSize = 64;
+#if defined(MLAS_SSE2_INTRINSICS)
+    constexpr size_t CacheLineSize = std::hardware_constructive_interference_size;
     constexpr size_t ElementsPerCacheLine = CacheLineSize / sizeof(float);
+#endif
 
     while (CountN > 0) {
 
