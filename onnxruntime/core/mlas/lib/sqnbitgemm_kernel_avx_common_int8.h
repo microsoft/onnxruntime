@@ -92,7 +92,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
 
     // Load A row vector
     const __m128i av_epi8 = _mm_lddqu_si128((const __m128i*)ablob);
-    __m256i av_epi16 = _mm256_cvtepu8_epi16(av_epi8);
+    __m256i av_epi16 = _mm256_cvtepi8_epi16(av_epi8);
     ablob += BlkLen;
 
     // Load 4 B column vectors (quantized to int4 blobs)
@@ -107,7 +107,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(
     UnrolledLoop<NCols>([&](size_t i) {
       const __m128i lower = _mm_and_si128(bvi[i], low_mask);
       const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi[i], 4), low_mask), 8);
-      bv_epi16[i] = _mm256_cvtepu8_epi16(_mm_add_epi8(upper, lower));
+      bv_epi16[i] = _mm256_cvtepi8_epi16(_mm_add_epi8(upper, lower));
       });
 
     // Subtract zero-point from the integers

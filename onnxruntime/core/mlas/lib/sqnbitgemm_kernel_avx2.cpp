@@ -521,7 +521,7 @@ ComputeDotProducts_BlkLen16_CompFp32_avx2(
 
         const __m128i lower = _mm_and_si128(bvi4, lower_mask_epi8);
         const __m128i upper = _mm_bslli_si128(_mm_and_si128(_mm_srli_epi16(bvi4, 4), lower_mask_epi8), 8);
-        __m256i bv_epi16 = _mm256_cvtepu8_epi16(_mm_add_epi8(upper, lower)); // unpacked 16 weights of epi16
+        __m256i bv_epi16 = _mm256_cvtepi8_epi16(_mm_add_epi8(upper, lower)); // unpacked 16 weights of epi16
 
         // Subtract zero-point from the integers
         if constexpr (HasZeroPoint) {
