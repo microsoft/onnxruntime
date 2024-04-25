@@ -1563,6 +1563,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   {
     auto lock = GetApiLock();
     runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
+    runtime_->setEngineHostCodeAllowed(true);
   }
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
@@ -2482,6 +2483,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
   trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
   trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
+  // Enable version compatible
+  bool engine_version_compatible = true;
+  if (engine_version_compatible) {
+    trt_config->setFlag(nvinfer1::BuilderFlag::kVERSION_COMPATIBLE);
+  }
 
   // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
   if (fp16_enable_ && layer_norm_fp32_fallback_) {
@@ -2763,12 +2769,26 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
   }
 
+  std::string engine_cache_path = "";
+  std::string cache_path_prefix = "";
+  std::string encrypted_engine_cache_path = "";
+  std::string profile_cache_path = "";
+
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-  const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
-  const std::string engine_cache_path = cache_path_prefix + ".engine";
-  const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
-  const std::string profile_cache_path = cache_path_prefix + ".profile";
+  if (engine_version_compatible &&
+      ((NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 6) || (NV_TENSORRT_MAJOR > 8))) {
+    engine_cache_path = cache_path_prefix + ".v" + std::to_string(NV_TENSORRT_MAJOR) + "engine";
+    encrypted_engine_cache_path = engine_cache_path + ".v" + std::to_string(NV_TENSORRT_MAJOR) + "encrypted";
+    profile_cache_path = cache_path_prefix + ".v" + std::to_string(NV_TENSORRT_MAJOR) + "profile";
+  else {
+    engine_cache_path = cache_path_prefix + ".engine";
+    encrypted_engine_cache_path = engine_cache_path + ".encrypted";
+    profile_cache_path = cache_path_prefix + ".profile";
+    if (engine_version_compatible) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Version compatibility can only be set on TRT 8.6 onwards!";
+    }   
+   }
 
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {

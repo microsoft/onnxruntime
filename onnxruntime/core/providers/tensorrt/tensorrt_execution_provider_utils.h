@@ -748,9 +748,9 @@ std::string join(const std::vector<std::string>& vec, const std::string& delimit
  * For example:
  * When default subgraph name is "TensorrtExecutionProvider_TRTKernel_graph_torch-jit-export_2068723788287043730_189_189_fp16"
  * This func will generate the suffix "2068723788287043730_189_fp16"
- *
+ * If `disable_hash` is true, the suffix will be "189_fp16"
  */
-std::string GetCacheSuffix(const std::string& fused_node_name, const std::string& trt_node_name_with_precision) {
+std::string GetCacheSuffix(const std::string& fused_node_name, const std::string& trt_node_name_with_precision, bool disable_hash = false) {
   std::vector<std::string> split_fused_node_name = split(fused_node_name, '_');
   if (split_fused_node_name.size() >= 3) {
     // Get index of model hash from fused_node_name
@@ -758,8 +758,15 @@ std::string GetCacheSuffix(const std::string& fused_node_name, const std::string
     size_t index = fused_node_name.find(model_hash);
     // Parse suffix from trt_node_name_with_precision, as it has additional precision info
     std::vector<std::string> suffix_group = split(trt_node_name_with_precision.substr(index), '_');
-    if (suffix_group.size() > 2) {
-      suffix_group.erase(suffix_group.begin() + 2);
+    if (disable_hash) {
+      // Remove the hash from the output if disable_hash is true
+      if (suffix_group.size() > 0) {
+        suffix_group.erase(suffix_group.begin());  // Remove the hash element
+      }
+    } 
+    // Keep only one subgraph id
+    if (suffix_group.size() > 1) {
+      suffix_group.erase(suffix_group.end() - 2);
     }
     return join(suffix_group, "_");
   }
