@@ -2366,7 +2366,7 @@ def build_nuget_package(
     # expand extra_options to add prefix
     extra_options = ["/p:" + option for option in msbuild_extra_options]
 
-    # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net6)
+    # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net8)
     use_dotnet = sln != "OnnxRuntime.CSharp.sln"
 
     if use_dotnet:
