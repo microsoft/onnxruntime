@@ -21,6 +21,8 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   add = quickgelu = mult = nullptr;
 
   // check node is split and has two outputs
+  // TODO: 1. Check ONNX Op Types to Support
+  //
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {14}) ||
       !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 2)) {
@@ -51,7 +53,9 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   }
 
   // Trying to find Split->QuickGelu->Mul Path
+  // What does the 0,0 represent here?
   std::vector<const Node::EdgeEnd*> edges;
+  // TODO: Replace QuickGelu by other Elementwise Op for better generalization
   std::vector<graph_utils::EdgeEndToMatch> quickgelu_mul_path{
       {0, 0, "QuickGelu", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
@@ -108,7 +112,7 @@ void FuseSplitQuickGeluSubgraph(
   std::string fused_desc =
       "fused " + split_node.Name() + " and " + quickgelu_node.Name() + " and " + mul.Name() + " into SplitQuickGelu";
 
-  std::string op_type = "SplitQuickGelu";
+  std::string op_type = "S2SModelSplitQuickGelu";
   Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
                                    op_type,
                                    fused_desc,
@@ -129,17 +133,40 @@ void FuseSplitQuickGeluSubgraph(
 
 }  // namespace
 
-bool CastElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-  if (!graph_utils::CanRemoveNode(graph, node, logger)) {
-    return false;
+namespace onnxruntime {
+
+Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  // only support GPU execution provider
+  auto& cep = GetCompatibleExecutionProviders();
+  if (cep.size() > 0 && cep.find(kCudaExecutionProvider) == cep.end() && cep.find(kRocmExecutionProvider) == cep.end())
+    return Status::OK();
+
+  for (auto node_index : node_topology_list) {
+    auto* node_ptr = graph.GetNode(node_index);
+    if (nullptr == node_ptr)
+      continue;  // node was removed
+
+    auto& node = *node_ptr;
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+
+    Node *split_node, *quickgelu_node, *mul_node;
+    if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node)) {
+      continue;
+    }
+
+    NodeArg *input, *mask;
+    int axis;
+    int alpha;
+    FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, mask, axis, alpha);
+    modified = true;
+
+    VLOGF(logger, 1, "Fused S2S Model Split + QuickGelu into S2SModelSplitQuickGelu node.\n");
   }
 
-  const auto* input_type = node.InputDefs()[0]->TypeAsProto();
-  if (input_type == nullptr || !input_type->tensor_type().has_elem_type()) {
-    return false;
-  }
-
-  return optimizer_utils::IsAttributeWithExpectedValue(node, "to", static_cast<int64_t>(input_type->tensor_type().elem_type()));
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

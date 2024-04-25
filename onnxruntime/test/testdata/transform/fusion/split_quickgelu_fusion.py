@@ -6,7 +6,7 @@ graph = helper.make_graph(
         # Add node before Gelu
         helper.make_node("Split", ["inp", "axis"], ["out1", "out2"], "split"),
         # Gelu subgraph
-        helper.make_node("QuickGelu", ["out2"], ["gelu_out"], "quickgelu"),
+        helper.make_node("QuickGelu", ["out2", "alpha"], ["gelu_out"], "quickgelu"),
         helper.make_node("Mul", ["out1", "gelu_out"], ["out"], "mul"),
     ],
     "Split_QuickGelu_Fusion",  # name
@@ -18,6 +18,7 @@ graph = helper.make_graph(
     ],
     [  # initializers
         helper.make_tensor("axis", TensorProto.FLOAT, [], [-1]),
+        helper.make_tensor("alpha", TensorProto.FLOAT, [], [1]),
     ],
 )
 
