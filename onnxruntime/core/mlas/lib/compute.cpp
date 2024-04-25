@@ -855,6 +855,7 @@ Return Value:
 
     while (CountN > 0) {
 
+#if defined(MLAS_SSE2_INTRINSICS)
         //
         // Prefetch the next row of the input buffer.
         //
@@ -862,6 +863,7 @@ Return Value:
         for (size_t i = 0; i * ElementsPerCacheLine < D; i++) {
             _mm_prefetch((char*)(Input + D) + i * CacheLineSize, _MM_HINT_T0);
         }
+#endif
 
         //
         // Find the maximum value for the row.
