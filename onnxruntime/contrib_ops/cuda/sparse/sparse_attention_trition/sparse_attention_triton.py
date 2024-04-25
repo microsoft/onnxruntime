@@ -50,12 +50,6 @@ def block_sparse_attention_kernel(
     start_m = tl.program_id(0)
     off_bh = tl.program_id(1)
 
-    # if start_m == 0 and off_bh == 0:
-    #     tl.device_print("num_heads", num_heads)
-    #     tl.device_print("total_seq_len", total_seq_len)
-    #     tl.device_print("past_seq_len", past_seq_len)
-    #     tl.device_print("q_seq_len", q_seq_len)
-
     off_h = off_bh % num_heads
     off_b = off_bh // num_heads
 

@@ -4,11 +4,11 @@
 # --------------------------------------------------------------------------
 
 # Use triton AoT compiler to convert sparse_attention_triton.py to C source files including cubin and dispatcher.
-# Example to use this script (Tested with triton 2.3.0 in Ubuntu 20.04):
+# Example to use this script (Tested with CUDA 12.3 in Ubuntu 20.04):
 #    python3 -m pip install triton==2.3.0
 #    python3 compile_sparse_attention.py | sh
 #
-# Note that sparse_attention_kernel_*.* and sparse_attention_api.cc under this directory is modified from the generated files.
+# Note that sparse_attention_kernel_*.cc and sparse_attention_dispatcher_*.h are the generated files.
 
 import math
 from itertools import product
@@ -35,13 +35,14 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     print(f"rm -rf {out_dir}")
     print(f"mkdir -p {out_dir}")
 
+    # Note that block_n * num_block_d is the head_size. We support head_size = 128 for now.
     block_n_values = [64]
     block_d_values = [64]
     num_block_d_values = [2]
     even_m_values = [True, False]
     even_n_values = [True, False]
 
-    # Use triton AoT compiler to compile the kernel of different combinations of constant parameters.
+    # Use triton compiler to compile the kernel of different combinations of constant parameters.
     for block_n, block_d, num_blocks_d, even_m, even_n in product(
         block_n_values, block_d_values, num_block_d_values, even_m_values, even_n_values
     ):
@@ -54,6 +55,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
             name = f"sparse_attention_{dtype}_sm${{SM}}"
             num_warps = max(1, 2 ** int(math.log2(min(block_m, block_n, block_d) / 16)))
             num_stages = 2
+            # TODO: use different kernel name (change the name in sparse_attention_triton.py before running compile.py)
             print(
                 f"{prefix} -n block_sparse_attention_kernel -o {out_dir}/{filename} --out-name {name} "
                 f'-w {num_warps} -ns {num_stages} -s "{sig}" -g "(total_seq_len - past_seq_len + {block_m} - 1) / {block_m}, batch_size * num_heads, 1"'
@@ -67,20 +69,18 @@ def generate_triton_compile_shell_script(dtype="fp16"):
 
     # Remove signature hash in code.
     suffix = "0d1d2d3d4d5d678910d11d12d13d14d15d16d17d18d19d20d21d22232425"
-    # print(f"for file in *.h; do sed -i 's/_{suffix}//g'  \"$file\"; done")
     print(f"for file in *.c; do sed -i 's/_{suffix}//g'  \"$file\"; done")
 
-    # Keep the signature hash in kernel name.
+    # Recover signature hash in kernel name that is removed in previous step. Kernel name shall not be changed.
     print(
         f"for file in *.c; do sed -i 's/block_sparse_attention_kernel/block_sparse_attention_kernel_{suffix}/g'  \"$file\"; done"
     )
 
     # Remove signature hash from filename since we use same signature for all kernels except constants.
-    # and we have constants in filename so that we can distinguish them.
-    # print('for file in *.h; do mv -- "$file" "$(echo $file | cut -f 1 -d \'.\').h"; done')
+    # and we have constants in filename so that we can distinguish files without the hash.
     print('for file in sparse_attention_kernel_*.c; do mv -- "$file" "$(echo $file | cut -f 1 -d \'.\').c"; done')
 
-    # Change function parameters and return type.
+    # Change function parameters and return type. If you change the kernel interface, you will need to modify this part.
     source1 = "CUstream stream, CUdeviceptr out, CUdeviceptr Q, CUdeviceptr K, CUdeviceptr V, CUdeviceptr layout_csr_row_indices, CUdeviceptr layout_csr_col_indices, int32_t layout_csr_row_stride_h, int32_t layout_csr_col_stride_h, int32_t num_layout, float softmax_scale, int32_t stride_qb, int32_t stride_qh, int32_t stride_qm, int32_t stride_kb, int32_t stride_kh, int32_t stride_kn, int32_t stride_vb, int32_t stride_vh, int32_t stride_vn, int32_t stride_ob, int32_t stride_oh, int32_t stride_om, int32_t num_heads, int32_t num_kv_heads, int32_t total_seq_len, int32_t past_seq_len"
     target1 = "SparseAttentionParams& params"
     source2 = "stream, out, Q, K, V, layout_csr_row_indices, layout_csr_col_indices, layout_csr_row_stride_h, layout_csr_col_stride_h, num_layout, softmax_scale, stride_qb, stride_qh, stride_qm, stride_kb, stride_kh, stride_kn, stride_vb, stride_vh, stride_vn, stride_ob, stride_oh, stride_om, num_heads, num_kv_heads, total_seq_len, past_seq_len"
@@ -98,6 +98,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
 
     print(f"rm {dispatcher}.c")
 
+    # Use a template file to add namespace and includes to the dispatcher file.
     print(
         'python -c "'
         "from pathlib import Path;"
@@ -109,12 +110,14 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     # rename *.c to *.cc
     print('for file in *.c; do mv -- "$file" "${file%.c}.cc"; done')
 
-    # Move kernel and dispatcher files to parent directory to update the files in repository.
+    # Move kernel files to parent directory. This might overwrite existing files in repository.
     print("mv sparse_attention_kernel_* ../")
 
+    # Clean up
     print("cd ..")
     print("rm compile.py")
     print(f"rm -rf {out_dir}")
+
     print("echo Done")
 
 

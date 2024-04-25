@@ -1142,7 +1142,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* SparseAttention_ver1_doc = R"DOC(
-Block Sparse Attention used in Sparse Transformers (https://arxiv.org/pdf/1904.10509) and BigBird (https://arxiv.org/pdf/2007.14062).
+Block Sparse Attention used in Phi-3-small (https://arxiv.org/pdf/2404.14219).
+
+It is inspired by Sparse Transformers (https://arxiv.org/pdf/1904.10509) and BigBird (https://arxiv.org/pdf/2007.14062).
 
 block_mask can be used to configure sparse layout for different head.
 When number of sparse layout is 1, all heads have same sparse layout. Otherwise, different layouts are used cyclically.
@@ -1171,17 +1173,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape is"
+               "Query with shape (batch_size, sequence_length, num_heads * head_size), or packed QKV with shape is"
                "(batch_size, sequence_length, d) where d is (num_heads + 2 * kv_num_heads) * head_size.",
                "T")
         .Input(1,
                "key",
-               "Key with shape (batch_size, sequence_length, kv_hidden_size)",
+               "Key with shape (batch_size, sequence_length, kv_num_heads * head_size)",
                "T",
                OpSchema::Optional)
         .Input(2,
                "value",
-               "Value with shape (batch_size, sequence_length, kv_hidden_size)",
+               "Value with shape (batch_size, sequence_length, kv_num_heads * head_size)",
                "T",
                OpSchema::Optional)
         .Input(3,
@@ -1198,7 +1200,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "block_mask",
                "block mask. 1 indicates attention and 0 no attention. "
                "Its shape is (num_layout, max_blocks, max_blocks), "
-               "where num_layout is divisible by num_layout, and max_blocks is max_sequence_length / block_size.",
+               "where num_heads is divisible by num_layout, and max_blocks is max_sequence_length / sparse_block_size.",
                "M")
         .Input(6,
                "total_sequence_length",
@@ -1220,7 +1222,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
+                "3D output tensor with shape (batch_size, sequence_length, num_heads * head_size)",
                 "T")
         .Output(1,
                 "present_key",
