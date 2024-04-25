@@ -122,8 +122,16 @@ class CPUIDInfo {
 
   void X86Init();
 #elif defined(CPUIDINFO_ARCH_ARM)
-  // Now the following var is only used in ARM build, but later one we may expand the usage.
+// Now the following var is only used in ARM build, but later one we may expand the usage.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wattributes"
+#endif
   [[maybe_unused]] bool pytorch_cpuinfo_init_{false};
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
 #endif
 
 #ifdef __linux__
