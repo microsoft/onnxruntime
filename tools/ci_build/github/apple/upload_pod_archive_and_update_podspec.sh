@@ -33,7 +33,10 @@ POD_ARCHIVE_BASENAME=$(basename "${POD_ARCHIVE_PATH}")
 
 STORAGE_ACCOUNT_NAME="onnxruntimepackages"
 STORAGE_ACCOUNT_CONTAINER_NAME="\$web"
-STORAGE_URL_PREFIX=$(az storage account show --name ${STORAGE_ACCOUNT_NAME} --query "primaryEndpoints.web" --output tsv)
+
+# TODO: See if there's a way to get the new storage account AFD URL using the Azure CLI
+#STORAGE_URL_PREFIX=$(az storage account show --name ${STORAGE_ACCOUNT_NAME} --query "primaryEndpoints.web" --output tsv)
+STORAGE_URL_PREFIX="https://onnxruntimepackages.azureedge.net/"
 
 # upload the pod archive and set the podspec source to the pod archive URL
 az storage blob upload \
