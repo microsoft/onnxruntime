@@ -282,12 +282,12 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
     })()};
     workgroupBarrier();
 
-    var max_value = -3.402823e+38f;
+    var max_value =  f32(-3.402823e+38f);
     for (var i = 0u; i < ${WG}; i++) {
       max_value = max(thread_max[i], max_value);
     }
 
-    var sum_vector = ${f32Type}(${0});
+    var sum_vector = ${f32Type}(0);
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
       sum_vector += exp(${f32Type}(x[offset + i]) - max_value);
     }
@@ -378,7 +378,6 @@ const createAttentionProbsProgramInfo =
           {name: 'num_heads', type: 'u32'}, {name: 'alpha', type: dataType as UniformDataElementType}
         ];
         return `
-  const beta: ${dataType} = 1.0;
   const TILE_SIZE = ${TILE_SIZE}u;
 
   var<workgroup> tileQ: array<${qInput.type.storage}, ${TILE_SIZE * TILE_SIZE}>;
@@ -426,16 +425,16 @@ const createAttentionProbsProgramInfo =
               throw new Error(`Unsupported components: ${components}`);
           }
         })()};
-      output[outputIdx] = sum * uniforms.alpha;
+
   ${(() => {
           if (relativePositionBiasInput) {
             return `
       let batch = workgroup_id.z / uniforms.num_heads;
       let head = workgroup_id.z % uniforms.num_heads;
       var indices = ${relativePositionBiasInput.type.indices}(batch, head, global_id.y, global_id.x);
-      output[outputIdx] += ${relativePositionBiasInput.getByIndices('indices')};`;
+      output[outputIdx] = sum * uniforms.alpha + ${relativePositionBiasInput.getByIndices('indices')};`;
           }
-          return '';
+          return 'output[outputIdx] = sum * uniforms.alpha;';
         })()}
     }
   }`;
@@ -512,7 +511,6 @@ const createVxAttentionScoreProgramInfo =
    // we need to transpose output from BNSH_v to BSND_v
    let batchIdx = workgroup_id.z / uniforms.num_heads;
    let currentBatchHeadNumber = workgroup_id.z % uniforms.num_heads;
-   let headOffset = (batchIdx * uniforms.M * uniforms.num_heads + currentBatchHeadNumber) * uniforms.N;
    if (m < uniforms.M && n < uniforms.N) {
      let outputIdx = batchIdx * uniforms.M *uniforms.v_hidden_size + m * uniforms.v_hidden_size
        + currentBatchHeadNumber * uniforms.N + n;
