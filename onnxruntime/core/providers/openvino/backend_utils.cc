@@ -263,7 +263,7 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName) {
   auto performanceMap = request->GetNewObj().get_profiling_info();
-  printPerformanceCounts(performanceMap, stream, deviceName);
+  printPerformanceCounts(performanceMap, stream, std::move(deviceName));
 }
 
 }  // namespace backend_utils

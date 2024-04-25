@@ -66,7 +66,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
     for (size_t i = 0; i < unsupported_nodes.size(); i++) {
-      const auto& node = graph_viewer_.GetNode(unsupported_nodes[i]);
+      const Node & node = graph_viewer_.GetNode(unsupported_nodes[i]);
       std::cout << "Unsupported node op " << node->OpType() << std::endl;
     }
   }
@@ -86,9 +86,9 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       return result;
     }
 
-    const auto& nodes = graph_viewer_.GetNodesInTopologicalOrder();
+    const std::vector<NodeIndex>& nodes = graph_viewer_.GetNodesInTopologicalOrder();
 
-    const auto& node = graph_viewer_.GetNode(nodes[0]);
+    const Node* node = graph_viewer_.GetNode(nodes[0]);
 
     // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
     // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
@@ -133,12 +133,12 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 #endif
 
     std::vector<NodeIndex> modified_unsupported_nodes;
-    for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
+    for (const NodeIndex & node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
       if (find(unsupported_nodes.begin(), unsupported_nodes.end(), node_idx) != unsupported_nodes.end()) {
         modified_unsupported_nodes.push_back(node_idx);
       } else {
-        auto node = graph_viewer_.GetNode(node_idx);
-        const auto& optype = node->OpType();
+        const Node* node = graph_viewer_.GetNode(node_idx);
+        const std::string& optype = node->OpType();
         if (data_ops_->InsertNode(optype)) {
           modified_unsupported_nodes.push_back(node_idx);
         }
@@ -172,7 +172,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
         const Node* node = graph_viewer_.GetNode(index);
         if (data_ops_->DoNotOmitSubGraph(node->OpType())) {
           for (const auto& input : node->InputDefs()) {
-            auto input_name = input->Name();
+            const auto& input_name = input->Name();
             auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
             if (it != cluster_graph_inputs.end()) {
               omit_subgraph = true;
@@ -182,7 +182,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
         }
 
         if (node->OpType() == "Conv" || node->OpType() == "Identity") {
-          auto output_name = node->OutputDefs()[0]->Name();
+          const auto& output_name = node->OutputDefs()[0]->Name();
           auto it = find(cluster_outputs.begin(), cluster_outputs.end(), output_name);
           if (it != cluster_outputs.end() && node->GetOutputEdgesCount() != 0) {
             omit_subgraph = true;
@@ -193,7 +193,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
         std::map<std::string, int> slice_map;
         if (node->OpType() == "Slice") {
           auto input = node->InputDefs()[0];
-          auto input_name = input->Name();
+          const auto& input_name = input->Name();
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
           if (it != cluster_graph_inputs.end()) {
             if (slice_map.count(input_name) == 0) {

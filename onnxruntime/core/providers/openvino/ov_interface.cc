@@ -60,8 +60,11 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
     FE = manager.load_by_model(params);
     if (FE) {
       inputModel = FE->load(params);
+      return FE->convert(inputModel);
+    } else {
+      ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
+      return NULL;
     }
-    return FE->convert(inputModel);
   } catch (const Exception& e) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
   } catch (...) {
@@ -185,7 +188,7 @@ void OVCore::SetStreams(const std::string& device_type, int num_streams) {
 OVInferRequest OVExeNetwork::CreateInferRequest() {
   try {
     auto infReq = obj.create_infer_request();
-    OVInferRequest inf_obj(infReq);
+    OVInferRequest inf_obj(std::move(infReq));
     return inf_obj;
   } catch (const Exception& e) {
     ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());

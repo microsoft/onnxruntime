@@ -83,7 +83,7 @@ struct OpenVINOExecutionProviderInfo {
       : precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
-        cache_dir_(cache_dir),
+        cache_dir_(std::move(cache_dir)),
         model_priority_(model_priority),
         num_streams_(num_streams),
         context_(context),
@@ -117,7 +117,7 @@ struct OpenVINOExecutionProviderInfo {
         if (devices[0] == "CPU") {
           precision_ = "FP32";
         }
-        device_type_ = dev_type;
+        device_type_ = std::move(dev_type);
       }
 #endif
     } else if (ov_supported_device_types.find(dev_type) != ov_supported_device_types.end()) {

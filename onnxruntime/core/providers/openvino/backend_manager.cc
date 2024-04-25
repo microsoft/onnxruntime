@@ -39,8 +39,6 @@ BackendManager::BackendManager(const GlobalContext& global_context,
       ORT_THROW("Import blob from model failed");
   }
 
-  auto prec_str = GetGlobalContext().precision_str;
-
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
   auto node_input_defs = fused_node.InputDefs();
@@ -50,7 +48,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
     i++;
   }
 
-  auto graph_inputs = subgraph.GetInputs();
+  const std::vector<const NodeArg*>& graph_inputs = subgraph.GetInputs();
   for (auto input : graph_inputs) {
     auto it = subgraph_context_.input_names.find(input->Name());
     if (it == subgraph_context_.input_names.end()) {
