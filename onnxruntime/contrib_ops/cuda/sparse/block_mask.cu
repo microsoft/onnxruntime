@@ -8,55 +8,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-__global__ void ExpandMask(int* expanded_mask, const int* mask, int max_blocks,
-                           int row_splits, int col_splits, bool causal) {
-  const int output_cols = max_blocks * col_splits;
-  if (threadIdx.x >= output_cols) {
-    return;
-  }
-
-  int expanded_col = threadIdx.x;
-  int expanded_row = blockIdx.x;
-
-  int layout_id = blockIdx.y;
-
-  // Let mask and expanded_mask point to the start of current layout.
-  mask += layout_id * max_blocks * max_blocks;
-  const int output_rows = max_blocks * row_splits;
-  expanded_mask += layout_id * output_rows * output_cols;
-
-  // Get mask value from the original mask.
-  const int row = expanded_row / row_splits;
-  const int col = expanded_col / col_splits;
-  int value = mask[row * max_blocks + col];
-
-  // Apply causal constraint.
-  if (causal && expanded_col * row_splits > expanded_row * col_splits) {
-    value = 0;
-  }
-
-  expanded_mask[expanded_row * output_cols + expanded_col] = value;
-}
-
-void ExpandBlockMask(cudaStream_t stream, int* expanded_mask, const int* mask,
-                     int num_layout, int max_blocks, int row_splits, int col_splits,
-                     bool causal, int max_threads_per_block) {
-  // Each block handle one row. For example, max_blocks=64, col_splits=2, then each block handle 128 elements.
-  int output_cols = max_blocks * col_splits;
-  int threads_per_block = (output_cols + 31) / 32 * 32;
-
-  // Each thread handle one row. The kernel assumes that all rows can be handled in one block.
-  if (threads_per_block > max_threads_per_block) {
-    ORT_THROW("Threads per block is too large: max_blocks=", max_blocks, ", col_splits=", col_splits,
-              ", max_threads_per_block=", max_threads_per_block);
-  }
-
-  const int output_rows = max_blocks * row_splits;
-  dim3 gridSize(output_rows, num_layout, 1);
-  ExpandMask<<<gridSize, threads_per_block, 0, stream>>>(
-      expanded_mask, mask, max_blocks, row_splits, col_splits, causal);
-}
-
 __global__ void MaskToCSR(const int* mask, int* csr_row_indices, int* csr_col_indices, int num_rows, int num_cols) {
   int row = threadIdx.x;
   if (row >= num_rows) {

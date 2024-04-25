@@ -47,7 +47,7 @@ class CUDADriverWrapper {
 
   CUresult cuDeviceGetAttribute(int* pi, CUdevice_attribute attrib, CUdevice dev) const;
 
-  CUresult cuFuncSetCacheConfig( CUfunction hfunc, CUfunc_cache config ) const;
+  CUresult cuFuncSetCacheConfig(CUfunction hfunc, CUfunc_cache config) const;
 
   CUresult cuLinkComplete(CUlinkState state, void** cubinOut, size_t* sizeOut) const;
 

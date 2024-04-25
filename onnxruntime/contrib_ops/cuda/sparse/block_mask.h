@@ -7,27 +7,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// Expand block mask from (num_layout, max_blocks, max_blocks)
-//                     to (num_layout, max_blocks * row_splits, max_blocks * col_splits),
-// and apply causal constraint if specified. The mask is stored in row-major order.
-// For example,
-//   mask = [[[1, 0],
-//            [0, 1]]]
-//   row_splits = 2,  col_splits = 2, causal = true
-//   expanded_mask = [[[1, 0, 0, 0],
-//                     [1, 1, 0, 0],
-//                     [0, 0, 1, 0],
-//                     [0, 0, 1, 1]]]
-void ExpandBlockMask(cudaStream_t stream,
-                     int* expanded_mask,  // output shape (num_layout, max_blocks * row_splits, max_blocks * col_splits)
-                     const int* mask,     // input shape (num_layout, max_blocks, max_blocks)
-                     int num_layout,
-                     int max_blocks,
-                     int row_splits,
-                     int col_splits,
-                     bool causal,
-                     int max_threads_per_block);
-
 // Convert mask to compressed sparse row (CSR) format ( https://en.wikipedia.org/wiki/Sparse_matrix)
 // For example, num_layout=1, num_rows=4 and num_cols=4, and the mask is like
 //      1, 0, 0, 0

@@ -54,13 +54,13 @@ Status FillPositionIds(contrib::SparseAttentionParameters& parameters,
   const int bs = batch_size * sequence_length;
 
   int threads = max_threads_per_block;
-  if (bs < 64) {
+  if (bs <= 64) {
     threads = 64;
-  } else if (bs < 128) {
+  } else if (bs <= 128) {
     threads = 128;
-  } else if (bs < 256) {
+  } else if (bs <= 256) {
     threads = 256;
-  } else if (bs < 512) {
+  } else if (bs <= 512) {
     threads = 512;
   }
   const int blocks = (bs + threads - 1) / threads;
