@@ -333,20 +333,11 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
         workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
       }
 
-      const void* b_data = [&]() -> const void* {
-        if (packed_b_) {
-          return packed_b_.get();
-        }
-
-        const Tensor* b = ctx->Input<Tensor>(1);
-        return b->DataRaw();
-      }();
-
       InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
       for (size_t i = 0; i < batch_count; ++i) {
         data[i].A = a_data + helper.LeftOffsets()[i];
         data[i].lda = lda;
-        data[i].QuantBData = b_data;
+        data[i].QuantBData = packed_b_.get();
         data[i].QuantBScale = scales_data;
         data[i].QuantBZeroPoint = zero_points_data;
         data[i].C = y_data + helper.OutputOffsets()[i];
