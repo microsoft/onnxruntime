@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ComputeContext, GpuDataType, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, tensorTypeToWsglValueType, UniformDataElementType, UniformsArrayType} from './common';
+import {getMaxComponents, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, tensorTypeToWsglValueType, UniformDataElementType, UniformsArrayType} from './common';
 import {createConcatProgramInfo} from './concat';
 
 export const enum AttentionQkvFormat {
@@ -354,21 +354,16 @@ const createAttentionProbsProgramInfo =
         {type: DataType.float, data: alpha}
       ];
 
-      const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
-      if (relativePositionBias) {
-        inputDependencies.push('rank');
-        programUniforms.push(...createTensorShapeVariables(relativePositionBias.dims));
-      }
+      const inputDependencies: ProgramInputTensorInfoDependency[] =
+          relativePositionBias ? ['type', 'type', 'type'] : ['type', 'type'];
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const qInput = inputVariable('q', q.dataType, q.dims, components);
         const kInput = inputVariable('key', key.dataType, key.dims, components);
         const inputVars = [qInput, kInput];
-        const relativePositionBiasInput = relativePositionBias ?
-            inputVariable('relative_position_bias', relativePositionBias.dataType, relativePositionBias.dims.length) :
-            undefined;
-        if (relativePositionBiasInput) {
-          inputVars.push(relativePositionBiasInput);
+        if (relativePositionBias) {
+          inputVars.push(
+              inputVariable('relative_position_bias', relativePositionBias.dataType, relativePositionBias.dims));
         }
         const output = outputVariable('output', q.dataType, probsShape);
         // const dataType = tensorTypeToWsglStorageType(q.dataType);
@@ -426,18 +421,8 @@ const createAttentionProbsProgramInfo =
               throw new Error(`Unsupported components: ${components}`);
           }
         })()};
-
-  ${(() => {
-          if (relativePositionBiasInput) {
-            return `
-      let batch = workgroup_id.z / uniforms.num_heads;
-      let head = workgroup_id.z % uniforms.num_heads;
-      var indices = ${relativePositionBiasInput.type.indices}(batch, head, global_id.y, global_id.x);
-      output[outputIdx] = ${output.type.value}(sum * uniforms.alpha) + ${
-                relativePositionBiasInput.getByIndices('indices')};`;
-          }
-          return `output[outputIdx] = ${output.type.value} (sum * uniforms.alpha);`;
-        })()}
+        output[outputIdx] = ${output.type.value} (sum * uniforms.alpha) + ${
+            relativePositionBias ? 'relative_position_bias[outputIdx]' : '0.0'};
     }
   }`;
       };
