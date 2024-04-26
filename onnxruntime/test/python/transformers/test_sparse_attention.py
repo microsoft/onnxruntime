@@ -31,6 +31,10 @@ class Config:
     head_size = 0
     sparse_block_size = 0
     num_layout = 0
+
+    local_blocks = 0
+    vert_stride = 0
+    softmax_scale = None
     share_buffer = True
 
     # TODO: test performance with rotary embedding.
@@ -49,6 +53,9 @@ class Config:
         head_size: int,
         sparse_block_size: int,
         num_layout: int,
+        local_blocks: int,
+        vert_stride: int,
+        softmax_scale=None,
         share_buffer: bool = True,
         is_fp16: bool = True,
     ):
@@ -61,6 +68,9 @@ class Config:
         self.head_size = head_size
         self.sparse_block_size = sparse_block_size
         self.num_layout = num_layout
+        self.local_blocks = local_blocks
+        self.vert_stride = vert_stride
+        self.softmax_scale = softmax_scale
         self.share_buffer = share_buffer
         self.is_fp16 = is_fp16
         self.do_rotary = False
@@ -70,6 +80,24 @@ class Config:
         self.past_buffer_length = max_sequence_length if share_buffer else past_sequence_length
         self.present_buffer_length = max_sequence_length if share_buffer else past_sequence_length + sequence_length
         self.max_blocks = max_sequence_length // sparse_block_size
+
+    def block_mask(self):
+        return get_block_mask(self.num_layout, self.max_blocks, self.local_blocks, self.vert_stride)
+
+    def dense_mask(self):
+        expand_block_mask = self.block_mask()
+        dense_mask = get_dense_mask(
+            expand_block_mask, self.total_sequence_length, self.sequence_length, self.sparse_block_size
+        )
+        return dense_mask.repeat(self.batch_size, self.num_heads // self.num_layout, 1, 1)
+
+    def shape_dict(self):
+        return get_shape_dict(self)
+
+    def random_inputs(self, device, dtype=torch.float16):
+        block_mask = self.block_mask().to(device)
+        shape_dict = get_shape_dict(self)
+        return get_random_inputs(shape_dict, self.total_sequence_length, block_mask, device, dtype=dtype)
 
 
 def get_block_mask(num_layout, max_blocks, local_blocks, vert_stride):
@@ -93,9 +121,12 @@ def get_block_mask(num_layout, max_blocks, local_blocks, vert_stride):
 
 
 def get_dense_mask(block_mask, total_seq_len, query_seq_len, block_size):
-    dense_mask = torch.kron(block_mask, block_mask.new_ones((block_size, block_size)))
-    causal_mask = torch.tril(torch.ones(total_seq_len, total_seq_len)).type_as(dense_mask)[-query_seq_len:]
-    return dense_mask[..., -query_seq_len:, :total_seq_len] * causal_mask[None]
+    dense_mask = torch.kron(block_mask, block_mask.new_ones((block_size, block_size)))[
+        :, :total_seq_len, :total_seq_len
+    ]
+    causal_mask = torch.tril(torch.ones(total_seq_len, total_seq_len)).type_as(dense_mask)
+    dense_mask = dense_mask * causal_mask[None]
+    return dense_mask[..., -query_seq_len:, :total_seq_len]
 
 
 def get_shape_dict(config: Config):
@@ -255,71 +286,143 @@ def group_query_attention_reference(
 
 
 def run_relevance_no_past(device):
-    local_blocks = 2
-    vert_stride = 2
-    config = Config(
-        batch_size=1,
-        sequence_length=256,
-        max_sequence_length=256,
-        past_sequence_length=0,
-        num_heads=4,
-        kv_num_heads=2,
-        head_size=128,
-        sparse_block_size=64,
-        num_layout=2,
-    )
-    dtype = torch.float16
-    block_mask = get_block_mask(config.num_layout, config.max_blocks, local_blocks, vert_stride).to(device)
-    shape_dict = get_shape_dict(config)
-    feed_dict = get_random_inputs(shape_dict, config.total_sequence_length, block_mask, device, dtype=dtype)
+    """Test prompt prefilling without past kv cache."""
+    for seq_len in [1, 64, 127, 128, 192, 256]:
+        config = Config(
+            batch_size=1,
+            sequence_length=seq_len,
+            max_sequence_length=256,
+            past_sequence_length=0,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=128,
+            sparse_block_size=64,
+            num_layout=2,
+            local_blocks=2,
+            vert_stride=2,
+            softmax_scale=1.8 / (128**0.5),
+        )
+        dtype = torch.float16
+        feed_dict = config.random_inputs(device, dtype=dtype)
 
-    # Run GQA implementation by Torch as reference
-    expand_block_mask = block_mask.repeat(config.num_heads // config.num_layout, 1, 1)
-    dense_mask = get_dense_mask(
-        expand_block_mask, config.total_sequence_length, config.sequence_length, config.sparse_block_size
-    )
-    query = feed_dict["query"].view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
-    key = feed_dict["key"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
-    value = feed_dict["value"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
-    expected_out = group_query_attention_reference(
-        query.clone(), key.clone(), value.clone(), config, mask=dense_mask.repeat(config.batch_size, 1, 1, 1)
-    )
+        # Run GQA implementation by Torch as reference
+        query = feed_dict["query"].view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
+        key = feed_dict["key"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
+        value = feed_dict["value"].view(
+            config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size
+        )
 
-    if ENABLE_DEBUG:
-        torch.set_printoptions(precision=6, edgeitems=3, linewidth=1000, profile="full", sci_mode=False)
-        print("query(BNSH)", query.clone().transpose(1, 2))
-        print("key(BNSH)", key.clone().transpose(1, 2))
-        print("value(BNSH)", value.clone().transpose(1, 2))
-        print("block_mask", feed_dict["block_mask"])
-        print("dense_mask", dense_mask)
-        print("total_sequence_length", feed_dict["total_sequence_length"])
-        print("key_total_sequence_lengths", feed_dict["key_total_sequence_lengths"])
+        dense_mask = config.dense_mask().to(device)
+        expected_out = group_query_attention_reference(
+            query.clone(), key.clone(), value.clone(), config, scale=config.softmax_scale, mask=dense_mask
+        )
 
-    # Run SparseAttention by ORT
-    cuda_provider_options = CudaSession.get_cuda_provider_options(
-        torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
-    )
-    ort_session = create_session(config, cuda_provider_options=cuda_provider_options)
-    gpu_binding_manager = GpuBindingManager(
-        ort_session=ort_session,
-        device=device,
-        stream=torch.cuda.current_stream().cuda_stream,
-        max_cuda_graphs=2,
-    )
-    buffer_sharing = {"past_key": "present_key", "past_value": "present_value"}
-    gpu_binding = gpu_binding_manager.get_binding(shape_dict, use_cuda_graph=False, buffer_sharing=buffer_sharing)
-    ort_outputs = gpu_binding.infer(feed_dict)
-    ort_output = ort_outputs["output"]
-    actual_out = ort_output.view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
+        if ENABLE_DEBUG:
+            torch.set_printoptions(precision=6, edgeitems=3, linewidth=1000, profile="full", sci_mode=False)
+            print("query(BNSH)", query.clone().transpose(1, 2))
+            print("key(BNSH)", key.clone().transpose(1, 2))
+            print("value(BNSH)", value.clone().transpose(1, 2))
+            print("block_mask", feed_dict["block_mask"])
+            print("dense_mask", dense_mask)
+            print("total_sequence_length", feed_dict["total_sequence_length"])
+            print("key_total_sequence_lengths", feed_dict["key_total_sequence_lengths"])
 
-    if ENABLE_DEBUG:
-        print("ort_output", actual_out)
-        print("expected_out", expected_out)
+        # Run SparseAttention by ORT
+        cuda_provider_options = CudaSession.get_cuda_provider_options(
+            torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
+        )
+        ort_session = create_session(config, cuda_provider_options=cuda_provider_options)
+        gpu_binding_manager = GpuBindingManager(
+            ort_session=ort_session,
+            device=device,
+            stream=torch.cuda.current_stream().cuda_stream,
+            max_cuda_graphs=2,
+        )
+        buffer_sharing = {"past_key": "present_key", "past_value": "present_value"}
+        gpu_binding = gpu_binding_manager.get_binding(
+            config.shape_dict(), use_cuda_graph=False, buffer_sharing=buffer_sharing
+        )
+        ort_outputs = gpu_binding.infer(feed_dict)
+        ort_output = ort_outputs["output"]
+        actual_out = ort_output.view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
 
-    if torch.allclose(expected_out, actual_out, atol=1e-2, rtol=0):
-        print("Relevance test passed")
-    else:
-        print("Relevance test not passed")
+        if torch.allclose(expected_out, actual_out, atol=1e-2, rtol=0):
+            print(f"Relevance test passed: {vars(config)}")
+        else:
+            print(f"Relevance test not passed: {vars(config)}")
+            print("ort_output", actual_out)
+            print("expected_out", expected_out)
+            exit(1)
+
+
+def run_relevance_past(device):
+    """Test token generation with past kv cache."""
+    for past_seq_len in [1, 63, 64, 127, 128, 511]:
+        config = Config(
+            batch_size=2,
+            sequence_length=1,
+            max_sequence_length=512,
+            past_sequence_length=past_seq_len,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=128,
+            sparse_block_size=64,
+            num_layout=4,
+            local_blocks=2,
+            vert_stride=4,
+        )
+
+        dtype = torch.float16
+        feed_dict = config.random_inputs(device, dtype=dtype)
+
+        # Run GQA implementation by Torch as reference
+        query = feed_dict["query"].view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
+        key = feed_dict["key"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
+        value = feed_dict["value"].view(
+            config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size
+        )
+
+        dense_mask = config.dense_mask().to(device)
+        expected_out = group_query_attention_reference(
+            query.clone(), key.clone(), value.clone(), config, mask=dense_mask
+        )
+
+        if ENABLE_DEBUG:
+            torch.set_printoptions(precision=6, edgeitems=3, linewidth=1000, profile="full", sci_mode=False)
+            print("query(BNSH)", query.clone().transpose(1, 2))
+            print("key(BNSH)", key.clone().transpose(1, 2))
+            print("value(BNSH)", value.clone().transpose(1, 2))
+            print("block_mask", feed_dict["block_mask"])
+            print("dense_mask", dense_mask)
+            print("total_sequence_length", feed_dict["total_sequence_length"])
+            print("key_total_sequence_lengths", feed_dict["key_total_sequence_lengths"])
+
+        # Run SparseAttention by ORT
+        cuda_provider_options = CudaSession.get_cuda_provider_options(
+            torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
+        )
+        ort_session = create_session(config, cuda_provider_options=cuda_provider_options)
+        gpu_binding_manager = GpuBindingManager(
+            ort_session=ort_session,
+            device=device,
+            stream=torch.cuda.current_stream().cuda_stream,
+            max_cuda_graphs=2,
+        )
+        buffer_sharing = {"past_key": "present_key", "past_value": "present_value"}
+        gpu_binding = gpu_binding_manager.get_binding(
+            config.shape_dict(), use_cuda_graph=False, buffer_sharing=buffer_sharing
+        )
+        ort_outputs = gpu_binding.infer(feed_dict)
+        ort_output = ort_outputs["output"]
+        actual_out = ort_output.view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
+
+        if torch.allclose(expected_out, actual_out, atol=1e-2, rtol=0):
+            print(f"Relevance test passed: {vars(config)}")
+        else:
+            print(f"Relevance test not passed: {vars(config)}")
+            print("ort_output", actual_out)
+            print("expected_out", expected_out)
+            exit(1)
 
 
 def run_relevance_test():
@@ -327,9 +430,11 @@ def run_relevance_test():
     device = torch.device("cuda", device_id)
     with torch.no_grad():
         run_relevance_no_past(device)
+        # the training kernel cannot handle past state?
+        # run_relevance_past(device)
 
 
-def run_ort_performance(config: Config, local_blocks, vert_stride, device, dtype=torch.float16, repeats: int = 100):
+def run_ort_performance(config: Config, device, dtype=torch.float16, repeats: int = 100):
     cuda_provider_options = CudaSession.get_cuda_provider_options(
         torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
     )
@@ -346,14 +451,14 @@ def run_ort_performance(config: Config, local_blocks, vert_stride, device, dtype
     gpu_binding = gpu_binding_manager.get_binding(shape_dict, use_cuda_graph=False, buffer_sharing=buffer_sharing)
 
     total_sequence_length = config.sequence_length + config.past_sequence_length
-    block_mask = get_block_mask(config.num_layout, config.max_blocks, local_blocks, vert_stride)
+    block_mask = config.block_mask()
     feed_dict = get_random_inputs(shape_dict, total_sequence_length, block_mask, device, dtype=dtype)
 
     average_latency = benchmark_op(gpu_binding, feed_dict, repeats)
     del ort_session
     del gpu_binding_manager
 
-    print(f"config: {config}, average_latency={average_latency}")
+    print(f"{vars(config)}, average_latency={average_latency}")
 
 
 def run_performance_test(dtype=torch.float16, repeats: int = 100):
@@ -361,7 +466,7 @@ def run_performance_test(dtype=torch.float16, repeats: int = 100):
     device = torch.device("cuda", device_id)
 
     # You can adjust these parameters to test different sparse configurations.
-    num_layout, sparse_block_size, local_blocks, vert_stride = (8, 64, 16, 8)
+    num_layout, sparse_block_size = (8, 64)
 
     # Test prompt
     for s in [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]:
@@ -375,8 +480,10 @@ def run_performance_test(dtype=torch.float16, repeats: int = 100):
             head_size=128,
             sparse_block_size=sparse_block_size,
             num_layout=num_layout,
+            local_blocks=16,
+            vert_stride=8,
         )
-        run_ort_performance(config, local_blocks, vert_stride, device, dtype, repeats)
+        run_ort_performance(config, device, dtype, repeats)
 
     # Test token decoding
     for s in [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]:
@@ -390,8 +497,10 @@ def run_performance_test(dtype=torch.float16, repeats: int = 100):
             head_size=128,
             sparse_block_size=sparse_block_size,
             num_layout=num_layout,
+            local_blocks=16,
+            vert_stride=8,
         )
-        run_ort_performance(config, local_blocks, vert_stride, device, dtype, repeats)
+        run_ort_performance(config, device, dtype, repeats)
 
 
 if __name__ == "__main__":

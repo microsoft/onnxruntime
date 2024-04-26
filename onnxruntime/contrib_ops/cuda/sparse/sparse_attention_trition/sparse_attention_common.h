@@ -150,14 +150,16 @@ struct SparseAttentionParams {
                 num_layout,
                 layout_row_stride_h);
     printf(
-        "layout_row_stride_h=%d, layout_col_stride_h=%d, num_layout=%d, softmax_scale=%f,\n "
-        "stride_qb=%d, stride_qh=%d, stride_qm=%d, stride_kb=%d, stride_kh=%d, stride_kn=%d,\n "
-        "stride_vb=%d, stride_vh=%d, stride_vn=%d, stride_ob=%d, stride_oh=%d, stride_om=%d,\n "
-        "num_heads=%d, kv_num_heads=%d, total_sequence_length=%d, past_sequence_length=%d\n",
+        "layout_row_stride_h=%d, layout_col_stride_h=%d, num_layout=%d, softmax_scale=%f,\n"
+        "stride_qb=%d, stride_qh=%d, stride_qm=%d, stride_kb=%d, stride_kh=%d, stride_kn=%d,\n"
+        "stride_vb=%d, stride_vh=%d, stride_vn=%d, stride_ob=%d, stride_oh=%d, stride_om=%d,\n"
+        "num_heads=%d, kv_num_heads=%d, total_sequence_length=%d, past_sequence_length=%d\n"
+        "output=%p, q=%p, k=%p, v=%p, layout_csr_row_indices=%p, layout_csr_col_indices=%p\n",
         layout_row_stride_h, layout_col_stride_h, num_layout, softmax_scale,
         stride_qb, stride_qh, stride_qm, stride_kb, stride_kh, stride_kn,
         stride_vb, stride_vh, stride_vn, stride_ob, stride_oh, stride_om,
-        num_heads, kv_num_heads, total_sequence_length, past_sequence_length);
+        num_heads, kv_num_heads, total_sequence_length, past_sequence_length,
+        output, q, k, v, layout_csr_row_indices, layout_csr_col_indices);
 
     printf("block_m=%d gridDimX=%d gridDimY=%d threads_per_block=%d sharedMemBytes=%d\n",
            block_m, gridDimX, gridDimY, threads_per_block, sharedMemBytes);
@@ -176,7 +178,6 @@ struct SparseAttentionParams {
             reinterpret_cast<size_t>(q) % 16 == 0 &&
             reinterpret_cast<size_t>(k) % 16 == 0 &&
             reinterpret_cast<size_t>(v) % 16 == 0 &&
-            reinterpret_cast<size_t>(layout_csr_row_indices) % 16 == 0 &&
             reinterpret_cast<size_t>(layout_csr_col_indices) % 16 == 0 &&
             this->head_size % 16 == 0);
   }

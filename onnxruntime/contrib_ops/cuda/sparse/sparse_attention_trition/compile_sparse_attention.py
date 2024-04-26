@@ -51,7 +51,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
         block_m_values = [16, block_n] if block_n != 16 else [block_n]
         for block_m in block_m_values:
             scalar_params = "i32,i32,i32,fp32,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32,i32,i32,i32"
-            sig = f"*{dtype}:16,*{dtype}:16,*{dtype}:16,*{dtype}:16,*i32:16,*i32:16,{scalar_params},{block_m},{int(even_m)},{block_n},{int(even_n)},{block_d},{num_blocks_d}"
+            sig = f"*{dtype}:16,*{dtype}:16,*{dtype}:16,*{dtype}:16,*i32,*i32:16,{scalar_params},{block_m},{int(even_m)},{block_n},{int(even_n)},{block_d},{num_blocks_d}"
             prefix = "python compile.py sparse_attention_triton.py"
             filename = f"sparse_attention_kernel_{dtype}_m{block_m}_{int(even_m)}_n{block_n}_{int(even_n)}_d{block_d}_{num_blocks_d}_sm${{SM}}"
             name = f"sparse_attention_{dtype}_sm${{SM}}"
@@ -70,7 +70,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     print("rm *.h")
 
     # Remove signature hash in code.
-    suffix = "0d1d2d3d4d5d678910d11d12d13d14d15d16d17d18d19d20d21d22232425"
+    suffix = "0d1d2d3d45d678910d11d12d13d14d15d16d17d18d19d20d21d22232425"
     print(f"for file in *.c; do sed -i 's/_{suffix}//g'  \"$file\"; done")
 
     # Recover signature hash in kernel name that is removed in previous step. Kernel name shall not be changed.
