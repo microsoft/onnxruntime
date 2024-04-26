@@ -7,9 +7,10 @@
 Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of Compute Capability 8.x.
 """
 
+import math
 import statistics
 import time
-from typing import Dict, Optional
+from typing import Optional
 
 import torch
 from onnx import TensorProto, helper
@@ -37,10 +38,16 @@ class Config:
     softmax_scale = None
     share_buffer = True
 
+    # TODO: test packed qkv
+    is_packed_qkv = False
+
     # TODO: test performance with rotary embedding.
     do_rotary = False
+    rotary_interleaved = False
 
     is_fp16 = True  # True for float16; False for bfloat16.
+
+    use_sparse = True
 
     def __init__(
         self,
@@ -56,7 +63,6 @@ class Config:
         local_blocks: int,
         vert_stride: int,
         softmax_scale=None,
-        share_buffer: bool = True,
         is_fp16: bool = True,
     ):
         self.batch_size = batch_size
@@ -70,15 +76,14 @@ class Config:
         self.num_layout = num_layout
         self.local_blocks = local_blocks
         self.vert_stride = vert_stride
-        self.softmax_scale = softmax_scale
-        self.share_buffer = share_buffer
-        self.is_fp16 = is_fp16
-        self.do_rotary = False
+        self.softmax_scale = softmax_scale if softmax_scale is not None else 1.0 / (head_size**0.5)
 
         # Derived values
         self.total_sequence_length = sequence_length + past_sequence_length
-        self.past_buffer_length = max_sequence_length if share_buffer else past_sequence_length
-        self.present_buffer_length = max_sequence_length if share_buffer else past_sequence_length + sequence_length
+        self.past_buffer_length = max_sequence_length if self.share_buffer else past_sequence_length
+        self.present_buffer_length = (
+            max_sequence_length if self.share_buffer else (past_sequence_length + sequence_length)
+        )
         self.max_blocks = max_sequence_length // sparse_block_size
 
     def block_mask(self):
@@ -92,12 +97,53 @@ class Config:
         return dense_mask.repeat(self.batch_size, self.num_heads // self.num_layout, 1, 1)
 
     def shape_dict(self):
-        return get_shape_dict(self)
+        shape_dict = {
+            "query": (self.batch_size, self.sequence_length, self.num_heads * self.head_size),
+            "key": (self.batch_size, self.sequence_length, self.kv_num_heads * self.head_size),
+            "value": (self.batch_size, self.sequence_length, self.kv_num_heads * self.head_size),
+            "past_key": (self.batch_size, self.kv_num_heads, self.past_buffer_length, self.head_size),
+            "past_value": (self.batch_size, self.kv_num_heads, self.past_buffer_length, self.head_size),
+            "block_mask": (self.num_layout, self.max_blocks, self.max_blocks),
+            "total_sequence_length": (1,),
+            "key_total_sequence_lengths": (self.batch_size,),
+            "seqlens_k": (self.batch_size,),
+            "output": (self.batch_size, self.sequence_length, self.num_heads * self.head_size),
+            "present_key": (self.batch_size, self.kv_num_heads, self.present_buffer_length, self.head_size),
+            "present_value": (self.batch_size, self.kv_num_heads, self.present_buffer_length, self.head_size),
+            "cos_cache": (self.max_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
+            "sin_cache": (self.max_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
+        }
+
+        if self.use_sparse:
+            del shape_dict["seqlens_k"]
+        else:
+            del shape_dict["key_total_sequence_lengths"]
+            del shape_dict["block_mask"]
+        return shape_dict
 
     def random_inputs(self, device, dtype=torch.float16):
-        block_mask = self.block_mask().to(device)
-        shape_dict = get_shape_dict(self)
-        return get_random_inputs(shape_dict, self.total_sequence_length, block_mask, device, dtype=dtype)
+        shape_dict = self.shape_dict()
+        k_seqlens = torch.ones((self.batch_size,), device=device, dtype=torch.int32) * self.total_sequence_length
+
+        torch.manual_seed(123)
+        feeds = {
+            "query": torch.empty(shape_dict["query"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
+            "key": torch.empty(shape_dict["key"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
+            "value": torch.empty(shape_dict["value"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
+            "past_key": torch.empty(shape_dict["past_key"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
+            "past_value": torch.empty(shape_dict["past_value"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
+            "block_mask": self.block_mask().to(device),
+            "total_sequence_length": torch.tensor([self.total_sequence_length], dtype=torch.int32),
+            "key_total_sequence_lengths": k_seqlens,
+            "seqlens_k": k_seqlens - 1,
+        }
+
+        if "seqlens_k" not in shape_dict:
+            del feeds["seqlens_k"]
+        else:
+            del feeds["key_total_sequence_lengths"]
+            del feeds["block_mask"]
+        return feeds
 
 
 def get_block_mask(num_layout, max_blocks, local_blocks, vert_stride):
@@ -129,40 +175,7 @@ def get_dense_mask(block_mask, total_seq_len, query_seq_len, block_size):
     return dense_mask[..., -query_seq_len:, :total_seq_len]
 
 
-def get_shape_dict(config: Config):
-    return {
-        "query": (config.batch_size, config.sequence_length, config.num_heads * config.head_size),
-        "key": (config.batch_size, config.sequence_length, config.kv_num_heads * config.head_size),
-        "value": (config.batch_size, config.sequence_length, config.kv_num_heads * config.head_size),
-        "past_key": (config.batch_size, config.kv_num_heads, config.past_buffer_length, config.head_size),
-        "past_value": (config.batch_size, config.kv_num_heads, config.past_buffer_length, config.head_size),
-        "block_mask": (config.num_layout, config.max_blocks, config.max_blocks),
-        "total_sequence_length": (1,),
-        "key_total_sequence_lengths": (config.batch_size,),
-        "output": (config.batch_size, config.sequence_length, config.num_heads * config.head_size),
-        "present_key": (config.batch_size, config.kv_num_heads, config.present_buffer_length, config.head_size),
-        "present_value": (config.batch_size, config.kv_num_heads, config.present_buffer_length, config.head_size),
-    }
-
-
-def get_random_inputs(shape_dict: Dict, total_sequence_length, block_mask, device, dtype=torch.float16):
-    torch.manual_seed(123)
-    return {
-        "query": torch.empty(shape_dict["query"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-        "key": torch.empty(shape_dict["key"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-        "value": torch.empty(shape_dict["value"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-        "past_key": torch.empty(shape_dict["past_key"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-        "past_value": torch.empty(shape_dict["past_value"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-        "block_mask": block_mask.to(device),
-        "total_sequence_length": torch.tensor([total_sequence_length], dtype=torch.int32),
-        "key_total_sequence_lengths": torch.ones(
-            shape_dict["key_total_sequence_lengths"], device=device, dtype=torch.int32
-        )
-        * total_sequence_length,
-    }
-
-
-def create_graph(config):
+def create_sparse_attention_onnx_model(config):
     assert config.is_fp16  # python does not support bfloat16 for I/O binding.
 
     float_type = TensorProto.FLOAT16
@@ -171,8 +184,8 @@ def create_graph(config):
             "SparseAttention",
             [
                 "query",
-                "key",
-                "value",
+                "key" if not config.is_packed_qkv else "",
+                "value" if not config.is_packed_qkv else "",
                 "past_key",
                 "past_value",
                 "block_mask",
@@ -185,13 +198,14 @@ def create_graph(config):
             "SparseAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
+            scale=config.softmax_scale,
             sparse_block_size=config.sparse_block_size,
             do_rotary=1 if config.do_rotary else 0,
             domain="com.microsoft",
         ),
     ]
 
-    shape_dict = get_shape_dict(config)
+    shape_dict = config.shape_dict()
     graph_input = [
         helper.make_tensor_value_info("query", float_type, list(shape_dict["query"])),
         helper.make_tensor_value_info("key", float_type, list(shape_dict["key"])),
@@ -206,6 +220,12 @@ def create_graph(config):
             "key_total_sequence_lengths", TensorProto.INT32, list(shape_dict["key_total_sequence_lengths"])
         ),
     ]
+
+    if config.do_rotary:
+        graph_input += [
+            helper.make_tensor_value_info("cos_cache", float_type, list(shape_dict["cos_cache"])),
+            helper.make_tensor_value_info("sin_cache", float_type, list(shape_dict["sin_cache"])),
+        ]
 
     graph_output = [
         helper.make_tensor_value_info("output", float_type, list(shape_dict["output"])),
@@ -224,8 +244,72 @@ def create_graph(config):
     return model.SerializeToString()
 
 
-def create_session(config: Config, cuda_provider_options=None) -> InferenceSession:
-    onnx_model_str = create_graph(config)
+def create_group_query_attention_onnx_model(config):
+    assert config.is_fp16  # python does not support bfloat16 for I/O binding.
+
+    float_type = TensorProto.FLOAT16
+    nodes = [
+        helper.make_node(
+            "GroupQueryAttention",
+            [
+                "query",
+                "key" if not config.is_packed_qkv else "",
+                "value" if not config.is_packed_qkv else "",
+                "past_key",
+                "past_value",
+                "seqlens_k",
+                "total_sequence_length" if config.share_buffer else "",
+                "cos_cache" if config.do_rotary else "",
+                "sin_cache" if config.do_rotary else "",
+            ],
+            ["output", "present_key", "present_value"],
+            "GroupQueryAttention_0",
+            num_heads=config.num_heads,
+            kv_num_heads=config.kv_num_heads,
+            local_window_size=config.max_sequence_length,  # use dense causal to compare with sparse attention
+            do_rotary=1 if config.do_rotary else 0,
+            rotary_interleaved=config.rotary_interleaved,
+            domain="com.microsoft",
+        ),
+    ]
+
+    shape_dict = config.shape_dict()
+    graph_input = [
+        helper.make_tensor_value_info("query", float_type, list(shape_dict["query"])),
+        helper.make_tensor_value_info("key", float_type, list(shape_dict["key"])),
+        helper.make_tensor_value_info("value", float_type, list(shape_dict["value"])),
+        helper.make_tensor_value_info("past_key", float_type, list(shape_dict["past_key"])),
+        helper.make_tensor_value_info("past_value", float_type, list(shape_dict["past_value"])),
+        helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, list(shape_dict["key_total_sequence_lengths"])),
+        helper.make_tensor_value_info(
+            "total_sequence_length", TensorProto.INT32, list(shape_dict["total_sequence_length"])
+        ),
+    ]
+
+    if config.do_rotary:
+        graph_input += [
+            helper.make_tensor_value_info("cos_cache", float_type, list(shape_dict["cos_cache"])),
+            helper.make_tensor_value_info("sin_cache", float_type, list(shape_dict["sin_cache"])),
+        ]
+
+    graph_output = [
+        helper.make_tensor_value_info("output", float_type, list(shape_dict["output"])),
+        helper.make_tensor_value_info("present_key", float_type, list(shape_dict["present_key"])),
+        helper.make_tensor_value_info("present_value", float_type, list(shape_dict["present_value"])),
+    ]
+
+    graph = helper.make_graph(
+        nodes,
+        "SparseAttention_Graph",
+        graph_input,
+        graph_output,
+    )
+
+    model = helper.make_model(graph)
+    return model.SerializeToString()
+
+
+def create_session(onnx_model_str, config: Config, cuda_provider_options=None) -> InferenceSession:
     session_options = SessionOptions()
     ort_session = InferenceSession(
         onnx_model_str,
@@ -285,6 +369,100 @@ def group_query_attention_reference(
     return attn_output.transpose(1, 2).contiguous()
 
 
+def run_gqa_ort(device, config: Config, feed_dict):
+    cuda_provider_options = CudaSession.get_cuda_provider_options(
+        torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
+    )
+    onnx_model_str = create_group_query_attention_onnx_model(config)
+    ort_session = create_session(onnx_model_str, config, cuda_provider_options=cuda_provider_options)
+    gpu_binding_manager = GpuBindingManager(
+        ort_session=ort_session,
+        device=device,
+        stream=torch.cuda.current_stream().cuda_stream,
+        max_cuda_graphs=2,
+    )
+    buffer_sharing = {"past_key": "present_key", "past_value": "present_value"}
+    gpu_binding = gpu_binding_manager.get_binding(
+        config.shape_dict(), use_cuda_graph=False, buffer_sharing=buffer_sharing
+    )
+    return gpu_binding.infer(feed_dict)
+
+
+def run_sparse_attention_ort(device, config: Config, feed_dict):
+    cuda_provider_options = CudaSession.get_cuda_provider_options(
+        torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
+    )
+    onnx_model_str = create_sparse_attention_onnx_model(config)
+    ort_session = create_session(onnx_model_str, config, cuda_provider_options=cuda_provider_options)
+    gpu_binding_manager = GpuBindingManager(
+        ort_session=ort_session,
+        device=device,
+        stream=torch.cuda.current_stream().cuda_stream,
+        max_cuda_graphs=2,
+    )
+    buffer_sharing = {"past_key": "present_key", "past_value": "present_value"}
+    gpu_binding = gpu_binding_manager.get_binding(
+        config.shape_dict(), use_cuda_graph=False, buffer_sharing=buffer_sharing
+    )
+    return gpu_binding.infer(feed_dict)
+
+
+def run_gqa_torch(device, config: Config, feed_dict):
+    # Run GQA implementation by Torch as reference
+    query = feed_dict["query"].view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
+    key = feed_dict["key"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
+    value = feed_dict["value"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
+
+    dense_mask = config.dense_mask().to(device)
+    expected_out = group_query_attention_reference(
+        query.clone(), key.clone(), value.clone(), config, scale=config.softmax_scale, mask=dense_mask
+    )
+
+    if ENABLE_DEBUG:
+        torch.set_printoptions(precision=6, edgeitems=3, linewidth=1000, profile="full", sci_mode=False)
+        print("query(BNSH)", query.clone().transpose(1, 2))
+        print("key(BNSH)", key.clone().transpose(1, 2))
+        print("value(BNSH)", value.clone().transpose(1, 2))
+        print("dense_mask", dense_mask)
+    return expected_out
+
+
+def run_one_relevance_test(device, config: Config):
+    dtype = torch.float16
+
+    # Run QGA ort
+    config.use_sparse = False
+    feed_dict = config.random_inputs(device, dtype=dtype)
+    if config.past_sequence_length == 0:
+        expected_out = run_gqa_torch(device, config, feed_dict)
+    else:
+        ort_qga_outputs = run_gqa_ort(device, config)
+        expected_out = ort_qga_outputs["output"].view(
+            config.batch_size, config.sequence_length, config.num_heads, config.head_size
+        )
+
+    # Run SparseAttention by ORT
+    config.use_sparse = True
+    if config.past_sequence_length != 0:
+        config.local_block = config.max_blocks  # use dense to compare with GQA
+    feed_dict = config.random_inputs(device, dtype=dtype)
+    if ENABLE_DEBUG:
+        print("block_mask", feed_dict["block_mask"])
+        print("total_sequence_length", feed_dict["total_sequence_length"])
+        print("key_total_sequence_lengths", feed_dict["key_total_sequence_lengths"])
+    ort_outputs = run_sparse_attention_ort(device, config, feed_dict)
+    ort_output = ort_outputs["output"]
+    actual_out = ort_output.view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
+
+    if torch.allclose(expected_out, actual_out, atol=1e-2, rtol=0):
+        print(f"Relevance test passed: {vars(config)}")
+    else:
+        print(f"Relevance test not passed: {vars(config)}")
+        print("ort_output", actual_out)
+        print("expected_out", expected_out)
+        exit(1)
+
+
 def run_relevance_no_past(device):
     """Test prompt prefilling without past kv cache."""
     for seq_len in [1, 64, 127, 128, 192, 256]:
@@ -302,57 +480,7 @@ def run_relevance_no_past(device):
             vert_stride=2,
             softmax_scale=1.8 / (128**0.5),
         )
-        dtype = torch.float16
-        feed_dict = config.random_inputs(device, dtype=dtype)
-
-        # Run GQA implementation by Torch as reference
-        query = feed_dict["query"].view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
-        key = feed_dict["key"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
-        value = feed_dict["value"].view(
-            config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size
-        )
-
-        dense_mask = config.dense_mask().to(device)
-        expected_out = group_query_attention_reference(
-            query.clone(), key.clone(), value.clone(), config, scale=config.softmax_scale, mask=dense_mask
-        )
-
-        if ENABLE_DEBUG:
-            torch.set_printoptions(precision=6, edgeitems=3, linewidth=1000, profile="full", sci_mode=False)
-            print("query(BNSH)", query.clone().transpose(1, 2))
-            print("key(BNSH)", key.clone().transpose(1, 2))
-            print("value(BNSH)", value.clone().transpose(1, 2))
-            print("block_mask", feed_dict["block_mask"])
-            print("dense_mask", dense_mask)
-            print("total_sequence_length", feed_dict["total_sequence_length"])
-            print("key_total_sequence_lengths", feed_dict["key_total_sequence_lengths"])
-
-        # Run SparseAttention by ORT
-        cuda_provider_options = CudaSession.get_cuda_provider_options(
-            torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
-        )
-        ort_session = create_session(config, cuda_provider_options=cuda_provider_options)
-        gpu_binding_manager = GpuBindingManager(
-            ort_session=ort_session,
-            device=device,
-            stream=torch.cuda.current_stream().cuda_stream,
-            max_cuda_graphs=2,
-        )
-        buffer_sharing = {"past_key": "present_key", "past_value": "present_value"}
-        gpu_binding = gpu_binding_manager.get_binding(
-            config.shape_dict(), use_cuda_graph=False, buffer_sharing=buffer_sharing
-        )
-        ort_outputs = gpu_binding.infer(feed_dict)
-        ort_output = ort_outputs["output"]
-        actual_out = ort_output.view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
-
-        if torch.allclose(expected_out, actual_out, atol=1e-2, rtol=0):
-            print(f"Relevance test passed: {vars(config)}")
-        else:
-            print(f"Relevance test not passed: {vars(config)}")
-            print("ort_output", actual_out)
-            print("expected_out", expected_out)
-            exit(1)
+        run_one_relevance_test(device, config)
 
 
 def run_relevance_past(device):
@@ -371,58 +499,7 @@ def run_relevance_past(device):
             local_blocks=2,
             vert_stride=4,
         )
-
-        dtype = torch.float16
-        feed_dict = config.random_inputs(device, dtype=dtype)
-
-        # Run GQA implementation by Torch as reference
-        query = feed_dict["query"].view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
-        key = feed_dict["key"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
-        value = feed_dict["value"].view(
-            config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size
-        )
-
-        dense_mask = config.dense_mask().to(device)
-        expected_out = group_query_attention_reference(
-            query.clone(), key.clone(), value.clone(), config, mask=dense_mask
-        )
-
-        if ENABLE_DEBUG:
-            torch.set_printoptions(precision=6, edgeitems=3, linewidth=1000, profile="full", sci_mode=False)
-            print("query(BNSH)", query.clone().transpose(1, 2))
-            print("key(BNSH)", key.clone().transpose(1, 2))
-            print("value(BNSH)", value.clone().transpose(1, 2))
-            print("block_mask", feed_dict["block_mask"])
-            print("dense_mask", dense_mask)
-            print("total_sequence_length", feed_dict["total_sequence_length"])
-            print("key_total_sequence_lengths", feed_dict["key_total_sequence_lengths"])
-
-        # Run SparseAttention by ORT
-        cuda_provider_options = CudaSession.get_cuda_provider_options(
-            torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
-        )
-        ort_session = create_session(config, cuda_provider_options=cuda_provider_options)
-        gpu_binding_manager = GpuBindingManager(
-            ort_session=ort_session,
-            device=device,
-            stream=torch.cuda.current_stream().cuda_stream,
-            max_cuda_graphs=2,
-        )
-        buffer_sharing = {"past_key": "present_key", "past_value": "present_value"}
-        gpu_binding = gpu_binding_manager.get_binding(
-            config.shape_dict(), use_cuda_graph=False, buffer_sharing=buffer_sharing
-        )
-        ort_outputs = gpu_binding.infer(feed_dict)
-        ort_output = ort_outputs["output"]
-        actual_out = ort_output.view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
-
-        if torch.allclose(expected_out, actual_out, atol=1e-2, rtol=0):
-            print(f"Relevance test passed: {vars(config)}")
-        else:
-            print(f"Relevance test not passed: {vars(config)}")
-            print("ort_output", actual_out)
-            print("expected_out", expected_out)
-            exit(1)
+        run_one_relevance_test(device, config)
 
 
 def run_relevance_test():
@@ -438,7 +515,8 @@ def run_ort_performance(config: Config, device, dtype=torch.float16, repeats: in
     cuda_provider_options = CudaSession.get_cuda_provider_options(
         torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
     )
-    ort_session = create_session(config, cuda_provider_options=cuda_provider_options)
+    onnx_model_str = create_sparse_attention_onnx_model(config)
+    ort_session = create_session(onnx_model_str, config, cuda_provider_options=cuda_provider_options)
     gpu_binding_manager = GpuBindingManager(
         ort_session=ort_session,
         device=device,
@@ -446,13 +524,11 @@ def run_ort_performance(config: Config, device, dtype=torch.float16, repeats: in
         max_cuda_graphs=2,
     )
 
-    shape_dict = get_shape_dict(config)
+    shape_dict = config.shape_dict()
     buffer_sharing = {"past_key": "present_key", "past_value": "present_value"}
     gpu_binding = gpu_binding_manager.get_binding(shape_dict, use_cuda_graph=False, buffer_sharing=buffer_sharing)
 
-    total_sequence_length = config.sequence_length + config.past_sequence_length
-    block_mask = config.block_mask()
-    feed_dict = get_random_inputs(shape_dict, total_sequence_length, block_mask, device, dtype=dtype)
+    feed_dict = config.random_inputs(device, dtype=dtype)
 
     average_latency = benchmark_op(gpu_binding, feed_dict, repeats)
     del ort_session
