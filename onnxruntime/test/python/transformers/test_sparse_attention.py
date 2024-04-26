@@ -12,8 +12,6 @@ import time
 from typing import Dict, Optional
 
 import torch
-import torch.nn.functional as F
-from einops import einsum, rearrange
 from onnx import TensorProto, helper
 from torch import Tensor
 
@@ -230,72 +228,30 @@ def group_query_attention_reference(
     query: Tensor,
     key: Tensor,
     value: Tensor,
+    config: Config,
     scale: Optional[float] = None,
     mask: Optional[Tensor] = None,
-    is_causal: Optional[bool] = None,
 ):
-    """Reference implementation of group query attention.
-        - b: batch size
-        - n: query_sequence_length
-        - s: kv_sequence_length
-        - h: number of heads
-        - g: number of groups
-        - d: hidden dimension per head of query/key/value
-
-    Args:
-        query: Query tensor of shape (b, n, h, d)
-        key: Key tensor of shape (b, s, h, d)
-        value: Value tensor of shape (b, s, h, d)
-        scale: Scale multiplied before softmax. default: 1.0 / sqrt(d)
-        mask: Mask tensor of shape (b, h, n, s), (b, n, s) or (b, s).
-
-    Returns:
-        Attention output with shape (b, n, h, d)
-    """
-    assert (mask is None) or (is_causal is None)
-    assert query.ndim == key.ndim == value.ndim == 4
     if scale is None:
-        scale = 1.0 / (query.size(-1) ** 0.5)
+        scale = 1.0 / (config.head_size**0.5)
 
-    query = rearrange(query, "b n h d -> b h n d")
-    key = rearrange(key, "b s h d -> b h s d")
-    value = rearrange(value, "b s h d -> b h s d")
+    query = query.transpose(1, 2)
+    key = key.transpose(1, 2)
+    value = value.transpose(1, 2)
 
-    bq, hq, nq, dq = query.shape
-    bk, hk, nk, dk = key.shape
-    bv, hv, nv, dv = value.shape
-    assert bq == bk == bv and dq == dk == dv
-    assert (hk == hv) or (nk == nv)
-    assert hq % hk == 0
+    # Expand key and value to have same number of heads as query
+    num_key_value_groups = config.num_heads // config.kv_num_heads
+    key = torch.repeat_interleave(key, dim=1, repeats=num_key_value_groups)
+    value = torch.repeat_interleave(value, dim=1, repeats=num_key_value_groups)
 
-    num_head_groups = hq // hk
-    if num_head_groups > 1:
-        query = rearrange(query, "b (h g) n d -> b g h n d", g=num_head_groups)
-        similarity = einsum(query, key, "b g h n d, b h s d -> b h n s")
-    else:
-        similarity = einsum(query, key, "b h n d, b h s d -> b h n s")
-
-    if is_causal:
-        mask = torch.ones(
-            (bq, nq, nk),
-            device=query.device,
-            dtype=torch.bool,
-        ).tril_()
-
+    # Apply multi-head attention.
+    attn = torch.einsum("bhmd,bhnd->bhmn", query, key).float() * scale
     if mask is not None:
-        if mask.ndim == 2:
-            mask = rearrange(mask, "b s -> b () () s")
-        elif mask.ndim == 3:
-            mask = rearrange(mask, "b n s -> b () n s")
-        similarity.masked_fill_(~mask, torch.finfo(similarity.dtype).min)
+        attn = attn.masked_fill((1 - mask).bool(), float("-inf"))
+    attn = attn.softmax(-1)
+    attn_output = torch.einsum("bhmn,bhnd->bhmd", attn.type_as(value), value)
 
-    attention = F.softmax(similarity * scale, dim=-1)
-
-    out = einsum(attention, value, "b h n s, b h s d -> b h n d")
-
-    out = rearrange(out, "b h n d -> b n h d")
-
-    return out
+    return attn_output.transpose(1, 2).contiguous()
 
 
 def run_relevance_no_past(device):
@@ -306,7 +262,7 @@ def run_relevance_no_past(device):
         sequence_length=256,
         max_sequence_length=256,
         past_sequence_length=0,
-        num_heads=2,
+        num_heads=4,
         kv_num_heads=2,
         head_size=128,
         sparse_block_size=64,
@@ -318,14 +274,15 @@ def run_relevance_no_past(device):
     feed_dict = get_random_inputs(shape_dict, config.total_sequence_length, block_mask, device, dtype=dtype)
 
     # Run GQA implementation by Torch as reference
+    expand_block_mask = block_mask.repeat(config.num_heads // config.num_layout, 1, 1)
     dense_mask = get_dense_mask(
-        block_mask, config.total_sequence_length, config.sequence_length, config.sparse_block_size
+        expand_block_mask, config.total_sequence_length, config.sequence_length, config.sparse_block_size
     )
     query = feed_dict["query"].view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
     key = feed_dict["key"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
     value = feed_dict["value"].view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
     expected_out = group_query_attention_reference(
-        query.clone(), key.clone(), value.clone(), mask=dense_mask.repeat(config.batch_size, 1, 1, 1).bool()
+        query.clone(), key.clone(), value.clone(), config, mask=dense_mask.repeat(config.batch_size, 1, 1, 1)
     )
 
     if ENABLE_DEBUG:

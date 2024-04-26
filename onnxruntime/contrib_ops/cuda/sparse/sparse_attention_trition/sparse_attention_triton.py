@@ -54,7 +54,8 @@ def block_sparse_attention_kernel(
     off_b = off_bh // num_heads
 
     # For group query attention, map the query head index to the corresponding one for key and value.
-    off_h_kv = off_h % num_kv_heads
+    head_groups = num_heads // num_kv_heads
+    off_h_kv = off_h // head_groups
 
     Q += off_b * stride_qb + off_h * stride_qh
     K += off_b * stride_kb + off_h_kv * stride_kh
