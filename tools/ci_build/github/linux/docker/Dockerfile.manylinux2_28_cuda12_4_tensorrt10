@@ -4,7 +4,7 @@
 # for other cuda version and TRT version
 ARG POLICY=manylinux_2_28
 ARG PLATFORM=x86_64
-ARG BASEIMAGE=nvidia/cuda:12.4.1-cudnn-devel-ubi8
+ARG BASEIMAGE=nvidia/cuda:12.4.1-devel-ubi8
 ARG DEVTOOLSET_ROOTPATH=/usr
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64
 ARG PREPEND_PATH=/usr/local/cuda/bin
@@ -159,6 +159,9 @@ ENV SSL_CERT_FILE=/opt/_internal/certs.pem
 CMD ["/bin/bash"]
 
 #Build manylinux docker image end
+
+# Install cudnn9
+RUN dnf -y install cudnn9
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
