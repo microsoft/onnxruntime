@@ -59,6 +59,9 @@ const std::string& GetNodeOutputName(const Node& node, int index);
 */
 const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
 
+/** Move the input edges that src_node has to target_node.
+After the move is complete src_node will have no input edges.
+*/
 void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node);
 
 /** Removes all output edges from the given Node of the Graph.

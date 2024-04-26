@@ -1,14 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/cast_sce_loss_fusion.h"
+#include "orttraining/core/optimizer/cast_sce_loss_fusion.h"
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
 namespace onnxruntime {
 
 Status CastSceLossFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
@@ -36,12 +34,12 @@ Status CastSceLossFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    if (input_node->GetOutputEdgesCount() != 1) {
+    if (input_node->GetOutputEdgesCount() != 1 || graph.IsOutput(input_node->OutputDefs()[0])) {
       continue;
     }
 
-    if (input_node->MutableInputDefs()[0]->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT16 &&
-        input_node->MutableOutputDefs()[0]->TypeAsProto()->tensor_type().elem_type() == TensorProto_DataType_FLOAT) {
+    if (input_node->MutableInputDefs()[0]->TypeAsProto()->tensor_type().elem_type() == onnx::TensorProto_DataType_FLOAT16 &&
+        input_node->MutableOutputDefs()[0]->TypeAsProto()->tensor_type().elem_type() == onnx::TensorProto_DataType_FLOAT) {
       std::vector<graph_utils::GraphEdge> input_edges = graph_utils::GraphEdge::GetNodeInputEdges(node, 0);
       graph_utils::GraphEdge::RemoveGraphEdges(graph, input_edges);
       node.MutableInputDefs()[0] = input_node->MutableInputDefs()[0];
@@ -49,7 +47,7 @@ Status CastSceLossFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       graph.RemoveNode(input_node->Index());
 
       if (node.GetAttributes().count("output_type") == 0) {
-        node.AddAttribute("output_type", static_cast<int64_t>(1));
+        node.AddAttribute("output_type", static_cast<int64_t>(onnx::TensorProto_DataType_FLOAT));
       }
       modified = true;
     }

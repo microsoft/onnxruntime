@@ -172,9 +172,6 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
   return true;
 }
 
-/** Move the input edges that src_node has to target_node.
-After the move is complete src_node will have no input edges.
-*/
 void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node) {
   auto target_idx = target_node.Index();
   auto input_edges = GraphEdge::GetNodeInputEdges(src_node);
