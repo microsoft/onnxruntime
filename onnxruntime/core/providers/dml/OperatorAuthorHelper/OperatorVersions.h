@@ -434,6 +434,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_IsNaN = 20;
         static const int sc_sinceVer_IsInf = 20;
         static const int sc_sinceVer_ReduceMax = 20;
+        static const int sc_sinceVer_Gelu = 20;
     }
 
     namespace MsftOperatorSet1

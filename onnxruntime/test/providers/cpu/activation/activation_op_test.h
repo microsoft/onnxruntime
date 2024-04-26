@@ -74,6 +74,10 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       test.SetOutputTolerance(0.0001f);
     }
 
+    if (strcmp(szOp, "Gelu") == 0) {
+      test.SetOutputTolerance(0.00015f);
+    }
+
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
 }
