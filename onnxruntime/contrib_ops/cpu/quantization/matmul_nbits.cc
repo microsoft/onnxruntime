@@ -184,7 +184,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
 
-#else  // defined(ORT_NEURAL_SPEED)
+#else   // defined(ORT_NEURAL_SPEED)
 
   if (input_idx == 1) {
     const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
@@ -204,7 +204,6 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     }
     is_packed = true;
   }
-
 #endif  // defined(ORT_NEURAL_SPEED)
 
   return Status::OK();
@@ -315,6 +314,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
+#ifndef ORT_NEURAL_SPEED
   const bool has_single_b_matrix =
       (!act_order_) && (!zero_point_is_not_quant_) &&
       std::all_of(helper.RightOffsets().begin(), helper.RightOffsets().end(), [](size_t offset) { return offset == 0; });
@@ -358,6 +358,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       return Status::OK();
     }
   }
+#endif  // not defined(ORT_NEURAL_SPEED)
 
   const Tensor* b = ctx->Input<Tensor>(1);
   const uint8_t* b_data = b->Data<uint8_t>();
