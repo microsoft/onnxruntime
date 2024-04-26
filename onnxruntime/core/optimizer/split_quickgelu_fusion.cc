@@ -3,6 +3,11 @@
 
 #include "core/optimizer/split_quickgelu_fusion.h"
 
+#include <deque>
+
+#include "core/framework/tensorprotoutils.h"
+#include "core/optimizer/initializer.h"
+#include "core/providers/common.h"
 #include "core/common/logging/logging.h"
 #include "core/optimizer/rewrite_rule.h"
 #include "core/optimizer/utils.h"
