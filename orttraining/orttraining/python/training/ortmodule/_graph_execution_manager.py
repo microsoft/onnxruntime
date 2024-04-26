@@ -308,6 +308,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         ):
             # All required models have already been exported previously
             return False
+
         self._set_device_from_module(inputs, kwargs)
         # TODO: move it into runtime_inspector
         embedding_hook_handles = self._add_check_embedding_sparsity_hook()
@@ -319,6 +320,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         for hook in embedding_hook_handles:
             hook.remove()
+
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(
                 self._debug_options.save_onnx_models.path,
@@ -574,10 +576,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
 
             # Override the options if model is not modified.
-            (
-                self._mem_efficient_grad_management_is_enabled,
-                exported_model,
-            ) = post_processing_enable_mem_efficient_training(exported_model, self._flattened_module.named_parameters())
+            (self._mem_efficient_grad_management_is_enabled, exported_model, self._param_trigger_grad) = (
+                post_processing_enable_mem_efficient_training(
+                    exported_model, self._flattened_module.named_parameters(), self._device
+                )
+            )
 
             if self._runtime_options.run_symbolic_shape_infer:
                 exported_model = SymbolicShapeInference.infer_shapes(
