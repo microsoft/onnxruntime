@@ -100,10 +100,9 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
 }
 
 // get parameters
-void GetSplitQuickGeluParams(
+bool GetSplitQuickGeluParams(
   Node& split_node,
   Node& quickgelu_node,
-  Node& mul_node,
   NodeArg*& input,
   int& axis,
   int& alpha) {
@@ -181,7 +180,7 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     NodeArg *input;
     int axis;
     int alpha;
-    if (!GetSplitQuickGeluParams(*split_node, *quickgelu_node, *mul_node, input, axis, alpha)) {
+    if (!GetSplitQuickGeluParams(*split_node, *quickgelu_node, input, axis, alpha)) {
       continue;
     }
     FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, axis, alpha);
