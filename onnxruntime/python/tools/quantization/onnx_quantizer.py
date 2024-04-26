@@ -306,20 +306,19 @@ class ONNXQuantizer(BaseQuantizer):
         )
         return False
 
-    def _get_dynamic_input_quantization_params(self, input_name, nodes_list, qType):
+    def _get_dynamic_input_quantization_params(self, input_name, nodes_list, qType, initial_type):
         """
         Create nodes for dynamic quantization of input and add them to nodes_list.
             parameter input_name: Name of the input.
             parameter nodes_list: new nodes are appended to this list.
             parameter qType: type to quantize to.
+            parameter initial_type: type to quantize from
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
         """
         if qType == onnx_proto.TensorProto.INT8:
-            return self._get_dynamic_input_quantization_params_int8(input_name, nodes_list)
+            return self._get_dynamic_input_quantization_params_int8(input_name, nodes_list, initial_type)
         if qType == onnx_proto.TensorProto.UINT8:
-            return self._get_dynamic_input_quantization_params_uint8(input_name, nodes_list)
-        if qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
-            return self._get_dynamic_input_quantization_params_float8e4m3fn(input_name, nodes_list)
+            return self._get_dynamic_input_quantization_params_uint8(input_name, nodes_list, initial_type)
         raise ValueError(f"Unexpected value for qType={qType}.")
 
     def _get_dynamic_input_quantization_params_int8(self, input_name, nodes_list, initial_type):
@@ -559,7 +558,9 @@ class ONNXQuantizer(BaseQuantizer):
 
         return True, scale_name, zero_point_name, scale_shape, zero_point_shape
 
-    def _get_quantize_input_nodes(self, node, input_index, qType, given_scale_name=None, given_zp_name=None):
+    def _get_quantize_input_nodes(
+        self, node, input_index, qType, given_scale_name=None, given_zp_name=None, initial_type=None
+    ):
         """
         Given an input for a node (which is not a initializer), this function
 
@@ -571,6 +572,7 @@ class ONNXQuantizer(BaseQuantizer):
         :param qType: type to quantize to.
         :param given_scale_name: if those inputs need to be quanitzed using this scale tensor.
         :param given_zp_name: if those inputs to be quantized using this zeropoint tensor.
+        :param initial_type: type of the weight to quantize
         :return: List of newly created nodes in NodeProto format.
         """
         input_name = node.input[input_index]
@@ -606,12 +608,16 @@ class ONNXQuantizer(BaseQuantizer):
                     ql_node_name,
                 )
             else:
+                assert initial_type is not None, (
+                    f"Cannot quantize input without knowing the initial type, "
+                    f"input_name={input_name!r}, input_index={input_index}, qType={qType}, node={node}"
+                )
                 (
                     scale_name,
                     zp_name,
                     scale_shape,
                     zp_shape,
-                ) = self._get_dynamic_input_quantization_params(input_name, nodes, qType)
+                ) = self._get_dynamic_input_quantization_params(input_name, nodes, qType, initial_type=initial_type)
                 qlinear_node = onnx.helper.make_node(
                     "QuantizeLinear",
                     [input_name, scale_name, zp_name],
@@ -794,7 +800,23 @@ class ONNXQuantizer(BaseQuantizer):
                     node_input + "_QuantizeLinear", self.new_nodes, self.model.graph()
                 )
                 if qlinear_node is None:
-                    quantize_input_nodes = self._get_quantize_input_nodes(node, input_index, self.activation_qType)
+                    input_name = node.input[input_index]
+                    if input_name in self.value_infos:
+                        value_info = self.value_infos[input_name]
+                        assert value_info.HasField("type"), f"value_info={value_info} has no type."
+                        assert value_info.type.HasField("tensor_type"), f"value_info={value_info} is not a tensor."
+                        initial_type = value_info.type.tensor_type.elem_type
+                    else:
+                        # Shape inference failed. Fallback to self.tensor_names.
+                        assert input_name in self.tensor_names, (
+                            f"shape inference failed for {input_name!r} and "
+                            f"attribute 'tensor_names' does not have any value for "
+                            f"this tensor."
+                        )
+                        initial_type = self.tensor_names[input_name]
+                    quantize_input_nodes = self._get_quantize_input_nodes(
+                        node, input_index, self.activation_qType, initial_type=initial_type
+                    )
                     if quantize_input_nodes is None:
                         return (None, None, None, None)
                     if from_subgraph:

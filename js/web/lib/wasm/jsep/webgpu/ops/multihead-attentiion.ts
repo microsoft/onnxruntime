@@ -339,7 +339,7 @@ export const multiHeadAttention = (context: ComputeContext, attributes: Attentio
 
   if (kvBNSH) {
     return applyAttention(
-        context, Q, key, value, keyPaddingMask, undefined, undefined, undefined, relativePositionBias, params,
+        context, Q, key, value, keyPaddingMask, undefined, pastKey, pastValue, relativePositionBias, params,
         attributes);
   }
   if (!key || !value) {
