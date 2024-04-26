@@ -67,6 +67,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/shape_input_merge.h"
 #include "core/optimizer/slice_elimination.h"
+#include "core/optimizer/split_quickgelu_fusion.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/label_encoder_fusion.h"
@@ -580,6 +581,7 @@ TEST_F(GraphTransformationTests, SliceElimination) {
 // What is level 1 or level 2 in TransformerLevel?
 TEST_F(GraphTransformationTests, SplitQuickGeluFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/split_quickgelu_fusion.onnx";
+  std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
