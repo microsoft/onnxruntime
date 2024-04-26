@@ -115,7 +115,7 @@ void FuseSplitQuickGeluSubgraph(
   Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
                                    op_type,
                                    fused_desc,
-                                   input,
+                                   {input},
                                    {},
                                    {},
                                    kMSDomain);
