@@ -25,10 +25,12 @@ namespace Dml
 
     DmlRuntimeGraphFusionTransformer::DmlRuntimeGraphFusionTransformer(
         const std::string& name,
-        const onnxruntime::IExecutionProvider* provider
+        const onnxruntime::IExecutionProvider* provider,
+        bool graphSerializationEnabled
     )
         :onnxruntime::GraphTransformer(name),
-         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl())
+         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl()),
+         m_graphSerializationEnabled(graphSerializationEnabled)
     {
     }
 
@@ -38,11 +40,12 @@ namespace Dml
         int graphLevel,
         const onnxruntime::logging::Logger& logger) const
     {
-        return ApplyImplHelper(graph, modified, graphLevel, logger, {});
+        return ApplyImplHelper(graph, m_graphSerializationEnabled, modified, graphLevel, logger, {});
     }
 
     onnxruntime::common::Status DmlRuntimeGraphFusionTransformer::ApplyImplHelper(
         onnxruntime::Graph& graph,
+        bool graphSerializationEnabled,
         bool& modified,
         int graphLevel,
         const onnxruntime::logging::Logger& logger,
@@ -76,7 +79,7 @@ namespace Dml
             for (auto& entry : node->GetAttributeNameToMutableSubgraphMap())
             {
                 auto& subgraph = *entry.second;
-                ORT_RETURN_IF_ERROR(ApplyImplHelper(subgraph, modified, graphLevel + 1, logger, subgraphImplicitInputDefs));
+                ORT_RETURN_IF_ERROR(ApplyImplHelper(subgraph, graphSerializationEnabled, modified, graphLevel + 1, logger, subgraphImplicitInputDefs));
             }
         }
 
@@ -140,19 +143,21 @@ namespace Dml
             }
         }
 
-        for (auto&& compiledPartitionInfo : compiledPartitionInfos)
+        for (uint32_t partitionIndex = 0; partitionIndex < compiledPartitionInfos.size(); ++partitionIndex)
         {
             // Null compiled operators were not DML partitions
-            if (compiledPartitionInfo)
+            if (compiledPartitionInfos[partitionIndex])
             {
                 DmlGraphFusionHelper::RegisterDynamicKernel(
                     graph,
+                    partitionIndex,
+                    graphSerializationEnabled,
                     m_providerImpl->GetKernelRegistry().get(),
                     m_providerImpl,
                     graphNodePropertyMap,
                     dynamicCpuInputMap,
-                    std::move(compiledPartitionInfo->indexedSubGraph),
-                    std::move(compiledPartitionInfo->isInitializerTransferable));
+                    std::move(compiledPartitionInfos[partitionIndex]->indexedSubGraph),
+                    std::move(compiledPartitionInfos[partitionIndex]->isInitializerTransferable));
             }
         }
 

@@ -96,6 +96,8 @@ namespace DmlGraphFusionHelper
 
     void RegisterDynamicKernel(
         onnxruntime::Graph& graph,
+        uint32_t partitionIndex,
+        bool graphSerializationEnabled,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const ExecutionProviderImpl* providerImpl,
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties> graphNodePropertyMap,

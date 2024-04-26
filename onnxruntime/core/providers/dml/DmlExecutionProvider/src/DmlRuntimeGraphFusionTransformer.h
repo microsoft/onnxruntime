@@ -16,7 +16,8 @@ class DmlRuntimeGraphFusionTransformer : public onnxruntime::GraphTransformer
 public:
     DmlRuntimeGraphFusionTransformer(
         const std::string& name,
-        const onnxruntime::IExecutionProvider* provider
+        const onnxruntime::IExecutionProvider* provider,
+        bool graphSerializationEnabled
     );
 
 public:
@@ -31,6 +32,7 @@ private:
 
     onnxruntime::common::Status ApplyImplHelper(
         onnxruntime::Graph& graph,
+        bool graphSerializationEnabled,
         bool& modified,
         int graphLevel,
         const onnxruntime::logging::Logger& logger,
@@ -38,5 +40,6 @@ private:
 
 private:
     const ExecutionProviderImpl* m_providerImpl = nullptr;
+    bool m_graphSerializationEnabled = false;
 };
 }

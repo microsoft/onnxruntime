@@ -10,6 +10,8 @@ namespace Dml
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
+        uint32_t partitionIndex,
+        bool graphSerializationEnabled,
         const onnxruntime::Path& modelPath,
         std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
         std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,

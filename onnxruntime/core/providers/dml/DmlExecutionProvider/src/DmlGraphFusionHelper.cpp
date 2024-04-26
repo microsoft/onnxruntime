@@ -695,6 +695,8 @@ namespace DmlGraphFusionHelper
 
     void RegisterDynamicKernel(
         onnxruntime::Graph& graph,
+        uint32_t partitionIndex,
+        bool graphSerializationEnabled,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const ExecutionProviderImpl* providerImpl,
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties> graphNodePropertyMap,
@@ -801,7 +803,9 @@ namespace DmlGraphFusionHelper
         // lamda captures for the kernel registration
         auto fused_kernel_func = [
             indexedSubGraph,
-            &modelPath,
+            partitionIndex,
+            graphSerializationEnabled,
+            modelPath = std::move(modelPath),
             nodesInfo = std::move(nodesInfo),
             intermediateNodeArgs = std::move(intermediateNodeArgs),
             subgraphInputs = std::move(subgraphInputs),
@@ -827,6 +831,8 @@ namespace DmlGraphFusionHelper
             out.reset(CreateRuntimeFusedGraphKernel(
                 info,
                 indexedSubGraph,
+                partitionIndex,
+                graphSerializationEnabled,
                 modelPath,
                 std::move(subgraphNodes),
                 std::move(subgraphInputs),

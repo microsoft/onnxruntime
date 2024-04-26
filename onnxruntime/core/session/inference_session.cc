@@ -1758,7 +1758,8 @@ common::Status InferenceSession::Initialize() {
 
         if (static_cast<const Dml::ExecutionProvider*>(dmlExecutionProvider)->IsGraphCaptureEnabled()) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlRuntimeGraphFusionTransformer = std::make_unique<Dml::DmlRuntimeGraphFusionTransformer>("DmlRuntimeGraphFusionTransformer",
-                                                                                                                                                    dmlExecutionProvider);
+                                                                                                                                                    dmlExecutionProvider,
+                                                                                                                                                    dml_graph_serialization_enabled);
           if (dmlRuntimeGraphFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlRuntimeGraphFusionTransformer is nullptr");
           }

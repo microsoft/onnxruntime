@@ -20,6 +20,8 @@ namespace Dml
         DmlRuntimeFusedGraphKernel(
             const onnxruntime::OpKernelInfo& kernelInfo,
             std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
+            uint32_t partitionIndex,
+            bool graphSerializationEnabled,
             const onnxruntime::Path& modelPath,
             std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
             std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
@@ -29,6 +31,8 @@ namespace Dml
             std::vector<ONNX_NAMESPACE::TensorProto>&& ownedInitializers)
         : OpKernel(kernelInfo),
           m_indexedSubGraph(std::move(indexedSubGraph)),
+          m_partitionIndex(partitionIndex),
+          m_graphSerializationEnabled(graphSerializationEnabled),
           m_modelPath(modelPath),
           m_subgraphNodes(std::move(subgraphNodes)),
           m_subgraphInputs(std::move(subgraphInputs)),
@@ -222,13 +226,46 @@ namespace Dml
                 m_nonOwnedGraphInputsFromInitializers.resize(fusedNodeInputCount);
                 graphDesc.reuseCommandList = true;
 
-                // Compile the operator
-                m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
-                    graphDesc,
-                    *m_indexedSubGraph,
-                    providerImpl,
-                    &serializedGraphInputIndexToSubgraphInputIndex,
-                    &serializedGraphLargeConstantNameToSubgraphInputIndex);
+                if (m_graphSerializationEnabled)
+                {
+                    const std::wstring modelName = GetModelName(m_modelPath);
+                    auto buffer = SerializeDmlGraph(graphDesc);
+
+                    const std::wstring partitionName =
+                        L"Partition_" +
+                        std::to_wstring(m_partitionIndex) +
+                        L".bin";
+                    WriteToFile(modelName, partitionName, buffer.data(), buffer.size());
+
+                    std::vector<std::unique_ptr<std::byte[]>> rawData;
+                    DmlSerializedGraphDesc deserializedGraphDesc = DeserializeDmlGraph(buffer.data(), rawData);
+                    GraphDescBuilder::GraphDesc deserializedDmlGraphDesc = {};
+                    deserializedDmlGraphDesc.InputCount = deserializedGraphDesc.InputCount;
+                    deserializedDmlGraphDesc.InputEdges = std::move(deserializedGraphDesc.InputEdges);
+                    deserializedDmlGraphDesc.IntermediateEdges = std::move(deserializedGraphDesc.IntermediateEdges);
+                    deserializedDmlGraphDesc.Nodes = std::move(deserializedGraphDesc.Nodes);
+                    deserializedDmlGraphDesc.OutputCount = deserializedGraphDesc.OutputCount;
+                    deserializedDmlGraphDesc.OutputEdges = std::move(deserializedGraphDesc.OutputEdges);
+                    deserializedDmlGraphDesc.reuseCommandList = graphDesc.reuseCommandList;
+                    deserializedDmlGraphDesc.outputShapes = graphDesc.outputShapes;
+
+                    m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
+                                    deserializedDmlGraphDesc,
+                                    *m_indexedSubGraph,
+                                    providerImpl,
+                                    &serializedGraphInputIndexToSubgraphInputIndex,
+                                    &serializedGraphLargeConstantNameToSubgraphInputIndex);
+                }
+                else
+                {
+                    // Compile the operator
+                    m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
+                        graphDesc,
+                        *m_indexedSubGraph,
+                        providerImpl,
+                        &serializedGraphInputIndexToSubgraphInputIndex,
+                        &serializedGraphLargeConstantNameToSubgraphInputIndex);
+                }
 
                 // Queue references to objects which must be kept alive until resulting GPU work completes
                 m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
@@ -314,7 +351,9 @@ namespace Dml
 
         mutable std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         std::shared_ptr<const onnxruntime::IndexedSubGraph> m_indexedSubGraph;
-        const onnxruntime::Path& m_modelPath;
+        uint32_t m_partitionIndex;
+        bool m_graphSerializationEnabled;
+        const onnxruntime::Path m_modelPath;
 
         std::vector<std::shared_ptr<onnxruntime::Node>> m_subgraphNodes;
         std::vector<const onnxruntime::NodeArg*> m_subgraphInputs;
@@ -341,6 +380,8 @@ namespace Dml
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
+        uint32_t partitionIndex,
+        bool graphSerializationEnabled,
         const onnxruntime::Path& modelPath,
         std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
         std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
@@ -352,6 +393,8 @@ namespace Dml
         return new DmlRuntimeFusedGraphKernel(
             info,
             std::move(indexedSubGraph),
+            partitionIndex,
+            graphSerializationEnabled,
             modelPath,
             std::move(subgraphNodes),
             std::move(subgraphInputs),
