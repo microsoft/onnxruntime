@@ -222,7 +222,7 @@ TEST(MatMulNBits, Float32) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
-#if defined(ORT_NEURAL_SPEED)
+#if defined(ORT_NEURAL_SPEED) || defined(USE_DML)
           for (auto accuracy_level : {0, 1, 4}) {
             RunTest(M, N, K, block_size, accuracy_level, false, false);
             RunTest(M, N, K, block_size, accuracy_level, true, false);
