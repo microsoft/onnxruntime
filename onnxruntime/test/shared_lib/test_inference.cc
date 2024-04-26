@@ -2236,7 +2236,7 @@ TEST(CApiTest, basic_cuda_graph) {
   Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_CUDA) || defined(USE_TENSORRT)
   Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#else
+#elif defined(USE_DML)
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 #endif
 
@@ -2252,7 +2252,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
-#else
+#elif defined(USE_DML)
   ComPtr<ID3D12Resource> input_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
@@ -2285,7 +2285,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
-#else
+#elif defined(USE_DML)
   ComPtr<ID3D12Resource> output_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
   auto output_cpu_bytes = reinterpret_cast<std::byte*>(y_values.data());
@@ -2299,7 +2299,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
-#else
+#elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif
 
@@ -2310,7 +2310,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
-#else
+#elif defined(USE_DML)
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
 #endif
 
@@ -2320,7 +2320,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
-#else
+#elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif
 
