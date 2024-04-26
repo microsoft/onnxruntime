@@ -99,6 +99,28 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   return true;
 }
 
+// get parameters
+void GetSplitQuickGeluParams(
+  Node& split_node,
+  Node& quickgelu_node,
+  Node& mul_node,
+  NodeArg*& input,
+  int& axis,
+  int& alpha) {
+  input = split_node.MutableInputDefs()[0];
+  auto& split_attr = split_node.GetAttributes();
+  if (split_attr.find("axis") != split_attr.end()) {
+    auto& axis_attr = split_attr.at("axis");
+    axis = utils::HasInt(axis_attr) ? (int)axis_attr.i() : axis;
+  }
+  auto& quickgelu_attr = quickgelu_node.GetAttributes();
+  if (quickgelu_attr.find("alpha") != quickgelu_attr.end()) {
+    auto& alpha_attr = quickgelu_attr.at("alpha");
+    alpha = utils::HasInt(alpha_attr) ? (int)alpha_attr.i() : alpha;
+  }
+  return true;
+}
+
 // coalesce subgraph nodes into fused node
 void FuseSplitQuickGeluSubgraph(
     Graph& graph,
@@ -159,6 +181,9 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     NodeArg *input;
     int axis;
     int alpha;
+    if (!GetSplitQuickGeluParams(*split_node, *quickgelu_node, *mul_node, input, axis, alpha)) {
+      continue;
+    }
     FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, axis, alpha);
     modified = true;
 
