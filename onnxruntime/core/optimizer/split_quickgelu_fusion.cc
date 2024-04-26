@@ -156,7 +156,7 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    NodeArg *input, *mask;
+    NodeArg *input;
     int axis;
     int alpha;
     FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, axis, alpha);
