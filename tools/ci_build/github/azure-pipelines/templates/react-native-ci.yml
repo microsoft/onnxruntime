@@ -374,12 +374,6 @@ stages:
         targetFolder: $(Build.ArtifactStagingDirectory)
       displayName: Create Artifacts onnxruntime-react-native
 
-    - task: PublishPipelineArtifact@0
-      inputs:
-        artifactName: '${{parameters.PackageName}}'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-      displayName: Publish Pipeline Artifact
-
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -390,5 +384,11 @@ stages:
         targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox E2E test logs
+
+    - task: PublishPipelineArtifact@0
+      inputs:
+        artifactName: '${{parameters.PackageName}}'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+      displayName: Publish Pipeline Artifact
 
     - template: explicitly-defined-final-tasks.yml
