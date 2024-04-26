@@ -56,7 +56,7 @@ variables:
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
       value: 8.6.1.6-1.cuda12.0
     ${{ if eq(parameters.CudaVersion, '12.4') }}:
-      value: 10.0.0.6-1.cuda12.4
+      value: 10.0.1.6-1.cuda12.4
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 180
@@ -79,7 +79,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda12_3_tensorrt10
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda12_4_tensorrt10
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
       --network=host
