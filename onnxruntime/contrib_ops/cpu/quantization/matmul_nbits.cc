@@ -322,7 +322,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   if (has_single_b_matrix) {
     const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
 
-    if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
+    // mlas nbits implementation requires packed b. update this logic if it changes.
+    if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type) && packed_b_) {
       IAllocatorUniquePtr<std::byte> workspace{};
       if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
                                                                          nbits_, block_size_, compute_type);
