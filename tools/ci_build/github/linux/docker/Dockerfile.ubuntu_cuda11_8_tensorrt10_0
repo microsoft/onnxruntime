@@ -28,35 +28,34 @@ RUN apt-get install -y --no-install-recommends \
     ln -s /usr/bin/pip3 pip;
 
 RUN pip install --upgrade pip 
-RUN pip install setuptools>=68.2.2
+RUN pip install psutil setuptools>=68.2.2
 
 # Install TensorRT
-RUN v="10.0.0.6-1+cuda11.8" &&\
+RUN version="10.0.0.6-1+cuda11.8" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
     sudo apt-get install -y \
-    libnvinfer-dev=${v} \
-    libnvinfer-dispatch-dev=${v} \
-    libnvinfer-dispatch10=${v} \
-    libnvinfer-headers-dev=${v} \
-    libnvinfer-headers-plugin-dev=${v} \
-    libnvinfer-lean-dev=${v} \
-    libnvinfer-lean10=${v} \
-    libnvinfer-plugin-dev=${v} \
-    libnvinfer-plugin10=${v} \
-    libnvinfer-vc-plugin-dev=${v} \
-    libnvinfer-vc-plugin10=${v} \
-    libnvinfer10=${v} \
-    libnvonnxparsers-dev=${v} \
-    libnvonnxparsers10=${v} \
-    tensorrt-libs=${v} \
-    tensorrt-dev=${v} \
-    python3-libnvinfer=${v} \
-    python3-libnvinfer-lean=${v} \
-    python3-libnvinfer-dispatch=${v}
+    libnvinfer-dev=${version} \
+    libnvinfer-dispatch-dev=${version} \
+    libnvinfer-dispatch10=${version} \
+    libnvinfer-headers-dev=${version} \
+    libnvinfer-headers-plugin-dev=${version} \
+    libnvinfer-lean-dev=${version} \
+    libnvinfer-lean10=${version} \
+    libnvinfer-plugin-dev=${version} \
+    libnvinfer-plugin10=${version} \
+    libnvinfer-vc-plugin-dev=${version} \
+    libnvinfer-vc-plugin10=${version} \
+    libnvinfer10=${version} \
+    libnvonnxparsers-dev=${version} \
+    libnvonnxparsers10=${version} \
+    tensorrt-dev=${version} \
+    libnvinfer-bin=${version}
 
-# Compile trtexec
-RUN cd /usr/src/tensorrt/samples/trtexec && make
+# Compile trtexec if not installed
+RUN if [ ! -d /usr/src/tensorrt/bin ] || [ ! -f /usr/src/tensorrt/bin/trtexec ]; then \
+    cd /usr/src/tensorrt/samples/trtexec && make; \
+    fi
 
 # Install Valgrind
 RUN apt-get install -y valgrind

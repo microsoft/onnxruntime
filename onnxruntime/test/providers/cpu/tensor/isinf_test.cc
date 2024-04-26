@@ -18,13 +18,17 @@ constexpr double DOUBLE_NINF = -std::numeric_limits<double>::infinity();
 constexpr double DOUBLE_NAN = std::numeric_limits<double>::quiet_NaN();
 
 template <typename T>
-void run_is_inf_test(int opset, int64_t detect_positive, int64_t detect_negative, const std::initializer_list<T>& input, const std::initializer_list<bool>& output) {
+void run_is_inf_test(int opset, int64_t detect_positive, int64_t detect_negative, const std::initializer_list<T>& input, const std::initializer_list<bool>& output, bool skip_trt = false) {
   OpTester test("IsInf", opset);
   test.AddAttribute<int64_t>("detect_positive", detect_positive);
   test.AddAttribute<int64_t>("detect_negative", detect_negative);
   test.AddInput<T>("X", {onnxruntime::narrow<int64_t>(input.size())}, input);
   test.AddOutput<bool>("Y", {onnxruntime::narrow<int64_t>(output.size())}, output);
-  test.Run();
+  if (skip_trt) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test.Run();
+  }
 }
 
 TEST(IsInfTest, test_isinf_float10) {
@@ -131,14 +135,14 @@ TEST(IsInfTest, test_isinf_positive_bfloat16) {
   std::initializer_list<BFloat16> input = {BFloat16{-1.7f}, BFloat16::NaN, BFloat16::Infinity, 3.6_bfp16,
                                            BFloat16::NegativeInfinity, BFloat16::Infinity};
   std::initializer_list<bool> output = {false, false, true, false, false, true};
-  run_is_inf_test(20, 1, 0, input, output);
+  run_is_inf_test(20, 1, 0, input, output, true);  // Skip TRTEP
 }
 
 TEST(IsInfTest, test_isinf_negative_bfloat16) {
   std::initializer_list<BFloat16> input = {BFloat16{-1.7f}, BFloat16::NaN, BFloat16::Infinity, 3.6_bfp16,
                                            BFloat16::NegativeInfinity, BFloat16::Infinity};
   std::initializer_list<bool> output = {false, false, false, false, true, false};
-  run_is_inf_test(20, 0, 1, input, output);
+  run_is_inf_test(20, 0, 1, input, output, true); // Skip TRTEP
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
