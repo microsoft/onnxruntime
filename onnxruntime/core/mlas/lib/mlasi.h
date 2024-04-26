@@ -971,6 +971,12 @@ struct MLAS_SQNBIT_GEMM_DISPATCH;
 
 extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
 
+extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
+
+extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512;
+
+extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
+
 //
 // Quantized depthwise convolution kernels.
 //
