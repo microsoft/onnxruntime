@@ -27,8 +27,8 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
 
   // check node is split and has two outputs
   // TODO: 1. Check ONNX Op Types to Support
-  //
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {14}) ||
+  // Split version 13 has axis as attribute and split as input (Should we only specify it for v13?)
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {13}) ||
       !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 2)) {
     return false;
