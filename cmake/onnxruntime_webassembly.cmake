@@ -252,7 +252,10 @@ else()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:-s ASSERTIONS=2"
+      # NOTE: use "SHELL:-s ASSERTIONS=2" to enable more strict assertions, which may help debugging segfaults.
+      #       However, it may be very slow.
+      # "SHELL:-s ASSERTIONS=2"
+      "SHELL:-s ASSERTIONS=1"
       "SHELL:-s SAFE_HEAP=1"
       "SHELL:-s STACK_OVERFLOW_CHECK=2"
     )
@@ -283,7 +286,7 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
       "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
-      "SHELL:-s PTHREAD_POOL_SIZE=Module[\\\"numThreads\\\"]"
+      "SHELL:-s PTHREAD_POOL_SIZE=Module[\\\"numThreads\\\"]-1"
     )
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
