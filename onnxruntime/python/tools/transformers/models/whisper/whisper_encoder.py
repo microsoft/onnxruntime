@@ -114,8 +114,8 @@ class WhisperEncoderHelper:
                 input_names=["input_features"],
                 output_names=["hidden_states"],
                 dynamic_axes={
-                    "input_ids": {0: "batch_size", 1: "feature_size", 2: "sequence_length"},
-                    "hidden_states": {0: "batch_size", 1: "sequence_length"},
+                    "input_ids": {0: "batch_size"},
+                    "hidden_states": {0: "batch_size"},
                 },
                 opset_version=17,
                 do_constant_folding=True,
