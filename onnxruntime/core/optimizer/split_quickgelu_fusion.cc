@@ -112,6 +112,8 @@ bool GetSplitQuickGeluParams(
   int& axis,
   int& alpha) {
   input = split_node.MutableInputDefs()[0];
+  axis = -1;
+  alpha = -1;
   auto& split_attr = split_node.GetAttributes();
   if (split_attr.find("axis") != split_attr.end()) {
     auto& axis_attr = split_attr.at("axis");
