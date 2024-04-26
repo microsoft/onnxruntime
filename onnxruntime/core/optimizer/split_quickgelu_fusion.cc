@@ -18,7 +18,7 @@ namespace {
 // pattern match on split, quickgelu and mult subgraph
 bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult, const logging::Logger& logger) {
   Node& node = start;
-  add = quickgelu = mult = nullptr;
+  split = quickgelu = mult = nullptr;
 
   // check node is split and has two outputs
   // TODO: 1. Check ONNX Op Types to Support
@@ -109,7 +109,7 @@ void FuseSplitQuickGeluSubgraph(
     int axis,
     int alpha) {
   std::string fused_desc =
-      "fused " + split_node.Name() + " and " + quickgelu_node.Name() + " and " + mul.Name() + " into SplitQuickGelu";
+      "fused " + split_node.Name() + " and " + quickgelu_node.Name() + " and " + mul_node.Name() + " into SplitQuickGelu";
 
   std::string op_type = "S2SModelSplitQuickGelu";
   Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
