@@ -33,6 +33,7 @@ def setup_torch_model(args, location, use_auth_token, torch_dtype=torch.float32,
                 config=l_config,
                 torch_dtype=torch_dtype,
                 cache_dir=args.cache_dir,
+                trust_remote_code=True,
             )
             if world_size > 1:
                 llama.parallel_model()
