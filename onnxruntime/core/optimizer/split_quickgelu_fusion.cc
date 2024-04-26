@@ -116,11 +116,15 @@ bool GetSplitQuickGeluParams(
   if (split_attr.find("axis") != split_attr.end()) {
     auto& axis_attr = split_attr.at("axis");
     axis = utils::HasInt(axis_attr) ? (int)axis_attr.i() : axis;
+  } else {
+    return false;
   }
   auto& quickgelu_attr = quickgelu_node.GetAttributes();
   if (quickgelu_attr.find("alpha") != quickgelu_attr.end()) {
     auto& alpha_attr = quickgelu_attr.at("alpha");
     alpha = utils::HasInt(alpha_attr) ? (int)alpha_attr.i() : alpha;
+  } else {
+    return false;
   }
   return true;
 }
