@@ -16,7 +16,7 @@ using namespace onnxruntime;
 namespace {
 
 // pattern match on split, quickgelu and mult subgraph
-bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult) {
+bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult, const logging::Logger& logger) {
   Node& node = start;
   add = quickgelu = mult = nullptr;
 
@@ -87,7 +87,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
     }
   }
 
-  Node& mul_node_2 = *graph.GetNode(edges[0]->GetNode().Index());
+  // Node& mul_node_2 = *graph.GetNode(edges[0]->GetNode().Index());
 
   // Compare if the two mul_nodes are same
   // Figure this out?
@@ -152,14 +152,14 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     Node *split_node, *quickgelu_node, *mul_node;
-    if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node)) {
+    if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node, logger)) {
       continue;
     }
 
     NodeArg *input, *mask;
     int axis;
     int alpha;
-    FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, mask, axis, alpha);
+    FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, axis, alpha);
     modified = true;
 
     VLOGF(logger, 1, "Fused S2S Model Split + QuickGelu into S2SModelSplitQuickGelu node.\n");

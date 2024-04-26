@@ -5,6 +5,8 @@
 
 #include "core/optimizer/graph_transformer.h"
 
+#define DEBUG_LOG(x) LOGS(logger, VERBOSE) << x
+
 namespace onnxruntime {
 
 /**
