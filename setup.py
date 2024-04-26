@@ -336,16 +336,16 @@ else:
     libs.extend(["DirectML.dll"])
     # QNN V68/V73 dependencies
     qnn_deps = [
-            "QnnCpu.dll",
-            "QnnHtp.dll",
-            "QnnSaver.dll",
-            "QnnSystem.dll",
-            "QnnHtpPrepare.dll",
-            "QnnHtpV73Stub.dll",
-            "libQnnHtpV73Skel.so",
-            "libqnnhtpv73.cat",
-            "QnnHtpV68Stub.dll",
-            "libQnnHtpV68Skel.so",
+        "QnnCpu.dll",
+        "QnnHtp.dll",
+        "QnnSaver.dll",
+        "QnnSystem.dll",
+        "QnnHtpPrepare.dll",
+        "QnnHtpV73Stub.dll",
+        "libQnnHtpV73Skel.so",
+        "libqnnhtpv73.cat",
+        "QnnHtpV68Stub.dll",
+        "libQnnHtpV68Skel.so",
     ]
     libs.extend(qnn_deps)
     if nightly_build:
@@ -395,7 +395,7 @@ examples = [path.join("datasets", x) for x in examples_names]
 # Extra files such as EULA and ThirdPartyNotices
 extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
 if is_qnn:
-  extra.extend(["Qualcomm AI Hub Proprietary License.pdf"])
+    extra.extend(["Qualcomm AI Hub Proprietary License.pdf"])
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
