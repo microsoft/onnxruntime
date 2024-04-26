@@ -727,6 +727,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    *    and replaces graph initializers with its content.
    */
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
+
+  /** This function takes externally provided files in memory for initializers with external
+   *    data and replaces graph initializers with its content.
+   */
+  common::Status InjectExternalInitializersFromFilesInMemory(
+      const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1101,6 +1107,19 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   void KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                             const std::function<bool(const Node*, const Node*)>& comp) const;
 
+#endif
+
+#ifdef ENABLE_TRAINING
+  /**
+   * @brief Performs topological sort with customized Kahn's algorithm on the graph/s.
+   *  This is a specialized version for training where need memory efficient topological sort.
+   * @param yield_op The YieldOp used in ORTModule training.
+   * @param shape_size_parents The shape size parents nodes.
+   * @param node_orders The output node orders.
+   */
+  void MemoryEfficientTopologicalSort(const Node* yield_op,
+                                      const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
+                                      std::vector<NodeIndex>& node_orders) const;
 #endif
 
   /** Gets the map of operator domains to their opset versions. */
