@@ -60,7 +60,7 @@ TEST_F(QnnHTPBackendTests, LeakyReluOpSet16) {
 
 // Test Leaky Relu where input is FP16 and alpha is FP32
 TEST_F(QnnHTPBackendTests, LeakyReluFP16OpSet16) {
-    ProviderOptions provider_options;
+  ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
