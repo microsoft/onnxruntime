@@ -328,6 +328,12 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
     } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_32 ||
                GetQnnTensorDataType(tensor) == QNN_DATATYPE_SFIXED_POINT_32) {
       operator<< <int32_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_16 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_16) {
+      operator<< <uint16_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_16 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_SFIXED_POINT_16) {
+      operator<< <int16_t>(out, GetQnnTensorClientBuf(tensor));
     } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_8 ||
                GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_8) {
       operator<< <uint8_t>(out, GetQnnTensorClientBuf(tensor));
