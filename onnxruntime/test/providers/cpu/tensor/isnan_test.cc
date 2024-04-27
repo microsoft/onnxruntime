@@ -60,7 +60,7 @@ TEST(IsNaNOpTest, IsNaNBFloat16_20) {
   std::vector<int64_t> dims{2, 2};
   std::initializer_list<BFloat16> input = {BFloat16::One, BFloat16::NaN, BFloat16(2.0f), BFloat16::NaN};
   std::initializer_list<bool> output = {false, true, false, true};
-  run_is_nan_test(20, dims, input, output, true);  // Skip since TRT10
+  run_is_nan_test(20, dims, input, output, true);  // Skip as TRT10 supports BF16 but T4 GPU run on TRT CIs doesn't
 }
 
 TEST(IsNaNOpTest, IsNaNDouble9) {
