@@ -23,7 +23,8 @@ Module['unmountExternalData'] = () => {
 
 /**
  * A workaround for SharedArrayBuffer when it is not available in the current context.
+ *
  * @suppress {checkVars}
  */
-const SharedArrayBuffer = globalThis.SharedArrayBuffer ||
+var SharedArrayBuffer = globalThis.SharedArrayBuffer ??
     new WebAssembly.Memory({initial: 0, maximum: 0, shared: true}).buffer.constructor;
