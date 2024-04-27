@@ -567,7 +567,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState) {
-  (void)captureState;  // Otherwise Linux build error
+  ORT_UNUSED_PARAMETER(captureState); // Otherwise Linux build error
 
   LOGS(*session_logger_, INFO) << session_options;
 
@@ -2066,8 +2066,8 @@ common::Status InferenceSession::Initialize() {
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
-        model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
-        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
+        graph.DomainToVersionMap(), graph.Name(), model_->MetaData(),
+        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
@@ -3208,9 +3208,19 @@ IOBinding* SessionIOBinding::Get() {
 
 #ifdef _WIN32
 void InferenceSession::LogAllSessions() {
+  const Env& env = Env::Default();
+
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
   for (const auto& session_pair : active_sessions_) {
     InferenceSession* session = session_pair.second;
+
+    onnxruntime::Graph& graph = model_->MainGraph();
+    bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+    env.GetTelemetryProvider().LogSessionCreation(
+        session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
+        graph.DomainToVersionMap(), graph.Name(), model_->MetaData(),
+        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, true);
+
     TraceSessionOptions(session->session_options_, true);
   }
 }

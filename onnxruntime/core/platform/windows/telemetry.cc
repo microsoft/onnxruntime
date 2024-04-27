@@ -210,7 +210,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                                           const std::string& model_graph_name,
                                           const std::unordered_map<std::string, std::string>& model_metadata,
                                           const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
-                                          bool use_fp16) const {
+                                          bool use_fp16, bool captureState) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -253,27 +253,52 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
     execution_provider_string += i;
   }
 
-  TraceLoggingWrite(telemetry_provider_handle,
-                    "SessionCreation",
-                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
-                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-                    // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingUInt32(session_id, "sessionId"),
-                    TraceLoggingInt64(ir_version, "irVersion"),
-                    TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
-                    TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
-                    TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
-                    TraceLoggingString(model_domain.c_str(), "modelDomain"),
-                    TraceLoggingBool(use_fp16, "usefp16"),
-                    TraceLoggingString(domain_to_verison_string.c_str(), "domainToVersionMap"),
-                    TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
-                    TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
-                    TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
-                    TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+  // Difference is MeasureEvent & isCaptureState, but keep in sync otherwise
+  if (!captureState) {
+    TraceLoggingWrite(telemetry_provider_handle,
+                      "SessionCreation",
+                      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                      // Telemetry info
+                      TraceLoggingUInt8(0, "schemaVersion"),
+                      TraceLoggingUInt32(session_id, "sessionId"),
+                      TraceLoggingInt64(ir_version, "irVersion"),
+                      TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
+                      TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
+                      TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
+                      TraceLoggingString(model_domain.c_str(), "modelDomain"),
+                      TraceLoggingBool(use_fp16, "usefp16"),
+                      TraceLoggingString(domain_to_verison_string.c_str(), "domainToVersionMap"),
+                      TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
+                      TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
+                      TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
+                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+  } else {
+    TraceLoggingWrite(telemetry_provider_handle,
+                      "SessionCreation_CaptureState",
+                      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                      // Not a measure event
+                      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                      // Telemetry info
+                      TraceLoggingUInt8(0, "schemaVersion"),
+                      TraceLoggingUInt32(session_id, "sessionId"),
+                      TraceLoggingInt64(ir_version, "irVersion"),
+                      TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
+                      TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
+                      TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
+                      TraceLoggingString(model_domain.c_str(), "modelDomain"),
+                      TraceLoggingBool(use_fp16, "usefp16"),
+                      TraceLoggingString(domain_to_verison_string.c_str(), "domainToVersionMap"),
+                      TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
+                      TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
+                      TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
+                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+  }
 }
 
 void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
