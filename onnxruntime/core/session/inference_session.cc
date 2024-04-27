@@ -567,7 +567,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState) {
-  ORT_UNUSED_PARAMETER(captureState); // Otherwise Linux build error
+  ORT_UNUSED_PARAMETER(captureState);  // Otherwise Linux build error
 
   LOGS(*session_logger_, INFO) << session_options;
 

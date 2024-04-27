@@ -244,10 +244,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
         (void)FilterData;
         (void)CallbackContext;
 
-        if (((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) &&
-            IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
-          auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
-          qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+        if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
+          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
+            auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
+            qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+          }
         }
 
         if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
