@@ -56,7 +56,6 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_JSEP': 'false',
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
-  'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
   'BUILD_DEFS.DISABLE_TRAINING': 'true',
   'BUILD_DEFS.PROXY_WORKER_URL': 'proxy.min.mjs',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
@@ -497,7 +496,6 @@ async function main() {
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
-        'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
       },
     });
     // ort.training.wasm[.min].[m]js

@@ -20,6 +20,8 @@ if (FORMAT !== 'esm' && FORMAT !== 'iife') {
   throw new Error('flag --format=<esm|iife> is required');
 }
 
+const ENABLE_SHARED_ARRAY_BUFFER = !!args['enable-shared-array-buffer'];
+
 const testArgs = args['test-args'];
 const normalizedTestArgs = !testArgs || Array.isArray(testArgs) ? testArgs : [testArgs];
 
@@ -42,7 +44,10 @@ if (SELF_HOST) {
   files.push({pattern: './node_modules/onnxruntime-web/dist/*.*', included: false, nocache: true});
 }
 
-const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de', '--enable-features=SharedArrayBuffer'];
+const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de'];
+if (ENABLE_SHARED_ARRAY_BUFFER) {
+  flags.push('--enable-features=SharedArrayBuffer');
+}
 
 module.exports = function(config) {
   config.set({
@@ -53,9 +58,11 @@ module.exports = function(config) {
       '/model.onnx': '/base/model.onnx',
       '/model_with_orig_ext_data.onnx': '/base/model_with_orig_ext_data.onnx',
       '/model_with_orig_ext_data.bin': '/base/model_with_orig_ext_data.bin',
-      '/test-wasm-path-override/ort-wasm.mjs': '/base/node_modules/onnxruntime-web/dist/ort-wasm.mjs',
-      '/test-wasm-path-override/ort-wasm.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
-      '/test-wasm-path-override/renamed.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
+      '/test-wasm-path-override/ort-wasm-simd-threaded.mjs':
+          '/base/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs',
+      '/test-wasm-path-override/ort-wasm-simd-threaded.wasm':
+          '/base/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm',
+      '/test-wasm-path-override/renamed.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm',
     },
     client: {captureConsole: true, args: normalizedTestArgs, mocha: {expose: ['body'], timeout: 60000}},
     reporters: ['mocha'],

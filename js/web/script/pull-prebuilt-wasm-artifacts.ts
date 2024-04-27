@@ -137,24 +137,16 @@ downloadJson(
             }
             downloadZip(zipLink, buffer => {
               void jszip.loadAsync(buffer).then(zip => {
-                extractFile(zip, WASM_FOLDER, 'ort-wasm.wasm', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.wasm', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.wasm', folderName);
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.jsep.wasm', folderName);
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd.wasm', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd-threaded.wasm', folderName);
 
-                extractFile(zip, WASM_FOLDER, 'ort-wasm.mjs', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.mjs', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.jsep.mjs', folderName);
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.mjs', folderName);
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.worker.mjs', folderName);
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.mjs', folderName);
                 extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.worker.mjs', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.mjs', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.worker.mjs', folderName);
-                extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd.mjs', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd-threaded.mjs', folderName);
+                extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd-threaded.worker.mjs', folderName);
               });
             });
           });

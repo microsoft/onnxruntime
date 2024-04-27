@@ -11,21 +11,9 @@ let initialized = false;
 let initializing = false;
 let aborted = false;
 
-const isMultiThreadSupported = (numThreads: number): boolean => {
-  // WebAssembly threads are set to 1 (single thread).
-  if (numThreads === 1) {
-    return false;
-  }
-
+const isMultiThreadSupported = (): boolean => {
   // If 'SharedArrayBuffer' is not available, WebAssembly threads will not work.
   if (typeof SharedArrayBuffer === 'undefined') {
-    if (typeof self !== 'undefined' && !self.crossOriginIsolated) {
-      // eslint-disable-next-line no-console
-      console.warn(
-          'env.wasm.numThreads is set to ' + numThreads +
-          ', but this will not work unless you enable crossOriginIsolated mode. ' +
-          'See https://web.dev/cross-origin-isolation-guide/ for more info.');
-    }
     return false;
   }
 
@@ -72,21 +60,6 @@ const isSimdSupported = (): boolean => {
   }
 };
 
-const getWasmFileNameWithoutExtension = (useSimd: boolean, useThreads: boolean) => {
-  if (useSimd) {
-    if (!BUILD_DEFS.DISABLE_TRAINING) {
-      return 'ort-training-wasm-simd';
-    }
-    if (useThreads) {
-      return BUILD_DEFS.DISABLE_JSEP ? 'ort-wasm-simd-threaded' : 'ort-wasm-simd-threaded.jsep';
-    } else {
-      return BUILD_DEFS.DISABLE_JSEP ? 'ort-wasm-simd' : 'ort-wasm-simd.jsep';
-    }
-  } else {
-    return useThreads ? 'ort-wasm-threaded' : 'ort-wasm';
-  }
-};
-
 export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise<void> => {
   if (initialized) {
     return Promise.resolve();
@@ -102,24 +75,46 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   // wasm flags are already initialized
   const timeout = flags.initTimeout!;
-  const numThreads = flags.numThreads!;
-  const simd = flags.simd!;
+  let numThreads = flags.numThreads!;
 
-  const useThreads = !BUILD_DEFS.DISABLE_WASM_THREAD && isMultiThreadSupported(numThreads);
-  const useSimd = simd && isSimdSupported();
+  // ensure SIMD is supported
+  if (!isSimdSupported()) {
+    throw new Error('WebAssembly SIMD is not supported in the current environment.');
+  }
+
+  // check if multi-threading is supported
+  const multiThreadSupported = isMultiThreadSupported();
+  if (numThreads > 1 && !multiThreadSupported) {
+    if (typeof self !== 'undefined' && !self.crossOriginIsolated) {
+      // eslint-disable-next-line no-console
+      console.warn(
+          'env.wasm.numThreads is set to ' + numThreads +
+          ', but this will not work unless you enable crossOriginIsolated mode. ' +
+          'See https://web.dev/cross-origin-isolation-guide/ for more info.');
+    }
+
+    // eslint-disable-next-line no-console
+    console.warn(
+        'WebAssembly multi-threading is not supported in the current environment. ' +
+        'Falling back to single-threading.');
+
+    // set flags.numThreads to 1 so that OrtInit() will not create a global thread pool.
+    flags.numThreads = numThreads = 1;
+  }
+  const useThreads = numThreads > 1;
 
   const wasmPaths = flags.wasmPaths;
   const wasmPrefixOverride = typeof wasmPaths === 'string' ? wasmPaths : undefined;
-  const wasmFileName = getWasmFileNameWithoutExtension(useSimd, useThreads);
+  const wasmFileName = !BUILD_DEFS.DISABLE_TRAINING ? 'ort-training-wasm-simd-threaded' :
+      !BUILD_DEFS.DISABLE_JSEP                      ? 'ort-wasm-simd-threaded.jsep' :
+                                                      'ort-wasm-simd-threaded';
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[`${wasmFileName}.wasm`] : undefined;
 
   const ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule> =
       (await dynamicImportDefault(`${wasmFileName}.mjs`, wasmPrefixOverride));
 
-  const wasmWorkerFileName = !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads ? `${wasmFileName}.worker.mjs` : '';
-  const wasmWorkerUrl = !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads ?
-      await preloadWorker(`${wasmFileName}.worker.mjs`, wasmPrefixOverride ?? scriptSrc) :
-      '';
+  const wasmWorkerFileName = useThreads ? `${wasmFileName}.worker.mjs` : '';
+  const wasmWorkerUrl = useThreads ? await preloadWorker(wasmWorkerFileName, wasmPrefixOverride ?? scriptSrc) : '';
 
   let isTimeout = false;
 
@@ -138,13 +133,13 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   // promise for module initialization
   tasks.push(new Promise((resolve, reject) => {
     const config: Partial<OrtWasmModule> = {
+      numThreads,
       locateFile: (fileName: string, scriptDirectory: string) => {
         if (fileName.endsWith('.wasm') && wasmPathOverride) {
           return wasmPathOverride;
         }
 
-        if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads && fileName === wasmWorkerFileName &&
-            wasmWorkerUrl !== wasmWorkerFileName) {
+        if (useThreads && fileName === wasmWorkerFileName && wasmWorkerUrl !== wasmWorkerFileName) {
           // when a valid rewritten worker URL is available, use it
           return wasmWorkerUrl;
         }
@@ -153,8 +148,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       }
     };
 
-    if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads) {
-      config.numThreads = numThreads;
+    if (useThreads) {
       if (wasmPrefixOverride) {
         config.mainScriptUrlOrBlob = wasmPrefixOverride + `${wasmFileName}.mjs`;
       }

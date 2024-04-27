@@ -18,8 +18,11 @@ export const initializeFlags = (): void => {
     env.wasm.initTimeout = 0;
   }
 
-  if (typeof env.wasm.simd !== 'boolean') {
-    env.wasm.simd = true;
+  if (env.wasm.simd === false) {
+    // eslint-disable-next-line no-console
+    console.warn(
+        'Deprecated property "env.wasm.simd" is set to false. ' +
+        'non-SIMD build is no longer provided, and this setting will be ignored.');
   }
 
   if (typeof env.wasm.proxy !== 'boolean') {
@@ -48,16 +51,6 @@ export const initializeFlags = (): void => {
       const numCpuLogicalCores =
           typeof navigator === 'undefined' ? require('node:os').cpus().length : navigator.hardwareConcurrency;
       env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
-    }
-  } else {
-    if (BUILD_DEFS.DISABLE_WASM_THREAD && env.wasm.numThreads > 1) {
-      // eslint-disable-next-line no-console
-      console.warn(
-          'env.wasm.numThreads is set to ' + env.wasm.numThreads +
-          ', however, currently onnxruntime-web build does not support multi-threads. ' +
-          'Please consider using a different export of onnxruntime-web.');
-
-      env.wasm.numThreads = 1;
     }
   }
 

@@ -4,17 +4,18 @@
 import {env as envImpl} from './env-impl.js';
 
 export declare namespace Env {
-  export type WasmPrefixOrFilePaths = string|{
+  export type WasmPathPrefix = string;
+  /**
+   * @deprecated Using per-file override is deprecating. Use path prefix instead.
+   */
+  export type WasmFilePaths = {
     /* eslint-disable @typescript-eslint/naming-convention */
-    'ort-wasm.wasm'?: string;
-    'ort-wasm-threaded.wasm'?: string;
-    'ort-wasm-simd.wasm'?: string;
-    'ort-wasm-simd.jsep.wasm'?: string;
-    'ort-wasm-simd-threaded.wasm'?: string;
+    'ort-wasm-simd-threaded.wasm': string;
     'ort-wasm-simd-threaded.jsep.wasm'?: string;
-    'ort-training-wasm-simd.wasm'?: string;
+    'ort-training-wasm-simd-threaded.wasm'?: string;
     /* eslint-enable @typescript-eslint/naming-convention */
   };
+  export type WasmPrefixOrFilePaths = WasmPathPrefix|WasmFilePaths;
   export interface WebAssemblyFlags {
     /**
      * set or get number of thread(s). If omitted or set to 0, number of thread(s) will be determined by system. If set
@@ -31,6 +32,8 @@ export declare namespace Env {
      *
      * This setting is available only when WebAssembly SIMD feature is available in current context.
      *
+     * @deprecated This property is deprecated. Since SIMD is supported by all major JavaScript engines, non-SIMD
+     * build is no longer provided. This property will be removed in future release.
      * @defaultValue `true`
      */
     simd?: boolean;
@@ -54,6 +57,8 @@ export declare namespace Env {
     /**
      * Set a custom URL prefix to the .wasm files or a set of overrides for each .wasm file. The override path should be
      * an absolute path.
+     *
+     * Using per-file override is deprecating. Use path prefix instead.
      */
     wasmPaths?: WasmPrefixOrFilePaths;
 

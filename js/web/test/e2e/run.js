@@ -105,10 +105,10 @@ async function main() {
 
 function prepareWasmPathOverrideFiles() {
   const folder = path.join(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override');
-  const sourceFile = path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist', 'ort-wasm');
+  const sourceFile = path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist', 'ort-wasm-simd-threaded');
   fs.emptyDirSync(folder);
-  fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'ort-wasm.mjs'));
-  fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'ort-wasm.wasm'));
+  fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'ort-wasm-simd-threaded.mjs'));
+  fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'ort-wasm-simd-threaded.wasm'));
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'renamed.wasm'));
 }
 
@@ -122,9 +122,11 @@ async function testAllBrowserCases({hostInKarma}) {
   for (const [testForSameOrigin, testForCrossOrigin, main, ortMain, args] of BROWSER_TEST_CASES) {
     if (hostInKarma && testForSameOrigin) {
       await runKarma({hostInKarma, main, ortMain, args});
+      await runKarma({hostInKarma, main, ortMain, args, enableSharedArrayBuffer: true});
     }
     if (!hostInKarma && testForCrossOrigin) {
       await runKarma({hostInKarma, main, ortMain, args});
+      await runKarma({hostInKarma, main, ortMain, args, enableSharedArrayBuffer: true});
     }
   }
 }
@@ -135,12 +137,13 @@ async function testAllBrowserPackagesConsumingCases() {
   }
 }
 
-async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js', format = 'iife', args = []}) {
+async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js', format = 'iife', enableSharedArrayBuffer = false, args = []}) {
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   const argsStr = args.map(i => `--test-args=${i}`).join(' ');
   const formatFlag = `--format=${format}`;
+  const enableSharedArrayBufferFlag = enableSharedArrayBuffer ? '--enable-shared-array-buffer' : '';
   await runInShell(`npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
-      ortMain} --test-main=${main} --user-data=${getNextUserDataDir()} ${argsStr} ${formatFlag}`);
+      ortMain} --test-main=${main} --user-data=${getNextUserDataDir()} ${argsStr} ${formatFlag} ${enableSharedArrayBufferFlag}`);
 }
 
 async function runInShell(cmd) {

@@ -27,10 +27,6 @@ interface BuildDefinitions {
    */
   readonly DISABLE_WASM_PROXY: boolean;
   /**
-   * defines whether to disable multi-threading feature in WebAssembly backend in the build.
-   */
-  readonly DISABLE_WASM_THREAD: boolean;
-  /**
    * defines whether to disable training APIs in WebAssembly backend.
    */
   readonly DISABLE_TRAINING: boolean;
