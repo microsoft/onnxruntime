@@ -120,11 +120,6 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
         }
       }
 
-      if (!env.wasm.simd) {
-        throw new Error(
-            'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using `webgpu` EP');
-      }
-
       await initJsep('webgpu', getInstance(), env, adapter);
     }
     if (epName === 'webnn') {

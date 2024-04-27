@@ -105,7 +105,8 @@ async function main() {
 
 function prepareWasmPathOverrideFiles() {
   const folder = path.join(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override');
-  const sourceFile = path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist', 'ort-wasm-simd-threaded');
+  const sourceFile =
+      path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist', 'ort-wasm-simd-threaded');
   fs.emptyDirSync(folder);
   fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'ort-wasm-simd-threaded.mjs'));
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'ort-wasm-simd-threaded.wasm'));
@@ -134,16 +135,26 @@ async function testAllBrowserCases({hostInKarma}) {
 async function testAllBrowserPackagesConsumingCases() {
   for (const [main, format] of BUNDLER_TEST_CASES) {
     await runKarma({hostInKarma: true, main, ortMain: '', format});
+    await runKarma({hostInKarma: true, main, ortMain: '', format, enableSharedArrayBuffer: true});
   }
 }
 
-async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js', format = 'iife', enableSharedArrayBuffer = false, args = []}) {
+async function runKarma({
+  hostInKarma,
+  main,
+  browser = BROWSER,
+  ortMain = 'ort.min.js',
+  format = 'iife',
+  enableSharedArrayBuffer = false,
+  args = []
+}) {
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   const argsStr = args.map(i => `--test-args=${i}`).join(' ');
   const formatFlag = `--format=${format}`;
   const enableSharedArrayBufferFlag = enableSharedArrayBuffer ? '--enable-shared-array-buffer' : '';
-  await runInShell(`npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
-      ortMain} --test-main=${main} --user-data=${getNextUserDataDir()} ${argsStr} ${formatFlag} ${enableSharedArrayBufferFlag}`);
+  await runInShell(
+      `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${ortMain} --test-main=${
+          main} --user-data=${getNextUserDataDir()} ${argsStr} ${formatFlag} ${enableSharedArrayBufferFlag}`);
 }
 
 async function runInShell(cmd) {

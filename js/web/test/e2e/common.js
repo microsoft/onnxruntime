@@ -7,9 +7,12 @@ function assert(cond) {
   if (!cond) throw new Error();
 }
 
-var createSession =
-    function(ort, options) {
+function createSession(ort, options) {
   return ort.InferenceSession.create('./model.onnx', options || {});
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 var testFunction = async function(ort, options) {
@@ -43,6 +46,12 @@ if (typeof __karma__ !== 'undefined' && __karma__.config.args) {
     window['__ort_arg_' + key] = value;
   }
 }
+
+// delay 1000ms before each test to avoid "Failed to fetch" error in karma.
+beforeEach(async () => {
+  await delay(1000);
+  console.log('----------------------------------------');
+});
 
 if (typeof module === 'object') {
   module.exports = testFunction;

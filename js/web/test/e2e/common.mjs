@@ -7,9 +7,12 @@ function assert(cond) {
   if (!cond) throw new Error();
 }
 
-var createSession =
-    function(ort, options) {
+function createSession(ort, options) {
   return ort.InferenceSession.create('./model.onnx', options || {});
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 var testFunction = async function(ort, options) {
@@ -35,5 +38,11 @@ var testFunction = async function(ort, options) {
   assert(c.data[7] === 2880);
   assert(c.data[8] === 3300);
 };
+
+// delay 1000ms before each test to avoid "Failed to fetch" error in karma.
+beforeEach(async () => {
+  await delay(1000);
+  console.log('----------------------------------------');
+});
 
 export default testFunction;
