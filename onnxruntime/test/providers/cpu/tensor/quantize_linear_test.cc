@@ -121,7 +121,7 @@ TEST(DequantizeLinearOpTest, Without_Zero_Point) {
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", {}, {200.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
 }
 
 // 1d zero & scale with default axis
