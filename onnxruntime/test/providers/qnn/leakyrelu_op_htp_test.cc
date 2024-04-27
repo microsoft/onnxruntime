@@ -70,7 +70,6 @@ TEST_F(QnnHTPBackendTests, LeakyReluFP16OpSet16) {
   auto input_def = TestInputDef<float>({1, 2, 3}, false, {-40.0f, -20.0f, 1.0f, 10.0f, 30.0f, 40.0f});
   TestInputDef<MLFloat16> input_fp16_def = ConvertToFP16InputDef(input_def);
   auto attrs = {utils::MakeAttribute("alpha", 0.2f)};
-  
   TestFp16ModelAccuracy(BuildOpTestCase<float>("LeakyRelu", {input_def}, {}, attrs),
                         BuildOpTestCase<MLFloat16>("LeakyRelu", {input_fp16_def}, {}, attrs),
                         provider_options,
