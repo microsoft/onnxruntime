@@ -23,6 +23,11 @@
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/framework/run_options.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#include "core/platform/windows/logging/etw_sink.h"
+#endif
+
 namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
@@ -219,6 +224,37 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       }
     }
   }
+
+#ifdef _WIN32
+    auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
+    // Register callback for ETW capture state (rundown)
+    etwRegistrationManager.RegisterInternalCallback(
+        [&etwRegistrationManager, this](
+            LPCGUID SourceId,
+            ULONG IsEnabled,
+            UCHAR Level,
+            ULONGLONG MatchAnyKeyword,
+            ULONGLONG MatchAllKeyword,
+            PEVENT_FILTER_DESCRIPTOR FilterData,
+            PVOID CallbackContext) {
+          (void)SourceId;
+          (void)Level;
+          (void)MatchAnyKeyword;
+          (void)MatchAllKeyword;
+          (void)FilterData;
+          (void)CallbackContext;
+
+          // Check if this callback is for enabling
+          if (((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) &&
+              IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
+            auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
+            qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+          }
+
+          // We can't just set to whatever when ETW is disabled. TODO - We need to remember/restore the original value
+          // (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER)
+        });
+#endif
 
   // In case ETW gets disabled later
   auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);

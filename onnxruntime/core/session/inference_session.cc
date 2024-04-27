@@ -345,7 +345,9 @@ void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
                                              session_options.user_logging_param);
     auto sessionSeverity = GetSeverity(session_options);
     auto etwOverrideSeverity = logging::OverrideLevelWithEtw(sessionSeverity);
-    sink = EnhanceLoggerWithEtw(std::move(sink), sessionSeverity, etwOverrideSeverity);
+#ifdef _WIN32
+    sink = EnhanceSinkWithEtw(std::move(sink), sessionSeverity, etwOverrideSeverity);
+#endif
 
     user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(sink),
                                                                       std::min(sessionSeverity, etwOverrideSeverity),
@@ -369,7 +371,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
   active_sessions_[global_session_id_++] = this;
 
-  // Register callback for ETW capture state (rundown)
+  // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
   WindowsTelemetry::RegisterInternalCallback(
       [this](
           LPCGUID SourceId,
@@ -392,6 +394,44 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           LogAllSessions();
         }
       });
+
+    // Register callback for ETW start / stop so that LOGS tracing can be adjusted dynamically after session start
+    auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
+    // Register callback for ETW capture state (rundown)
+    etwRegistrationManager.RegisterInternalCallback(
+        [&etwRegistrationManager, this](
+            LPCGUID SourceId,
+            ULONG IsEnabled,
+            UCHAR Level,
+            ULONGLONG MatchAnyKeyword,
+            ULONGLONG MatchAllKeyword,
+            PEVENT_FILTER_DESCRIPTOR FilterData,
+            PVOID CallbackContext) {
+          (void)SourceId;
+          (void)Level;
+          (void)MatchAnyKeyword;
+          (void)MatchAllKeyword;
+          (void)FilterData;
+          (void)CallbackContext;
+
+          if (logging_manager_ != nullptr) {
+
+            auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
+
+            if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0 &&
+               IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
+              LOGS(*session_logger_, VERBOSE) << "Adding ETW Sink to logger with severity level: " << (ULONG) ortETWSeverity;
+              logging_manager_->AddEtwSink(ortETWSeverity);
+              onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddEtwSink(ortETWSeverity);
+              LOGS(*session_logger_, INFO) << "Done Adding ETW Sink to logger with severity level: " << (ULONG) ortETWSeverity;
+            }
+            if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
+              LOGS(*session_logger_, INFO) << "Removing ETW Sink from logger";
+              logging_manager_->RemoveEtwSink();
+              LOGS(*session_logger_, VERBOSE) << "Done Removing ETW Sink from logger";
+            }
+          }
+        });
 #endif
 
   SetLoggingManager(session_options, session_env);

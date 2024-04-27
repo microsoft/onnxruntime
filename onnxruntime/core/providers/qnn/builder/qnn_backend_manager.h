@@ -117,6 +117,8 @@ class QnnBackendManager {
 
   void InitializeQnnLog();
 
+  void UpdateQnnLogLevel(logging::Severity ort_log_level);
+
   // Terminate logging in the backend
   Status TerminateQnnLog() {
     if (logger_ == nullptr) {
