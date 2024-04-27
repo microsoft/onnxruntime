@@ -489,63 +489,6 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
 
   return Status::OK();
 }
-//
-//static Status GetAutoPadding(std::vector<uint32_t>& pads, const std::string& auto_pad, OnnxConvType conv_type,
-//                             const std::array<uint32_t, 2>& strides, const std::array<uint32_t, 2>& dilations,
-//                             const std::array<uint32_t, 2>& input_dims, const std::array<uint32_t, 2>& filter_dims,
-//                             const std::array<uint32_t, 2>& output_dims, const std::array<uint32_t, 2>& output_padding) {
-//  constexpr size_t HEIGHT_IDX = 0;
-//  constexpr size_t WIDTH_IDX = 1;
-//
-//  std::array<uint32_t, 2> total_padding = {};
-//
-//  if (conv_type == OnnxConvType::kConv) {
-//    // dilated_filter_height = (shape(in[1])[height] - 1) * dilation[0] + 1
-//    // height_out = floor((pad_amount[0,0] + shape(in[0])[height] + pad_amount[0,1] - dilated_filter_height) / stride[0] + 1)
-//    //
-//    // Set total_height_padding equal to pad_amount[0,0] + pad_amount[0,1] and solve for it.
-//    uint32_t dilated_filter_height = (filter_dims[HEIGHT_IDX] - 1) * dilations[HEIGHT_IDX] + 1;
-//    total_padding[HEIGHT_IDX] = (output_dims[HEIGHT_IDX] - 1) * strides[HEIGHT_IDX] + dilated_filter_height - input_dims[HEIGHT_IDX];  // Total height padding
-//
-//    // dilated_filter_width = (shape(in[1])[width] - 1) * dilation[1] + 1
-//    // width_out = floor((pad_amount[1,0] + shape(in[0])[width] + pad_amount[1,1] - dilated_filter_width) / stride[1] + 1)
-//    //
-//    // Set total_width_padding equal to pad_amount[1,0] + pad_amount[1,1] and solve for it.
-//    uint32_t dilated_filter_width = (filter_dims[WIDTH_IDX] - 1) * dilations[WIDTH_IDX] + 1;
-//    total_padding[WIDTH_IDX] = (output_dims[WIDTH_IDX] - 1) * strides[WIDTH_IDX] + dilated_filter_width - input_dims[WIDTH_IDX];  // Total width padding
-//  } else if (conv_type == OnnxConvType::kConvTranspose) {
-//    // height_out = floor(stride[0] * (shape(in[0])[height] - 1) + shape(in[1])[height] - pad_amount[0,0] - pad_amount[0,1] + output_padding[0])
-//    //
-//    // Set total_height_padding equal to pad_amount[0,0] + pad_amount[0,1] and solve for it.
-//    total_padding[HEIGHT_IDX] = strides[HEIGHT_IDX] * (input_dims[HEIGHT_IDX] - 1) + output_padding[HEIGHT_IDX] + filter_dims[HEIGHT_IDX] - output_dims[HEIGHT_IDX];
-//
-//    // width_out = floor(stride[1] * (shape(in[0])[width] - 1) + shape(in[1])[width] - pad_amount[1,0] - pad_amount[1,1] + output_padding[1])
-//    //
-//    // Set total_width_padding equal to pad_amount[1,0] + pad_amount[1,1] and solve for it.
-//    total_padding[WIDTH_IDX] = strides[WIDTH_IDX] * (input_dims[WIDTH_IDX] - 1) + output_padding[WIDTH_IDX] + filter_dims[WIDTH_IDX] - output_dims[WIDTH_IDX];
-//  } else {
-//    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected conv op type when computing auto-padding");
-//  }
-//
-//  pads.resize(4);  // Make room.
-//
-//  if (auto_pad == "SAME_UPPER") {
-//    pads[0] = total_padding[0] / 2;
-//    pads[1] = total_padding[1] / 2;
-//    pads[2] = total_padding[0] - pads[0];
-//    pads[3] = total_padding[1] - pads[1];
-//  } else if (auto_pad == "SAME_LOWER") {
-//    pads[2] = total_padding[0] / 2;
-//    pads[3] = total_padding[1] / 2;
-//    pads[0] = total_padding[0] - pads[2];
-//    pads[1] = total_padding[1] - pads[3];
-//  } else {
-//    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Cannot calculate auto-padding for unsupported auto_pad setting: ",
-//                           auto_pad.c_str());
-//  }
-//
-//  return Status::OK();
-//}
 
 Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
@@ -579,6 +522,10 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   kernel_shape = node_helper.Get("kernel_shape", kernel_shape);
   if (kernel_shape.empty()) { // infer from weight shape
     kernel_shape.assign(input_1_shape.begin() + 2, input_1_shape.end());
+  }
+  if (is_1d_conv) {
+  	// insert Hight = 1 for 1D
+    kernel_shape.insert(kernel_shape.begin(), 1);
   }
 
   // Dilations parameter
@@ -652,9 +599,14 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
     if (auto_pad != "NOTSET") {
       auto pad_type = StringToAutoPadType(auto_pad);
-      // skip N, C, input0 shape NCHW
+      // skip N, C, input0 shape NHWC
       std::vector<uint32_t> input_dims(input_0_shape.begin() + 1, input_0_shape.end() - 1);
       std::vector<uint32_t> output_dims(output_shape.begin() + 1, output_shape.end() - 1);
+      if (is_1d_conv) {
+  	    // insert Hight = 1 for 1D
+        input_dims.insert(input_dims.begin(), 1);
+        output_dims.insert(output_dims.begin(), 1);
+      }
       size_t rank = input_dims.size();
       for (size_t dim = 0; dim < rank; ++dim) {
         int64_t pad_head = pads[dim];
