@@ -173,16 +173,6 @@ class LoggingManager final {
 
 #ifdef _WIN32
   /**
-    Returns the current sink
-  */
-  // std::shared_ptr<ISink> GetCurrentSink() const;
-
-  /**
-    Replace the current sink with a new one
-  */
-  void UpdateSink(std::unique_ptr<ISink> new_sink);
-
-  /**
      Removes the ETW Sink if one is present
   */
   void RemoveEtwSink();
@@ -393,7 +383,7 @@ unsigned int GetProcessId();
    If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then adds to the existing logger.
 */
 std::unique_ptr<ISink> EnhanceSinkWithEtw(std::unique_ptr<ISink> existingSink, logging::Severity originalSeverity,
-                                            logging::Severity etwSeverity);
+                                          logging::Severity etwSeverity);
 
 /**
   If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then can override the logging level.

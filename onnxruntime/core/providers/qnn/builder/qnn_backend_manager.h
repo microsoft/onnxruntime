@@ -119,6 +119,8 @@ class QnnBackendManager {
 
   void UpdateQnnLogLevel(logging::Severity ort_log_level);
 
+  void ResetQnnLogLevel();
+
   // Terminate logging in the backend
   Status TerminateQnnLog() {
     if (logger_ == nullptr) {
@@ -208,6 +210,7 @@ class QnnBackendManager {
   static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
   static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
+  QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
 #ifdef _WIN32
   void LogQnnProfileEventAsTraceLogging(
       uint64_t timestamp,
