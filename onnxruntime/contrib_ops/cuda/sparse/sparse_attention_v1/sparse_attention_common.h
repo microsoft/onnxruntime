@@ -11,6 +11,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+namespace sparse_attention_v1 {
 
 struct SparseAttentionParams {
   onnxruntime::Stream* ort_stream;
@@ -29,7 +30,7 @@ struct SparseAttentionParams {
   int total_sequence_length;
   int max_sequence_length;
 
-  float softmax_scale;
+  float scale;
 
   int kernel_block_size;
 
@@ -67,7 +68,7 @@ struct SparseAttentionParams {
       int head_size,
       int total_sequence_length,
       int max_sequence_length,
-      float softmax_scale,
+      float scale,
       int kernel_block_size,
       const int* layout_csr_row_indices,
       const int* layout_csr_col_indices,
@@ -87,7 +88,7 @@ struct SparseAttentionParams {
     this->past_sequence_length = total_sequence_length - sequence_length;
     this->total_sequence_length = total_sequence_length;
     this->max_sequence_length = max_sequence_length;
-    this->softmax_scale = softmax_scale == 0.0f ? 1.0f / sqrtf(static_cast<float>(head_size)) : softmax_scale;
+    this->scale = scale == 0.0f ? 1.0f / sqrtf(static_cast<float>(head_size)) : scale;
     this->kernel_block_size = kernel_block_size;
     this->layout_csr_row_indices = layout_csr_row_indices;
     this->layout_csr_col_indices = layout_csr_col_indices;
@@ -125,7 +126,7 @@ struct SparseAttentionParams {
 
     void* args[26] = {
         &output, &q, &k, &v,
-        &layout_csr_row_indices, &layout_csr_col_indices, &layout_row_stride_h, &layout_col_stride_h, &num_layout, &softmax_scale,
+        &layout_csr_row_indices, &layout_csr_col_indices, &layout_row_stride_h, &layout_col_stride_h, &num_layout, &scale,
         &stride_qb, &stride_qh, &stride_qm, &stride_kb, &stride_kh, &stride_kn,
         &stride_vb, &stride_vh, &stride_vn, &stride_ob, &stride_oh, &stride_om,
         &num_heads, &kv_num_heads, &total_sequence_length, &past_sequence_length};
@@ -150,12 +151,12 @@ struct SparseAttentionParams {
                 num_layout,
                 layout_row_stride_h);
     printf(
-        "layout_row_stride_h=%d, layout_col_stride_h=%d, num_layout=%d, softmax_scale=%f,\n"
+        "layout_row_stride_h=%d, layout_col_stride_h=%d, num_layout=%d, scale=%f,\n"
         "stride_qb=%d, stride_qh=%d, stride_qm=%d, stride_kb=%d, stride_kh=%d, stride_kn=%d,\n"
         "stride_vb=%d, stride_vh=%d, stride_vn=%d, stride_ob=%d, stride_oh=%d, stride_om=%d,\n"
         "num_heads=%d, kv_num_heads=%d, total_sequence_length=%d, past_sequence_length=%d\n"
         "output=%p, q=%p, k=%p, v=%p, layout_csr_row_indices=%p, layout_csr_col_indices=%p\n",
-        layout_row_stride_h, layout_col_stride_h, num_layout, softmax_scale,
+        layout_row_stride_h, layout_col_stride_h, num_layout, scale,
         stride_qb, stride_qh, stride_qm, stride_kb, stride_kh, stride_kn,
         stride_vb, stride_vh, stride_vn, stride_ob, stride_oh, stride_om,
         num_heads, kv_num_heads, total_sequence_length, past_sequence_length,
@@ -182,6 +183,7 @@ struct SparseAttentionParams {
             this->head_size % 16 == 0);
   }
 };
+}  // namespace sparse_attention_v1
 
 inline void SetKernelSharedMemory(const CUDADriverWrapper* driver, CUfunction func) {
   int device = 0;

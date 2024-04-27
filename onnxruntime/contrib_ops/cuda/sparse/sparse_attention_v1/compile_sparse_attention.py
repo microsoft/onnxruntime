@@ -6,12 +6,10 @@
 # Use triton AoT compiler to convert sparse_attention_triton.py to C source files including cubin and dispatcher.
 # Example to use this script (Tested with CUDA 12.3 in Ubuntu 20.04):
 #    python3 -m pip install triton==2.3.0
-#    python3 compile_sparse_attention.py --dtype fp16 | sh
-#    python3 compile_sparse_attention.py --dtype bf16 | sh
+#    python3 compile_sparse_attention.py | sh
 #
-# Note that sparse_attention_kernel_*.cc and sparse_attention_dispatcher_*.h are the generated files.
+# Note that sparse_attention_v1_*.cc and sparse_attention_dispatcher_*.h are the generated files.
 
-import argparse
 import math
 from itertools import product
 
@@ -53,7 +51,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
             scalar_params = "i32,i32,i32,fp32,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32,i32,i32,i32"
             sig = f"*{dtype}:16,*{dtype}:16,*{dtype}:16,*{dtype}:16,*i32,*i32:16,{scalar_params},{block_m},{int(even_m)},{block_n},{int(even_n)},{block_d},{num_blocks_d}"
             prefix = "python compile.py sparse_attention_triton.py"
-            filename = f"sparse_attention_kernel_{dtype}_m{block_m}_{int(even_m)}_n{block_n}_{int(even_n)}_d{block_d}_{num_blocks_d}_sm${{SM}}"
+            filename = f"sparse_attention_v1_{dtype}_m{block_m}_{int(even_m)}_n{block_n}_{int(even_n)}_d{block_d}_{num_blocks_d}_sm${{SM}}"
             name = f"sparse_attention_{dtype}_sm${{SM}}"
             num_warps = max(1, 2 ** int(math.log2(min(block_m, block_n, block_d) / 16)))
             num_stages = 2
@@ -66,7 +64,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     # Generate the dispatcher.
     dispatcher = f"sparse_attention_dispatcher_{dtype}_sm${{SM}}"
     print(f"cd {out_dir}")
-    print(f"python ${{TRITON_ROOT}}/triton/tools/link.py sparse_attention_kernel_*.h -o {dispatcher}")
+    print(f"python ${{TRITON_ROOT}}/triton/tools/link.py sparse_attention_v1_*.h -o {dispatcher}")
     print("rm *.h")
 
     # Remove signature hash in code.
@@ -80,7 +78,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
 
     # Remove signature hash from filename since we use same signature for all kernels except constants.
     # and we have constants in filename so that we can distinguish files without the hash.
-    print('for file in sparse_attention_kernel_*.c; do mv -- "$file" "$(echo $file | cut -f 1 -d \'.\').c"; done')
+    print('for file in sparse_attention_v1_*.c; do mv -- "$file" "$(echo $file | cut -f 1 -d \'.\').c"; done')
 
     # Change function parameters and return type. If you change the kernel interface, you will need to modify this part.
     source1 = "CUstream stream, CUdeviceptr out, CUdeviceptr Q, CUdeviceptr K, CUdeviceptr V, CUdeviceptr layout_csr_row_indices, CUdeviceptr layout_csr_col_indices, int32_t layout_csr_row_stride_h, int32_t layout_csr_col_stride_h, int32_t num_layout, float softmax_scale, int32_t stride_qb, int32_t stride_qh, int32_t stride_qm, int32_t stride_kb, int32_t stride_kh, int32_t stride_kn, int32_t stride_vb, int32_t stride_vh, int32_t stride_vn, int32_t stride_ob, int32_t stride_oh, int32_t stride_om, int32_t num_heads, int32_t num_kv_heads, int32_t total_seq_len, int32_t past_seq_len"
@@ -113,7 +111,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     print('for file in *.c; do mv -- "$file" "${file%.c}.cc"; done')
 
     # Move kernel files to parent directory. This might overwrite existing files in repository.
-    print("mv sparse_attention_kernel_* ../")
+    print("mv sparse_attention_v1_* ../")
 
     # Clean up
     print("cd ..")
@@ -123,12 +121,6 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     print("echo Done")
 
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(description="Compile block sparse attention triton kernel")
-    parser.add_argument("--dtype", default="fp16", type=str, choices=["fp16", "bf16"])
-    return parser.parse_args()
-
-
 if __name__ == "__main__":
-    args = parse_arguments()
-    generate_triton_compile_shell_script(args.dtype)
+    for dtype in ["fp16", "bf16"]:
+        generate_triton_compile_shell_script(dtype)

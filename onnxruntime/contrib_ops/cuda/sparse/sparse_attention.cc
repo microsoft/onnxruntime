@@ -5,7 +5,7 @@
 #include "contrib_ops/cuda/sparse/sparse_attention.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_helper.h"
 #include "contrib_ops/cuda/sparse/block_mask.h"
-#include "contrib_ops/cuda/sparse/sparse_attention_trition/sparse_attention_api.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -47,7 +47,7 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
 
-  softmax_scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   kernel_loaded_ = false;
 }
@@ -73,7 +73,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   parameters.sparse_block_size = sparse_block_size_;
   parameters.num_heads = num_heads_;
   parameters.kv_num_heads = kv_num_heads_;
-  parameters.scale = softmax_scale_;
+  parameters.scale = scale_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
@@ -90,12 +90,12 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            total_seq_len));
 
   // Some limitations of CUDA kernels
-  if (!is_supported_sparse_attention(device_prop)) {
+  if (!sparse_attention_v1::is_supported_sparse_attention(device_prop)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SparseAttention only support CUDA device with compute capacity 8.*. Got ",
                            device_prop.major);
   }
-  if (!is_supported_sparse_attention(parameters.head_size, sparse_block_size_)) {
+  if (!sparse_attention_v1::is_supported_sparse_attention(parameters.head_size, sparse_block_size_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SparseAttention only support head_size=128 and sparse_block_size=64. Got head_size=",
                            parameters.head_size,
@@ -111,12 +111,12 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     if (!kernel_loaded_) {
       // std::call_once is used in load_sparse_attention_fp16 so no need to use mutex here.
       // After kernel is loaded, it will stay in memory until the process exits. We do not unload explicitly.
-      load_sparse_attention_fp16();
+      sparse_attention_v1::load_sparse_attention_fp16();
       kernel_loaded_ = true;
     }
   } else {
     if (!kernel_loaded_) {
-      load_sparse_attention_bf16();
+      sparse_attention_v1::load_sparse_attention_bf16();
       kernel_loaded_ = true;
     }
   }

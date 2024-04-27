@@ -38,16 +38,16 @@ class Config:
     softmax_scale = None
     share_buffer = True
 
-    # TODO: test packed qkv
-    is_packed_qkv = False
-
-    # TODO: test performance with rotary embedding.
     do_rotary = False
     rotary_interleaved = False
 
+    # TODO: test packed qkv
+    is_packed_qkv = False
+
+    # TODO: test bfloat16.
     is_fp16 = True  # True for float16; False for bfloat16.
 
-    use_sparse = True
+    use_sparse = True  # True for GroupQueryAttention; False for SparseAttention
 
     def __init__(
         self,
@@ -63,7 +63,8 @@ class Config:
         local_blocks: int,
         vert_stride: int,
         softmax_scale=None,
-        is_fp16: bool = True,
+        do_rotary: bool = False,
+        rotary_interleaved: bool = False,
     ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
@@ -85,6 +86,9 @@ class Config:
             max_sequence_length if self.share_buffer else (past_sequence_length + sequence_length)
         )
         self.max_blocks = max_sequence_length // sparse_block_size
+
+        self.do_rotary = do_rotary
+        self.rotary_interleaved = rotary_interleaved
 
     def block_mask(self):
         return get_block_mask(self.num_layout, self.max_blocks, self.local_blocks, self.vert_stride)
@@ -444,7 +448,7 @@ def run_one_relevance_test(device, config: Config):
     # Run SparseAttention by ORT
     config.use_sparse = True
     if config.past_sequence_length != 0:
-        config.local_block = config.max_blocks  # use dense to compare with GQA
+        config.local_block = config.max_blocks  # Use dense to compare with GQA
     feed_dict = config.random_inputs(device, dtype=dtype)
     if ENABLE_DEBUG:
         print("block_mask", feed_dict["block_mask"])
@@ -498,6 +502,8 @@ def run_relevance_past(device):
             num_layout=4,
             local_blocks=2,
             vert_stride=4,
+            do_rotary=True,
+            rotary_interleaved=(past_seq_len % 2 == 1),
         )
         run_one_relevance_test(device, config)
 

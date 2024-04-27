@@ -42,7 +42,7 @@ def block_sparse_attention_kernel(
     BLOCK_D: tl.constexpr,  # block size for D
     NUM_D_BLOCKS: tl.constexpr,  # number of data blocks =  D / BLOCK_D
 ):
-    # tl.static_print(f"{BLOCK_M=} {BLOCK_N=} {BLOCK_D=} {EVEN_M=} {EVEN_N=} {NUM_D_BLOCKS=}")
+    tl.static_print(f"{BLOCK_M=} {BLOCK_N=} {BLOCK_D=} {EVEN_M=} {EVEN_N=} {NUM_D_BLOCKS=}")
 
     q_seq_len = total_seq_len - past_seq_len
 

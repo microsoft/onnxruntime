@@ -1,15 +1,16 @@
 #include <cuda.h>
 #include <stdint.h>
 #include <assert.h>
-#include "contrib_ops/cuda/sparse/sparse_attention_trition/sparse_attention_api.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
 
 // Dispatcher files are generated.
-#include "contrib_ops/cuda/sparse/sparse_attention_trition/sparse_attention_dispatcher_fp16_sm80.h"
-#include "contrib_ops/cuda/sparse/sparse_attention_trition/sparse_attention_dispatcher_bf16_sm80.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_dispatcher_fp16_sm80.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_dispatcher_bf16_sm80.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+namespace sparse_attention_v1 {
 
 int get_algo_id(SparseAttentionParams& params) {
   int block_n = params.kernel_block_size;
@@ -92,6 +93,7 @@ void unload_sparse_attention_bf16(void) {
   unload_sparse_attention_bf16_sm80();
 }
 
+}  // namespace sparse_attention_v1
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

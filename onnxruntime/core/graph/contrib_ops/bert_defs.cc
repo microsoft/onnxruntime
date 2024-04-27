@@ -1162,9 +1162,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     SparseAttention, 1,
     OpSchema()
         .SetDoc(SparseAttention_ver1_doc)
-        .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
-        .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
-        .Attr("scale", "Softmax scale. Default is 1/sqrt(head_size)", AttributeProto::FLOAT,
+        .Attr("num_heads", "Number of attention heads for query", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of attention heads for key and value", AttributeProto::INT)
+        .Attr("scale", "Scaling factor applied prior to softmax. The default value is 1/sqrt(head_size)", AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("sparse_block_size", "Number of tokens per sparse block. Choices: 16, 32, 64, 128", AttributeProto::INT)
         .Attr("do_rotary", "Whether to use rotary position embedding. Default value is 0.", AttributeProto::INT,

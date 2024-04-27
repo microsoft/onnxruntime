@@ -8,8 +8,8 @@
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
-#include "contrib_ops/cuda/sparse/sparse_attention_trition/sparse_attention_common.h"
-#include "contrib_ops/cuda/sparse/sparse_attention_trition/sparse_attention_api.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_common.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -249,7 +249,7 @@ Status QkvToContext(
          data.kernel_layout.start_row);
 #endif
 
-  SparseAttentionParams params(
+  sparse_attention_v1::SparseAttentionParams params(
       ort_stream,
       data.output,
       reinterpret_cast<const void*>(query),
@@ -271,9 +271,9 @@ Status QkvToContext(
       data.kernel_layout.num_layout);
 
   if constexpr (std::is_same<T, BFloat16>::value) {
-    ORT_RETURN_IF_ERROR(run_sparse_attention_bf16(params));
+    ORT_RETURN_IF_ERROR(sparse_attention_v1::run_sparse_attention_bf16(params));
   } else {
-    ORT_RETURN_IF_ERROR(run_sparse_attention_fp16(params));
+    ORT_RETURN_IF_ERROR(sparse_attention_v1::run_sparse_attention_fp16(params));
   }
 
   return Status::OK();

@@ -20,7 +20,7 @@ class SparseAttention final : public CudaKernel {
  protected:
   int num_heads_;               // number of attention heads for q
   int kv_num_heads_;            // number of attention heads for k and v
-  float softmax_scale_;         // scale for softmax
+  float scale_;                 // Scaling factor applied prior to softmax.
   bool is_causal_;              // unidirectional attention or not
   int sparse_block_size_;       // block size for sparsity
   bool do_rotary_;              // Has rotary positional embedding
