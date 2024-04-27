@@ -228,7 +228,9 @@ else()
     "SHELL:-s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm,mainScriptUrlOrBlob]"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
+    --pre-js "${ONNXRUNTIME_ROOT}/wasm/pre.js"
   )
+  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
 
   if (onnxruntime_USE_JSEP)
     # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
@@ -237,11 +239,11 @@ else()
 
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
-      --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
+      --pre-js "${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js"
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
-    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js)
+    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)

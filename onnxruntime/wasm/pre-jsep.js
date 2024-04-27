@@ -4,24 +4,6 @@
 'use strict';
 
 /**
- * Mount external data files of a model to an internal map, which will be used during session initialization.
- *
- * @param {string} externalDataFilesPath
- * @param {Uint8Array} externalDataFilesData
- */
-Module['mountExternalData'] = (externalDataFilePath, externalDataFileData) => {
-  const files = Module.MountedFiles || (Module.MountedFiles = new Map());
-  files.set(externalDataFilePath, externalDataFileData);
-};
-
-/**
- * Unmount external data files of a model.
- */
-Module['unmountExternalData'] = () => {
-  delete Module.MountedFiles;
-};
-
-/**
  * initialize JSEP for asyncify support.
  */
 let jsepInitAsync = () => {
