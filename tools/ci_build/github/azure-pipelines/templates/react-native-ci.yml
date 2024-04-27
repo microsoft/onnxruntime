@@ -380,7 +380,7 @@ stages:
 
     - task: PublishPipelineArtifact@1
       inputs:
-        artifact: e2e_test_logs_$(Build.BuildId)_$(Date:yyyyMMddHHmmss)
+        artifact: e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
         targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox E2E test logs
