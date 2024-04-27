@@ -7,6 +7,7 @@
 #include "QnnOpDef.h"
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_fusions.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
@@ -137,19 +138,14 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
       continue;  // Already handled.
     }
 
-    // Try to convert particular DQ -> Q sequences into QNN Convert op
-    auto convert_result = TryHandleConvertSequence(qnn_model_wrapper,
-                                                   node_unit,
-                                                   node_unit_map,
-                                                   logger_,
-                                                   false /*do_op_validation*/);
-    ORT_RETURN_IF_ERROR(convert_result.status);
+    // Try to see if this node unit can be fused.
+    std::vector<const NodeUnit*> fused_nodes;
+    ORT_RETURN_IF_ERROR(TryFusions(fused_nodes, qnn_model_wrapper, node_unit, node_unit_map, logger_, false));
 
-    if (convert_result.q_node_unit) {
-      // Successfully merged DQ -> Q sequence into a QNN Convert op.
-      // Mark both of these node units as handled.
-      handled_node_units.insert(&node_unit);
-      handled_node_units.insert(convert_result.q_node_unit);
+    if (!fused_nodes.empty()) {
+      for (auto fused_node_unit : fused_nodes) {
+        handled_node_units.insert(fused_node_unit);
+      }
       continue;
     }
 

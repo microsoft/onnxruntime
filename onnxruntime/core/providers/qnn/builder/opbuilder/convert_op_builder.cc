@@ -43,16 +43,17 @@ Status ConvertOpBuilder::AddConvertToModelBuilder(QnnModelWrapper& qnn_model_wra
   return Status::OK();
 }
 
-HandleConvertResult TryHandleConvertSequence(QnnModelWrapper& qnn_model_wrapper,
-                                             const NodeUnit& maybe_dq_node_unit,
-                                             const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                             const logging::Logger& logger,
-                                             bool do_op_validation) {
+Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes,
+                                QnnModelWrapper& qnn_model_wrapper,
+                                const NodeUnit& maybe_dq_node_unit,
+                                const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                const logging::Logger& logger,
+                                bool do_op_validation) {
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
 
   // Looking for a standalone DQ to start the sequence.
   if (maybe_dq_node_unit.OpType() != QDQ::DQOpName || maybe_dq_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
-    return {};
+    return Status::OK();
   }
 
   const Node& dq_node = maybe_dq_node_unit.GetNode();
@@ -60,21 +61,19 @@ HandleConvertResult TryHandleConvertSequence(QnnModelWrapper& qnn_model_wrapper,
   // DQ must have a single Q child. DQ must not produce a graph output.
   auto children = graph_utils::FindChildrenByType(dq_node, QDQ::QOpName);
   if (children.size() != 1 || dq_node.GetOutputEdgesCount() != 1 || graph_viewer.NodeProducesGraphOutput(dq_node)) {
-    return {};
+    return Status::OK();
   }
 
   const Node& q_node = *children[0];
   const auto q_node_unit_it = node_unit_map.find(&q_node);
 
-  if (q_node_unit_it == node_unit_map.end()) {
-    return {ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node does not have a corresponding NodeUnit"), nullptr};
-  }
+  ORT_RETURN_IF(q_node_unit_it == node_unit_map.end(), "Node does not have a corresponding NodeUnit");
 
   const NodeUnit* q_node_unit = q_node_unit_it->second;
 
   // Q child must not already be part of a QDQ NodeUnit (i.e., be standalone).
   if (q_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
-    return {};
+    return Status::OK();
   }
 
   auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
@@ -83,7 +82,7 @@ HandleConvertResult TryHandleConvertSequence(QnnModelWrapper& qnn_model_wrapper,
 
   // DQ and Q must have equal scale type and different zp type.
   if (!QDQ::IsDQQConversion(dq_node, q_node, get_const_initializer, graph_viewer.ModelPath())) {
-    return {};
+    return Status::OK();
   }
 
   ConvertOpBuilder op_builder;
@@ -94,9 +93,13 @@ HandleConvertResult TryHandleConvertSequence(QnnModelWrapper& qnn_model_wrapper,
                         << "] q_node optype: [" << q_node_unit->OpType()
                         << "]";
 
-  auto status = op_builder.AddConvertToModelBuilder(qnn_model_wrapper, maybe_dq_node_unit, *q_node_unit, logger,
-                                                    do_op_validation);
-  return status.IsOK() ? HandleConvertResult{status, q_node_unit} : HandleConvertResult{status, nullptr};
+  ORT_RETURN_IF_ERROR(op_builder.AddConvertToModelBuilder(qnn_model_wrapper, maybe_dq_node_unit, *q_node_unit, logger,
+                                                          do_op_validation));
+
+  fused_nodes.push_back(&maybe_dq_node_unit);
+  fused_nodes.push_back(q_node_unit);
+
+  return Status::OK();
 }
 
 }  // namespace qnn
