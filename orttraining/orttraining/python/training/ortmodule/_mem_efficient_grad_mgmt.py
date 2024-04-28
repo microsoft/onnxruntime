@@ -52,7 +52,7 @@ def post_processing_enable_mem_efficient_training(
     """
     trainable_named_params = get_params_connected_to_pull_param_trigger(named_params, exported_model)
     if len(trainable_named_params) == 0:
-        return False, exported_model
+        return False, exported_model, None
 
     # Create weight retrieving function using trainable_named_params.
     param_trigger_grad = torch.zeros(
