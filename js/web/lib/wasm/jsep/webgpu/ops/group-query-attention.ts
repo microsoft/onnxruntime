@@ -70,9 +70,9 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     if (pastValue.dims.length !== 4) {
       throw new Error('Input "past_value" is expected to have 4 dimensions');
     }
-    // Past key value are of format BSNH.
-    pastSequenceLength = pastKey.dims[1];
-    maxSequenceLength = pastKey.dims[1];
+    // Past key value are of format BNSH.
+    pastSequenceLength = pastKey.dims[2];
+    maxSequenceLength = pastKey.dims[2];
 
   } else if (pastKey || pastValue) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
@@ -213,25 +213,24 @@ const createConcatProgramInfo =
         H, params.kvNumHeads!, 1
       ])}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
-
     var indices = ${output.offsetToIndices('global_idx')};
-
     let h = local_id.x;
     let n = local_id.y;
     let s = workgroup_id.x;
     let b = workgroup_id.y;
     let num_heads = ${params.kvNumHeads!}u;
     let H = ${H}u;
+
     let present_seqlen = uniforms.present_seqlen;
     let present_batch_stride = present_seqlen * num_heads * H;
-    let row_stride = num_heads * H;
-    let present_head_stride = H;
+    let row_stride = H;
+    let present_head_stride = present_seqlen * H;
     let past_seqlen = uniforms.past_seqlen;
 
     let out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
     if (s < past_seqlen) {
       let past_batch_stride = uniforms.past_seqlen * num_heads * H;
-      var past_head_stride = H;
+      let past_head_stride = uniforms.past_seqlen * H;
       let in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
       present_kv[out_offset] = past_kv[in_offset];
     } else if (s < past_seqlen + uniforms.new_seqlen) {
@@ -261,22 +260,18 @@ export const parseGroupQueryAttentionAttributes = (attributes: AttentionAttrs): 
 const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: [0, 2, 1, 3]});
 
 const maybeExpandAndTransposeToBNSH =
-    (context: ComputeContext, input: TensorView, pastKV: TensorView|undefined, nReps: number,
-     params: AttentionParameters) => {
+    (context: ComputeContext, input: TensorView, pastKV: TensorView|undefined, params: AttentionParameters) => {
       let reshapedInput = input;
-      const batchSize = params.batchSize;
       const numHeads = params.kvNumHeads!;
-      const sequenceLength = params.kvSequenceLength;
-      const headSize = params.headSize;
-      if (input.dims.length === 3 && sequenceLength !== 0) {
-        reshapedInput = input.reshape([batchSize, sequenceLength, numHeads, headSize]);
+      const nReps = params.nReps!;
+      if (input.dims.length === 3 && params.kvSequenceLength !== 0) {
+        reshapedInput = input.reshape([params.batchSize, params.kvSequenceLength, numHeads, params.headSize]);
       }
 
       if (pastKV) {
-        let reshapedPastKV = pastKV;
-        if (pastKV.dims.length === 3) {
-          reshapedPastKV = pastKV.reshape([batchSize, params.pastSequenceLength, numHeads, headSize]);
-        }
+        // pastKV is of format BNSH, convert to BSNH.
+        const reshapedPastKV = context.compute(
+            createTransposeProgramInfo(pastKV, weightTransposeAttribute.perm), {inputs: [pastKV], outputs: [-1]})[0];
         reshapedInput = context.compute(
             createConcatProgramInfo(reshapedInput, reshapedPastKV, reshapedInput.dataType, params),
             {inputs: [reshapedInput, pastKV], outputs: [-1]})[0];
@@ -284,8 +279,8 @@ const maybeExpandAndTransposeToBNSH =
       if (nReps !== 1) {
         reshapedInput = context.compute(
             createTileProgramInfo([reshapedInput], [1, 1, 1, nReps]), {inputs: [reshapedInput], outputs: [-1]})[0];
-
-        reshapedInput = reshapedInput.reshape([batchSize, params.totalSequenceLength, numHeads * nReps, headSize]);
+        reshapedInput =
+            reshapedInput.reshape([params.batchSize, params.totalSequenceLength, numHeads * nReps, params.headSize]);
       }
 
       return context.compute(
@@ -307,10 +302,7 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
       context, params.batchSize, params.numHeads, params.sequenceLength, params.headSize, context.inputs[0], undefined,
       0);
 
-  const nReps = Math.floor(attributes.numHeads / params.kvNumHeads!);
-  const pastKeyInput = context.inputs[3] && context.inputs[3].dims.length !== 0 ? context.inputs[3] : undefined;
-  const K = maybeExpandAndTransposeToBNSH(context, context.inputs[1], pastKeyInput, params.nReps!, params);
-  const pastValueInput = context.inputs[4] && context.inputs[2].dims.length !== 0 ? context.inputs[4] : undefined;
-  const V = maybeExpandAndTransposeToBNSH(context, context.inputs[2], pastValueInput, nReps, params);
+  const K = maybeExpandAndTransposeToBNSH(context, context.inputs[1], context.inputs[3], params);
+  const V = maybeExpandAndTransposeToBNSH(context, context.inputs[2], context.inputs[4], params);
   applyAttention(context, Q, K, V, undefined, undefined, undefined, undefined, undefined, params, attributes);
 };
