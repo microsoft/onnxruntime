@@ -205,17 +205,10 @@ const createConcatProgramInfo =
         {name: 'present_seqlen', type: 'u32'}
       ];
 
-      // TODO: handle H or params.kvNumHeads greater than work group size limit, spec
-      // https://gpuweb.github.io/gpuweb/#dom-supported-limits-maxcomputeworkgroupsizex.
-      if (H > 256 || params.kvNumHeads! > 256) {
-        throw new Error(`H(${H}) or params.kvNumHeads(${params.kvNumHeads}) greater than work group size limit 256.`);
-      }
-
+      // TODO: handle H * params.kvNumHeads greater than maxComputeInvocationsPerWorkgroup limit.
       const getShaderSource = (shaderHelper: ShaderHelper) => `
 
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...[inputA, inputB], output)}
-
-
   ${shaderHelper.mainStart([
         H, params.kvNumHeads!, 1
       ])}
