@@ -10,6 +10,7 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_common.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_api.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -249,33 +250,68 @@ Status QkvToContext(
          data.kernel_layout.start_row);
 #endif
 
-  sparse_attention_v1::SparseAttentionParams params(
-      ort_stream,
-      data.output,
-      reinterpret_cast<const void*>(query),
-      reinterpret_cast<const void*>(data.present_key),
-      reinterpret_cast<const void*>(data.present_value),
-      parameters.batch_size,
-      parameters.sequence_length,
-      parameters.num_heads,
-      parameters.kv_num_heads,
-      parameters.head_size,
-      parameters.total_sequence_length,
-      parameters.max_sequence_length,
-      parameters.scale,
-      data.kernel_layout.block_size,                                      // kernel_block_size
-      data.kernel_layout.csr_row_indices + data.kernel_layout.start_row,  // skip past_seq_len in row indices
-      data.kernel_layout.csr_col_indices,                                 // (num_layout, num_rows, num_cols)
-      data.kernel_layout.num_rows + 1,                                    // stride per head in row indices
-      data.kernel_layout.num_rows * data.kernel_layout.num_cols,          // stride per head in col indices
-      data.kernel_layout.num_layout);
+  if (data.use_v2_kernel){
+    sparse_attention_v2::SparseAttentionParams params(
+        ort_stream,
+        data.output,
+        reinterpret_cast<const void*>(query),
+        reinterpret_cast<const void*>(data.present_key),
+        reinterpret_cast<const void*>(data.present_value),
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.num_heads,
+        parameters.kv_num_heads,
+        parameters.head_size,
+        parameters.total_sequence_length,
+        parameters.max_sequence_length,
+        parameters.scale,
+        data.kernel_layout.block_size,                              // kernel_block_size
+        data.kernel_layout.csr_row_indices,                         // skip past_seq_len in row indices
+        data.kernel_layout.csr_col_indices,                         // (num_layout, num_rows, num_cols)
+        data.kernel_layout.num_rows + 1,                            // stride per head in row indices
+        data.kernel_layout.num_rows * data.kernel_layout.num_cols,  // stride per head in col indices
+        data.kernel_layout.num_layout,
+        data.active_q_blocks,
+        data.q_batch_starts,
+        data.q_batch_ends,
+        data.k_batch_starts,
+        data.k_batch_ends,
+        data.q_batch_ids,
+        data.q_start_sids);
 
-  if constexpr (std::is_same<T, BFloat16>::value) {
-    ORT_RETURN_IF_ERROR(sparse_attention_v1::run_sparse_attention_bf16(params));
+    if constexpr (std::is_same<T, BFloat16>::value) {
+      ORT_RETURN_IF_ERROR(sparse_attention_v2::run_sparse_attention_bf16(params));
+    } else {
+      ORT_RETURN_IF_ERROR(sparse_attention_v2::run_sparse_attention_fp16(params));
+    }
   } else {
-    ORT_RETURN_IF_ERROR(sparse_attention_v1::run_sparse_attention_fp16(params));
-  }
+    sparse_attention_v1::SparseAttentionParams params(
+        ort_stream,
+        data.output,
+        reinterpret_cast<const void*>(query),
+        reinterpret_cast<const void*>(data.present_key),
+        reinterpret_cast<const void*>(data.present_value),
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.num_heads,
+        parameters.kv_num_heads,
+        parameters.head_size,
+        parameters.total_sequence_length,
+        parameters.max_sequence_length,
+        parameters.scale,
+        data.kernel_layout.block_size,                                      // kernel_block_size
+        data.kernel_layout.csr_row_indices + data.kernel_layout.start_row,  // skip past_seq_len in row indices
+        data.kernel_layout.csr_col_indices,                                 // (num_layout, num_rows, num_cols)
+        data.kernel_layout.num_rows + 1,                                    // stride per head in row indices
+        data.kernel_layout.num_rows * data.kernel_layout.num_cols,          // stride per head in col indices
+        data.kernel_layout.num_layout);
 
+    if constexpr (std::is_same<T, BFloat16>::value) {
+      ORT_RETURN_IF_ERROR(sparse_attention_v1::run_sparse_attention_bf16(params));
+    } else {
+      ORT_RETURN_IF_ERROR(sparse_attention_v1::run_sparse_attention_fp16(params));
+    }
+  }
   return Status::OK();
 }
 

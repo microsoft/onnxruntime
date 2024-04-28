@@ -440,7 +440,7 @@ def run_one_relevance_test(device, config: Config):
     if config.past_sequence_length == 0:
         expected_out = run_gqa_torch(device, config, feed_dict)
     else:
-        ort_qga_outputs = run_gqa_ort(device, config)
+        ort_qga_outputs = run_gqa_ort(device, config, feed_dict)
         expected_out = ort_qga_outputs["output"].view(
             config.batch_size, config.sequence_length, config.num_heads, config.head_size
         )
@@ -448,7 +448,7 @@ def run_one_relevance_test(device, config: Config):
     # Run SparseAttention by ORT
     config.use_sparse = True
     if config.past_sequence_length != 0:
-        config.local_block = config.max_blocks  # Use dense to compare with GQA
+        config.local_blocks = config.max_blocks  # Use dense to compare with GQA
     feed_dict = config.random_inputs(device, dtype=dtype)
     if ENABLE_DEBUG:
         print("block_mask", feed_dict["block_mask"])
@@ -464,6 +464,7 @@ def run_one_relevance_test(device, config: Config):
         print(f"Relevance test not passed: {vars(config)}")
         print("ort_output", actual_out)
         print("expected_out", expected_out)
+        print("diff", expected_out - actual_out)
         exit(1)
 
 

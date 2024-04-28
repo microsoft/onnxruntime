@@ -56,6 +56,16 @@ struct SparseAttentionData {
   T* output = nullptr;
   T* present_key = nullptr;
   T* present_value = nullptr;
+
+  // Data for sparse attention v2 kernel.
+  bool use_v2_kernel = false;
+  int* q_batch_starts = nullptr;  // shape (batch_size)
+  int* q_batch_ends = nullptr;    // shape (batch_size)
+  int* k_batch_starts = nullptr;  // shape (batch_size)
+  int* k_batch_ends = nullptr;    // shape (batch_size)
+  int* q_batch_ids = nullptr;     // shape (G)
+  int* q_start_sids = nullptr;    // shape (G)
+  int active_q_blocks = 0;        // G: number of blocks in q that are not masked out
 };
 
 template <typename T>

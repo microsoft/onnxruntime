@@ -6,6 +6,11 @@
 #include "contrib_ops/cuda/sparse/sparse_attention_helper.h"
 #include "contrib_ops/cuda/sparse/block_mask.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
+#include "contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_api.h"
+#include "core/platform/env_var_utils.h"
+#include "contrib_ops/cuda/bert/transformer_cuda_common.h"
+
+#define USE_SPARSE_ATTENTION_V2 1
 
 namespace onnxruntime {
 namespace contrib {
@@ -29,6 +34,10 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16)
 
+static inline int32_t DivUp(int32_t m, int32_t n) {
+  return (m + n - 1) / n;
+}
+
 template <typename T>
 SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
@@ -50,6 +59,13 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   kernel_loaded_ = false;
+
+#if USE_SPARSE_ATTENTION_V2 > 0
+  disable_v2_kernel_ = ParseEnvironmentVariableWithDefault<bool>(sparse_attention::kDisableSparseAttentionV2, false);
+#else
+  disable_v2_kernel_ = true;
+#endif
+
 }
 
 template <typename T>
@@ -107,18 +123,39 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                            "num_heads should be no larger than ", device_prop.maxThreadsPerBlock);
   }
 
-  if constexpr (std::is_same<T, MLFloat16>::value) {
-    if (!kernel_loaded_) {
+
+  // Copy seqlens_k_total to CPU
+  cudaStream_t cuda_stream = Stream(context);
+
+#if USE_SPARSE_ATTENTION_V2 > 0
+  auto pinned_buffer = AllocateBufferOnCPUPinned<int32_t>(parameters.batch_size);
+
+  int32_t* total_k_seq_len_pinned = reinterpret_cast<int32_t*>(pinned_buffer.get());
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(total_k_seq_len_pinned, seqlens_k_total->Data<int32_t>(), sizeof(int32_t) * parameters.batch_size,
+                                       cudaMemcpyDeviceToHost, cuda_stream));
+  AutoDestoryCudaEvent new_event;
+  cudaEvent_t& isCopyDone = new_event.Get();
+  CUDA_RETURN_IF_ERROR(cudaEventCreate(&isCopyDone));
+  CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, cuda_stream));
+#endif
+
+  if (!kernel_loaded_) {
+    if constexpr (std::is_same<T, MLFloat16>::value) {
       // std::call_once is used in load_sparse_attention_fp16 so no need to use mutex here.
       // After kernel is loaded, it will stay in memory until the process exits. We do not unload explicitly.
-      sparse_attention_v1::load_sparse_attention_fp16();
-      kernel_loaded_ = true;
+      if (disable_v2_kernel_) {
+        sparse_attention_v1::load_sparse_attention_fp16();
+      } else {
+        sparse_attention_v2::load_sparse_attention_fp16();
+      }
+    } else {
+      if (disable_v2_kernel_) {
+        sparse_attention_v1::load_sparse_attention_bf16();
+      } else {
+        sparse_attention_v2::load_sparse_attention_bf16();
+      }
     }
-  } else {
-    if (!kernel_loaded_) {
-      sparse_attention_v1::load_sparse_attention_bf16();
-      kernel_loaded_ = true;
-    }
+    kernel_loaded_ = true;
   }
 
   // Compute output shape and get output tensors.
@@ -189,7 +226,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.kernel_layout.start_row = 0;
   }
 
-  ConvertMaskToCSR(static_cast<cudaStream_t>(stream->GetHandle()),
+  ConvertMaskToCSR(cuda_stream,
                    data.kernel_layout.mask,
                    data.kernel_layout.num_layout,
                    data.kernel_layout.num_rows,
@@ -227,6 +264,80 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (unpacked_qkv_buffer) {
     data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
+
+  if (!disable_v2_kernel_) {
+    data.use_v2_kernel = true;
+  }
+
+#if USE_SPARSE_ATTENTION_V2 > 0
+  // Compute activate q blocks so that we know the size of buffer to allocate.
+  CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
+  int active_q_blocks = 0;
+  bool is_prompt = (past_seq_len == 0);
+  if (is_prompt) {
+    for (int i = 0; i < parameters.batch_size; i++){
+        active_q_blocks +=  DivUp(is_prompt ? total_k_seq_len_pinned[i] : 1,  data.kernel_layout.block_size);
+    }
+  } else { // not prompt
+    assert(parameters.sequence_length == 1);
+    active_q_blocks = parameters.batch_size;
+  }
+
+  // Compute buffer size: addresses of 6 buffers for v2 kernel need to be aligned to 16.
+  const size_t aligned_batch_size = DivUp(parameters.batch_size, 16) * 16;
+  const size_t aligned_num_q_blocks = DivUp(active_q_blocks, 16) * 16;
+  size_t v2_kernel_buffer_size = 4 * aligned_batch_size + 2 * aligned_num_q_blocks;
+
+  // Compute those values in CPU, then copy to GPU
+  auto v2_kernel_inputs_pinned_buffer = AllocateBufferOnCPUPinned<int32_t>(v2_kernel_buffer_size);
+  int32_t* v2_kernel_inputs_pinned = reinterpret_cast<int32_t*>(v2_kernel_inputs_pinned_buffer.get());
+  int32_t* q_batch_starts = v2_kernel_inputs_pinned;
+  int32_t* q_batch_ends = q_batch_starts + aligned_batch_size;
+  int32_t* k_batch_starts = q_batch_ends + aligned_batch_size;
+  int32_t* k_batch_ends = k_batch_starts + aligned_batch_size;
+  int32_t* q_batch_ids = k_batch_ends + aligned_batch_size;
+  int32_t* q_start_sids = q_batch_ids + aligned_num_q_blocks;
+
+  // Here assumes right-side padding
+  if (is_prompt){
+    for (int i = 0; i < parameters.batch_size; i++){
+        q_batch_starts[i] = 0;
+        q_batch_ends[i] = total_k_seq_len_pinned[i];
+        k_batch_starts[i] = 0;
+        k_batch_ends[i] = total_k_seq_len_pinned[i];
+    }
+  } else {
+    for (int i = 0; i < parameters.batch_size; i++){
+        q_batch_starts[i] = 0;
+        q_batch_ends[i] = 1;
+        k_batch_starts[i] = 0;
+        k_batch_ends[i] = total_k_seq_len_pinned[i];
+    }
+  }
+
+  int current_block = 0;
+  for (int i = 0; i < parameters.batch_size; i++) {
+      int blocks = DivUp(q_batch_ends[i] - q_batch_starts[i],  data.kernel_layout.block_size);
+      for (int j = 0; j < blocks; j++) {
+          q_batch_ids[current_block] = i;
+          q_start_sids[current_block] = j * data.kernel_layout.block_size;
+          current_block++;
+      }
+  }
+
+  auto v2_kernel_buffer = GetScratchBuffer<int>(v2_kernel_buffer_size, context->GetComputeStream());
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(v2_kernel_buffer.get(), v2_kernel_inputs_pinned,
+                                       sizeof(int32_t) * v2_kernel_buffer_size,
+                                       cudaMemcpyHostToDevice, cuda_stream));
+
+  data.q_batch_starts = v2_kernel_buffer.get();
+  data.q_batch_ends = data.q_batch_starts + aligned_batch_size;
+  data.k_batch_starts = data.q_batch_ends + aligned_batch_size;
+  data.k_batch_ends = data.k_batch_starts + aligned_batch_size;
+  data.q_batch_ids = data.k_batch_ends + aligned_batch_size;
+  data.q_start_sids = data.q_batch_ids + aligned_num_q_blocks;
+  data.active_q_blocks = active_q_blocks;
+#endif
 
   return QkvToContext<CudaT>(device_prop, stream, parameters, data);
 }

@@ -25,6 +25,7 @@ class SparseAttention final : public CudaKernel {
   int sparse_block_size_;       // block size for sparsity
   bool do_rotary_;              // Has rotary positional embedding
   bool rotary_interleaved_;     // Interleaved rotary positional embedding
+  bool disable_v2_kernel_;      // Disable V2 kernel
   mutable bool kernel_loaded_;  // Kernel has been loaded
 };
 
