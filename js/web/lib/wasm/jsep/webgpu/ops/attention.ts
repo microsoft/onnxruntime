@@ -432,7 +432,7 @@ const createAttentionProbsProgramInfo =
       };
       return {
         name: 'AttentionProbs',
-        shaderCache: {hint: `${components}`, inputDependencies},
+        shaderCache: {hint: `${components};${relativePositionBias !== undefined}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default}],
           dispatchGroup: dispatch,
