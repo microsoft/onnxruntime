@@ -65,7 +65,6 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
 #else
   disable_v2_kernel_ = true;
 #endif
-
 }
 
 template <typename T>
@@ -122,7 +121,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "num_heads should be no larger than ", device_prop.maxThreadsPerBlock);
   }
-
 
   // Copy seqlens_k_total to CPU
   cudaStream_t cuda_stream = Stream(context);
@@ -275,10 +273,10 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int active_q_blocks = 0;
   bool is_prompt = (past_seq_len == 0);
   if (is_prompt) {
-    for (int i = 0; i < parameters.batch_size; i++){
-        active_q_blocks +=  DivUp(is_prompt ? total_k_seq_len_pinned[i] : 1,  data.kernel_layout.block_size);
+    for (int i = 0; i < parameters.batch_size; i++) {
+      active_q_blocks += DivUp(is_prompt ? total_k_seq_len_pinned[i] : 1, data.kernel_layout.block_size);
     }
-  } else { // not prompt
+  } else {  // not prompt
     assert(parameters.sequence_length == 1);
     active_q_blocks = parameters.batch_size;
   }
@@ -299,30 +297,30 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int32_t* q_start_sids = q_batch_ids + aligned_num_q_blocks;
 
   // Here assumes right-side padding
-  if (is_prompt){
-    for (int i = 0; i < parameters.batch_size; i++){
-        q_batch_starts[i] = 0;
-        q_batch_ends[i] = total_k_seq_len_pinned[i];
-        k_batch_starts[i] = 0;
-        k_batch_ends[i] = total_k_seq_len_pinned[i];
+  if (is_prompt) {
+    for (int i = 0; i < parameters.batch_size; i++) {
+      q_batch_starts[i] = 0;
+      q_batch_ends[i] = total_k_seq_len_pinned[i];
+      k_batch_starts[i] = 0;
+      k_batch_ends[i] = total_k_seq_len_pinned[i];
     }
   } else {
-    for (int i = 0; i < parameters.batch_size; i++){
-        q_batch_starts[i] = 0;
-        q_batch_ends[i] = 1;
-        k_batch_starts[i] = 0;
-        k_batch_ends[i] = total_k_seq_len_pinned[i];
+    for (int i = 0; i < parameters.batch_size; i++) {
+      q_batch_starts[i] = 0;
+      q_batch_ends[i] = 1;
+      k_batch_starts[i] = 0;
+      k_batch_ends[i] = total_k_seq_len_pinned[i];
     }
   }
 
   int current_block = 0;
   for (int i = 0; i < parameters.batch_size; i++) {
-      int blocks = DivUp(q_batch_ends[i] - q_batch_starts[i],  data.kernel_layout.block_size);
-      for (int j = 0; j < blocks; j++) {
-          q_batch_ids[current_block] = i;
-          q_start_sids[current_block] = j * data.kernel_layout.block_size;
-          current_block++;
-      }
+    int blocks = DivUp(q_batch_ends[i] - q_batch_starts[i], data.kernel_layout.block_size);
+    for (int j = 0; j < blocks; j++) {
+      q_batch_ids[current_block] = i;
+      q_start_sids[current_block] = j * data.kernel_layout.block_size;
+      current_block++;
+    }
   }
 
   auto v2_kernel_buffer = GetScratchBuffer<int>(v2_kernel_buffer_size, context->GetComputeStream());

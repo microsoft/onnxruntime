@@ -141,9 +141,9 @@ constexpr bool LAYOUT_BSNH = false;
 constexpr bool LAYOUT_BNSH = true;
 
 namespace sparse_attention {
-  // Environment variable to enable or disable sparse attention v2 kernel. Default is 0 (enabled).
-  constexpr const char* kDisableSparseAttentionV2 = "ORT_DISABLE_SPARSE_ATTENTION_V2";
-}
+// Environment variable to enable or disable sparse attention v2 kernel. Default is 0 (enabled).
+constexpr const char* kDisableSparseAttentionV2 = "ORT_DISABLE_SPARSE_ATTENTION_V2";
+}  // namespace sparse_attention
 
 namespace attention {
 // Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).

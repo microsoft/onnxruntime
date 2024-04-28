@@ -2877,7 +2877,7 @@ This version of the operator has been available since version 1 of the 'com.micr
        And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
     3. Input B's scale and zero point are specified by input scales and zero_points.
   
-    Input is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
+    Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
     - n_blocks_per_col = (K + block_size - 1) / block_size
     - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
     For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.
@@ -5569,13 +5569,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
-<dd>Number of attention heads for k and v</dd>
+<dd>Number of attention heads for key and value</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
-<dd>Number of attention heads for q</dd>
+<dd>Number of attention heads for query</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotary use interleaved pattern or not. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
-<dd>Softmax scale. Default is 1/sqrt(head_size)</dd>
+<dd>Scaling factor applied prior to softmax. The default value is 1/sqrt(head_size)</dd>
 <dt><tt>sparse_block_size</tt> : int (required)</dt>
 <dd>Number of tokens per sparse block. Choices: 16, 32, 64, 128</dd>
 </dl>

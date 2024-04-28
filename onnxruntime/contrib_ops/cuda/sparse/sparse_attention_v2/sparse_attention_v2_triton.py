@@ -8,102 +8,6 @@ import triton.language as tl
 
 
 @triton.jit
-def block_sparse_attention_inner(
-    acc,
-    l_i,
-    m_i,
-    q,
-    Q,
-    k_block_col_idx,
-    layout_col_ptr,
-    layout_col_stride_h,
-    k_ptrs,
-    v_ptrs,
-    off_h,
-    offs_m,
-    offs_n,
-    offs_d,
-    stride_kt,
-    stride_vt,
-    softmax_scale,
-    k_seqlen,
-    past_len,
-    LAST_K_BLOCK: tl.constexpr,
-    BLOCK_M_LOADING: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    D_HEAD: tl.constexpr,
-    EVEN_D: tl.constexpr,
-    M_LT_N: tl.constexpr,
-):
-    tl.static_print(f"{LAST_K_BLOCK=} {BLOCK_M_LOADING=} {BLOCK_N=} {D_HEAD=} {EVEN_D=} {M_LT_N=}")
-
-    k_block_id = tl.load(layout_col_ptr + off_h * layout_col_stride_h + k_block_col_idx).to(tl.int32)
-    start_n = k_block_id * BLOCK_N
-    # -- compute qk ----
-    if LAST_K_BLOCK:
-        if EVEN_D:
-            k = tl.load(k_ptrs + start_n * stride_kt, mask=offs_n[None, :] + start_n < k_seqlen)
-        else:
-            # mask = mask & (offs_d[:, ])
-            k = tl.load(
-                k_ptrs + start_n * stride_kt, mask=(offs_n[None, :] + start_n < k_seqlen) & (offs_d[:, None] < D_HEAD)
-            )
-    else:
-        if EVEN_D:
-            k = tl.load(k_ptrs + start_n * stride_kt)
-        else:
-            k = tl.load(k_ptrs + start_n * stride_kt, mask=offs_d[:, None] < D_HEAD)
-
-    qk = tl.zeros([BLOCK_M_LOADING, BLOCK_N], dtype=tl.float32)
-    qk += tl.dot(q, k)
-
-    qk *= softmax_scale
-
-    # the following is needed only when LAST_K_BLOCK or BLOCK_M < BLOCK_N
-    if LAST_K_BLOCK | M_LT_N:
-        qk += tl.where(offs_m[:, None] + past_len >= (start_n + offs_n[None, :]), 0, float("-inf"))
-
-    # -- compute m_ij, p, l_ij
-    m_ij = tl.max(qk, 1)
-    p = tl.exp(qk - m_ij[:, None])
-
-    l_ij = tl.sum(p, 1)
-    # -- update m_i and l_i
-    m_i_new = tl.maximum(m_i, m_ij)
-    alpha = tl.exp(m_i - m_i_new)
-    beta = tl.exp(m_ij - m_i_new)
-    l_i_new = alpha * l_i + beta * l_ij
-    # -- update output accumulator --
-    # scale p
-    p_scale = beta / l_i_new
-    p = p * p_scale[:, None]
-    # scale acc
-    acc_scale = l_i / l_i_new * alpha
-    acc = acc * acc_scale[:, None]
-
-    p = p.to(Q.dtype.element_ty)
-    # update acc
-    if LAST_K_BLOCK:
-        if EVEN_D:
-            v = tl.load(v_ptrs + start_n * stride_vt, mask=offs_n[:, None] + start_n < k_seqlen)
-        else:
-            v = tl.load(
-                v_ptrs + start_n * stride_vt, mask=(offs_n[:, None] + start_n < k_seqlen) & (offs_d[None, :] < D_HEAD)
-            )
-    else:
-        if EVEN_D:
-            v = tl.load(v_ptrs + start_n * stride_vt)
-        else:
-            v = tl.load(v_ptrs + start_n * stride_vt, mask=offs_d[None, :] < D_HEAD)
-
-    acc += tl.dot(p, v)
-    # update m_i and l_i
-    l_i = l_i_new
-    m_i = m_i_new
-    return acc, l_i, m_i
-
-
-@triton.jit
 def block_sparse_attention(
     Out,  # output [B, M, H, D]. Note that B is batch_size, M is q_seq_len, H is num_heads, and D is head_size
     Q,  # query [B, M, H, D]
@@ -132,7 +36,7 @@ def block_sparse_attention(
     stride_ot,
     stride_oh,  # strides for output (excluding the stride for last hidden dim, which is always 1)
     q_k_ratio,  # num_heads / num_kv_heads
-    num_layout, # number of sparse layout (H)
+    num_layout,  # number of sparse layout (H)
     softmax_scale,  # scaling factor applied prior to softmax
     HAS_BATCH_DIM: tl.constexpr,  # whether batch dim is present
     D_HEAD: tl.constexpr,  # head size
@@ -205,28 +109,6 @@ def block_sparse_attention(
     v_ptrs = V + offs_n[:, None] * stride_vt + offs_d[None, :]
 
     for k_block_col_idx in range(k_block_start, k_block_end - 1):
-        # -----------------------------------------------------------------------------------
-        # Expand the following function call due to limitation of Triton AoT compiler
-        # acc, l_i, m_i = block_sparse_attention_inner(
-        #     acc, l_i, m_i,
-        #     q, Q,
-        #     k_block_col_idx,
-        #     layout_col_ptr,
-        #     layout_col_stride_h,
-        #     k_ptrs,
-        #     v_ptrs,
-        #     off_h, offs_m, offs_n, offs_d,
-        #     stride_kt, stride_vt,
-        #     softmax_scale,
-        #     k_seqlen,
-        #     past_len,
-        #     False,
-        #     BLOCK_M_LOADING,
-        #     BLOCK_N,
-        #     D_HEAD,
-        #     EVEN_D,
-        #     M_LT_N)
-        # >>>--------------------------------------------------------------------------------
         k_block_id = tl.load(layout_col_ptr + layout_h * layout_col_stride_h + k_block_col_idx).to(tl.int32)
         start_n = k_block_id * BLOCK_N
 
@@ -272,30 +154,8 @@ def block_sparse_attention(
         # update m_i and l_i
         l_i = l_i_new
         m_i = m_i_new
-        # <<<--------------------------------------------------------------------------------
 
-    # -----------------------------------------------------------------------------------
-    # Expand the following function call due to limitation of Triton AoT compiler
-    # acc, l_i, m_i = block_sparse_attention_inner(
-    #     acc, l_i, m_i,
-    #     q, Q,
-    #     k_block_end - 1,
-    #     layout_col_ptr,
-    #     layout_col_stride_h,
-    #     k_ptrs,
-    #     v_ptrs,
-    #     off_h, offs_m, offs_n, offs_d,
-    #     stride_kt, stride_vt,
-    #     softmax_scale,
-    #     k_seqlen,
-    #     past_len,
-    #     True,
-    #     BLOCK_M_LOADING,
-    #     BLOCK_N,
-    #     D_HEAD,
-    #     EVEN_D,
-    #     M_LT_N)
-    # >>>--------------------------------------------------------------------------------
+    # Process the last k block
     k_block_col_idx = k_block_end - 1
     k_block_id = tl.load(layout_col_ptr + layout_h * layout_col_stride_h + k_block_col_idx).to(tl.int32)
     start_n = k_block_id * BLOCK_N
@@ -343,7 +203,6 @@ def block_sparse_attention(
     acc += tl.dot(p, v)
     # l_i = l_i_new
     # m_i = m_i_new
-    # <<<--------------------------------------------------------------------------------
 
     # write output
     if EVEN_D:
