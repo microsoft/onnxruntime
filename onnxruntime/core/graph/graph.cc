@@ -2077,7 +2077,7 @@ void TagNodeToAssociatedOutputs(const Graph* graph,
                                 const InlinedVector<const NodeArg*>& branch_subgraph_outputs,
                                 const InlinedVector<const Node*>& branch_graph,
                                 InlinedVector<GroupNode>& group_node_collection,
-                                InlinedHashMap<const NodeArg*, GroupNode*>& output_arg_to_grouped_node) {
+                                std::map<const NodeArg*, GroupNode*>& output_arg_to_grouped_node) {
   // Reverse DFS from branch graph outputs (e.g. branch_subgraph_outputs) to tag each nodes:
   // If one node N contributes to a graph output A, then we will tag A to N.
   // If the node N contributes to multiple graph outputs A, B, C, then we will tag the A, B, C to N.
@@ -2085,7 +2085,6 @@ void TagNodeToAssociatedOutputs(const Graph* graph,
   node_to_its_associated_outputs.reserve(branch_graph.size());
   InlinedHashSet<const Node*> handled_branch_subgraph_end_nodes;
   for (const auto& output_arg : branch_subgraph_outputs) {
-    // const NodeArg* output_arg = consumer.first->InputDefs()[consumer.second];
     const Node* end_node = graph->GetProducerNode(output_arg->Name());
     handled_branch_subgraph_end_nodes.insert(end_node);
 
@@ -2142,7 +2141,7 @@ void UpdateBackwardInDegree(InlinedVector<size_t>& backward_node_in_degree,
 
 void OutputGroupedNodes(const Graph* graph,
                         const NodeArg* output_arg,
-                        const InlinedHashMap<const NodeArg*, GroupNode*>& output_arg_to_grouped_node,
+                        const std::map<const NodeArg*, GroupNode*>& output_arg_to_grouped_node,
                         std::vector<NodeIndex>& node_orders,
                         InlinedVector<NodeIndex>& topo_order) {
   ORT_ENFORCE(output_arg_to_grouped_node.find(output_arg) != output_arg_to_grouped_node.end(),
@@ -2225,7 +2224,8 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
 
   // Cluster the nodes in the branch_graph based on the associated outputs.
   InlinedVector<GroupNode> group_node_collection;
-  InlinedHashMap<const NodeArg*, GroupNode*> output_arg_to_grouped_node;
+  // Use ordered map to ensure the output order is deterministic.
+  std::map<const NodeArg*, GroupNode*> output_arg_to_grouped_node;
   TagNodeToAssociatedOutputs(this,
                              nodes_to_execute_before_yieldop,
                              branch_subgraph_outputs,
