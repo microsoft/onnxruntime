@@ -63,9 +63,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   let pastSequenceLength = 0;
   let maxSequenceLength = 0;
   const headSize = Math.floor(hiddenSize / attributes.numHeads);
-  const hasPastKey = pastKey && pastKey.dims.length !== 0;
-  const hasPastValue = pastValue && pastValue.dims.length !== 0;
-  if (hasPastKey && hasPastValue) {
+  if (pastKey && pastValue) {
     if (pastKey.dims.length !== 4) {
       throw new Error('Input "past_key" is expected to have 4 dimensions');
     }
@@ -76,7 +74,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     pastSequenceLength = pastKey.dims[1];
     maxSequenceLength = pastKey.dims[1];
 
-  } else if (hasPastKey || hasPastValue) {
+  } else if (pastKey || pastValue) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
   }
 
@@ -209,7 +207,7 @@ const createConcatProgramInfo =
 
       // TODO: handle H or params.kvNumHeads greater than work group size limit, spec
       // https://gpuweb.github.io/gpuweb/#dom-supported-limits-maxcomputeworkgroupsizex.
-      if (H === 256 || params.kvNumHeads! > 256) {
+      if (H > 256 || params.kvNumHeads! > 256) {
         throw new Error(`H(${H}) or params.kvNumHeads(${params.kvNumHeads}) greater than work group size limit 256.`);
       }
 
