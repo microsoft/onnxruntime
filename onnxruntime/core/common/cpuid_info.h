@@ -123,7 +123,7 @@ class CPUIDInfo {
   void X86Init();
 #elif defined(CPUIDINFO_ARCH_ARM)
   // Now the following var is only used in ARM build, but later one we may expand the usage.
-  [[maybe_unused]] bool pytorch_cpuinfo_init_{false};
+  bool pytorch_cpuinfo_init_{false};
 #endif
 
 #ifdef __linux__
