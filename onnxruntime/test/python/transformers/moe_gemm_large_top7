@@ -1,0 +1,232 @@
+batch_size: 1, sequence_length: 32
+top_1:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.0003015732765197754
+top_2:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_4, latency: 0.0003166341781616211
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.0003209209442138672
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.00035674571990966796
+top_5:: tile: K_FC1_CtaShape16x256x64_WarpShape16x64x64, stage: K_FC1_Stages_4, latency: 0.0003680181503295898
+top_6:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_2, latency: 0.00037200212478637694
+top_7:: tile: K_FC1_CtaShape16x256x64_WarpShape16x64x64, stage: K_FC1_Stages_3, latency: 0.0003720951080322266
+batch_size: 1, sequence_length: 64
+top_1:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_4, latency: 0.0009364438056945801
+top_2:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.0009588217735290528
+top_3:: tile: K_FC1_CtaShape16x256x64_WarpShape16x64x64, stage: K_FC1_Stages_3, latency: 0.0009698152542114257
+top_4:: tile: K_FC1_CtaShape16x256x64_WarpShape16x64x64, stage: K_FC1_Stages_2, latency: 0.0009722089767456054
+top_5:: tile: K_FC1_CtaShape16x256x64_WarpShape16x64x64, stage: K_FC1_Stages_4, latency: 0.0009822344779968262
+top_6:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.0009919261932373046
+top_7:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.000992586612701416
+batch_size: 1, sequence_length: 128
+top_1:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.0009695243835449219
+top_2:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_4, latency: 0.0009717845916748047
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.0010010457038879394
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.0010031390190124512
+top_5:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.0011266469955444336
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.0011638307571411133
+top_7:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.0011767268180847168
+batch_size: 1, sequence_length: 256
+top_1:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.0010572624206542968
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.0011610865592956543
+top_3:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.001197648048400879
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.0012171220779418944
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.0012926292419433594
+top_6:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.0013033413887023925
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_4, latency: 0.001422135829925537
+batch_size: 1, sequence_length: 512
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.0014636635780334473
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.001557021141052246
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.0017101526260375976
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.0017702722549438478
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.00194610595703125
+top_6:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.00222825288772583
+top_7:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.0022704577445983886
+batch_size: 1, sequence_length: 1024
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.0024436998367309572
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.002536599636077881
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.002765705585479736
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.0028818631172180175
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.003131556510925293
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.003211500644683838
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.004230637550354004
+batch_size: 1, sequence_length: 2048
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.004245755672454834
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.004295740127563476
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.005350086688995361
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.00556321382522583
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.005631806850433349
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.005880770683288575
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.007778637409210205
+batch_size: 1, sequence_length: 4096
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.008173751831054687
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.008192100524902345
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.01031383752822876
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.010424911975860596
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.010683581829071045
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.011281805038452148
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.015242924690246582
+batch_size: 1, sequence_length: 8192
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.015824475288391114
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.01588141679763794
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.019909563064575194
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.020764150619506837
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.02121473789215088
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.02124408006668091
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.030226263999938965
+batch_size: 1, sequence_length: 16384
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.031000607013702393
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.031171607971191406
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.038703179359436034
+top_4:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.041858079433441164
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.04201988220214844
+top_6:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.04326492309570312
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.060427284240722655
+batch_size: 4, sequence_length: 32
+top_1:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_4, latency: 0.0009822177886962891
+top_2:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.0010013914108276368
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.0010030817985534667
+top_4:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.001020820140838623
+top_5:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.0011285853385925293
+top_6:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_2, latency: 0.0011526060104370117
+top_7:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.001172025203704834
+batch_size: 4, sequence_length: 64
+top_1:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.001118030548095703
+top_2:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.0011261677742004394
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.0011375904083251952
+top_4:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.0011753201484680175
+top_5:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.0012035870552062988
+top_6:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.0012855243682861328
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_4, latency: 0.0014678263664245606
+batch_size: 4, sequence_length: 128
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.0015921878814697265
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.0015950202941894531
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.0017195272445678712
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.0017871403694152833
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.0018120527267456055
+top_6:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.0022153306007385255
+top_7:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.002232863903045654
+batch_size: 4, sequence_length: 256
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.0022941875457763673
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.0023452210426330566
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.0027457094192504883
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.002902243137359619
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.0030924034118652343
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.003210024833679199
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.004216489791870118
+batch_size: 4, sequence_length: 512
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.0043564772605895995
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.004407598972320557
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.005377252101898194
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.005514826774597168
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.005612328052520752
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.006019792556762695
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.007853875160217285
+batch_size: 4, sequence_length: 1024
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.008214960098266602
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.008248236179351807
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.010265915393829346
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.010347976684570312
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.010831389427185058
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.01101525068283081
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.01525118350982666
+batch_size: 4, sequence_length: 2048
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.01582132577896118
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.015881443023681642
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.019813604354858398
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.02076761245727539
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.02126757860183716
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.021429092884063722
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.030358290672302245
+batch_size: 4, sequence_length: 4096
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.03114577054977417
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.031172423362731932
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.03873029470443726
+top_4:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.04155246496200562
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.04191418409347534
+top_6:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.04329964876174927
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.060567917823791506
+batch_size: 4, sequence_length: 8192
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.06089189052581787
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.06091904163360596
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.07706967115402222
+top_4:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.08245259761810303
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.0888019061088562
+top_6:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.08959785938262939
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.1212061071395874
+batch_size: 4, sequence_length: 16384
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.12146478176116943
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.122686128616333
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.15509891986846924
+top_4:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.16484578132629393
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.18720026731491088
+top_6:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.19965610265731812
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.24287588357925416
+batch_size: 16, sequence_length: 32
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.001536874771118164
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.0015598011016845703
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.001706674098968506
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.0017093896865844726
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.0017573118209838867
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.002208855152130127
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.0023070716857910155
+batch_size: 16, sequence_length: 64
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.002443866729736328
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.0024554967880249024
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.002921619415283203
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.002932865619659424
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.0030957460403442383
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.003426105976104736
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.004052066802978515
+batch_size: 16, sequence_length: 128
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.004298777580261231
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.004430038928985596
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.005376722812652588
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.005451507568359375
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.005626082420349121
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.005971517562866211
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.00782665491104126
+batch_size: 16, sequence_length: 256
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.008022992610931397
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.008237109184265137
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.010229134559631347
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.01048813819885254
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.010890815258026123
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.011292321681976318
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.015397844314575195
+batch_size: 16, sequence_length: 512
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.015887770652770996
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.015912330150604247
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.01973114728927612
+top_4:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.020684056282043457
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.02129669427871704
+top_6:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.02151989459991455
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.030282514095306398
+batch_size: 16, sequence_length: 1024
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.031059002876281737
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.031137278079986574
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.038750550746917724
+top_4:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.04159108877182007
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.042139592170715334
+top_6:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.04325451612472534
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.06039660453796387
+batch_size: 16, sequence_length: 2048
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.060780296325683596
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.06089222192764282
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.07708716869354248
+top_4:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.08238077640533448
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.08904027223587035
+top_6:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.08975329637527465
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.12125481128692626
+batch_size: 16, sequence_length: 4096
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.12155965089797974
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.12260465621948242
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.1551103949546814
+top_4:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.1647014355659485
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.1875949478149414
+top_6:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.19932881832122804
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.24293498277664186
+batch_size: 16, sequence_length: 8192
+top_1:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_3, latency: 0.24329879999160767
+top_2:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_4, latency: 0.2479564380645752
+top_3:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_4, latency: 0.3151829171180725
+top_4:: tile: K_FC1_CtaShape128x128x64_WarpShape64x32x64, stage: K_FC1_Stages_2, latency: 0.3293320298194885
+top_5:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_2, latency: 0.39127942800521853
+top_6:: tile: K_FC1_CtaShape64x128x64_WarpShape32x64x64, stage: K_FC1_Stages_3, latency: 0.44048213005065917
+top_7:: tile: K_FC1_CtaShape32x128x64_WarpShape32x32x64, stage: K_FC1_Stages_3, latency: 0.4909911298751831

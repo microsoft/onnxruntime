@@ -448,8 +448,8 @@ def perf_tuning():
 
     environ_reset()
 
-    for batch_size in [1]:
-        for sequence_length in range(8, 9128, 8):
+    for batch_size in [1, 2, 4, 8, 16, 32]:
+        for sequence_length in [1]:
             latencys = []
             for tile in tiles:
                 for stage in stages:
@@ -465,20 +465,11 @@ def perf_tuning():
             # pick top 3 minimum latencies and get their indexes
             sorted_ids = numpy.argsort(latencys)
 
-            top_1_idx = sorted_ids[0]
-            tile_idx = top_1_idx // len(stages)
-            stage_idx = top_1_idx % len(stages)
-            print(f"top_1:: tile: {tiles[tile_idx]}, stage: {stages[stage_idx]}, latency: {latencys[top_1_idx]}")
-
-            top_2_idx = sorted_ids[1]
-            tile_idx = top_2_idx // len(stages)
-            stage_idx = top_2_idx % len(stages)
-            print(f"top_2:: tile: {tiles[tile_idx]}, stage: {stages[stage_idx]}, latency: {latencys[top_2_idx]}")
-
-            top_3_idx = sorted_ids[2]
-            tile_idx = top_3_idx // len(stages)
-            stage_idx = top_3_idx % len(stages)
-            print(f"top_3:: tile: {tiles[tile_idx]}, stage: {stages[stage_idx]}, latency: {latencys[top_3_idx]}")
+            for i in range(5):
+                idx = sorted_ids[i]
+                tile_idx = idx // len(stages)
+                stage_idx = idx % len(stages)
+                print(f"top_{i+1}:: tile: {tiles[tile_idx]}, stage: {stages[stage_idx]}, latency: {latencys[idx]}")
 
 
 

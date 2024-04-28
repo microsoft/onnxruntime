@@ -468,17 +468,7 @@ def perf_tuning():
             top_1_idx = sorted_ids[0]
             tile_idx = top_1_idx // len(stages)
             stage_idx = top_1_idx % len(stages)
-            print(f"top_1:: tile: {tiles[tile_idx]}, stage: {stages[stage_idx]}, latency: {latencys[top_1_idx]}")
-
-            top_2_idx = sorted_ids[1]
-            tile_idx = top_2_idx // len(stages)
-            stage_idx = top_2_idx % len(stages)
-            print(f"top_2:: tile: {tiles[tile_idx]}, stage: {stages[stage_idx]}, latency: {latencys[top_2_idx]}")
-
-            top_3_idx = sorted_ids[2]
-            tile_idx = top_3_idx // len(stages)
-            stage_idx = top_3_idx % len(stages)
-            print(f"top_3:: tile: {tiles[tile_idx]}, stage: {stages[stage_idx]}, latency: {latencys[top_3_idx]}")
+            print(f"({batch_size}, {sequence_length}): {tiles[tile_idx]}, {stages[stage_idx]}, latency: {latencys[top_1_idx]}")
 
 
 

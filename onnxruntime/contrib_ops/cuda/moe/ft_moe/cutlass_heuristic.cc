@@ -170,34 +170,34 @@ CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmC
                                                         const int64_t n, const int64_t k, const int64_t,
                                                         int const split_k_limit, const size_t workspace_bytes,
                                                         int const multi_processor_count, int const is_weight_only) {
-  CutlassGemmConfig temp_best_config;
-  temp_best_config.split_k_style = SplitKStyle::NO_SPLIT_K;
-  temp_best_config.split_k_factor = 1;
-  if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape16x128x64_WarpShape16x32x64", false)) {
-    temp_best_config.tile_config = CutlassTileConfig::CtaShape16x128x64_WarpShape16x32x64;
-  } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape16x256x64_WarpShape16x64x64", false)) {
-    temp_best_config.tile_config = CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64;
-  } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape32x128x64_WarpShape32x32x64", false)) {
-    temp_best_config.tile_config = CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64;
-  } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape64x128x64_WarpShape32x64x64", false)) {
-    temp_best_config.tile_config = CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64;
-  } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape128x128x64_WarpShape64x32x64", false)) {
-    temp_best_config.tile_config = CutlassTileConfig::CtaShape128x128x64_WarpShape64x32x64;
-  } else {
-    temp_best_config.tile_config = CutlassTileConfig::ChooseWithHeuristic;
-  }
-  if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_Stages_2", false)) {
-    temp_best_config.stages = 2;
-    return temp_best_config;
-  } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_Stages_3", false)) {
-    temp_best_config.stages = 3;
-    return temp_best_config;
-  } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_Stages_4", false)) {
-    temp_best_config.stages = 4;
-    return temp_best_config;
-  } else {
-    temp_best_config.stages = -1;
-  }
+  // CutlassGemmConfig temp_best_config;
+  // temp_best_config.split_k_style = SplitKStyle::NO_SPLIT_K;
+  // temp_best_config.split_k_factor = 1;
+  // if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape16x128x64_WarpShape16x32x64", false)) {
+  //   temp_best_config.tile_config = CutlassTileConfig::CtaShape16x128x64_WarpShape16x32x64;
+  // } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape16x256x64_WarpShape16x64x64", false)) {
+  //   temp_best_config.tile_config = CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64;
+  // } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape32x128x64_WarpShape32x32x64", false)) {
+  //   temp_best_config.tile_config = CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64;
+  // } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape64x128x64_WarpShape32x64x64", false)) {
+  //   temp_best_config.tile_config = CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64;
+  // } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_CtaShape128x128x64_WarpShape64x32x64", false)) {
+  //   temp_best_config.tile_config = CutlassTileConfig::CtaShape128x128x64_WarpShape64x32x64;
+  // } else {
+  //   temp_best_config.tile_config = CutlassTileConfig::ChooseWithHeuristic;
+  // }
+  // if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_Stages_2", false)) {
+  //   temp_best_config.stages = 2;
+  //   return temp_best_config;
+  // } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_Stages_3", false)) {
+  //   temp_best_config.stages = 3;
+  //   return temp_best_config;
+  // } else if (ParseEnvironmentVariableWithDefault<bool>("K_FC1_Stages_4", false)) {
+  //   temp_best_config.stages = 4;
+  //   return temp_best_config;
+  // } else {
+  //   temp_best_config.stages = -1;
+  // }
 
   if (occupancies.size() != candidate_configs.size()) {
     throw std::runtime_error(
