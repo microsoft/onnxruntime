@@ -2077,7 +2077,7 @@ void TagNodeToAssociatedOutputs(const Graph* graph,
                                 const InlinedVector<const NodeArg*>& branch_subgraph_outputs,
                                 const InlinedVector<const Node*>& branch_graph,
                                 InlinedVector<GroupNode>& group_node_collection,
-                                std::map<const NodeArg*, GroupNode*>& output_arg_to_grouped_node) {
+                                InlinedHashMap<const NodeArg*, GroupNode*>& output_arg_to_grouped_node) {
   // Reverse DFS from branch graph outputs (e.g. branch_subgraph_outputs) to tag each nodes:
   // If one node N contributes to a graph output A, then we will tag A to N.
   // If the node N contributes to multiple graph outputs A, B, C, then we will tag the A, B, C to N.
@@ -2141,7 +2141,7 @@ void UpdateBackwardInDegree(InlinedVector<size_t>& backward_node_in_degree,
 
 void OutputGroupedNodes(const Graph* graph,
                         const NodeArg* output_arg,
-                        const std::map<const NodeArg*, GroupNode*>& output_arg_to_grouped_node,
+                        const InlinedHashMap<const NodeArg*, GroupNode*>& output_arg_to_grouped_node,
                         std::vector<NodeIndex>& node_orders,
                         InlinedVector<NodeIndex>& topo_order) {
   ORT_ENFORCE(output_arg_to_grouped_node.find(output_arg) != output_arg_to_grouped_node.end(),
@@ -2224,8 +2224,7 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
 
   // Cluster the nodes in the branch_graph based on the associated outputs.
   InlinedVector<GroupNode> group_node_collection;
-  // Use ordered map to ensure the output order is deterministic.
-  std::map<const NodeArg*, GroupNode*> output_arg_to_grouped_node;
+  InlinedHashMap<const NodeArg*, GroupNode*> output_arg_to_grouped_node;
   TagNodeToAssociatedOutputs(this,
                              nodes_to_execute_before_yieldop,
                              branch_subgraph_outputs,
@@ -2272,9 +2271,27 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
   // For the group nodes that are not outputted, we need to output them.
   // Hitting this code path means some nodes are consuming outputs of forward nodes, and their outputs
   // are not used by main branch backward nodes.
-  for (const auto& [output_arg, grouped_node] : output_arg_to_grouped_node) {
+  InlinedVector<std::pair<const NodeArg*, GroupNode*>>
+      left_output_arg_to_grouped_node_vector;  // To ensure deterministic order.
+  left_output_arg_to_grouped_node_vector.reserve(output_arg_to_grouped_node.size());
+  for (auto& [output_arg, grouped_node] : output_arg_to_grouped_node) {
     if (!grouped_node->is_outputted) {
-      OutputGroupedNodes(this, output_arg, output_arg_to_grouped_node, node_orders, topo_order);
+      left_output_arg_to_grouped_node_vector.push_back({output_arg, grouped_node});
+    }
+  }
+
+  if (!left_output_arg_to_grouped_node_vector.empty()) {
+    // Sort to ensure deterministic order.
+    std::sort(left_output_arg_to_grouped_node_vector.begin(), left_output_arg_to_grouped_node_vector.end(),
+              [](const std::pair<const NodeArg*, GroupNode*>& a, const std::pair<const NodeArg*, GroupNode*>& b) {
+                return a.first->Name() < b.first->Name();
+              });
+    for (const auto& pair : left_output_arg_to_grouped_node_vector) {
+      const NodeArg* output_arg = pair.first;
+      GroupNode* grouped_node = pair.second;
+      if (!grouped_node->is_outputted) {
+        OutputGroupedNodes(this, output_arg, output_arg_to_grouped_node, node_orders, topo_order);
+      }
     }
   }
 

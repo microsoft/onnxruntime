@@ -2350,11 +2350,22 @@ TEST_F(GraphTest, GraphConstruction_MemoryEfficientTopologicalSort_SubgraphGener
   // MEMORY_EFFICIENT order
   {
     auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::MEMORY_EFFICIENT);
-    const std::vector<std::string> expected_priority_based_order =
-        {"node_0", "node_1", "node_4", "node_yield", "recompute_node_1", "node_1_grad", "graph_output_0_identity", "graph_output_1_identity"};
+    const std::vector<std::string> expected_order =
+        {
+            "node_0",
+            "node_1",
+            "node_4",
+            "node_yield",
+            "recompute_node_1",
+            "node_1_grad",
+            "graph_output_0_identity",
+            "graph_output_1_identity",
+        };
     for (size_t i = 0; i < order.size(); ++i) {
       auto node = graph.GetNode(order[i]);
-      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "MEMORY_EFFICIENT based execution order is wrong.";
+      EXPECT_TRUE(node->Name() == expected_order[i])
+          << "MEMORY_EFFICIENT based execution order is wrong. expected node is " << expected_order[i]
+          << " but got " << node->Name();
     }
   }
 }
