@@ -93,23 +93,5 @@ void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
-/**
- * Tries to merge a DQ -> Q sequence into a QNN Convert operator. The DQ -> Q must be converting from
- * one quantization type (e.g., uint8_t) to another (e.g., uint16_t).
- *
- * \param fused_nodes Output list of node units that were fused. Remains empty if fusion is not applied.
- * \param qnn_model_wrapper The QNN model that is being built.
- * \param maybe_dq_node_unit The node unit that could potentially start the DQ -> Q sequence.
- * \param logger The logger.
- * \param do_op_validation True if should call QNN operator validation APIs.
- * \return An onnxruntime::Status
- */
-Status TryHandleConvertSequence(/*out*/ std::vector<const NodeUnit*>& fused_nodes,
-                                QnnModelWrapper& qnn_model_wrapper,
-                                const NodeUnit& maybe_dq_node_unit,
-                                const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                const logging::Logger& logger,
-                                bool do_op_validation);
 }  // namespace qnn
 }  // namespace onnxruntime

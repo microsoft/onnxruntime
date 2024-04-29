@@ -108,6 +108,18 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
+  Qnn_TensorType_t GetTensorType(const std::string& input_name) const {
+    if (IsInitializerInput(input_name)) {
+      return QNN_TENSOR_TYPE_STATIC;
+    } else if (IsGraphInput(input_name)) {
+      return QNN_TENSOR_TYPE_APP_WRITE;
+    } else if (IsGraphOutput(input_name)) {
+      return QNN_TENSOR_TYPE_APP_READ;
+    } else {
+      return QNN_TENSOR_TYPE_NATIVE;
+    }
+  }
+
   Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
