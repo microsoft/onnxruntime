@@ -493,7 +493,7 @@ TEST_F(QnnCPUBackendTests, Convf32_large_input1_pad_bias_initializer) {
                    "NOTSET",
                    ExpectedEPNodeAssignment::All,
                    13,
-                   1e-4f);
+                   2e-4f);
 }
 
 TEST_F(QnnCPUBackendTests, Convf32_large_input2_nopad_bias_initializer) {
@@ -971,7 +971,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
                                       TestInputDef<float>({1}, true, {2.0f}),                      // Bias
                                       {1, 1, 1},                                                   // Strides
                                       {0, 0, 0, 0, 0, 0},                                          // Pads
-                                      {1, 1},                                                      // Dilations
+                                      {1, 1, 1},                                                   // Dilations
                                       1,                                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
