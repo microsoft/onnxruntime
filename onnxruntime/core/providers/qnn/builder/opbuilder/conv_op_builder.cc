@@ -495,8 +495,6 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
                                                   bool do_op_validation) const {
-  ORT_UNUSED_PARAMETER(do_op_validation);
-
   const auto& outputs = node_unit.Outputs();
 
   std::vector<uint32_t> output_shape;
@@ -612,10 +610,10 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
         int64_t pad_head = pads[dim];
         int64_t pad_tail = pads[rank + dim];
         if (conv_type == OnnxConvType::kConv) {
-          ORT_RETURN_IF_ERROR(onnxruntime::ComputePad(static_cast<int64_t>(input_dims[dim]),
-                                                      static_cast<int64_t>(strides[dim]),
-                                                      static_cast<int64_t>(kernel_shape[dim]),
-                                                      static_cast<int64_t>(dilations[dim]),
+          ORT_RETURN_IF_ERROR(onnxruntime::ComputePad(input_dims[dim],
+                                                      strides[dim],
+                                                      kernel_shape[dim],
+                                                      dilations[dim],
                                                       pad_type,
                                                       pad_head,
                                                       pad_tail));
@@ -643,7 +641,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     ReArranagePads(pads);
     uint32_t pad_size = narrow<uint32_t>(pads.size() / 2);
     QnnParamWrapper pad_amount_paramwrapper(node_unit.Index(), node_unit.Name(), QNN_OP_CONV_2D_PARAM_PAD_AMOUNT,
-                                            {pad_size, pad_size}, std::move(pads));
+                                            {pad_size, 2}, std::move(pads));
     param_tensor_names.push_back(pad_amount_paramwrapper.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(pad_amount_paramwrapper));
   }
@@ -654,7 +652,8 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_RETURN_IF_ERROR(GetInputChannelNumber(qnn_model_wrapper, node_unit, num_input_channels));
 
   // There's DepthWiseConv2d, but no DepthWiseConv3d
-  const bool is_depthwise_conv2d = (conv_type == OnnxConvType::kConv) && (num_input_channels == num_output_channels) &&
+  const bool is_depthwise_conv2d = (!is_3d_conv) && (conv_type == OnnxConvType::kConv) &&
+                                   (num_input_channels == num_output_channels) &&
                                    (group == num_output_channels);
 
   if (!is_depthwise_conv2d) {  // DepthWiseConv2d does not need a group parameter.
@@ -705,7 +704,8 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                       output_node_type,
                                                       std::move(input_names),
                                                       {conv_output_name},
-                                                      std::move(param_tensor_names)),
+                                                      std::move(param_tensor_names),
+                                                      do_op_validation),
                       "Failed to add node.");
 
     // Add Reshape to convert QNN Conv2d/TransposeConv2d/DepthWiseConv2d output back to 1D.
@@ -729,7 +729,8 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                       output_node_type,
                                                       std::move(input_names),
                                                       {output_name},
-                                                      std::move(param_tensor_names)),
+                                                      std::move(param_tensor_names),
+                                                      do_op_validation),
                       "Failed to add node.");
   }
 
