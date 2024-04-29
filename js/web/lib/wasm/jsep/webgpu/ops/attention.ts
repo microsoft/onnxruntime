@@ -408,6 +408,7 @@ const createAttentionProbsProgramInfo =
     ${(() => {
           if (pastKey) {
             return `
+  let presentKeyOffset = uniforms.N * uniforms.K * headIdx;
   let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx;
   let pastKeyOffset = uniforms.past_sequence_length * uniforms.K * headIdx;`;
           } else {
@@ -432,7 +433,7 @@ const createAttentionProbsProgramInfo =
                 tileK[idx] =
                          key[kOffset + (n + local_id.y - uniforms.past_sequence_length) * uniforms.K + w + local_id.x];
               }
-              present_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];`;
+              present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];`;
           } else {
             return 'tileK[idx] = key[kOffset + local_id.y * uniforms.K + w + local_id.x];';
           }
@@ -534,6 +535,7 @@ const createVxAttentionScoreProgramInfo =
    ${(() => {
           if (pastValue) {
             return `
+    let presentValueOffset = headIdx * uniforms.N * uniforms.K + n;
     let pastValueOffset = headIdx * uniforms.N * uniforms.past_sequence_length + n;
     let vOffset = headIdx * uniforms.N * uniforms.kv_sequence_length + n;
       `;
@@ -559,7 +561,7 @@ const createVxAttentionScoreProgramInfo =
       } else {
         tileK[idx] = v[vOffset + (w + local_id.y - uniforms.past_sequence_length) * uniforms.N];
       }
-      present_value[pastValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];
+      present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];
       `;
           } else {
             return `
