@@ -1086,7 +1086,9 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::unordered_map<std::string, int>& GraphViewer__DomainToVersionMap(const GraphViewer* p) override { return p->DomainToVersionMap(); }
 
-  const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) override { return p->GetNodesInTopologicalOrder(); }
+  const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p, int execution_order) override { 
+    return p->GetNodesInTopologicalOrder(static_cast<ExecutionOrder>(execution_order));
+  }
   const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
   void GraphViewer__ToProto(const GraphViewer* p,
                             ONNX_NAMESPACE::GraphProto& graph_proto,
