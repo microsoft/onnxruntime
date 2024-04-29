@@ -448,17 +448,23 @@ TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
                    1,                                                      // default group
                    "SAME_LOWER",                                           // auto_pad
                    ExpectedEPNodeAssignment::All);
+}
 
-  // RunCPUConvOpTest("ConvTranspose",
-  //                  TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-  //                  TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
-  //                  TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
-  //                  {1, 1, 1},                                                 // strides
-  //                  {},                                                        // pads
-  //                  {1, 1, 1},                                                 // dilations
-  //                  1,                                                         // default group
-  //                  "SAME_LOWER",                                              // auto_pad
-  //                  ExpectedEPNodeAssignment::All);
+// Tests ConvTranspose's auto_pad value "SAME_LOWER" (compares to CPU EP).
+// Exception from graphFinalize
+// Exception thrown at 0x00007FFFB7651630 (QnnCpu.dll) in onnxruntime_test_all.exe:
+// 0xC0000005: Access violation reading location 0x0000000000000000.
+TEST_F(QnnCPUBackendTests, DISABLED_ConvTranspose3D_f32_AutoPadLower) {
+   RunCPUConvOpTest("ConvTranspose",
+                    TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                    TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
+                    TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
+                    {1, 1, 1},                                                 // strides
+                    {},                                                        // pads
+                    {1, 1, 1},                                                 // dilations
+                    1,                                                         // default group
+                    "SAME_LOWER",                                              // auto_pad
+                    ExpectedEPNodeAssignment::All);
 }
 
 // large input,output, pads
@@ -1204,19 +1210,23 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_DynamicWeight_NoBias) {
                                      1,                                                          // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All);
+}
 
-  // QNN op validation failed. Run correctly if by pass the QNN op validation
-  /* RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
-                                     TestInputDef<float>({1, 3, 32, 32, 32}, false, -10.0f, 10.0f), // Input
-                                     TestInputDef<float>({3, 1, 4, 4, 4}, false, -10.0f, 10.0f),    // Weights
-                                     TestInputDef<float>(),                                         // Bias
-                                     {1, 1, 1},                                                     // Strides
-                                     {0, 0, 0, 0, 0, 0},                                            // Pads
-                                     {1, 1, 1},                                                     // Dilations
-                                     1,                                                             // default group
+// QNN op validation crash. Run correctly if by pass the QNN op validation
+// Exception from backendValidateOpConfig:
+// Exception thrown at 0x00007FFF9E0128B0 (QnnHtpPrepare.dll) in onnxruntime_test_all.exe:
+// 0xC0000005: Access violation reading location 0x7079745F656C706D.
+TEST_F(QnnHTPBackendTests, DISABLED_ConvTranspose3D_U8U8S32_DynamicWeight_NoBias) {
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 3, 32, 32, 32}, false, -10.0f, 10.0f),  // Input
+                                     TestInputDef<float>({3, 1, 4, 4, 4}, false, -10.0f, 10.0f),     // Weights
+                                     TestInputDef<float>(),                                          // Bias
+                                     {1, 1, 1},                                                      // Strides
+                                     {0, 0, 0, 0, 0, 0},                                             // Pads
+                                     {1, 1, 1},                                                      // Dilations
+                                     1,                                                              // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All);
-  */
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
