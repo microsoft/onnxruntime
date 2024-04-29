@@ -3603,9 +3603,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
 
   // Get engine binary data and deserialize it
-  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), model_path_,
-                                                            compute_capability_, weightless_engine_enable_,
-                                                            onnx_model_folder_path_);
+  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine,
+                                                           runtime_.get(),
+                                                           model_path_,
+                                                           compute_capability_,
+                                                           weightless_engine_enable_,
+                                                           onnx_model_folder_path_,
+                                                           detailed_build_log_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());

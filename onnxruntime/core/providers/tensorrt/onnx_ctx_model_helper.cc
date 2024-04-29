@@ -11,7 +11,7 @@
 #include "tensorrt_execution_provider.h"
 
 namespace onnxruntime {
-extern TensorrtLogger& GetTensorrtLogger();
+extern TensorrtLogger& GetTensorrtLogger(bool verbose_log);
 
 /*
  *  Check whether the graph has the EP context contrib op.
@@ -315,7 +315,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     }
 
     // Weightless engine refit logic
-    TensorrtLogger& trt_logger = GetTensorrtLogger();
+    TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
     auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(**trt_engine_, trt_logger));
     auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
                             nvonnxparser::createParserRefitter(*refitter, trt_logger));

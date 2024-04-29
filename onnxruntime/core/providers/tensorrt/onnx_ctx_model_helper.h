@@ -51,13 +51,15 @@ class TensorRTCacheModelHandler {
                             std::string ep_context_model_path,
                             std::string compute_capability,
                             bool weightless_engine_refit,
-                            std::string onnx_model_folder_path)
+                            std::string onnx_model_folder_path,
+                            bool detailed_build_log)
     : trt_engine_(trt_engine),
       trt_runtime_(trt_runtime),
       ep_context_model_path_(ep_context_model_path),
       compute_capability_(compute_capability),
       weightless_engine_refit_(weightless_engine_refit),
-      onnx_model_folder_path_(onnx_model_folder_path) {
+      onnx_model_folder_path_(onnx_model_folder_path),
+      detailed_build_log_(detailed_build_log){
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
 
@@ -72,5 +74,6 @@ class TensorRTCacheModelHandler {
   std::string compute_capability_;
   bool weightless_engine_refit_;
   std::string onnx_model_folder_path_;
+  bool detailed_build_log_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime
