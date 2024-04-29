@@ -158,7 +158,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   }
 
   std::vector<graph_utils::EdgeEndToMatch> quickgelu_path{
-    {0, 0, "QuickGelu", {1}, kMSDomain}};
+    {0, 1, "QuickGelu", {1}, kMSDomain}};
 
   if (!graph_utils::FindPath(node, true, quickgelu_path, edges, logger)) {
     std::cout << "Failed to find path for QuickGelu operation." << std::endl;
@@ -173,7 +173,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   }
 
   std::vector<graph_utils::EdgeEndToMatch> quickgelu_path_v2{
-    {0, 0, "QuickGelu", {1}, kMSDomain}};
+    {0, 1, "QuickGelu", {1}, kMSDomain}};
 
     if (!graph_utils::FindPath(node, true, quickgelu_path_v2, edges, logger)) {
     std::cout << "Failed to find path for QuickGelu_v2 operation." << std::endl;
