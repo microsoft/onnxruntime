@@ -73,10 +73,11 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
 
   // Trying to find Split->QuickGelu->Mul Path
   // What does the 0,0 represent here?
+
   std::vector<const Node::EdgeEnd*> edges;
   // TODO: Replace QuickGelu by other Elementwise Op for better generalization
   std::vector<graph_utils::EdgeEndToMatch> quickgelu_mul_path{
-      {0, 0, "QuickGelu", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "QuickGelu", {1, 11, 13}, kMSDomain},
       {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(node, true, quickgelu_mul_path, edges, logger)) {

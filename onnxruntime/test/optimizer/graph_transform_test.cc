@@ -591,7 +591,7 @@ TEST_F(GraphTransformationTests, SplitQuickGeluFusionTest) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Split"], 0);
-  ASSERT_EQ(op_to_count["QuickGelu"], 0);
+  ASSERT_EQ(op_to_count["com.microsoft.QuickGelu"], 0);
   ASSERT_EQ(op_to_count["Mul"], 0);
   ASSERT_EQ(op_to_count["S2SModelSplitQuickGelu"], 1);
 
