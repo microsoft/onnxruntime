@@ -84,37 +84,43 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // check all output edges
   unsigned int quickgelu_count = 0;
   unsigned int mul_count = 0;
+  unsigned int other_count = 0;
   for (auto it = split_node.OutputNodesBegin(); it != split_node.OutputNodesEnd(); ++it) {
     if ((*it).OpType().compare("QuickGelu") == 0) {
       std::cout << "QuickGelu found in iteration" << std::endl;
-      // Node& quickgelu_node = &(*it);
+      Node& quickgelu_node = &(*it);
       quickgelu_count++;
     } else if ((*it).OpType().compare("Mul") == 0) {
       std::cout << "Mul found in iteration" << std::endl;
-      // Node& mul_node = &(*it);
+      Node& mul_node = &(*it);
       mul_count++;
     } else {
+      other_count++;
       std::cout << "Some other operator found, investigate!!" << std::endl;
     }
   }
 
-  // check add is only consumed by softmax with matching exec provider
-  Node& next_node = *graph.GetNode(split_node.OutputNodesBegin()->Index());
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1}, kMSDomain)) {
-    std::cout << "not QuickGelu" << std::endl;
+  std::cout << "Quickgelu, mul and other count" << quickgelu_count << mul_count << other_count << std::endl;
+  if (quickgelu_count == 0 || mul_count == 0) {
     return false;
   }
-  Node& quickgelu_node = next_node;
-  Node& quickgelu_next_node = *graph.GetNode(quickgelu_node.OutputNodesBegin()->Index());
 
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(quickgelu_next_node, "Mul", {7, 13, 14})) {
-    std::cout << "not Mul Node" << std::endl;
-    return false;
-  }
-  Node& mul_node = quickgelu_next_node;
-  if (next_node.GetExecutionProviderType() != split_node.GetExecutionProviderType()) {
-    std::cout << "Mismatch EP Type" << std::endl;
-  }
+  // Node& next_node = *graph.GetNode(split_node.OutputNodesBegin()->Index());
+  // if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1}, kMSDomain)) {
+  //   std::cout << "not QuickGelu" << std::endl;
+  //   return false;
+  // }
+  // Node& quickgelu_node = next_node;
+  // Node& quickgelu_next_node = *graph.GetNode(quickgelu_node.OutputNodesBegin()->Index());
+
+  // if (!graph_utils::IsSupportedOptypeVersionAndDomain(quickgelu_next_node, "Mul", {7, 13, 14})) {
+  //   std::cout << "not Mul Node" << std::endl;
+  //   return false;
+  // }
+  // Node& mul_node = quickgelu_next_node;
+  // if (next_node.GetExecutionProviderType() != split_node.GetExecutionProviderType()) {
+  //   std::cout << "Mismatch EP Type" << std::endl;
+  // }
 
   std::vector<const Node::EdgeEnd*> edges;
   std::vector<graph_utils::EdgeEndToMatch> quickgelu_path{
