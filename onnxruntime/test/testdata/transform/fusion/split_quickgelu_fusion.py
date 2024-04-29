@@ -29,10 +29,10 @@ graph = helper.make_graph(
     [  # outputs
         helper.make_tensor_value_info("out", TensorProto.FLOAT, [76, 54, 684]),
     ],
-    [  # initializers
-        helper.make_tensor("axis", TensorProto.INT64, [], [-1]),
-        # helper.make_tensor("alpha", TensorProto.FLOAT, [], [1]),
-    ],
+    # [  # initializers
+    #     helper.make_tensor("axis", TensorProto.INT64, [], [-1]),
+    #     # helper.make_tensor("alpha", TensorProto.FLOAT, [], [1]),
+    # ],
 )
 
 model = helper.make_model(graph)
