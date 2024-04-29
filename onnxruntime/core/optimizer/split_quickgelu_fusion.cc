@@ -90,12 +90,12 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   for (auto it = split_node.OutputNodesBegin(); it != split_node.OutputNodesEnd(); ++it) {
     if ((*it).OpType().compare("QuickGelu") == 0) {
       std::cout << "QuickGelu found in iteration" << std::endl;
-      // quickgelu_node = *graph.GetNode((*it).Index());
+      quickgelu_node = *graph.GetNode((*it));
       quickgelu_node = &(*it);
       quickgelu_count++;
     } else if ((*it).OpType().compare("Mul") == 0) {
       std::cout << "Mul found in iteration" << std::endl;
-      mul_node = *graph.GetNode((*it).Index());
+      mul_node = *graph.GetNode((*it));
       mul_node = &(*it);
       mul_count++;
     } else {
