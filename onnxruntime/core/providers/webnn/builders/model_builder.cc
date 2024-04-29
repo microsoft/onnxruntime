@@ -122,7 +122,7 @@ void ModelBuilder::PreprocessActivations() {
       emscripten::val options = emscripten::val::object();
       options.set("alpha", helper.Get("alpha", 1.0f));
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("elu", options));
-    } else if (op_type == "Gelu") {
+    } else if (op_type == "Gelu" && wnn_device_type_ != WebnnDeviceType::NPU) {  // NPU doesn't suppport Gelu fusion.
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("gelu"));
     } else if (op_type == "HardSigmoid") {
       NodeAttrHelper helper(*node);
