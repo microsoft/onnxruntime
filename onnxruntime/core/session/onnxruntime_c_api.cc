@@ -2728,7 +2728,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
     &OrtApis::KernelContext_GetScratchBuffer,
     &OrtApis::KernelInfoGetAllocator,
-    &OrtApis::AddExternalInitializersFromFilesInMemory
+    &OrtApis::AddExternalInitializersFromFilesInMemory,
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
