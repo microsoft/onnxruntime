@@ -6611,7 +6611,7 @@ def test_overridden_softmax_export(softmax_compute_type):
 
 
 # TODO: fix the issue in rocm training, then enable the test.
-@pytest.skip("This test is disabled due to its breaking rocm training cis.")
+@pytest.mark.skip(reason="This test is disabled due to its breaking rocm training cis.")
 def test_aten_conv_bf16():
     class NeuralNetConv(torch.nn.Module):
         def __init__(self):
