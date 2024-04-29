@@ -84,8 +84,8 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // check all output edges
   // const Node* quickgelu_node = nullptr;
   // const Node* mul_node = nullptr;
-  Node& q_node = node;
-  Node& m_node = node;
+  // Node& q_node = node;
+  // Node& m_node = node;
   unsigned int quickgelu_count = 0;
   unsigned int mul_count = 0;
   unsigned int other_count = 0;
