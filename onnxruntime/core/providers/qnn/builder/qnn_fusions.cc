@@ -21,6 +21,9 @@ namespace qnn {
  * \param fused_nodes Output list of node units that were fused. Remains empty if fusion is not applied.
  * \param qnn_model_wrapper The QNN model that is being built.
  * \param maybe_dq_node_unit The node unit that could potentially start the DQ -> Q sequence.
+ * \param node_unit_map Maps a node to its node unit.
+ * \param handled_node_units Set of node units that have already been processed. Fusion will not fuse nodes
+ *                           in this set.
  * \param logger The logger.
  * \param do_op_validation True if should call QNN operator validation APIs.
  * \return An onnxruntime::Status
@@ -29,6 +32,7 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
                                        QnnModelWrapper& qnn_model_wrapper,
                                        const NodeUnit& maybe_dq_node_unit,
                                        const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                       const std::unordered_set<const NodeUnit*>& handled_node_units,
                                        const logging::Logger& logger,
                                        bool do_op_validation) {
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
@@ -53,6 +57,12 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
 
   const NodeUnit* q_node_unit = q_node_unit_it->second;
 
+  // Check if Q node has already been handled. Should not be the case if this
+  // fusion function has been called in topological order.
+  if (handled_node_units.count(q_node_unit) != 0) {
+    return Status::OK();
+  }
+
   // Q child must not already be part of a QDQ NodeUnit (i.e., be standalone).
   if (q_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
     return Status::OK();
@@ -67,7 +77,7 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
     return Status::OK();
   }
 
-  LOGS(logger, VERBOSE) << " Adding QNN Convert. dq_node name: [" << dq_node.Name()
+  LOGS(logger, VERBOSE) << " Adding QNN Convert via fusion. dq_node name: [" << dq_node.Name()
                         << "] dq_node optype: [" << dq_node.OpType()
                         << "] q_node name: [" << q_node_unit->Name()
                         << "] q_node optype: [" << q_node_unit->OpType()
@@ -94,10 +104,25 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
   return Status::OK();
 }
 
+/**
+ * Tries to fuse the sequence `x * HardSigmoid<alpha=1/6, beta=0.5>(x)` into a single HardSwish(x) operator.
+ * Should be called in a topologically ordered iteration of node units.
+ *
+ * \param fused_nodes Output list of node units that were fused. Remains empty if fusion was not applied.
+ * \param qnn_model_wrapper The QNN model that is being built.
+ * \param starting_node The node unit that could potentially start the sequence.
+ * \param node_unit_map Maps a node to its node unit.
+ * \param handled_node_units Set of node units that have already been processed. Fusion will not fuse nodes
+ *                           in this set.
+ * \param logger The logger.
+ * \param do_op_validation True if should call QNN operator validation APIs.
+ * \return A Status indicating a potential failure.
+ */
 static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_nodes,
                                            QnnModelWrapper& qnn_model_wrapper,
                                            const NodeUnit& start_node_unit,
                                            const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                           const std::unordered_set<const NodeUnit*>& handled_node_units,
                                            const logging::Logger& logger,
                                            bool do_op_validation) {
   // Looking for a standalone HardSigmoid to start the sequence.
@@ -132,6 +157,12 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
   ORT_RETURN_IF(mul_node_unit_it == node_unit_map.end(), "Node does not have a corresponding NodeUnit");
   const NodeUnit* mul_node_unit = mul_node_unit_it->second;
 
+  // Check if Mul node has already been handled. Should not be the case if this
+  // fusion function has been called in topological order.
+  if (handled_node_units.count(mul_node_unit) != 0) {
+    return Status::OK();
+  }
+
   // Mul child must not already be part of a QDQ NodeUnit (i.e., be standalone).
   if (mul_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
     return Status::OK();  // This would be an invalid model.
@@ -147,10 +178,7 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
   }
 
   LOGS(logger, VERBOSE) << " Adding QNN HardSwish via fusion. HardSigmoid name: [" << start_node_unit.Name()
-                        << "] optype: [" << start_node_unit.OpType()
-                        << "] Mul name: [" << mul_node_unit->Name()
-                        << "] Mull optype: [" << mul_node_unit->OpType()
-                        << "]";
+                        << "] Mul name: [" << mul_node_unit->Name() << "]";
 
   const NodeUnitIODef& input_def = start_node_unit.Inputs()[0];
   const NodeUnitIODef& output_def = mul_node_unit->Outputs()[0];
@@ -177,6 +205,7 @@ using FusionFunc = Status (*)(std::vector<const NodeUnit*>&,
                               QnnModelWrapper&,
                               const NodeUnit&,
                               const std::unordered_map<const Node*, const NodeUnit*>&,
+                              const std::unordered_set<const NodeUnit*>&,
                               const logging::Logger&,
                               bool);
 
@@ -184,19 +213,26 @@ Status TryFusions(/*out*/ std::vector<const NodeUnit*>& fused_nodes,
                   QnnModelWrapper& qnn_model_wrapper,
                   const NodeUnit& starting_node,
                   const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                  const std::unordered_set<const NodeUnit*>& handled_node_units,
                   const logging::Logger& logger,
                   bool validate) {
   ORT_RETURN_IF_NOT(fused_nodes.empty(), "fused_nodes is not empty");
 
-  std::array<FusionFunc, 2> fusions = {
-      TryHandleConvertSequence,
-      TryHandleHardSigmoidSequence,
+  // Maps a starting operator type to the functions that can potentially fuse a
+  // sequence that starts with that node.
+  static std::unordered_map<std::string, std::vector<FusionFunc>> fusions = {
+      {"DequantizeLinear", {TryHandleConvertSequence}},
+      {"HardSigmoid", {TryHandleHardSigmoidSequence}},
   };
 
-  for (auto fusion : fusions) {
-    ORT_RETURN_IF_ERROR(fusion(fused_nodes, qnn_model_wrapper, starting_node, node_unit_map, logger, validate));
-    if (!fused_nodes.empty()) {
-      return Status::OK();
+  auto iter = fusions.find(starting_node.OpType());
+  if (iter != fusions.end()) {
+    for (auto fusion_func : iter->second) {
+      ORT_RETURN_IF_ERROR(fusion_func(fused_nodes, qnn_model_wrapper, starting_node, node_unit_map,
+                                      handled_node_units, logger, validate));
+      if (!fused_nodes.empty()) {
+        return Status::OK();
+      }
     }
   }
 
