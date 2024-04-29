@@ -455,16 +455,16 @@ TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
 // Exception thrown at 0x00007FFFB7651630 (QnnCpu.dll) in onnxruntime_test_all.exe:
 // 0xC0000005: Access violation reading location 0x0000000000000000.
 TEST_F(QnnCPUBackendTests, DISABLED_ConvTranspose3D_f32_AutoPadLower) {
-   RunCPUConvOpTest("ConvTranspose",
-                    TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-                    TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
-                    TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
-                    {1, 1, 1},                                                 // strides
-                    {},                                                        // pads
-                    {1, 1, 1},                                                 // dilations
-                    1,                                                         // default group
-                    "SAME_LOWER",                                              // auto_pad
-                    ExpectedEPNodeAssignment::All);
+  RunCPUConvOpTest("ConvTranspose",
+                   TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                   TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
+                   TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
+                   {1, 1, 1},                                                 // strides
+                   {},                                                        // pads
+                   {1, 1, 1},                                                 // dilations
+                   1,                                                         // default group
+                   "SAME_LOWER",                                              // auto_pad
+                   ExpectedEPNodeAssignment::All);
 }
 
 // large input,output, pads
