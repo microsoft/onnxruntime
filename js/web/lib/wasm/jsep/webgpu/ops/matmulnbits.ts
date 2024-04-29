@@ -9,6 +9,7 @@ import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
 import {createMatMulNBitsSharedProgramInfo} from './matmulnbits-shared';
+import {createMatMulNBitsSpecialAProgramInfo} from './matmulnbits-special-a';
 
 //  TODO support quantization bits not equal to 4
 export interface MatMulNBitsAttributes extends AttributeWithCacheKey {
@@ -303,7 +304,12 @@ export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttr
     if (!outputShape) {
       throw new Error('Can\'t use matmul on the given tensors');
     }
-    context.compute(createMatMulNBitsSharedProgramInfo(context.inputs, attributes, outputShape));
+    if (context.inputs[0].dims.length === 3 && context.inputs[0].dims[0] === 1 && context.inputs[0].dims[1] === 1 &&
+        context.inputs[0].dims[2] >= 1024) {
+      context.compute(createMatMulNBitsSpecialAProgramInfo(context.inputs, attributes, outputShape));
+    } else {
+      context.compute(createMatMulNBitsSharedProgramInfo(context.inputs, attributes, outputShape));
+    }
   } else {
     const maxComputeWorkgroupSizes: [number, number, number] = context.getMaxComputeWorkgroupSizes();
     const maxComputeWorkgroupStorageSize = context.getMaxComputeWorkgroupStoragesize();
