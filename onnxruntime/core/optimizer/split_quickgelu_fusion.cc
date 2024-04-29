@@ -80,6 +80,18 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // node -> getconsumer
   //
 
+  // check add is only consumed by softmax with matching exec provider
+  Node& next_node = *graph.GetNode(split_node.OutputNodesBegin()->Index());
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1, 11, 13})) {
+    std::cout << "not QuickGelu" << std::endl;
+  }
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7, 13, 14})) {
+    std::cout << "not Mul Node" << std::endl;
+  }
+  if (next_node.GetExecutionProviderType() != split_node.GetExecutionProviderType()) {
+    std::cout << "Mismatch EP Type" << std::endl;
+  }
+
   std::vector<const Node::EdgeEnd*> edges;
   // TODO: Replace QuickGelu by other Elementwise Op for better generalization
   std::vector<graph_utils::EdgeEndToMatch> quickgelu_mul_path{
