@@ -58,7 +58,6 @@ cuda_version = None
 rocm_version = None
 is_rocm = False
 is_openvino = False
-is_qnn = False
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
@@ -86,7 +85,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     # keep the same name since AzureEP will release with CpuEP by default.
     pass
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
-    is_qnn = True
     package_name = "onnxruntime-qnn"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
@@ -392,10 +390,8 @@ else:
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
-# Extra files such as EULA and ThirdPartyNotices
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
-if is_qnn:
-    extra.extend(["Qualcomm AI Hub Proprietary License.pdf"])
+# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm AI Hub Proprietary License.pdf"]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
