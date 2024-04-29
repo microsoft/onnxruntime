@@ -170,10 +170,10 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 }
 
 Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
-                                          const NodeUnit& node_unit,
-                                          const logging::Logger& logger,
-                                          std::vector<std::string>& input_names,
-                                          bool do_op_validation) const {
+                                            const NodeUnit& node_unit,
+                                            const logging::Logger& logger,
+                                            std::vector<std::string>& input_names,
+                                            bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
   const size_t num_inputs = inputs.size();
   OnnxConvType conv_type = {};
@@ -518,11 +518,11 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   // Kernel shape
   std::vector<uint32_t> kernel_shape;
   kernel_shape = node_helper.Get("kernel_shape", kernel_shape);
-  if (kernel_shape.empty()) { // infer from weight shape
+  if (kernel_shape.empty()) {  // infer from weight shape
     kernel_shape.assign(input_1_shape.begin() + 2, input_1_shape.end());
   }
   if (is_1d_conv) {
-  	// insert Hight = 1 for 1D
+    // insert Hight = 1 for 1D
     kernel_shape.insert(kernel_shape.begin(), 1);
   }
 
@@ -601,7 +601,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       std::vector<uint32_t> input_dims(input_0_shape.begin() + 1, input_0_shape.end() - 1);
       std::vector<uint32_t> output_dims(output_shape.begin() + 1, output_shape.end() - 1);
       if (is_1d_conv) {
-  	    // insert Hight = 1 for 1D
+        // insert Hight = 1 for 1D
         input_dims.insert(input_dims.begin(), 1);
         output_dims.insert(output_dims.begin(), 1);
       }

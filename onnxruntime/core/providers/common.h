@@ -147,12 +147,12 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
 }
 
 constexpr inline int64_t ComputeTotalPad(int64_t in_size, int64_t stride, int64_t adj,
-                        int64_t kernel, int64_t dilation, int64_t out_size) {
+                                         int64_t kernel, int64_t dilation, int64_t out_size) {
   return std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - out_size);
 }
 
 inline void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
-                       int64_t& pad_head, int64_t& pad_tail) {
+                              int64_t& pad_head, int64_t& pad_tail) {
   if (pad_type == AutoPadType::SAME_UPPER) {
     // pad more on tail when total_pad is odd.
     pad_head = total_pad / 2;

@@ -449,16 +449,16 @@ TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
                    "SAME_LOWER",                                           // auto_pad
                    ExpectedEPNodeAssignment::All);
 
-  //RunCPUConvOpTest("ConvTranspose",
-  //                 TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-  //                 TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
-  //                 TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
-  //                 {1, 1, 1},                                                 // strides
-  //                 {},                                                        // pads
-  //                 {1, 1, 1},                                                 // dilations
-  //                 1,                                                         // default group
-  //                 "SAME_LOWER",                                              // auto_pad
-  //                 ExpectedEPNodeAssignment::All);
+  // RunCPUConvOpTest("ConvTranspose",
+  //                  TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+  //                  TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
+  //                  TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
+  //                  {1, 1, 1},                                                 // strides
+  //                  {},                                                        // pads
+  //                  {1, 1, 1},                                                 // dilations
+  //                  1,                                                         // default group
+  //                  "SAME_LOWER",                                              // auto_pad
+  //                  ExpectedEPNodeAssignment::All);
 }
 
 // large input,output, pads
@@ -477,9 +477,9 @@ TEST_F(QnnCPUBackendTests, Convf32_large_input1_pad_bias_initializer) {
                    1e-4f);
 
   RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 3, 60, 452, 20}, false, 0.0f, 10.0f), // Random dynamic input
-                   TestInputDef<float>({16, 3, 3, 3, 3}, true, 0.0f, 1.0f),      // Random dynamic weights
-                   TestInputDef<float>({16}, true, -1.0f, 1.0f),                 // Random static bias
+                   TestInputDef<float>({1, 3, 60, 452, 20}, false, 0.0f, 10.0f),  // Random dynamic input
+                   TestInputDef<float>({16, 3, 3, 3, 3}, true, 0.0f, 1.0f),       // Random dynamic weights
+                   TestInputDef<float>({16}, true, -1.0f, 1.0f),                  // Random static bias
                    {1, 1, 1},
                    {1, 1, 1, 1, 1, 1},
                    {1, 1, 1},
@@ -513,9 +513,9 @@ TEST_F(QnnCPUBackendTests, Convf32_large_input2_nopad_bias_initializer) {
                    fp32_abs_err);
 
   RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 32, 16, 113, 12}, false, -3.0f, 3.0f), // Random dynamic input
-                   TestInputDef<float>({16, 32, 1, 1, 1}, false, -1.0f, 1.0f),    // Random dynamic weights
-                   TestInputDef<float>({16}, true, -1.0f, 1.0f),                  // Random static bias
+                   TestInputDef<float>({1, 32, 16, 113, 12}, false, -3.0f, 3.0f),  // Random dynamic input
+                   TestInputDef<float>({16, 32, 1, 1, 1}, false, -1.0f, 1.0f),     // Random dynamic weights
+                   TestInputDef<float>({16}, true, -1.0f, 1.0f),                   // Random static bias
                    {1, 1, 1},
                    {0, 0, 0, 0, 0, 0},
                    {1, 1, 1},
@@ -675,13 +675,13 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
                                      QDQTolerance(0.00413f));
 
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
-                                     TestInputDef<float>({1, 1, 5, 5, 5}, false, 0.0f, 10.0f),  // Random dynamic input
-                                     TestInputDef<float>({1, 1, 3, 3, 3}, true, -10.0f, 10.0f), // Random static input
-                                     TestInputDef<float>({1}, false, {2.0f}),                   // Dynamic bias
-                                     {1, 1, 1},                                                 // Strides
-                                     {0, 0, 0, 0, 0, 0},                                        // Pads
-                                     {1, 1, 1},                                                 // Dilations
-                                     1,                                                         // default group
+                                     TestInputDef<float>({1, 1, 5, 5, 5}, false, 0.0f, 10.0f),   // Random dynamic input
+                                     TestInputDef<float>({1, 1, 3, 3, 3}, true, -10.0f, 10.0f),  // Random static input
+                                     TestInputDef<float>({1}, false, {2.0f}),                    // Dynamic bias
+                                     {1, 1, 1},                                                  // Strides
+                                     {0, 0, 0, 0, 0, 0},                                         // Pads
+                                     {1, 1, 1},                                                  // Dilations
+                                     1,                                                          // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
@@ -962,11 +962,11 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 1, 5, 5, 5}, false, input_data_3d),  // Input
                                       TestInputDef<float>({1, 1, 3, 3, 3}, true, weight_data_3d),  // Weights
-                                      TestInputDef<float>({1}, true, {2.0f}),                   // Bias
-                                      {1, 1, 1},                                                // Strides
-                                      {0, 0, 0, 0, 0, 0},                                       // Pads
-                                      {1, 1},                                                   // Dilations
-                                      1,                                                        // default group
+                                      TestInputDef<float>({1}, true, {2.0f}),                      // Bias
+                                      {1, 1, 1},                                                   // Strides
+                                      {0, 0, 0, 0, 0, 0},                                          // Pads
+                                      {1, 1},                                                      // Dilations
+                                      1,                                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -1000,11 +1000,11 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 2, 5, 5, 3}, false, input_data_3d),  // Input
                                       TestInputDef<float>({1, 2, 3, 3, 2}, true, weight_data_3d),  // Weights
-                                      TestInputDef<float>({1}, true, {2.0f}),                   // Bias
-                                      {1, 1, 1},                                                // Strides
-                                      {0, 0, 0, 0, 0, 0},                                       // Pads
-                                      {1, 1, 1},                                                // Dilations
-                                      1,                                                        // default group
+                                      TestInputDef<float>({1}, true, {2.0f}),                      // Bias
+                                      {1, 1, 1},                                                   // Strides
+                                      {0, 0, 0, 0, 0, 0},                                          // Pads
+                                      {1, 1, 1},                                                   // Dilations
+                                      1,                                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -1037,13 +1037,13 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
   std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 75);
   std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 27);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
-                                      TestInputDef<float>({1, 1, 5, 5, 3}, false, input_data_3d),   // Input
-                                      TestInputDef<float>({1, 1, 3, 3, 3}, true, weight_data_3d),   // Weights
-                                      TestInputDef<float>({1}, false, {2.0f}),                      // Bias
-                                      {1, 1, 1},                                                    // Strides
-                                      {0, 0, 0, 0, 0, 0},                                           // Pads
-                                      {1, 1, 1},                                                    // Dilations
-                                      1,                                                            // default group
+                                      TestInputDef<float>({1, 1, 5, 5, 3}, false, input_data_3d),  // Input
+                                      TestInputDef<float>({1, 1, 3, 3, 3}, true, weight_data_3d),  // Weights
+                                      TestInputDef<float>({1}, false, {2.0f}),                     // Bias
+                                      {1, 1, 1},                                                   // Strides
+                                      {0, 0, 0, 0, 0, 0},                                          // Pads
+                                      {1, 1, 1},                                                   // Dilations
+                                      1,                                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -1075,13 +1075,13 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
   std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 150);
   std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 36);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
-                                      TestInputDef<float>({1, 2, 5, 5, 3}, false, input_data_3d),   // Input
-                                      TestInputDef<float>({1, 2, 3, 3, 2}, true, weight_data_3d),   // Weights
-                                      TestInputDef<float>({1}, false, {2.0f}),                      // Bias
-                                      {1, 1, 1},                                                    // Strides
-                                      {0, 0, 0, 0, 0, 0},                                           // Pads
-                                      {1, 1, 1},                                                    // Dilations
-                                      1,                                                            // default group
+                                      TestInputDef<float>({1, 2, 5, 5, 3}, false, input_data_3d),  // Input
+                                      TestInputDef<float>({1, 2, 3, 3, 2}, true, weight_data_3d),  // Weights
+                                      TestInputDef<float>({1}, false, {2.0f}),                     // Bias
+                                      {1, 1, 1},                                                   // Strides
+                                      {0, 0, 0, 0, 0, 0},                                          // Pads
+                                      {1, 1, 1},                                                   // Dilations
+                                      1,                                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -1113,13 +1113,13 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
   std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 150);
   std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 36);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
-                                      TestInputDef<float>({1, 2, 5, 5, 3}, false, input_data_3d),   // Input
-                                      TestInputDef<float>({1, 2, 3, 3,2 }, true, weight_data_3d),   // Weights
-                                      TestInputDef<float>(),                                        // Bias
-                                      {1, 1, 1},                                                    // Strides
-                                      {0, 0, 0, 0, 0, 0},                                           // Pads
-                                      {1, 1, 1},                                                    // Dilations
-                                      1,                                                            // default group
+                                      TestInputDef<float>({1, 2, 5, 5, 3}, false, input_data_3d),  // Input
+                                      TestInputDef<float>({1, 2, 3, 3, 2}, true, weight_data_3d),  // Weights
+                                      TestInputDef<float>(),                                       // Bias
+                                      {1, 1, 1},                                                   // Strides
+                                      {0, 0, 0, 0, 0, 0},                                          // Pads
+                                      {1, 1, 1},                                                   // Dilations
+                                      1,                                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -1152,13 +1152,13 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
   std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 75);
   std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 18);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
-                                      TestInputDef<float>({1, 1, 5, 5, 3}, false, input_data_3d),   // Input
-                                      TestInputDef<float>({1, 1, 3, 3, 2}, true, weight_data_3d),   // Weights
-                                      TestInputDef<float>(),                                        // Bias
-                                      {1, 1, 1},                                                    // Strides
-                                      {0, 0, 0, 0, 0, 0},                                           // Pads
-                                      {1, 1, 1},                                                    // Dilations
-                                      1,                                                            // default group
+                                      TestInputDef<float>({1, 1, 5, 5, 3}, false, input_data_3d),  // Input
+                                      TestInputDef<float>({1, 1, 3, 3, 2}, true, weight_data_3d),  // Weights
+                                      TestInputDef<float>(),                                       // Bias
+                                      {1, 1, 1},                                                   // Strides
+                                      {0, 0, 0, 0, 0, 0},                                          // Pads
+                                      {1, 1, 1},                                                   // Dilations
+                                      1,                                                           // default group
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
@@ -1180,13 +1180,13 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_DynamicWeight_NoBias) {
                                      ExpectedEPNodeAssignment::All);
 
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
-                                     TestInputDef<float>({1, 3, 32, 32, 32}, false, -10.0f, 10.0f), // Input
-                                     TestInputDef<float>({1, 3, 4, 4, 4}, false, -10.0f, 10.0f),    // Weights
-                                     TestInputDef<float>(),                                         // Bias
-                                     {1, 1, 1},                                                     // Strides
-                                     {0, 0, 0, 0, 0, 0},                                            // Pads
-                                     {1, 1, 1},                                                     // Dilations
-                                     1,                                                             // default group
+                                     TestInputDef<float>({1, 3, 32, 32, 32}, false, -10.0f, 10.0f),  // Input
+                                     TestInputDef<float>({1, 3, 4, 4, 4}, false, -10.0f, 10.0f),     // Weights
+                                     TestInputDef<float>(),                                          // Bias
+                                     {1, 1, 1},                                                      // Strides
+                                     {0, 0, 0, 0, 0, 0},                                             // Pads
+                                     {1, 1, 1},                                                      // Dilations
+                                     1,                                                              // default group
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All);
 }
