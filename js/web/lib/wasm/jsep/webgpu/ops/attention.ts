@@ -352,7 +352,8 @@ const createAttentionProbsProgramInfo =
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: parameters.sequenceLength}, {type: DataType.uint32, data: vectorizedHeadSize},
         {type: DataType.uint32, data: totalSequenceLength}, {type: DataType.uint32, data: parameters.numHeads},
-        {type: DataType.float, data: alpha}, {type: DataType.uint32, data: pastSequenceLength}
+        {type: DataType.float, data: alpha}, {type: DataType.uint32, data: pastSequenceLength},
+        {type: DataType.uint32, data: parameters.kvSequenceLength}
       ];
 
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
@@ -388,7 +389,7 @@ const createAttentionProbsProgramInfo =
         const uniforms: UniformsArrayType = [
           {name: 'M', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
           {name: 'num_heads', type: 'u32'}, {name: 'alpha', type: 'f32' as UniformDataElementType},
-          {name: 'past_sequence_length', type: 'u32'}
+          {name: 'past_sequence_length', type: 'u32'}, {name: 'kv_sequence_length', type: 'u32'}
         ];
         return `
   const TILE_SIZE = ${TILE_SIZE}u;
@@ -407,7 +408,7 @@ const createAttentionProbsProgramInfo =
     ${(() => {
           if (pastKey) {
             return `
-  let kOffset = uniforms.N * uniforms.K * headIdx;
+  let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx;
   let pastKeyOffset = uniforms.past_sequence_length * uniforms.K * headIdx;`;
           } else {
             return `
@@ -491,7 +492,8 @@ const createVxAttentionScoreProgramInfo =
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: params.sequenceLength}, {type: DataType.uint32, data: totalSequenceLength},
         {type: DataType.uint32, data: params.vHeadSize}, {type: DataType.uint32, data: params.numHeads},
-        {type: DataType.uint32, data: params.vHiddenSize}, {type: DataType.uint32, data: params.sequenceLength}
+        {type: DataType.uint32, data: params.vHiddenSize}, {type: DataType.uint32, data: pastSequenceLength},
+        {type: DataType.uint32, data: params.kvSequenceLength}
       ];
       const inputDependencies: ProgramInputTensorInfoDependency[] =
           pastValue ? ['type', 'type', 'type'] : ['type', 'type'];
@@ -514,7 +516,7 @@ const createVxAttentionScoreProgramInfo =
         const uniforms: UniformsArrayType = [
           {name: 'M', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
           {name: 'num_heads', type: 'u32'}, {name: 'v_hidden_size', type: 'u32'},
-          {name: 'past_sequence_length', type: 'u32'}
+          {name: 'past_sequence_length', type: 'u32'}, {name: 'kv_sequence_length', type: 'u32'}
         ];
         return `
   const TILE_SIZE = ${TILE_SIZE}u;
@@ -533,7 +535,7 @@ const createVxAttentionScoreProgramInfo =
           if (pastValue) {
             return `
     let pastValueOffset = headIdx * uniforms.N * uniforms.past_sequence_length + n;
-    let vOffset = headIdx * uniforms.N * (uniforms.K - uniforms.past_sequence_length) + n;
+    let vOffset = headIdx * uniforms.N * uniforms.kv_sequence_length + n;
       `;
           } else {
             return `
@@ -552,7 +554,7 @@ const createVxAttentionScoreProgramInfo =
         ${(() => {
           if (pastValue) {
             return `
-      if ((w + local_id.y) < uniforms.past_sequence_length) {
+      if (w + local_id.y < uniforms.past_sequence_length) {
         tileK[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N];
       } else {
         tileK[idx] = v[vOffset + (w + local_id.y - uniforms.past_sequence_length) * uniforms.N];
