@@ -34,6 +34,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   }
   // if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
   //   std::cout << "not cuda rocm";
+  // node.GetExecutionProviderType()
   // }
   if (!optimizer_utils::CheckOutputEdges(graph, node, 2)) {
     std::cout << "not output edges 2";
@@ -73,6 +74,8 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
 
   // Trying to find Split->QuickGelu->Mul Path
   // What does the 0,0 represent here?
+  // node -> getconsumer
+  //
 
   std::vector<const Node::EdgeEnd*> edges;
   // TODO: Replace QuickGelu by other Elementwise Op for better generalization
@@ -113,6 +116,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
 
   // Compare if the two mul_nodes are same
   // Figure this out?
+  // node api to get name and then compare
 
   // pattern match succeeded
   split = &split_node;
