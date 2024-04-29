@@ -139,7 +139,14 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
     // return false;
   }
 
+  std::vector<graph_utils::EdgeEndToMatch> only_mul_path{
+      {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
 
+  if (!graph_utils::FindPath(node, true, only_mul_path, edges, logger)) {
+    std::cout << "Failed to find path for Mul operation." << std::endl;
+    DEBUG_LOG("Failed to find for direct Mul.");
+    // return false;
+  }
 
   // std::vector<const Node::EdgeEnd*> edges;
   // // TODO: Replace QuickGelu by other Elementwise Op for better generalization
