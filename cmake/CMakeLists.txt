@@ -383,7 +383,7 @@ function(set_msvc_c_cpp_compiler_warning_level warning_level)
     get_property(opts DIRECTORY PROPERTY COMPILE_OPTIONS)
     # only match the generator expression added by this function
     list(FILTER opts
-         EXCLUDE REGEX "^\\$<\\$<OR:\\$<COMPILE_LANGUAGE:C>,\\$<COMPILE_LANGUAGE:CXX>>:/W[0-4]>$")
+         EXCLUDE REGEX "^\\$<\\$<COMPILE_LANGUAGE:CXX,C>:/W[0-4]>$")
     list(APPEND opts "$<$<COMPILE_LANGUAGE:CXX,C>:${warning_flag}>")
     set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "${opts}")
   endif()
