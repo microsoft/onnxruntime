@@ -336,7 +336,10 @@ const createAttentionProbsProgramInfo =
      pastSequenceLength: number) => {
       const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
       const probsShape = [parameters.batchSize, parameters.numHeads, parameters.sequenceLength, totalSequenceLength];
-      const presentKeyShape = [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize];
+      const presentKey = context.outputCount > 1;
+      const presentKeyShape = presentKey ?
+          [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize] :
+          undefined;
 
       // TODO: handle mask
 
@@ -364,8 +367,8 @@ const createAttentionProbsProgramInfo =
         inputDependencies.push('type');
       }
       const outputs = [{dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default}];
-      if (context.outputCount > 1) {
-        outputs.push({dims: presentKeyShape, dataType: q.dataType, gpuDataType: GpuDataType.default});
+      if (presentKey) {
+        outputs.push({dims: presentKeyShape!, dataType: q.dataType, gpuDataType: GpuDataType.default});
       }
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const qInput = inputVariable('q', q.dataType, q.dims, components);
@@ -381,8 +384,8 @@ const createAttentionProbsProgramInfo =
         }
         const output = outputVariable('output', q.dataType, probsShape);
         const outputVars = [output];
-        if (context.outputCount > 1) {
-          outputVars.push(outputVariable('present_key', q.dataType, presentKeyShape, components));
+        if (presentKey) {
+          outputVars.push(outputVariable('present_key', q.dataType, presentKeyShape!, components));
         }
         const f32Type = tensorTypeToWsglValueType(DataType.float, components);
 
@@ -406,17 +409,16 @@ const createAttentionProbsProgramInfo =
     let n = workgroup_id.x * TILE_SIZE;
     let qOffset = uniforms.M * uniforms.K * headIdx + m * uniforms.K;
     ${(() => {
-          if (pastKey) {
+          if (pastKey && presentKey) {
             return `
-  let presentKeyOffset = uniforms.N * uniforms.K * headIdx;
-  let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx;
-  let pastKeyOffset = uniforms.past_sequence_length * uniforms.K * headIdx;`;
+    let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx;
+    let pastKeyOffset = uniforms.past_sequence_length * uniforms.K * headIdx;`;
           } else {
             return `
-  let kOffset = uniforms.N * uniforms.K * headIdx + n * uniforms.K;`;
+    let kOffset = uniforms.N * uniforms.K * headIdx + n * uniforms.K;`;
           }
         })()}
-
+    ${presentKey ? 'let presentKeyOffset = headIdx * uniforms.N * uniforms.K;' : ''}
     var value = ${f32Type}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {
@@ -425,19 +427,22 @@ const createAttentionProbsProgramInfo =
       if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
       ${(() => {
-          if (pastKey) {
+          if (pastKey && presentKey) {
             return `
               if (n + local_id.y < uniforms.past_sequence_length) {
                 tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
               } else {
                 tileK[idx] =
                          key[kOffset + (n + local_id.y - uniforms.past_sequence_length) * uniforms.K + w + local_id.x];
-              }
-              present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];`;
+              }`;
           } else {
             return 'tileK[idx] = key[kOffset + local_id.y * uniforms.K + w + local_id.x];';
           }
         })()}
+      ${
+            presentKey ?
+                'present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];' :
+                ''}
       }
       workgroupBarrier();
 
@@ -482,7 +487,9 @@ const createVxAttentionScoreProgramInfo =
     (context: ComputeContext, probs: TensorView, v: TensorView, pastValue: TensorView|undefined,
      params: AttentionParameters, pastSequenceLength: number) => {
       const totalSequenceLength = pastSequenceLength + params.kvSequenceLength;
-      const presentValueShape = [params.batchSize, params.numHeads, totalSequenceLength, params.headSize];
+      const presentValue = context.outputCount > 1;
+      const presentValueShape =
+          presentValue ? [params.batchSize, params.numHeads, totalSequenceLength, params.headSize] : undefined;
       const outputShape = [params.batchSize, params.sequenceLength, params.vHiddenSize];
       const TILE_SIZE = 12;
       const dispatch = {
@@ -499,8 +506,8 @@ const createVxAttentionScoreProgramInfo =
       const inputDependencies: ProgramInputTensorInfoDependency[] =
           pastValue ? ['type', 'type', 'type'] : ['type', 'type'];
       const outputs = [{dims: outputShape, dataType: probs.dataType, gpuDataType: GpuDataType.default}];
-      if (context.outputCount > 1) {
-        outputs.push({dims: presentValueShape, dataType: probs.dataType, gpuDataType: GpuDataType.default});
+      if (presentValue) {
+        outputs.push({dims: presentValueShape!, dataType: probs.dataType, gpuDataType: GpuDataType.default});
       }
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const probsHelper = inputVariable('probs', probs.dataType, probs.dims);
@@ -511,8 +518,8 @@ const createVxAttentionScoreProgramInfo =
         }
         const output = outputVariable('output', probs.dataType, outputShape);
         const outputVars = [output];
-        if (context.outputCount > 1) {
-          outputVars.push(outputVariable('present_value', probs.dataType, presentValueShape));
+        if (presentValue) {
+          outputVars.push(outputVariable('present_value', probs.dataType, presentValueShape!));
         }
         const uniforms: UniformsArrayType = [
           {name: 'M', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
@@ -533,19 +540,18 @@ const createVxAttentionScoreProgramInfo =
 
    let offsetA = headIdx * (uniforms.M * uniforms.K) + m * uniforms.K;
    ${(() => {
-          if (pastValue) {
+          if (pastValue && presentValue) {
             return `
-    let presentValueOffset = headIdx * uniforms.N * uniforms.K + n;
     let pastValueOffset = headIdx * uniforms.N * uniforms.past_sequence_length + n;
     let vOffset = headIdx * uniforms.N * uniforms.kv_sequence_length + n;
       `;
           } else {
             return `
-   let offsetB = headIdx * (uniforms.N * uniforms.K) + n;
+   let offsetB = headIdx * uniforms.N * uniforms.K + n;
             `;
           }
         })()}
-
+    ${presentValue ? 'let presentValueOffset = headIdx * uniforms.N * uniforms.K + n;' : ''}
    var value = ${probsHelper.type.storage}(0);
    for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (m < uniforms.M && w + local_id.x < uniforms.K) {
@@ -554,21 +560,21 @@ const createVxAttentionScoreProgramInfo =
       if (n < uniforms.N && w + local_id.y < uniforms.K) {
         var idx = TILE_SIZE * local_id.y + local_id.x;
         ${(() => {
-          if (pastValue) {
+          if (pastValue && presentValue) {
             return `
-      if (w + local_id.y < uniforms.past_sequence_length) {
-        tileK[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N];
-      } else {
-        tileK[idx] = v[vOffset + (w + local_id.y - uniforms.past_sequence_length) * uniforms.N];
-      }
-      present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];
+        if (w + local_id.y < uniforms.past_sequence_length) {
+          tileK[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N];
+        } else {
+          tileK[idx] = v[vOffset + (w + local_id.y - uniforms.past_sequence_length) * uniforms.N];
+        }
       `;
           } else {
             return `
-       tileK[idx] = v[offsetB + (w + local_id.y) * uniforms.N];
+        tileK[idx] = v[offsetB + (w + local_id.y) * uniforms.N];
       `;
           }
         })()}
+        ${presentValue ? 'present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];' : ''}
       }
      workgroupBarrier();
      for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {
