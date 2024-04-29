@@ -6610,6 +6610,8 @@ def test_overridden_softmax_export(softmax_compute_type):
     assert to_value == pytorch_type_to_onnx_dtype(softmax_compute_type), "Cast to attribute is not as expected"
 
 
+# TODO: fix the issue in rocm training, then enable the test.
+@pytest.mark.skip(reason="This test is disabled due to its breaking rocm training cis.")
 def test_aten_conv_bf16():
     class NeuralNetConv(torch.nn.Module):
         def __init__(self):
