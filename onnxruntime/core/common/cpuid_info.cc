@@ -299,7 +299,7 @@ CPUIDInfo::CPUIDInfo() {
   ArmLinuxInit();
 #elif defined(_WIN32)
   ArmWindowsInit();
-#endif /* (arm or arm64) and windows */
+#endif  /* (arm or arm64) and windows */
 #endif  // defined(CPUIDINFO_ARCH_ARM)
 }
 }  // namespace onnxruntime
