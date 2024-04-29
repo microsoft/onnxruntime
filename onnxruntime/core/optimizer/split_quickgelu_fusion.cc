@@ -24,7 +24,7 @@ using namespace onnxruntime;
 namespace {
 
 // pattern match on split, quickgelu and mult subgraph
-bool TrySplitQuickGeluMatch(Graph& graph, Node& start, const Node*& split, const Node*& quickgelu, const Node*& mult, const logging::Logger& logger) {
+bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, const Node*& quickgelu, const Node*& mult, const logging::Logger& logger) {
 // bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult) {
   Node& node = start;
   split = quickgelu = mult = nullptr;
@@ -184,15 +184,15 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, const Node*& split, const
 
   // pattern match succeeded
   split = &split_node;
-  quickgelu = &quickgelu_node;
-  mult = &mul_node;
+  quickgelu = quickgelu_node;
+  mult = mul_node;
   std::cout << "FINISHED MATCH, RETURNING TRUE" << std::endl;
   return true;
 }
 
 // get parameters
 bool GetSplitQuickGeluParams(
-    const Node& split_node,
+    Node& split_node,
     const Node& quickgelu_node,
     const NodeArg*& input,
     int& axis,
@@ -224,7 +224,7 @@ bool GetSplitQuickGeluParams(
 // coalesce subgraph nodes into fused node
 void FuseSplitQuickGeluSubgraph(
     Graph& graph,
-    const Node& split_node,
+    Node& split_node,
     const Node& quickgelu_node,
     const Node& mul_node,
     NodeArg* input,
@@ -280,7 +280,8 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    const Node *split_node, *quickgelu_node, *mul_node;
+    Node *split_node;
+    const *quickgelu_node, *mul_node;
     if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node, logger)) {
     // if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node)) {
       continue;
