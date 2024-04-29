@@ -28,14 +28,13 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // check node is split and has two outputs
   // TODO: 1. Check ONNX Op Types to Support
   // Split version 13 has axis as attribute and split as input (Should we only specify it for v13?)
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!0";
+  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!0" << std::endl;
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {11, 13, 18})) {
     std::cout << "not op type 11, 13, 18";
   }
-  // if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
-  //   std::cout << "not cuda rocm";
-  // node.GetExecutionProviderType()
-  // }
+  if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
+    std::cout << "not cuda rocm" << node.GetExecutionProviderType() << std::endl;
+  }
   if (!optimizer_utils::CheckOutputEdges(graph, node, 2)) {
     std::cout << "not output edges 2";
   }
@@ -44,7 +43,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
       !optimizer_utils::CheckOutputEdges(graph, node, 2)) {
     return false;
   }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1";
+  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1" << std::endl;
 
   // check shape information is not available for input
   Node& split_node = node;
@@ -53,7 +52,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   if (S == nullptr || S->dim_size() < 1) {
     return false;
   }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!2";
+  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!2" << std::endl;
 
   // Split supports only float/float16/double/bfloat16 (OR MORE!!!!!????) - see ./onnxruntime/core/graph/contrib_ops/contrib_defs.cc
   auto type_allowed = [](NodeArg* input) {
@@ -66,11 +65,11 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
     }
     return true;
   };
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!3";
+  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!3" << std::endl;
   if (!type_allowed(input)) {
     return false;
   }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!4";
+  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!4" << std::endl;
 
   // Trying to find Split->QuickGelu->Mul Path
   // What does the 0,0 represent here?
@@ -87,14 +86,14 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
     DEBUG_LOG("Failed to find path for QuickGelu mul operation.");
     return false;
   }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!5";
+  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!5" << std::endl;
   for (size_t i = 0; i < edges.size(); i++) {
     if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
       DEBUG_LOG("Output edge count not expected for nodes.");
       return false;
     }
   }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!6";
+  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!6" << std::endl;
   Node& quickgelu_node = *graph.GetNode(edges[0]->GetNode().Index());
   Node& mul_node = *graph.GetNode(edges[1]->GetNode().Index());
 
