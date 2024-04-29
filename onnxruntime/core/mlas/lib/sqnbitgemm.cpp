@@ -394,6 +394,17 @@ SQ4BitGemm_CompInt8(
     const size_t RangeCountN
 )
 {
+#ifdef MLAS_TARGET_AMD64_IX86
+    if (RangeCountM != 1) {
+        // perf experiment shows fp32 is faster than int8 in M > 1 cases.
+        // route to fp32 compute before int8 compute is improved.
+        SQ4BitGemm_CompFp32(
+            BlkLen,
+            K, DataParams, PerGemmWorkspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN
+        );
+        return;
+    }
+#endif
     constexpr size_t BlkBitWidth = 4;
 
     const size_t k_blks = MlasDivRoundup(K, BlkLen);

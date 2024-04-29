@@ -224,10 +224,12 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
     # For verification we will check the generated image looks .
+    # Because the artifact isn't used by other jobs, we set the artifact name to a varabile value.
+    # So the job can be rerun without the exception that artifact has been published.
     - task: PublishPipelineArtifact@0
-      displayName: 'Publish code coverage report'
+      displayName: 'Publish Generated Image Artifact'
       inputs:
-          artifactName: "Generated-Image"
+          artifactName: Generated-Image-$(System.JobAttempt)
           targetPath: '$(GenerateImage_DIR)'
 
     - task: Cache@2

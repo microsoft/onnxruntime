@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ComputeContext, GpuDataType, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, tensorTypeToWsglValueType, UniformDataElementType, UniformsArrayType} from './common';
+import {getMaxComponents, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, tensorTypeToWsglValueType, UniformDataElementType, UniformsArrayType} from './common';
 import {createConcatProgramInfo} from './concat';
 
 export const enum AttentionQkvFormat {
@@ -264,7 +264,7 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
     let local_offset = local_idx * uniforms.elements_per_thread;
     let offset = workgroup_id.x * uniforms.d_comp + local_offset;
 
-    var thread_max_vector = ${inputHelper.type.value}(-3.402823e+38f);
+    var thread_max_vector = ${f32Type}(-3.402823e+38f);
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
       thread_max_vector = max(${f32Type}(x[offset + i]), thread_max_vector);
     }
@@ -282,12 +282,12 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
     })()};
     workgroupBarrier();
 
-    var max_value: f32 = -3.402823e+38f;
+    var max_value =  f32(-3.402823e+38f);
     for (var i = 0u; i < ${WG}; i++) {
       max_value = max(thread_max[i], max_value);
     }
 
-    var sum_vector = ${inputHelper.type.value}(${0});
+    var sum_vector = ${f32Type}(0);
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < uniforms.d_comp; i++) {
       sum_vector += exp(${f32Type}(x[offset + i]) - max_value);
     }
@@ -333,9 +333,9 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
 
 const createAttentionProbsProgramInfo =
     (_context: ComputeContext, q: TensorView, key: TensorView, relativePositionBias: TensorView|undefined,
-     parameters: AttentionParameters, attributes: AttentionAttrs) => {
-      const probsShape =
-          [parameters.batchSize, parameters.numHeads, parameters.sequenceLength, parameters.totalSequenceLength];
+     parameters: AttentionParameters, attributes: AttentionAttrs, pastSequenceLength: number) => {
+      const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
+      const probsShape = [parameters.batchSize, parameters.numHeads, parameters.sequenceLength, totalSequenceLength];
 
       // TODO: handle mask
 
@@ -344,43 +344,36 @@ const createAttentionProbsProgramInfo =
       const vectorizedHeadSize = parameters.headSize / components;
       const TILE_SIZE = 12;
       const dispatch = {
-        x: Math.ceil(parameters.totalSequenceLength / TILE_SIZE),
+        x: Math.ceil(totalSequenceLength / TILE_SIZE),
         y: Math.ceil(parameters.sequenceLength / TILE_SIZE),
         z: parameters.batchSize * parameters.numHeads
       };
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: parameters.sequenceLength}, {type: DataType.uint32, data: vectorizedHeadSize},
-        {type: DataType.uint32, data: parameters.totalSequenceLength},
-        {type: DataType.uint32, data: parameters.numHeads}, {type: DataType.uint32, data: parameters.kvSequenceLength},
-        {type: q.dataType, data: alpha}
+        {type: DataType.uint32, data: totalSequenceLength}, {type: DataType.uint32, data: parameters.numHeads},
+        {type: DataType.float, data: alpha}
       ];
 
-      const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
-      if (relativePositionBias) {
-        inputDependencies.push('rank');
-        programUniforms.push(...createTensorShapeVariables(relativePositionBias.dims));
-      }
+      const inputDependencies: ProgramInputTensorInfoDependency[] =
+          relativePositionBias ? ['type', 'type', 'type'] : ['type', 'type'];
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const qInput = inputVariable('q', q.dataType, q.dims, components);
         const kInput = inputVariable('key', key.dataType, key.dims, components);
         const inputVars = [qInput, kInput];
-        const relativePositionBiasInput = relativePositionBias ?
-            inputVariable('relative_position_bias', relativePositionBias.dataType, relativePositionBias.dims.length) :
-            undefined;
-        if (relativePositionBiasInput) {
-          inputVars.push(relativePositionBiasInput);
+        if (relativePositionBias) {
+          inputVars.push(
+              inputVariable('relative_position_bias', relativePositionBias.dataType, relativePositionBias.dims));
         }
         const output = outputVariable('output', q.dataType, probsShape);
-        const dataType = tensorTypeToWsglStorageType(q.dataType);
+        // const dataType = tensorTypeToWsglStorageType(q.dataType);
+        const f32Type = tensorTypeToWsglValueType(DataType.float, components);
 
         const uniforms: UniformsArrayType = [
           {name: 'M', type: 'u32'}, {name: 'K', type: 'u32'}, {name: 'N', type: 'u32'},
-          {name: 'num_heads', type: 'u32'}, {name: 'kv_sequence_length', type: 'u32'},
-          {name: 'alpha', type: dataType as UniformDataElementType}
+          {name: 'num_heads', type: 'u32'}, {name: 'alpha', type: 'f32' as UniformDataElementType}
         ];
         return `
-  const beta: ${dataType} = 1.0;
   const TILE_SIZE = ${TILE_SIZE}u;
 
   var<workgroup> tileQ: array<${qInput.type.storage}, ${TILE_SIZE * TILE_SIZE}>;
@@ -394,9 +387,9 @@ const createAttentionProbsProgramInfo =
     let m = workgroup_id.y * TILE_SIZE;
     let n = workgroup_id.x * TILE_SIZE;
     let qOffset = uniforms.M * uniforms.K * headIdx + m * uniforms.K;
-    let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx + n * uniforms.K;
+    let kOffset = uniforms.N * uniforms.K * headIdx + n * uniforms.K;
 
-    var value = ${qInput.type.value}(0);
+    var value = ${f32Type}(0);
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
       if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {
         tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
@@ -407,7 +400,7 @@ const createAttentionProbsProgramInfo =
       workgroupBarrier();
 
       for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {
-        value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * local_id.x + k];
+        value += ${f32Type}(tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * local_id.x + k]);
       }
 
       workgroupBarrier();
@@ -416,7 +409,7 @@ const createAttentionProbsProgramInfo =
     let headOffset = headIdx * uniforms.M * uniforms.N;
     if (global_id.y < uniforms.M && global_id.x < uniforms.N) {
       let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;
-      var sum = ${(() => {
+      var sum: f32 = ${(() => {
           switch (components) {
             case 1:
               return 'value';
@@ -428,17 +421,8 @@ const createAttentionProbsProgramInfo =
               throw new Error(`Unsupported components: ${components}`);
           }
         })()};
-      output[outputIdx] = sum * uniforms.alpha;
-  ${(() => {
-          if (relativePositionBiasInput) {
-            return `
-      let batch = workgroup_id.z / uniforms.num_heads;
-      let head = workgroup_id.z % uniforms.num_heads;
-      var indices = ${relativePositionBiasInput.type.indices}(batch, head, global_id.y, global_id.x);
-      output[outputIdx] += ${relativePositionBiasInput.getByIndices('indices')};`;
-          }
-          return '';
-        })()}
+        output[outputIdx] = ${output.type.value} (sum * uniforms.alpha) + ${
+            relativePositionBias ? 'relative_position_bias[outputIdx]' : '0.0'};
     }
   }`;
       };
@@ -456,7 +440,9 @@ const createAttentionProbsProgramInfo =
 
 
 const createVxAttentionScoreProgramInfo =
-    (_context: ComputeContext, probs: TensorView, v: TensorView, params: AttentionParameters) => {
+    (_context: ComputeContext, probs: TensorView, v: TensorView, params: AttentionParameters,
+     pastSequenceLength: number) => {
+      const totalSequenceLength = pastSequenceLength + params.kvSequenceLength;
       const outputShape = [params.batchSize, params.sequenceLength, params.vHiddenSize];
       const TILE_SIZE = 12;
       const dispatch = {
@@ -465,7 +451,7 @@ const createVxAttentionScoreProgramInfo =
         z: params.batchSize * params.numHeads
       };
       const programUniforms: ProgramUniform[] = [
-        {type: DataType.uint32, data: params.sequenceLength}, {type: DataType.uint32, data: params.totalSequenceLength},
+        {type: DataType.uint32, data: params.sequenceLength}, {type: DataType.uint32, data: totalSequenceLength},
         {type: DataType.uint32, data: params.vHeadSize}, {type: DataType.uint32, data: params.numHeads},
         {type: DataType.uint32, data: params.vHiddenSize}
       ];
@@ -503,7 +489,7 @@ const createVxAttentionScoreProgramInfo =
        tileK[TILE_SIZE * local_id.y + local_id.x] = v[offsetB + (w + local_id.y) * uniforms.N];
      }
      workgroupBarrier();
-     for (var k: u32 = 0u; k<TILE_SIZE && w+k < uniforms.K; k++) {
+     for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {
        value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * k + local_id.x];
      }
      workgroupBarrier();
@@ -512,9 +498,8 @@ const createVxAttentionScoreProgramInfo =
    // we need to transpose output from BNSH_v to BSND_v
    let batchIdx = workgroup_id.z / uniforms.num_heads;
    let currentBatchHeadNumber = workgroup_id.z % uniforms.num_heads;
-   let headOffset = (batchIdx * uniforms.M * uniforms.num_heads + currentBatchHeadNumber) * uniforms.N;
    if (m < uniforms.M && n < uniforms.N) {
-     let outputIdx = batchIdx * uniforms.M *uniforms.v_hidden_size + m * uniforms.v_hidden_size
+     let outputIdx = batchIdx * uniforms.M * uniforms.v_hidden_size + m * uniforms.v_hidden_size
        + currentBatchHeadNumber * uniforms.N + n;
      output[outputIdx] = value;
    }
@@ -537,24 +522,25 @@ export const applyAttention =
     (context: ComputeContext, q: TensorView, k: TensorView, v: TensorView, _maskIndex: TensorView|undefined,
      _past: TensorView|undefined, pastKey: TensorView|undefined, pastValue: TensorView|undefined,
      relativePositionBias: TensorView|undefined, parameters: AttentionParameters, attributes: AttentionAttrs) => {
+      const outputPresentKey = context.outputCount > 1;
+      const outputPresentValue = context.outputCount > 2;
+      const pastSequenceLength = (outputPresentKey && outputPresentValue) ? parameters.pastSequenceLength : 0;
+      const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
       // Concatinate pastKey and K to produce presentKey.
-      const presentKeyShape =
-          [parameters.batchSize, parameters.numHeads, parameters.totalSequenceLength, parameters.headSize];
+      const presentKeyShape = [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize];
       const concatKeyInputs = pastKey ? [pastKey, k] : [k];
-      const key = (context.outputCount > 1 || pastKey) ?
-          context.compute(
-              createConcatProgramInfo(concatKeyInputs, 2, presentKeyShape, k.dataType),
-              {inputs: concatKeyInputs, outputs: [context.outputCount > 1 ? 1 : -1]})[0] :
-          k;
+      const key = outputPresentKey ? context.compute(
+                                         createConcatProgramInfo(concatKeyInputs, 2, presentKeyShape, k.dataType),
+                                         {inputs: concatKeyInputs, outputs: [1]})[0] :
+                                     k;
 
       // Concatinate pastValue and V to produce presentValue.
-      const presentValueShape =
-          [parameters.batchSize, parameters.numHeads, parameters.totalSequenceLength, parameters.headSize];
+      const presentValueShape = [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize];
       const concatValueInputs = pastValue ? [pastValue, v] : [v];
-      const value = (context.outputCount > 2 || pastValue) ?
+      const value = outputPresentValue ?
           context.compute(
               createConcatProgramInfo(concatValueInputs, 2, presentValueShape, v.dataType),
-              {inputs: concatValueInputs, outputs: [context.outputCount > 2 ? 2 : -1]})[0] :
+              {inputs: concatValueInputs, outputs: [2]})[0] :
           v;
       const inputsK = [q, key];
       if (relativePositionBias) {
@@ -563,20 +549,22 @@ export const applyAttention =
 
       // Run AttentionProbs
       const probs = context.compute(
-          createAttentionProbsProgramInfo(context, q, key, relativePositionBias, parameters, attributes),
+          createAttentionProbsProgramInfo(
+              context, q, key, relativePositionBias, parameters, attributes, pastSequenceLength),
           {inputs: inputsK, outputs: [-1]})[0];
 
       // Run Softmax
       context.compute(
           createInPlaceSoftmaxProgramInfo(
               context, probs, parameters.batchSize * parameters.numHeads * parameters.sequenceLength,
-              parameters.totalSequenceLength),
+              totalSequenceLength),
           {inputs: [probs], outputs: []});
 
       // Run AttrionScore
       const inputsV = [probs, value];
       context.compute(
-          createVxAttentionScoreProgramInfo(context, probs, value, parameters), {inputs: inputsV, outputs: [0]});
+          createVxAttentionScoreProgramInfo(context, probs, value, parameters, pastSequenceLength),
+          {inputs: inputsV, outputs: [0]});
     };
 
 const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
