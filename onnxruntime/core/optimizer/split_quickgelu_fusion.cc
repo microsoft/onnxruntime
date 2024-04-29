@@ -139,6 +139,24 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
     // return false;
   }
 
+  if (!graph_utils::FindPath(node, false, only_mul_path, edges, logger)) {
+    std::cout << "Failed to find path for Mul operation v2." << std::endl;
+    DEBUG_LOG("Failed to find for direct Mul.");
+    // return false;
+  }
+
+  if (!graph_utils::FindPath(split_node, true, only_mul_path, edges, logger)) {
+    std::cout << "Failed to find path for Mul operation v3." << std::endl;
+    DEBUG_LOG("Failed to find for direct Mul.");
+    // return false;
+  }
+
+  if (!graph_utils::FindPath(split_node, false, only_mul_path, edges, logger)) {
+    std::cout << "Failed to find path for Mul operation v4." << std::endl;
+    DEBUG_LOG("Failed to find for direct Mul.");
+    // return false;
+  }
+
   std::vector<graph_utils::EdgeEndToMatch> quickgelu_path{
     {0, 1, "QuickGelu", {1}, kMSDomain}};
 
