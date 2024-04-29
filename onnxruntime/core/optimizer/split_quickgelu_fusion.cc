@@ -82,7 +82,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
 
   // check add is only consumed by softmax with matching exec provider
   Node& next_node = *graph.GetNode(split_node.OutputNodesBegin()->Index());
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1, 11, 13})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1}, kMSDomain)) {
     std::cout << "not QuickGelu" << std::endl;
   }
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7, 13, 14})) {
