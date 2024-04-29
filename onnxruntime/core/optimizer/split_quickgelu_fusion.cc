@@ -96,14 +96,12 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
       // quickgelu_node = *graph.GetNode(it->Index());
       // quickgelu_node = *graph.GetNode((*it).Index());
       // quickgelu_node = (*it);
-      q_node = const_cast<Node&>(*it);
-      q_node = const_cast<Node&>(it);
+      // q_node = const_cast<Node&>(*it);
       quickgelu_count++;
     } else if ((*it).OpType().compare("Mul") == 0) {
       std::cout << "Mul found in iteration" << std::endl;
       // mul_node = *graph.GetNode((*it));
-      m_node = const_cast<Node&>(*it);
-      m_node = const_cast<Node&>(it);
+      // m_node = const_cast<Node&>(*it);
       mul_count++;
     } else {
       other_count++;
@@ -117,6 +115,11 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   }
 
   Node& next_node = *graph.GetNode(split_node.OutputNodesBegin()->Index());
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7, 13, 14})) {
+    std::cout << "not Mul Node found initially" << std::endl;
+    // return false;
+  }
+
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1}, kMSDomain)) {
     std::cout << "not QuickGelu" << std::endl;
     return false;
