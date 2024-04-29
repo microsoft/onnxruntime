@@ -17,7 +17,8 @@ graph = helper.make_graph(
         helper.make_node("Split", ["inp", "split"], ["out1", "out2"], "split"),
         # helper.make_node("Split", ["inp", "axis"], ["out1", "out2"], "split"),
         # Gelu subgraph
-        helper.make_node("QuickGelu", ["out2", "alpha"], ["gelu_out"], "QuickGelu", "", msdomain.domain),
+        # helper.make_node("QuickGelu", ["out2", "alpha"], ["gelu_out"], "QuickGelu", "", msdomain.domain, alpha=1.0),
+        helper.make_node("QuickGelu", ["out2"], ["gelu_out"], "QuickGelu", "", msdomain.domain, alpha=1.0),
         helper.make_node("Mul", ["out1", "gelu_out"], ["out"], "mul"),
     ],
     "Split_QuickGelu_Fusion",  # name
@@ -30,7 +31,7 @@ graph = helper.make_graph(
     ],
     [  # initializers
         helper.make_tensor("axis", TensorProto.INT64, [], [-1]),
-        helper.make_tensor("alpha", TensorProto.FLOAT, [], [1]),
+        # helper.make_tensor("alpha", TensorProto.FLOAT, [], [1]),
     ],
 )
 
