@@ -104,7 +104,7 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
   std::vector<std::string> input_names;
   std::vector<std::string> output_names;
 
-  // Add the input from the DQ node, and the output from the Q node.
+  // Add a QNN Convert to the model. Get the input from the DQ node, and the output from the Q node.
   ORT_RETURN_IF_ERROR(AddTensor(qnn_model_wrapper, maybe_dq_node_unit.Inputs()[0], input_names));
   ORT_RETURN_IF_ERROR(AddTensor(qnn_model_wrapper, q_node_unit->Outputs()[0], output_names));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(*q_node_unit),
@@ -114,7 +114,7 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
                                                     std::move(output_names),
                                                     {},
                                                     do_op_validation),
-                    "Failed to add Convert node.");
+                    "Failed to add fused Convert node.");
 
   fused_nodes.push_back(&maybe_dq_node_unit);
   fused_nodes.push_back(q_node_unit);
@@ -133,6 +133,17 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
     return Status::OK();
   }
 
+  NodeAttrHelper hs_attr_helper(start_node_unit);
+  float alpha = hs_attr_helper.Get("alpha", 0.2f);
+  float beta = hs_attr_helper.Get("beta", 0.5f);
+  constexpr float req_alpha = 1.0f / 6.0f;
+  constexpr float req_beta = 0.5f;
+
+  // Check for explicit values of alpha and beta.
+  if (alpha != req_alpha || beta != req_beta) {
+    return Status::OK();
+  }
+
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
   const Node& hs_node = start_node_unit.GetNode();
 
@@ -144,35 +155,43 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
 
   const Node& mul_node = *children[0];
   const auto mul_node_unit_it = node_unit_map.find(&mul_node);
-
   ORT_RETURN_IF(mul_node_unit_it == node_unit_map.end(), "Node does not have a corresponding NodeUnit");
-
   const NodeUnit* mul_node_unit = mul_node_unit_it->second;
 
   // Mul child must not already be part of a QDQ NodeUnit (i.e., be standalone).
   if (mul_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
-    return Status::OK();  // THIS would be an invalid model.
+    return Status::OK();  // This would be an invalid model.
   }
 
   // Input to HardSigmoid must also be the other input to the Mul.
   auto& hs_input_name = start_node_unit.Inputs()[0].node_arg.Name();
-
-  bool same_root_input = false;
-  for (const auto& mul_input_def : mul_node_unit->Inputs()) {
-    if (mul_input_def.node_arg.Name() == hs_input_name) {
-      same_root_input = true;
-      break;
-    }
-  }
+  const bool same_root_input = mul_node.InputDefs()[0]->Name() == hs_input_name ||
+                               mul_node.InputDefs()[1]->Name() == hs_input_name;
 
   if (!same_root_input) {
     return Status::OK();
   }
 
-  // TODO: Check HardSigmoid alpha and beta values.
-  // TODO: Add a HardSwish to model.
-  ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(do_op_validation);
+  LOGS(logger, VERBOSE) << " Adding QNN HardSwish via fusion. HardSigmoid name: [" << start_node_unit.Name()
+                        << "] optype: [" << start_node_unit.OpType()
+                        << "] Mul name: [" << mul_node_unit->Name()
+                        << "] Mull optype: [" << mul_node_unit->OpType()
+                        << "]";
+
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+
+  // Add a QNN HardSwish to the model. Get the input from the HardSigmoid and the output from the Mul.
+  ORT_RETURN_IF_ERROR(AddTensor(qnn_model_wrapper, start_node_unit.Inputs()[0], input_names));
+  ORT_RETURN_IF_ERROR(AddTensor(qnn_model_wrapper, mul_node_unit->Outputs()[0], output_names));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(start_node_unit),
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                    QNN_OP_HARD_SWISH,
+                                                    std::move(input_names),
+                                                    std::move(output_names),
+                                                    {},
+                                                    do_op_validation),
+                    "Failed to add fused HardSwish node.");
 
   fused_nodes.push_back(&start_node_unit);
   fused_nodes.push_back(mul_node_unit);
