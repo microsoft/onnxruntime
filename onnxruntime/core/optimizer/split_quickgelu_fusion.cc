@@ -32,14 +32,14 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {11, 13, 18})) {
     std::cout << "not op type 11, 13, 18";
   }
-  if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
-    std::cout << "not cuda rocm";
-  }
+  // if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
+  //   std::cout << "not cuda rocm";
+  // }
   if (!optimizer_utils::CheckOutputEdges(graph, node, 2)) {
     std::cout << "not output edges 2";
   }
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {11, 13, 18}) ||
-      !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
+      // !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 2)) {
     return false;
   }
