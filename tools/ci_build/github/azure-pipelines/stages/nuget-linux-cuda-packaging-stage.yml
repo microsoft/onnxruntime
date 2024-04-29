@@ -88,7 +88,12 @@ stages:
       workspace:
         clean: all
       pool: 'Onnxruntime-Linux-GPU'
-
+      variables:
+        - name: CUDA_VERSION_MAJOR
+          ${{ if eq(parameters.CudaVersion, '11.8') }}:
+            value: '11'
+          ${{ if eq(parameters.CudaVersion, '12.2') }}:
+            value: '12'
       steps:
         - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
           submodules: false
