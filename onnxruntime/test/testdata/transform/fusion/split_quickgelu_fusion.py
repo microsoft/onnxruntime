@@ -23,7 +23,7 @@ graph = helper.make_graph(
     "Split_QuickGelu_Fusion",  # name
     [  # inputs
         helper.make_tensor_value_info("inp", TensorProto.FLOAT, [76, 54, 1368]),
-        # helper.make_tensor_value_info("split", TensorProto.INT64, [2]),
+        helper.make_tensor_value_info("split", TensorProto.INT64, [2]),
     ],
     [  # outputs
         helper.make_tensor_value_info("out", TensorProto.FLOAT, [76, 54, 684]),
