@@ -84,33 +84,35 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // check all output edges
   // const Node* quickgelu_node = nullptr;
   // const Node* mul_node = nullptr;
-  // unsigned int quickgelu_count = 0;
-  // unsigned int mul_count = 0;
-  // unsigned int other_count = 0;
-  // for (auto it = split_node.OutputNodesBegin(); it != split_node.OutputNodesEnd(); ++it) {
-  //   if ((*it).OpType().compare("QuickGelu") == 0) {
-  //     std::cout << "QuickGelu found in iteration" << std::endl;
-  //     // quickgelu_node = *graph.GetNode((*it));
-  //     // quickgelu_node = *graph.GetNode(it->Index());
-  //     // quickgelu_node = *graph.GetNode((*it).Index());
-  //     // quickgelu_node = (*it);
-  //     quickgelu_node = &(*it);
-  //     quickgelu_count++;
-  //   } else if ((*it).OpType().compare("Mul") == 0) {
-  //     std::cout << "Mul found in iteration" << std::endl;
-  //     mul_node = *graph.GetNode((*it));
-  //     mul_node = &(*it);
-  //     mul_count++;
-  //   } else {
-  //     other_count++;
-  //     std::cout << "Some other operator found, investigate!!" << std::endl;
-  //   }
-  // }
+  Node& q_node = node;
+  Node& m_node = node;
+  unsigned int quickgelu_count = 0;
+  unsigned int mul_count = 0;
+  unsigned int other_count = 0;
+  for (auto it = split_node.OutputNodesBegin(); it != split_node.OutputNodesEnd(); ++it) {
+    if ((*it).OpType().compare("QuickGelu") == 0) {
+      std::cout << "QuickGelu found in iteration" << std::endl;
+      // quickgelu_node = *graph.GetNode((*it));
+      // quickgelu_node = *graph.GetNode(it->Index());
+      // quickgelu_node = *graph.GetNode((*it).Index());
+      // quickgelu_node = (*it);
+      q_node = const_cast<Node&>(*it);
+      quickgelu_count++;
+    } else if ((*it).OpType().compare("Mul") == 0) {
+      std::cout << "Mul found in iteration" << std::endl;
+      // mul_node = *graph.GetNode((*it));
+      m_node = const_cast<Node&>(*it);
+      mul_count++;
+    } else {
+      other_count++;
+      std::cout << "Some other operator found, investigate!!" << std::endl;
+    }
+  }
 
-  // std::cout << "Quickgelu, mul and other count" << quickgelu_count << mul_count << other_count << std::endl;
-  // if (quickgelu_count == 0 || mul_count == 0) {
-  //   return false;
-  // }
+  std::cout << "Quickgelu, mul and other count" << quickgelu_count << mul_count << other_count << std::endl;
+  if (quickgelu_count == 0 || mul_count == 0) {
+    return false;
+  }
 
   Node& next_node = *graph.GetNode(split_node.OutputNodesBegin()->Index());
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1}, kMSDomain)) {
