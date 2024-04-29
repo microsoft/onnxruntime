@@ -21,7 +21,7 @@
 		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid xl:grid-cols-4 place-items-center">
 				<div class="col-span-3 text-black">
-					<h1 class="text-2xl pb-2">Web Browsers</h1>
+					<h3 class="text-2xl pb-2">Web Browsers</h3>
 					<p class="text-lg">
 						Run PyTorch and other ML models in the web browser with ONNX Runtime Web.
 					</p>
@@ -34,7 +34,7 @@
 		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid md:grid-cols-4 place-items-center">
 				<div class="col-span-3 text-black">
-					<h1 class="text-2xl pb-2">Mobile Devices</h1>
+					<h3 class="text-2xl pb-2">Mobile Devices</h3>
 					<p class="text-lg">
 						Infuse your Android and iOS mobile apps with AI using ONNX Runtime Mobile.
 					</p>
@@ -58,7 +58,7 @@
 		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid xl:grid-cols-4 place-items-center">
 				<div class="col-span-3 text-black">
-					<h1 class="text-2xl pb-2">Large Model Training</h1>
+					<h3 class="text-2xl pb-2">Large Model Training</h3>
 					<p class="text-lg">
 						Accelerate training of popular models, including <a
 							href="https://huggingface.co/"
@@ -78,7 +78,7 @@
 		<div class="bg-slate-300 p-4 rounded">
 			<div class="grid md:grid-cols-4 place-items-center">
 				<div class="col-span-3 text-black">
-					<h1 class="text-2xl pb-2">On-Device Training</h1>
+					<h3 class="text-2xl pb-2">On-Device Training</h3>
 					<p class="text-lg">
 						On-device training with ONNX Runtime lets developers take an inference model and train
 						it locally to deliver a more personalized and privacy-respecting experience for
