@@ -90,10 +90,10 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, const Node*& split, const
   for (auto it = split_node.OutputNodesBegin(); it != split_node.OutputNodesEnd(); ++it) {
     if ((*it).OpType().compare("QuickGelu") == 0) {
       std::cout << "QuickGelu found in iteration" << std::endl;
-      quickgelu_node = *graph.GetNode((*it));
-      quickgelu_node = *graph.GetNode(it->Index());
-      quickgelu_node = *graph.GetNode((*it).Index());
-      quickgelu_node = (*it);
+      // quickgelu_node = *graph.GetNode((*it));
+      // quickgelu_node = *graph.GetNode(it->Index());
+      // quickgelu_node = *graph.GetNode((*it).Index());
+      // quickgelu_node = (*it);
       quickgelu_node = &(*it);
       quickgelu_count++;
     } else if ((*it).OpType().compare("Mul") == 0) {
@@ -192,9 +192,9 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, const Node*& split, const
 
 // get parameters
 bool GetSplitQuickGeluParams(
-    Node& split_node,
-    Node& quickgelu_node,
-    NodeArg*& input,
+    const Node& split_node,
+    const Node& quickgelu_node,
+    const NodeArg*& input,
     int& axis,
     int& alpha) {
   std::cout << "Params part 1" << std::endl;
@@ -224,9 +224,9 @@ bool GetSplitQuickGeluParams(
 // coalesce subgraph nodes into fused node
 void FuseSplitQuickGeluSubgraph(
     Graph& graph,
-    Node& split_node,
-    Node& quickgelu_node,
-    Node& mul_node,
+    const Node& split_node,
+    const Node& quickgelu_node,
+    const Node& mul_node,
     NodeArg* input,
     int axis,
     int alpha) {
