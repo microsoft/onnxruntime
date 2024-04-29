@@ -4,7 +4,8 @@ from onnx import TensorProto, helper
 graph = helper.make_graph(
     [  # nodes
         # Add node before Gelu
-        helper.make_node("Split", ["inp", "split", "axis"], ["out1", "out2"], "split"),
+        # helper.make_node("Split", ["inp", "split", "axis"], ["out1", "out2"], "split"),
+        helper.make_node("Split", ["inp", "split"], ["out1", "out2"], "split"),
         # Gelu subgraph
         helper.make_node("QuickGelu", ["out2", "alpha"], ["gelu_out"], "quickgelu"),
         helper.make_node("Mul", ["out1", "gelu_out"], ["out"], "mul"),
