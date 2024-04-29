@@ -98,36 +98,36 @@ stages:
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
         - task: PowerShell@2
-          displayName: Build .NET 8 targets using dotnet
+          displayName: Build .NET 6 targets using dotnet
           inputs:
             targetType: 'inline'
             # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
-            #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net8.0-ios\
-            # which is inconsistent with the msbuild output path for the pre-.net7 targets
+            #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
+            # which is inconsistent with the msbuild output path for the pre-.net6 targets
             #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
             # and makes it harder to do the packing
             #
             # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
             script: |
-              dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net8 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+              dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
         - task: MSBuild@1
-          displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net8 targets'
+          displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
           inputs:
             solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
             platform: 'Any CPU'
             configuration: RelWithDebInfo
-            msbuildArguments: '-t:restore -p:SelectedTargets=PreNet8 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
+            msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
         - task: MSBuild@1
-          displayName: 'Build C# for pre-.net8 targets'
+          displayName: 'Build C# for pre-.net6 targets'
           inputs:
             solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
             configuration: RelWithDebInfo
             platform: 'Any CPU'
-            msbuildArguments: '-p:SelectedTargets=PreNet8 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+            msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
         - template: ../templates/win-esrp-dll.yml

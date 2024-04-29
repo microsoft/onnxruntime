@@ -570,7 +570,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string[] strArray = new string[strings.Count];
             for (int i = 0; i < strings.Count; ++i)
             {
-#if NET8_0_OR_GREATER
+#if NET6_0_OR_GREATER
                 strArray[i] = Encoding.UTF8.GetString(strings[i].Span);
 #else
                 strArray[i] = Encoding.UTF8.GetString(strings[i].ToByteArray());

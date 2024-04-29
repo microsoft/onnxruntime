@@ -55,13 +55,6 @@ stages:
           DownloadTRT: true
           CudaVersion: ${{ parameters.CudaVersion }}
 
-    - task: UseDotNet@2
-      inputs:
-        version: '8.x'
-      ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
-        env:
-            PROCESSOR_ARCHITECTURE: 'x86'
-
     - task: BatchScript@1
       displayName: 'Setup Visual Studio env vars'
       inputs:

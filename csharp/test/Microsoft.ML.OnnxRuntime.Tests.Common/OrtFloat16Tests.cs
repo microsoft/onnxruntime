@@ -45,7 +45,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             float singlePositiveZero = (float)positiveZero;
             Assert.Equal(+0.0f, singlePositiveZero);
-#if NET8_0_OR_GREATER
+#if NET6_0_OR_GREATER
             Assert.False(float.IsNegative(singlePositiveZero));
 #endif
 
@@ -55,7 +55,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             float singleNegativeZero = (float)negativeZero;
             Assert.Equal(-0.0f, singleNegativeZero);
-#if NET8_0_OR_GREATER
+#if NET6_0_OR_GREATER
             Assert.True(float.IsNegative(singleNegativeZero));
 #endif
         }
@@ -308,7 +308,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.True(BFloat16.IsNaNOrZero(positiveZero));
             float singlePositiveZero = (float)positiveZero;
             Assert.Equal(+0.0f, singlePositiveZero);
-#if NET8_0_OR_GREATER
+#if NET6_0_OR_GREATER
             Assert.False(float.IsNegative(singlePositiveZero));
 #endif
 
@@ -318,7 +318,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             float singleNegativeZero = (float)negativeZero;
             Assert.Equal(-0.0f, singleNegativeZero);
-#if NET8_0_OR_GREATER
+#if NET6_0_OR_GREATER
             Assert.True(float.IsNegative(singleNegativeZero));
 #endif
         }
@@ -467,7 +467,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             BFloat16 smallestSubnormal = new BFloat16(minSubnormalBits);
             Assert.True(BFloat16.IsSubnormal(smallestSubnormal));
             Assert.False(BFloat16.IsNormal(smallestSubnormal));
-#if NET8_0_OR_GREATER
+#if NET6_0_OR_GREATER
             float singleSmallestSubnormal = (float)smallestSubnormal;
             Assert.True(float.IsSubnormal(singleSmallestSubnormal));
 #endif
@@ -476,7 +476,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             BFloat16 largestSubnormal = new BFloat16(maxSubnormalBits);
             Assert.True(BFloat16.IsSubnormal(largestSubnormal));
             Assert.False(BFloat16.IsNormal(largestSubnormal));
-#if NET8_0_OR_GREATER
+#if NET6_0_OR_GREATER
             float singleLargestSubnornal = (float)largestSubnormal;
             Assert.True(float.IsSubnormal(singleLargestSubnornal));
 #endif

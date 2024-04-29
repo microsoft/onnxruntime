@@ -2,8 +2,8 @@
 
 	<PropertyGroup>
 		<!-- note net8.0-maccatalyst is not supported currently. requires a new native build to be added. -->
-		<TargetFrameworks>net8.0-android;net8.0-ios</TargetFrameworks>
-		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
+		<TargetFrameworks>net7.0-android;net7.0-ios</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net7.0-windows10.0.19041.0</TargetFrameworks>
 		<OutputType>Exe</OutputType>
 		<RootNamespace>Microsoft.ML.OnnxRuntime.InferenceSample.Maui</RootNamespace>
 		<UseMaui>true</UseMaui>
@@ -30,7 +30,7 @@
 		<DefaultLanguage>en</DefaultLanguage>
 	</PropertyGroup>
 
-	<!-- set ORT SelectedTargets to include .net8 target frameworks -->
+	<!-- set ORT SelectedTargets to include .net7 target frameworks -->
 	<PropertyGroup>
 		<SelectedTargets>All</SelectedTargets>
 	</PropertyGroup>

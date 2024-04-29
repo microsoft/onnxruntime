@@ -98,7 +98,7 @@ jobs:
 
   - task: UseDotNet@2
     inputs:
-      version: '8.x'
+      version: '7.x'
     ${{ if eq(parameters.isX86, true) }}:
       env:
           PROCESSOR_ARCHITECTURE: 'x86'
