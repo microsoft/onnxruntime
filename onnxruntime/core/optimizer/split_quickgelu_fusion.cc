@@ -84,48 +84,54 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   Node& next_node = *graph.GetNode(split_node.OutputNodesBegin()->Index());
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1}, kMSDomain)) {
     std::cout << "not QuickGelu" << std::endl;
+    return false;
   }
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7, 13, 14})) {
+  Node& quickgelu_node = next_node;
+  Node& quickgelu_next_node = *graph.GetNode(quickgelu_node.OutputNodesBegin()->Index());
+
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(quickgelu_next_node, "Mul", {7, 13, 14})) {
     std::cout << "not Mul Node" << std::endl;
+    return false;
   }
+  Node& mul_node = quickgelu_next_node;
   if (next_node.GetExecutionProviderType() != split_node.GetExecutionProviderType()) {
     std::cout << "Mismatch EP Type" << std::endl;
   }
 
-  std::vector<const Node::EdgeEnd*> edges;
-  // TODO: Replace QuickGelu by other Elementwise Op for better generalization
-  std::vector<graph_utils::EdgeEndToMatch> quickgelu_mul_path{
-      {0, 0, "QuickGelu", {1, 11, 13}, kMSDomain},
-      {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
+  // std::vector<const Node::EdgeEnd*> edges;
+  // // TODO: Replace QuickGelu by other Elementwise Op for better generalization
+  // std::vector<graph_utils::EdgeEndToMatch> quickgelu_mul_path{
+  //     {0, 0, "QuickGelu", {1, 11, 13}, kMSDomain},
+  //     {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
 
-  if (!graph_utils::FindPath(node, true, quickgelu_mul_path, edges, logger)) {
-    DEBUG_LOG("Failed to find path for QuickGelu mul operation.");
-    return false;
-  }
+  // if (!graph_utils::FindPath(node, true, quickgelu_mul_path, edges, logger)) {
+  //   DEBUG_LOG("Failed to find path for QuickGelu mul operation.");
+  //   return false;
+  // }
   std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!5" << std::endl;
-  for (size_t i = 0; i < edges.size(); i++) {
-    if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
-      DEBUG_LOG("Output edge count not expected for nodes.");
-      return false;
-    }
-  }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!6" << std::endl;
-  Node& quickgelu_node = *graph.GetNode(edges[0]->GetNode().Index());
-  Node& mul_node = *graph.GetNode(edges[1]->GetNode().Index());
+  // for (size_t i = 0; i < edges.size(); i++) {
+  //   if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
+  //     DEBUG_LOG("Output edge count not expected for nodes.");
+  //     return false;
+  //   }
+  // }
+  // std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!6" << std::endl;
+  // Node& quickgelu_node = *graph.GetNode(edges[0]->GetNode().Index());
+  // Node& mul_node = *graph.GetNode(edges[1]->GetNode().Index());
 
-  std::vector<graph_utils::EdgeEndToMatch> only_mul_path{
-      {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
+  // std::vector<graph_utils::EdgeEndToMatch> only_mul_path{
+  //     {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
 
-  if (!graph_utils::FindPath(node, true, only_mul_path, edges, logger)) {
-    DEBUG_LOG("Failed to find for direct Mul.");
-    return false;
-  }
-  for (size_t i = 0; i < edges.size(); i++) {
-    if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
-      DEBUG_LOG("Output edge count not expected for nodes.");
-      return false;
-    }
-  }
+  // if (!graph_utils::FindPath(node, true, only_mul_path, edges, logger)) {
+  //   DEBUG_LOG("Failed to find for direct Mul.");
+  //   return false;
+  // }
+  // for (size_t i = 0; i < edges.size(); i++) {
+  //   if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
+  //     DEBUG_LOG("Output edge count not expected for nodes.");
+  //     return false;
+  //   }
+  // }
 
   // Node& mul_node_2 = *graph.GetNode(edges[0]->GetNode().Index());
 
