@@ -884,10 +884,15 @@ class GraphViewer final {
 
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept { return g_host->GraphViewer__DomainToVersionMap(this); }
 
-  const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const { return g_host->GraphViewer__GetNodesInTopologicalOrder(this); }
+  const std::vector<NodeIndex>& GetNodesInTopologicalOrder(int execution_order = 0) const { return g_host->GraphViewer__GetNodesInTopologicalOrder(this, execution_order); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->GraphViewer__GetInputsIncludingInitializers(this); }
 
-  void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) const { g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args); }
+  void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto,
+               bool include_initializers,
+               bool include_outer_scope_args,
+               int execution_order = 0) const {
+    g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, execution_order);
+  }
   const Node* GetProducerNode(const std::string& node_arg_name) const { return g_host->GraphViewer__GetProducerNode(this, node_arg_name); }
 
   GraphViewer() = delete;

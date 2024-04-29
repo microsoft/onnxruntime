@@ -145,6 +145,20 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
             },
         },
         {
+            utils::GetFullQualifiedOpName("Cos", kOnnxDomain),
+            {
+                {7, {}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("CumSum", kOnnxDomain),
+            {
+                // The axis input is trivial
+                {11, {1}},
+                {14, {1}},
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("Dropout", kOnnxDomain),
             {
                 // ONNX Dropout 1, 6, 7, 10 do not have seed attribute, so we remove them from the recompute support.
@@ -160,27 +174,6 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
                 {7, {}},
                 {13, {}},
                 {14, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Expand", kOnnxDomain),
-            {
-                {8, {1}},  // Ignore the shape.
-                {13, {1}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Cos", kOnnxDomain),
-            {
-                {7, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("CumSum", kOnnxDomain),
-            {
-                // The axis input is trivial
-                {11, {1}},
-                {14, {1}},
             },
         },
         {
@@ -200,9 +193,22 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
             },
         },
         {
+            utils::GetFullQualifiedOpName("Expand", kOnnxDomain),
+            {
+                {8, {1}},  // Ignore the shape.
+                {13, {1}},
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("FastGelu", kMSDomain),
             {
                 {1, {}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("FlattenAndUnpad", kMSDomain),
+            {
+                {1, {1}},  // ignore the indices
             },
         },
         {
@@ -226,6 +232,17 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
             },
         },
         {
+            utils::GetFullQualifiedOpName("Gemm", kOnnxDomain),
+            {
+                {1, {}},
+                {6, {}},
+                {7, {}},
+                {9, {}},
+                {11, {}},
+                {13, {}},
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("Less", kOnnxDomain),
             {
                 {1, {}},
@@ -242,6 +259,27 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
                 {7, {}},
                 {13, {}},
                 {14, {}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("Neg", kOnnxDomain),
+            {
+                {1, {}},
+                {6, {}},
+                {13, {}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("NonZero", kOnnxDomain),
+            {
+                {9, {}},
+                {13, {}},
+            },
+        },
+        {
+            utils::GetFullQualifiedOpName("PadAndUnflatten", kMSDomain),
+            {
+                {1, {1, 2}},  // ignore the indices and unflatten_dims
             },
         },
         {

@@ -17,6 +17,10 @@ class ActivationOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+
+  // Operator support related.
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -37,6 +41,8 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     if (op_type == "Elu") {
       options.set("alpha", helper.Get("alpha", 1.0f));
       output = model_builder.GetBuilder().call<emscripten::val>("elu", input, options);
+    } else if (op_type == "Gelu") {
+      output = model_builder.GetBuilder().call<emscripten::val>("gelu", input, options);
     } else if (op_type == "HardSigmoid") {
       options.set("alpha", helper.Get("alpha", 0.2f));
       options.set("beta", helper.Get("beta", 0.5f));
@@ -66,6 +72,20 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
+// Operator support related.
+bool ActivationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+                                            const Node& node,
+                                            WebnnDeviceType /* device_type */,
+                                            const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger))
+    return false;
+
+  return true;
+}
+
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
@@ -73,6 +93,7 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
   static std::vector<std::string> op_types =
       {
           "Elu",
+          "Gelu",
           "HardSigmoid",
           "HardSwish",
           "LeakyRelu",

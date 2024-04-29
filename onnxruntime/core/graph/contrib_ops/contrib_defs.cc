@@ -39,10 +39,13 @@ void convPoolShapeInference(
     bool use_dilation, bool require_kernel_shape,
     int input1Idx,
     int input2Idx);
-void matmulShapeInference(
+
+namespace defs::math::utils {
+void MatMulShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     int input1Idx,
     int input2Idx);
+}
 
 void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1959,7 +1962,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
                                   // Right now we only support int32
                                   y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT32);
 
-                                  ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+                                  ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
                                 }));
 
 /**
@@ -3404,7 +3407,7 @@ MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7
      And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
   3. Input B's scale and zero point are specified by input scales and zero_points.
 
-  Input is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
+  Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
   - n_blocks_per_col = (K + block_size - 1) / block_size
   - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
   For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.

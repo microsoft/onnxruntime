@@ -55,6 +55,7 @@ void usage() {
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
+      "\t    [QNN only] [profiling_file_path]: QNN profiling file path if ETW not enabled.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
@@ -479,9 +480,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         std::string key(token.substr(0, pos));
         std::string value(token.substr(pos + 1));
 
-        if (key == "backend_path") {
+        if (key == "backend_path" || key == "profiling_file_path") {
           if (value.empty()) {
-            ORT_THROW("Please provide the QNN backend path.");
+            ORT_THROW("Please provide the valid file path.");
           }
         } else if (key == "qnn_context_embed_mode") {
           if (value != "0") {
@@ -541,7 +542,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           }
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
-'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
+'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority',
 'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
         }

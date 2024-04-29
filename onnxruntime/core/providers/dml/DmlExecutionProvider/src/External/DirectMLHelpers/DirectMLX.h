@@ -22,6 +22,7 @@
 #include <utility>
 #include <type_traits>
 #include <functional>
+#include <stack>
 
 #include <wrl/client.h> // For Microsoft::WRL::ComPtr
 
@@ -35,6 +36,14 @@
 #elif __has_include("dml_optional_extensions.h")
     #include "dml_optional_extensions.h"
     #define DMLX_OPTIONAL_EXTENDED
+#endif
+
+#if __cpp_exceptions
+    #include <stdexcept>
+#endif
+
+#if __cplusplus >= 201703L && __has_include(<string_view>)
+    #include <string_view>
 #endif
 
 /** Calculates the minimum number of bytes required to store a buffer tensor with the specified type, sizes, and
@@ -55,56 +64,65 @@ inline UINT64 DMLCalcBufferTensorSize(
     _In_reads_(dimensionCount) const UINT* sizes,
     _In_reads_opt_(dimensionCount) const UINT* strides)
 {
-    UINT elementSizeInBytes = 0;
+    UINT elementSizeInBits = 0;
     switch (dataType)
     {
     case DML_TENSOR_DATA_TYPE_FLOAT32:
     case DML_TENSOR_DATA_TYPE_UINT32:
     case DML_TENSOR_DATA_TYPE_INT32:
-        elementSizeInBytes = 4;
+        elementSizeInBits = 32;
         break;
 
     case DML_TENSOR_DATA_TYPE_FLOAT16:
     case DML_TENSOR_DATA_TYPE_UINT16:
     case DML_TENSOR_DATA_TYPE_INT16:
-        elementSizeInBytes = 2;
+        elementSizeInBits = 16;
         break;
 
     case DML_TENSOR_DATA_TYPE_UINT8:
     case DML_TENSOR_DATA_TYPE_INT8:
-        elementSizeInBytes = 1;
+        elementSizeInBits = 8;
         break;
+
+#if DML_TARGET_VERSION >= 0x6300
+    case DML_TENSOR_DATA_TYPE_UINT4:
+    case DML_TENSOR_DATA_TYPE_INT4:
+        elementSizeInBits = 4;
+        break;
+#endif
 
     case DML_TENSOR_DATA_TYPE_FLOAT64:
     case DML_TENSOR_DATA_TYPE_UINT64:
     case DML_TENSOR_DATA_TYPE_INT64:
-        elementSizeInBytes = 8;
+        elementSizeInBits = 64;
         break;
 
     default:
         return 0; // Invalid data type
     }
 
-    UINT64 minimumImpliedSizeInBytes = 0;
+    UINT64 minimumImpliedSizeInBits = 0;
     if (!strides)
     {
-        minimumImpliedSizeInBytes = 1;
-        for (UINT i = 0; i < dimensionCount; ++i)
+        minimumImpliedSizeInBits = sizes[0];
+        for (UINT i = 1; i < dimensionCount; ++i)
         {
-            minimumImpliedSizeInBytes *= sizes[i];
+            minimumImpliedSizeInBits *= sizes[i];
         }
-        minimumImpliedSizeInBytes *= elementSizeInBytes;
+        minimumImpliedSizeInBits *= elementSizeInBits;
     }
     else
     {
-        UINT64 indexOfLastElement = 0;
+        UINT indexOfLastElement = 0;
         for (UINT i = 0; i < dimensionCount; ++i)
         {
             indexOfLastElement += (sizes[i] - 1) * strides[i];
         }
 
-        minimumImpliedSizeInBytes = (indexOfLastElement + 1) * elementSizeInBytes;
+        minimumImpliedSizeInBits = (static_cast<UINT64>(indexOfLastElement) + 1) * elementSizeInBits;
     }
+
+    UINT64 minimumImpliedSizeInBytes = (minimumImpliedSizeInBits + 7) / 8;
 
     // Round up to the nearest 4 bytes.
     minimumImpliedSizeInBytes = (minimumImpliedSizeInBytes + 3) & ~3ull;
@@ -237,6 +255,18 @@ namespace dml
     #endif
 
     using std::make_unique;
+#endif
+
+#if __cplusplus >= 201703L && __has_include(<string_view>)
+    using StringView = std::string_view;
+#else
+    using StringView = const std::string&;
+#endif
+
+#if __cpp_lib_byte
+    using Byte = std::byte;
+#else
+    using Byte = unsigned char;
 #endif
 
 #if __cpp_exceptions
@@ -514,6 +544,8 @@ namespace dml
 
             // The inputs to this node
             std::vector<NodeOutput*> inputs;
+
+            std::string name;
         };
 
         // Used for representing reshapes and type punning
@@ -522,12 +554,22 @@ namespace dml
             NodeOutput* input;
         };
 
+        // A node in the graph that represents data available during graph compilation.
+        struct ConstantNode
+        {
+            // This node does not own the memory to avoid copying large amounts of data.
+            Span<const Byte> data;
+
+            std::string name;
+        };
+
         enum class NodeType
         {
             Invalid,
             Input,
             Operator,
             Reinterpret,
+            Constant,
         };
 
         // Identifies a node in the graph.
@@ -570,10 +612,83 @@ namespace dml
         {
             uint32_t inputCount;
             uint32_t outputCount;
-            std::vector<DML_OPERATOR_GRAPH_NODE_DESC> nodes;
+            std::vector<DML_OPERATOR_GRAPH_NODE_DESC> operatorNodes;
+#if DML_TARGET_VERSION >= 0x6200
+            std::vector<DML_CONSTANT_DATA_GRAPH_NODE_DESC> constantNodes;
+#endif // DML_TARGET_VERSION >= 0x6200
             std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
             std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
             std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
+
+            // Offset of the first operator node in the merged node list.
+            constexpr uint32_t BaseOperatorNodeIndexInMergedNodes() const
+            {
+                return 0;
+            }
+
+            // Offset of the first constant node in the merged node list.
+            uint32_t BaseConstantNodeIndexInMergedNodes() const
+            {
+                return static_cast<uint32_t>(operatorNodes.size());
+            }
+
+            // Merges the operator and constant nodes into a single list of graph nodes, with all operator nodes
+            // inserted before the constant nodes. The returned array is only valid so long as this instance of
+            // GraphDesc is alive and not copied.
+            std::vector<DML_GRAPH_NODE_DESC> Nodes() const
+            {
+                const size_t operatorNodeCount = operatorNodes.size();
+#if DML_TARGET_VERSION >= 0x6200
+                const size_t constantNodeCount = constantNodes.size();
+#else
+                const uint32_t constantNodeCount = 0;
+#endif // DML_TARGET_VERSION >= 0x6200
+
+                std::vector<DML_GRAPH_NODE_DESC> nodes(operatorNodeCount + constantNodeCount);
+
+                auto nodesOperatorNodeSpan = dml::Span<DML_GRAPH_NODE_DESC>(nodes.data() + BaseOperatorNodeIndexInMergedNodes(), operatorNodeCount);
+                for (size_t i = 0; i < nodesOperatorNodeSpan.size(); ++i)
+                {
+                    nodesOperatorNodeSpan[i] = { DML_GRAPH_NODE_TYPE_OPERATOR, &operatorNodes[i] };
+                }
+
+#if DML_TARGET_VERSION >= 0x6200
+                auto nodesConstantNodeSpan = dml::Span<DML_GRAPH_NODE_DESC>(nodes.data() + BaseConstantNodeIndexInMergedNodes(), constantNodeCount);
+                for (size_t i = 0; i < nodesConstantNodeSpan.size(); ++i)
+                {
+                    nodesConstantNodeSpan[i] = { DML_GRAPH_NODE_TYPE_CONSTANT, &constantNodes[i] };
+                }
+#endif // DML_TARGET_VERSION >= 0x6200
+
+                return nodes;
+            }
+
+            template <typename T>
+            std::vector<DML_GRAPH_EDGE_DESC> Edges(DML_GRAPH_EDGE_TYPE type, Span<const T> edgesImpl) const
+            {
+                std::vector<DML_GRAPH_EDGE_DESC> edges(edgesImpl.size());
+                for (size_t i = 0; i < edges.size(); ++i)
+                {
+                    edges[i] = { type, &edgesImpl[i] };
+                }
+
+                return edges;
+            }
+
+            std::vector<DML_GRAPH_EDGE_DESC> InputEdges() const
+            {
+                return Edges(DML_GRAPH_EDGE_TYPE_INPUT, Span<const DML_INPUT_GRAPH_EDGE_DESC>(inputEdges));
+            }
+
+            std::vector<DML_GRAPH_EDGE_DESC> OutputEdges() const
+            {
+                return Edges(DML_GRAPH_EDGE_TYPE_OUTPUT, Span<const DML_OUTPUT_GRAPH_EDGE_DESC>(outputEdges));
+            }
+
+            std::vector<DML_GRAPH_EDGE_DESC> IntermediateEdges() const
+            {
+                return Edges(DML_GRAPH_EDGE_TYPE_INTERMEDIATE, Span<const DML_INTERMEDIATE_GRAPH_EDGE_DESC>(intermediateEdges));
+            }
         };
 
         class GraphBuilder
@@ -589,6 +704,25 @@ namespace dml
                 return m_device.Get();
             }
 
+            void PushName(StringView name)
+            {
+                m_nameSubLengths.push(m_name.size());
+                if (!m_name.empty())
+                {
+                    m_name += "_";
+                }
+                m_name += name;
+            }
+
+            void PopName()
+            {
+                if (!m_nameSubLengths.empty())
+                {
+                    m_name.resize(m_nameSubLengths.top());
+                    m_nameSubLengths.pop();
+                }
+            }
+
             void SetTensorPolicy(TensorPolicy policy) { m_tensorPolicy = std::move(policy); }
             const TensorPolicy& GetTensorPolicy() const { return m_tensorPolicy; }
             TensorPolicy& GetTensorPolicy() { return m_tensorPolicy; }
@@ -598,6 +732,9 @@ namespace dml
             NodeID CreateOperatorNode(DML_OPERATOR_TYPE type, const void* desc, Span<NodeOutput* const> inputs);
             NodeID CreateInputNode(uint32_t inputIndex);
             NodeID CreateReinterpretNode(NodeOutput* input);
+#if DML_TARGET_VERSION >= 0x6200
+            NodeID CreateConstantNode(Span<const Byte> data);
+#endif // DML_TARGET_VERSION >= 0x6200
             NodeOutput* CreateNodeOutput(NodeID node, uint32_t outputIndex, TensorDesc tensorDesc);
             GraphDesc GetGraphDesc(Span<const Expression> outputs) const;
 
@@ -607,7 +744,11 @@ namespace dml
             std::vector<InputNode> m_inputNodes;
             std::vector<OperatorNode> m_operatorNodes;
             std::vector<ReinterpretNode> m_reinterpretNodes;
+            std::vector<ConstantNode> m_constantNodes;
             std::deque<NodeOutput> m_nodeOutputs; // deque doesn't invalidate references to elements when it resizes
+
+            std::string m_name;
+            std::stack<size_t> m_nameSubLengths;
         };
 
     } // namespace detail
@@ -635,6 +776,22 @@ namespace dml
         detail::NodeOutput* m_nodeOutput; // weak; this is owned by the GraphBuilder
     };
 
+    class NameScope
+    {
+    public:
+        detail::GraphBuilder* m_builder = nullptr;
+
+        NameScope(detail::GraphBuilder* builder, StringView name) : m_builder(builder)
+        {
+            if (m_builder) m_builder->PushName(name);
+        }
+
+        ~NameScope()
+        {
+            if (m_builder) m_builder->PopName();
+        }
+    };
+
     class Graph
     {
     public:
@@ -651,6 +808,11 @@ namespace dml
         const TensorPolicy& GetTensorPolicy() const { return m_graphBuilder->GetTensorPolicy(); }
         TensorPolicy& GetTensorPolicy() { return m_graphBuilder->GetTensorPolicy(); }
 
+        NameScope CreateNameScope(StringView name) { return NameScope(m_graphBuilder.get(), name); }
+
+        void PushName(StringView name) { m_graphBuilder->PushName(name); }
+        void PopName() { m_graphBuilder->PopName(); }
+
         Microsoft::WRL::ComPtr<IDMLCompiledOperator> Compile(
             DML_EXECUTION_FLAGS flags,
             Span<const Expression> outputs,
@@ -662,29 +824,10 @@ namespace dml
             // number of input nodes on the graph (e.g. in the case of unused empty inputs), but never smaller.
             assert(inputCount == 0 || inputCount >= graph.inputCount);
 
-            std::vector<DML_GRAPH_NODE_DESC> graphNodes(graph.nodes.size());
-            for (size_t i = 0; i < graphNodes.size(); ++i)
-            {
-                graphNodes[i] = { DML_GRAPH_NODE_TYPE_OPERATOR, &graph.nodes[i] };
-            }
-
-            std::vector<DML_GRAPH_EDGE_DESC> inputEdges(graph.inputEdges.size());
-            for (size_t i = 0; i < inputEdges.size(); ++i)
-            {
-                inputEdges[i] = { DML_GRAPH_EDGE_TYPE_INPUT, &graph.inputEdges[i] };
-            }
-
-            std::vector<DML_GRAPH_EDGE_DESC> outputEdges(graph.outputEdges.size());
-            for (size_t i = 0; i < outputEdges.size(); ++i)
-            {
-                outputEdges[i] = { DML_GRAPH_EDGE_TYPE_OUTPUT, &graph.outputEdges[i] };
-            }
-
-            std::vector<DML_GRAPH_EDGE_DESC> intermediateEdges(graph.intermediateEdges.size());
-            for (size_t i = 0; i < intermediateEdges.size(); ++i)
-            {
-                intermediateEdges[i] = { DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &graph.intermediateEdges[i] };
-            }
+            std::vector<DML_GRAPH_NODE_DESC> graphNodes = graph.Nodes();
+            std::vector<DML_GRAPH_EDGE_DESC> inputEdges = graph.InputEdges();
+            std::vector<DML_GRAPH_EDGE_DESC> outputEdges = graph.OutputEdges();
+            std::vector<DML_GRAPH_EDGE_DESC> intermediateEdges = graph.IntermediateEdges();
 
             DML_GRAPH_DESC graphDesc = {};
             graphDesc.InputCount = inputCount ? inputCount : graph.inputCount;
@@ -816,6 +959,13 @@ namespace dml
         {
             return FusedActivation(DML_OPERATOR_ACTIVATION_CELU, alpha);
         }
+
+#if DML_TARGET_VERSION >= 0x5100
+        static FusedActivation Gelu()
+        {
+            return FusedActivation(DML_OPERATOR_ACTIVATION_GELU);
+        }
+#endif // DML_TARGET_VERSION >= 0x5100
     };
 
     // Implementation detail helper for determining if a list of expressions share the same GraphBuilder.
@@ -1006,6 +1156,20 @@ namespace dml
         detail::NodeOutput* output = builder->CreateNodeOutput(node, 0, std::move(desc));
         return output;
     }
+
+#if DML_TARGET_VERSION >= 0x6200
+    // Creates a constant node in the graph that directly consumes memory accessible to the CPU.
+    // The graph node is a weak reference to the memory, so the backing memory must remain valid
+    // until the DMLX graph is compiled.
+    inline Expression ConstantData(Graph& graph, Span<const Byte> data, TensorDesc desc)
+    {
+        detail::GraphBuilder* builder = graph.Impl();
+
+        detail::NodeID node = builder->CreateConstantNode(data);
+        detail::NodeOutput* output = builder->CreateNodeOutput(node, 0, desc);
+        return output;
+    }
+#endif
 
     inline Expression Identity(Expression input, const Optional<DML_SCALE_BIAS>& scaleBias = NullOpt)
     {
@@ -1379,7 +1543,7 @@ namespace dml
         TensorDesc inputTensor = input.Impl()->GetOutputDesc();
         TensorDesc scaleTensor = scale.Impl()->GetOutputDesc();
         TensorDesc zeroPointTensor = zeroPoint.Impl()->GetOutputDesc();
-        TensorDesc outputTensor(DML_TENSOR_DATA_TYPE_FLOAT32, inputTensor.sizes, builder->GetTensorPolicy());
+        TensorDesc outputTensor(scaleTensor.dataType, inputTensor.sizes, builder->GetTensorPolicy());
 
         DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC desc = {};
         desc.InputTensor = inputTensor.AsPtr<DML_TENSOR_DESC>();
@@ -1698,6 +1862,18 @@ namespace dml
         DMLX_ACTIVATION_IMPL(ACTIVATION_SOFTMAX);
     }
 
+#if DML_TARGET_VERSION >= 0x5100
+    inline Expression ActivationSoftmax(Expression input, Span<const uint32_t> axes)
+    {
+        DMLX_ACTIVATION_IMPL_2(ACTIVATION_SOFTMAX1, AxisCount, static_cast<uint32_t>(axes.size()), Axes, axes.data());
+    }
+
+    inline Expression ActivationGelu(Expression input)
+    {
+        DMLX_ACTIVATION_IMPL(ACTIVATION_GELU);
+    }
+#endif
+
     inline Expression ActivationSoftplus(Expression input, float steepness = 1.0f)
     {
         DMLX_ACTIVATION_IMPL_1(ACTIVATION_SOFTPLUS, Steepness, steepness);
@@ -2004,7 +2180,11 @@ namespace dml
     // ---------------------------------------------------------------------------------------------------------------
 
     // If `axes` is not specified, by default this reduces the entire tensor to single element.
-    inline Expression Reduce(Expression input, DML_REDUCE_FUNCTION function, Span<const uint32_t> axes = {})
+    inline Expression Reduce(
+        Expression input,
+        DML_REDUCE_FUNCTION function,
+        Span<const uint32_t> axes = {},
+        DML_TENSOR_DATA_TYPE outputDataType = DML_TENSOR_DATA_TYPE_UNKNOWN)
     {
         detail::GraphBuilder* builder = input.Impl()->GetGraphBuilder();
         TensorDesc inputTensor = input.Impl()->GetOutputDesc();
@@ -2037,16 +2217,19 @@ namespace dml
             }
         }
 
-        // ARGMIN and ARGMAX reduction produce a UINT32 output; all other reductions produce an output with the same
-        // type as the input.
-        DML_TENSOR_DATA_TYPE outputDataType;
-        if (function == DML_REDUCE_FUNCTION_ARGMIN || function == DML_REDUCE_FUNCTION_ARGMAX)
+        // All reductions other than ARGMIN and ARGMAX produce an output with the same type
+        // as the input.
+        if (outputDataType == DML_TENSOR_DATA_TYPE_UNKNOWN)
         {
-            outputDataType = DML_TENSOR_DATA_TYPE_UINT32;
-        }
-        else
-        {
-            outputDataType = inputTensor.dataType;
+            if (function == DML_REDUCE_FUNCTION_ARGMIN || function == DML_REDUCE_FUNCTION_ARGMAX)
+            {
+                // Default to UINT32 if the output type wasn't specified
+                outputDataType = DML_TENSOR_DATA_TYPE_UINT32;
+            }
+            else
+            {
+                outputDataType = inputTensor.dataType;
+            }
         }
 
         TensorDesc outputTensor(outputDataType, std::move(outputSizes), builder->GetTensorPolicy());
@@ -2071,12 +2254,26 @@ namespace dml
         Span<const uint32_t> windowSizes,
         Span<const uint32_t> startPadding,
         Span<const uint32_t> endPadding,
+#if DML_TARGET_VERSION >= 0x6200
+        Span<const uint32_t> dilations,
+#endif // DML_TARGET_VERSION >= 0x6200
         bool includePadding,
         TensorDimensions outputSizes = {})
     {
         detail::GraphBuilder* builder = input.Impl()->GetGraphBuilder();
 
         TensorDesc inputTensor = input.Impl()->GetOutputDesc();
+
+#if DML_TARGET_VERSION >= 0x6200
+        const uint32_t defaultStridesAndDilations[3] = { 1, 1, 1 };
+
+        DML_AVERAGE_POOLING1_OPERATOR_DESC averagePoolDesc = {};
+        // dilations must be omitted or have the same rank as the spatial dimension count (inputTensor rank - 2)
+        assert(dilations.empty() || dilations.size() == inputTensor.sizes.size() - 2);
+        averagePoolDesc.Dilations = dilations.empty() ? defaultStridesAndDilations : dilations.data();
+#else
+        DML_AVERAGE_POOLING_OPERATOR_DESC averagePoolDesc = {};
+#endif // DML_TARGET_VERSION >= 0x6200
 
         assert(strides.size() == windowSizes.size());
         assert(strides.size() == startPadding.size());
@@ -2097,7 +2294,6 @@ namespace dml
 
         TensorDesc outputTensor(inputTensor.dataType, std::move(outputSizes), builder->GetTensorPolicy());
 
-        DML_AVERAGE_POOLING_OPERATOR_DESC averagePoolDesc = {};
         averagePoolDesc.InputTensor = inputTensor.AsPtr<DML_TENSOR_DESC>();
         averagePoolDesc.OutputTensor = outputTensor.AsPtr<DML_TENSOR_DESC>();
         averagePoolDesc.DimensionCount = static_cast<uint32_t>(windowSizes.size());
@@ -2108,7 +2304,12 @@ namespace dml
         averagePoolDesc.IncludePadding = includePadding;
 
         detail::NodeOutput* const inputs[] = { input.Impl() };
+#if DML_TARGET_VERSION >= 0x6200
+        detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_AVERAGE_POOLING1, &averagePoolDesc, inputs);
+#else
         detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_AVERAGE_POOLING, &averagePoolDesc, inputs);
+#endif // DML_TARGET_VERSION >= 0x6200
+
         detail::NodeOutput* output = builder->CreateNodeOutput(node, 0, std::move(outputTensor));
 
         return output;
@@ -2809,44 +3010,6 @@ namespace dml
         Expression bias,
         bool spatial,
         float epsilon,
-        FusedActivation fusedActivation = FusedActivation::None())
-    {
-        detail::GraphBuilder* builder = input.Impl()->GetGraphBuilder();
-        TensorDesc inputTensor = input.Impl()->GetOutputDesc();
-        TensorDesc meanTensor = mean.Impl()->GetOutputDesc();
-        TensorDesc varianceTensor = variance.Impl()->GetOutputDesc();
-        TensorDesc scaleTensor = scale.Impl()->GetOutputDesc();
-        TensorDesc biasTensor = bias.Impl()->GetOutputDesc();
-        TensorDesc outputTensor(inputTensor.dataType, inputTensor.sizes, builder->GetTensorPolicy());
-
-        detail::FusedActivationStorage storage;
-
-        DML_BATCH_NORMALIZATION_OPERATOR_DESC desc = {};
-        desc.InputTensor = inputTensor.AsPtr<DML_TENSOR_DESC>();
-        desc.MeanTensor = meanTensor.AsPtr<DML_TENSOR_DESC>();
-        desc.VarianceTensor = varianceTensor.AsPtr<DML_TENSOR_DESC>();
-        desc.ScaleTensor = scaleTensor.AsPtr<DML_TENSOR_DESC>();
-        desc.BiasTensor = biasTensor.AsPtr<DML_TENSOR_DESC>();
-        desc.OutputTensor = outputTensor.AsPtr<DML_TENSOR_DESC>();
-        desc.Spatial = spatial;
-        desc.Epsilon = epsilon;
-        desc.FusedActivation = detail::GetFusedActivationPtr(fusedActivation, &storage);
-
-        detail::NodeOutput* const inputs[] = { input.Impl(), mean.Impl(), variance.Impl(), scale.Impl(), bias.Impl() };
-        detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_BATCH_NORMALIZATION, &desc, inputs);
-        detail::NodeOutput* output = builder->CreateNodeOutput(node, 0, std::move(outputTensor));
-
-        return output;
-    }
-
-    inline Expression BatchNormalization(
-        Expression input,
-        Expression mean,
-        Expression variance,
-        Expression scale,
-        Expression bias,
-        bool spatial,
-        float epsilon,
         const DML_OPERATOR_DESC* fusedActivation)
     {
         detail::GraphBuilder* builder = input.Impl()->GetGraphBuilder();
@@ -3269,19 +3432,30 @@ namespace dml
     //   Scales = computed by dividing the output sizes by the input sizes
     //   InputPixelOffsets = 0.5f for each dimension
     //   OutputPixelOffsets = -0.5f for each dimension
+    //   Antialiased = false
     inline Expression Resample(
         Expression input,
         TensorDimensions outputSizes,
         DML_INTERPOLATION_MODE mode,
+#if DML_TARGET_VERSION >= 0x5100
+        DML_AXIS_DIRECTION roundingDirection = DML_AXIS_DIRECTION_INCREASING,
+#endif // DML_TARGET_VERSION >= 0x5100
         Span<const float> scales = {},
         Span<const float> inputPixelOffsets = {},
-        Span<const float> outputPixelOffsets = {})
+        Span<const float> outputPixelOffsets = {}
+#if DML_TARGET_VERSION >= 0x6400
+        , bool antialiased = false
+#endif
+        )
     {
         detail::GraphBuilder* builder = input.Impl()->GetGraphBuilder();
 
         TensorDesc inputTensor = input.Impl()->GetOutputDesc();
         uint32_t dimensionCount = static_cast<uint32_t>(inputTensor.sizes.size());
         assert(outputSizes.size() == dimensionCount);
+        assert(scales.empty() || scales.size() == dimensionCount);
+        assert(inputPixelOffsets.empty() || inputPixelOffsets.size() == dimensionCount);
+        assert(outputPixelOffsets.empty() || outputPixelOffsets.size() == dimensionCount);
 
         SmallVector<float, 4> defaultScales;
         if (scales.empty())
@@ -3309,17 +3483,34 @@ namespace dml
 
         TensorDesc outputTensor(inputTensor.dataType, std::move(outputSizes), builder->GetTensorPolicy());
 
+#if DML_TARGET_VERSION >= 0x6400
+        DML_RESAMPLE3_OPERATOR_DESC desc = {};
+        desc.RoundingDirection = roundingDirection;
+        desc.Antialiased = antialiased;
+#elif DML_TARGET_VERSION >= 0x5100
+        DML_RESAMPLE2_OPERATOR_DESC desc = {};
+        desc.RoundingDirection = roundingDirection;
+#else
         DML_RESAMPLE1_OPERATOR_DESC desc = {};
+#endif // DML_TARGET_VERSION >= 0x5100
+
         desc.InputTensor = inputTensor.AsPtr<DML_TENSOR_DESC>();
         desc.OutputTensor = outputTensor.AsPtr<DML_TENSOR_DESC>();
         desc.InterpolationMode = mode;
-        desc.DimensionCount = static_cast<UINT>(scales.size());
+        desc.DimensionCount = dimensionCount;
         desc.Scales = scales.data();
         desc.InputPixelOffsets = inputPixelOffsets.data();
         desc.OutputPixelOffsets = outputPixelOffsets.data();
 
         detail::NodeOutput* const inputs[] = { input.Impl() };
+
+#if DML_TARGET_VERSION >= 0x6400
+        detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_RESAMPLE3, &desc, inputs);
+#elif DML_TARGET_VERSION >= 0x5100
+        detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_RESAMPLE2, &desc, inputs);
+#else
         detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_RESAMPLE1, &desc, inputs);
+#endif // DML_TARGET_VERSION >= 0x5100
         detail::NodeOutput* output = builder->CreateNodeOutput(node, 0, std::move(outputTensor));
 
         return output;
@@ -3450,13 +3641,230 @@ namespace dml
     // TODO: QuantizedLinearMatrixMultiply
     //
 
-    //
-    // TODO: ConvolutionInteger
-    //
+    inline Expression ConvolutionInteger(
+        Expression input,
+        Optional<Expression> inputZeroPoint,
+        Expression filter,
+        Optional<Expression> filterZeroPoint,
+        Span<const uint32_t> strides = {},
+        Span<const uint32_t> dilations = {},
+        Span<const uint32_t> startPadding = {},
+        Span<const uint32_t> endPadding = {},
+        uint32_t groupCount = 1,
+        TensorDimensions outputSizes = {})
+    {
+        assert(detail::HasSameOwner({ input, filter }));
+        assert(!inputZeroPoint || detail::HasSameOwner({ input, *inputZeroPoint }));
+        assert(!filterZeroPoint || detail::HasSameOwner({ filter, *filterZeroPoint }));
 
-    //
-    // TODO: QuantizedLinearConvolution
-    //
+        detail::GraphBuilder* builder = input.Impl()->GetGraphBuilder();
+
+        TensorDesc inputTensor = input.Impl()->GetOutputDesc();
+        TensorDesc filterTensor = filter.Impl()->GetOutputDesc();
+
+        TensorDesc inputZeroPointTensor;
+        if (inputZeroPoint) { inputZeroPointTensor = inputZeroPoint->Impl()->GetOutputDesc(); }
+
+        TensorDesc filterZeroPointTensor;
+        if (filterZeroPoint) { filterZeroPointTensor = filterZeroPoint->Impl()->GetOutputDesc(); }
+
+        uint32_t dimensionCount = static_cast<uint32_t>(inputTensor.sizes.size());
+
+        // todo: support 1d convolution?
+        assert(dimensionCount == 4 || dimensionCount == 5);
+        uint32_t spatialDimensionCount = dimensionCount - 2;
+
+        // If the spatial dimension count is 2, we'll just use the first two elements by setting
+        // DimensionCount = 2 in the desc
+        const uint32_t defaultStridesAndDilations[3] = { 1, 1, 1 };
+        const uint32_t defaultPadding[3] = { 0, 0, 0 };
+
+        assert(strides.empty() || strides.size() == spatialDimensionCount);
+        assert(dilations.empty() || dilations.size() == spatialDimensionCount);
+        assert(startPadding.empty() || startPadding.size() == spatialDimensionCount);
+        assert(endPadding.empty() || endPadding.size() == spatialDimensionCount);
+        assert(outputSizes.empty() || outputSizes.size() == inputTensor.sizes.size());
+
+        strides = strides.empty() ? Span<const uint32_t>{ defaultStridesAndDilations } : strides;
+        dilations = dilations.empty() ? Span<const uint32_t>{ defaultStridesAndDilations } : dilations;
+        startPadding = startPadding.empty() ? Span<const uint32_t>{ defaultPadding } : startPadding;
+        endPadding = endPadding.empty() ? Span<const uint32_t>{ defaultPadding } : endPadding;
+
+        if (outputSizes.empty())
+        {
+            outputSizes.push_back(inputTensor.sizes[0]); // output[N] = input[N]
+            outputSizes.push_back(filterTensor.sizes[0]); // output[C] = filter[N]
+
+            for (uint32_t dim = 0; dim < spatialDimensionCount; ++dim)
+            {
+                uint32_t inputSize = inputTensor.sizes[dim + 2];
+                uint32_t paddedSize = inputSize + startPadding[dim] + endPadding[dim];
+
+                uint32_t windowSize = filterTensor.sizes[dim + 2];
+                uint32_t kernelSize = 1 + (windowSize - 1) * dilations[dim];
+
+                assert(kernelSize <= paddedSize);
+                assert(strides[dim] != 0);
+
+                outputSizes.push_back(1 + (paddedSize - kernelSize) / strides[dim]);
+            }
+        }
+
+        TensorDesc outputTensor(DML_TENSOR_DATA_TYPE_INT32, std::move(outputSizes), builder->GetTensorPolicy());
+
+        DML_CONVOLUTION_INTEGER_OPERATOR_DESC desc = {};
+        desc.InputTensor = inputTensor.AsPtr<DML_TENSOR_DESC>();
+        desc.FilterTensor = filterTensor.AsPtr<DML_TENSOR_DESC>();
+        desc.InputZeroPointTensor = inputZeroPoint ? inputZeroPointTensor.AsPtr<DML_TENSOR_DESC>() : nullptr;
+        desc.FilterZeroPointTensor = filterZeroPoint ? filterZeroPointTensor.AsPtr<DML_TENSOR_DESC>() : nullptr;
+        desc.OutputTensor = outputTensor.AsPtr<DML_TENSOR_DESC>();
+        desc.DimensionCount = spatialDimensionCount;
+        desc.Strides = strides.data();
+        desc.Dilations = dilations.data();
+        desc.StartPadding = startPadding.data();
+        desc.EndPadding = endPadding.data();
+        desc.GroupCount = groupCount;
+
+        detail::NodeOutput* const inputs[] = {
+            input.Impl(),
+            inputZeroPoint ? inputZeroPoint->Impl() : nullptr,
+            filter.Impl(),
+            filterZeroPoint ? filterZeroPoint->Impl() : nullptr
+        };
+        detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_CONVOLUTION_INTEGER, &desc, inputs);
+        detail::NodeOutput* output = builder->CreateNodeOutput(node, 0, std::move(outputTensor));
+
+        return output;
+    }
+
+
+
+    inline Expression QuantizedLinearConvolution(
+        Expression input,
+        Expression inputScale,
+        Optional<Expression> inputZeroPoint,
+        Expression filter,
+        Expression filterScale,
+        Optional<Expression> filterZeroPoint,
+        Optional<Expression> bias,
+        Expression outputScale,
+        Optional<Expression> outputZeroPoint,
+        DML_TENSOR_DATA_TYPE outputDataType, // INT8 or UINT8, must match outputZeroPoint dtype if present
+        Span <const uint32_t> strides = {},
+        Span<const uint32_t> dilations = {},
+        Span<const uint32_t> startPadding = {},
+        Span<const uint32_t> endPadding = {},
+        uint32_t groupCount = 1,
+        TensorDimensions outputSizes = {})
+    {
+        assert(detail::HasSameOwner({input, inputScale, filter, filterScale, outputScale}));
+        assert(!inputZeroPoint || detail::HasSameOwner({ input, *inputZeroPoint}));
+        assert(!filterZeroPoint || detail::HasSameOwner({ input, *filterZeroPoint}));
+        assert(!bias || detail::HasSameOwner({ input, *bias}));
+        assert(!outputZeroPoint || detail::HasSameOwner({ input, *outputZeroPoint}));
+
+        if (outputZeroPoint) {
+            assert(outputZeroPoint->GetOutputDesc().dataType == outputDataType);
+        }
+
+        detail::GraphBuilder* builder = input.Impl()->GetGraphBuilder();
+
+        const auto getOptional = [](Optional<Expression>& e) {
+            if (e) return e->Impl()->GetOutputDesc();
+            return TensorDesc{};
+        };
+
+        TensorDesc inputTensor = input.Impl()->GetOutputDesc();
+        TensorDesc inputScaleTensor = inputScale.Impl()->GetOutputDesc();
+        TensorDesc inputZeroPointTensor = getOptional(inputZeroPoint);
+        TensorDesc filterTensor = filter.Impl()->GetOutputDesc();
+        TensorDesc filterScaleTensor = filterScale.Impl()->GetOutputDesc();
+        TensorDesc filterZeroPointTensor = getOptional(filterZeroPoint);
+        TensorDesc biasTensor = getOptional(bias);
+        TensorDesc outputScaleTensor = outputScale.Impl()->GetOutputDesc();
+        TensorDesc outputZeroPointTensor = getOptional(outputZeroPoint);
+
+        uint32_t dimensionCount = static_cast<uint32_t>(inputTensor.sizes.size());
+
+        // todo: suppord 1d convolution?
+        assert(dimensionCount == 4 || dimensionCount == 5);
+        const uint32_t spatialDimensionCount = dimensionCount - 2;
+
+        // If the spatial dimension count is 2, we'll just use the first two elements by setting
+        // DimensionCount = 2 in the desc
+        const uint32_t defaultStridesAndDilations[3] = { 1, 1, 1 };
+        const uint32_t defaultPadding[3] = { 0, 0, 0 };
+
+        assert(strides.empty() || strides.size() == spatialDimensionCount);
+        assert(dilations.empty() || dilations.size() == spatialDimensionCount);
+        assert(startPadding.empty() || startPadding.size() == spatialDimensionCount);
+        assert(endPadding.empty() || endPadding.size() == spatialDimensionCount);
+        assert(outputSizes.empty() || outputSizes.size() == inputTensor.sizes.size());
+
+        strides = strides.empty() ? Span<const uint32_t>{ defaultStridesAndDilations } : strides;
+        dilations = dilations.empty() ? Span<const uint32_t>{ defaultStridesAndDilations } : dilations;
+        startPadding = startPadding.empty() ? Span<const uint32_t>{ defaultPadding } : startPadding;
+        endPadding = endPadding.empty() ? Span<const uint32_t>{ defaultPadding } : endPadding;
+
+        if (outputSizes.empty())
+        {
+            outputSizes.push_back(inputTensor.sizes[0]); // output[N] = input[N]
+            outputSizes.push_back(filterTensor.sizes[0]); // output[C] = filter[N]
+
+            for (uint32_t dim = 0; dim < spatialDimensionCount; ++dim)
+            {
+                uint32_t inputSize = inputTensor.sizes[dim + 2];
+                uint32_t paddedSize = inputSize + startPadding[dim] + endPadding[dim];
+
+                uint32_t windowSize = filterTensor.sizes[dim + 2];
+                uint32_t kernelSize = 1 + (windowSize - 1) * dilations[dim];
+
+                assert(kernelSize <= paddedSize);
+                assert(strides[dim] != 0);
+
+                outputSizes.push_back(1 + (paddedSize - kernelSize) / strides[dim]);
+            }
+        }
+
+
+        TensorDesc outputTensor(outputDataType, std::move(outputSizes), builder->GetTensorPolicy());
+
+        DML_QUANTIZED_LINEAR_CONVOLUTION_OPERATOR_DESC desc = {};
+        desc.InputTensor = inputTensor.AsPtr<DML_TENSOR_DESC>();
+        desc.InputScaleTensor = inputScaleTensor.AsPtr<DML_TENSOR_DESC>();
+        desc.InputZeroPointTensor = inputZeroPoint ? inputZeroPointTensor.AsPtr<DML_TENSOR_DESC>() : nullptr;
+        desc.FilterTensor = filterTensor.AsPtr<DML_TENSOR_DESC>();
+        desc.FilterScaleTensor = filterScaleTensor.AsPtr<DML_TENSOR_DESC>();
+        desc.FilterZeroPointTensor = filterZeroPoint ? filterZeroPointTensor.AsPtr<DML_TENSOR_DESC>() : nullptr;
+        desc.BiasTensor = bias ? biasTensor.AsPtr<DML_TENSOR_DESC>() : nullptr;
+        desc.OutputScaleTensor = outputScaleTensor.AsPtr<DML_TENSOR_DESC>();
+        desc.OutputZeroPointTensor = outputZeroPoint ? outputZeroPointTensor.AsPtr<DML_TENSOR_DESC>() : nullptr;
+        desc.OutputTensor = outputTensor.AsPtr<DML_TENSOR_DESC>();
+
+        desc.DimensionCount = spatialDimensionCount;
+        desc.Strides = strides.data();
+        desc.Dilations = dilations.data();
+        desc.StartPadding = startPadding.data();
+        desc.EndPadding = endPadding.data();
+        desc.GroupCount = groupCount;
+
+        detail::NodeOutput* const inputs[] = {
+            input.Impl(),
+            inputScale.Impl(),
+            inputZeroPoint ? inputZeroPoint->Impl() : nullptr,
+            filter.Impl(),
+            filterScale.Impl(),
+            filterZeroPoint ? filterZeroPoint->Impl() : nullptr,
+            bias ? bias->Impl() : nullptr,
+            outputScale.Impl(),
+            outputZeroPoint ? outputZeroPoint->Impl() : nullptr,
+        };
+        detail::NodeID node = builder->CreateOperatorNode(DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION, &desc, inputs);
+        detail::NodeOutput* output = builder->CreateNodeOutput(node, 0, std::move(outputTensor));
+
+        return output;
+    }
+
 
     //
     // TODO: ReluGrad
@@ -3803,6 +4211,15 @@ namespace dml
     }
 #endif
 
+#if DML_TARGET_VERSION >= 0x5000
+
+    inline Expression Negate(Expression input)
+    {
+        return detail::ElementWiseUnary<DML_OPERATOR_ELEMENT_WISE_NEGATE, DML_ELEMENT_WISE_NEGATE_OPERATOR_DESC>(input);
+    }
+
+#endif // DML_TARGET_VERSION >= 0x5000
+
     // Reinterprets the memory of a tensor with a different type and dimensions (analogously to using
     // reinterpret_cast to access raw bits). Note that this is different to the DML Cast operator, which performs
     // a type cast on the contents of a tensor (analogously to static_cast). The total tensor size of the output
@@ -3887,7 +4304,16 @@ namespace dml
     // Unary
     inline Expression operator~(Expression input) { return dml::BitNot(input); }
     inline Expression operator+(Expression input) { return dml::Identity(input); }
+
+#if DML_TARGET_VERSION >= 0x5000
+
+    inline Expression operator-(Expression input) { return dml::Negate(input); }
+
+#else
+
     inline Expression operator-(Expression input) { return dml::Identity(input, DML_SCALE_BIAS{ -1.0f, 0.0f }); }
+
+#endif // DML_TARGET_VERSION >= 0x5000
 
     // Logical
     inline Expression operator!(Expression a) { return dml::LogicalNot(a); }
@@ -3916,6 +4342,10 @@ namespace dml
             OperatorNode node = {};
             node.op = std::move(op);
             node.inputs.assign(inputs.begin(), inputs.end());
+            if (!m_name.empty())
+            {
+                node.name = m_name;
+            }
 
             uint32_t index = static_cast<uint32_t>(m_operatorNodes.size());
             m_operatorNodes.push_back(std::move(node));
@@ -3937,6 +4367,21 @@ namespace dml
             return { NodeType::Reinterpret, index };
         }
 
+#if DML_TARGET_VERSION >= 0x6200
+        inline NodeID GraphBuilder::CreateConstantNode(Span<const Byte> data)
+        {
+            uint32_t index = static_cast<uint32_t>(m_constantNodes.size());
+            m_constantNodes.push_back(ConstantNode{ data });
+
+            if (!m_name.empty())
+            {
+                m_constantNodes.back().name = m_name;
+            }
+
+            return { NodeType::Constant, index };
+        }
+#endif // DML_TARGET_VERSION >= 0x6200
+
         inline NodeOutput* GraphBuilder::CreateNodeOutput(NodeID node, uint32_t outputIndex, TensorDesc tensorDesc)
         {
             // Construct the object in the deque, which doesn't invalidate references to elements as it grows
@@ -3951,10 +4396,15 @@ namespace dml
             desc.inputCount = static_cast<uint32_t>(m_inputNodes.size());
             desc.outputCount = static_cast<uint32_t>(outputs.size());
 
+            // GraphDesc merges nodes into a single list, with all operator nodes appearing before constant nodes.
+            constexpr uint32_t baseOperatorNodeIndex = 0;
+            const uint32_t baseConstantNodeIndex = static_cast<uint32_t>(m_operatorNodes.size());
+
             for (const OperatorNode& node : m_operatorNodes)
             {
-                uint32_t nodeIndex = static_cast<uint32_t>(desc.nodes.size());
-                desc.nodes.push_back(DML_OPERATOR_GRAPH_NODE_DESC{ node.op.Get() });
+                uint32_t nodeIndex = static_cast<uint32_t>(desc.operatorNodes.size());
+
+                desc.operatorNodes.push_back(DML_OPERATOR_GRAPH_NODE_DESC{ node.op.Get(), (!node.name.empty() ? node.name.c_str() : nullptr) });
 
                 // Walk through each of this node's inputs and add it as an edge
                 const uint32_t inputCount = static_cast<uint32_t>(node.inputs.size());
@@ -3987,7 +4437,17 @@ namespace dml
                     else if (inputNode.type == NodeType::Operator)
                     {
                         DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdge = {};
-                        intermediateEdge.FromNodeIndex = inputNode.index;
+                        intermediateEdge.FromNodeIndex = baseOperatorNodeIndex + inputNode.index;
+                        intermediateEdge.FromNodeOutputIndex = input->GetOutputIndex();
+                        intermediateEdge.ToNodeIndex = nodeIndex;
+                        intermediateEdge.ToNodeInputIndex = inputIndex;
+
+                        desc.intermediateEdges.push_back(intermediateEdge);
+                    }
+                    else if (inputNode.type == NodeType::Constant)
+                    {
+                        DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdge = {};
+                        intermediateEdge.FromNodeIndex = baseConstantNodeIndex + inputNode.index;
                         intermediateEdge.FromNodeOutputIndex = input->GetOutputIndex();
                         intermediateEdge.ToNodeIndex = nodeIndex;
                         intermediateEdge.ToNodeInputIndex = inputIndex;
@@ -4001,6 +4461,13 @@ namespace dml
                     }
                 }
             }
+
+#if DML_TARGET_VERSION >= 0x6200
+            for (const ConstantNode& node : m_constantNodes)
+            {
+                desc.constantNodes.push_back(DML_CONSTANT_DATA_GRAPH_NODE_DESC{ node.data.data(), node.data.size(), (!node.name.empty() ? node.name.c_str() : nullptr)});
+            }
+#endif // DML_TARGET_VERSION >= 0x6200
 
             // Add output edges
             for (uint32_t outputIndex = 0; outputIndex < desc.outputCount; ++outputIndex)
@@ -4039,9 +4506,14 @@ namespace dml
             }
 
             // Sanity
-            assert(desc.nodes.size() == m_operatorNodes.size());
+            assert(desc.operatorNodes.size() == m_operatorNodes.size());
+#if DML_TARGET_VERSION >= 0x6200
+            assert(desc.constantNodes.size() == m_constantNodes.size());
+#endif // DML_TARGET_VERSION >= 0x6200
             assert(desc.outputEdges.size() == desc.outputCount);
             assert(desc.outputCount == outputs.size());
+            assert(baseOperatorNodeIndex == desc.BaseOperatorNodeIndexInMergedNodes());
+            assert(baseConstantNodeIndex == desc.BaseConstantNodeIndexInMergedNodes());
 
             return desc;
         }

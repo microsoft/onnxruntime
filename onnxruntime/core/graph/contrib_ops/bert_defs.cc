@@ -14,11 +14,12 @@
 using namespace ::ONNX_NAMESPACE;
 
 namespace ONNX_NAMESPACE {
-void matmulShapeInference(
+namespace defs::math::utils {
+void MatMulShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     int input1Idx,
     int input2Idx);
-
+}  // namespace defs::math::utils
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -1008,6 +1009,9 @@ constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
 Group Query Self/Cross Attention.
 
 Supports different number of heads for q and kv. Only supports causal or local attention.
+Supports rotary position embedding.
+Supports k-v cache.
+CPU EP supports fp32... CUDA EP supports fp16.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1093,7 +1097,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);
@@ -1212,6 +1216,71 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* GemmaRotaryEmbedding_ver1_doc = R"DOC(
+GemmaRotaryEmbedding is the implementation of below part of rotary positional embeddings (RoPE). It implements below from modeling_gemma.py.
+
+Here's onnxscript that was tested
+
+from onnxscript import FLOAT, FLOAT16, script
+from onnxscript import opset18 as op
+
+@script()
+def gemma_rotary_embedding(emb: FLOAT["bs", "seq_len", "dim"], q: FLOAT16["bs", "num_heads", "seq_len", "dim"], q_rot: FLOAT16["bs", "num_heads", "seq_len", "dim"], k: FLOAT16["bs", "num_heads", "seq_len", "dim"], k_rot: FLOAT16["bs", "num_heads", "seq_len", "dim"]):
+  sin_val = op.Sin(emb)
+  casted_sin = op.Cast(sin_val, to=10) # for fp16 mix-precision training. Other types are not supported.
+  cos_val = op.Cos(emb)
+  casted_cos = op.Cast(cos_val, to=10)
+  unsqueezed_sin = op.Unsqueeze(casted_sin, [1])
+  unsqueezed_cos = op.Unsqueeze(casted_cos, [1])
+  q_embed = (q * casted_cos) + (q_rot * casted_sin)
+  k_embed = (k * casted_cos) + (k_rot * casted_sin)
+  return q_embed, k_embed
+
+onnx_model = gemma_rotary_embedding.to_model_proto()
+
+
+)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GemmaRotaryEmbedding, 1,
+    OpSchema()
+        .SetDoc(GemmaRotaryEmbedding_ver1_doc)
+        .Input(0,
+               "emb",
+               "embeddding - 3D tensor with shape (batch_size, seq_len, dim)",
+               "U")
+        .Input(1,
+               "q",
+               "q state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+               "T")
+        .Input(2,
+               "q_rot",
+               "half rotated q state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+               "T")
+        .Input(3,
+               "k",
+               "k state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+               "T")
+        .Input(4,
+               "k_rot",
+               "k state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+               "T")
+        .Output(0,
+                "output1",
+                "4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+                "T")
+        .Output(1,
+                "output2",
+                "4D tensor with shape (batch_size, num_heads, seq_len, dim)",
+                "T")
+        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float16 tensors.")
+        .TypeConstraint("U", {"tensor(float)"}, "Constrain input 0 type to float tensors")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
+          propagateElemTypeFromInputToOutput(ctx, 1, 1);
+          propagateShapeFromInputToOutput(ctx, 1, 0);
+          propagateShapeFromInputToOutput(ctx, 1, 1);
         }));
 
 constexpr const char* EmbedLayerNormalization_ver1_doc = R"DOC(
@@ -1444,7 +1513,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain input and output types to float or half tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
         }));
 
 constexpr const char* RemovePadding_ver1_doc = R"DOC(

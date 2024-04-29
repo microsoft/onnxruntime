@@ -16,8 +16,6 @@
 #include "core/util/thread_utils.h"
 #include "core/platform/env_var_utils.h"
 
-using onnxruntime::narrow;
-
 template <size_t BlkBitWidth>
 void RunSQNBitGemmBenchmark(size_t BlkLen,
                             size_t M, size_t N, size_t K,
@@ -44,8 +42,8 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
-  auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
-  auto B = RandomVectorUniform(static_cast<size_t>(K * N), -1.0f, 1.0f);
+  const auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
+  const auto B = RandomVectorUniform(static_cast<size_t>(K * N), -1.0f, 1.0f);
   std::vector<float> C(static_cast<size_t>(M * N));
 
   std::vector<uint8_t> QuantBData(QuantBDataSizeInBytes);
@@ -94,6 +92,8 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
 
 template <size_t BlkBitWidth>
 void SQNBITGEMM(benchmark::State& state) {
+  using onnxruntime::narrow;
+
   const auto BlkLen = narrow<size_t>(state.range(0));
   const auto M = narrow<size_t>(state.range(1));
   const auto N = narrow<size_t>(state.range(2));
@@ -104,6 +104,22 @@ void SQNBITGEMM(benchmark::State& state) {
 
   RunSQNBitGemmBenchmark<BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, ComputeType, state);
 }
+
+static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
+  b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "ComputeType"});
+
+  b->ArgsProduct({
+      {16, 32, 64, 128, 256},                  // BlkLen
+      {1, 1024, 2048},                         // M
+      {4096, 11008},                           // N
+      {4096, 11008},                           // K
+      {1, 8},                                  // Threads
+      {int64_t{false}, int64_t{true}},         // Symmetric
+      {int64_t{CompFp32}, int64_t{CompInt8}},  // ComputeType
+  });
+}
+
+BENCHMARK(SQNBITGEMM<4>)->Apply(SQNBitGemmArgs)->UseRealTime();
 
 // This test gets benchmark arguments from environment variables.
 template <size_t BlkBitWidth>
@@ -130,19 +146,4 @@ void SQNBITGEMM_ENV(benchmark::State& state) {
   state.SetLabel(s.str());
 }
 
-static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
-  b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "ComputeType"});
-
-  b->ArgsProduct({
-      {16, 32, 64, 128, 256},                  // BlkLen
-      {1, 1024, 2048},                         // M
-      {4096, 11008},                           // N
-      {4096, 11008},                           // K
-      {1, 8},                                  // Threads
-      {int64_t{false}, int64_t{true}},         // Symmetric
-      {int64_t{CompFp32}, int64_t{CompInt8}},  // ComputeType
-  });
-}
-
-BENCHMARK(SQNBITGEMM<4>)->Apply(SQNBitGemmArgs)->UseRealTime();
 BENCHMARK(SQNBITGEMM_ENV<4>)->UseRealTime();

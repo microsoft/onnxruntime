@@ -49,7 +49,7 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
                               ActivationUsedMap& fw_op_output_arg_used_map,
                               InlinedHashMap<const Node*, bool>& is_forward_nodes) {
   ORT_ENFORCE(boundary_op_order_in_topological_sort >= 0);
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(TOPOLOGICAL_SORT_ALGORITHM);
   is_forward_nodes.clear();
   is_forward_nodes.reserve(node_ids.size());
 
@@ -128,7 +128,7 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
     return Status::OK();
   }
 
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(TOPOLOGICAL_SORT_ALGORITHM);
 
   InlinedHashMap<NodeIndex, size_t> node_index_to_its_order_in_topological_sort_map;
   for (size_t i = 0; i < node_ids.size(); ++i) {
@@ -171,52 +171,6 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified) {
-  // Find the YieldOp node.
-  Node* yield_op_node = nullptr;
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "YieldOp") {
-      yield_op_node = &node;
-      break;
-    }
-  }
-
-  if (yield_op_node == nullptr) {
-    return Status::OK();
-  }
-
-  // Reverse BFS from YieldOp to find all "forward" nodes.
-  std::vector<const Node*> fw_nodes;
-  std::vector<const Node*> end_nodes{yield_op_node};
-  graph.ReverseDFSFrom(
-      end_nodes,
-      nullptr,
-      [&fw_nodes](const Node* n) {
-        fw_nodes.push_back(n);
-      },
-      nullptr);
-
-  // Set the attribute to true for all backward nodes.
-  for (auto& node : graph.Nodes()) {
-    if (std::find(fw_nodes.begin(), fw_nodes.end(), &node) == fw_nodes.end()) {
-      auto& attrs = node.GetAttributes();
-      if (attrs.count(kBackwardNodeAttributeName)) {
-        continue;
-      }
-      node.AddAttribute(kBackwardNodeAttributeName, static_cast<int64_t>(1));
-      modified = true;
-    } else {
-      auto& attrs = node.GetAttributes();
-      if (attrs.count(kBackwardNodeAttributeName)) {
-        node.ClearAttribute(kBackwardNodeAttributeName);
-        modified = true;
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
 Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       const ProbeConfig& probe_config,
                                       const logging::Logger& logger,
@@ -226,7 +180,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                           candidate_output_args_map,
                                       MemoryOptimizationPlanner& memory_opt_planner) {
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(TOPOLOGICAL_SORT_ALGORITHM);
 
   // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
   yield_op_order_in_topological_sort = -1;
