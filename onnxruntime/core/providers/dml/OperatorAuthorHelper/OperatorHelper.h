@@ -1775,6 +1775,7 @@ using ShapeInferenceHelper_Mod = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_BitShift= GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Round = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_QuickGelu = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_S2SModelSplitQuickGelu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BitwiseAnd = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_BitwiseOr = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_BitwiseXor = GetBroadcastedOutputShapeHelper;

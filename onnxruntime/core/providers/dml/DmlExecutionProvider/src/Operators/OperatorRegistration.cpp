@@ -525,6 +525,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(MultiHeadAttention);
 DML_OP_EXTERN_CREATION_FUNCTION(GroupQueryAttention);
 DML_OP_EXTERN_CREATION_FUNCTION(NonZero);
 DML_OP_EXTERN_CREATION_FUNCTION(QuickGelu);
+DML_OP_EXTERN_CREATION_FUNCTION(S2SModelSplitQuickGelu);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseAnd);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseOr);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseXor);
@@ -1145,6 +1146,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  BiasSplitGelu,                      typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  BiasAdd,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  S2SModelSplitQuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  MatMulNBits,                        typeNameListTwo,                supportedTypeListMatMulNBits,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryMatMulNBits)},
 
