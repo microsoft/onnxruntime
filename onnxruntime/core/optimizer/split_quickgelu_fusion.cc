@@ -81,6 +81,23 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // node -> getconsumer
   //
 
+  // check all output edges
+  unsigned int quickgelu_count = 0;
+  unsigned int mul_count = 0;
+  for (auto it = split_node.OutputNodesBegin(); it != split_node.OutputNodesEnd(); ++it) {
+    if ((*it).OpType().compare("QuickGelu") == 0) {
+      std::cout << "QuickGelu found in iteration" << std::endl;
+      // Node& quickgelu_node = &(*it);
+      quickgelu_count++;
+    } else if ((*it).OpType().compare("Mul") == 0) {
+      std::cout << "Mul found in iteration" << std::endl;
+      // Node& mul_node = &(*it);
+      mul_count++;
+    } else {
+      std::cout << "Some other operator found, investigate!!" << std::endl;
+    }
+  }
+
   // check add is only consumed by softmax with matching exec provider
   Node& next_node = *graph.GetNode(split_node.OutputNodesBegin()->Index());
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1}, kMSDomain)) {
@@ -99,15 +116,15 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
     std::cout << "Mismatch EP Type" << std::endl;
   }
 
-  std::vector<const Node::EdgeEnd*> edges;
-  std::vector<graph_utils::EdgeEndToMatch> quickgelu_path{
-    {0, 0, "QuickGelu", {1}, kMSDomain}};
+  // std::vector<const Node::EdgeEnd*> edges;
+  // std::vector<graph_utils::EdgeEndToMatch> quickgelu_path{
+  //   {0, 0, "QuickGelu", {1}, kMSDomain}};
 
-  if (!graph_utils::FindPath(node, true, quickgelu_path, edges, logger)) {
-    std::cout << "Failed to find path for QuickGelu operation." << std::endl;
-    DEBUG_LOG("Failed to find path for QuickGelu operation.");
-    return false;
-  }
+  // if (!graph_utils::FindPath(node, true, quickgelu_path, edges, logger)) {
+  //   std::cout << "Failed to find path for QuickGelu operation." << std::endl;
+  //   DEBUG_LOG("Failed to find path for QuickGelu operation.");
+  //   return false;
+  // }
 
 
 
