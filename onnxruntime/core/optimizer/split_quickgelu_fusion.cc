@@ -15,7 +15,7 @@
 #include "core/graph/graph_utils.h"
 
 // To be removed
-#include <signal.h>
+// #include <signal.h>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -31,16 +31,16 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // check node is split and has two outputs
   // TODO: 1. Check ONNX Op Types to Support
   // Split version 13 has axis as attribute and split as input (Should we only specify it for v13?)
-  raise(SIGTRAP);
+  // raise(SIGTRAP);
   std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!0" << std::endl;
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {11, 13, 18})) {
-    std::cout << "not op type 11, 13, 18";
+    std::cout << "not op type 11, 13, 18" << std::endl;
   }
   if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
-    std::cout << "not cuda rocm" << node.GetExecutionProviderType() << std::endl;
+    std::cout << "not cuda rocm, it is:" << node.GetExecutionProviderType() << " is it here?" << std::endl;
   }
   if (!optimizer_utils::CheckOutputEdges(graph, node, 2)) {
-    std::cout << "not output edges 2";
+    std::cout << "not output edges 2" << std::endl;
   }
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {11, 13, 18}) ||
       // !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
