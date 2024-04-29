@@ -24,7 +24,8 @@ using namespace onnxruntime;
 namespace {
 
 // pattern match on split, quickgelu and mult subgraph
-bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult, const logging::Logger& logger) {
+// bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult, const logging::Logger& logger) {
+bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult) {
   Node& node = start;
   split = quickgelu = mult = nullptr;
 
@@ -226,7 +227,8 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     Node *split_node, *quickgelu_node, *mul_node;
-    if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node, logger)) {
+    // if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node, logger)) {
+    if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node)) {
       continue;
     }
 
