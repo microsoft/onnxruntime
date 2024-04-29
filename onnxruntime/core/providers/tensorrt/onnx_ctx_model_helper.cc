@@ -112,7 +112,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   attr_2->set_s(compute_capability);
   attr_3->set_name(ONNX_MODEL_FILENAME);
   attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_3->set_s(std::filesystem::path(onnx_model_path).filename());
+  attr_3->set_s(std::filesystem::path(onnx_model_path).filename().string());
 
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
   constexpr int num_attributes = 4;
