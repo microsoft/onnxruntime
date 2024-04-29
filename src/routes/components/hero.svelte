@@ -8,8 +8,8 @@
 	import FaRegClipboard from 'svelte-icons/fa/FaRegClipboard.svelte';
 	import OnnxLight from '../../images/ONNX-Light.svelte';
 	import OnnxDark from '../../images/ONNX-Dark.svelte';
-	import { fade, fly, blur } from 'svelte/transition';
-	import { quintOut } from 'svelte/easing';
+	import { fade } from 'svelte/transition';
+	import { quartInOut } from 'svelte/easing';
 
 	let words = [
 		'Cross-Platform',
@@ -86,7 +86,7 @@
 					{#key activeWord}
 						<span
 							class="lg:text-5xl text-4xl"
-							in:fly={{ delay: 0, duration: 300, x: 200, y: 0, opacity: 1, easing: quintOut }}
+							in:fade={{ delay: 0, duration: 1000, easing: quartInOut }}
 						>
 							{activeWord}
 						</span>
