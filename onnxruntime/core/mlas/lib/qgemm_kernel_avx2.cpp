@@ -38,7 +38,8 @@ extern "C" {
         size_t lda,
         size_t CountM,
         size_t CountK,
-        int32_t* RowSumBuffer
+        int32_t* RowSumBuffer,
+        bool AIsSigned
         );
 
     void
@@ -117,6 +118,21 @@ MlasGemmQuantTryGemvKernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
 template<>
 MLAS_FORCEINLINE constexpr
 int32_t
+MlasGemmQuantFixupZeroPointA<MLAS_GEMM_U8S8_KERNEL_AVX2>(
+    int32_t ZeroPointA,
+    bool AIsSigned
+    )
+{
+    if (AIsSigned) {
+        ZeroPointA = MLAS_GEMM_U8S8_KERNEL_AVX2::OffsetAType(ZeroPointA ^ 0x80);
+    }
+
+    return ZeroPointA;
+}
+
+template<>
+MLAS_FORCEINLINE constexpr
+int32_t
 MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8S8_KERNEL_AVX2>(
     int32_t ZeroPointB,
     bool BIsSigned
@@ -142,8 +158,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8S8_KERNEL_AVX2>(
     bool AIsSigned
     )
 {
-    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
-    MlasGemmU8S8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumBuffer);
+    MlasGemmU8S8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumBuffer, AIsSigned);
 }
 
 template<>

@@ -357,6 +357,8 @@ Return Value:
                 this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
                 this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx2;
+                this->GemmS8S8Dispatch = &MlasGemmU8S8DispatchAvx2;
+                this->GemmS8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
                 this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;

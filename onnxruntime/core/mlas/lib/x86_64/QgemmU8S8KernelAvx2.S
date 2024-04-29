@@ -32,6 +32,7 @@ Abstract:
         .equ    .LGemmU8S8CopyPackAFrame_SavedRbx, 16
         .equ    .LGemmU8S8CopyPackAFrame_SavedRbp, 24
         .equ    .LGemmU8S8CopyPackAFrame_ReturnAddress, 32
+        .equ    .LGemmU8S8CopyPackAFrame_AIsSigned, 40
 
 //
 // Stack frame layout for the U8S8 CopyPackB routine.
@@ -92,6 +93,16 @@ Return Value:
         vpor    ymm9,ymm8,ymm9              # generate word vector [0x0101]
 
 //
+// Compute bit flip vector to convert S8 to U8
+//
+        vpxor   ymm11,ymm11,ymm11
+        cmp     BYTE PTR .LGemmU8S8CopyPackAFrame_AIsSigned[rsp],0
+        jz     .LCopyPackA.SkipSignedBitFlipVector
+        vpsllw  ymm11,ymm9,7                # generate word vector [0x8080]
+
+.LCopyPackA.SkipSignedBitFlipVector:
+
+//
 // Compute the conditional load/store mask for an unaligned CountK.
 //
 
@@ -104,12 +115,11 @@ Return Value:
         vmovdqu xmm10,XMMWORD PTR [rbx+rax*4]
 
 //
-// Zero initialize the padded stack buffers.
+// Initialize the padded stack buffers. Zeroed if unsigned, bit-flip values if signed
 //
 
-        vpxor   xmm0,xmm0,xmm0
-        vmovdqu YMMWORD PTR .LGemmU8S8CopyPackAFrame_PaddedMatrixAData[rsp],ymm0
-        vmovdqu YMMWORD PTR .LGemmU8S8CopyPackAFrame_PaddedMatrixAData[rsp+32],ymm0
+        vmovdqu YMMWORD PTR .LGemmU8S8CopyPackAFrame_PaddedMatrixAData[rsp],ymm11
+        vmovdqu YMMWORD PTR .LGemmU8S8CopyPackAFrame_PaddedMatrixAData[rsp+32],ymm11
 
 //
 // Process 4 rows of matrix A in a loop.
@@ -138,6 +148,10 @@ Return Value:
         vmovdqu ymm5,YMMWORD PTR [rdx+r10]
         vmovdqu ymm6,YMMWORD PTR [rdx+r10*2]
         vmovdqu ymm7,YMMWORD PTR [rdx+r13]
+        vpxor   ymm4,ymm4,ymm11
+        vpxor   ymm5,ymm5,ymm11
+        vpxor   ymm6,ymm6,ymm11
+        vpxor   ymm7,ymm7,ymm11
         vmovdqu YMMWORD PTR [rcx],ymm4
         vmovdqu YMMWORD PTR [rcx+r12],ymm5
         vmovdqu YMMWORD PTR [rcx+r12*2],ymm6
@@ -164,6 +178,10 @@ Return Value:
         vmovdqu xmm5,XMMWORD PTR [rdx+r10]
         vmovdqu xmm6,XMMWORD PTR [rdx+r10*2]
         vmovdqu xmm7,XMMWORD PTR [rdx+r13]
+        vpxor   xmm4,xmm4,xmm11
+        vpxor   xmm5,xmm5,xmm11
+        vpxor   xmm6,xmm6,xmm11
+        vpxor   xmm7,xmm7,xmm11
         vmovdqu XMMWORD PTR [rcx],xmm4
         vmovdqu XMMWORD PTR [rcx+r12],xmm5
         vmovdqu XMMWORD PTR [rcx+r12*2],xmm6
@@ -250,6 +268,10 @@ Return Value:
         vmovdqu xmm6,XMMWORD PTR .LGemmU8S8CopyPackAFrame_PaddedMatrixAData[rsp+32]
         vmovdqu xmm7,XMMWORD PTR .LGemmU8S8CopyPackAFrame_PaddedMatrixAData[rsp+48]
         lea     rax,[rcx+r12*2]             # compute matrix D plus 2 rows
+        vpxor   xmm4,xmm4,xmm11
+        vpxor   xmm5,xmm5,xmm11
+        vpxor   xmm6,xmm6,xmm11
+        vpxor   xmm7,xmm7,xmm11
         vpmaskmovd XMMWORD PTR [rcx],xmm10,xmm4
         vpmaskmovd XMMWORD PTR [rcx+r12],xmm10,xmm5
         vpmaskmovd XMMWORD PTR [rax],xmm10,xmm6
@@ -302,6 +324,7 @@ Return Value:
 
 .LCopyPackA.ProcessNextColumnLoopM1:
         vmovdqu ymm4,YMMWORD PTR [rdx]
+        vpxor   ymm4,ymm4,ymm11
         vmovdqu YMMWORD PTR [rcx],ymm4
         vpmaddubsw ymm4,ymm4,ymm9           # horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              # add words to row accumulators
@@ -316,6 +339,7 @@ Return Value:
         test    bl,16                       # (CountK & 16) != 0?
         jz      .LCopyPackA.CopyRemainingCountKLessThan16M1
         vmovdqu xmm4,XMMWORD PTR [rdx]
+        vpxor   xmm4,xmm4,xmm11
         vmovdqu XMMWORD PTR [rcx],xmm4
         vpmaddubsw xmm4,xmm4,xmm9           # horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              # add words to row accumulators
@@ -365,6 +389,7 @@ Return Value:
 
 .LCopyPackA.ProcessPaddedMatrixADataM1:
         vmovdqu xmm4,XMMWORD PTR .LGemmU8S8CopyPackAFrame_PaddedMatrixAData[rsp]
+        vpxor   xmm4,xmm4,xmm11
         vpmaskmovd XMMWORD PTR [rcx],xmm10,xmm4
         vpmaddubsw ymm4,ymm4,ymm9           # horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              # accumulate per row along columns

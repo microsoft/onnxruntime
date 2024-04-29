@@ -35,6 +35,7 @@ GemmU8S8CopyPackAFrame STRUCT
         SavedXmm8 OWORD ?
         SavedXmm9 OWORD ?
         SavedXmm10 OWORD ?
+        SavedXmm11 OWORD ?
         Padding QWORD ?
         SavedR13 QWORD ?
         SavedR12 QWORD ?
@@ -49,6 +50,7 @@ GemmU8S8CopyPackAFrame STRUCT
         PreviousP4Home QWORD ?
         CountK QWORD ?
         RowSumBuffer QWORD ?
+        AIsSigned QWORD ?
 
 GemmU8S8CopyPackAFrame ENDS
 
@@ -121,6 +123,7 @@ GemmU8S8CopyPackBFrame ENDS
         save_xmm128 xmm8,GemmU8S8CopyPackAFrame.SavedXmm8
         save_xmm128 xmm9,GemmU8S8CopyPackAFrame.SavedXmm9
         save_xmm128 xmm10,GemmU8S8CopyPackAFrame.SavedXmm10
+        save_xmm128 xmm11,GemmU8S8CopyPackAFrame.SavedXmm11
 
         END_PROLOGUE
 
@@ -136,6 +139,16 @@ GemmU8S8CopyPackBFrame ENDS
         vpor    ymm9,ymm8,ymm9              ; generate word vector [0x0101]
 
 ;
+; Compute bit flip vector to convert S8 to U8
+;
+        vpxor   ymm11,ymm11,ymm11
+        cmp     BYTE PTR GemmU8S8CopyPackAFrame.AIsSigned[rsp],0
+        jz      SkipSignedBitFlipVector
+        vpsllw  ymm11,ymm9,7                ; generate word vector [0x8080]
+
+SkipSignedBitFlipVector:
+
+;
 ; Compute the conditional load/store mask for an unaligned CountK.
 ;
 
@@ -148,12 +161,11 @@ GemmU8S8CopyPackBFrame ENDS
         vmovdqu xmm10,XMMWORD PTR [rbx+rax*4]
 
 ;
-; Zero initialize the padded stack buffers.
+; Initialize the padded stack buffers. Zeroed if unsigned, bit-flip values if signed
 ;
 
-        vpxor   xmm0,xmm0,xmm0
-        vmovdqu YMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp],ymm0
-        vmovdqu YMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp+32],ymm0
+        vmovdqu YMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp],ymm11
+        vmovdqu YMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp+32],ymm11
 
 ;
 ; Process 4 rows of matrix A in a loop.
@@ -182,6 +194,10 @@ ProcessNextColumnLoopM4:
         vmovdqu ymm5,YMMWORD PTR [rdx+r8]
         vmovdqu ymm6,YMMWORD PTR [rdx+r8*2]
         vmovdqu ymm7,YMMWORD PTR [rdx+r13]
+        vpxor   ymm4,ymm4,ymm11
+        vpxor   ymm5,ymm5,ymm11
+        vpxor   ymm6,ymm6,ymm11
+        vpxor   ymm7,ymm7,ymm11
         vmovdqu YMMWORD PTR [rcx],ymm4
         vmovdqu YMMWORD PTR [rcx+r11],ymm5
         vmovdqu YMMWORD PTR [rcx+r11*2],ymm6
@@ -208,6 +224,10 @@ ProcessRemainingColumnsM4:
         vmovdqu xmm5,XMMWORD PTR [rdx+r8]
         vmovdqu xmm6,XMMWORD PTR [rdx+r8*2]
         vmovdqu xmm7,XMMWORD PTR [rdx+r13]
+        vpxor   xmm4,xmm4,xmm11
+        vpxor   xmm5,xmm5,xmm11
+        vpxor   xmm6,xmm6,xmm11
+        vpxor   xmm7,xmm7,xmm11
         vmovdqu XMMWORD PTR [rcx],xmm4
         vmovdqu XMMWORD PTR [rcx+r11],xmm5
         vmovdqu XMMWORD PTR [rcx+r11*2],xmm6
@@ -295,6 +315,10 @@ ProcessPaddedMatrixADataM4:
         vmovdqu xmm6,XMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp+32]
         vmovdqu xmm7,XMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp+48]
         lea     rax,[rcx+r11*2]             ; compute matrix D plus 2 rows
+        vpxor   xmm4,xmm4,xmm11
+        vpxor   xmm5,xmm5,xmm11
+        vpxor   xmm6,xmm6,xmm11
+        vpxor   xmm7,xmm7,xmm11
         vpmaskmovd XMMWORD PTR [rcx],xmm10,xmm4
         vpmaskmovd XMMWORD PTR [rcx+r11],xmm10,xmm5
         vpmaskmovd XMMWORD PTR [rax],xmm10,xmm6
@@ -347,6 +371,7 @@ ProcessNextRowM1:
 
 ProcessNextColumnLoopM1:
         vmovdqu ymm4,YMMWORD PTR [rdx]
+        vpxor   ymm4,ymm4,ymm11
         vmovdqu YMMWORD PTR [rcx],ymm4
         vpmaddubsw ymm4,ymm4,ymm9           ; horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
@@ -361,6 +386,7 @@ ProcessRemainingColumnsM1:
         test    bl,16                       ; (CountK & 16) != 0?
         jz      CopyRemainingCountKLessThan16M1
         vmovdqu xmm4,XMMWORD PTR [rdx]
+        vpxor   xmm4,xmm4,xmm11
         vmovdqu XMMWORD PTR [rcx],xmm4
         vpmaddubsw xmm4,xmm4,xmm9           ; horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
@@ -411,6 +437,7 @@ CopyRemainingCountKLessThan2M1:
 
 ProcessPaddedMatrixADataM1:
         vmovdqu xmm4,XMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp]
+        vpxor   xmm4,xmm4,xmm11
         vpmaskmovd XMMWORD PTR [rcx],xmm10,xmm4
         vpmaddubsw ymm4,ymm4,ymm9           ; horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
@@ -441,6 +468,7 @@ ExitRoutine:
         movaps  xmm8,GemmU8S8CopyPackAFrame.SavedXmm8[rsp]
         movaps  xmm9,GemmU8S8CopyPackAFrame.SavedXmm9[rsp]
         movaps  xmm10,GemmU8S8CopyPackAFrame.SavedXmm10[rsp]
+        movaps  xmm11,GemmU8S8CopyPackAFrame.SavedXmm11[rsp]
         add     rsp,(GemmU8S8CopyPackAFrame.SavedR13)
 
         BEGIN_EPILOGUE

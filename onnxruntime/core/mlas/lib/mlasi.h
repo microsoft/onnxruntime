@@ -1081,6 +1081,8 @@ struct MLAS_PLATFORM {
 #if defined(MLAS_TARGET_AMD64_IX86)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch{&MlasGemmQuantDispatchDefault};
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8U8Dispatch{&MlasGemmQuantDispatchDefault};
 #elif defined(MLAS_TARGET_ARM64)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
