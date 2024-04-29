@@ -8,9 +8,6 @@ Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of
 """
 
 import math
-
-# import statistics
-# import time
 from typing import Optional
 
 import torch
@@ -543,74 +540,6 @@ def run_relevance_test():
         run_relevance_past(device)
 
 
-# def measure_latency(infer_func, warm_ups=10, repeats=100):
-#     for _ in range(warm_ups):
-#         _ = infer_func()
-
-#     latency_list = []
-#     for _ in range(repeats):
-#         start = time.perf_counter()
-#         _ = infer_func()
-#         latency = time.perf_counter() - start
-#         latency_list.append(latency)
-#     return statistics.mean(latency_list)
-
-# def run_ort_performance(config: Config, dtype=torch.float16, warm_ups:int=10, repeats: int = 100):
-#     feed_dict = config.random_inputs(dtype=dtype)
-#     obj = OrtSparseAttention(config.device, config, feed_dict)
-#     average_latency = measure_latency(obj.infer, warm_ups, repeats)
-
-#     if config.past_sequence_length == 0:
-#         print(f"sequence_length={config.sequence_length}, average_latency={average_latency * 1000} ms")
-#     else:
-#         print(f"past_sequence_length={config.past_sequence_length}, average_latency={average_latency * 1000} ms")
-#     #print(f"{vars(config)}, average_latency={average_latency * 1000} ms")
-
-
-# def run_performance_test(dtype=torch.float16, repeats: int = 100):
-#     device_id = torch.cuda.current_device()
-#     device = torch.device("cuda", device_id)
-
-#     # You can adjust these parameters to test different sparse configurations.
-#     num_layout, sparse_block_size = (8, 64)
-
-#     # Test prompt
-#     for s in [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]:
-#         config = Config(
-#             batch_size=1,
-#             sequence_length=s,
-#             max_sequence_length=8192,
-#             past_sequence_length=0,
-#             num_heads=32,
-#             kv_num_heads=8,
-#             head_size=128,
-#             sparse_block_size=sparse_block_size,
-#             num_layout=num_layout,
-#             local_blocks=16,
-#             vert_stride=8,
-#             device=device,
-#         )
-#         run_ort_performance(config, dtype, repeats)
-
-#     # Test token decoding
-#     for s in [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]:
-#         config = Config(
-#             batch_size=1,
-#             sequence_length=1,
-#             max_sequence_length=8192,
-#             past_sequence_length=s - 1,
-#             num_heads=32,
-#             kv_num_heads=8,
-#             head_size=128,
-#             sparse_block_size=sparse_block_size,
-#             num_layout=num_layout,
-#             local_blocks=16,
-#             vert_stride=8,
-#             device=device,
-#         )
-#         run_ort_performance(config, dtype, repeats)
-
-
 def plot_prompt_performance(
     batch_size=4,
     num_heads=32,
@@ -747,6 +676,5 @@ if __name__ == "__main__":
     s = torch.cuda.Stream()
     with torch.cuda.stream(s):
         run_relevance_test()
-        # run_performance_test()
         plot_prompt_performance()
         plot_token_performance()
