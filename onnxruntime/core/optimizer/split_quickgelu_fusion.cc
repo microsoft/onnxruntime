@@ -24,8 +24,8 @@ using namespace onnxruntime;
 namespace {
 
 // pattern match on split, quickgelu and mult subgraph
-// bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult, const logging::Logger& logger) {
-bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult) {
+bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult, const logging::Logger& logger) {
+// bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult) {
   Node& node = start;
   split = quickgelu = mult = nullptr;
 
@@ -99,10 +99,22 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
     std::cout << "Mismatch EP Type" << std::endl;
   }
 
+  std::vector<const Node::EdgeEnd*> edges;
+  std::vector<graph_utils::EdgeEndToMatch> quickgelu_path{
+    {0, 0, "QuickGelu", {1}, kMSDomain}};
+
+  if (!graph_utils::FindPath(node, true, quickgelu_path, edges, logger)) {
+    std::cout << "Failed to find path for QuickGelu operation." << std::endl;
+    DEBUG_LOG("Failed to find path for QuickGelu operation.");
+    return false;
+  }
+
+
+
   // std::vector<const Node::EdgeEnd*> edges;
   // // TODO: Replace QuickGelu by other Elementwise Op for better generalization
   // std::vector<graph_utils::EdgeEndToMatch> quickgelu_mul_path{
-  //     {0, 0, "QuickGelu", {1, 11, 13}, kMSDomain},
+  //     {0, 0, "QuickGelu", {1}, kMSDomain},
   //     {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
 
   // if (!graph_utils::FindPath(node, true, quickgelu_mul_path, edges, logger)) {
@@ -239,8 +251,8 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     Node *split_node, *quickgelu_node, *mul_node;
-    // if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node, logger)) {
-    if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node)) {
+    if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node, logger)) {
+    // if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node)) {
       continue;
     }
 
