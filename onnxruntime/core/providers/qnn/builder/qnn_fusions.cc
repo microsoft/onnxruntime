@@ -14,34 +14,6 @@
 namespace onnxruntime {
 namespace qnn {
 
-static Status AddTensor(QnnModelWrapper& qnn_model_wrapper,
-                        const NodeUnitIODef& tensor,
-                        std::vector<std::string>& tensor_names) {
-  const std::string& tensor_name = tensor.node_arg.Name();
-
-  if (qnn_model_wrapper.IsQnnTensorWrapperExist(tensor_name)) {
-    tensor_names.push_back(tensor_name);
-    return Status::OK();
-  }
-
-  TensorInfo tensor_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(tensor, tensor_info));
-
-  std::vector<uint8_t> unpacked_tensor;
-  if (tensor_info.is_initializer) {
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
-  }
-
-  Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(tensor_name);
-  QnnTensorWrapper tensor_wrapper(tensor_name, tensor_type, tensor_info.qnn_data_type,
-                                  std::move(tensor_info.quant_param), std::move(tensor_info.shape),
-                                  std::move(unpacked_tensor));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(tensor_wrapper)), "Failed to add tensor.");
-  tensor_names.push_back(tensor_name);
-
-  return Status::OK();
-}
-
 /**
  * Tries to merge a DQ -> Q sequence into a QNN Convert operator. The DQ -> Q must be converting from
  * one quantization type (e.g., uint8_t) to another (e.g., uint16_t).
@@ -101,17 +73,17 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
                         << "] q_node optype: [" << q_node_unit->OpType()
                         << "]";
 
-  std::vector<std::string> input_names;
-  std::vector<std::string> output_names;
+  const NodeUnitIODef& input_def = maybe_dq_node_unit.Inputs()[0];
+  const NodeUnitIODef& output_def = q_node_unit->Outputs()[0];
 
   // Add a QNN Convert to the model. Get the input from the DQ node, and the output from the Q node.
-  ORT_RETURN_IF_ERROR(AddTensor(qnn_model_wrapper, maybe_dq_node_unit.Inputs()[0], input_names));
-  ORT_RETURN_IF_ERROR(AddTensor(qnn_model_wrapper, q_node_unit->Outputs()[0], output_names));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(input_def));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(output_def));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(*q_node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     QNN_OP_CONVERT,
-                                                    std::move(input_names),
-                                                    std::move(output_names),
+                                                    {input_def.node_arg.Name()},
+                                                    {output_def.node_arg.Name()},
                                                     {},
                                                     do_op_validation),
                     "Failed to add fused Convert node.");
@@ -138,9 +110,11 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
   float beta = hs_attr_helper.Get("beta", 0.5f);
   constexpr float req_alpha = 1.0f / 6.0f;
   constexpr float req_beta = 0.5f;
+  constexpr float alpha_eps = std::numeric_limits<float>::epsilon() * req_alpha;
+  constexpr float beta_eps = std::numeric_limits<float>::epsilon() * req_beta;
 
   // Check for explicit values of alpha and beta.
-  if (alpha != req_alpha || beta != req_beta) {
+  if (std::abs(alpha - req_alpha) > alpha_eps || std::abs(beta - req_beta) > beta_eps) {
     return Status::OK();
   }
 
@@ -178,17 +152,17 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
                         << "] Mull optype: [" << mul_node_unit->OpType()
                         << "]";
 
-  std::vector<std::string> input_names;
-  std::vector<std::string> output_names;
+  const NodeUnitIODef& input_def = start_node_unit.Inputs()[0];
+  const NodeUnitIODef& output_def = mul_node_unit->Outputs()[0];
 
   // Add a QNN HardSwish to the model. Get the input from the HardSigmoid and the output from the Mul.
-  ORT_RETURN_IF_ERROR(AddTensor(qnn_model_wrapper, start_node_unit.Inputs()[0], input_names));
-  ORT_RETURN_IF_ERROR(AddTensor(qnn_model_wrapper, mul_node_unit->Outputs()[0], output_names));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(input_def));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(output_def));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(start_node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     QNN_OP_HARD_SWISH,
-                                                    std::move(input_names),
-                                                    std::move(output_names),
+                                                    {input_def.node_arg.Name()},
+                                                    {output_def.node_arg.Name()},
                                                     {},
                                                     do_op_validation),
                     "Failed to add fused HardSwish node.");

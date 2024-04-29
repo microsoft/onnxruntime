@@ -48,28 +48,9 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnitIODef& input,
                                    const logging::Logger& logger,
                                    std::vector<std::string>& input_names) const {
-  const auto& input_name = input.node_arg.Name();
-
-  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
-    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
-    input_names.push_back(input_name);
-    return Status::OK();
-  }
-
-  TensorInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
-
-  std::vector<uint8_t> unpacked_tensor;
-  if (input_info.is_initializer) {
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, unpacked_tensor));
-  }
-
-  Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(input_name);
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, input_info.qnn_data_type,
-                                       std::move(input_info.quant_param), std::move(input_info.shape),
-                                       std::move(unpacked_tensor));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
-  input_names.push_back(input_name);
+  ORT_UNUSED_PARAMETER(logger);
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(input));
+  input_names.push_back(input.node_arg.Name());
 
   return Status::OK();
 }

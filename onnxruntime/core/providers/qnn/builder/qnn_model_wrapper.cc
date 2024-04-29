@@ -423,6 +423,31 @@ Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& te
   return Status::OK();
 }
 
+Status QnnModelWrapper::AddTensor(const NodeUnitIODef& tensor) {
+  const std::string& tensor_name = tensor.node_arg.Name();
+
+  if (IsQnnTensorWrapperExist(tensor_name)) {
+    LOGS(logger_, VERBOSE) << "Tensor already added, skip it: " << tensor_name;
+    return Status::OK();
+  }
+
+  TensorInfo tensor_info = {};
+  ORT_RETURN_IF_ERROR(GetTensorInfo(tensor, tensor_info));
+
+  std::vector<uint8_t> unpacked_tensor;
+  if (tensor_info.is_initializer) {
+    ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
+  }
+
+  Qnn_TensorType_t tensor_type = GetTensorType(tensor_name);
+  QnnTensorWrapper tensor_wrapper(tensor_name, tensor_type, tensor_info.qnn_data_type,
+                                  std::move(tensor_info.quant_param), std::move(tensor_info.shape),
+                                  std::move(unpacked_tensor));
+  ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(tensor_wrapper)), "Failed to add tensor.");
+
+  return Status::OK();
+}
+
 Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
                                        const std::string& output_name,
                                        const std::vector<uint32_t>& input_shape,

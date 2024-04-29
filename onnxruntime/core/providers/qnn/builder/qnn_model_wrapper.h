@@ -122,6 +122,8 @@ class QnnModelWrapper {
 
   Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
 
+  Status AddTensor(const NodeUnitIODef& tensor);
+
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,
                         const std::vector<uint32_t>& input_shape,
