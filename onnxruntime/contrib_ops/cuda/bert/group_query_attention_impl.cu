@@ -357,7 +357,8 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
   const int max_sequence_length = parameters.seqlen_present_kv_cache;
   const int* past_seqlens_k = parameters.is_prompt ? nullptr : reinterpret_cast<const int*>(data.seqlens_k);
 
-  assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
+  assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH ||
+         parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
   bool is_past_kv_bnsh_format = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
 
   return LaunchConcatKVInPlace(parameters.batch_size,
@@ -549,10 +550,12 @@ __global__ void UnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* 
         int unpacked_i = b * sequence_length * num_heads * head_size + s * num_heads * head_size + offset;
         unpacked_q[unpacked_i] = packed_qkv[tid];
       } else if (offset < q_hidden + k_hidden) {
-        int unpacked_i = b * sequence_length * kv_num_heads * head_size + s * kv_num_heads * head_size + (offset - q_hidden);
+        int unpacked_i = b * sequence_length * kv_num_heads * head_size +
+                         s * kv_num_heads * head_size + (offset - q_hidden);
         unpacked_k[unpacked_i] = packed_qkv[tid];
       } else {
-        int unpacked_i = b * sequence_length * kv_num_heads * head_size + s * kv_num_heads * head_size + (offset - q_hidden - k_hidden);
+        int unpacked_i = b * sequence_length * kv_num_heads * head_size +
+                         s * kv_num_heads * head_size + (offset - q_hidden - k_hidden);
         unpacked_v[unpacked_i] = packed_qkv[tid];
       }
     }
@@ -720,8 +723,9 @@ Status EfficientAttention(
     auto k = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size);
     auto v = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size + k_size);
 
-    Status status = LaunchUnpackQKV<T, LAYOUT_BSNH>(reinterpret_cast<const T*>(data.query), q, k, v, num_heads, kv_num_heads,
-                                                    head_size, sequence_length, batch_size, stream, max_threads_per_block);
+    Status status = LaunchUnpackQKV<T, LAYOUT_BSNH>(
+        reinterpret_cast<const T*>(data.query), q, k, v, num_heads, kv_num_heads,
+        head_size, sequence_length, batch_size, stream, max_threads_per_block);
     if (status != Status::OK()) {
       return status;
     }

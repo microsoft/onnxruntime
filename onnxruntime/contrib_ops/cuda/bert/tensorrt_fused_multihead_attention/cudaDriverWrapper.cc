@@ -79,7 +79,7 @@ CUresult CUDADriverWrapper::cuDeviceGetAttribute(int* pi, CUdevice_attribute att
   return (*_cuDeviceGetAttribute)(pi, attrib, dev);
 }
 
-CUresult CUDADriverWrapper::cuFuncSetCacheConfig( CUfunction hfunc, CUfunc_cache config) const {
+CUresult CUDADriverWrapper::cuFuncSetCacheConfig(CUfunction hfunc, CUfunc_cache config) const {
   return (*_cuFuncSetCacheConfig)(hfunc, config);
 }
 
@@ -136,14 +136,12 @@ CUresult CUDADriverWrapper::cuLaunchKernel(
       f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, extra);
 }
 
-
 // Initialize the singleton instance
 CUDADriverWrapper CUDADriverWrapper::instance;
 
 const CUDADriverWrapper* CUDADriverWrapper::GetInstance() {
   return &instance;
 }
-
 
 }  // namespace cuda
 }  // namespace contrib

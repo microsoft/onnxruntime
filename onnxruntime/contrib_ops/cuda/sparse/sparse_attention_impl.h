@@ -25,9 +25,6 @@ struct BlockLayout {
   const int* csr_row_indices;
   int num_rows;
   int num_cols;
-
-  // In decoding phrase, q_seq_len < total_seq_len. This is the row for current query token.
-  int start_row;
 };
 
 template <typename T>

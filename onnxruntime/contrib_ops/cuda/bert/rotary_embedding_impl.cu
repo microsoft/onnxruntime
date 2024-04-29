@@ -129,7 +129,8 @@ template Status LaunchRotaryEmbeddingKernel<BFloat16>(
     cudaStream_t stream, BFloat16* output, const BFloat16* input, const int64_t* position_ids,
     const BFloat16* cos_cache, const BFloat16* sin_cache, const int batch_size, const int sequence_length,
     const int num_heads, const int head_size, const int rotary_embedding_dim, const int max_sequence_length,
-    const int position_ids_format, const bool interleaved, const int max_threads_per_block, const bool is_input_bnsh_format);
+    const int position_ids_format, const bool interleaved, const int max_threads_per_block,
+    const bool is_input_bnsh_format);
 
 }  // namespace cuda
 }  // namespace contrib

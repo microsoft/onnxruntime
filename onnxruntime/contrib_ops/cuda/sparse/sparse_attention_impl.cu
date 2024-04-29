@@ -232,25 +232,25 @@ Status QkvToContext(
               data.kernel_layout.num_layout,
               data.kernel_layout.num_rows + 1);
 
-  printf("batch_size=%d, sequence_length=%d, num_heads=%d, kv_num_heads=%d head_size=%d, "
-         "total_sequence_length=%d, max_sequence_length=%d scale=%f block_size=%d "
-         "row_stride=%d col_stride=%d num_layout=%d start_row=%d\n",
-         parameters.batch_size,
-         parameters.sequence_length,
-         parameters.num_heads,
-         parameters.kv_num_heads,
-         parameters.head_size,
-         parameters.total_sequence_length,
-         parameters.max_sequence_length,
-         parameters.scale,
-         data.kernel_layout.block_size,
-         data.kernel_layout.num_rows + 1,
-         data.kernel_layout.num_rows * data.kernel_layout.num_cols,
-         data.kernel_layout.num_layout,
-         data.kernel_layout.start_row);
+  printf(
+      "batch_size=%d, sequence_length=%d, num_heads=%d, kv_num_heads=%d head_size=%d, "
+      "total_sequence_length=%d, max_sequence_length=%d scale=%f block_size=%d "
+      "row_stride=%d col_stride=%d num_layout=%d\n",
+      parameters.batch_size,
+      parameters.sequence_length,
+      parameters.num_heads,
+      parameters.kv_num_heads,
+      parameters.head_size,
+      parameters.total_sequence_length,
+      parameters.max_sequence_length,
+      parameters.scale,
+      data.kernel_layout.block_size,
+      data.kernel_layout.num_rows + 1,
+      data.kernel_layout.num_rows * data.kernel_layout.num_cols,
+      data.kernel_layout.num_layout);
 #endif
 
-  if (data.use_v2_kernel){
+  if (data.use_v2_kernel) {
     sparse_attention_v2::SparseAttentionParams params(
         ort_stream,
         data.output,
@@ -299,11 +299,11 @@ Status QkvToContext(
         parameters.total_sequence_length,
         parameters.max_sequence_length,
         parameters.scale,
-        data.kernel_layout.block_size,                                      // kernel_block_size
-        data.kernel_layout.csr_row_indices + data.kernel_layout.start_row,  // skip past_seq_len in row indices
-        data.kernel_layout.csr_col_indices,                                 // (num_layout, num_rows, num_cols)
-        data.kernel_layout.num_rows + 1,                                    // stride per head in row indices
-        data.kernel_layout.num_rows * data.kernel_layout.num_cols,          // stride per head in col indices
+        data.kernel_layout.block_size,                              // kernel_block_size
+        data.kernel_layout.csr_row_indices,                         // (num_layout, num_rows + 1)
+        data.kernel_layout.csr_col_indices,                         // (num_layout, num_rows, num_cols)
+        data.kernel_layout.num_rows + 1,                            // stride per head in row indices
+        data.kernel_layout.num_rows * data.kernel_layout.num_cols,  // stride per head in col indices
         data.kernel_layout.num_layout);
 
     if constexpr (std::is_same<T, BFloat16>::value) {

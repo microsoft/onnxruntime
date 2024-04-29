@@ -151,11 +151,10 @@ struct SparseAttentionParams {
     void* args[29] = {
         &output, &q, &k, &v,
         &q_batch_starts, &q_batch_ends, &k_batch_starts, &k_batch_ends, &q_batch_ids, &q_start_sids,
-        &layout_csr_row_indices, &layout_csr_col_indices, &layout_row_stride_h, &layout_col_stride_h, /*&num_layout,*/
+        &layout_csr_row_indices, &layout_csr_col_indices, &layout_row_stride_h, &layout_col_stride_h,
         &stride_qb, &stride_qt, &stride_qh, &stride_kb, &stride_kt, &stride_kh,
         &stride_vb, &stride_vt, &stride_vh, &stride_ob, &stride_ot, &stride_oh,
-        &q_k_ratio, &num_layout, /*&num_heads, &kv_num_heads, &total_sequence_length, &past_sequence_length,*/
-        &scale};
+        &q_k_ratio, &num_layout, &scale};
 
     unsigned int gridDimX = active_q_blocks;
     unsigned int gridDimY = num_heads;
@@ -171,11 +170,18 @@ struct SparseAttentionParams {
                 num_layout,
                 layout_col_stride_h);
 
-    // TODO: might have skip some rows if past_seq_len > 0
     DUMP_TENSOR("csr_row_indices",
                 layout_csr_row_indices,
                 num_layout,
                 layout_row_stride_h);
+
+    DUMP_TENSOR("q_batch_starts", q_batch_starts, 1, batch_size);
+    DUMP_TENSOR("q_batch_ends", q_batch_ends, 1, batch_size);
+    DUMP_TENSOR("k_batch_starts", k_batch_starts, 1, batch_size);
+    DUMP_TENSOR("k_batch_ends", k_batch_ends, 1, batch_size);
+    DUMP_TENSOR("q_batch_ids", q_batch_ids, 1, active_q_blocks);
+    DUMP_TENSOR("q_start_sids", q_start_sids, 1, active_q_blocks);
+
     printf(
         "layout_row_stride_h=%d, layout_col_stride_h=%d, num_layout=%d, scale=%f,\n"
         "stride_qb=%d, stride_qt=%d, stride_qh=%d, stride_kb=%d, stride_kt=%d, stride_kh=%d,\n"

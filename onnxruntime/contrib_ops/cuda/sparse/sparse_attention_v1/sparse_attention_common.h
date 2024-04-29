@@ -145,7 +145,6 @@ struct SparseAttentionParams {
                 num_layout,
                 layout_col_stride_h);
 
-    // TODO: might have skip some rows if past_seq_len > 0
     DUMP_TENSOR("csr_row_indices",
                 layout_csr_row_indices,
                 num_layout,
@@ -180,7 +179,9 @@ struct SparseAttentionParams {
             reinterpret_cast<size_t>(k) % 16 == 0 &&
             reinterpret_cast<size_t>(v) % 16 == 0 &&
             reinterpret_cast<size_t>(layout_csr_col_indices) % 16 == 0 &&
-            this->head_size % 16 == 0);
+            reinterpret_cast<size_t>(layout_csr_row_indices) % 16 == 0 &&
+            this->head_size % 16 == 0 &&
+            this->past_sequence_length == 0);  // This kernel is for prompt only.
   }
 };
 }  // namespace sparse_attention_v1

@@ -7,6 +7,7 @@ import triton
 import triton.language as tl
 
 
+# This kernel is for prompt only and assume that past sequence length is 0. It only supports right padding.
 @triton.jit
 def block_sparse_attention_kernel(
     out,  # output [B, H, M, D]. Note that B is batch_size, H is num_heads, M is q_seq_len, and D is head_size
@@ -34,7 +35,6 @@ def block_sparse_attention_kernel(
     num_heads,
     num_kv_heads,
     total_seq_len,  # Total sequence length including past sequence length and query sequence length.
-    past_seq_len,  # Past sequence length.
     BLOCK_M: tl.constexpr,  # block size for q_seq_len
     EVEN_M: tl.constexpr,  # whether q_seq_len % BLOCK_M == 0
     BLOCK_N: tl.constexpr,  # block size for k_seq_len
@@ -44,7 +44,8 @@ def block_sparse_attention_kernel(
 ):
     tl.static_print(f"{BLOCK_M=} {BLOCK_N=} {BLOCK_D=} {EVEN_M=} {EVEN_N=} {NUM_D_BLOCKS=}")
 
-    q_seq_len = total_seq_len - past_seq_len
+    # Past sequence length is 0 since this kernel is for prompt only.
+    q_seq_len = total_seq_len
 
     # Grid is [CDiv(q_seq_len, BLOCK_M), batch_size * num_heads]
     start_m = tl.program_id(0)
@@ -92,6 +93,8 @@ def block_sparse_attention_kernel(
             q2 = tl.load(q_ptrs + BLOCK_D, mask=offs_m[:, None] < q_seq_len)
 
     layout_h = off_h % num_layout
+
+    # This assumes that past sequence length is 0, otherwise need + (past_seq_len + 1) // BLOCK_M.
     layout_ptr = layout_csr_row_indices + layout_h * layout_csr_row_stride_h + start_m
     start_l = tl.load(layout_ptr).to(tl.int32)
     end_l = tl.load(layout_ptr + 1).to(tl.int32)
@@ -116,7 +119,9 @@ def block_sparse_attention_kernel(
             qk += tl.dot(q2, k)
 
         qk *= softmax_scale
-        qk += tl.where(offs_m[:, None] + past_seq_len >= (start_n + offs_n[None, :]), 0, float("-inf"))
+
+        # This assumes that past sequence length is 0, otherwise need offs_m[:, None] + past_seq_len >= ...
+        qk += tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), 0, float("-inf"))
         # -- compute m_ij, p, l_ij
         m_ij = tl.max(qk, 1)
         p = tl.exp(qk - m_ij[:, None])

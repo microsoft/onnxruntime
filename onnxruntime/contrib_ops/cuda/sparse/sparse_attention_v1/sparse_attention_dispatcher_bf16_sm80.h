@@ -12,155 +12,155 @@ namespace cuda {
 namespace sparse_attention_v1 {
 
 // launcher for: sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2
-Status sparse_attention_bf16_sm80_a99edeed(SparseAttentionParams& params);
+Status sparse_attention_bf16_sm80_ba65ff9c(SparseAttentionParams& params);
 
 Status sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_a99edeed(params);
+  return sparse_attention_bf16_sm80_ba65ff9c(params);
 }
 
 // load for: sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2
-void load_sparse_attention_bf16_sm80_a99edeed();
+void load_sparse_attention_bf16_sm80_ba65ff9c();
 void load_sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2() {
-  load_sparse_attention_bf16_sm80_a99edeed();
+  load_sparse_attention_bf16_sm80_ba65ff9c();
 }
 
 // unload for: sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2
-void unload_sparse_attention_bf16_sm80_a99edeed();
+void unload_sparse_attention_bf16_sm80_ba65ff9c();
 void unload_sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2() {
-  unload_sparse_attention_bf16_sm80_a99edeed();
+  unload_sparse_attention_bf16_sm80_ba65ff9c();
 }
 
 // launcher for: sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2
-Status sparse_attention_bf16_sm80_5df6b0e9(SparseAttentionParams& params);
+Status sparse_attention_bf16_sm80_f951a16d(SparseAttentionParams& params);
 
 Status sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_5df6b0e9(params);
+  return sparse_attention_bf16_sm80_f951a16d(params);
 }
 
 // load for: sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2
-void load_sparse_attention_bf16_sm80_5df6b0e9();
+void load_sparse_attention_bf16_sm80_f951a16d();
 void load_sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2() {
-  load_sparse_attention_bf16_sm80_5df6b0e9();
+  load_sparse_attention_bf16_sm80_f951a16d();
 }
 
 // unload for: sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2
-void unload_sparse_attention_bf16_sm80_5df6b0e9();
+void unload_sparse_attention_bf16_sm80_f951a16d();
 void unload_sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2() {
-  unload_sparse_attention_bf16_sm80_5df6b0e9();
+  unload_sparse_attention_bf16_sm80_f951a16d();
 }
 
 // launcher for: sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2
-Status sparse_attention_bf16_sm80_316fde50(SparseAttentionParams& params);
+Status sparse_attention_bf16_sm80_646fefc8(SparseAttentionParams& params);
 
 Status sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_316fde50(params);
+  return sparse_attention_bf16_sm80_646fefc8(params);
 }
 
 // load for: sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2
-void load_sparse_attention_bf16_sm80_316fde50();
+void load_sparse_attention_bf16_sm80_646fefc8();
 void load_sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2() {
-  load_sparse_attention_bf16_sm80_316fde50();
+  load_sparse_attention_bf16_sm80_646fefc8();
 }
 
 // unload for: sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2
-void unload_sparse_attention_bf16_sm80_316fde50();
+void unload_sparse_attention_bf16_sm80_646fefc8();
 void unload_sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2() {
-  unload_sparse_attention_bf16_sm80_316fde50();
+  unload_sparse_attention_bf16_sm80_646fefc8();
 }
 
 // launcher for: sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2
-Status sparse_attention_bf16_sm80_f703b29e(SparseAttentionParams& params);
+Status sparse_attention_bf16_sm80_21cac990(SparseAttentionParams& params);
 
 Status sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_f703b29e(params);
+  return sparse_attention_bf16_sm80_21cac990(params);
 }
 
 // load for: sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2
-void load_sparse_attention_bf16_sm80_f703b29e();
+void load_sparse_attention_bf16_sm80_21cac990();
 void load_sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2() {
-  load_sparse_attention_bf16_sm80_f703b29e();
+  load_sparse_attention_bf16_sm80_21cac990();
 }
 
 // unload for: sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2
-void unload_sparse_attention_bf16_sm80_f703b29e();
+void unload_sparse_attention_bf16_sm80_21cac990();
 void unload_sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2() {
-  unload_sparse_attention_bf16_sm80_f703b29e();
+  unload_sparse_attention_bf16_sm80_21cac990();
 }
 
 // launcher for: sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2
-Status sparse_attention_bf16_sm80_076ece68(SparseAttentionParams& params);
+Status sparse_attention_bf16_sm80_31acb592(SparseAttentionParams& params);
 
 Status sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_076ece68(params);
+  return sparse_attention_bf16_sm80_31acb592(params);
 }
 
 // load for: sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2
-void load_sparse_attention_bf16_sm80_076ece68();
+void load_sparse_attention_bf16_sm80_31acb592();
 void load_sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2() {
-  load_sparse_attention_bf16_sm80_076ece68();
+  load_sparse_attention_bf16_sm80_31acb592();
 }
 
 // unload for: sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2
-void unload_sparse_attention_bf16_sm80_076ece68();
+void unload_sparse_attention_bf16_sm80_31acb592();
 void unload_sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2() {
-  unload_sparse_attention_bf16_sm80_076ece68();
+  unload_sparse_attention_bf16_sm80_31acb592();
 }
 
 // launcher for: sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2
-Status sparse_attention_bf16_sm80_1e29d359(SparseAttentionParams& params);
+Status sparse_attention_bf16_sm80_d55ab166(SparseAttentionParams& params);
 
 Status sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_1e29d359(params);
+  return sparse_attention_bf16_sm80_d55ab166(params);
 }
 
 // load for: sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2
-void load_sparse_attention_bf16_sm80_1e29d359();
+void load_sparse_attention_bf16_sm80_d55ab166();
 void load_sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2() {
-  load_sparse_attention_bf16_sm80_1e29d359();
+  load_sparse_attention_bf16_sm80_d55ab166();
 }
 
 // unload for: sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2
-void unload_sparse_attention_bf16_sm80_1e29d359();
+void unload_sparse_attention_bf16_sm80_d55ab166();
 void unload_sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2() {
-  unload_sparse_attention_bf16_sm80_1e29d359();
+  unload_sparse_attention_bf16_sm80_d55ab166();
 }
 
 // launcher for: sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2
-Status sparse_attention_bf16_sm80_af80c5f1(SparseAttentionParams& params);
+Status sparse_attention_bf16_sm80_b0560d11(SparseAttentionParams& params);
 
 Status sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_af80c5f1(params);
+  return sparse_attention_bf16_sm80_b0560d11(params);
 }
 
 // load for: sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2
-void load_sparse_attention_bf16_sm80_af80c5f1();
+void load_sparse_attention_bf16_sm80_b0560d11();
 void load_sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2() {
-  load_sparse_attention_bf16_sm80_af80c5f1();
+  load_sparse_attention_bf16_sm80_b0560d11();
 }
 
 // unload for: sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2
-void unload_sparse_attention_bf16_sm80_af80c5f1();
+void unload_sparse_attention_bf16_sm80_b0560d11();
 void unload_sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2() {
-  unload_sparse_attention_bf16_sm80_af80c5f1();
+  unload_sparse_attention_bf16_sm80_b0560d11();
 }
 
 // launcher for: sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2
-Status sparse_attention_bf16_sm80_22af2291(SparseAttentionParams& params);
+Status sparse_attention_bf16_sm80_c777f3f5(SparseAttentionParams& params);
 
 Status sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_22af2291(params);
+  return sparse_attention_bf16_sm80_c777f3f5(params);
 }
 
 // load for: sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2
-void load_sparse_attention_bf16_sm80_22af2291();
+void load_sparse_attention_bf16_sm80_c777f3f5();
 void load_sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2() {
-  load_sparse_attention_bf16_sm80_22af2291();
+  load_sparse_attention_bf16_sm80_c777f3f5();
 }
 
 // unload for: sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2
-void unload_sparse_attention_bf16_sm80_22af2291();
+void unload_sparse_attention_bf16_sm80_c777f3f5();
 void unload_sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2() {
-  unload_sparse_attention_bf16_sm80_22af2291();
+  unload_sparse_attention_bf16_sm80_c777f3f5();
 }
 
 typedef Status (*kernel_func_t)(SparseAttentionParams& params);

@@ -21,13 +21,11 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     print('export ARCH="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader|head -n 1)"')
     print("export SM=$(echo $ARCH | sed -e 's/\\.//g')")
 
-    # Modify the compile.py to use custom template file template_h.txt and template_c.txt in current directory.
-    # Also pass block_m to the template.
+    # Modify the compile.py to use custom template files compile_template_kernel_v2_c/h.txt in current directory.
     print(
         'python -c "'
         "import sys;lines=sys.stdin.read();"
         "lines=lines.replace('template_path = Path(__file__).parent / f\\\"compile.{ext}\\\"','template_path = f\\\"compile_template_kernel_v2_{ext}.txt\\\"');"
-        #'lines=lines.replace(\'\\"_placeholder\\": \\"\\",\', \'\\"_placeholder\\": \\"\\",\\n        \\"has_batch_dim\\": list(constants.values())[0],\');'
         'print(lines)"'
         "< ${TRITON_ROOT}/triton/tools/compile.py > compile.py"
     )
@@ -36,6 +34,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     print(f"rm -rf {out_dir}")
     print(f"mkdir -p {out_dir}")
 
+    # All combinations of parameters for kernel.
     has_batch_dim_values = [True]
     head_size_values = [128]
     block_size_values = [64]
@@ -45,6 +44,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     for has_batch_dim, head_size, block_size, is_prompt in product(
         has_batch_dim_values, head_size_values, block_size_values, is_prompt_values
     ):
+        # Constant parameters for triton kernel.
         block_d = triton.next_power_of_2(head_size)
         block_m = block_size
         block_n = block_size
@@ -63,7 +63,11 @@ def generate_triton_compile_shell_script(dtype="fp16"):
         constant_params = f"{int(has_batch_dim)},{head_size},{block_m},{block_n},{block_d},{block_m_loading},{int(even_d)},{int(m_lt_n)}"
         signature = f"{tensor_params}{scalar_params}{constant_params}"
         prefix = "python compile.py sparse_attention_v2_triton.py"
+
+        # output filename
         filename = f"sparse_attention_v2_{dtype}_d{head_size}_m{block_m}_{block_m_loading}_n{block_n}_b{int(has_batch_dim)}_sm${{SM}}"
+
+        # function name
         name = f"sparse_attention_v2_{dtype}_sm${{SM}}"
 
         print(

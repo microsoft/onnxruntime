@@ -141,8 +141,8 @@ constexpr bool LAYOUT_BSNH = false;
 constexpr bool LAYOUT_BNSH = true;
 
 namespace sparse_attention {
-// Environment variable to enable or disable sparse attention v2 kernel. Default is 0 (enabled).
-constexpr const char* kDisableSparseAttentionV2 = "ORT_DISABLE_SPARSE_ATTENTION_V2";
+// Environment variable to enable or disable sparse attention v1 kernel. Default is 0 (enabled).
+constexpr const char* kDisableSparseAttentionV1 = "ORT_DISABLE_SPARSE_ATTENTION_V1";
 }  // namespace sparse_attention
 
 namespace attention {
