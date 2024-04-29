@@ -24,7 +24,7 @@ using namespace onnxruntime;
 namespace {
 
 // pattern match on split, quickgelu and mult subgraph
-bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult, const logging::Logger& logger) {
+bool TrySplitQuickGeluMatch(Graph& graph, Node& start, const Node*& split, const Node*& quickgelu, const Node*& mult, const logging::Logger& logger) {
 // bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult) {
   Node& node = start;
   split = quickgelu = mult = nullptr;
@@ -82,8 +82,8 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   //
 
   // check all output edges
-  Node quickgelu_node;
-  Node mul_node;
+  const Node* quickgelu_node = nullptr;
+  const Node* mul_node = nullptr;
   unsigned int quickgelu_count = 0;
   unsigned int mul_count = 0;
   unsigned int other_count = 0;
@@ -91,8 +91,8 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
     if ((*it).OpType().compare("QuickGelu") == 0) {
       std::cout << "QuickGelu found in iteration" << std::endl;
       quickgelu_node = *graph.GetNode((*it));
-      quickgelu_node = *graph.GetNode((it->Index());
-      quickgelu_node = *graph.GetNode(((*it).Index());
+      quickgelu_node = *graph.GetNode(it->Index());
+      quickgelu_node = *graph.GetNode((*it).Index());
       quickgelu_node = (*it);
       quickgelu_node = &(*it);
       quickgelu_count++;
@@ -280,7 +280,7 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    Node *split_node, *quickgelu_node, *mul_node;
+    const Node *split_node, *quickgelu_node, *mul_node;
     if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node, logger)) {
     // if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node)) {
       continue;
