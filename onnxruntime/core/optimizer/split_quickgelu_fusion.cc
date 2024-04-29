@@ -14,6 +14,9 @@
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 
+// To be removed
+#include <signal.h>
+
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 using namespace onnxruntime;
@@ -28,6 +31,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // check node is split and has two outputs
   // TODO: 1. Check ONNX Op Types to Support
   // Split version 13 has axis as attribute and split as input (Should we only specify it for v13?)
+  raise(SIGTRAP);
   std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!0" << std::endl;
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {11, 13, 18})) {
     std::cout << "not op type 11, 13, 18";
