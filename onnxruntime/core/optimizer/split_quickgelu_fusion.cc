@@ -184,8 +184,8 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
 
   // pattern match succeeded
   split = &split_node;
-  quickgelu = quickgelu_node;
-  mult = mul_node;
+  quickgelu = &quickgelu_node;
+  mult = &mul_node;
   std::cout << "FINISHED MATCH, RETURNING TRUE" << std::endl;
   return true;
 }
