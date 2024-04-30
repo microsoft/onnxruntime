@@ -127,14 +127,11 @@ struct SparseAttentionParameters {
   int rotary_dim;                  // rotary embedding dimension
   int sparse_block_size;           // block size for sparse attention
   int num_sparse_layout;           // number of sparse layout, or the first dimension of block_mask
-  float scale;                     // softmax scale
+  float scale;                     // scaling factor applied prior to softmax
   bool is_packed_qkv;              // whether qkv is packed
   int total_sequence_length;       // maximum total sequence length (past_sequence_length + sequence_length) among keys
   int max_sequence_length;         // max sequence length allowed
   bool past_present_share_buffer;  // whether past_key and present_key share buffer, so is past_value and present_value
-
-  AttentionQkvFormat qkv_format;
-  AttentionQkvFormat past_kv_format;
 };
 
 constexpr bool LAYOUT_BSNH = false;

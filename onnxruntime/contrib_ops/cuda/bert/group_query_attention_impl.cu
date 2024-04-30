@@ -47,9 +47,8 @@ limitations under the License.
 
 using namespace onnxruntime::cuda;
 
-// Macro to help compute index of flatten 4D matrix
-#define OFFSET_BNSH(N, S, H, b, n, s, h) ((b) * (N) * (S) * (H) + (n) * (S) * (H) + (s) * (H) + (h))
-#define OFFSET_BSNH(S, N, H, b, s, n, h) ((b) * (S) * (N) * (H) + (s) * (N) * (H) + (n) * (H) + (h))
+// Macro to help compute index of flatten 4D matrix, note that dim1 is not used so it is excluded.
+#define INDEX_4D(dim2, dim3, dim4, i, j, k, l) ((i) * (dim2) * (dim3) * (dim4) + (j) * (dim3) * (dim4) + (k) * (dim4) + (l))
 
 namespace onnxruntime {
 namespace contrib {
@@ -238,12 +237,12 @@ __global__ void ConcatKVInPlace(const int max_seqlen,
                                : (past_seqlens_k == nullptr ? 0 : past_seqlens_k[b]);
 
   int out_offset = is_past_kv_bnsh_format
-                       ? OFFSET_BNSH(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
-                       : OFFSET_BSNH(max_seqlen, kv_num_heads, H, b, s + past_seq_len, n, h);
+                       ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
+                       : INDEX_4D(max_seqlen, kv_num_heads, H, b, s + past_seq_len, n, h);
 
   int in_offset = is_new_kv_bnsh_format
-                      ? OFFSET_BNSH(kv_num_heads, new_seqlen, H, b, n, s, h)
-                      : OFFSET_BSNH(new_seqlen, kv_num_heads, H, b, s, n, h);
+                      ? INDEX_4D(kv_num_heads, new_seqlen, H, b, n, s, h)
+                      : INDEX_4D(new_seqlen, kv_num_heads, H, b, s, n, h);
 
   kv_buff[out_offset] = new_kv[in_offset];
 }
@@ -270,12 +269,12 @@ __global__ void ConcatKVInPlaceLarge(const int max_seqlen,
                                  : (past_seqlens_k == nullptr ? 0 : past_seqlens_k[b]);
 
     int out_offset = is_past_kv_bnsh_format
-                         ? OFFSET_BNSH(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
-                         : OFFSET_BSNH(max_seqlen, kv_num_heads, H, b, s + past_seq_len, n, h);
+                         ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
+                         : INDEX_4D(max_seqlen, kv_num_heads, H, b, s + past_seq_len, n, h);
 
     int in_offset = is_new_kv_bnsh_format
-                        ? OFFSET_BNSH(kv_num_heads, new_seqlen, H, b, n, s, h)
-                        : OFFSET_BSNH(new_seqlen, kv_num_heads, H, b, s, n, h);
+                        ? INDEX_4D(kv_num_heads, new_seqlen, H, b, n, s, h)
+                        : INDEX_4D(new_seqlen, kv_num_heads, H, b, s, n, h);
 
     kv_buff[out_offset] = new_kv[in_offset];
   }
@@ -542,7 +541,7 @@ __global__ void UnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* 
       int n = offset / head_size;
       int h = offset % head_size;
 
-      int unpacked_i = OFFSET_BNSH(head_count, sequence_length, head_size, b, n, s, h);
+      int unpacked_i = INDEX_4D(head_count, sequence_length, head_size, b, n, s, h);
 
       unpacked_q[unpacked_i] = packed_qkv[tid];
     } else {  // output BSNH

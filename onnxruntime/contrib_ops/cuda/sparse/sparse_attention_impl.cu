@@ -84,8 +84,7 @@ Status LaunchConcatKVInPlace(contrib::SparseAttentionParameters& parameters,
                              bool is_new_kv_bnsh_format,
                              cudaStream_t stream,
                              const int max_threads_per_block) {
-  assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
-  bool is_past_kv_bnsh_format = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
+  constexpr bool is_past_kv_bnsh_format = true;
   return LaunchConcatKVInPlace(parameters.batch_size,
                                parameters.kv_num_heads,
                                parameters.head_size,
@@ -196,11 +195,14 @@ Status QkvToContext(
     key = reinterpret_cast<const void*>(k_buffer);
 
 #if DUMP_TENSOR_LEVEL > 0
-    DUMP_TENSOR("query after rotary", reinterpret_cast<const T*>(query), batch_size, num_heads, sequence_length, head_size);
+    DUMP_TENSOR("query after rotary", reinterpret_cast<const T*>(query),
+                batch_size, num_heads, sequence_length, head_size);
     if (LAYOUT_BNSH == kv_layout) {
-      DUMP_TENSOR("key after rotary", reinterpret_cast<const T*>(key), batch_size, kv_num_heads, sequence_length, head_size);
+      DUMP_TENSOR("key after rotary", reinterpret_cast<const T*>(key),
+                  batch_size, kv_num_heads, sequence_length, head_size);
     } else {
-      DUMP_TENSOR("key after rotary", reinterpret_cast<const T*>(key), batch_size, sequence_length, kv_num_heads, head_size);
+      DUMP_TENSOR("key after rotary", reinterpret_cast<const T*>(key),
+                  batch_size, sequence_length, kv_num_heads, head_size);
     }
 #endif
   }

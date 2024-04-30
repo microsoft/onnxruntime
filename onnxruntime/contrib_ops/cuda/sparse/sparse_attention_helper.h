@@ -234,8 +234,6 @@ Status CheckInputs(void* params,
   parameters->kv_hidden_size = kv_hidden_size;
   parameters->rotary_dim = rotary_dim;
   parameters->is_packed_qkv = is_packed_qkv;
-  parameters->qkv_format = Q_K_V_BSNH;
-  parameters->past_kv_format = Q_K_V_BNSH;
   parameters->num_sparse_layout = static_cast<int>(block_mask_dim[0]);
 
   return Status::OK();

@@ -16,8 +16,7 @@ namespace contrib {
 namespace cuda {
 
 struct BlockLayout {
-  // When block_size != sparse_block_size, mask is an expanded version of input block_mask.
-  const int32_t* mask;  // shape (num_layout, num_rows, num_cols) [num_layout, max_seq_len / block_size, max_seq_len / block_size]
+  const int32_t* mask;  // shape (num_layout, num_rows, num_cols), where num_rows = num_cols = max_seq_len / block_size.
   int num_layout;
   int block_size;  // kernel block size, which is <= sparse_block_size
 
