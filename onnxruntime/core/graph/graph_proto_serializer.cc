@@ -9,7 +9,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
                         ONNX_NAMESPACE::GraphProto& graph_proto,
                         bool include_initializer,
                         bool include_outer_scope_args,
-                        ExecutionOrder order = ExecutionOrder::DEFAULT) {
+                        ExecutionOrder order) {
   graph_proto.set_name(graph_view.Name());
   graph_proto.set_doc_string(graph_view.Description());
 
