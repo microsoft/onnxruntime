@@ -52,12 +52,12 @@ steps:
       displayName: Get trtCudaVersion
 
     - powershell: |
-        azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-$(parameters.TrtVersion).Windows10.x86_64.cuda-$(trtCudaVersion) $(Agent.TempDirectory)
-      displayName: 'Download TensorRT-$(parameters.TrtVersion).Windows10.x86_64.cuda-$(trtCudaVersion)'
+        azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.CudaVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion) $(Agent.TempDirectory)
+      displayName: 'Download TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)'
 
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-$(parameters.TrtVersion).Windows10.x86_64.cuda-$(trtCudaVersion)\lib"
-      displayName: 'Append TensorRT-$(parameters.TrtVersion) Directory to PATH'
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)\lib"
+      displayName: 'Append TensorRT-${{ parameters.TrtVersion }} Directory to PATH'
 
     - task: CmdLine@2
       inputs:
