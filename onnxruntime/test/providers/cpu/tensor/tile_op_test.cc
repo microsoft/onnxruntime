@@ -166,7 +166,7 @@ void RunTestWrapper() {
 // OpTester's AddInput and AddOutput do not support std::vector<bool>.
 void RunTestForBool(std::initializer_list<bool> input_data, std::initializer_list<int64_t> input_dims,
                     std::initializer_list<int64_t> repeats, std::initializer_list<int64_t> repeats_dims,
-                    std::initializer_list<bool> output_data, std::initializer_list<int64_t> output_dims, 
+                    std::initializer_list<bool> output_data, std::initializer_list<int64_t> output_dims,
                     bool skip_trt = false) {
   OpTester test("Tile");
   test.AddInput<bool>("input", input_dims, input_data);

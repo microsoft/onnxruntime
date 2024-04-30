@@ -2,11 +2,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------
-# Dockerfile to Test ONNX Runtime on UBI8 with CUDA 11.8 and TensorRT 8.6
+# Dockerfile to Test ONNX Runtime on UBI8 with CUDA 11.8 and TensorRT 10.0
 
 # Build base image with required system packages
 ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-ARG TRT_VERSION=8.6.1.6-1.cuda11.8
+ARG TRT_VERSION=10.0.1.6-1.cuda11.8
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
@@ -26,13 +26,30 @@ RUN dnf install -y \
 RUN pip3 install --upgrade pip
 RUN pip3 install setuptools>=68.2.2
 
-# Install TensorRT
-RUN dnf install -y libnvinfer8 libnvonnxparsers8 libnvparsers8 libnvinfer-plugin8 libnvinfer-lean8 libnvinfer-vc-plugin8 libnvinfer-dispatch8
-RUN dnf downgrade -y libnvinfer8-${TRT_VERSION} libnvinfer8-${TRT_VERSION} libnvonnxparsers8-${TRT_VERSION} libnvparsers8-${TRT_VERSION} libnvinfer-plugin8-${TRT_VERSION} libnvinfer-lean8-${TRT_VERSION} libnvinfer-vc-plugin8-${TRT_VERSION} libnvinfer-dispatch8-${TRT_VERSION} &&\
-    dnf install -y dnf-plugin-versionlock &&\
-    dnf versionlock libnvinfer8 libnvonnxparsers8 libnvparsers8 libnvinfer-plugin8 libnvinfer-lean8 libnvinfer-vc-plugin8 libnvinfer-dispatch8
-RUN dnf clean dbcache
-
+#Install TensorRT only if TRT_VERSION is not empty
+RUN if [ -n "$TRT_VERSION" ]; then  \
+    echo "TRT_VERSION is $TRT_VERSION" && \
+    dnf -y install  \
+    libnvinfer10-${TRT_VERSION}  \
+    libnvinfer-headers-devel-${TRT_VERSION}  \
+    libnvinfer-devel-${TRT_VERSION}  \
+    libnvinfer-lean10-${TRT_VERSION}  \
+    libnvonnxparsers10-${TRT_VERSION}  \
+    libnvonnxparsers-devel-${TRT_VERSION}  \
+    libnvinfer-dispatch10-${TRT_VERSION}  \
+    libnvinfer-plugin10-${TRT_VERSION}  \
+    libnvinfer-vc-plugin10-${TRT_VERSION}  \
+    libnvinfer-bin-${TRT_VERSION}  \
+    libnvinfer-plugin10-${TRT_VERSION}  \
+    libnvinfer-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-vc-plugin-devel-${TRT_VERSION}  \
+    libnvinfer-lean-devel-${TRT_VERSION}  \
+    libnvinfer-dispatch-devel-${TRT_VERSION}  \
+    libnvinfer-headers-plugin-devel-${TRT_VERSION} && \
+    dnf clean dbcache ; \
+else \
+    echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
+fi
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && /tmp/scripts/install_java.sh && rm -rf /tmp/scripts

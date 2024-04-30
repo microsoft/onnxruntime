@@ -10,7 +10,7 @@ parameters:
     default: '11.8'
     values:
       - 11.8
-      - 12.3
+      - 12.2
   - name: TrtVersion
     type: string
     default: '10.0.1.6'
@@ -38,11 +38,11 @@ steps:
         - bash: |
             echo "##vso[task.setvariable variable=trtCudaVersion]11.8"
           displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.3'), eq(parameters.TrtVersion, '8.6.1.6')) }}:
+    - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '8.6.1.6')) }}:
         - bash: |
             echo "##vso[task.setvariable variable=trtCudaVersion]12.0"
           displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.3'), eq(parameters.TrtVersion, '10.0.1.6')) }}:
+    - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '10.0.1.6')) }}:
         - bash: |
             echo "##vso[task.setvariable variable=trtCudaVersion]12.4"
           displayName: Set trtCudaVersion

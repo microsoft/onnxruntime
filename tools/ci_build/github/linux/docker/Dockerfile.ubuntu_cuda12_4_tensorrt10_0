@@ -37,7 +37,7 @@ RUN apt-get -y install cudnn9-cuda-12
 RUN version="10.0.1.6-1+cuda12.4" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
-    sudo apt-get install -y \
+    apt-get install -y \
     tensorrt=${version}
 
 # Compile trtexec if not installed

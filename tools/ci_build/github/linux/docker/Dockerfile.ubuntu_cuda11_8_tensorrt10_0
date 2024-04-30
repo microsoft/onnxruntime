@@ -34,7 +34,7 @@ RUN pip install psutil setuptools>=68.2.2
 RUN version="10.0.1.6-1+cuda11.8" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
-    sudo apt-get install -y \
+    apt-get install -y \
     libnvinfer-dev=${version} \
     libnvinfer-dispatch-dev=${version} \
     libnvinfer-dispatch10=${version} \
