@@ -321,10 +321,10 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
   const Q = maybeTransposeToBNSHAndAddBias(
       context, params.batchSize, params.numHeads, params.sequenceLength, params.headSize, context.inputs[0], undefined,
       0);
-  const supportMultipleOutputs = context.inputs[3] && context.inputs[4];
-  const K = maybeExpandAndTransposeToBNSH(
-      context, context.inputs[1], context.inputs[3], params, supportMultipleOutputs ? 1 : -1);
-  const V = maybeExpandAndTransposeToBNSH(
-      context, context.inputs[2], context.inputs[4], params, supportMultipleOutputs ? 2 : -1);
+  const hasMultipleOutputs = context.inputs[3] && context.inputs[4];
+  const K =
+      maybeExpandAndTransposeToBNSH(context, context.inputs[1], context.inputs[3], params, hasMultipleOutputs ? 1 : -1);
+  const V =
+      maybeExpandAndTransposeToBNSH(context, context.inputs[2], context.inputs[4], params, hasMultipleOutputs ? 2 : -1);
   applyAttention(context, Q, K, V, undefined, undefined, undefined, undefined, undefined, params, attributes);
 };
