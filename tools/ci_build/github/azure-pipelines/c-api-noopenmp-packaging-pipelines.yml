@@ -956,8 +956,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} 
-          -p:CurrentDate=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']] -p:CurrentTime=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:CurrentDate=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']] -p:CurrentTime=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]'
 
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
