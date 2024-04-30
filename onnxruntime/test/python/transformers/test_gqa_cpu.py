@@ -19,7 +19,6 @@ from bert_padding import pad_input, unpad_input
 
 try:
     from colorama import Fore, init
-
     init(autoreset=True)
 except ImportError:
     print("colorama is not installed, please install it to get prettier output")
@@ -1868,7 +1867,7 @@ class TestGQA(unittest.TestCase):
                                         rotary_interleaved=rotary_interleaved,
                                         packed=packed,
                                     )
-                                    parity_check_gqa_past_no_buff(
+                                    all_close = parity_check_gqa_past_no_buff(
                                         config,
                                         local=local,
                                         past_format=past_kv_format,

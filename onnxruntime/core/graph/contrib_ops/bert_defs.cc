@@ -1008,9 +1008,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
 Group Query Self/Cross Attention.
 
-Supports different number of heads for q and kv. Only supports causal or local attention.
-Supports rotary position embedding.
-Supports k-v cache.
+*Highly recommend using k-v cache share buffer for both CPU and CUDA. Enabled through IOBinding past and present kv.
+Supports different number of heads for q and kv for CPU and CUDA.
+Only supports causal and local attention. *local attention UNSUPPORTED for sm < 80 on CUDA.
+Supports rotary position embedding for CPU and CUDA.
+Supports packed input for CPU and CUDA.
 CPU EP supports fp32... CUDA EP supports fp16.
 )DOC";
 

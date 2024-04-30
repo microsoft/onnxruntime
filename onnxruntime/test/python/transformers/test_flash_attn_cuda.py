@@ -22,6 +22,13 @@ from einops import rearrange, repeat
 from onnx import TensorProto, helper
 from rotary_flash import apply_rotary_emb
 
+try:
+    from colorama import Fore, init
+    init(autoreset=True)
+except ImportError:
+    print("colorama is not installed, please install it to get prettier output")
+    Fore = None
+
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
 
 torch.manual_seed(0)
@@ -1137,6 +1144,12 @@ def parity_check_mha(
         out_ref = out_ref.detach().cpu().numpy()
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    if Fore is not None:
+        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    else:
+        correct = "True" if all_close else "False"
+    # Compare results
     print(
         " B:",
         config.batch_size,
@@ -1150,13 +1163,7 @@ def parity_check_mha(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct,
     )
 
 
@@ -1331,6 +1338,12 @@ def parity_check_gqa_prompt(
     assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    if Fore is not None:
+        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    else:
+        correct = "True" if all_close else "False"
+    # Compare results
     print(
         "KV-buffer",
         " packed:",
@@ -1359,13 +1372,7 @@ def parity_check_gqa_prompt(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct,
     )
 
 
@@ -1517,6 +1524,12 @@ def parity_check_gqa_prompt_no_buff(
     assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    if Fore is not None:
+        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    else:
+        correct = "True" if all_close else "False"
+    # Compare results
     print(
         "No buff",
         " packed:",
@@ -1545,13 +1558,7 @@ def parity_check_gqa_prompt_no_buff(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct
     )
 
 
@@ -1723,6 +1730,12 @@ def parity_check_gqa_past(
     assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    if Fore is not None:
+        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    else:
+        correct = "True" if all_close else "False"
+    # Compare results
     print(
         "KV-buffer",
         "past kv format:",
@@ -1751,13 +1764,7 @@ def parity_check_gqa_past(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct,
     )
 
 
@@ -1931,6 +1938,12 @@ def parity_check_gqa_past_no_buff(
     out = out.detach().cpu().numpy()
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    if Fore is not None:
+        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
+    else:
+        correct = "True" if all_close else "False"
+    # Compare results
     print(
         "NO buff",
         " packed:",
@@ -1959,13 +1972,7 @@ def parity_check_gqa_past_no_buff(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct,
     )
 
 
