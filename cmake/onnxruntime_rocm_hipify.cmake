@@ -46,6 +46,7 @@ set(contrib_ops_excluded_files
   "math/gemm_float8.cu"
   "math/gemm_float8.h"
   "moe/*"
+  "sparse/*"
   "quantization/attention_quantization.cc"
   "quantization/attention_quantization.h"
   "quantization/attention_quantization_impl.cu"
