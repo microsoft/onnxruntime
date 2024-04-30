@@ -1159,7 +1159,7 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLen32(
 
             // load B zero point
             const int8x16_t bzp0 = vdupq_n_s8(
-                HasZeroPoint ? std::to_integer<int8_t>((*QuantBZeroPoint) & std::byte{0x0F}) : 8
+                HasZeroPoint ? std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{0x0F}) : 8
             );
 
             // load A

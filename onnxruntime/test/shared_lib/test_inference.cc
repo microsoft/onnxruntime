@@ -2234,10 +2234,10 @@ TEST(CApiTest, basic_cuda_graph) {
 #define cudaMemcpyHostToDevice hipMemcpyHostToDevice
 #define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
   Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+#elif defined(USE_CUDA) || defined(USE_TENSORRT)
+  Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_DML)
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
-#else
-  Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #endif
 
   Ort::Allocator allocator(session, info_mem);
@@ -2250,12 +2250,12 @@ TEST(CApiTest, basic_cuda_graph) {
 
   ASSERT_NE(input_data.get(), nullptr);
 
-#ifdef USE_DML
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+#elif defined(USE_DML)
   ComPtr<ID3D12Resource> input_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
-#else
-  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 #endif
 
   // Create an OrtValue tensor backed by data on CUDA memory
@@ -2283,13 +2283,13 @@ TEST(CApiTest, basic_cuda_graph) {
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
 
-#ifdef USE_DML
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+#elif defined(USE_DML)
   ComPtr<ID3D12Resource> output_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
   auto output_cpu_bytes = reinterpret_cast<std::byte*>(y_values.data());
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
-#else
-  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 #endif
 
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
@@ -2297,10 +2297,10 @@ TEST(CApiTest, basic_cuda_graph) {
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
 
-#ifdef USE_DML
-  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
-#else
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+#elif defined(USE_DML)
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif
 
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
@@ -2308,20 +2308,20 @@ TEST(CApiTest, basic_cuda_graph) {
   // Change the input and replay the CUDA graph again.
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
 
-#ifdef USE_DML
-  UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
-#else
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+#elif defined(USE_DML)
+  UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
 #endif
 
   binding.SynchronizeInputs();
 
   session.Run(Ort::RunOptions(), binding);
 
-#ifdef USE_DML
-  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
-#else
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+#elif defined(USE_DML)
+  DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif
 
   expected_y = {10.0f, 40.0f, 90.0f, 160.0f, 250.0f, 360.0f};
