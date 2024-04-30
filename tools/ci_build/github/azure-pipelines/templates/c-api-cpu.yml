@@ -306,6 +306,8 @@ stages:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+      BuildDate: $[format('{0:yyyyMMdd}', pipeline.startTime)]
+      BuildTime: $[format('{0:HHmm}', pipeline.startTime)]
 
     steps:
     - checkout: self
@@ -443,7 +445,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)' -p:CurrentTime=$(BuildTime) -p:CurrentDate=$(BuildDate)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2

@@ -944,7 +944,8 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:CurrentDate=$(BuildDate) -p:CurrentTime=$(BuildTime)'
+
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2
@@ -1089,7 +1090,7 @@ stages:
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentTime=$(BuildTime) /p:CurrentDate=$(BuildDate)
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
@@ -1111,7 +1112,7 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentTime=$(BuildTime) /p:CurrentDate=$(BuildDate)
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-x86.zip
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-x86.zip $(Build.ArtifactStagingDirectory)
@@ -1134,7 +1135,7 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentTime=$(BuildTime) /p:CurrentDate=$(BuildDate)
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-arm64.zip
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
