@@ -1244,7 +1244,7 @@ TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_IncorrectAlphaBeta) {
 
   RunQnnModelTest(model_fn,
                   provider_options,
-                  18,  // opset
+                  18,                              // opset
                   ExpectedEPNodeAssignment::Some,  // HardSigmoid not assigned to QNN EP.
                   0.01f);
 }
