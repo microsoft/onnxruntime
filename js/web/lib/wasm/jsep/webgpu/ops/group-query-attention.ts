@@ -63,6 +63,9 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   let pastSequenceLength = 0;
   let maxSequenceLength = 0;
   const headSize = Math.floor(hiddenSize / attributes.numHeads);
+  // TODO : this should be from attributes.
+  const isPastkvBSNH = false;
+
   if (pastKey && pastValue) {
     if (pastKey.dims.length !== 4) {
       throw new Error('Input "past_key" is expected to have 4 dimensions');
@@ -70,9 +73,16 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     if (pastValue.dims.length !== 4) {
       throw new Error('Input "past_value" is expected to have 4 dimensions');
     }
-    // Past key value are of format BNSH.
-    pastSequenceLength = pastKey.dims[2];
-    maxSequenceLength = pastKey.dims[2];
+    if (isPastkvBSNH) {
+      // For BSNH
+      pastSequenceLength = pastKey.dims[1];
+      maxSequenceLength = pastKey.dims[1];
+    } else {
+      // For BNSH
+      pastSequenceLength = pastKey.dims[2];
+      maxSequenceLength = pastKey.dims[2];
+    }
+
 
   } else if (pastKey || pastValue) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
@@ -173,6 +183,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
     broadcastResPosBias,
     passPastInKv,
     qkvFormat,
+    isPastkvBSNH,
   };
 };
 
@@ -223,14 +234,25 @@ const createConcatProgramInfo =
 
     let present_seqlen = uniforms.present_seqlen;
     let present_batch_stride = present_seqlen * num_heads * H;
-    let row_stride = H;
-    let present_head_stride = present_seqlen * H;
+    var row_stride = H;
+    let is_bsnh = ${params.isPastkvBSNH};
+    if (is_bsnh) {
+      row_stride = num_heads * H;
+    }
+    var present_head_stride = present_seqlen * H;
+    if (is_bsnh) {
+      present_head_stride = H;
+    }
+
     let past_seqlen = uniforms.past_seqlen;
 
     let out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
     if (s < past_seqlen) {
       let past_batch_stride = uniforms.past_seqlen * num_heads * H;
-      let past_head_stride = uniforms.past_seqlen * H;
+      var past_head_stride = uniforms.past_seqlen * H;
+      if (is_bsnh) {
+        past_head_stride = H;
+      }
       let in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
       present_kv[out_offset] = past_kv[in_offset];
     } else if (s < past_seqlen + uniforms.new_seqlen) {
@@ -260,7 +282,8 @@ export const parseGroupQueryAttentionAttributes = (attributes: AttentionAttrs): 
 const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: [0, 2, 1, 3]});
 
 const maybeExpandAndTransposeToBNSH =
-    (context: ComputeContext, input: TensorView, pastKV: TensorView|undefined, params: AttentionParameters) => {
+    (context: ComputeContext, input: TensorView, pastKV: TensorView|undefined, params: AttentionParameters,
+     outputIndex: number) => {
       let reshapedInput = input;
       const numHeads = params.kvNumHeads!;
       const nReps = params.nReps!;
@@ -269,12 +292,9 @@ const maybeExpandAndTransposeToBNSH =
       }
 
       if (pastKV) {
-        // pastKV is of format BNSH, convert to BSNH.
-        const reshapedPastKV = context.compute(
-            createTransposeProgramInfo(pastKV, weightTransposeAttribute.perm), {inputs: [pastKV], outputs: [-1]})[0];
         reshapedInput = context.compute(
-            createConcatProgramInfo(reshapedInput, reshapedPastKV, reshapedInput.dataType, params),
-            {inputs: [reshapedInput, pastKV], outputs: [-1]})[0];
+            createConcatProgramInfo(reshapedInput, pastKV, reshapedInput.dataType, params),
+            {inputs: [reshapedInput, pastKV], outputs: [outputIndex]})[0];
       }
       if (nReps !== 1) {
         reshapedInput = context.compute(
@@ -301,8 +321,10 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
   const Q = maybeTransposeToBNSHAndAddBias(
       context, params.batchSize, params.numHeads, params.sequenceLength, params.headSize, context.inputs[0], undefined,
       0);
-
-  const K = maybeExpandAndTransposeToBNSH(context, context.inputs[1], context.inputs[3], params);
-  const V = maybeExpandAndTransposeToBNSH(context, context.inputs[2], context.inputs[4], params);
+  const supportMultipleOutputs = context.inputs[3] && context.inputs[4];
+  const K = maybeExpandAndTransposeToBNSH(
+      context, context.inputs[1], context.inputs[3], params, supportMultipleOutputs ? 1 : -1);
+  const V = maybeExpandAndTransposeToBNSH(
+      context, context.inputs[2], context.inputs[4], params, supportMultipleOutputs ? 2 : -1);
   applyAttention(context, Q, K, V, undefined, undefined, undefined, undefined, undefined, params, attributes);
 };

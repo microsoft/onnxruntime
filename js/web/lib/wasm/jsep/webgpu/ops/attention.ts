@@ -56,6 +56,7 @@ export interface AttentionParameters {
   broadcastResPosBias: boolean;
   passPastInKv: boolean;
   qkvFormat: AttentionQkvFormat;
+  isPastkvBSNH?: boolean;
 }
 
 export interface AttentionAttrs {
@@ -536,15 +537,16 @@ export const applyAttention =
       // Concatinate pastKey and K to produce presentKey.
       const presentKeyShape = [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize];
       const concatKeyInputs = pastKey ? [pastKey, k] : [k];
-      const key = outputPresentKey ? context.compute(
-                                         createConcatProgramInfo(concatKeyInputs, 2, presentKeyShape, k.dataType),
-                                         {inputs: concatKeyInputs, outputs: [1]})[0] :
-                                     k;
+      const key = parameters.kvNumHeads == null && outputPresentKey ?
+          context.compute(
+              createConcatProgramInfo(concatKeyInputs, 2, presentKeyShape, k.dataType),
+              {inputs: concatKeyInputs, outputs: [1]})[0] :
+          k;
 
       // Concatinate pastValue and V to produce presentValue.
       const presentValueShape = [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize];
       const concatValueInputs = pastValue ? [pastValue, v] : [v];
-      const value = outputPresentValue ?
+      const value = parameters.kvNumHeads == null && outputPresentValue ?
           context.compute(
               createConcatProgramInfo(concatValueInputs, 2, presentValueShape, v.dataType),
               {inputs: concatValueInputs, outputs: [2]})[0] :
