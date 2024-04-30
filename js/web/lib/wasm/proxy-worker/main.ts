@@ -86,12 +86,12 @@ declare global {
 import type {OrtWasmMessage, SerializableTensorMetadata} from '../proxy-messages.js';
 import {createSession, copyFromExternalBuffer, endProfiling, extractTransferableBuffers, initEp, initRuntime, releaseSession, run} from '../wasm-core-impl.js';
 import {initializeWebAssembly} from '../wasm-factory.js';
-import {preloadWorker} from '../wasm-utils-import.js';
 
-const scriptSrc = import.meta.url;
-const isProxyWorker = new URL(scriptSrc).searchParams.get('import') !== '1';
+const WORKER_NAME = 'ort-wasm-proxy-worker';
+const isProxyWorker = globalThis.self?.name === WORKER_NAME;
 
 if (isProxyWorker) {
+  // Worker thread
   self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
     const {type, in : message} = ev.data;
     try {
@@ -176,7 +176,4 @@ if (isProxyWorker) {
   };
 }
 
-export default isProxyWorker ? null : async(wasmPrefixOverride?: string): Promise<Worker> => {
-  const workerUrl = await preloadWorker(BUILD_DEFS.PROXY_WORKER_URL, wasmPrefixOverride ?? scriptSrc);
-  return new Worker(workerUrl, {type: 'module', name: BUILD_DEFS.PROXY_WORKER_URL});
-};
+export default isProxyWorker ? null : new Worker(import.meta.url, {type: 'module', name: WORKER_NAME});

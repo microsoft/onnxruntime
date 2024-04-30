@@ -146,7 +146,6 @@ async function buildOrt({
   // - [bundle-name][.min].[m]js
   // - [bundle-name].proxy[.min].mjs
   // - ort[-training]-wasm[-simd][-threaded][.jsep].mjs
-  // - ort-wasm[-simd]-threaded[.jsep].worker.mjs
   const platform = isNode ? 'node' : 'browser';
   const external = isNode ? ['onnxruntime-common'] : ['node:fs/promises', 'node:fs', 'node:os'];
   const plugins: esbuild.Plugin[] = [];
@@ -227,11 +226,11 @@ async function buildTest() {
  *
  * This is a custom post process step to insert magic comments to a specific import call:
  * ```
- * ... await import(` ...
+ * ... await import(...
  * ```
  * to:
  * ```
- * ... await import(/* webpackIgnore: true *\/` ...
+ * ... await import(/* webpackIgnore: true *\/...
  * ```
  *
  * Why we need this?
@@ -254,8 +253,8 @@ async function buildTest() {
  */
 async function postProcess() {
   const IMPORT_MAGIC_COMMENT = '/*webpackIgnore:true*/';
-  const IMPORT_ORIGINAL = 'await import(`';
-  const IMPORT_NEW = `await import(${IMPORT_MAGIC_COMMENT}\``;
+  const IMPORT_ORIGINAL = 'await import(';
+  const IMPORT_NEW = `await import(${IMPORT_MAGIC_COMMENT}`;
 
   const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
   for (const file of files) {

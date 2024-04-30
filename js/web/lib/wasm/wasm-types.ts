@@ -209,13 +209,9 @@ export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Parti
 
   // #region config
   numThreads?: number;
-  mainScriptUrlOrBlob?: string|Blob;
   // #endregion
-}
 
-/**
- * The interface of the WebAssembly module for ONNX Runtime with PThread support.
- */
-export interface OrtWasmThreadedModule extends OrtWasmModule {
+  // #region PThread support
   PThread?: {terminateAllThreads(): void};
+  // #endregion
 }

@@ -13,6 +13,7 @@ let proxyWorker: Worker|undefined;
 let initializing = false;
 let initialized = false;
 let aborted = false;
+let temporaryObjectUrl: string|undefined;
 
 type PromiseCallbacks<T = void> = [resolve: (result: T) => void, reject: (reason: unknown) => void];
 let initWasmCallbacks: PromiseCallbacks;
@@ -43,6 +44,10 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
       } else {
         initialized = true;
         initWasmCallbacks[0]();
+      }
+      if (temporaryObjectUrl) {
+        URL.revokeObjectURL(temporaryObjectUrl);
+        temporaryObjectUrl = undefined;
       }
       break;
     case 'init-ep':
@@ -81,15 +86,16 @@ export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
     return new Promise<void>((resolve, reject) => {
       proxyWorker?.terminate();
       const wasmPrefixOverride = typeof env.wasm.wasmPaths === 'string' ? env.wasm.wasmPaths : undefined;
-      void dynamicImportDefault(BUILD_DEFS.PROXY_WORKER_URL + '?import=1', wasmPrefixOverride)
-          .then(async createWorker => {
+      void dynamicImportDefault<Worker>(BUILD_DEFS.PROXY_WORKER_URL, wasmPrefixOverride)
+          .then(async ([objectUrl, worker]) => {
             try {
-              proxyWorker = await createWorker(wasmPrefixOverride) as Worker;
+              proxyWorker = worker;
               proxyWorker.onerror = (ev: ErrorEvent) => reject(ev);
               proxyWorker.onmessage = onProxyWorkerMessage;
               initWasmCallbacks = [resolve, reject];
               const message: OrtWasmMessage = {type: 'init-wasm', in : env};
               proxyWorker.postMessage(message);
+              temporaryObjectUrl = objectUrl;
             } catch (e) {
               reject(e);
             }

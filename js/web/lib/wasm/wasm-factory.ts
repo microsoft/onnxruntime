@@ -3,8 +3,8 @@
 
 import {Env} from 'onnxruntime-common';
 
-import type {OrtWasmModule, OrtWasmThreadedModule} from './wasm-types';
-import {dynamicImportDefault, preloadWorker, scriptSrc} from './wasm-utils-import';
+import type {OrtWasmModule} from './wasm-types';
+import {dynamicImportDefault} from './wasm-utils-import';
 
 let wasm: OrtWasmModule|undefined;
 let initialized = false;
@@ -101,7 +101,6 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
     // set flags.numThreads to 1 so that OrtInit() will not create a global thread pool.
     flags.numThreads = numThreads = 1;
   }
-  const useThreads = numThreads > 1;
 
   const wasmPaths = flags.wasmPaths;
   const wasmPrefixOverride = typeof wasmPaths === 'string' ? wasmPaths : undefined;
@@ -109,12 +108,11 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       !BUILD_DEFS.DISABLE_JSEP                      ? 'ort-wasm-simd-threaded.jsep' :
                                                       'ort-wasm-simd-threaded';
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[`${wasmFileName}.wasm`] : undefined;
+  const wasmOverride =
+      wasmPathOverride ?? (wasmPrefixOverride ? wasmPrefixOverride + wasmFileName + '.wasm' : undefined);
 
-  const ortWasmFactory: EmscriptenModuleFactory<OrtWasmModule> =
-      (await dynamicImportDefault(`${wasmFileName}.mjs`, wasmPrefixOverride));
-
-  const wasmWorkerFileName = useThreads ? `${wasmFileName}.worker.mjs` : '';
-  const wasmWorkerUrl = useThreads ? await preloadWorker(wasmWorkerFileName, wasmPrefixOverride ?? scriptSrc) : '';
+  const [objectUrl, ortWasmFactory] = (await dynamicImportDefault<EmscriptenModuleFactory<OrtWasmModule>>(
+      `${wasmFileName}.mjs`, wasmPrefixOverride, numThreads === 1));
 
   let isTimeout = false;
 
@@ -134,25 +132,8 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   tasks.push(new Promise((resolve, reject) => {
     const config: Partial<OrtWasmModule> = {
       numThreads,
-      locateFile: (fileName: string, scriptDirectory: string) => {
-        if (fileName.endsWith('.wasm') && wasmPathOverride) {
-          return wasmPathOverride;
-        }
-
-        if (useThreads && fileName === wasmWorkerFileName && wasmWorkerUrl !== wasmWorkerFileName) {
-          // when a valid rewritten worker URL is available, use it
-          return wasmWorkerUrl;
-        }
-
-        return (wasmPrefixOverride ?? scriptDirectory) + fileName;
-      }
+      locateFile: ((fileName, scriptDirectory) => wasmOverride ?? scriptDirectory + fileName)
     };
-
-    if (useThreads) {
-      if (wasmPrefixOverride) {
-        config.mainScriptUrlOrBlob = wasmPrefixOverride + `${wasmFileName}.mjs`;
-      }
-    }
 
     ortWasmFactory(config).then(
         // wasm module initialized successfully
@@ -161,6 +142,9 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
           initialized = true;
           wasm = module;
           resolve();
+          if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+          }
         },
         // wasm module failed to initialize
         (what) => {
@@ -189,7 +173,7 @@ export const dispose = (): void => {
   if (initialized && !initializing && !aborted) {
     initializing = true;
 
-    (wasm as OrtWasmThreadedModule).PThread?.terminateAllThreads();
+    wasm?.PThread?.terminateAllThreads();
     wasm = undefined;
 
     initializing = false;
