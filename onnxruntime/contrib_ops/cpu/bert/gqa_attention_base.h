@@ -256,8 +256,8 @@ class GQAAttentionBase : public AttentionBase {
                                   i / kv_num_heads_factor);
         }
 
-        T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
-        const int attention_probs_offset = sequence_length * present_buffer_sequence_length * i;
+        T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * static_cast<int>(i);
+        const int attention_probs_offset = sequence_length * present_buffer_sequence_length * static_cast<int>(i);
         math::MatMul<T>(sequence_length, head_size, present_buffer_sequence_length,
                         attention_probs + attention_probs_offset,
                         v, current_tmp_data, nullptr);
