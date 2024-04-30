@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 18
+#define ORT_API_VERSION 19
 
 #ifdef __cplusplus
 extern "C" {
@@ -4641,7 +4641,7 @@ struct OrtApi {
    * will occur before any of the optimizations take place. The data will be copied into the graph
    * since TensorProto can't refer to the user provided buffers.
    *
-   * \param[in] session options
+   * \param[in] options
    * \param[in] external_initializer_file_names Array of null terminated UTF-8 encoded strings of the file names
    *            which holds the external initializers.
    * \param[in] external_initializer_file_buffer_array Array of pointers to the buffer of the file content.
