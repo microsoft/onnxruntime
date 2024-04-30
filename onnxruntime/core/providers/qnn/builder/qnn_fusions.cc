@@ -77,14 +77,26 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
     return Status::OK();
   }
 
+  const NodeUnitIODef& input_def = maybe_dq_node_unit.Inputs()[0];
+  const NodeUnitIODef& output_def = q_node_unit->Outputs()[0];
+  auto backend = qnn_model_wrapper.GetQnnBackendType();
+
+  // Max input rank is 5 on HTP
+  if (backend == QnnBackendType::HTP || backend == QnnBackendType::HTP_FP16) {
+    constexpr size_t max_rank = 5;
+    std::vector<uint32_t> shape;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_def.node_arg, shape), "Cannot get input shape");
+
+    if (shape.size() > max_rank) {
+      return Status::OK();
+    }
+  }
+
   LOGS(logger, VERBOSE) << " Adding QNN Convert via fusion. dq_node name: [" << dq_node.Name()
                         << "] dq_node optype: [" << dq_node.OpType()
                         << "] q_node name: [" << q_node_unit->Name()
                         << "] q_node optype: [" << q_node_unit->OpType()
                         << "]";
-
-  const NodeUnitIODef& input_def = maybe_dq_node_unit.Inputs()[0];
-  const NodeUnitIODef& output_def = q_node_unit->Outputs()[0];
 
   // Add a QNN Convert to the model. Get the input from the DQ node, and the output from the Q node.
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(input_def));
@@ -177,11 +189,23 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
     return Status::OK();
   }
 
-  LOGS(logger, VERBOSE) << " Adding QNN HardSwish via fusion. HardSigmoid name: [" << start_node_unit.Name()
-                        << "] Mul name: [" << mul_node_unit->Name() << "]";
-
   const NodeUnitIODef& input_def = start_node_unit.Inputs()[0];
   const NodeUnitIODef& output_def = mul_node_unit->Outputs()[0];
+  auto backend = qnn_model_wrapper.GetQnnBackendType();
+
+  // Max input rank is 4 on HTP
+  if (backend == QnnBackendType::HTP || backend == QnnBackendType::HTP_FP16) {
+    constexpr size_t max_rank = 4;
+    std::vector<uint32_t> shape;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_def.node_arg, shape), "Cannot get input shape");
+
+    if (shape.size() > max_rank) {
+      return Status::OK();
+    }
+  }
+
+  LOGS(logger, VERBOSE) << " Adding QNN HardSwish via fusion. HardSigmoid name: [" << start_node_unit.Name()
+                        << "] Mul name: [" << mul_node_unit->Name() << "]";
 
   // Add a QNN HardSwish to the model. Get the input from the HardSigmoid and the output from the Mul.
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(input_def));
@@ -216,24 +240,25 @@ Status TryFusions(/*out*/ std::vector<const NodeUnit*>& fused_nodes,
                   const std::unordered_set<const NodeUnit*>& handled_node_units,
                   const logging::Logger& logger,
                   bool validate) {
-  ORT_RETURN_IF_NOT(fused_nodes.empty(), "fused_nodes is not empty");
-
-  // Maps a starting operator type to the functions that can potentially fuse a
+  // Maps a starting operator type to the function that can potentially fuse a
   // sequence that starts with that node.
-  static std::unordered_map<std::string, std::vector<FusionFunc>> fusions = {
-      {"DequantizeLinear", {TryHandleConvertSequence}},
-      {"HardSigmoid", {TryHandleHardSigmoidSequence}},
+  static std::unordered_map<std::string, FusionFunc> fusions = {
+      {"DequantizeLinear", TryHandleConvertSequence},
+      {"HardSigmoid", TryHandleHardSigmoidSequence},
   };
+
+  // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
+  if (starting_node.UnitType() != NodeUnit::Type::SingleNode) {
+    return Status::OK();
+  }
 
   auto iter = fusions.find(starting_node.OpType());
   if (iter != fusions.end()) {
-    for (auto fusion_func : iter->second) {
-      ORT_RETURN_IF_ERROR(fusion_func(fused_nodes, qnn_model_wrapper, starting_node, node_unit_map,
-                                      handled_node_units, logger, validate));
-      if (!fused_nodes.empty()) {
-        return Status::OK();
-      }
-    }
+    fused_nodes.clear();
+
+    FusionFunc fusion_func = iter->second;
+    ORT_RETURN_IF_ERROR(fusion_func(fused_nodes, qnn_model_wrapper, starting_node, node_unit_map,
+                                    handled_node_units, logger, validate));
   }
 
   return Status::OK();

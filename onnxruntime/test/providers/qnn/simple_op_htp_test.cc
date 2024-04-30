@@ -1165,6 +1165,118 @@ TEST_F(QnnHTPBackendTests, Add_U8_U16_Convert) {
                        ExpectedEPNodeAssignment::All);
 }
 
+template <typename FloatType>
+static GetTestModelFn BuildHardSigmoidFusionTestCase(TestInputDef<FloatType>& input_def,
+                                                     std::optional<float> alpha,
+                                                     std::optional<float> beta) {
+  return [input_def, alpha, beta](ModelTestBuilder& builder) {
+    NodeArg* input = MakeTestInput<FloatType>(builder, input_def);
+
+    // input -> HardSigmoid<alpha, beta> -> hs_output
+    NodeArg* hs_output = builder.MakeIntermediate();
+    Node& hs_node = builder.AddNode("HardSigmoid", {input}, {hs_output});
+
+    if (alpha.has_value()) {
+      hs_node.AddAttribute("alpha", alpha.value());
+    }
+
+    if (beta.has_value()) {
+      hs_node.AddAttribute("beta", beta.value());
+    }
+
+    // hs_output -> Mul -> output
+    //               ^
+    //               |
+    // input --------+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Mul", {hs_output, input}, {output});
+  };
+}
+
+// Test FP32 fusion of HardSigmoid into HardSwish on the HTP backend with the enable_htp_fp16_precision option enabled
+// to run it with fp16 precision.
+TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP32_as_FP16) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  provider_options["enable_htp_fp16_precision"] = "1";
+
+  std::vector<float> input_data = {-8.0f, -2.0f, 0.0f, 0.5f, 0.9f, 1.1f, 3.3f, 8.0f,
+                                   -7.0f, 0.0f, 0.2f, 0.4f, 0.8f, 2.1f, 4.3f, 7.0f};
+
+  auto input_def = TestInputDef<float>({2, 2, 2, 2}, false, input_data);
+  constexpr float alpha = 1.0f / 6.0f;
+  constexpr float beta = 0.5f;
+  auto model_fn = BuildHardSigmoidFusionTestCase<float>(input_def, alpha, beta);
+
+  RunQnnModelTest(model_fn,
+                  provider_options,
+                  18,  // opset
+                  ExpectedEPNodeAssignment::All,
+                  0.01f);  // abs err. Comparing fp16 (QNN) vs fp32 (CPU EP) so can't expect too much.
+}
+
+// Test that FP32 fusion of HardSigmoid into HardSwish on the HTP backend doesn't happen if alpha and beta
+// are not 1/6 and 0.5, respectively.
+TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_IncorrectAlphaBeta) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  provider_options["enable_htp_fp16_precision"] = "1";
+
+  std::vector<float> input_data = {-8.0f, -2.0f, 0.0f, 0.5f, 0.9f, 1.1f, 3.3f, 8.0f,
+                                   -7.0f, 0.0f, 0.2f, 0.4f, 0.8f, 2.1f, 4.3f, 7.0f};
+
+  auto input_def = TestInputDef<float>({2, 2, 2, 2}, false, input_data);
+  constexpr float wrong_alpha = 1.1f / 6.0f;
+  constexpr float wrong_beta = 0.6f;
+  auto model_fn = BuildHardSigmoidFusionTestCase<float>(input_def, wrong_alpha, wrong_beta);
+
+  RunQnnModelTest(model_fn,
+                  provider_options,
+                  18,  // opset
+                  ExpectedEPNodeAssignment::Some,  // HardSigmoid not assigned to QNN EP.
+                  0.01f);
+}
+
+// Test FP16 fusion of HardSigmoid into HardSwish on the HTP backend.
+TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP16) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  std::vector<float> input_data = {-8.0f, -2.0f, 0.0f, 0.5f, 0.9f, 1.1f, 3.3f, 8.0f,
+                                   -7.0f, 0.0f, 0.2f, 0.4f, 0.8f, 2.1f, 4.3f, 7.0f};
+
+  auto input_def = TestInputDef<float>({2, 2, 2, 2}, false, input_data);
+  auto input_fp16_def = ConvertToFP16InputDef(input_def);
+
+  constexpr float alpha = 1.0f / 6.0f;
+  constexpr float beta = 0.5f;
+  auto model_fp32_fn = BuildHardSigmoidFusionTestCase<float>(input_def, alpha, beta);
+  auto model_fp16_fn = BuildHardSigmoidFusionTestCase<MLFloat16>(input_fp16_def, alpha, beta);
+
+  TestFp16ModelAccuracy(model_fp32_fn,
+                        model_fp16_fn,
+                        provider_options,
+                        18,  // opset
+                        ExpectedEPNodeAssignment::All);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
