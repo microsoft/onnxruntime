@@ -108,8 +108,6 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       !BUILD_DEFS.DISABLE_JSEP                      ? 'ort-wasm-simd-threaded.jsep' :
                                                       'ort-wasm-simd-threaded';
   const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[`${wasmFileName}.wasm`] : undefined;
-  const wasmOverride =
-      wasmPathOverride ?? (wasmPrefixOverride ? wasmPrefixOverride + wasmFileName + '.wasm' : undefined);
 
   const [objectUrl, ortWasmFactory] = (await dynamicImportDefault<EmscriptenModuleFactory<OrtWasmModule>>(
       `${wasmFileName}.mjs`, wasmPrefixOverride, numThreads === 1));
@@ -131,8 +129,17 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   // promise for module initialization
   tasks.push(new Promise((resolve, reject) => {
     const config: Partial<OrtWasmModule> = {
+      /**
+       * The number of threads. WebAssembly will create (Module.numThreads - 1) workers. If it is 1, no worker will be
+       * created.
+       */
       numThreads,
-      locateFile: ((fileName, scriptDirectory) => wasmOverride ?? scriptDirectory + fileName)
+      /**
+       * A callback function to locate the WebAssembly file. The function should return the full path of the file.
+       *
+       * Since Emscripten 3.1.58, this function is only called for the .wasm file.
+       */
+      locateFile: (fileName, scriptDirectory) => wasmPathOverride ?? (wasmPrefixOverride ?? scriptDirectory) + fileName
     };
 
     ortWasmFactory(config).then(
