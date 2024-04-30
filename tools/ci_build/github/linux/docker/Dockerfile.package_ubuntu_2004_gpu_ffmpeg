@@ -30,6 +30,7 @@ RUN pip install --upgrade pip
 # Install TensorRT
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
+    apt-get install -y \
     libnvinfer-dev=${TRT_VERSION} \
     libnvinfer-dispatch-dev=${TRT_VERSION} \
     libnvinfer-dispatch10=${TRT_VERSION} \
