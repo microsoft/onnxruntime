@@ -65,8 +65,8 @@ parameters:
   type: string
   default: '11.8'
   values:
-    - 11.8
-    - 12.2
+  - 11.8
+  - 12.2
 
 resources:
   repositories:
@@ -118,9 +118,21 @@ stages:
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
         fi
       name: Set_Release_Version_Suffix
+    - script: |
+        # Extracting hours and minutes
+        hours=$(date -d "$(Pipeline.StartTime)" +'%H')
+        minutes=$(date -d "$(Pipeline.StartTime)" +'%M')
+        date=$(date -d "$(Pipeline.StartTime)" +'%Y%m%d')
+        hhmm="$hours$minutes"
+        # Set the hhmm value as a pipeline variable
+        echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
+        echo "##vso[task.setvariable variable=BuildDate;isOutput=true]$date"
+      displayName: 'Set Start Time as Variable'
+      name: Set_Build_Time
+
     - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
 
 
 - stage: Debug
@@ -138,12 +150,12 @@ stages:
       condition: always()
     - bash: echo $(MyVar)
     - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
 
 
 - stage: Download_Java_Tools
-  dependsOn: []
+  dependsOn: [ ]
   jobs:
   - job: Download_Java_Tools
     pool:
@@ -169,8 +181,8 @@ stages:
         targetPath: '$(Agent.TempDirectory)/java-tools'
         artifact: 'onnxruntime-java-tools'
     - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
 
 - template: templates/c-api-cpu.yml
   parameters:
@@ -244,7 +256,7 @@ stages:
 
 # ROCm
 - stage: Linux_C_API_Packaging_ROCm_x64
-  dependsOn: []
+  dependsOn: [ ]
   jobs:
   - job:
     workspace:
@@ -290,10 +302,10 @@ stages:
           -P python3.10
 
     - script: |
-       set -e -x
-       mkdir $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
-       ls -al $(Build.ArtifactStagingDirectory)
+        set -e -x
+        mkdir $(Build.ArtifactStagingDirectory)/testdata
+        cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
+        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts for CustomOp'  # libcustom_op_library.so from cpu build is built with fp8, ROCm does not support it.
 
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
@@ -373,8 +385,8 @@ stages:
         artifact: 'onnxruntime-java-gpu'
 
     - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
@@ -578,8 +590,8 @@ stages:
 
 
     - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
 
 - stage: NuGet_Packaging_GPU
   dependsOn:
@@ -600,8 +612,8 @@ stages:
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[format('{0:yyyyMMdd}', pipeline.startTime)]
-      BuildTime: $[format('{0:HHmm}', pipeline.startTime)]
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]
+      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
@@ -656,12 +668,12 @@ stages:
         filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files_gpu.ps1
 
     - script: |
-       dir
+        dir
       workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
       displayName: 'List artifacts'
 
     - script: |
-       mklink /D /J models C:\local\models
+        mklink /D /J models C:\local\models
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Create models link'
 
@@ -795,8 +807,8 @@ stages:
       condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
     - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
 
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
@@ -861,12 +873,12 @@ stages:
           Copy-Item -Path $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-rocm\lib\* -Destination $(Build.BinariesDirectory)\RelWithDebInfo
 
     - script: |
-       tree /F
+        tree /F
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Inspect Build Binaries Directory'
 
     - script: |
-       mklink /D /J models C:\local\models
+        mklink /D /J models C:\local\models
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Create models link'
 
@@ -1015,8 +1027,8 @@ stages:
       condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
     - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
 
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
@@ -1024,8 +1036,8 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-A10'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     Skipx86Tests: 'true'
@@ -1035,8 +1047,8 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-A10'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
+    AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     MoreSuffix: '_Windows'
@@ -1047,20 +1059,20 @@ stages:
 
 - template: nuget/templates/test_linux.yml
   parameters:
-    AgentPool : Onnxruntime-Linux-GPU-A10
+    AgentPool: Onnxruntime-Linux-GPU-A10
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/test_linux.yml
   parameters:
-    AgentPool : Onnxruntime-Linux-GPU-A10
+    AgentPool: Onnxruntime-Linux-GPU-A10
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     MoreSuffix: '_Linux'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
@@ -1069,14 +1081,14 @@ stages:
     AgentPool: AMD-GPU
     ArtifactSuffix: 'ROCm'
     StageSuffix: 'ROCm'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.ROCm'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.ROCm'
     SpecificArtifact: ${{ parameters.specificArtifact }}
     CustomOpArtifactName: 'onnxruntime-linux-x64-rocm'
     BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
+    AgentPool: 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-nuget-dml'
     StageName: 'Windows_CI_GPU_DML_Dev'
@@ -1086,19 +1098,19 @@ stages:
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
-    DoNugetPack : 'true'
+    DoNugetPack: 'true'
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentTime=$(BuildTime) /p:CurrentDate=$(BuildDate)
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
-     mkdir $(Build.ArtifactStagingDirectory)\testdata
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentTime=$(BuildTime) /p:CurrentDate=$(BuildDate)
+      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+      mkdir $(Build.ArtifactStagingDirectory)\testdata
+      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
+    AgentPool: 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-x86-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_x86'
@@ -1107,21 +1119,21 @@ stages:
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
     DoDebugBuild: 'false'
-    DoNugetPack : 'true'
+    DoNugetPack: 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentTime=$(BuildTime) /p:CurrentDate=$(BuildDate)
-     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
-     ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-x86.zip
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-x86.zip $(Build.ArtifactStagingDirectory)
-     mkdir $(Build.ArtifactStagingDirectory)\testdata
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentTime=$(BuildTime) /p:CurrentDate=$(BuildDate)
+      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
+      ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-x86.zip
+      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-x86.zip $(Build.ArtifactStagingDirectory)
+      mkdir $(Build.ArtifactStagingDirectory)\testdata
+      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
+    AgentPool: 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm64-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm64'
@@ -1130,17 +1142,17 @@ stages:
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm64'
     DoDebugBuild: 'false'
-    DoNugetPack : 'true'
+    DoNugetPack: 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentTime=$(BuildTime) /p:CurrentDate=$(BuildDate)
-     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
-     ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-arm64.zip
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
-     mkdir $(Build.ArtifactStagingDirectory)\testdata
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentTime=$(BuildTime) /p:CurrentDate=$(BuildDate)
+      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
+      ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-arm64.zip
+      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
+      mkdir $(Build.ArtifactStagingDirectory)\testdata
+      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
 - stage: NuGet_Packaging_DML
   dependsOn:
@@ -1236,5 +1248,5 @@ stages:
         artifactName: 'drop-signed-nuget-dml'
         targetPath: '$(Build.ArtifactStagingDirectory)'
     - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
