@@ -1,8 +1,11 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
+#include <array>
+#include <cassert>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 #include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
@@ -218,15 +221,262 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
   return has_sym_dims;
 }
 
+// Creates a new NodeArg from an input (or output) of a QDQ node unit. If the input/output is quantized,
+// this function modifies the tensor type to the specified float type.
+static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
+                                  std::unordered_map<std::string, NodeUnitIODef>& initializers_to_dequant,
+                                  const NodeUnitIODef& io_def, int float_type) {
+  const std::string& name = io_def.node_arg.Name();
+  const ONNX_NAMESPACE::TypeProto* orig_type_proto = io_def.node_arg.TypeAsProto();
+
+  // Handle quantized input or output. Convert to float type.
+  if (io_def.quant_param.has_value()) {
+    // Copy the original quantized type proto, but update the type to float.
+    std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = ONNX_NAMESPACE::TypeProto::Create();
+    type_proto->copy_from(orig_type_proto);
+    type_proto->mutable_tensor_type()->set_elem_type(float_type);
+
+    // Handle initializer inputs.
+    // By default QDQ models store quantized weights that are dequantized.
+    // Ex: weight(int8) -> DequantizeLinear (to float) ->
+    // Keep track of these initializers so the EP can dequantize them later.
+    if (src_graph.GetAllInitializedTensors().count(name)) {
+      initializers_to_dequant.insert({name, io_def});
+    }
+
+    return dst_graph.GetOrCreateNodeArg(name, type_proto.get());
+  }
+
+  // Unquantized input or output. Just copy.
+  return dst_graph.GetOrCreateNodeArg(name, orig_type_proto);
+}
+
+// Handles adding a standalone node unit (i.e., one not wrapped with DQ/Q ops) to the dst graph.
+static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
+                                  const NodeUnit& node_unit, int32_t float_type,
+                                  std::unordered_map<std::string, NodeUnitIODef>& initializers_to_dequant,
+                                  const logging::Logger& /* logger */) {
+  assert(node_unit.UnitType() == NodeUnit::Type::SingleNode);
+
+  if (node_unit.OpType() == "QuantizeLinear" || node_unit.OpType() == "DequantizeLinear") {
+    // Standalone Q (or DQ) operator. Typically seen at the input (or output) of the graph.
+    // Can replace with an Identity op for this demo. Should probably do something better.
+    std::array<NodeArg*, 1> input_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_dequant,
+                                                             node_unit.Inputs()[0], float_type)};
+    std::array<NodeArg*, 1> output_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_dequant,
+                                                              node_unit.Outputs()[0], float_type)};
+    dst_graph.AddNode(node_unit.Name(),
+                      "Identity",
+                      "",
+                      input_args,
+                      output_args,
+                      nullptr,
+                      kOnnxDomain);
+
+    // Handle the case in which a quantized weight feeds into a standalone DQ node.
+    // We just need to keep track of this quantized initializer so that the EP can dequantize it later.
+    // This shouldn't really happen since the optimizer would simplify it for us, but ...
+    const NodeUnitIODef& input0_def = node_unit.Inputs()[0];
+    const auto& input0_name = input0_def.node_arg.Name();
+
+    if (node_unit.OpType() == "DequantizeLinear" &&
+        src_graph.GetAllInitializedTensors().count(input0_name)) {
+      assert(input0_def.quant_param.has_value());
+      initializers_to_dequant.insert({input0_name, input0_def});
+    }
+
+    // TODO: Another scenario to consider is a conversion between quantized types (e.g., int16 to int8)
+    // in mixed-precision QDQ models. The pattern to detect is a standalone DQ followed by a standalone Q:
+    // Ex: DQ(int16 to float) -> QuantizeLinear(float to int8) ->
+    // Replacing both with identity ops (as we do here) may just work.
+  } else {
+    dst_graph.AddNode(node_unit.GetNode());  // Copy standalone node unit.
+  }
+}
+
+// Handles adding a QDQ node unit (e.g., DQ -> Add -> Q) to the dst graph.
+// Only adds the QDQ node unit's float-precision target node.
+static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
+                           const onnxruntime::GraphViewer& src_graph,
+                           const NodeUnit& node_unit,
+                           int32_t float_type,
+                           std::unordered_map<std::string, NodeUnitIODef>& initializers_to_dequant,
+                           const logging::Logger& /* logger */) {
+  assert(node_unit.UnitType() == NodeUnit::Type::QDQGroup);
+
+  // Collect inputs coming into the node unit. Convert quantized inputs to float.
+  const auto& node_unit_inputs = node_unit.Inputs();
+  std::vector<NodeArg*> input_args;
+  input_args.reserve(node_unit_inputs.size());
+
+  for (const auto& node_unit_input : node_unit_inputs) {
+    NodeArg& input_arg = ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_dequant,
+                                           node_unit_input, float_type);
+    input_args.push_back(&input_arg);
+  }
+
+  // Collect outputs coming out of the node unit. Convert quantized outputs to float.
+  const auto& node_unit_outputs = node_unit.Outputs();
+  std::vector<NodeArg*> output_args;
+  output_args.reserve(node_unit_outputs.size());
+
+  for (const auto& node_unit_output : node_unit_outputs) {
+    NodeArg& output_arg = ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_dequant,
+                                            node_unit_output, float_type);
+    output_args.push_back(&output_arg);
+  }
+
+  // Add the target node in the node unit to the graph.
+  const Node& target_node = node_unit.GetNode();
+  dst_graph.AddNode(target_node.Name(),
+                    target_node.OpType(),
+                    target_node.Description(),
+                    input_args,
+                    output_args,
+                    &target_node.GetAttributes(),
+                    target_node.Domain());
+}
+
+// Creates a new model without the DQ/Q operators in the src graph.
+static Status CreateModelProto(const GraphViewer& src_graph,
+                               const logging::Logger& logger,
+                               int32_t float_type,
+                               /*out*/ std::unique_ptr<onnxruntime::Model>& model) {
+  // NOTE: This function is a re-implementation of GraphViewerToProto() in core/graph/graph_proto_serializer.cc
+  // with the following differences:
+  //   - Uses onnxruntime::Graph APIs instead of onnx::GraphProto APIs.
+  //   - Traverses the src graph using QDQ node units.
+  //   - Filters out DQ/Q ops that wrap full-precision nodes.
+  //   - Dequantizes quantized initializers.
+
+  model = src_graph.CreateModel(logger);
+
+  //
+  // Initialize model/graph metadata.
+  //
+
+  // TODO: add Model::SetModelVersion() to provider api
+  // model->SetModelVersion(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  auto& dst_graph = model->MainGraph();
+
+  // TODO: add Graph::SetName() provider api
+  // dst_graph.SetName(src_graph.Name());
+
+  // TODO: add Graph::SetDescription() and GraphViewer::Description() to provider api
+  // dst_graph.SetDescription(src_graph.Description());
+
+  dst_graph.SetInputs(src_graph.GetInputs());
+  dst_graph.SetOutputs(src_graph.GetOutputs());
+
+  // Mark outer scope NodeArgs
+  for (const auto& name : src_graph.GetOuterScopeNodeArgNames()) {
+    auto* node_arg = src_graph.GetNodeArg(name);
+    ORT_RETURN_IF_NOT(node_arg != nullptr, "Outer scope node arg name '" + name + "'was added but does not exist. ");
+    dst_graph.AddOuterScopeNodeArg(name);
+  }
+
+  //
+  // Add nodes (without their DQ/Q ops) to dst graph.
+  //
+
+  // Keep track of all the initializers we need to dequantize to float.
+  std::unordered_map<std::string, NodeUnitIODef> initializers_to_dequant;
+
+  // Get all the NodeUnits in the graph_viewer
+  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(&src_graph);
+
+  std::unordered_set<const NodeUnit*> seen_node_units;
+  const auto& node_indices = src_graph.GetNodesInTopologicalOrder();
+
+  // Process node units in topological order. Filter out Q/DQ ops.
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    gsl::not_null<const onnxruntime::Node*> node(src_graph.GetNode(node_indices[i]));
+
+    // Get the node_unit associated with the node.
+    gsl::not_null<const NodeUnit*> node_unit = node_unit_map.at(node);
+
+    // Visiting 'nodes' in topological order does not guarantee that 'node_units' are
+    // also visited in topological order. Skip this node if it is not the node_unit's target node
+    // to ensure actual 'node_units' are visited in topological order.
+    if (node != &node_unit->GetNode()) {
+      continue;
+    }
+
+    if (seen_node_units.count(node_unit) != 0) {
+      continue;  // Already handled this node unit
+    }
+
+    if (node_unit->UnitType() == NodeUnit::Type::SingleNode) {
+      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, float_type, initializers_to_dequant, logger);
+    } else {
+      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, float_type, initializers_to_dequant, logger);
+    }
+
+    seen_node_units.insert(node_unit);
+  }
+
+  //
+  // Copy initializers to dst graph. Dequantize initializers that were originally quantized.
+  //
+
+  std::unordered_set<std::string> current_scope_initializer_set;
+
+  auto& initializers = src_graph.GetAllInitializedTensors();
+
+  // Sort initializers to maintain consistency in model proto created across inference requests
+  std::vector<std::string> const_inits;
+  for (auto& it : initializers) {
+    const_inits.push_back(it.first);
+  }
+  std::sort(const_inits.begin(), const_inits.end());
+
+  for (auto& it : const_inits) {
+    if (initializers_to_dequant.count(it)) {
+      // TODO: Dequantize initializer, create a new TensorProto, and add it to dst_graph.
+      // See reference implementation in core/providers/cpu/quantization/quantize_linear.cc DequantizeLinearApply()
+    } else {
+      dst_graph.AddInitializedTensor(*(initializers.at(it)));
+    }
+    current_scope_initializer_set.insert(it);
+  }
+
+  // handle outer scope value which is a constant initializer
+  for (auto& node_idx : src_graph.GetNodesInTopologicalOrder()) {
+    const auto& node = src_graph.GetNode(node_idx);
+    for (const auto& input : node->InputDefs()) {
+      if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
+        continue;
+      }
+      if (src_graph.IsConstantInitializer(input->Name(), true)) {
+        if (initializers_to_dequant.count(input->Name())) {
+          // TODO: Dequantize initializer, create a new TensorProto, and add it to dst_graph.
+          // See reference implementation in core/providers/cpu/quantization/quantize_linear.cc DequantizeLinearApply()
+        } else {
+          dst_graph.AddInitializedTensor(*(src_graph.GetConstantInitializer(input->Name(), true)));
+        }
+        current_scope_initializer_set.insert(input->Name());
+      }
+    }
+  }
+
+  // Validate graph, remove unnecessary initializers, and run type/shape inference.
+  ORT_RETURN_IF_ERROR(dst_graph.Resolve());
+  return Status::OK();
+}
+
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                            const onnxruntime::GraphViewer& subgraph,
                                            const logging::Logger& logger) const {
-  auto model = subgraph.CreateModel(logger);
-
+  int32_t float_type = global_context_.precision_str == "FP32" ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT
+                                                               : ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  std::unique_ptr<onnxruntime::Model> model;
+  Status status = CreateModelProto(subgraph, logger, float_type, model);
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   auto model_proto = model->ToProto();
-  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  subgraph.ToProto(*model_proto->mutable_graph(), true, true);
 
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
