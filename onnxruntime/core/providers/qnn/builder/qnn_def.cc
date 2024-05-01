@@ -23,87 +23,99 @@ size_t memscpy(void* dst, size_t dst_size, const void* src, size_t copy_size) {
 void SetQnnTensorType(Qnn_Tensor_t& qnn_tensor, Qnn_TensorType_t tensor_type) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.type = tensor_type;
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.type = tensor_type;
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorName(Qnn_Tensor_t& qnn_tensor, const char* name) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.name = name;
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.name = name;
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorDataFormat(Qnn_Tensor_t& qnn_tensor, Qnn_TensorDataFormat_t data_format) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.dataFormat = data_format;
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.dataFormat = data_format;
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorDataType(Qnn_Tensor_t& qnn_tensor, Qnn_DataType_t data_type) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.dataType = data_type;
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.dataType = data_type;
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorDim(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>& dimensions) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.rank = static_cast<uint32_t>(dimensions.size());
     qnn_tensor.v1.dimensions = const_cast<uint32_t*>(dimensions.data());
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.rank = static_cast<uint32_t>(dimensions.size());
     qnn_tensor.v2.dimensions = const_cast<uint32_t*>(dimensions.data());
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorMemType(Qnn_Tensor_t& qnn_tensor, Qnn_TensorMemType_t mem_type) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.memType = mem_type;
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.memType = mem_type;
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint8_t>& client_buf) {
@@ -111,17 +123,19 @@ void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint8_t>&
     auto size = client_buf.size() * sizeof(uint8_t);
     qnn_tensor.v1.clientBuf.data = const_cast<void*>(static_cast<const void*>(client_buf.data()));
     qnn_tensor.v1.clientBuf.dataSize = static_cast<uint32_t>(size);
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     auto size = client_buf.size() * sizeof(uint8_t);
     qnn_tensor.v2.clientBuf.data = const_cast<void*>(static_cast<const void*>(client_buf.data()));
     qnn_tensor.v2.clientBuf.dataSize = static_cast<uint32_t>(size);
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>& client_buf) {
@@ -129,215 +143,225 @@ void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>
     auto size = client_buf.size() * sizeof(uint32_t);
     qnn_tensor.v1.clientBuf.data = const_cast<void*>(static_cast<const void*>(client_buf.data()));
     qnn_tensor.v1.clientBuf.dataSize = static_cast<uint32_t>(size);
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     auto size = client_buf.size() * sizeof(uint32_t);
     qnn_tensor.v2.clientBuf.data = const_cast<void*>(static_cast<const void*>(client_buf.data()));
     qnn_tensor.v2.clientBuf.dataSize = static_cast<uint32_t>(size);
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, void* buf_data, uint32_t buf_size) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.clientBuf.data = buf_data;
     qnn_tensor.v1.clientBuf.dataSize = buf_size;
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.clientBuf.data = buf_data;
     qnn_tensor.v2.clientBuf.dataSize = buf_size;
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorClientBufSize(Qnn_Tensor_t& qnn_tensor, uint32_t client_buf_size) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.clientBuf.dataSize = client_buf_size;
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.clientBuf.dataSize = client_buf_size;
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorClientBufData(Qnn_Tensor_t& qnn_tensor, void* client_buf_data) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.clientBuf.data = client_buf_data;
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.clientBuf.data = client_buf_data;
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 void SetQnnTensorQParams(Qnn_Tensor_t& qnn_tensor, const Qnn_QuantizeParams_t& quantize_params) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.quantizeParams = quantize_params;
+    return;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     qnn_tensor.v2.quantizeParams = quantize_params;
+    return;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 uint32_t GetQnnTensorID(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.id;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.id;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 Qnn_TensorType_t GetQnnTensorType(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.type;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.type;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 const char* GetQnnTensorName(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.name;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.name;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 Qnn_TensorDataFormat_t GetQnnTensorDataFormat(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.dataFormat;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.dataFormat;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 Qnn_DataType_t GetQnnTensorDataType(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.dataType;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.dataType;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 Qnn_TensorMemType_t GetQnnTensorMemType(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.memType;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.memType;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.rank;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.rank;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.dimensions;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.dimensions;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.clientBuf;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.clientBuf;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.quantizeParams;
   }
+
 #ifdef QNN_TENSOR_V2_INIT
-  else if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.quantizeParams;
   }
 #endif  // QNN_TENSOR_V2_INIT
-  else {
-    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-  }
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
 Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
