@@ -118,13 +118,16 @@ class CPUIDInfo {
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
 
-#ifdef CPUIDINFO_ARCH_X86
+#if defined(CPUIDINFO_ARCH_X86)
 
   void X86Init();
+
 #elif defined(CPUIDINFO_ARCH_ARM)
-  // Now the following var is only used in ARM build, but later one we may expand the usage.
-  [[maybe_unused]] bool pytorch_cpuinfo_init_{false};
-#endif
+
+#if defined(CPUINFO_SUPPORTED)
+  // Now the following var is only used in ARM build, but later on we may expand the usage.
+  bool pytorch_cpuinfo_init_{false};
+#endif  // defined(CPUINFO_SUPPORTED)
 
 #ifdef __linux__
 
@@ -135,6 +138,8 @@ class CPUIDInfo {
   void ArmWindowsInit();
 
 #endif /* (arm or arm64) and windows */
+
+#endif  // defined(CPUIDINFO_ARCH_ARM)
 };
 
 }  // namespace onnxruntime
