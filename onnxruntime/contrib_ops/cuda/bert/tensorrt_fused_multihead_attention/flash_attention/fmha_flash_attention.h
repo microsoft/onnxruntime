@@ -311,8 +311,12 @@ class FusedMultiHeadFlashAttentionKernel
             << "\t force_unroll: " << param.force_unroll << "\n";
   }
 
-  int32_t getSForUnroll(Fused_multihead_attention_params_v2 const& param) const override {
-    return param.s;
+  dim3 getGridDim(const FusedMultiHeadFlashAttentionKernelMetaInfoV2& kernelMeta,
+                  const Fused_multihead_attention_params_v2& params) const override {
+    dim3 gridDim(params.h,
+                 params.b,
+                 params.force_unroll ? ((params.s + kernelMeta.mUnrollStep - 1) / kernelMeta.mUnrollStep) : 1);
+    return gridDim;
   }
 
   uint64_t hashID(KernelMeta const& kernelMeta) const {
