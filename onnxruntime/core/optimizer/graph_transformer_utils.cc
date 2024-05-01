@@ -138,6 +138,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       break;
 
     case TransformerLevel::Level2:
+      rules.push_back(std::make_unique<GemmTransposeFusion>());
       // No level2 rules available today
       break;
 
@@ -253,6 +254,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     } break;
 
     case TransformerLevel::Level2: {
+      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+      if (rule_transformer != nullptr) {
+        transformers.emplace_back(std::move(rule_transformer));
+      }
+
       // we run TransposeOptimizer again in Level2 for some CPU EP specific optimizations that can only be
       // applied once nodes are assigned to the CPU EP (which happens between level 1 and level 2).
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator), kCpuExecutionProvider));

@@ -68,9 +68,9 @@ variables:
 
   - name: Repository
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: 'onnxruntimecuda11build'
+      value: 'onnxruntimecuda11manylinuxbuild'
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: 'onnxruntimecuda12build'
+      value: 'onnxruntimecuda12manylinuxbuild'
 
 stages:
 - stage: Linux_Build

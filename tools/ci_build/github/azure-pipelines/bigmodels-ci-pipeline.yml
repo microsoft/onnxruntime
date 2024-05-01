@@ -58,6 +58,8 @@ variables:
     value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
   - name: linux_trt_version
     value: 10.0.1.6-1.cuda11.8
+  - name: Repository
+    value: 'onnxruntimecuda11manylinuxbuild'
 
 stages:
 - stage: Build_Onnxruntime_Cuda
@@ -79,6 +81,7 @@ stages:
       clean: true
       submodules: none
 
+    # same as linux-gpu-ci-pipeline.yml
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -89,7 +92,7 @@ stages:
         --build-arg TRT_VERSION=$(linux_trt_version)
         --build-arg BUILD_UID=$( id -u )
         "
-        Repository: onnxruntimecuda11build
+        Repository: $(Repository)
 
     - task: Cache@2
       inputs:
@@ -121,7 +124,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             -e CCACHE_DIR=/cache \
-            onnxruntimecuda11build \
+            $(Repository) \
             /bin/bash -c "
               set -ex; \
               env; \
