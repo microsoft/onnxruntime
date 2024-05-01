@@ -203,7 +203,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
       // QNN's Resize only supports "round_prefer_ceil" if transformation_mode is "align_corners".
       ORT_RETURN_IF(!use_resize_nn_op && transformation_mode != "align_corners",
-                    "QNN EP: Resize on the NPU only supports 'round_prefer_floor' if "
+                    "QNN EP: Resize on the NPU only supports 'round_prefer_ceil' if "
                     "transformation mode is 'align_corners'");
     }
   }
