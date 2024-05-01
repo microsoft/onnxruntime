@@ -97,6 +97,8 @@ stages:
                 EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
                 ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
                   DownloadCUDA: true
+                ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
+                  DownloadTRT: true
 
           - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
             - template: jobs/download_win_gpu_library.yml
