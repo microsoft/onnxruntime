@@ -1369,7 +1369,7 @@
       "matmul-broadcast.jsonc",
       "mul.jsonc",
       "mul_int32.jsonc",
-      "multi-head-attention.jsonc",
+      "multihead-attention.jsonc",
       //"neg.jsonc",
       "neg-int32.jsonc",
       "not.jsonc",

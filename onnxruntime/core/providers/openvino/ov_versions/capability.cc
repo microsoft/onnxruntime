@@ -1,11 +1,13 @@
 // Copyright (C) 2019- Intel Corporation
 // Licensed under the MIT License
+#include <map>
+#include <unordered_set>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "../backend_utils.h"
-#include "../backend_manager.h"
-#include "capability.h"
-#include "utils.h"
+#include "core/providers/openvino/backend_utils.h"
+#include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/ov_versions/capability.h"
+#include "core/providers/openvino/ov_versions/utils.h"
 #include "openvino/core/version.hpp"
 
 #if defined(_MSC_VER)
@@ -25,22 +27,23 @@ namespace openvino_ep {
 
 // Constructor
 GetCapability::GetCapability(const GraphViewer& graph_viewer_param,
-                             const std::string device_type_param,
-                             const std::string device_precision)
-    : graph_viewer_(graph_viewer_param), device_type_(device_type_param), device_precision_(device_precision) {
+                             const std::string device_type_param)
+    : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
   if (device_type_.find("NPU") != std::string::npos) {
-    device_type_ = "CPU_FP32";
+    device_type_ = "CPU";
   }
 #if OPENVINO_VERSION_MAJOR == 2023 && OPENVINO_VERSION_MINOR == 1
-  data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_, device_precision_);
+  data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
 #elif OPENVINO_VERSION_MAJOR == 2023 && OPENVINO_VERSION_MINOR == 2
-  data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_, device_precision_);
+  data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_);
 #elif OPENVINO_VERSION_MAJOR == 2023 && OPENVINO_VERSION_MINOR == 3
-  data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_, device_precision_);
+  data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_);
 #elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 0
-  data_ops_ = new DataOps(graph_viewer_, V_2024_0, device_type_, device_precision_);
+  data_ops_ = new DataOps(graph_viewer_, V_2024_0, device_type_);
+#elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 1
+  data_ops_ = new DataOps(graph_viewer_, V_2024_1, device_type_);
 #else
-  data_ops_ = new DataOps(graph_viewer_, V_2024_0, device_type_, device_precision_);
+  data_ops_ = new DataOps(graph_viewer_, V_2024_1, device_type_);
 #endif
 }
 

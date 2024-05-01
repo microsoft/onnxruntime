@@ -10,12 +10,16 @@ class TensorTypeAndShape(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsTensorTypeAndShape(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = TensorTypeAndShape()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsTensorTypeAndShape(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def TensorTypeAndShapeBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -42,7 +46,26 @@ class TensorTypeAndShape(object):
             return obj
         return None
 
-def TensorTypeAndShapeStart(builder): builder.StartObject(2)
-def TensorTypeAndShapeAddElemType(builder, elemType): builder.PrependInt32Slot(0, elemType, 0)
-def TensorTypeAndShapeAddShape(builder, shape): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(shape), 0)
-def TensorTypeAndShapeEnd(builder): return builder.EndObject()
+def TensorTypeAndShapeStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    TensorTypeAndShapeStart(builder)
+
+def TensorTypeAndShapeAddElemType(builder, elemType):
+    builder.PrependInt32Slot(0, elemType, 0)
+
+def AddElemType(builder, elemType):
+    TensorTypeAndShapeAddElemType(builder, elemType)
+
+def TensorTypeAndShapeAddShape(builder, shape):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(shape), 0)
+
+def AddShape(builder, shape):
+    TensorTypeAndShapeAddShape(builder, shape)
+
+def TensorTypeAndShapeEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return TensorTypeAndShapeEnd(builder)

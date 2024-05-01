@@ -345,6 +345,12 @@ ORT_API_STATUS_IMPL(AddExternalInitializers, _In_ OrtSessionOptions* options,
                     _In_reads_(initializers_num) const char* const* initializer_names,
                     _In_reads_(initializers_num) const OrtValue* const* initializers, size_t initializers_num);
 
+ORT_API_STATUS_IMPL(AddExternalInitializersFromFilesInMemory, _In_ OrtSessionOptions* options,
+                    _In_reads_(num_external_initializer_files) const ORTCHAR_T* const* file_names,
+                    _In_reads_(num_external_initializer_files) char* const* buffer_array,
+                    _In_reads_(num_external_initializer_files) const size_t* file_lengths,
+                    size_t num_external_initializer_files);
+
 ORT_API_STATUS_IMPL(CreateOpAttr,
                     _In_ const char* name,
                     _In_ const void* data,

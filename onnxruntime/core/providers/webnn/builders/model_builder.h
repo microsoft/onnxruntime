@@ -45,8 +45,7 @@ class ModelBuilder {
       const std::string& name, const void* buffer,
       const size_t size, const std::vector<uint32_t> shape, const int32_t data_type);
   // Find if an output has a fuseable activation (e.g., Relu).
-  emscripten::val FindActivation(const Node& node, const NodeArg& output,
-                                 const InlinedHashSet<std::string> supported_nodes = {});
+  emscripten::val FindActivation(const Node& node, const NodeArg& output);
 
   const InlinedHashSet<std::string>&
   GetFusedActivations() const { return fused_activations_; }
@@ -84,6 +83,8 @@ class ModelBuilder {
   InlinedHashSet<std::string> skipped_inputs_;
 
   InlinedHashSet<std::string> fused_activations_;
+
+  InlinedHashSet<std::string> supported_activation_nodes_;
 
   uint32_t name_token_{0};
   InlinedHashSet<std::string> unique_names_;

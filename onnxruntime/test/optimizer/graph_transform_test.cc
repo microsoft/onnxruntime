@@ -188,6 +188,11 @@ TEST_F(GraphTransformationTests, DequantizeLinearNodeNotEliminated) {
   test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.onnx",
             false,  // use_contrib_qdq
             *logger_);
+
+  // Test with 16-bit DequantizeLinear(21)
+  test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq16.onnx",
+            false,  // use_contrib_qdq
+            *logger_);
 #if !defined(DISABLE_CONTRIB_OPS)
   // Test with 8-bit com.microsoft.DequantizeLinear
   test_case(MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx",
@@ -884,6 +889,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   };
 
   test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx",
+            false, *logger_);
+
+  // Test with 16-bit DequantizeLinear(21).
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16.onnx",
             false, *logger_);
 #if !defined(DISABLE_CONTRIB_OPS)
   // Test with 8-bit contrib QDQ ops

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import onnx
+import packaging.version as pv
 import pytest
 import torch
 from orttraining_test_ort_apis_onnxblock import _get_models
@@ -346,6 +347,12 @@ def test_get_input_output_names():
         assert model.output_names() == [output.name for output in training_model.graph.output][:1]
 
 
+# Fails in ONNX 1.16.0 due to potential shape inference bug for custom ops.
+# Potential ONNX fix: https://github.com/onnx/onnx/pull/6080
+# Error log: LookupError: The provided name onnx::linear.output::171 is not a graph value info or a graph output.
+@pytest.mark.skipif(
+    pv.Version(onnx.__version__) == pv.Version("1.16.0"), reason="Shape inference bug for custom ops in ONNX 1.16.0"
+)
 def test_ort_custom_ops():
     def _create_custom_op_trainable_onnx_model():
         """This function takes in a pre generated custom op model and adds a trainable linear layer to it"""
