@@ -87,7 +87,8 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
 #ifdef USE_QNN
     } else if (name == "qnn") {
       std::unordered_map<std::string, std::string> qnn_options;
-      qnn_options["backend_path"] = "C:\\Qualcomm\\AIStack\\QAIRT\\2.21.0.240401\\lib\\aarch64-windows-msvc\\QnnHtp.dll";
+      qnn_options["backend_path"] = "QnnHtp.dll";
+      qnn_options["enable_htp_fp16_precision"] = "1";
       sessionOptions.AppendExecutionProvider("QNN", qnn_options);
 #endif
     } else {
