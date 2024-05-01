@@ -565,6 +565,33 @@ def generate_files(line_list, args):
             "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime_perf_test.exe") + runtimes + " />"
         )
 
+    if is_qnn_package:
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnCpu.dll") + runtimes + " />")
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtp.dll") + runtimes + " />")
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnSaver.dll") + runtimes + " />")
+        if args.target_architecture != "x64":
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnSystem.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpPrepare.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpV73Stub.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV73Skel.so") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "libqnnhtpv73.cat") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpV68Stub.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV68Skel.so") + runtimes + " />"
+            )
+
     is_ado_packaging_build = False
     # Process runtimes
     # Process onnxruntime import lib, dll, and pdb
@@ -1138,6 +1165,13 @@ def generate_files(line_list, args):
         + os.path.join(args.sources_path, "ORT_icon_for_light_bg.png")
         + '" target="ORT_icon_for_light_bg.png" />'
     )
+    if is_qnn_package:
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, "Qualcomm AI Hub Proprietary License.pdf")
+            + '" target="Qualcomm AI Hub Proprietary License.pdf" />'
+        )
     files_list.append("</files>")
 
     line_list += files_list
