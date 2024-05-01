@@ -70,11 +70,11 @@ struct OrtTensorRTProviderOptionsV2 {
    *    directory by means of the "trt_onnx_model_folder_path" option.
    *
    */
-  int trt_dump_ep_context_model{0};               // Dump EP context node model
-  const char* trt_ep_context_file_path{nullptr};  // Specify file name to dump EP context node model. Can be a path or a file name or a file name with path.
-  int trt_ep_context_embed_mode{0};               // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
-  int trt_weightless_engine_enable{0};            // Enable weightless engine build. Default 0 = false,
-                                                  // nonzero = true
+  int trt_dump_ep_context_model{0};                 // Dump EP context node model
+  const char* trt_ep_context_file_path{nullptr};    // Specify file name to dump EP context node model. Can be a path or a file name or a file name with path.
+  int trt_ep_context_embed_mode{0};                 // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
+  int trt_weightless_engine_enable{0};              // Enable weightless engine build. Default 0 = false,
+                                                    // nonzero = true
   const char* trt_onnx_model_folder_path{nullptr};  // Folder path relative to the current working directory for
                                                     // the ONNX model containing the weights (applicable only when
                                                     // the "trt_weightless_engine_enable" option is enabled)

@@ -1352,8 +1352,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
       }
 
-      const std::string weightless_engine_enable_env
-        = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kWeightlessEngineEnable);
+      const std::string weightless_engine_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kWeightlessEngineEnable);
       if (!weightless_engine_enable_env.empty()) {
         weightless_engine_enable_ = std::stoi(weightless_engine_enable_env) != 0;
       }
@@ -2799,7 +2798,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 #endif
 
-
   if (weightless_engine_enable_) {
 #if NV_TENSORRT_MAJOR >= 10
     trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
@@ -2807,7 +2805,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
 #else
-  LOGS_DEFAULT(WARNING) << "[TensorRT EP] Weightless engines can only be used on TRT 10.0 onwards!";
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Weightless engines can only be used on TRT 10.0 onwards!";
 #endif
   }
 
