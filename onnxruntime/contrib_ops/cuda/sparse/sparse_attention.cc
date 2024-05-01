@@ -67,7 +67,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if constexpr (std::is_same<T, BFloat16>::value) {
     if (device_prop.major < 8) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "bfloat16 requires CUDA device with compute capacity 8.*. Got ",
+                             "bfloat16 requires Ampere and above GPUs with Compute Capability >= 8. Got major=",
                              device_prop.major);
     }
   }

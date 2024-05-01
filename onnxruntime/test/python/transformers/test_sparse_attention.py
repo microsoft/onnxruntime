@@ -5,7 +5,6 @@
 
 """
 Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of Compute Capability 8.x.
-Note that this test only cover float16 since bfloat16 is not supported in ORT python API.
 """
 
 import math
@@ -78,17 +77,18 @@ class AttentionConfig:
             "sin_cache": (self.max_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
         }
 
-    def get_cos_sin_cache(self):
+    def get_cos_sin_cache(self, dtype):
         rotary_fraction = 1.0
         rotary_dim = math.floor(int(rotary_fraction * self.head_size) / 16) * 16
         angle = torch.rand(self.max_sequence_length, rotary_dim // 2, device="cpu") * 2 * math.pi
-        cos = torch.cos(angle).to(dtype=self.dtype)
-        sin = torch.sin(angle).to(dtype=self.dtype)
+        cos = torch.cos(angle).to(dtype=dtype)
+        sin = torch.sin(angle).to(dtype=dtype)
         return cos.to(device=self.device), sin.to(device=self.device)
 
     def random_inputs(self):
         device = self.device
-        dtype = self.dtype
+        # Since bfloat16 is not supported in ORT python I/O binding API, we always use float16 as model inputs.
+        dtype = torch.float16
         shape_dict = self.shape_dict()
 
         torch.manual_seed(123)
@@ -102,7 +102,7 @@ class AttentionConfig:
         }
 
         if self.do_rotary:
-            cos_cache, sin_cache = self.get_cos_sin_cache()
+            cos_cache, sin_cache = self.get_cos_sin_cache(dtype)
             feeds["cos_cache"] = cos_cache
             feeds["sin_cache"] = sin_cache
 
@@ -238,6 +238,13 @@ class SparseAttentionConfig(AttentionConfig):
         return feeds
 
     def get_comparable_gqa_config(self, use_local=False, torch_use_sparse=False) -> GroupQueryAttentionConfig:
+
+        attention_mask = None
+        if torch_use_sparse:
+            attention_mask = self.dense_mask()[:, :, : self.total_sequence_length, : self.total_sequence_length]
+            if self.past_sequence_length > 0:
+                attention_mask = attention_mask[:, :, -self.sequence_length :, :]
+
         return GroupQueryAttentionConfig(
             self.batch_size,
             self.sequence_length,
@@ -251,7 +258,7 @@ class SparseAttentionConfig(AttentionConfig):
             self.rotary_interleaved,
             self.device,
             local_window_size=self.local_blocks * self.sparse_block_size if use_local else -1,
-            attention_mask=self.dense_mask() if torch_use_sparse else None,
+            attention_mask=attention_mask,
         )
 
 
@@ -263,14 +270,13 @@ def get_block_mask(num_layout, max_blocks, local_blocks, vert_stride):
         (torch.arange(max_blocks) + h * head_sliding_step + 1) % vert_stride == 0 for h in range(num_layout)
     ]
     mask_vert_strided = torch.vstack(mask_vert_strided).unsqueeze(1)
-    block_mask = (q_pos >= k_pos) & ((q_pos - k_pos < local_blocks) | mask_vert_strided)
+    local_mask = q_pos - k_pos < local_blocks
+    block_mask = (q_pos >= k_pos) & (local_mask | mask_vert_strided)
     block_mask = block_mask.to(torch.int32)
 
     if ENABLE_DEBUG:
-        torch.set_printoptions(profile="full")
-        torch.set_printoptions(edgeitems=100)
-        torch.set_printoptions(linewidth=200)
-        print(block_mask)
+        print(f"{num_layout=} {max_blocks=} {local_blocks=} {vert_stride=}")
+        print(f"{block_mask=}")
 
     return block_mask
 
@@ -285,25 +291,26 @@ def get_dense_mask(block_mask, total_seq_len, query_seq_len, block_size):
 
 
 def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
-    assert config.dtype == torch.float16
+    # ORT Python I/O binding API does not support bf16, so always use fp16 as graph inputs/outputs.
+    io_float_type = TensorProto.FLOAT16
 
-    float_type = TensorProto.FLOAT16
+    suffix = "_bf16" if config.dtype == torch.bfloat16 else ""
     nodes = [
         helper.make_node(
             "SparseAttention",
             [
-                "query",
-                "key" if not config.is_packed_qkv else "",
-                "value" if not config.is_packed_qkv else "",
-                "past_key",
-                "past_value",
+                "query" + suffix,
+                "key" + suffix if not config.is_packed_qkv else "",
+                "value" + suffix if not config.is_packed_qkv else "",
+                "past_key" + suffix,
+                "past_value" + suffix,
                 "block_mask",
                 "total_sequence_length" if config.share_buffer else "",
                 "key_total_sequence_lengths",
-                "cos_cache" if config.do_rotary else "",
-                "sin_cache" if config.do_rotary else "",
+                "cos_cache" + suffix if config.do_rotary else "",
+                "sin_cache" + suffix if config.do_rotary else "",
             ],
-            ["output", "present_key", "present_value"],
+            ["output" + suffix, "present_key" + suffix, "present_value" + suffix],
             "SparseAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
@@ -314,13 +321,35 @@ def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
         ),
     ]
 
+    # When testing bfloat16, we add cast nodes so that SparseAttention is computed in bfloat16.
+    if config.dtype == torch.bfloat16:
+        nodes.extend(
+            [
+                helper.make_node("Cast", [input], [input + suffix], f"Cast_{input}", to=TensorProto.BFLOAT16)
+                for input in ["query", "key", "value", "past_key", "past_value"]
+            ]
+        )
+        if config.do_rotary:
+            nodes.extend(
+                [
+                    helper.make_node("Cast", [input], [input + suffix], f"Cast_{input}", to=TensorProto.BFLOAT16)
+                    for input in ["cos_cache", "sin_cache"]
+                ]
+            )
+        nodes.extend(
+            [
+                helper.make_node("Cast", [output + suffix], [output], f"Cast_{output}", to=TensorProto.FLOAT16)
+                for output in ["output", "present_key", "present_value"]
+            ]
+        )
+
     shape_dict = config.shape_dict()
     graph_input = [
-        helper.make_tensor_value_info("query", float_type, list(shape_dict["query"])),
-        helper.make_tensor_value_info("key", float_type, list(shape_dict["key"])),
-        helper.make_tensor_value_info("value", float_type, list(shape_dict["value"])),
-        helper.make_tensor_value_info("past_key", float_type, list(shape_dict["past_key"])),
-        helper.make_tensor_value_info("past_value", float_type, list(shape_dict["past_value"])),
+        helper.make_tensor_value_info("query", io_float_type, list(shape_dict["query"])),
+        helper.make_tensor_value_info("key", io_float_type, list(shape_dict["key"])),
+        helper.make_tensor_value_info("value", io_float_type, list(shape_dict["value"])),
+        helper.make_tensor_value_info("past_key", io_float_type, list(shape_dict["past_key"])),
+        helper.make_tensor_value_info("past_value", io_float_type, list(shape_dict["past_value"])),
         helper.make_tensor_value_info("block_mask", TensorProto.INT32, list(shape_dict["block_mask"])),
         helper.make_tensor_value_info(
             "total_sequence_length", TensorProto.INT32, list(shape_dict["total_sequence_length"])
@@ -332,14 +361,14 @@ def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
 
     if config.do_rotary:
         graph_input += [
-            helper.make_tensor_value_info("cos_cache", float_type, list(shape_dict["cos_cache"])),
-            helper.make_tensor_value_info("sin_cache", float_type, list(shape_dict["sin_cache"])),
+            helper.make_tensor_value_info("cos_cache", io_float_type, list(shape_dict["cos_cache"])),
+            helper.make_tensor_value_info("sin_cache", io_float_type, list(shape_dict["sin_cache"])),
         ]
 
     graph_output = [
-        helper.make_tensor_value_info("output", float_type, list(shape_dict["output"])),
-        helper.make_tensor_value_info("present_key", float_type, list(shape_dict["present_key"])),
-        helper.make_tensor_value_info("present_value", float_type, list(shape_dict["present_value"])),
+        helper.make_tensor_value_info("output", io_float_type, list(shape_dict["output"])),
+        helper.make_tensor_value_info("present_key", io_float_type, list(shape_dict["present_key"])),
+        helper.make_tensor_value_info("present_value", io_float_type, list(shape_dict["present_value"])),
     ]
 
     graph = helper.make_graph(
@@ -440,15 +469,13 @@ def group_query_attention_reference(
     if scale is None:
         scale = 1.0 / (config.head_size**0.5)
 
+    # Query is in BSNH shape, transpose it here. Note that key/value is BNSH format (transposed).
     query = query.transpose(1, 2)
-    key = key.transpose(1, 2)
-    value = value.transpose(1, 2)
 
     # Expand key and value to have same number of heads as query
     num_key_value_groups = config.num_heads // config.kv_num_heads
     key = torch.repeat_interleave(key, dim=1, repeats=num_key_value_groups)
     value = torch.repeat_interleave(value, dim=1, repeats=num_key_value_groups)
-
     # Apply multi-head attention.
     attn = torch.einsum("bhmd,bhnd->bhmn", query, key).float() * scale
     if mask is not None:
@@ -456,7 +483,9 @@ def group_query_attention_reference(
     attn = attn.softmax(-1)
     attn_output = torch.einsum("bhmn,bhnd->bhmd", attn.type_as(value), value)
 
-    return attn_output.transpose(1, 2).contiguous()
+    result = attn_output.transpose(1, 2).contiguous()
+    torch.cuda.synchronize()
+    return result
 
 
 class TorchGroupQueryAttention:
@@ -466,20 +495,64 @@ class TorchGroupQueryAttention:
         self.device = config.device
         self.config = config
         self.feed_dict = config.random_inputs()
-        self.query = self.feed_dict["query"].view(
-            config.batch_size, config.sequence_length, config.num_heads, config.head_size
-        )
-        self.key = self.feed_dict["key"].view(
-            config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size
-        )
-        self.value = self.feed_dict["value"].view(
-            config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size
-        )
         self.dense_mask = config.attention_mask
 
+    @staticmethod
+    def concat_cache(past_key_cache, new_key):
+        """
+        Concatenates a new key to a past key cache.
+
+        Args:
+        - past_key (torch.Tensor): Past key cache with shape (batch_size, num_heads, past_sequence_length, head_dim)
+        - new_key (torch.Tensor): New key with shape (batch_size, num_heads, sequence_length, head_dim)
+
+        Returns:
+        - present_key (torch.Tensor): Concatenated key tensor with shape (batch_size, num_heads, new_length, head_dim)
+                                      where new_length = past_sequence_length + sequence_length
+        """
+        # Check if the past_key_cache and new_key have compatible shapes
+        assert past_key_cache.size(0) == new_key.size(0), "Batch sizes do not match"
+        assert past_key_cache.size(1) == new_key.size(1), "Number of heads do not match"
+        assert past_key_cache.size(3) == new_key.size(3), "Head dimensions do not match"
+
+        # Concatenate the keys along the sequence length dimension
+        concatenated_keys = torch.cat((past_key_cache, new_key), dim=2)
+
+        return concatenated_keys
+
     def infer(self):
+        config = self.config
+        query = self.feed_dict["query"].view(
+            config.batch_size, config.sequence_length, config.num_heads, config.head_size
+        )
+        key = (
+            self.feed_dict["key"]
+            .view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
+            .transpose(1, 2)
+        )
+        value = (
+            self.feed_dict["value"]
+            .view(config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size)
+            .transpose(1, 2)
+        )
+
+        if config.past_sequence_length > 0:
+            past_key = self.feed_dict["past_key"][:, :, : config.past_sequence_length, :]
+            past_value = self.feed_dict["past_value"][:, :, : config.past_sequence_length, :]
+            present_key = TorchGroupQueryAttention.concat_cache(past_key, key)
+            present_value = TorchGroupQueryAttention.concat_cache(past_value, value)
+        else:
+            present_key = key
+            present_value = value
+
+        if ENABLE_DEBUG:
+            print("query(BSNH, GQA)", query)
+            print("present_key(BNSH, GQA)", present_key)
+            print("present_key(BNSH, GQA)", present_value)
+            print("dense_mask", self.dense_mask)
+
         return group_query_attention_reference(
-            self.query, self.key, self.value, self.config, scale=self.config.softmax_scale, mask=self.dense_mask
+            query, present_key, present_value, config, scale=config.softmax_scale, mask=self.dense_mask
         )
 
 
@@ -506,7 +579,6 @@ class OrtGroupQueryAttention:
         self.feed_dict = config.random_inputs()
 
         if ENABLE_DEBUG:
-            torch.set_printoptions(precision=6, edgeitems=3, linewidth=150, profile="default", sci_mode=False)
             query = self.feed_dict["query"].view(
                 config.batch_size, config.sequence_length, config.num_heads, config.head_size
             )
@@ -549,7 +621,6 @@ class OrtSparseAttention:
         self.feed_dict = config.random_inputs()
 
         if ENABLE_DEBUG:
-            torch.set_printoptions(precision=6, edgeitems=3, linewidth=150, profile="default", sci_mode=False)
             query = self.feed_dict["query"].view(
                 config.batch_size, config.sequence_length, config.num_heads, config.head_size
             )
@@ -573,7 +644,7 @@ class OrtSparseAttention:
 
 def run_one_relevance_test(config: SparseAttentionConfig):
     # Run QGA
-    if config.past_sequence_length == 0:
+    if not config.do_rotary:  # config.past_sequence_length == 0:
         gqa_config: GroupQueryAttentionConfig = config.get_comparable_gqa_config(torch_use_sparse=True)
         obj = TorchGroupQueryAttention(gqa_config)
         expected_out = obj.infer()
@@ -586,8 +657,6 @@ def run_one_relevance_test(config: SparseAttentionConfig):
         )
 
     # Run SparseAttention by ORT
-    if config.past_sequence_length != 0:
-        config.local_blocks = config.max_blocks  # Use dense to compare with GQA
     obj = OrtSparseAttention(config)
     ort_outputs = obj.infer()
     ort_output = ort_outputs["output"]
@@ -603,7 +672,7 @@ def run_one_relevance_test(config: SparseAttentionConfig):
         exit(1)
 
 
-def run_relevance_no_past(device):
+def run_relevance_no_past(sm: int, device):
     """Test prompt prefilling without past kv cache."""
     for seq_len in [1, 64, 127, 128, 192, 256]:
         config = SparseAttentionConfig(
@@ -623,8 +692,12 @@ def run_relevance_no_past(device):
         )
         run_one_relevance_test(config)
 
+        if sm >= 80:
+            config.dtype = torch.bfloat16
+            run_one_relevance_test(config)
 
-def run_relevance_past(device):
+
+def run_relevance_past(sm: int, device, do_rotary: bool):
     """Test token generation with past kv cache."""
     for past_seq_len in [1, 63, 64, 127, 128, 511]:
         config = SparseAttentionConfig(
@@ -640,19 +713,33 @@ def run_relevance_past(device):
             local_blocks=2,
             vert_stride=4,
             softmax_scale=None,
-            do_rotary=True,
+            do_rotary=do_rotary,
             rotary_interleaved=(past_seq_len % 2 == 1),
             device=device,
         )
+
+        if do_rotary:
+            # When there is rotary, we use ORT GQA as reference: ORT GQA does not support mask so here we use dense.
+            config.local_blocks = config.max_blocks
+
         run_one_relevance_test(config)
 
+        if sm >= 80:
+            config.dtype = torch.bfloat16
+            run_one_relevance_test(config)
 
-def run_relevance_test():
+
+def run_relevance_test(sm: int):
     device_id = torch.cuda.current_device()
     device = torch.device("cuda", device_id)
     with torch.no_grad():
-        run_relevance_no_past(device)
-        run_relevance_past(device)
+        run_relevance_no_past(sm, device)
+        run_relevance_past(sm, device, do_rotary=False)
+        run_relevance_past(sm, device, do_rotary=True)
+
+
+# ------------------------------------------------------------------
+# Below are performance tests
 
 
 def get_plot_algos(sm: int):
@@ -799,36 +886,38 @@ def plot_token_performance(
     benchmark.run(save_path=".", print_data=True)
 
 
-def run_performance_test():
+def run_performance_test(sm: int):
     """
     Run performance tests for prompt and token generation.
 
     Example results in A100-SXM4-80GB (sm=80):
+
     prompt-sm80-batch4-head32-d128-local16-vert8-torch.float16:
     sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-GQA-Local  ORT-SparseAtt
-    0             16.0   0.216998       0.023107       0.021279       0.053927
-    1             32.0   0.238208       0.023394       0.034024       0.055942
-    2             64.0   0.238839       0.051665       0.028120       0.058804
-    3            128.0   0.236488       0.092713       0.062794       0.067650
-    4            256.0   0.513223       0.109678       0.109765       0.093579
-    5            512.0   1.650871       0.257595       0.255149       0.168114
-    6           1024.0   6.000768       0.724266       0.723539       0.381245
-    7           2048.0  23.525633       2.420841       1.937770       0.896718
-    8           4096.0   0.000000       9.192039       4.725657       2.120180
-    9           8192.0   0.000000      40.207359      10.356622       5.217334
+    0             16.0   0.274839       0.008849       0.015198       0.054403
+    1             32.0   0.272238       0.022875       0.048804       0.055898
+    2             64.0   0.272420       0.027722       0.028318       0.073052
+    3            128.0   0.273514       0.085971       0.062785       0.068287
+    4            256.0   0.545428       0.108228       0.135093       0.095949
+    5            512.0   1.678597       0.278193       0.248580       0.167271
+    6           1024.0   6.021056       0.702882       0.701022       0.379936
+    7           2048.0  23.512320       2.331175       1.863045       0.895726
+    8           4096.0   0.000000       8.789178       4.526275       2.105048
+    9           8192.0   0.000000      39.664131      10.046236       5.219436
 
     token-sm80-batch4-head32-d128-local16-vert8-torch.float16:
     past_sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-GQA-Local  ORT-SparseAtt
-    0                  16.0   0.169848       0.021219       0.017757       0.084356
-    1                  32.0   0.194853       0.017807       0.019031       0.085348
-    2                  64.0   0.194598       0.018018       0.018547       0.086835
-    3                 128.0   0.194452       0.022880       0.024436       0.091286
-    4                 256.0   0.195119       0.060152       0.066264       0.102146
-    5                 512.0   0.194199       0.053810       0.070020       0.115886
-    6                1024.0   0.195040       0.063817       0.070567       0.146632
-    7                2048.0   0.194140       0.102850       0.064374       0.159824
-    8                4096.0   0.000000       0.178583       0.063514       0.179760
-    9                8191.0   0.000000       0.329033       0.065429       0.212933
+    0                  16.0   0.299303       0.020081       0.018587       0.082479
+    1                  32.0   0.301700       0.018655       0.041943       0.084583
+    2                  64.0   0.305700       0.017825       0.018420       0.085265
+    3                 128.0   0.303379       0.023213       0.023152       0.090508
+    4                 256.0   0.304119       0.034438       0.035257       0.100197
+    5                 512.0   0.306051       0.063312       0.045373       0.114726
+    6                1024.0   0.359197       0.092181       0.088628       0.145165
+    7                2048.0   0.599463       0.101573       0.062101       0.159452
+    8                4096.0   0.000000       0.196258       0.091019       0.180342
+    9                8191.0   0.000000       0.334519       0.065158       0.213508
+
 
     Example results in Standard_NC4as_T4_v3 Azure VM with T4 GPU (sm=75):
 
@@ -860,14 +949,18 @@ def run_performance_test():
 
     """
     with torch.no_grad():
-        major, minor = torch.cuda.get_device_capability()
-        sm = major * 10 + minor
         plot_prompt_performance(sm=sm)
         plot_token_performance(sm=sm)
 
 
 if __name__ == "__main__":
+    if ENABLE_DEBUG:
+        torch.set_printoptions(precision=6, edgeitems=3, linewidth=150, profile="default", sci_mode=False)
+
+    major, minor = torch.cuda.get_device_capability()
+    sm = major * 10 + minor
+
     s = torch.cuda.Stream()
     with torch.cuda.stream(s):
-        run_relevance_test()
-        run_performance_test()
+        run_relevance_test(sm)
+        run_performance_test(sm)
