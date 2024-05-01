@@ -363,7 +363,8 @@ void run_blkq4_small_gemm(int m, int n, int k) {
                                             cutlass::layout::RowMajor, cutlass::layout::ColumnMajor>::type;
 
   using WarpShape = cutlass::gemm::GemmShape<16, 16, 64>;
-  using GemmRunner = mickey::gemm::device::QuantB4Gemm<QuantBlocking, has_offsets, WarpShape, 1, 3>;
+  // change split k to 1 to help debug in case of test failure
+  using GemmRunner = mickey::gemm::device::QuantB4Gemm<QuantBlocking, has_offsets, WarpShape, 4, 3>;
 
   using ElementW = uint8_t;
   using ElementWPack = cutlass::half_t;
@@ -378,6 +379,10 @@ void run_blkq4_small_gemm(int m, int n, int k) {
   const auto q_weight_shape = cutlass::make_Coord(problem_size.k() / 2, problem_size.n());
   const auto meta_shape = cutlass::make_Coord(problem_size.k() / QuantBlocking::kRow,
                                               problem_size.n() / QuantBlocking::kColumn);
+  if ((problem_size.k() % QuantBlocking::kRow != 0) ||
+    (problem_size.n() % QuantBlocking::kColumn) != 0){
+    ORT_THROW("Test case setup fail: partial quantization block not supported!");
+  }
 
   //
   // Generate quantized and dequantizeed input matrix B [K, N]

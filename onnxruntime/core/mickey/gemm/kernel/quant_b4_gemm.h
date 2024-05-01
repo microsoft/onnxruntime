@@ -369,10 +369,9 @@ struct QuantB4Gemm {
 
     if constexpr (kSplitK > 1){
       // TODO! Use thread block shape
-      int remain = params.problem_size_.k() % params.gemm_k_size_;
-      if (remain > 0 && remain < WarpShape::kK * kStages * 2) {
+      if (params.gemm_k_size_ < WarpShape::kK * kStages * 2) {
         // spliting too small, may not get enough iterations to rampup pipeline
-        std::cerr << "QuantB4Gemm validation fail: kSplitK is too small, k: " << remain << " is smaller than " << (WarpShape::kK * kStages * 4) << std::endl;
+        std::cerr << "QuantB4Gemm validation fail: split k too big, each k segment: " << params.gemm_k_size_ << " is smaller than " << (WarpShape::kK * kStages * 2) << std::endl;
         return cutlass::Status::kErrorNotSupported;
       }
     }
