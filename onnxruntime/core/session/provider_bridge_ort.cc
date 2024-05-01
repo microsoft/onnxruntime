@@ -1010,10 +1010,10 @@ struct ProviderHostImpl : ProviderHost {
     return p->InputEdgeCount();
   }
   std::unique_ptr<Node__EdgeIterator> NodeUnit__OutputEdgesBegin(const NodeUnit* p) override {
-      return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesBegin());
+    return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesBegin());
   }
   std::unique_ptr<Node__EdgeIterator> NodeUnit__OutputEdgesEnd(const NodeUnit* p) override {
-      return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesEnd());
+    return std::make_unique<Node__EdgeIterator_Impl>(p->OutputEdgesEnd());
   }
 
   std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>

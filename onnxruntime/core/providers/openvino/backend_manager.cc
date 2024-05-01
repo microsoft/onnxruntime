@@ -326,10 +326,10 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 }
 
 // Creates a new model without the DQ/Q operators in the src graph.
-static Status CreateModelProto(const GraphViewer& src_graph,
-                               const logging::Logger& logger,
-                               int32_t float_type,
-                               /*out*/ std::unique_ptr<onnxruntime::Model>& model) {
+static Status CreateModel(const GraphViewer& src_graph,
+                          const logging::Logger& logger,
+                          int32_t float_type,
+                          /*out*/ std::unique_ptr<onnxruntime::Model>& model) {
   // NOTE: This function is a re-implementation of GraphViewerToProto() in core/graph/graph_proto_serializer.cc
   // with the following differences:
   //   - Uses onnxruntime::Graph APIs instead of onnx::GraphProto APIs.
@@ -463,7 +463,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   int32_t float_type = global_context_.precision_str == "FP32" ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT
                                                                : ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   std::unique_ptr<onnxruntime::Model> model;
-  Status status = CreateModelProto(subgraph, logger, float_type, model);
+  Status status = CreateModel(subgraph, logger, float_type, model);
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   auto model_proto = model->ToProto();
 
