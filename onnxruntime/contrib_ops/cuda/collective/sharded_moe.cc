@@ -73,7 +73,8 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm, fc3_experts_weights_optional != nullptr,
-                                                                     normalize_routing_weights_);
+                                                                     normalize_routing_weights_,
+                                                                     best_config_map_);
 
   size_t ws_size = moe_runner.getWorkspaceSize(
       static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),

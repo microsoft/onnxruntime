@@ -74,7 +74,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const int sm = device_prop.major * 10 + device_prop.minor;
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaWeightT> moe_runner(sm, fc3_experts_weights_optional != nullptr,
-                                                                           normalize_routing_weights_);
+                                                                           normalize_routing_weights_,
+                                                                           best_config_map_);
 
   size_t ws_size = moe_runner.getWorkspaceSize(
       static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),

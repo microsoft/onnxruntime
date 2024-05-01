@@ -540,11 +540,14 @@ __global__ void dispatch_activations_kernel(int64_t *total_rows_before_expert, i
 }
 
 template <typename T, typename WeightType, typename Enable>
-CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version, bool has_fc3,
-                                                              bool normalize_routing_weights)
+CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(
+    int sm_version, bool has_fc3, bool normalize_routing_weights,
+    std::shared_ptr<std::unordered_map<int64_t, CutlassGemmConfig>> best_config_map)
     : has_fc3_(has_fc3), total_past_rows_(0), total_covered_rows_(0),
       normalize_routing_weights_(normalize_routing_weights) {
-    moe_gemm_runner_.initialize(sm_version);
+    auto bcm = *best_config_map;
+    std::cout << "CutlassMoeFCRunner: best_config_map size:" << bcm.size() << std::endl;
+    moe_gemm_runner_.initialize(sm_version, best_config_map);
 }
 
 template <typename T, typename WeightType, typename Enable>
@@ -747,7 +750,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                              stream);
     }
 
-    moe_gemm_runner_.try_find_best_config(local_num_experts, hidden_size, inter_size, expanded_active_expert_rows);
+    // moe_gemm_runner_.try_find_best_config(local_num_experts, hidden_size, inter_size, expanded_active_expert_rows);
     moe_gemm_runner_.moe_gemm_bias_act(
         permuted_data_ + total_past_rows_ * hidden_size, fc1_expert_weights, fc1_scales, fc1_expert_biases,
         fc1_result_ + total_past_rows_ * inter_size, total_rows_before_expert_ + local_experts_start_index,

@@ -435,40 +435,25 @@ def environ_reset():
 def perf_tuning():
     import os
 
-    config = MixtralConfig(hidden_size=4096, intermediate_size=7168)
+    # config = MixtralConfig(hidden_size=4096, intermediate_size=7168)
+    config = MixtralConfig(hidden_size=128, intermediate_size=256)
     mixtral_moe = MixtralSparseMoeBlock(config)
 
-    tiles = ["K_FC1_CtaShape16x128x64_WarpShape16x32x64",
-            "K_FC1_CtaShape16x256x64_WarpShape16x64x64",
-            "K_FC1_CtaShape32x128x64_WarpShape32x32x64",
-            "K_FC1_CtaShape64x128x64_WarpShape32x64x64",
-            "K_FC1_CtaShape128x128x64_WarpShape64x32x64"]
+    # tiles = ["K_FC1_CtaShape16x128x64_WarpShape16x32x64",
+    #         "K_FC1_CtaShape16x256x64_WarpShape16x64x64",
+    #         "K_FC1_CtaShape32x128x64_WarpShape32x32x64",
+    #         "K_FC1_CtaShape64x128x64_WarpShape32x64x64",
+    #         "K_FC1_CtaShape128x128x64_WarpShape64x32x64"]
 
-    stages = ["K_FC1_Stages_2", "K_FC1_Stages_3", "K_FC1_Stages_4"]
+    # stages = ["K_FC1_Stages_2", "K_FC1_Stages_3", "K_FC1_Stages_4"]
 
-    environ_reset()
+    # environ_reset()
 
     for batch_size in [1]:
-        for sequence_length in range(8, 9128, 8):
-            latencys = []
-            for tile in tiles:
-                for stage in stages:
-                    environ_reset()
-                    os.environ[tile] = "1"
-                    os.environ[stage] = "1"
-                    latencys.append(mixtral_moe.benchmark(batch_size, sequence_length))
-                    os.environ.pop(tile)
-                    os.environ.pop(stage)
+        for sequence_length in [128, 256]:
+            latency = mixtral_moe.benchmark(batch_size, sequence_length)
+            print("batch_size:", batch_size, " sequence_length:", sequence_length, " latency:", latency)
 
-            print(f"batch_size: {batch_size}, sequence_length: {sequence_length}")
-
-            # pick top 3 minimum latencies and get their indexes
-            sorted_ids = numpy.argsort(latencys)
-
-            top_1_idx = sorted_ids[0]
-            tile_idx = top_1_idx // len(stages)
-            stage_idx = top_1_idx % len(stages)
-            print(f"({batch_size}, {sequence_length}): {tiles[tile_idx]}, {stages[stage_idx]}, latency: {latencys[top_1_idx]}")
 
 
 

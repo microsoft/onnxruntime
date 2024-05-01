@@ -370,11 +370,15 @@ template <typename T, typename WeightType>
 MoeGemmRunner<T, WeightType>::MoeGemmRunner() {}
 
 template <typename T, typename WeightType>
-void MoeGemmRunner<T, WeightType>::initialize(int sm_version) {
+void MoeGemmRunner<T, WeightType>::initialize(int sm_version,
+                                              std::shared_ptr<std::unordered_map<int64_t, CutlassGemmConfig>> best_config_map) {
   int device{-1};
   cudaGetDevice(&device);
   sm_ = sm_version;
   cudaDeviceGetAttribute(&multi_processor_count_, cudaDevAttrMultiProcessorCount, device);
+
+  best_config_map_ = *best_config_map;
+  std::cout << "MoeGemmRunner config map size: " << best_config_map_.size() << std::endl;
 }
 
 template <typename T, typename WeightType>
@@ -411,24 +415,63 @@ void MoeGemmRunner<T, WeightType>::run_gemm<EpilogueTag>(const T* A, const Weigh
   static constexpr bool is_weight_only = !std::is_same<T, WeightType>::value;
   static constexpr bool only_simt_configs = std::is_same<T, float>::value;
 
-  auto chosen_config = this->best_config_;
-  if (!chosen_config) {
+  int64_t key = total_rows;
+  std::cout << "run gemm with best config map size: " << best_config_map_.size() << std::endl;
+  auto chosen_config_iter = this->best_config_map_.find(key);
+  if (chosen_config_iter == this->best_config_map_.end()) {
     std::vector<CutlassGemmConfig> candidate_configs = get_candidate_configs(sm_, is_weight_only, only_simt_configs);
     std::vector<int> occupancies(candidate_configs.size());
 
+    constexpr int warmup = 5;
+    constexpr int runs = 10;
+    float min_elapsed = std::numeric_limits<float>::max();
+    CutlassGemmConfig chosen_config;
     for (size_t ii = 0; ii < candidate_configs.size(); ++ii) {
-      dispatch_to_arch<EpilogueTag>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n,
-                                    gemm_k, num_experts, candidate_configs[ii], stream, &occupancies[ii]);
+      for (int jj = 0; jj < warmup; ++jj) {
+        dispatch_to_arch<EpilogueTag>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n,
+                                      gemm_k, num_experts, candidate_configs[ii], stream);
+      }
+
+      cudaEvent_t start;
+      cudaEvent_t stop;
+      cudaEventCreate(&start);
+      cudaEventCreate(&stop);
+      cudaStreamSynchronize(stream);
+      cudaEventRecord(start, stream);
+
+      for (int jj = 0; jj < runs; ++jj) {
+        dispatch_to_arch<EpilogueTag>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n,
+                                      gemm_k, num_experts, candidate_configs[ii], stream);
+      }
+
+      cudaEventRecord(stop, stream);
+      cudaEventSynchronize(stop);
+
+      float elapsed;
+      cudaEventElapsedTime(&elapsed, start, stop);
+
+      cudaEventDestroy(start);
+      cudaEventDestroy(stop);
+
+      std::cout << "elapsed: " << elapsed << " ms" << std::endl;
+      if (elapsed < min_elapsed) {
+        min_elapsed = elapsed;
+        chosen_config = std::move(candidate_configs[ii]);
+      }
+
+      this->best_config_map_.emplace(key, chosen_config);
     }
 
-    static constexpr int workspace_bytes = 0;  // No workspace for MoE GEMMs.
-    static constexpr int split_k_limit = 1;    // MoE GEMM does not support split-k.
-    chosen_config =
-        estimate_best_config_from_occupancies(candidate_configs, occupancies, total_rows, gemm_n, gemm_k, num_experts,
-                                              split_k_limit, workspace_bytes, multi_processor_count_, is_weight_only);
+    // static constexpr int workspace_bytes = 0;  // No workspace for MoE GEMMs.
+    // static constexpr int split_k_limit = 1;    // MoE GEMM does not support split-k.
+    // chosen_config =
+    //     estimate_best_config_from_occupancies(candidate_configs, occupancies, total_rows, gemm_n, gemm_k, num_experts,
+    //                                           split_k_limit, workspace_bytes, multi_processor_count_, is_weight_only);
+  } else {
+    std::cout << "found best config with gemm_n: " << gemm_n << " gemm_k: " << gemm_k << " key:" << key << std::endl;
   }
   dispatch_to_arch<EpilogueTag>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
-                                num_experts, *chosen_config, stream);
+                                num_experts, this->best_config_map_[key], stream);
 }
 
 template <typename T, typename WeightType>

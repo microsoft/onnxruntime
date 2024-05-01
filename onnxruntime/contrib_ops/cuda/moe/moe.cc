@@ -22,7 +22,9 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info) {}
+MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info) {
+  std::cout << "init moe kernel" << std::endl;
+}
 
 template <typename T>
 Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
@@ -47,8 +49,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   auto& device_prop = GetDeviceProp();
   const int sm = device_prop.major * 10 + device_prop.minor;
 
+  std::cout << "moe.cc best_config_map_ size: " << (*best_config_map_).size() << std::endl;
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm, fc3_experts_weights_optional != nullptr,
-                                                                     normalize_routing_weights_);
+                                                                     normalize_routing_weights_,
+                                                                     best_config_map_);
 
   size_t ws_size = moe_runner.getWorkspaceSize(
       static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),

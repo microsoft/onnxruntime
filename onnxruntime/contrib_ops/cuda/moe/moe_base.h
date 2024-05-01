@@ -230,6 +230,9 @@ class MoEBase {
   bool normalize_routing_weights_;
   int64_t k_;
   ort_fastertransformer::ActivationType activation_type_;
+
+  using ConfigMapType = std::unordered_map<int64_t, ort_fastertransformer::CutlassGemmConfig>;
+  std::shared_ptr<ConfigMapType> best_config_map_{std::make_shared<ConfigMapType>()};
 };
 
 }  // namespace cuda
