@@ -223,6 +223,7 @@ Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   union {
     float alpha;
+    uint16_t alpha_fp16;
     uint8_t unpack[sizeof(float)];
   } tensor_data;
   tensor_data.alpha = node_helper.Get("alpha", 0.01f);
@@ -240,7 +241,17 @@ Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
     quantize_param = QnnQuantParamsWrapper(scale, static_cast<int32_t>(zero_point));
     qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
   } else {
-    unpacked_data.assign(tensor_data.unpack, tensor_data.unpack + sizeof(float));
+    const auto& inputs = node_unit.Inputs();
+    TensorInfo input_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input_info));
+    // QNN requires alpha is fp16 when input is fp16
+    if (input_info.qnn_data_type == QNN_DATATYPE_FLOAT_16) {
+      tensor_data.alpha_fp16 = MLFloat16(tensor_data.alpha).val;
+      qnn_data_type = QNN_DATATYPE_FLOAT_16;
+      unpacked_data.assign(tensor_data.unpack, tensor_data.unpack + sizeof(MLFloat16));
+    } else {
+      unpacked_data.assign(tensor_data.unpack, tensor_data.unpack + sizeof(float));
+    }
   }
   std::vector<uint32_t> input_shape{1};
   Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_STATIC;

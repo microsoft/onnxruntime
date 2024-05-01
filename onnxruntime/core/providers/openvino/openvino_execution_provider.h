@@ -120,16 +120,8 @@ struct OpenVINOExecutionProviderInfo {
 #endif
     } else if (ov_supported_device_types.find(dev_type) != ov_supported_device_types.end()) {
       device_type_ = dev_type;
-    } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0) {
+    } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0 || dev_type.find("AUTO") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type);
-      precision_ = "FP16";
-      if (devices[0] == "CPU") {
-        precision_ = "FP32";
-      }
-      device_type_ = dev_type;
-    } else if (dev_type.find("AUTO") == 0) {
-      std::vector<std::string> devices = parseDevices(dev_type);
-      precision_ = "FP32";
       device_type_ = dev_type;
     } else {
       ORT_THROW("Invalid device string: " + dev_type);

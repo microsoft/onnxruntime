@@ -105,7 +105,8 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
       return "";
     } else {
       auto input_type = graph_viewer.GetInputs()[0]->TypeAsProto()->tensor_type().elem_type();
-      if (global_context_->precision_str == "ACCURACY" && global_context_->device_type == "GPU") {
+      if (global_context_->precision_str == "ACCURACY" &&
+          global_context_->device_type.find("GPU") != std::string::npos) {
         if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
           return "FP32";
         } else if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {

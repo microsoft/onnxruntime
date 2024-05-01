@@ -7,4 +7,3 @@ class TypeInfoValue(object):
     tensor_type = 1
     sequence_type = 2
     map_type = 3
-
