@@ -1205,6 +1205,15 @@ TEST_F(QnnHTPBackendTests, Add_U8_U16_Convert) {
                        ExpectedEPNodeAssignment::All);
 }
 
+// Test that QDQ HardSigmoid is *not* supported by QNN EP.
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_QDQ_NotSupported) {
+  RunQDQOpTest<uint8_t>("HardSigmoid",
+                        {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)},
+                        {},
+                        19,
+                        ExpectedEPNodeAssignment::None);  // Not assigned to QNN EP
+}
+
 // Check that QNN EP can support float32 HardSigmoid on HTP by decomposing to its constituent ops.
 // Enables running f32 ops using fp16 precision.
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
