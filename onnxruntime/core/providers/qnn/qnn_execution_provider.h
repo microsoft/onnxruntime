@@ -70,6 +70,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   void InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
 
+  qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
+
  private:
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;

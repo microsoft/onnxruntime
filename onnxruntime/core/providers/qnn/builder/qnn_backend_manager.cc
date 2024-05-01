@@ -267,7 +267,7 @@ void QnnLogging(const char* format,
   }
 }
 
-void QnnBackendManager::InitializeQnnLog() {
+Status QnnBackendManager::InitializeQnnLog() {
   // Set Qnn log level align with Ort log level
   auto ort_log_level = logger_->GetSeverity();
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
@@ -294,6 +294,9 @@ void QnnBackendManager::InitializeQnnLog() {
         break;
     }
   }
+
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize logging in the QNN backend");
+  return Status::OK();
 }
 
 QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level) {
@@ -312,17 +315,14 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
   }
 }
 
-void QnnBackendManager::ResetQnnLogLevel() {
+Status QnnBackendManager::ResetQnnLogLevel() {
   auto ort_log_level = logger_->GetSeverity();
   LOGS(*logger_, INFO) << "Reset Qnn log level to ORT Logger level: " << (UINT)ort_log_level;
-  UpdateQnnLogLevel(ort_log_level);
+  return UpdateQnnLogLevel(ort_log_level);
 }
 
-void QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
-  if (nullptr == log_handle_) {
-    LOGS(*logger_, ERROR) << "Unable to update QNN Log Level. Invalid QNN log handle.";
-    return;
-  }
+Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
+  ORT_RETURN_IF(nullptr == log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
 
   LOGS(*logger_, INFO) << "Updating Qnn log level to: " << qnn_log_level;
@@ -334,10 +334,10 @@ void QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
       LOGS(*logger_, ERROR) << "Invalid log level argument provided to QnnLog_setLogLevel.";
     } else if (result == QNN_LOG_ERROR_INVALID_HANDLE) {
       LOGS(*logger_, ERROR) << "Invalid log handle provided to QnnLog_setLogLevel.";
-    } else {
-      LOGS(*logger_, ERROR) << "Failed to set log level in Qnn backend.";
     }
   }
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to set log level in Qnn backend");
+  return Status::OK();
 }
 
 Status QnnBackendManager::InitializeBackend() {
@@ -481,6 +481,23 @@ Status QnnBackendManager::ReleaseProfilehandle() {
   }
   profile_backend_handle_ = nullptr;
 
+  return Status::OK();
+}
+
+Status QnnBackendManager::SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param) {
+  if (profiling_level_etw_ != profiling_level_etw_param) {
+    profiling_level_etw_ = profiling_level_etw_param;
+
+    auto result = ReleaseProfilehandle();
+    if (Status::OK() != result) {
+      ORT_THROW("Failed to ReleaseProfilehandle for previous QNN profiling");
+    }
+
+    result = InitializeProfiling();
+    if (Status::OK() != result) {
+      ORT_THROW("Failed to Re-InitializeProfiling for QNN ETW profiling");
+    }
+  }
   return Status::OK();
 }
 

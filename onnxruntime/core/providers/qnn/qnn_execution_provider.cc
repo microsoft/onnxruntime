@@ -160,6 +160,20 @@ static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevic
   }
 }
 
+qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned char level) {
+  if (level == 5) {
+    LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
+    return qnn::ProfilingLevel::BASIC;
+  } else if (level < 5) {
+    LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
+                       << static_cast<int>(level);
+    return qnn::ProfilingLevel::OFF;
+  } else {
+    LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
+    return qnn::ProfilingLevel::DETAILED;
+  }
+}
+
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const SessionOptions* session_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
@@ -210,17 +224,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
       if (level != 0) {
-        if (level == 5) {
-          LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
-          profiling_level_etw = qnn::ProfilingLevel::BASIC;
-        } else if (level < 5) {
-          LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
-                             << static_cast<int>(level);
-          profiling_level_etw = qnn::ProfilingLevel::OFF;
-        } else {
-          LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
-          profiling_level_etw = qnn::ProfilingLevel::DETAILED;
-        }
+        profiling_level_etw = GetProfilingLevelFromETWLevel(level);
       }
     }
   }
@@ -237,22 +241,32 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
           ULONGLONG MatchAllKeyword,
           PEVENT_FILTER_DESCRIPTOR FilterData,
           PVOID CallbackContext) {
-        (void)SourceId;
-        (void)Level;
-        (void)MatchAnyKeyword;
-        (void)MatchAllKeyword;
-        (void)FilterData;
-        (void)CallbackContext;
+        ORT_UNUSED_PARAMETER(SourceId);
+        ORT_UNUSED_PARAMETER(MatchAnyKeyword);
+        ORT_UNUSED_PARAMETER(MatchAllKeyword);
+        ORT_UNUSED_PARAMETER(FilterData);
+        ORT_UNUSED_PARAMETER(CallbackContext);
 
         if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
             auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
-            qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+            (void)qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+          }
+          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
+            if (Level != 0) {
+              // Commenting out Dynamic QNN Profiling for now
+              // There seems to be a crash in 3rd party QC QnnHtp.dll with this.
+              // Repro Scenario - start ETW tracing prior to session creation.
+              //    Then disable/enable ETW Tracing with the code below uncommented a few times
+              // auto profiling_level_etw = GetProfilingLevelFromETWLevel(Level);
+              // (void)qnn_backend_manager_->SetProfilingLevelETW(profiling_level_etw);
+            }
           }
         }
 
         if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
-          qnn_backend_manager_->ResetQnnLogLevel();
+          // (void)qnn_backend_manager_->SetProfilingLevelETW(qnn::ProfilingLevel::INVALID);
+          (void)qnn_backend_manager_->ResetQnnLogLevel();
         }
       });
 #endif
