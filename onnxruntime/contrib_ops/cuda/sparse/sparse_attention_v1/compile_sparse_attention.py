@@ -4,8 +4,8 @@
 # --------------------------------------------------------------------------
 
 # Use triton AoT compiler to convert sparse_attention_triton.py to C source files including cubin and dispatcher.
-# Example to use this script (Tested with CUDA 12.3 in Ubuntu 20.04):
-#    python3 -m pip install triton==2.3.0
+# Example to use this script (Tested with Python 3.10 and CUDA 12.3 in Ubuntu 20.04):
+#    python3 -m pip install torch==2.3.0 triton==2.3.0
 #    python3 compile_sparse_attention.py | sh
 #
 # Note that sparse_attention_v1_*.cc and sparse_attention_dispatcher_*.h are the generated files.
@@ -13,12 +13,12 @@
 import math
 from itertools import product
 
+import torch
 
-def generate_triton_compile_shell_script(dtype="fp16"):
+
+def generate_triton_compile_shell_script(sm, dtype="fp16"):
     assert dtype in ["fp16", "bf16"]
     print("export TRITON_ROOT=$(pip show triton | grep Location | cut -d' ' -f2)")
-    print('export ARCH="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader|head -n 1)"')
-    print("export SM=$(echo $ARCH | sed -e 's/\\.//g')")
 
     # Modify the compile.py to use custom template file template_h.txt and template_c.txt in current directory.
     # Also pass block_m to the template.
@@ -51,8 +51,8 @@ def generate_triton_compile_shell_script(dtype="fp16"):
             scalar_params = "i32,i32,i32,fp32,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32,i32,i32"
             sig = f"*{dtype}:16,*{dtype}:16,*{dtype}:16,*{dtype}:16,*i32:16,*i32:16,{scalar_params},{block_m},{int(even_m)},{block_n},{int(even_n)},{block_d},{num_blocks_d}"
             prefix = "python compile.py sparse_attention_triton.py"
-            filename = f"sparse_attention_v1_{dtype}_m{block_m}_{int(even_m)}_n{block_n}_{int(even_n)}_d{block_d}_{num_blocks_d}_sm${{SM}}"
-            name = f"sparse_attention_{dtype}_sm${{SM}}"
+            filename = f"sparse_attention_v1_{dtype}_m{block_m}_{int(even_m)}_n{block_n}_{int(even_n)}_d{block_d}_{num_blocks_d}_sm{sm}"
+            name = f"sparse_attention_{dtype}_sm{sm}"
             num_warps = max(1, 2 ** int(math.log2(min(block_m, block_n, block_d) / 16)))
             num_stages = 2
             # TODO: use different kernel name (change the name in sparse_attention_triton.py before running compile.py)
@@ -62,7 +62,7 @@ def generate_triton_compile_shell_script(dtype="fp16"):
             )
 
     # Generate the dispatcher.
-    dispatcher = f"sparse_attention_dispatcher_{dtype}_sm${{SM}}"
+    dispatcher = f"sparse_attention_dispatcher_{dtype}_sm{sm}"
     print(f"cd {out_dir}")
     print(f"python ${{TRITON_ROOT}}/triton/tools/link.py sparse_attention_v1_*.h -o {dispatcher}")
     print("rm *.h")
@@ -122,5 +122,10 @@ def generate_triton_compile_shell_script(dtype="fp16"):
 
 
 if __name__ == "__main__":
-    for dtype in ["fp16", "bf16"]:
-        generate_triton_compile_shell_script(dtype)
+    major, minor = torch.cuda.get_device_capability()
+    print(f"echo Generate sparse attention v1 kernels for compute capability:{major}.{minor}")
+    assert major >= 7, "triton only supports compute capability >= 7.0"
+
+    sm = major * 10 + minor
+    for dtype in ["fp16", "bf16"] if major >= 8 else ["fp16"]:
+        generate_triton_compile_shell_script(sm, dtype)

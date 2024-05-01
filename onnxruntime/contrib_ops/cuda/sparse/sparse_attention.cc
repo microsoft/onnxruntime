@@ -63,6 +63,15 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
+  auto& device_prop = GetDeviceProp();
+  if constexpr (std::is_same<T, BFloat16>::value) {
+    if (device_prop.major < 8) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "bfloat16 requires CUDA device with compute capacity 8.*. Got ",
+                             device_prop.major);
+    }
+  }
+
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -73,8 +82,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* seqlens_k_total = context->Input<Tensor>(7);
   const Tensor* cos_cache = context->Input<Tensor>(8);
   const Tensor* sin_cache = context->Input<Tensor>(9);
-
-  auto& device_prop = GetDeviceProp();
 
   SparseAttentionParameters parameters;
 
@@ -97,9 +104,9 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            block_mask,
                                                            seqlens_k_total,
                                                            total_seq_len));
-
   // Some limitations of CUDA kernels
-  if (!sparse_attention_v1::is_supported_sparse_attention(device_prop)) {
+  // The v1 and v2 kernels have same coverage, so only check one of them to see whether it is supported.
+  if (!sparse_attention_v1::is_supported_device(device_prop)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SparseAttention only support CUDA device with compute capacity 8.*. Got ",
                            device_prop.major);
@@ -118,6 +125,9 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   int past_seq_len = parameters.total_sequence_length - parameters.sequence_length;
   bool is_prompt = (past_seq_len == 0);
+
+  // The v1 kernel support only prompt and right padding only.
+  // The v2 kernel support both prompt and token generation, and left/right padding.
   bool use_v2_kernel = disable_v1_kernel_ || !is_prompt;
 
   // Async Copy total_k_seq_len from GPU to CPU.
@@ -139,19 +149,21 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if (!kernel_loaded_) {
+    int sm = device_prop.major * 10 + device_prop.minor;
     if constexpr (std::is_same<T, MLFloat16>::value) {
       // std::call_once is used in load_sparse_attention_fp16 so no need to use mutex here.
       // After kernel is loaded, it will stay in memory until the process exits. We do not unload explicitly.
+      // TODO(tianleiwu): use TSharedCubinKernelFactory to manage kernel loading/unloading.
       if (use_v2_kernel) {
-        sparse_attention_v2::load_sparse_attention_fp16();
+        sparse_attention_v2::load_sparse_attention_fp16(sm);
       } else {
-        sparse_attention_v1::load_sparse_attention_fp16();
+        sparse_attention_v1::load_sparse_attention_fp16(sm);
       }
     } else {
       if (use_v2_kernel) {
-        sparse_attention_v2::load_sparse_attention_bf16();
+        sparse_attention_v2::load_sparse_attention_bf16(sm);
       } else {
-        sparse_attention_v1::load_sparse_attention_bf16();
+        sparse_attention_v1::load_sparse_attention_bf16(sm);
       }
     }
     kernel_loaded_ = true;
