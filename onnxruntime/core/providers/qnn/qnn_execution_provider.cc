@@ -461,6 +461,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
 
     if (!fusion_status.IsOK()) {
       LOGS(logger, WARNING) << "Failed to apply fusion: " << fusion_status.ErrorMessage();
+      handled_node_units.insert(node_unit);
       continue;
     }
 
