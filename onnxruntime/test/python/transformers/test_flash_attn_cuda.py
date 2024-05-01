@@ -24,6 +24,7 @@ from rotary_flash import apply_rotary_emb
 
 try:
     from colorama import Fore, init
+
     init(autoreset=True)
 except ImportError:
     print("colorama is not installed, please install it to get prettier output")
@@ -1558,7 +1559,7 @@ def parity_check_gqa_prompt_no_buff(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        correct
+        correct,
     )
 
 
