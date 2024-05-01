@@ -48,12 +48,12 @@ stages:
       displayName: 'Build and Test'
     - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
-          arch: 'linux-x64'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-x64-cuda'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
+        arch: 'linux-x64'
+        buildConfig: 'Release'
+        artifactName: 'onnxruntime-java-linux-x64-cuda'
+        version: '$(OnnxRuntimeVersion)'
+        libraryName: 'libonnxruntime.so'
+        nativeLibraryName: 'libonnxruntime4j_jni.so'
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'

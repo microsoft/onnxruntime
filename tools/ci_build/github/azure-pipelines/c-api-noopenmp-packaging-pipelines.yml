@@ -469,9 +469,13 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt10_0
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
         Context: tools/ci_build/github/linux/docker/
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+        --build-arg TRT_VERSION=${{ parameters.linux_trt_version }}
+        "
         Repository: onnxruntimeubi8packagestest
         UpdateDepsTxt: false
 
