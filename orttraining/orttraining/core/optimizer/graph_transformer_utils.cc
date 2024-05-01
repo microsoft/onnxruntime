@@ -63,6 +63,7 @@
 #include "orttraining/core/optimizer/qdq_fusion.h"
 #include "orttraining/core/optimizer/scaled_sum_fusion.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
+#include "orttraining/core/optimizer/split_quickgelu_fusion.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 #include "orttraining/core/optimizer/transpose_replacement.h"
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
@@ -139,6 +140,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 #endif
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<SplitQuickGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(compatible_eps));
