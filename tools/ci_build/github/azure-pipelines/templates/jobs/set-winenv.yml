@@ -3,11 +3,6 @@ parameters:
     type: string
   - name: DownloadCUDA
     type: boolean
-  - name: DownloadTRT
-    type: boolean
-    default: false
-  - name: DownloadTRT
-    type: boolean
     default: false
   - name: DownloadTRT
     type: boolean
@@ -17,7 +12,7 @@ parameters:
     default: '11.8'
   - name: SecondaryCUDAVersion
     type: string
-    default: '12.3'
+    default: '12.2'
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
