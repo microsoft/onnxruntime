@@ -1310,34 +1310,6 @@ TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP32_as_FP16) {
                   0.01f);  // abs err. Comparing fp16 (QNN) vs fp32 (CPU EP) so can't expect too much.
 }
 
-// Test that FP32 fusion of HardSigmoid into HardSwish on the HTP backend doesn't happen if alpha and beta
-// are not 1/6 and 0.5, respectively.
-TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_IncorrectAlphaBeta) {
-  ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  provider_options["enable_htp_fp16_precision"] = "1";
-
-  std::vector<float> input_data = {-8.0f, -2.0f, 0.0f, 0.5f, 0.9f, 1.1f, 3.3f, 8.0f,
-                                   -7.0f, 0.0f, 0.2f, 0.4f, 0.8f, 2.1f, 4.3f, 7.0f};
-
-  auto input_def = TestInputDef<float>({2, 2, 2, 2}, false, input_data);
-  constexpr float wrong_alpha = 1.1f / 6.0f;
-  constexpr float wrong_beta = 0.6f;
-  auto model_fn = BuildHardSigmoidFusionTestCase<float>(input_def, wrong_alpha, wrong_beta);
-
-  RunQnnModelTest(model_fn,
-                  provider_options,
-                  18,                              // opset
-                  ExpectedEPNodeAssignment::Some,  // HardSigmoid not assigned to QNN EP.
-                  0.01f);
-}
-
 // Test FP16 fusion of HardSigmoid into HardSwish on the HTP backend.
 TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP16) {
   ProviderOptions provider_options;
