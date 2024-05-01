@@ -160,6 +160,19 @@ jobs:
           workingFolder: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}'
           createLogFile: true
 
+
+      - task: VSBuild@1
+        displayName: 'Build onnxruntime_test_all arm64 (to copy Qnn libs)'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\onnxruntime_test_all.vcxproj'
+          platform: ARM64
+          configuration: ${{ parameters.build_config }}
+          msbuildArchitecture: ARM64
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}'
+          createLogFile: true
+
       - template: templates/win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }}'
