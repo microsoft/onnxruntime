@@ -424,8 +424,6 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   MlasTranspose(tmp_b_data_ptr.get(), tm_b_data_ptr_trans.get(), N_, K_);
 #endif
 
-  // TODO if there is a bias input, copy bias values into C and set beta to 1.0f
-
   std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
   for (size_t i = 0; i < batch_count; i++) {
     data[i].BIsPacked = false;
@@ -438,6 +436,23 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     data[i].alpha = 1.f;
     data[i].beta = 0.0f;
   }
+
+  // if there is a bias input, copy bias values into C and set beta to 1.0f
+  if (const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
+      bias != nullptr) {
+    gsl::span<const float> bias_span = bias->DataAsSpan<float>();
+    for (size_t i = 0; i < batch_count; ++i) {
+      float* C_row = data[i].C;
+      const size_t ldc = data[i].ldc;
+      for (size_t m = 0; m < M; ++m) {
+        memcpy(C_row, bias_span.data(), bias_span.size_bytes());
+        C_row += ldc;
+      }
+
+      data[i].beta = 1.0f;
+    }
+  }
+
   MlasGemmBatch(CblasNoTrans, CblasTrans,
                 M, N, K, data.data(), batch_count, thread_pool);
 
