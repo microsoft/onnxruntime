@@ -304,14 +304,13 @@ class MixtralSparseMoeBlock(nn.Module):
         for _ in range(3):
             self.ort_sess.run_with_iobinding(iobinding)
 
-        total_lapse = 0
+        s = time.time()
         for _ in range(repeat):
             iobinding.synchronize_inputs()
-            s = time.time()
             self.ort_sess.run_with_iobinding(iobinding)
-            e = time.time()
-            total_lapse += e - s
             iobinding.synchronize_outputs()
+        e = time.time()
+        total_lapse = e - s
 
         lapse = total_lapse / repeat
 
@@ -405,7 +404,7 @@ class MixtralSparseMoeBlock(nn.Module):
 
     def benchmark(self, batch_size, sequence_length):
         hidden_state = torch.randn(batch_size, sequence_length, self.hidden_dim)
-        lapse = self.ort_forward(hidden_state, iobinding=True, repeat=100)
+        lapse = self.ort_forward(hidden_state, iobinding=True, repeat=1000)
         return lapse
 
 
@@ -435,8 +434,8 @@ def environ_reset():
 def perf_tuning():
     import os
 
-    # config = MixtralConfig(hidden_size=4096, intermediate_size=7168)
-    config = MixtralConfig(hidden_size=128, intermediate_size=256)
+    config = MixtralConfig(hidden_size=4096, intermediate_size=7168)
+    #config = MixtralConfig(hidden_size=128, intermediate_size=256)
     mixtral_moe = MixtralSparseMoeBlock(config)
 
     # tiles = ["K_FC1_CtaShape16x128x64_WarpShape16x32x64",
@@ -450,7 +449,7 @@ def perf_tuning():
     # environ_reset()
 
     for batch_size in [1]:
-        for sequence_length in [128, 256]:
+        for sequence_length in range(32, 1024 * 128, 32):
             latency = mixtral_moe.benchmark(batch_size, sequence_length)
             print("batch_size:", batch_size, " sequence_length:", sequence_length, " latency:", latency)
 

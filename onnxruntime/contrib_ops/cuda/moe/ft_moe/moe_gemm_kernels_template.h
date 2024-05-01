@@ -370,15 +370,11 @@ template <typename T, typename WeightType>
 MoeGemmRunner<T, WeightType>::MoeGemmRunner() {}
 
 template <typename T, typename WeightType>
-void MoeGemmRunner<T, WeightType>::initialize(int sm_version,
-                                              std::shared_ptr<std::unordered_map<int64_t, CutlassGemmConfig>> best_config_map) {
+void MoeGemmRunner<T, WeightType>::initialize(int sm_version) {
   int device{-1};
   cudaGetDevice(&device);
   sm_ = sm_version;
   cudaDeviceGetAttribute(&multi_processor_count_, cudaDevAttrMultiProcessorCount, device);
-
-  best_config_map_ = *best_config_map;
-  std::cout << "MoeGemmRunner config map size: " << best_config_map_.size() << std::endl;
 }
 
 template <typename T, typename WeightType>
@@ -411,14 +407,17 @@ template <typename EpilogueTag>
 void MoeGemmRunner<T, WeightType>::run_gemm<EpilogueTag>(const T* A, const WeightType* B, const T* weight_scales,
                                                          const T* biases, T* C, int64_t* total_rows_before_expert,
                                                          int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
-                                                         int num_experts, cudaStream_t stream) {
+                                                         int num_experts, cudaStream_t stream,
+                                                         std::unordered_map<int64_t, CutlassGemmConfig>& best_config_map) {
   static constexpr bool is_weight_only = !std::is_same<T, WeightType>::value;
   static constexpr bool only_simt_configs = std::is_same<T, float>::value;
 
   int64_t key = total_rows;
-  std::cout << "run gemm with best config map size: " << best_config_map_.size() << std::endl;
-  auto chosen_config_iter = this->best_config_map_.find(key);
-  if (chosen_config_iter == this->best_config_map_.end()) {
+  key = key << 16 | gemm_n;
+  key = key << 16 | gemm_k;
+
+  auto chosen_config_iter = best_config_map.find(key);
+  if (chosen_config_iter == best_config_map.end()) {
     std::vector<CutlassGemmConfig> candidate_configs = get_candidate_configs(sm_, is_weight_only, only_simt_configs);
     std::vector<int> occupancies(candidate_configs.size());
 
@@ -453,13 +452,12 @@ void MoeGemmRunner<T, WeightType>::run_gemm<EpilogueTag>(const T* A, const Weigh
       cudaEventDestroy(start);
       cudaEventDestroy(stop);
 
-      std::cout << "elapsed: " << elapsed << " ms" << std::endl;
       if (elapsed < min_elapsed) {
         min_elapsed = elapsed;
         chosen_config = std::move(candidate_configs[ii]);
       }
 
-      this->best_config_map_.emplace(key, chosen_config);
+      best_config_map.emplace(key, chosen_config);
     }
 
     // static constexpr int workspace_bytes = 0;  // No workspace for MoE GEMMs.
@@ -467,11 +465,9 @@ void MoeGemmRunner<T, WeightType>::run_gemm<EpilogueTag>(const T* A, const Weigh
     // chosen_config =
     //     estimate_best_config_from_occupancies(candidate_configs, occupancies, total_rows, gemm_n, gemm_k, num_experts,
     //                                           split_k_limit, workspace_bytes, multi_processor_count_, is_weight_only);
-  } else {
-    std::cout << "found best config with gemm_n: " << gemm_n << " gemm_k: " << gemm_k << " key:" << key << std::endl;
   }
   dispatch_to_arch<EpilogueTag>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
-                                num_experts, this->best_config_map_[key], stream);
+                                num_experts, best_config_map[key], stream);
 }
 
 template <typename T, typename WeightType>
@@ -479,23 +475,24 @@ void MoeGemmRunner<T, WeightType>::moe_gemm_bias_act(const T* A, const WeightTyp
                                                      const T* biases, T* C, int64_t* total_rows_before_expert,
                                                      int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
                                                      int num_experts, ActivationType activation_type,
-                                                     cudaStream_t stream) {
+                                                     cudaStream_t stream,
+                                                     std::unordered_map<int64_t, CutlassGemmConfig>& best_config_map) {
   switch (activation_type) {
     case ActivationType::Relu:
       run_gemm<EpilogueOpDefaultReLU>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n,
-                                      gemm_k, num_experts, stream);
+                                      gemm_k, num_experts, stream, best_config_map);
       break;
     case ActivationType::Gelu:
       run_gemm<EpilogueOpDefaultFtGelu>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n,
-                                        gemm_k, num_experts, stream);
+                                        gemm_k, num_experts, stream, best_config_map);
       break;
     case ActivationType::Silu:
       run_gemm<EpilogueOpDefaultSilu>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n,
-                                      gemm_k, num_experts, stream);
+                                      gemm_k, num_experts, stream, best_config_map);
       break;
     case ActivationType::Identity:
       run_gemm<EpilogueOpDefault>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
-                                  num_experts, stream);
+                                  num_experts, stream, best_config_map);
       break;
     case ActivationType::InvalidType:
       ORT_THROW("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
@@ -509,9 +506,10 @@ void MoeGemmRunner<T, WeightType>::moe_gemm_bias_act(const T* A, const WeightTyp
 template <typename T, typename WeightType>
 void MoeGemmRunner<T, WeightType>::moe_gemm(const T* A, const WeightType* B, const T* weight_scales, const T* biases,
                                             T* C, int64_t* total_rows_before_expert, int64_t total_rows, int64_t gemm_n,
-                                            int64_t gemm_k, int num_experts, cudaStream_t stream) {
+                                            int64_t gemm_k, int num_experts, cudaStream_t stream,
+                                            std::unordered_map<int64_t, CutlassGemmConfig>& best_config_map) {
   run_gemm<EpilogueOpDefault>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
-                              num_experts, stream);
+                              num_experts, stream, best_config_map);
 }
 
 }  // namespace ort_fastertransformer

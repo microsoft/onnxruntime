@@ -31,7 +31,7 @@ class MoeGemmRunner {
   public:
     MoeGemmRunner();
 
-    void initialize(int sm, std::shared_ptr<std::unordered_map<int64_t, CutlassGemmConfig>> best_config_map);
+    void initialize(int sm);
 
     // void try_find_best_config(int num_experts, int hidden_size, int inter_size, int num_rows) {
     //     // TODO: find a general way e.g a config file
@@ -70,11 +70,13 @@ class MoeGemmRunner {
 
     void moe_gemm_bias_act(const T *A, const WeightType *B, const T *weight_scales, const T *biases, T *C,
                            int64_t *total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
-                           int num_experts, ActivationType activation_type, cudaStream_t stream);
+                           int num_experts, ActivationType activation_type, cudaStream_t stream,
+                           std::unordered_map<int64_t, CutlassGemmConfig> &best_config_map);
 
     void moe_gemm(const T *A, const WeightType *B, const T *weight_scales, const T *biases, T *C,
                   int64_t *total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
-                  int num_experts, cudaStream_t stream);
+                  int num_experts, cudaStream_t stream,
+                  std::unordered_map<int64_t, CutlassGemmConfig> &best_config_map);
 
   private:
     template <typename EpilogueTag>
@@ -86,7 +88,8 @@ class MoeGemmRunner {
     template <typename EpilogueTag>
     void run_gemm(const T *A, const WeightType *B, const T *weight_scales, const T *biases, T *C,
                   int64_t *total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
-                  int num_experts, cudaStream_t stream);
+                  int num_experts, cudaStream_t stream,
+                  std::unordered_map<int64_t, CutlassGemmConfig> &best_config_map);
 
   private:
     int sm_;

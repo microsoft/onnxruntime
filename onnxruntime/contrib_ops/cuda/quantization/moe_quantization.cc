@@ -74,8 +74,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const int sm = device_prop.major * 10 + device_prop.minor;
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaWeightT> moe_runner(sm, fc3_experts_weights_optional != nullptr,
-                                                                           normalize_routing_weights_,
-                                                                           best_config_map_);
+                                                                           normalize_routing_weights_);
 
   size_t ws_size = moe_runner.getWorkspaceSize(
       static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
@@ -122,7 +121,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       static_cast<int>(k_), reinterpret_cast<char*>(work_space.get()), reinterpret_cast<CudaT*>(fc2_output.get()),
       reinterpret_cast<CudaT*>(expert_scales.get()),
       reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
-      reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context));
+      reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context), best_config_map_ptr_->map);
 
   Tensor* output = context->Output(0, input->Shape());
 
