@@ -955,8 +955,7 @@ def run_performance_test(sm: int):
 
 
 if __name__ == "__main__":
-    if ENABLE_DEBUG:
-        torch.set_printoptions(precision=6, edgeitems=3, linewidth=150, profile="default", sci_mode=False)
+    torch.set_printoptions(precision=6, edgeitems=3, linewidth=150, profile="default", sci_mode=False)
 
     major, minor = torch.cuda.get_device_capability()
     sm = major * 10 + minor
