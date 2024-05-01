@@ -33,6 +33,8 @@
 #include "core/graph/graph_proto_serializer.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/model_metadef_id_generator.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
@@ -1017,11 +1019,8 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-  QDQ__GetAllNodeUnits(const GraphViewer* /* graph_viewer */) override {
-    // TODO: Call the actual QDQ::GetAllNodeUnits() function.
-    // Encounter errors when including it from core/optimizer due to missing implementations.
-    // return QDQ::GetAllNodeUnits(*graph_viewer);
-    return std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>{};
+  QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer) override {
+     return QDQ::GetAllNodeUnits(*graph_viewer);
   }
 
   // Model (wrapped)
