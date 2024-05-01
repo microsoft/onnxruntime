@@ -566,15 +566,9 @@ def generate_files(line_list, args):
         )
 
     if is_qnn_package:
-        files_list.append(
-            "<file src=" + '"' + os.path.join(args.native_build_path, "QnnCpu.dll") + runtimes + " />"
-        )
-        files_list.append(
-            "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtp.dll") + runtimes + " />"
-        )
-        files_list.append(
-            "<file src=" + '"' + os.path.join(args.native_build_path, "QnnSaver.dll") + runtimes + " />"
-        )
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnCpu.dll") + runtimes + " />")
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtp.dll") + runtimes + " />")
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnSaver.dll") + runtimes + " />")
         if args.target_architecture != "x64":
             files_list.append(
                 "<file src=" + '"' + os.path.join(args.native_build_path, "QnnSystem.dll") + runtimes + " />"
@@ -597,7 +591,7 @@ def generate_files(line_list, args):
             files_list.append(
                 "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV68Skel.so") + runtimes + " />"
             )
-    
+
     is_ado_packaging_build = False
     # Process runtimes
     # Process onnxruntime import lib, dll, and pdb
