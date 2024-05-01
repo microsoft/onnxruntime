@@ -176,7 +176,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
   std::vector<int64_t> present_dims = {
       parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
   TensorShape present_shape(present_dims);
