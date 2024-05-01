@@ -23,7 +23,7 @@ class HardSigmoidOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
@@ -64,11 +64,6 @@ Status HardSigmoidOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   const bool is_float_type = (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
                              (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
   ORT_RETURN_IF_NOT(is_float_type, "QNN EP only supports HardSigmoid with float/float16 inputs");
-
-  // QNN Mul, Add, and ReluMinMax have a maximum rank of 4. QNN docs say 5, but testing indicates 4.
-  std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input.node_arg, input_shape), "Cannot get shape of input 0");
-  ORT_RETURN_IF_NOT(input_shape.size() <= 4, "QNN EP only supports HardSigmoid with input rank <= 4.");
 
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
 }

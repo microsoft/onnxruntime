@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "core/framework/node_unit.h"

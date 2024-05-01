@@ -167,7 +167,7 @@ static void RunOpTest(const std::string& op_type,
                   fp32_abs_err);
 }
 
-// Runs an FP16 on HTP and compares accuracy to CPU EP.
+// Runs an FP16 model on the QNN HTP backend and compares QNN EP's accuracy to CPU EP.
 static void RunFP16OpTest(const std::string& op_type,
                           const std::vector<TestInputDef<float>>& input_defs,
                           const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,

@@ -56,9 +56,9 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
     return Status::OK();
   }
 
-  QnnTensorWrapper tensor_wrapper;
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input, tensor_wrapper));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(tensor_wrapper)), "Failed to add tensor.");
+  QnnTensorWrapper input_tensorwrapper;
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input, input_tensorwrapper));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   input_names.push_back(input_name);
 
   return Status::OK();

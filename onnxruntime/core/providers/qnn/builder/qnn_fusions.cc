@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
@@ -71,7 +72,7 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
   const NodeUnit* q_node_unit = q_node_unit_it->second;
 
   // Check if Q node has already been handled. Should not be the case if this
-  // fusion function has been called in topological order.
+  // fusion function has been called in topological order, but check to be safe.
   if (handled_node_units.count(q_node_unit) != 0) {
     return Status::OK();
   }
@@ -97,7 +98,7 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
   QnnTensorWrapper input_tensor;
   QnnTensorWrapper output_tensor;
 
-  // Run QNN validation on the final fused node before committing to do a fusion.
+  // Run QNN validation on the final fused node before committing to doing a fusion.
   // Importantly, this validation process does not modify the qnn_model_wrapper.
   // If validation fails here, we return Status::OK() to allow QNN EP to use the normal OpBuilder workflow.
   QNN_RETURN_OK_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_def, input_tensor), logger);
@@ -110,7 +111,7 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
                                                            {}),
                          logger);
 
-  // Validation passed, so we're now committed to do a fusion. The following statements modify the qnn_model_wrapper.
+  // Validation passed, so we're now committed to doing a fusion. The following statements modify qnn_model_wrapper.
   // If we encounter an error, we return it directly to caller.
   LOGS(logger, VERBOSE) << " Adding QNN Convert via fusion. dq_node name: [" << dq_node.Name()
                         << "] dq_node optype: [" << dq_node.OpType()
@@ -190,7 +191,7 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
   const NodeUnit* mul_node_unit = mul_node_unit_it->second;
 
   // Check if Mul node has already been handled. Should not be the case if this
-  // fusion function has been called in topological order.
+  // fusion function has been called in topological order, but check to be safe.
   if (handled_node_units.count(mul_node_unit) != 0) {
     return Status::OK();
   }
@@ -216,7 +217,7 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
   QnnTensorWrapper input_tensor;
   QnnTensorWrapper output_tensor;
 
-  // Run QNN validation on the final fused node before committing to do a fusion.
+  // Run QNN validation on the final fused node before committing to doing a fusion.
   // Importantly, this validation process does not modify the qnn_model_wrapper.
   // If validation fails here, we return Status::OK() to allow QNN EP to use the normal OpBuilder workflow.
   QNN_RETURN_OK_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_def, input_tensor), logger);
@@ -229,7 +230,7 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
                                                            {}),
                          logger);
 
-  // Validation passed, so we're now committed to do a fusion. The following statements modify the qnn_model_wrapper.
+  // Validation passed, so we're now committed to doing a fusion. The following statements modify qnn_model_wrapper.
   // If we encounter an error, we return it directly to caller.
   LOGS(logger, VERBOSE) << " Adding QNN HardSwish via fusion. HardSigmoid name: [" << start_node_unit.Name()
                         << "] Mul name: [" << mul_node_unit->Name() << "]";
@@ -266,8 +267,7 @@ Status TryFusions(/*out*/ std::vector<const NodeUnit*>& fused_nodes,
                   const std::unordered_set<const NodeUnit*>& handled_node_units,
                   const logging::Logger& logger,
                   bool validate) {
-  // Maps a starting operator type to the function that can potentially fuse a
-  // sequence that starts with that node.
+  // Maps a starting operator type to the fusion function.
   static std::unordered_map<std::string, FusionFunc> fusions = {
       {"DequantizeLinear", TryHandleConvertSequence},
       {"HardSigmoid", TryHandleHardSigmoidSequence},

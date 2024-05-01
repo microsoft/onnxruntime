@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include "op_builder.h"
 
 namespace onnxruntime {
