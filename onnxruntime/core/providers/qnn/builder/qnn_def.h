@@ -213,6 +213,22 @@ class QnnTensorWrapper {
     SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
   }
 
+  QnnTensorWrapper& operator=(QnnTensorWrapper&& other) noexcept {
+    if (this != &other) {
+      std::swap(tensor_name_, other.tensor_name_);
+      std::swap(dimensions_, other.dimensions_);
+      std::swap(client_buf_, other.client_buf_);
+      std::swap(quant_params_, other.quant_params_);
+      std::swap(qnn_tensor_, other.qnn_tensor_);
+      SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+      SetQnnTensorDim(qnn_tensor_, dimensions_);
+      SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
+      SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
+    }
+
+    return *this;
+  }
+
   ~QnnTensorWrapper() = default;
 
   const Qnn_Tensor_t& GetQnnTensor() const {

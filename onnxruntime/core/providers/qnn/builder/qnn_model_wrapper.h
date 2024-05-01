@@ -56,6 +56,9 @@ class QnnModelWrapper {
                       const std::string& graph_name,
                       const QnnGraph_Config_t** graph_configs = nullptr);
 
+  // Make a QnnTensorWrapper from an onnx input or output.
+  Status MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const;
+
   // Add to internal tensor wrapper table
   bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);
 
@@ -63,6 +66,14 @@ class QnnModelWrapper {
   bool AddParamWrapper(QnnParamWrapper&& param_wrapper);
 
   const QnnTensorWrapper& GetQnnTensorWrapper(const std::string& tensor_name);
+
+  // Utility function to validate a QNN node. Does not modify this object's state.
+  Status ValidateQnnNode(const std::string& node_name,
+                         const std::string& package_name,
+                         const std::string& qnn_op_type,
+                         std::vector<Qnn_Tensor_t>&& input_tensors,
+                         std::vector<Qnn_Tensor_t>&& output_tensors,
+                         std::vector<Qnn_Param_t>&& params) const;
 
   bool CreateQnnNode(const std::string& name,
                      const std::string& package_name,
@@ -108,12 +119,12 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
-  Qnn_TensorType_t GetTensorType(const std::string& input_name) const {
-    if (IsInitializerInput(input_name)) {
+  Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
+    if (IsInitializerInput(tensor_name)) {
       return QNN_TENSOR_TYPE_STATIC;
-    } else if (IsGraphInput(input_name)) {
+    } else if (IsGraphInput(tensor_name)) {
       return QNN_TENSOR_TYPE_APP_WRITE;
-    } else if (IsGraphOutput(input_name)) {
+    } else if (IsGraphOutput(tensor_name)) {
       return QNN_TENSOR_TYPE_APP_READ;
     } else {
       return QNN_TENSOR_TYPE_NATIVE;
@@ -121,8 +132,6 @@ class QnnModelWrapper {
   }
 
   Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
-
-  Status AddTensor(const NodeUnitIODef& tensor);
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,

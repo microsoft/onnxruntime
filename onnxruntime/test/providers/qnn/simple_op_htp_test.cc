@@ -145,7 +145,9 @@ static void RunOpTest(const std::string& op_type,
                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                       int opset_version,
                       ExpectedEPNodeAssignment expected_ep_assignment,
-                      const std::string& op_domain = kOnnxDomain) {
+                      const std::string& op_domain = kOnnxDomain,
+                      float fp32_abs_err = 1e-5f,
+                      bool enable_htp_fp16_precision = false) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -153,11 +155,49 @@ static void RunOpTest(const std::string& op_type,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
+  if (enable_htp_fp16_precision) {
+    provider_options["enable_htp_fp16_precision"] = "1";
+  }
+
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
   RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, {}, attrs, op_domain),
                   provider_options,
                   opset_version,
-                  expected_ep_assignment);
+                  expected_ep_assignment,
+                  fp32_abs_err);
+}
+
+// Runs an FP16 on HTP and compares accuracy to CPU EP.
+static void RunFP16OpTest(const std::string& op_type,
+                          const std::vector<TestInputDef<float>>& input_defs,
+                          const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                          int opset_version,
+                          ExpectedEPNodeAssignment expected_ep_assignment,
+                          const std::string& op_domain = kOnnxDomain,
+                          float tolerance = 0.004f) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  std::vector<TestInputDef<MLFloat16>> input_fp16_defs;
+  input_fp16_defs.reserve(input_defs.size());
+
+  for (size_t i = 0; i < input_defs.size(); i++) {
+    input_fp16_defs.push_back(ConvertToFP16InputDef(input_defs[i]));
+  }
+
+  auto model_fp32_fn = BuildOpTestCase<float>(op_type, input_defs, {}, attrs, op_domain);
+  auto model_fp16_fn = BuildOpTestCase<MLFloat16>(op_type, input_fp16_defs, {}, attrs, op_domain);
+
+  TestFp16ModelAccuracy(model_fp32_fn,
+                        model_fp16_fn,
+                        provider_options,
+                        opset_version,
+                        expected_ep_assignment,
+                        tolerance);
 }
 
 // Test the accuracy of QDQ Sigmoid.
@@ -1165,6 +1205,55 @@ TEST_F(QnnHTPBackendTests, Add_U8_U16_Convert) {
                        ExpectedEPNodeAssignment::All);
 }
 
+// Check that QNN EP can support float32 HardSigmoid on HTP by decomposing to its constituent ops.
+// Enables running f32 ops using fp16 precision.
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
+  std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
+
+  RunOpTest<float>("HardSigmoid",
+                   {TestInputDef<float>({1, 2, 8}, false, input_data)},
+                   {},
+                   21,
+                   ExpectedEPNodeAssignment::All,
+                   kOnnxDomain,
+                   0.004f,  // Tolerance. Comparing fp16 (QNN) with fp32 (CPU EP), so expect to need larger tolerance.
+                   true);   // enable_htp_fp16_precision
+
+  // Rank 4, non-default alpha and beta
+  RunOpTest<float>("HardSigmoid",
+                   {TestInputDef<float>({1, 2, 2, 4}, false, input_data)},
+                   {utils::MakeAttribute("alpha", 0.1f),
+                    utils::MakeAttribute("beta", 0.4f)},
+                   21,
+                   ExpectedEPNodeAssignment::All,
+                   kOnnxDomain,
+                   0.004f,  // Tolerance. Comparing fp16 (QNN) with fp32 (CPU EP), so expect to need larger tolerance.
+                   true);   // enable_htp_fp16_precision
+}
+
+// Check that QNN EP can support float16 HardSigmoid on HTP by decomposing to its constituent ops.
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_FP16) {
+  std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
+
+  RunFP16OpTest("HardSigmoid",
+                {TestInputDef<float>({1, 2, 8}, false, input_data)},
+                {},
+                21,
+                ExpectedEPNodeAssignment::All,
+                kOnnxDomain);
+
+  // Rank 4, non-default alpha and beta
+  RunFP16OpTest("HardSigmoid",
+                {TestInputDef<float>({1, 2, 2, 4}, false, input_data)},
+                {utils::MakeAttribute("alpha", 0.1f),
+                 utils::MakeAttribute("beta", 0.4f)},
+                21,
+                ExpectedEPNodeAssignment::All,
+                kOnnxDomain);
+}
+
+// Returns a function that creates the model `X * HardSigmoid(X)`, which can be potentially fused
+// into a single HardSwish(X) operator.
 template <typename FloatType>
 static GetTestModelFn BuildHardSigmoidFusionTestCase(TestInputDef<FloatType>& input_def,
                                                      std::optional<float> alpha,

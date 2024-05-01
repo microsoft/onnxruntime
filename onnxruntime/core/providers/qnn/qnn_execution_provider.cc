@@ -4,6 +4,7 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
+#include <unordered_set>
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -459,8 +460,11 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                       handled_node_units, logger, false);
 
     if (!fusion_status.IsOK()) {
-      LOGS(logger, VERBOSE) << "Failed to apply fusion: " << fusion_status.ErrorMessage();
-    } else if (!fused_nodes.empty()) {
+      LOGS(logger, WARNING) << "Failed to apply fusion: " << fusion_status.ErrorMessage();
+      continue;
+    }
+
+    if (!fused_nodes.empty()) {
       for (auto fused_node_unit : fused_nodes) {
         handled_node_units.insert(fused_node_unit);
         add_supported_nodes(supported_nodes, fused_node_unit);

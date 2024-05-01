@@ -3,6 +3,10 @@
 
 #include "core/providers/qnn/builder/qnn_fusions.h"
 
+#include <limits>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
@@ -10,6 +14,15 @@
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+
+#define QNN_RETURN_OK_IF_ERROR(expr, logger)             \
+  do {                                                   \
+    auto _status = (expr);                               \
+    if ((!_status.IsOK())) {                             \
+      LOGS((logger), VERBOSE) << _status.ErrorMessage(); \
+      return Status::OK();                               \
+    }                                                    \
+  } while (0)
 
 namespace onnxruntime {
 namespace qnn {
@@ -20,7 +33,7 @@ namespace qnn {
  *
  * \param fused_nodes Output list of node units that were fused. Remains empty if fusion is not applied.
  * \param qnn_model_wrapper The QNN model that is being built.
- * \param maybe_dq_node_unit The node unit that could potentially start the DQ -> Q sequence.
+ * \param start_node_unit The node unit that could potentially start the DQ -> Q sequence.
  * \param node_unit_map Maps a node to its node unit.
  * \param handled_node_units Set of node units that have already been processed. Fusion will not fuse nodes
  *                           in this set.
@@ -30,7 +43,7 @@ namespace qnn {
  */
 static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes,
                                        QnnModelWrapper& qnn_model_wrapper,
-                                       const NodeUnit& maybe_dq_node_unit,
+                                       const NodeUnit& start_node_unit,
                                        const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                        const std::unordered_set<const NodeUnit*>& handled_node_units,
                                        const logging::Logger& logger,
@@ -38,11 +51,11 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
 
   // Looking for a standalone DQ to start the sequence.
-  if (maybe_dq_node_unit.OpType() != QDQ::DQOpName || maybe_dq_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
+  if (start_node_unit.OpType() != QDQ::DQOpName || start_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
     return Status::OK();
   }
 
-  const Node& dq_node = maybe_dq_node_unit.GetNode();
+  const Node& dq_node = start_node_unit.GetNode();
 
   // DQ must have a single Q child. DQ must not produce a graph output.
   auto children = graph_utils::FindChildrenByType(dq_node, QDQ::QOpName);
@@ -77,21 +90,28 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
     return Status::OK();
   }
 
-  const NodeUnitIODef& input_def = maybe_dq_node_unit.Inputs()[0];
+  const auto& node_name = utils::GetNodeName(start_node_unit);
+  const NodeUnitIODef& input_def = start_node_unit.Inputs()[0];
   const NodeUnitIODef& output_def = q_node_unit->Outputs()[0];
-  auto backend = qnn_model_wrapper.GetQnnBackendType();
 
-  // Max input rank is 5 on HTP
-  if (backend == QnnBackendType::HTP || backend == QnnBackendType::HTP_FP16) {
-    constexpr size_t max_rank = 5;
-    std::vector<uint32_t> shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_def.node_arg, shape), "Cannot get input shape");
+  QnnTensorWrapper input_tensor;
+  QnnTensorWrapper output_tensor;
 
-    if (shape.size() > max_rank) {
-      return Status::OK();
-    }
-  }
+  // Run QNN validation on the final fused node before committing to do a fusion.
+  // Importantly, this validation process does not modify the qnn_model_wrapper.
+  // If validation fails here, we return Status::OK() to allow QNN EP to use the normal OpBuilder workflow.
+  QNN_RETURN_OK_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_def, input_tensor), logger);
+  QNN_RETURN_OK_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(output_def, output_tensor), logger);
+  QNN_RETURN_OK_IF_ERROR(qnn_model_wrapper.ValidateQnnNode(node_name,
+                                                           QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                           QNN_OP_CONVERT,
+                                                           {input_tensor.GetQnnTensor()},
+                                                           {output_tensor.GetQnnTensor()},
+                                                           {}),
+                         logger);
 
+  // Validation passed, so we're now committed to do a fusion. The following statements modify the qnn_model_wrapper.
+  // If we encounter an error, we return it directly to caller.
   LOGS(logger, VERBOSE) << " Adding QNN Convert via fusion. dq_node name: [" << dq_node.Name()
                         << "] dq_node optype: [" << dq_node.OpType()
                         << "] q_node name: [" << q_node_unit->Name()
@@ -99,8 +119,8 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
                         << "]";
 
   // Add a QNN Convert to the model. Get the input from the DQ node, and the output from the Q node.
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(input_def));
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(output_def));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor)), "Failed to add input");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output");
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(*q_node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     QNN_OP_CONVERT,
@@ -110,7 +130,7 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
                                                     do_op_validation),
                     "Failed to add fused Convert node.");
 
-  fused_nodes.push_back(&maybe_dq_node_unit);
+  fused_nodes.push_back(&start_node_unit);
   fused_nodes.push_back(q_node_unit);
 
   return Status::OK();
@@ -177,7 +197,7 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
 
   // Mul child must not already be part of a QDQ NodeUnit (i.e., be standalone).
   if (mul_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
-    return Status::OK();  // This would be an invalid model.
+    return Status::OK();
   }
 
   // Input to HardSigmoid must also be the other input to the Mul.
@@ -189,28 +209,34 @@ static Status TryHandleHardSigmoidSequence(std::vector<const NodeUnit*>& fused_n
     return Status::OK();
   }
 
+  const auto& node_name = utils::GetNodeName(start_node_unit);
   const NodeUnitIODef& input_def = start_node_unit.Inputs()[0];
   const NodeUnitIODef& output_def = mul_node_unit->Outputs()[0];
-  auto backend = qnn_model_wrapper.GetQnnBackendType();
 
-  // Max input rank is 4 on HTP
-  if (backend == QnnBackendType::HTP || backend == QnnBackendType::HTP_FP16) {
-    constexpr size_t max_rank = 4;
-    std::vector<uint32_t> shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_def.node_arg, shape), "Cannot get input shape");
+  QnnTensorWrapper input_tensor;
+  QnnTensorWrapper output_tensor;
 
-    if (shape.size() > max_rank) {
-      return Status::OK();
-    }
-  }
+  // Run QNN validation on the final fused node before committing to do a fusion.
+  // Importantly, this validation process does not modify the qnn_model_wrapper.
+  // If validation fails here, we return Status::OK() to allow QNN EP to use the normal OpBuilder workflow.
+  QNN_RETURN_OK_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_def, input_tensor), logger);
+  QNN_RETURN_OK_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(output_def, output_tensor), logger);
+  QNN_RETURN_OK_IF_ERROR(qnn_model_wrapper.ValidateQnnNode(node_name,
+                                                           QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                           QNN_OP_HARD_SWISH,
+                                                           {input_tensor.GetQnnTensor()},
+                                                           {output_tensor.GetQnnTensor()},
+                                                           {}),
+                         logger);
 
+  // Validation passed, so we're now committed to do a fusion. The following statements modify the qnn_model_wrapper.
+  // If we encounter an error, we return it directly to caller.
   LOGS(logger, VERBOSE) << " Adding QNN HardSwish via fusion. HardSigmoid name: [" << start_node_unit.Name()
                         << "] Mul name: [" << mul_node_unit->Name() << "]";
 
-  // Add a QNN HardSwish to the model. Get the input from the HardSigmoid and the output from the Mul.
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(input_def));
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(output_def));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(start_node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor)), "Failed to add input");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_name,
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     QNN_OP_HARD_SWISH,
                                                     {input_def.node_arg.Name()},

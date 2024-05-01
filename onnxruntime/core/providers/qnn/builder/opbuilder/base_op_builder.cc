@@ -48,9 +48,18 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnitIODef& input,
                                    const logging::Logger& logger,
                                    std::vector<std::string>& input_names) const {
-  ORT_UNUSED_PARAMETER(logger);
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTensor(input));
-  input_names.push_back(input.node_arg.Name());
+  const auto& input_name = input.node_arg.Name();
+
+  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
+    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
+    input_names.push_back(input_name);
+    return Status::OK();
+  }
+
+  QnnTensorWrapper tensor_wrapper;
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input, tensor_wrapper));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(tensor_wrapper)), "Failed to add tensor.");
+  input_names.push_back(input_name);
 
   return Status::OK();
 }
