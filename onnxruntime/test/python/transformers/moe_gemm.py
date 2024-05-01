@@ -404,7 +404,7 @@ class MixtralSparseMoeBlock(nn.Module):
 
     def benchmark(self, batch_size, sequence_length):
         hidden_state = torch.randn(batch_size, sequence_length, self.hidden_dim)
-        lapse = self.ort_forward(hidden_state, iobinding=True, repeat=1000)
+        lapse = self.ort_forward(hidden_state, iobinding=True, repeat=10)
         return lapse
 
 
@@ -448,8 +448,8 @@ def perf_tuning():
 
     # environ_reset()
 
-    for batch_size in [1]:
-        for sequence_length in range(32, 1024 * 128, 32):
+    for batch_size in [2]:
+        for sequence_length in [1024, 1024, 1024, 1024, 1024]:
             latency = mixtral_moe.benchmark(batch_size, sequence_length)
             print("batch_size:", batch_size, " sequence_length:", sequence_length, " latency:", latency)
 
