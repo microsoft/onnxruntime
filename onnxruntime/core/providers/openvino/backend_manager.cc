@@ -273,18 +273,6 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
                       nullptr,
                       kOnnxDomain);
 
-    // Handle the case in which a quantized weight feeds into a standalone DQ node.
-    // We just need to keep track of this quantized initializer so that the EP can dequantize it later.
-    // This shouldn't really happen since the optimizer would simplify it for us, but ...
-    const NodeUnitIODef& input0_def = node_unit.Inputs()[0];
-    const auto& input0_name = input0_def.node_arg.Name();
-
-    if (node_unit.OpType() == "DequantizeLinear" &&
-        src_graph.GetAllInitializedTensors().count(input0_name)) {
-      assert(input0_def.quant_param.has_value());
-      initializers_to_dequant.insert({input0_name, input0_def});
-    }
-
     // TODO: Another scenario to consider is a conversion between quantized types (e.g., int16 to int8)
     // in mixed-precision QDQ models. The pattern to detect is a standalone DQ followed by a standalone Q:
     // Ex: DQ(int16 to float) -> QuantizeLinear(float to int8) ->
@@ -386,7 +374,8 @@ static Status CreateModelProto(const GraphViewer& src_graph,
   // Get all the NodeUnits in the graph_viewer
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(&src_graph);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(&src_graph);  // TODO: Implement.
+                                                                                 // Stubbed out in provider host.
 
   std::unordered_set<const NodeUnit*> seen_node_units;
   const auto& node_indices = src_graph.GetNodesInTopologicalOrder();
