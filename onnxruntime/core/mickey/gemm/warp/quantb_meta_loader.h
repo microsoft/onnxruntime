@@ -296,7 +296,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
       FragmentOffsets &frag_offsets, const OffsetT* offset_smem) {
     const int n_idx = div_power2<4>(lane_idx);
     ElementT const* scales_ptr = smem + n_idx;
-    OffsetT const* offset_ptr = offset_smem + n_idx;
+    [[maybe_unused]] OffsetT const* offset_ptr = offset_smem + n_idx;
 
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < kSmemSize / 8; ++i) {
@@ -333,7 +333,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
 
     const int meta_k = k_iter / (QuantBlocking::kRow / 16);
     half const* scales = reinterpret_cast<half const*>(frag_scales.data() + meta_k * kMetaFragSize);
-    half const* offsets = nullptr;
+    [[maybe_unused]] half const* offsets = nullptr;
     if constexpr(has_offsets) {
       offsets = reinterpret_cast<half const*>(frag_offsets.data() + meta_k * kMetaFragSize);
     }
@@ -559,7 +559,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
     // T3        T3
     const int lane_offset = mod_power2<4>(lane_idx) << 2;
     const uint32_t* scales_ptr = reinterpret_cast<const uint32_t*>(smem + lane_offset);
-    const uint32_t* offsets_ptr = nullptr;
+    [[maybe_unused]] const uint32_t* offsets_ptr = nullptr;
     if constexpr(has_offsets) {
       offsets_ptr = reinterpret_cast<const uint32_t*>(offset_smem + lane_offset);
     }
@@ -619,7 +619,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
       const int meta_n = (nn * 16) / QuantBlocking::kColumn;
       const int idx = meta_n * kMetaFragSize + (k_iter * 4);
       half2 const* const scale_pair = reinterpret_cast<half2 const*>(frag_scales.data() + idx); // k_offset / 16 * 4
-      half2 const* offsets = nullptr;
+      [[maybe_unused]] half2 const* offsets = nullptr;
       if constexpr(has_offsets) {
         offsets = reinterpret_cast<half2 const*>(frag_offsets.data() + idx);
       }
