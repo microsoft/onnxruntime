@@ -47,13 +47,13 @@ public:
     cudaStream_t stream,
     cutlass::gemm::GemmCoord const & problem_size,
     void* ptr_output,
-    int output_byte_stride,
+    size_t output_byte_stride,
     void const *ptr_a,
-    int a_byte_stride,
+    size_t a_byte_stride,
     void const *ptr_packed_b,
-    int b_byte_stride,
+    size_t b_byte_stride,
     void const *ptr_scales,
-    int scales_byte_stride,
+    size_t scales_byte_stride,
     void const *ptr_zp = nullptr,
     int zp_byte_stride = 0) {
 

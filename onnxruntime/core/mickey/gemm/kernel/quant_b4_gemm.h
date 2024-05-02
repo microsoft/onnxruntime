@@ -28,6 +28,11 @@ namespace mickey {
 namespace gemm {
 namespace kernel {
 
+#if defined(_MSC_VER) && !defined(__clang__)
+  #pragma warning(push)
+  #pragma warning(disable:4200)
+#endif
+
 template<typename ElementT, typename Shape, typename QuantBlocking, int Stages, bool has_offsets>
 struct MmaLoopSharedBuffer{
   // Quantized weights are packed int4, each 16x16 tile of int4
@@ -53,6 +58,10 @@ struct MmaLoopSharedBuffer{
   cutlass::AlignedBuffer<ElementT, kMetaSize> shared_Scale;
   cutlass::AlignedBuffer<uint8_t, has_offsets ? kMetaSize : 0> shared_Offset;
 };
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -239,15 +248,15 @@ struct QuantB4Gemm {
     // K dimension at warp level based on template parameter SplitKSerial_.
     cutlass::gemm::GemmCoord grid_tiled_shape_;
     void* const ptr_output_;
-    const int output_byte_stride_;
+    const size_t output_byte_stride_;
     void const * const ptr_a_;
-    const int a_byte_stride_;
+    const size_t a_byte_stride_;
     void const * const ptr_packed_b_;
-    const int b_byte_stride_;
+    const size_t b_byte_stride_;
     void const * const ptr_scales_;
-    const int scales_byte_stride_;
+    const size_t scales_byte_stride_;
     void const * const ptr_offsets_;
-    const int offsets_byte_stride_;
+    const size_t offsets_byte_stride_;
     int gemm_k_size_{0};
 
     CUTLASS_HOST_DEVICE
@@ -257,15 +266,15 @@ struct QuantB4Gemm {
     Params(
       cutlass::gemm::GemmCoord const & problem_size,
       void* ptr_output,
-      int output_byte_stride,
+      size_t output_byte_stride,
       void const *ptr_a,
-      int a_byte_stride,
+      size_t a_byte_stride,
       void const *ptr_packed_b,
-      int b_byte_stride,
+      size_t b_byte_stride,
       void const *ptr_scales,
-      int scales_byte_stride,
+      size_t scales_byte_stride,
       void const *ptr_offsets = nullptr,
-      int offsets_byte_stride = 0
+      size_t offsets_byte_stride = 0
     ):
       problem_size_(problem_size),
       ptr_output_(ptr_output),
@@ -295,6 +304,14 @@ struct QuantB4Gemm {
 
   /// Determines whether kernel satisfies alignment
   static cutlass::Status can_implement(const Params &params) {
+    if (params.output_byte_stride_ >= std::numeric_limits<int>::max() ||
+        params.a_byte_stride_ >= std::numeric_limits<int>::max() ||
+        params.b_byte_stride_ >= std::numeric_limits<int>::max() ||
+        params.scales_byte_stride_ >= std::numeric_limits<int>::max() ||
+        params.offsets_byte_stride_ >= std::numeric_limits<int>::max()) {
+      std::cerr << "QuantB4Gemm validation fail: output_byte_stride, a_byte_stride, b_byte_stride, scales_byte_stride, offsets_byte_stride must be less than INT_MAX!" << std::endl;
+      return cutlass::Status::kErrorInvalidProblem;
+    }
     if ((reinterpret_cast<uintptr_t>(params.ptr_a_) % 16)) {
       std::cerr << "QuantB4Gemm validation fail: params.ptr_a_ is not aligned to 16 bytes!" << std::endl;
       return cutlass::Status::kErrorMisalignedOperand;
@@ -436,7 +453,7 @@ struct QuantB4Gemm {
 
     PackedBLoader packed_b_loader{
       params.ptr_packed_b_,
-      params.b_byte_stride_,
+      int(params.b_byte_stride_),
       packed_n_start,
       packed_n_end,
       k_start,
@@ -446,14 +463,14 @@ struct QuantB4Gemm {
     MetaLoader meta_loader{
       lane_idx,
       params.ptr_scales_,
-      params.scales_byte_stride_,
+      int(params.scales_byte_stride_),
       params.ptr_offsets_,
-      params.offsets_byte_stride_,
+      int(params.offsets_byte_stride_),
       n_start, n_end};
 
     ATileLoader a_tile_loader{
       params.ptr_a_,
-      params.a_byte_stride_,
+      int(params.a_byte_stride_),
       m_start, m_end,
       mul_power2<kElementSize>(k_start), mul_power2<kElementSize>(k_end), // convert to byte based index
       lane_idx};
@@ -795,7 +812,7 @@ struct QuantB4Gemm {
 
     // Store the result
     __half2* output_ptr = reinterpret_cast<__half2*>(params.ptr_output_);
-    int output_stride = params.output_byte_stride_ / sizeof(__half2);
+    int output_stride = int(params.output_byte_stride_ / sizeof(__half2));
     const float2* c_ptr = reinterpret_cast<float2 const*>(accumulators.data());
 
     int n = n_start + (mod_power2<4>(lane_idx) << 1);
