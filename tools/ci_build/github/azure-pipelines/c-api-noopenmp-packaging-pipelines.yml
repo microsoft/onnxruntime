@@ -120,8 +120,8 @@ stages:
       name: Set_Release_Version_Suffix
     - script: |
         # Extracting hours and minutes
-        date=$(date -d $(pipeline.startTime) +'%Y%m%d')
-        hhmm=$(date -d $(pipeline.startTime) +'%H%M')
+        date=$(date -d "$(pipeline.startTime)" +'%Y%m%d')
+        hhmm=$(date -d "$(pipeline.startTime)" +'%H%M')
         # Set the hhmm value as a pipeline variable
         echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
         echo "##vso[task.setvariable variable=BuildDate;isOutput=true]$date"
@@ -1105,7 +1105,7 @@ stages:
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentDate=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']] /p:CurrentTime=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
+      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentDate="$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]" /p:CurrentTime="$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]"
       copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
       mkdir $(Build.ArtifactStagingDirectory)\testdata
@@ -1127,7 +1127,7 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
     NuPackScript: |
-      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentDate=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']] /p:CurrentTime=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
+      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentDate="$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]" /p:CurrentTime="$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]"
       cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
       ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-x86.zip
       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-x86.zip $(Build.ArtifactStagingDirectory)
@@ -1150,7 +1150,7 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
     NuPackScript: |
-      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentDate=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']] /p:CurrentTime=$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
+      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentDate="$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]" /p:CurrentTime="$[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]"
       cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
       ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-arm64.zip
       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
