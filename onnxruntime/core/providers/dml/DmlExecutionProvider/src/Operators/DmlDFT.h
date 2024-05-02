@@ -1191,7 +1191,6 @@ public:
             shareInferrer.Get(),
             nullptr,
             false, // isInternalOperator
-            false, // alias
             false, // supportsGraph
             nullptr,
             requiredConstantCpuInputs.data(),

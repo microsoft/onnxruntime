@@ -51,6 +51,7 @@ class DequantizeInt4 : public IKernelExplorer {
         params_.quant_,
         params_.scales_,
         params_.zero_points_,
+        nullptr, /*reorder_idx*/
         params_.k_,
         params_.n_,
         32,

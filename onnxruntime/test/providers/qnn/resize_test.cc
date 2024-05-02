@@ -177,7 +177,7 @@ static void RunQDQResizeOpTest(const TestInputDef<float>& input_def,
 }
 
 //
-// CPU tests:
+// CPU tests (all map to QNN's Resize on CPU):
 //
 
 // Upsample that uses "round_prefer_floor" as the "nearest_mode".
@@ -324,6 +324,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_Resize_DownSample_Linear_HalfPixel_scales) {
 //
 
 // Test QDQ Resize downsample with mode: "linear", coordinate_transformation_mode: "align_corners"
+// Maps to QNN's ResizeBilinear operator.
 TEST_F(QnnHTPBackendTests, Resize_DownSample_Linear_AlignCorners) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
@@ -332,6 +333,7 @@ TEST_F(QnnHTPBackendTests, Resize_DownSample_Linear_AlignCorners) {
 }
 
 // Test QDQ Resize downsample with mode: "linear", coordinate_transformation_mode: "half_pixel"
+// Maps to QNN's ResizeBilinear operator.
 TEST_F(QnnHTPBackendTests, Resize_DownSample_Linear_HalfPixel) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
@@ -343,7 +345,7 @@ TEST_F(QnnHTPBackendTests, Resize_DownSample_Linear_HalfPixel) {
 }
 
 // Test 2x QDQ Resize mode: "linear", coordinate_transformation_mode: "pytorch_half_pixel"
-// QNN EP uses QNN's Resize op.
+// Maps to QNN's Resize operator.
 TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearPytorchHalfPixel) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
@@ -355,7 +357,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearPytorchHalfPixel) {
 }
 
 // Test 2x QDQ Resize mode: "linear", coordinate_transformation_mode: "half_pixel"
-// QNN EP uses QNN's Resize op.
+// Maps to QNN's ResizeBilinear operator.
 TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearHalfPixel) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
@@ -367,7 +369,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearHalfPixel) {
 }
 
 // Test 2x QDQ Resize mode: "linear", coordinate_transformation_mode: "align_corners"
-// QNN EP uses QNN's Resize op.
+// Maps to QNN's ResizeBilinear operator.
 TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearAlignCorners) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
@@ -379,7 +381,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearAlignCorners) {
 }
 
 // Test 2x QDQ Resize mode: "linear", coordinate_transformation_mode: "asymmetric"
-// QNN EP uses QNN's Resize op.
+// Maps to QNN's ResizeBilinear operator.
 TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearAsymmetric) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
@@ -391,7 +393,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xLinearAsymmetric) {
 }
 
 // Test 2x QDQ Resize mode: "nearest", coordinate_transformation_mode: "half_pixel", nearest_mode: "round_prefer_floor"
-// QNN EP uses QNN's Resize op.
+// Maps to QNN's Resize operator.
 TEST_F(QnnHTPBackendTests, ResizeU8_2xNearestHalfPixelRoundPreferFloor) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
@@ -408,7 +410,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_NearestModeCeil_Unsupported) {
 }
 
 // Test 3x QDQ Resize mode: "nearest", coordinate_transformation_mode: "asymmetric", nearest_mode: "floor".
-// QNN EP uses QNN's ResizeNearestNeighbor op.
+// Maps to QNN's ResizeNearestNeighbor operator.
 TEST_F(QnnHTPBackendTests, ResizeU8_3xNearestAsymmetricFloor) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
@@ -417,7 +419,7 @@ TEST_F(QnnHTPBackendTests, ResizeU8_3xNearestAsymmetricFloor) {
 }
 
 // Test 2x QDQ Resize mode: "nearest", coordinate_transformation_mode: "asymmetric", nearest_mode: "round_prefer_floor"
-// QNN EP uses QNN's Resize op.
+// Maps to QNN's Resize operator.
 TEST_F(QnnHTPBackendTests, ResizeU8_2xNearestAsymmetricRoundPreferFloor) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 2, 2, 2}, false, input_data),
@@ -447,7 +449,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_ResizeU8_3xNearestAsymmetricRoundPreferFloor
 }
 
 // Test 0.5x QDQ Resize mode: "nearest", coordinate_transformation_mode: "asymmetric", nearest_mode: "floor"
-// QNN EP uses QNN's ResizeNearestNeighbor op.
+// Maps to QNN's ResizeNearestNeighbor operator.
 TEST_F(QnnHTPBackendTests, ResizeU8_HalfNearestAsymmetricFloor) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
   RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),

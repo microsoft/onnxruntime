@@ -99,7 +99,7 @@ stages:
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
       timeoutInMinutes: 1200
     ${{ else }}:
-      timeoutInMinutes: 300
+      timeoutInMinutes: 360
 
     steps:
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -313,7 +313,7 @@ stages:
       workspace:
         clean: all
       pool: ${{ parameters.ort_build_pool_name }}
-      timeoutInMinutes: 120
+      timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'

@@ -3,13 +3,17 @@
 
 #pragma once
 
+#include <wil/wrl.h>
+#include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
+#include "core/common/spin_pause.h"
+
 namespace Dml
 {
     // Represents a fence which will be signaled at some point (usually by the GPU).
     struct GpuEvent
     {
         uint64_t fenceValue;
-        ComPtr<ID3D12Fence> fence;
+        Microsoft::WRL::ComPtr<ID3D12Fence> fence;
 
         bool IsSignaled() const
         {
@@ -17,17 +21,26 @@ namespace Dml
         }
 
         // Blocks until IsSignaled returns true.
-        void WaitForSignal() const
+        void WaitForSignal(bool cpuSyncSpinningEnabled) const
         {
             if (IsSignaled())
                 return; // early-out
 
-            wil::unique_handle h(CreateEvent(nullptr, TRUE, FALSE, nullptr));
-            ORT_THROW_LAST_ERROR_IF(!h);
-
-            ORT_THROW_IF_FAILED(fence->SetEventOnCompletion(fenceValue, h.get()));
-
-            WaitForSingleObject(h.get(), INFINITE);
+            if (cpuSyncSpinningEnabled)
+            {
+                while (!IsSignaled())
+                {
+                    // We keep spinning until the fence gets signaled
+                    onnxruntime::concurrency::SpinPause();
+                }
+            }
+            else
+            {
+                wil::unique_handle h(CreateEvent(nullptr, TRUE, FALSE, nullptr));
+                ORT_THROW_LAST_ERROR_IF(!h);
+                ORT_THROW_IF_FAILED(fence->SetEventOnCompletion(fenceValue, h.get()));
+                WaitForSingleObject(h.get(), INFINITE);
+            }
         }
     };
 
