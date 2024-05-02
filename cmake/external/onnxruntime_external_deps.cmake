@@ -186,7 +186,7 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
 endif()
 
 # if ONNX_CUSTOM_PROTOC_EXECUTABLE is set we don't need to build the protoc binary
-if (${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+if (ONNX_CUSTOM_PROTOC_EXECUTABLE)
   if (NOT EXISTS "${ONNX_CUSTOM_PROTOC_EXECUTABLE}")
     message(FATAL_ERROR "ONNX_CUSTOM_PROTOC_EXECUTABLE is set to '${ONNX_CUSTOM_PROTOC_EXECUTABLE}' "
                         "but protoc executable was not found there.")
