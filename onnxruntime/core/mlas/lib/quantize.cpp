@@ -519,18 +519,21 @@ Return Value:
     }
 }
 
+template<typename UnpackedType>
 void
 MLASCALL
-MlasQuantizeLinearS4Kernel(
+MlasQuantizeLinearInt4Kernel(
     const float* Input,
-    int8_t* Output,
+    UnpackedType* Output,
     size_t N,
     float Scale,
-    int8_t ZeroPoint
+    UnpackedType ZeroPoint
     )
 {
-    constexpr int32_t MinimumValue = -8;
-    constexpr int32_t MaximumValue = 7;
+    static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);
+
+    constexpr int32_t MinimumValue = Int4Range<UnpackedType>::Min;
+    constexpr int32_t MaximumValue = Int4Range<UnpackedType>::Max;
 
     auto ScaleVector = MlasBroadcastFloat32x4(Scale);
     auto MinimumValueVector = MlasBroadcastFloat32x4(static_cast<float>(MinimumValue - ZeroPoint));
@@ -538,7 +541,7 @@ MlasQuantizeLinearS4Kernel(
     auto ZeroPointVector = MlasBroadcastInt32x4(ZeroPoint);
 
     // Holds 4 quantized 8bit values that will be packed into the output as packed 4bit values.
-    std::array<int8_t, 4> TmpOutput = {};
+    std::array<UnpackedType, 4> TmpOutput = {};
 
     while (N >= 4) {
 
@@ -546,11 +549,11 @@ MlasQuantizeLinearS4Kernel(
         auto IntegerVector = MlasQuantizeLinearVector(FloatVector, ScaleVector,
             MinimumValueVector, MaximumValueVector, ZeroPointVector);
 
-        IntegerVector = MlasQuantizeLinearPackBytes<int8_t>(IntegerVector);
+        IntegerVector = MlasQuantizeLinearPackBytes<UnpackedType>(IntegerVector);
         MlasQuantizeLinearStore4PackedValues(IntegerVector, TmpOutput.data());
 
-        Output[0] = static_cast<int8_t>(((TmpOutput[1] & 0xF) << 4) | (TmpOutput[0] & 0xF));
-        Output[1] = static_cast<int8_t>(((TmpOutput[3] & 0xF) << 4) | (TmpOutput[2] & 0xF));
+        Output[0] = static_cast<UnpackedType>(((TmpOutput[1] & 0xF) << 4) | (TmpOutput[0] & 0xF));
+        Output[1] = static_cast<UnpackedType>(((TmpOutput[3] & 0xF) << 4) | (TmpOutput[2] & 0xF));
 
         Input += 4;
         Output += 2;
@@ -570,15 +573,21 @@ MlasQuantizeLinearS4Kernel(
             MinimumValueVector, MaximumValueVector, ZeroPointVector);
 
         MlasQuantizeLinearStoreSingleValue(IntegerVector, &TmpOutput[0]);
-
-        size_t OutputIndex = n >> 1;  // which byte
-        size_t NibbleIndex = n & 0x1; // which 4-bit elem in the byte
-        uint8_t Shift = 4 * static_cast<uint8_t>(NibbleIndex);
-        int8_t Mask = 0xF << Shift;
-
-        Output[OutputIndex] &= ~Mask; // Clear 4-bit lane
-        Output[OutputIndex] |= static_cast<int8_t>((TmpOutput[0] & 0xF) << Shift); // Set 4-bit lane
+        MlasSetInt4Element(Output, n, TmpOutput[0]);
     }
+}
+
+void
+MLASCALL
+MlasQuantizeLinearS4Kernel(
+    const float* Input,
+    int8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    )
+{
+    MlasQuantizeLinearInt4Kernel<int8_t>(Input, Output, N, Scale, ZeroPoint);
 }
 
 void
@@ -591,56 +600,7 @@ MlasQuantizeLinearU4Kernel(
     uint8_t ZeroPoint
     )
 {
-    constexpr int32_t MinimumValue = 0;
-    constexpr int32_t MaximumValue = 15;
-
-    auto ScaleVector = MlasBroadcastFloat32x4(Scale);
-    auto MinimumValueVector = MlasBroadcastFloat32x4(static_cast<float>(MinimumValue - ZeroPoint));
-    auto MaximumValueVector = MlasBroadcastFloat32x4(static_cast<float>(MaximumValue - ZeroPoint));
-    auto ZeroPointVector = MlasBroadcastInt32x4(ZeroPoint);
-
-    // Holds 4 quantized 8bit values that will be packed into the output as packed 4bit values.
-    std::array<uint8_t, 4> TmpOutput = {};
-
-    while (N >= 4) {
-
-        auto FloatVector = MlasLoadFloat32x4(Input);
-        auto IntegerVector = MlasQuantizeLinearVector(FloatVector, ScaleVector,
-            MinimumValueVector, MaximumValueVector, ZeroPointVector);
-
-        IntegerVector = MlasQuantizeLinearPackBytes<uint8_t>(IntegerVector);
-        MlasQuantizeLinearStore4PackedValues(IntegerVector, TmpOutput.data());
-
-        Output[0] = static_cast<uint8_t>(((TmpOutput[1] & 0xF) << 4) | (TmpOutput[0] & 0xF));
-        Output[1] = static_cast<uint8_t>(((TmpOutput[3] & 0xF) << 4) | (TmpOutput[2] & 0xF));
-
-        Input += 4;
-        Output += 2;
-        N -= 4;
-    }
-
-    for (size_t n = 0; n < N; n++) {
-
-#if defined(MLAS_NEON64_INTRINSICS)
-        auto FloatVector = vld1q_dup_f32(Input + n);
-#elif defined(MLAS_LSX_INTRINSICS)
-        MLAS_FLOAT32X4 FloatVector = (MLAS_FLOAT32X4)__lsx_vldrepl_w(Input+n, 0);
-#else
-        auto FloatVector = _mm_load_ss(Input + n);
-#endif
-        auto IntegerVector = MlasQuantizeLinearVector(FloatVector, ScaleVector,
-            MinimumValueVector, MaximumValueVector, ZeroPointVector);
-
-        MlasQuantizeLinearStoreSingleValue(IntegerVector, &TmpOutput[0]);
-
-        size_t OutputIndex = n >> 1;  // which byte
-        size_t NibbleIndex = n & 0x1; // which 4-bit elem in the byte
-        uint8_t Shift = 4 * static_cast<uint8_t>(NibbleIndex);
-        uint8_t Mask = 0xF << Shift;
-
-        Output[OutputIndex] &= ~Mask; // Clear 4-bit lane
-        Output[OutputIndex] |= static_cast<uint8_t>((TmpOutput[0] & 0xF) << Shift); // Set 4-bit lane
-    }
+    MlasQuantizeLinearInt4Kernel<uint8_t>(Input, Output, N, Scale, ZeroPoint);
 }
 
 void
@@ -990,6 +950,33 @@ MlasQuantizeLinear<uint16_t>(
     uint16_t ZeroPoint
     );
 
+template <typename UnpackedType>
+void
+MLASCALL
+MlasQuantizeLinearInt4(
+    const float* Input,
+    UnpackedType* Output,
+    size_t N,
+    float Scale,
+    UnpackedType ZeroPoint
+    )
+{
+    static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);
+
+    constexpr int32_t MinimumValue = Int4Range<UnpackedType>::Min;
+    constexpr int32_t MaximumValue = Int4Range<UnpackedType>::Max;
+
+
+    for (size_t n = 0; n < N; n++) {
+        float FloatValue = std::nearbyintf(Input[n] / Scale) + static_cast<float>(ZeroPoint);
+        FloatValue = std::max(FloatValue, static_cast<float>(MinimumValue));
+        FloatValue = std::min(FloatValue, static_cast<float>(MaximumValue));
+        UnpackedType IntValue = static_cast<UnpackedType>(FloatValue);
+
+        MlasSetInt4Element(Output, n, IntValue);
+    }
+}
+
 // QuantizeLinear INT4 implementation using the C++ runtime.
 void
 MLASCALL
@@ -1001,23 +988,7 @@ MlasQuantizeLinearS4(
     int8_t ZeroPoint
     )
 {
-    constexpr int32_t MinimumValue = -8;
-    constexpr int32_t MaximumValue = 7;
-
-    for (size_t n = 0; n < N; n++) {
-        float FloatValue = std::nearbyintf(Input[n] / Scale) + static_cast<float>(ZeroPoint);
-        FloatValue = std::max(FloatValue, static_cast<float>(MinimumValue));
-        FloatValue = std::min(FloatValue, static_cast<float>(MaximumValue));
-        int8_t IntValue = static_cast<int8_t>(FloatValue);
-
-        size_t OutputIndex = n >> 1;  // which byte
-        size_t NibbleIndex = n & 0x1; // which 4-bit elem in the byte
-        uint8_t Shift = 4 * static_cast<uint8_t>(NibbleIndex);
-        int8_t Mask = 0xF << Shift;
-
-        Output[OutputIndex] &= ~Mask; // Clear 4-bit lane
-        Output[OutputIndex] |= static_cast<int8_t>((IntValue & 0xF) << Shift); // Set 4-bit lane
-    }
+    MlasQuantizeLinearInt4<int8_t>(Input, Output, N, Scale, ZeroPoint);
 }
 
 // QuantizeLinear UINT4 implementation using the C++ runtime.
@@ -1031,23 +1002,7 @@ MlasQuantizeLinearU4(
     uint8_t ZeroPoint
     )
 {
-    constexpr int32_t MinimumValue = 0;
-    constexpr int32_t MaximumValue = 15;
-
-    for (size_t n = 0; n < N; n++) {
-        float FloatValue = std::nearbyintf(Input[n] / Scale) + static_cast<float>(ZeroPoint);
-        FloatValue = std::max(FloatValue, static_cast<float>(MinimumValue));
-        FloatValue = std::min(FloatValue, static_cast<float>(MaximumValue));
-        uint8_t IntValue = static_cast<uint8_t>(FloatValue);
-
-        size_t OutputIndex = n >> 1;  // which byte
-        size_t NibbleIndex = n & 0x1; // which 4-bit elem in the byte
-        uint8_t Shift = 4 * static_cast<uint8_t>(NibbleIndex);
-        uint8_t Mask = 0xF << Shift;
-
-        Output[OutputIndex] &= ~Mask; // Clear 4-bit lane
-        Output[OutputIndex] |= static_cast<uint8_t>((IntValue & 0xF) << Shift); // Set 4-bit lane
-    }
+    MlasQuantizeLinearInt4<uint8_t>(Input, Output, N, Scale, ZeroPoint);
 }
 #endif
 

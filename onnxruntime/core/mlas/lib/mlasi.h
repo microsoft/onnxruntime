@@ -2521,3 +2521,39 @@ MlasThreadedBufAlloc(size_t size)
         ThreadedBufSize = size;
     }
 }
+
+//
+// Utilities for INT4 quantization.
+//
+
+template <typename UnpackedType>
+struct Int4Range;
+
+template <>
+struct Int4Range<int8_t> {
+    static constexpr int8_t Min = -8;
+    static constexpr int8_t Max = 7;
+};
+
+template <>
+struct Int4Range<uint8_t> {
+    static constexpr uint8_t Min = 0;
+    static constexpr uint8_t Max = 15;
+};
+
+template <typename UnpackedType>
+MLAS_FORCEINLINE
+void
+MlasSetInt4Element(UnpackedType* Output, size_t Index, UnpackedType Value)
+{
+    static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);
+
+    const size_t OutputIndex = Index >> 1;  // which byte
+    const size_t NibbleIndex = Index & 0x1; // which 4-bit elem in the byte
+    const uint8_t Shift = 4 * static_cast<uint8_t>(NibbleIndex);
+    const UnpackedType Mask = 0xF << Shift;
+
+    Output[OutputIndex] &= ~Mask; // Clear 4-bit lane
+    Output[OutputIndex] |= static_cast<UnpackedType>((Value & 0xF) << Shift); // Set 4-bit lane
+}
+
