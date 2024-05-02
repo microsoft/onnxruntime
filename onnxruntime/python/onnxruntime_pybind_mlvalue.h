@@ -117,9 +117,45 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
                           const std::string& name_input, const pybind11::object& value, OrtValue* p_mlvalue,
                           bool accept_only_numpy_array = false, bool use_numpy_data_memory = true, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy);
 
-void GetPyObjFromTensor(const Tensor& rtensor, pybind11::object& obj,
-                        const DataTransferManager* data_transfer_manager = nullptr,
-                        const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
+pybind11::object GetPyObjFromTensor(const OrtValue& rtensor,
+                                    const DataTransferManager* data_transfer_manager = nullptr,
+                                    const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
+
+// The below two functions are used to convert OrtValue to numpy arrays
+
+/// <summary>
+/// This function operates on string tensors. Strings are always
+/// copied to python and converted to UTF-16/UCS-4/32 dependeing on the platform.
+/// This is accomplished using py::cast()
+///
+/// It is an error to pass a non-tensor or a non-string tensor to this function.
+/// </summary>
+/// <param name="tensor">Tensor that contains strings</param>
+/// <returns>py::array object</returns>
+pybind11::array StringTensorToNumpyArray(const Tensor& tensor);
+
+/// <summary>
+/// Creates a numpy array with shape over OrtValue memory. Numpy array
+/// does not own the memory, but it holds a copy or OrtValue in a py::capsule.
+/// OrtValue is destroyed when the numpy array is garbage collected.
+/// This is used when the OrtValue memory is on CPU.
+/// </summary>
+/// <param name="ort_value">OrtValue with data</param>
+/// <returns>numpy array</returns>
+pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value);
+
+/// <summary>
+/// Creates a numpy array with shape with a copy of OrtValue data.
+/// This function is used when the OrtValue memory is not on CPU.
+/// Eother data_transfer or func should not be null.
+/// </summary>
+/// <param name="ort_value">Source memory that is not on CPYU.</param>
+/// <param name="data_transfer">data transfer manager</param>
+/// <param name="func">copy function if data transfer mamanger is not available.</param>
+/// <returns></returns>
+pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
+                                                 const DataTransferManager* data_transfer,
+                                                 MemCpyFunc func);
 
 template <class T>
 struct DecRefFn {

@@ -302,18 +302,16 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
 
-        py::object obj;
-
 #ifdef USE_CUDA
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction());
 #elif USE_ROCM
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetRocmToHostMemCpyFunction());
 #elif USE_CANN
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCannToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
 #elif USE_DML
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetDmlToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction());
 #else
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
 #endif
         return obj;
       })
