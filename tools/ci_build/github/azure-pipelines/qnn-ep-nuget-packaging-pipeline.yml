@@ -2,7 +2,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.19.2.240210
+  default: 2.21.0.240401
 
 - name: build_config
   displayName: Build Configuration
@@ -160,6 +160,19 @@ jobs:
           workingFolder: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}'
           createLogFile: true
 
+
+      - task: VSBuild@1
+        displayName: 'Build onnxruntime_test_all arm64 (to copy Qnn libs)'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\onnxruntime_test_all.vcxproj'
+          platform: ARM64
+          configuration: ${{ parameters.build_config }}
+          msbuildArchitecture: ARM64
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}'
+          createLogFile: true
+
       - template: templates/win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }}'
@@ -224,15 +237,18 @@ jobs:
             $arm64_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($arm64_nuget_package))
             [System.IO.Compression.ZipFile]::ExtractToDirectory($arm64_nuget_package, $arm64_nupkg_unzipped_directory)
 
-            $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
-            $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'native')
+            $x64_runtime_path_old = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x64', 'native')
+            $x64_runtime_path_new = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory, 'runtimes', 'win-x64', 'native')
 
-            New-Item -Path $arm64_runtime_path_new -ItemType Directory
+            New-Item -Path $x64_runtime_path_new -ItemType Directory
 
-            Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.dll'))                  $arm64_runtime_path_new
-            Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime.lib'))                  $arm64_runtime_path_new
-            Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnx_test_runner.exe'))             $arm64_runtime_path_new
-            Copy-Item ([System.IO.Path]::Combine($arm64_runtime_path_old, 'onnxruntime_perf_test.exe'))        $arm64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($x64_runtime_path_old, 'onnxruntime.dll'))                  $x64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($x64_runtime_path_old, 'onnxruntime.lib'))                  $x64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($x64_runtime_path_old, 'onnx_test_runner.exe'))             $x64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($x64_runtime_path_old, 'onnxruntime_perf_test.exe'))        $x64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($x64_runtime_path_old, 'QnnCpu.dll'))                       $x64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($x64_runtime_path_old, 'QnnHtp.dll'))                       $x64_runtime_path_new
+            Copy-Item ([System.IO.Path]::Combine($x64_runtime_path_old, 'QnnSaver.dll'))                     $x64_runtime_path_new
 
             $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'merged')
             if (!(Test-Path $merged_nuget_path)) {
@@ -249,7 +265,7 @@ jobs:
             $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
 
             Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
-            Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
+            Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $arm64_nupkg_unzipped_directory -NoNewWindow -Wait
           workingDirectory: $(Build.BinariesDirectory)
 
       - template: templates/esrp_nuget.yml

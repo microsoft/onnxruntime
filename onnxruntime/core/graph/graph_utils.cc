@@ -172,10 +172,7 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
   return true;
 }
 
-/** Move the input edges that src_node has to target_node.
-After the move is complete src_node will have no input edges.
-*/
-static void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node) {
+void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node) {
   auto target_idx = target_node.Index();
   auto input_edges = GraphEdge::GetNodeInputEdges(src_node);
 
@@ -382,6 +379,18 @@ std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node) {
   std::vector<GraphEdge> input_edges;
   for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
     input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
+  }
+
+  return input_edges;
+}
+
+/** Returns a vector of the input GraphEdges of a node for the provided input index. */
+std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node, size_t index) {
+  std::vector<GraphEdge> input_edges;
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    if (static_cast<size_t>(it->GetDstArgIndex()) == index) {
+      input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
+    }
   }
 
   return input_edges;

@@ -18,7 +18,11 @@ See [Compatibility](#Compatibility) and [Operators Supported](#Operators) for a 
 
 ## Usage
 
-Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js) for samples and tutorials.
+- See [Get started](https://onnxruntime.ai/docs/get-started/with-javascript/web.html) as a landing page for ONNX Runtime Web documentation.
+
+- Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js) for samples and tutorials.
+
+- See also [ONNX Runtime Web API reference](https://onnxruntime.ai/docs/api/js/index.html) for detailed API documentation.
 
 ## Documents
 
@@ -34,13 +38,18 @@ Refer to the following links for development information:
 
 ### Compatibility
 
-|    OS/Browser    |   Chrome    |    Edge     |   Safari    |  Electron   | Node.js |
-| :--------------: | :---------: | :---------: | :---------: | :---------: | :-----: |
-|    Windows 10    | wasm, webgl | wasm, webgl |      -      | wasm, webgl |  wasm   |
-|      macOS       | wasm, webgl | wasm, webgl | wasm, webgl | wasm, webgl |  wasm   |
-| Ubuntu LTS 18.04 | wasm, webgl | wasm, webgl |      -      | wasm, webgl |  wasm   |
-|       iOS        | wasm, webgl | wasm, webgl | wasm, webgl |      -      |    -    |
-|     Android      | wasm, webgl | wasm, webgl |      -      |      -      |    -    |
+| EPs/Browsers      | Chrome/Edge (Windows) | Chrome/Edge (Android) | Chrome/Edge (MacOS) | Chrome/Edge (iOS) | Safari (MacOS)    | Safari (iOS)      | Firefox (Windows) | Node.js           |
+| ----------------- | --------------------- | --------------------- | ------------------- | ----------------- | ----------------- | ----------------- | ----------------- | ----------------- |
+| WebAssembly (CPU) | ✔️                    | ✔️                    | ✔️                  | ✔️                | ✔️                | ✔️                | ✔️                | ✔️<sup>\[1]</sup> |
+| WebGPU            | ✔️<sup>\[2]</sup>     | ✔️<sup>\[3]</sup>     | ✔️                  | ❌                | ❌                | ❌                | ❌                | ❌                |
+| WebGL             | ✔️<sup>\[4]</sup>     | ✔️<sup>\[4]</sup>     | ✔️<sup>\[4]</sup>   | ✔️<sup>\[4]</sup> | ✔️<sup>\[4]</sup> | ✔️<sup>\[4]</sup> | ✔️<sup>\[4]</sup> | ❌                |
+| WebNN             | ✔️<sup>\[5]</sup>     | ❌                    | ❌                  | ❌                | ❌                | ❌                | ❌                | ❌                |
+
+- \[1]: Node.js only support single-threaded `wasm` EP.
+- \[2]: WebGPU requires Chromium v113 or later on Windows. Float16 support requires Chrome v121 or later, and Edge v122 or later.
+- \[3]: WebGPU requires Chromium v121 or later on Windows.
+- \[4]: WebGL support is in maintenance mode. It is recommended to use WebGPU for better performance.
+- \[5]: Requires to launch browser with commandline flag `--enable-experimental-web-platform-features`.
 
 ### Operators
 
