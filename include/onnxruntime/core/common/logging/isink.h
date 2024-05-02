@@ -13,6 +13,11 @@ class ISink {
  public:
   ISink() = default;
 
+  enum SinkType { BaseSink,
+                  CompositeSink,
+                  EtwSink };
+  virtual SinkType GetType() const { return BaseSink; }
+
   /**
      Sends the message to the sink.
      @param timestamp The timestamp.

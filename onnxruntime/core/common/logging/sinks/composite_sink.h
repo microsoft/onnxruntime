@@ -25,6 +25,8 @@ class CompositeSink : public ISink {
   /// </summary>
   CompositeSink() {}
 
+  SinkType GetType() const override { return ISink::CompositeSink; }
+
   /// <summary>
   /// Adds a sink. Takes ownership of the sink (so pass unique_ptr by value).
   /// </summary>

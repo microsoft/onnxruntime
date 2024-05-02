@@ -291,13 +291,11 @@ void LoggingManager::AddEtwSink(logging::Severity etwSeverity) {
     return;  // ETW not enabled, no operation needed
   }
 
-  CompositeSink* current_composite = dynamic_cast<CompositeSink*>(sink_.get());
-  if (!current_composite) {
+  if (sink_->GetType() != ISink::CompositeSink) {
     // Current sink is not a composite, create a new composite sink and add the current sink to it
     auto new_composite = std::make_unique<CompositeSink>();
     new_composite->AddSink(std::move(sink_), default_min_severity_);  // Move the current sink into the new composite
     sink_ = std::move(new_composite);                                 // Now sink_ is pointing to the new composite
-    current_composite = static_cast<CompositeSink*>(sink_.get());     // Update pointer to the new composite sink
   }
 
   // Adjust the default minimum severity level to accommodate ETW logging needs
@@ -306,10 +304,11 @@ void LoggingManager::AddEtwSink(logging::Severity etwSeverity) {
     s_default_logger_->SetSeverity(default_min_severity_);
   }
 
+  CompositeSink* current_composite = static_cast<CompositeSink*>(sink_.get());
   // Check if an EtwSink already exists in the current composite
   const auto& sinks = current_composite->GetSinks();
   if (std::any_of(sinks.begin(), sinks.end(), [](const auto& pair) {
-        return dynamic_cast<EtwSink*>(pair.first.get()) != nullptr;
+        return pair.first->GetType() == ISink::EtwSink;
       })) {
     return;  // EtwSink already exists, do not add another
   }
@@ -320,16 +319,16 @@ void LoggingManager::AddEtwSink(logging::Severity etwSeverity) {
 
 void LoggingManager::RemoveEtwSink() {
   std::lock_guard<OrtMutex> guard(sink_mutex_);
-  auto composite_sink = dynamic_cast<CompositeSink*>(sink_.get());
 
-  if (composite_sink) {
+  if (sink_->GetType() == ISink::CompositeSink) {
+    auto composite_sink = static_cast<CompositeSink*>(sink_.get());
     const auto& sinks_with_severity = composite_sink->GetSinks();
     std::unique_ptr<ISink> remaining_sink;
 
     Severity newSeverity = Severity::kFATAL;
 
     for (const auto& sink_pair : sinks_with_severity) {
-      if (dynamic_cast<EtwSink*>(sink_pair.first.get()) == nullptr) {
+      if (sink_pair.first->GetType() != ISink::EtwSink) {
         if (remaining_sink) {
           // If more than one non-EtwSink is found, we leave the CompositeSink intact
           return;

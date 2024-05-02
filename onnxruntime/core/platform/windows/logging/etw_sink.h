@@ -34,6 +34,8 @@ class EtwSink : public ISink {
   EtwSink() = default;
   ~EtwSink() = default;
 
+  SinkType GetType() const override { return ISink::EtwSink; }
+
   constexpr static const char* kEventName = "ONNXRuntimeLogEvent";
 
  private:
