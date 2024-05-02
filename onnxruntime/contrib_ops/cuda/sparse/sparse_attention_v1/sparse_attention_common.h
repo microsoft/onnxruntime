@@ -15,6 +15,8 @@ namespace sparse_attention_v1 {
 
 struct SparseAttentionParams {
   onnxruntime::Stream* ort_stream;
+  int sm;  // compute capability like 80 for A100
+
   void* output;
   const void* q;
   const void* k;
@@ -57,6 +59,7 @@ struct SparseAttentionParams {
 
   SparseAttentionParams(
       onnxruntime::Stream* ort_stream,
+      int sm,
       void* output,
       const void* q,
       const void* k,
@@ -76,6 +79,7 @@ struct SparseAttentionParams {
       int layout_col_stride_h,
       int num_layout) {
     this->ort_stream = ort_stream;
+    this->sm = sm;
     this->output = output;
     this->q = q;
     this->k = k;

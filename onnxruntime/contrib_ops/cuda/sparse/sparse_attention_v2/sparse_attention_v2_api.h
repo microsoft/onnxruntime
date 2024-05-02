@@ -8,16 +8,15 @@ namespace contrib {
 namespace cuda {
 namespace sparse_attention_v2 {
 
-bool is_supported_sparse_attention(const cudaDeviceProp& dprops);
+bool is_supported_device(const cudaDeviceProp& dprops);
 bool is_supported_sparse_attention(int head_size, int sparse_block_size);
 
-Status run_sparse_attention_fp16(SparseAttentionParams& params);
-void load_sparse_attention_fp16();
-void unload_sparse_attention_fp16();
+// TODO: use
+void load_sparse_attention_fp16(int sm);
+void load_sparse_attention_bf16(int sm);
 
+Status run_sparse_attention_fp16(SparseAttentionParams& params);
 Status run_sparse_attention_bf16(SparseAttentionParams& params);
-void load_sparse_attention_bf16();
-void unload_sparse_attention_bf16();
 
 }  // namespace sparse_attention_v2
 }  // namespace cuda
