@@ -230,9 +230,6 @@ class MoEBase {
   bool normalize_routing_weights_;
   int64_t k_;
   ort_fastertransformer::ActivationType activation_type_;
-
-  using MoEGemmConfigMap = ort_fastertransformer::MoEGemmConfigMap;
-  std::unique_ptr<MoEGemmConfigMap> best_config_map_ptr_ = std::make_unique<MoEGemmConfigMap>();
 };
 
 }  // namespace cuda

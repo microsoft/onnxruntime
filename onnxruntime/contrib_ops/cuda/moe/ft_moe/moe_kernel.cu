@@ -707,8 +707,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     const T *fc3_scales, const T *fc3_expert_biases, const WeightType *fc2_expert_weights, const T *fc2_scales,
     int num_rows, const int hidden_size, const int inter_size, int num_experts, int local_num_experts,
     int local_experts_start_index, int k, char *workspace_ptr, T *fc2_result, const bool *finished, int active_rows,
-    T *expert_scales, int *expanded_source_row_to_expanded_dest_row, int *expert_for_source_row, cudaStream_t stream,
-    MoEGemmConfigMap::type &best_config_map) {
+    T *expert_scales, int *expanded_source_row_to_expanded_dest_row, int *expert_for_source_row, cudaStream_t stream) {
     static constexpr bool scales_required =
         std::is_same<WeightType, uint8_t>::value || std::is_same<WeightType, cutlass::uint4b_t>::value;
 
@@ -749,11 +748,10 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     }
 
     // moe_gemm_runner_.try_find_best_config(local_num_experts, hidden_size, inter_size, expanded_active_expert_rows);
-    moe_gemm_runner_.moe_gemm_bias_act(permuted_data_ + total_past_rows_ * hidden_size, fc1_expert_weights, fc1_scales,
-                                       fc1_expert_biases, fc1_result_ + total_past_rows_ * inter_size,
-                                       total_rows_before_expert_ + local_experts_start_index,
-                                       expanded_active_expert_rows, inter_size, hidden_size, local_num_experts,
-                                       fc1_activation_type, stream, best_config_map);
+    moe_gemm_runner_.moe_gemm_bias_act(
+        permuted_data_ + total_past_rows_ * hidden_size, fc1_expert_weights, fc1_scales, fc1_expert_biases,
+        fc1_result_ + total_past_rows_ * inter_size, total_rows_before_expert_ + local_experts_start_index,
+        expanded_active_expert_rows, inter_size, hidden_size, local_num_experts, fc1_activation_type, stream);
 
     if (has_fc3_) {
         if (scales_required) {
@@ -771,7 +769,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
         moe_gemm_runner_.moe_gemm(permuted_data_ + total_past_rows_ * hidden_size, fc3_expert_weights, fc3_scales,
                                   fc3_expert_biases, fc3_result_ + total_past_rows_ * inter_size,
                                   total_rows_before_expert_ + local_experts_start_index, expanded_active_expert_rows,
-                                  inter_size, hidden_size, local_num_experts, stream, best_config_map);
+                                  inter_size, hidden_size, local_num_experts, stream);
 
         elementWiseMul(fc1_result_ + total_past_rows_ * inter_size, fc3_result_ + total_past_rows_ * inter_size,
                        static_cast<int>(inter_size), static_cast<int>(total_covered_rows_), stream);
@@ -780,7 +778,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     moe_gemm_runner_.moe_gemm(fc1_result_ + total_past_rows_ * inter_size, fc2_expert_weights, fc2_scales, nullptr,
                               fc2_result + total_past_rows_ * hidden_size,
                               total_rows_before_expert_ + local_experts_start_index, expanded_active_expert_rows,
-                              hidden_size, inter_size, local_num_experts, stream, best_config_map);
+                              hidden_size, inter_size, local_num_experts, stream);
 }
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 700
@@ -801,13 +799,12 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     const T *fc3_scales, const T *fc3_expert_biases, const WeightType *fc2_expert_weights, const T *fc2_scales,
     int num_rows, const int hidden_size, const int inter_size, int num_experts, int local_num_experts,
     int local_experts_start_index, int k, char *workspace_ptr, T *fc2_result, T *expert_scales,
-    int *expanded_source_row_to_expanded_dest_row, int *expert_for_source_row, cudaStream_t stream,
-    MoEGemmConfigMap::type &best_config_map) {
+    int *expanded_source_row_to_expanded_dest_row, int *expert_for_source_row, cudaStream_t stream) {
     run_moe_fc(input_activations, gating_output, fc1_expert_weights, fc1_scales, fc1_expert_biases, fc1_activation_type,
                fc3_expert_weights, fc3_scales, fc3_expert_biases, fc2_expert_weights, fc2_scales, num_rows, hidden_size,
                inter_size, num_experts, local_num_experts, local_experts_start_index, k, workspace_ptr, fc2_result,
                nullptr, num_rows, expert_scales, expanded_source_row_to_expanded_dest_row, expert_for_source_row,
-               stream, best_config_map);
+               stream);
 }
 #endif
 
