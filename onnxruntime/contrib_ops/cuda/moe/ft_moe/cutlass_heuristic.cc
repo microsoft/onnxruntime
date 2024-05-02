@@ -52,7 +52,7 @@ TileShape get_cta_shape_for_config(CutlassTileConfig tile_config) {
     case CutlassTileConfig::CtaShape256x128x64_WarpShape64x64x64:
       return TileShape{256, 128};
     default:
-      throw std::runtime_error("[TensorRT-LLm Error][get_grid_shape_for_config] Invalid config");
+      ORT_THROW("[get_grid_shape_for_config] Invalid config");
   }
 }
 
@@ -71,15 +71,15 @@ bool is_valid_split_k_factor(const int64_t m, const int64_t n, const int64_t k, 
       return false;
     }
 
-    int const k_elements_per_split = k / split_k_factor;
+    int const k_elements_per_split = static_cast<int>(k / split_k_factor);
     if ((k_elements_per_split % k_tile) != 0) {
       return false;
     }
   }
 
   // Check that the workspace has sufficient space for this split-k factor
-  int const ctas_in_m_dim = (m + tile_shape.m - 1) / tile_shape.m;
-  int const ctas_in_n_dim = (n + tile_shape.n - 1) / tile_shape.n;
+  int const ctas_in_m_dim = static_cast<int>((m + tile_shape.m - 1) / tile_shape.m);
+  int const ctas_in_n_dim = static_cast<int>((n + tile_shape.n - 1) / tile_shape.n);
   int const required_ws_bytes = split_k_factor == 1 ? 0 : sizeof(int) * ctas_in_m_dim * ctas_in_n_dim;
 
   if (static_cast<size_t>(required_ws_bytes) > workspace_bytes) {
@@ -152,8 +152,8 @@ std::vector<CutlassGemmConfig> get_candidate_configs(int sm, bool const is_weigh
       candidate_configs.push_back(config);
       if (sm >= 75) {
         for (int split_k_factor = 2; split_k_factor <= max_split_k; ++split_k_factor) {
-          auto config = CutlassGemmConfig{tile_config, SplitKStyle::SPLIT_K_SERIAL, split_k_factor, stages};
-          candidate_configs.push_back(config);
+          candidate_configs.push_back(
+              CutlassGemmConfig{tile_config, SplitKStyle::SPLIT_K_SERIAL, split_k_factor, stages});
         }
       }
     }
@@ -168,8 +168,8 @@ CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmC
                                                         int const split_k_limit, const size_t workspace_bytes,
                                                         int const multi_processor_count, int const is_weight_only) {
   if (occupancies.size() != candidate_configs.size()) {
-    throw std::runtime_error(
-        "[TensorRT-LLm Error][estimate_best_config_from_occupancies] occpancies and "
+    ORT_THROW(
+        "[estimate_best_config_from_occupancies] occpancies and "
         "candidate configs vectors must have equal length.");
   }
 
@@ -181,7 +181,7 @@ CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmC
   int current_m_tile = 0;
 
   int const max_split_k = n >= multi_processor_count * 256 ? 1 : split_k_limit;
-  for (int ii = 0; ii < static_cast<int>(candidate_configs.size()); ++ii) {
+  for (size_t ii = 0; ii < candidate_configs.size(); ++ii) {
     CutlassGemmConfig candidate_config = candidate_configs[ii];
     TileShape tile_shape = get_cta_shape_for_config(candidate_config.tile_config);
     int occupancy = occupancies[ii];
@@ -196,8 +196,8 @@ CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmC
       continue;
     }
 
-    int const ctas_in_m_dim = (m + tile_shape.m - 1) / tile_shape.m;
-    int const ctas_in_n_dim = (n + tile_shape.n - 1) / tile_shape.n;
+    int const ctas_in_m_dim = static_cast<int>((m + tile_shape.m - 1) / tile_shape.m);
+    int const ctas_in_n_dim = static_cast<int>((n + tile_shape.n - 1) / tile_shape.n);
 
     for (int split_k_factor = 1; split_k_factor <= max_split_k; ++split_k_factor) {
       if (is_valid_split_k_factor(m, n, k, tile_shape, split_k_factor, workspace_bytes, is_weight_only)) {
@@ -205,10 +205,10 @@ CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmC
         int const ctas_for_problem = ctas_in_m_dim * ctas_in_n_dim * split_k_factor;
 
         int const num_waves_total = (ctas_for_problem + ctas_per_wave - 1) / ctas_per_wave;
-        float const num_waves_fractional = ctas_for_problem / float(ctas_per_wave);
-        float const current_score = float(num_waves_total) - num_waves_fractional;
+        float const num_waves_fractional = ctas_for_problem / static_cast<float>(ctas_per_wave);
+        float const current_score = static_cast<float>(num_waves_total) - num_waves_fractional;
 
-        float const score_slack = 0.1f;
+        constexpr float score_slack = 0.1f;
         if (current_score < config_score || ((config_waves > num_waves_total) &&
                                              (current_score < config_score + score_slack))) {
           config_score = current_score;
@@ -232,7 +232,7 @@ CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmC
   }
 
   if (best_config.tile_config == CutlassTileConfig::ChooseWithHeuristic) {
-    throw std::runtime_error("[TensorRT-LLm Error] Heurisitc failed to find a valid config.");
+    ORT_THROW("Heurisitc failed to find a valid config.");
   }
 
   return best_config;

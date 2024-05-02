@@ -56,6 +56,7 @@
 
 #include <cuda.h>
 #include <cuda_fp16.h>
+#include <limits>
 #include <math.h>
 #include <sstream>
 
@@ -136,21 +137,21 @@ void generic_moe_gemm_kernelLauncher(const T* A, const WeightType* B, const T* w
   if (can_implement != cutlass::Status::kSuccess) {
     std::string err_msg =
         "MoEFC kernel will fail for params. Error: " + std::string(cutlassGetStatusString(can_implement));
-    ORT_THROW("[FT Error][MoE Runner] " + err_msg);
+    ORT_THROW("[MoE Runner] " + err_msg);
   }
 
   auto init_status = gemm.initialize(args);
   if (init_status != cutlass::Status::kSuccess) {
     std::string err_msg = "Failed to initialize cutlass variable batched gemm. Error: " +
                           std::string(cutlassGetStatusString(init_status));
-    ORT_THROW("[FT Error][MoE Runner] " + err_msg);
+    ORT_THROW("[MoE Runner] " + err_msg);
   }
 
   auto run_status = gemm.run(stream);
   if (run_status != cutlass::Status::kSuccess) {
     std::string err_msg =
         "Failed to run cutlass variable batched gemm. Error: " + std::string(cutlassGetStatusString(run_status));
-    ORT_THROW("[FT Error][MoE Runner] " + err_msg);
+    ORT_THROW("[MoE Runner] " + err_msg);
   }
 }
 
@@ -163,7 +164,7 @@ struct dispatch_stages {
                        cudaStream_t /*stream*/, [[maybe_unused]] int* occupancy = nullptr) {
     std::string err_msg = "Cutlass fpA_intB gemm. Not instantiates for arch " +
                           std::to_string(arch::kMinComputeCapability) + " with stages set to " + std::to_string(Stages);
-    ORT_THROW("[FT Error][dispatch_stages::dispatch] " + err_msg);
+    ORT_THROW("[dispatch_stages::dispatch] " + err_msg);
   }
 };
 
@@ -218,7 +219,7 @@ void dispatch_gemm_config(const T* A, const WeightType* B, const T* weight_scale
       break;
     default:
       std::string err_msg = "dispatch_gemm_config does not support stages " + std::to_string(gemm_config.stages);
-      ORT_THROW("[FT Error][MoE][dispatch_gemm_config] " + err_msg);
+      ORT_THROW("[MoE][dispatch_gemm_config] " + err_msg);
       break;
   }
 }
@@ -398,7 +399,7 @@ void MoeGemmRunner<T, WeightType>::dispatch_to_arch<EpilogueTag>(const T* A, con
         A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k, num_experts, gemm_config,
         sm_, multi_processor_count_, stream, occupancy);
   } else {
-    ORT_THROW("[FT Error][MoE][GEMM Dispatch] Arch unsupported for MoE GEMM");
+    ORT_THROW("[MoE][GEMM Dispatch] Arch unsupported for MoE GEMM");
   }
 }
 
@@ -470,8 +471,6 @@ void MoeGemmRunner<T, WeightType>::run_gemm<EpilogueTag>(const T* A, const Weigh
 
   auto chosen_config_iter = best_config_map.find(key);
   if (chosen_config_iter == best_config_map.end()) {
-    // Currently profile_gemm() will be executed in the first run for all MoE ops in a model. A better approach would be
-    // to profile once in one MoE op and use the same config for all MoE ops.
     profile_gemm<EpilogueTag>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
                               num_experts, stream, best_config_map, key);
   }
@@ -504,10 +503,10 @@ void MoeGemmRunner<T, WeightType>::moe_gemm_bias_act(const T* A, const WeightTyp
                                   num_experts, stream, best_config_map);
       break;
     case ActivationType::InvalidType:
-      ORT_THROW("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
+      ORT_THROW("[MoE Runner] Invalid activation type for MoE GEMM");
       break;
     default: {
-      ORT_THROW("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
+      ORT_THROW("[MoE Runner] Invalid activation type for MoE GEMM");
     }
   }
 }

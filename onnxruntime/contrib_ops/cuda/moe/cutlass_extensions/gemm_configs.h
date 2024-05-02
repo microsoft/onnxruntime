@@ -179,7 +179,7 @@ struct CutlassGemmConfig {
       case CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64:
         str += "CtaShape16x256x64_WarpShape16x64x64";
         break;
-    };
+    }
     str += ", stages: ";
     str += std::to_string(stages);
     return str;

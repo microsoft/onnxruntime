@@ -130,7 +130,7 @@ __launch_bounds__(TPB) __global__
     float output_row_sum = 0.f;
     for (int k_idx = 0; k_idx < k; ++k_idx) {
         thread_kvp.key = 0;
-        thread_kvp.value = T(-1.f); // This is OK because inputs are probabilities
+        thread_kvp.value = T(-1.f);
 
         cub_kvp inp_kvp;
         for (int expert = threadIdx.x; expert < num_experts; expert += TPB) {
@@ -714,15 +714,15 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
 
     if (scales_required) {
         if (fc1_scales == nullptr) {
-            ORT_THROW("[FT Error][Run MoE FC] Scales expected but scale for first matmul is a null pointer");
+            ORT_THROW("[Run MoE FC] Scales expected but scale for first matmul is a null pointer");
         } else if (fc2_scales == nullptr) {
-            ORT_THROW("[FT Error][Run MoE FC] Scales expected but scale for second matmul is a null pointer");
+            ORT_THROW("[Run MoE FC] Scales expected but scale for second matmul is a null pointer");
         }
     } else {
         if (fc1_scales != nullptr) {
-            ORT_THROW("[FT Error][Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC1");
+            ORT_THROW("[Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC1");
         } else if (fc2_scales != nullptr) {
-            ORT_THROW("[FT Error][Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC2");
+            ORT_THROW("[Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC2");
         }
     }
 
@@ -758,15 +758,15 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     if (has_fc3_) {
         if (scales_required) {
             if (fc3_scales == nullptr) {
-                ORT_THROW("[FT Error][Run MoE FC] Scales expected but scale for third matmul is a null pointer");
+                ORT_THROW("[Run MoE FC] Scales expected but scale for third matmul is a null pointer");
             }
         } else {
             if (fc3_scales != nullptr) {
-                ORT_THROW("[FT Error][Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC3");
+                ORT_THROW("[Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC3");
             }
         }
         if (fc3_expert_weights == nullptr) {
-            ORT_THROW("[FT Error][Run MoE FC] FC3 weights are null");
+            ORT_THROW("[Run MoE FC] FC3 weights are null");
         }
         moe_gemm_runner_.moe_gemm(permuted_data_ + total_past_rows_ * hidden_size, fc3_expert_weights, fc3_scales,
                                   fc3_expert_biases, fc3_result_ + total_past_rows_ * inter_size,
@@ -791,7 +791,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(const T *, const T *,
                                                            const int, int, int, int, int k, char *, T *, T *, int *,
                                                            int *, cudaStream_t) {
     // MoE gemm only supports Volta+ architectures
-    ORT_THROW("[FT Error][Run MoE FC] MoE gemm only supports Volta+ architectures");
+    ORT_THROW("[Run MoE FC] MoE gemm only supports Volta+ architectures");
 }
 #else
 template <typename T, typename WeightType, typename Enable>
