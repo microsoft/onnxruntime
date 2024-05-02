@@ -202,28 +202,12 @@ class QnnTensorWrapper {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnTensorWrapper);
 
   QnnTensorWrapper(QnnTensorWrapper&& other) noexcept {
-    std::swap(tensor_name_, other.tensor_name_);
-    std::swap(dimensions_, other.dimensions_);
-    std::swap(client_buf_, other.client_buf_);
-    std::swap(quant_params_, other.quant_params_);
-    std::swap(qnn_tensor_, other.qnn_tensor_);
-    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
-    SetQnnTensorDim(qnn_tensor_, dimensions_);
-    SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
-    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
+    SwapOther(std::move(other));
   }
 
   QnnTensorWrapper& operator=(QnnTensorWrapper&& other) noexcept {
     if (this != &other) {
-      std::swap(tensor_name_, other.tensor_name_);
-      std::swap(dimensions_, other.dimensions_);
-      std::swap(client_buf_, other.client_buf_);
-      std::swap(quant_params_, other.quant_params_);
-      std::swap(qnn_tensor_, other.qnn_tensor_);
-      SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
-      SetQnnTensorDim(qnn_tensor_, dimensions_);
-      SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
-      SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
+      SwapOther(std::move(other));
     }
 
     return *this;
@@ -264,6 +248,18 @@ class QnnTensorWrapper {
   }
 
  private:
+  void SwapOther(QnnTensorWrapper&& other) noexcept {
+    std::swap(tensor_name_, other.tensor_name_);
+    std::swap(dimensions_, other.dimensions_);
+    std::swap(client_buf_, other.client_buf_);
+    std::swap(quant_params_, other.quant_params_);
+    std::swap(qnn_tensor_, other.qnn_tensor_);
+    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+    SetQnnTensorDim(qnn_tensor_, dimensions_);
+    SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
+    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
+  }
+
   std::string tensor_name_;
   std::vector<uint32_t> dimensions_;
   std::vector<uint8_t> client_buf_;

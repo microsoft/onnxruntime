@@ -457,7 +457,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     // Try to see if this node unit can be fused.
     std::vector<const NodeUnit*> fused_nodes;
     Status fusion_status = TryFusions(fused_nodes, qnn_model_wrapper, *node_unit, node_unit_map,
-                                      handled_node_units, logger, false);
+                                      handled_node_units, logger, true /*do_op_validation*/);
 
     if (!fusion_status.IsOK()) {
       LOGS(logger, WARNING) << "Failed to apply fusion: " << fusion_status.ErrorMessage();

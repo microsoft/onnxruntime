@@ -141,7 +141,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     // Try to see if this node unit can be fused.
     std::vector<const NodeUnit*> fused_nodes;
     ORT_RETURN_IF_ERROR(TryFusions(fused_nodes, qnn_model_wrapper, node_unit, node_unit_map,
-                                   handled_node_units, logger_, false));
+                                   handled_node_units, logger_, false /*do_op_validation*/));
 
     if (!fused_nodes.empty()) {
       for (auto fused_node_unit : fused_nodes) {
