@@ -252,9 +252,11 @@ Status QkvToContext(
       data.kernel_layout.num_layout);
 #endif
 
+  int sm = device_prop.major * 10 + device_prop.minor;
   if (data.use_v2_kernel) {
     sparse_attention_v2::SparseAttentionParams params(
         ort_stream,
+        sm,
         data.output,
         reinterpret_cast<const void*>(query),
         reinterpret_cast<const void*>(data.present_key),
@@ -289,6 +291,7 @@ Status QkvToContext(
   } else {
     sparse_attention_v1::SparseAttentionParams params(
         ort_stream,
+        sm,
         data.output,
         reinterpret_cast<const void*>(query),
         reinterpret_cast<const void*>(data.present_key),

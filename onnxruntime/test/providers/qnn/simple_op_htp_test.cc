@@ -656,7 +656,13 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
 }
 
 // Test accuracy of 16-bit QDQ Ceil op.
-TEST_F(QnnHTPBackendTests, UnaryOp_Ceil_U16) {
+// TODO(adrianlizarraga): Fails in QNN SDK 2.21 (linux). On Windows ARM64, fails in QNN SDK 2.19.
+//
+// input: [-12.0, -7.199, -2.399, 2.4, 7.2, 12.0]
+// CPU EP f32 model output: [-12.0, -7.0, -2.0, 3.0, 8.0, 12.0]
+// CPU EP qdq model output: [-12.0, -6.99, -1.99, 3.0, 8.0, 11.99]
+// QNN EP qdq model output: [-11.0 (WRONG), -7.0, -2.0, 2.99, 8.0, 11.99]
+TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Ceil_U16) {
   const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
   RunQDQOpTest<uint16_t>("Ceil",
                          {TestInputDef<float>({1, 2, 3}, false, input_data)},
