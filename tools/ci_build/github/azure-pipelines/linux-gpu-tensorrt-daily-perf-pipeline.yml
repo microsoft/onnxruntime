@@ -8,12 +8,14 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 8.6.cuda_11_8_cudnn_8
+  default: 10.0.cuda_11_8_cudnn_8
   values:
   - 8.4.cuda_11_6_cudnn_8
   - 8.5.cuda_11_8_cudnn_8
   - 8.6.cuda_11_8_cudnn_8
   - 8.6.cuda_12_3_cudnn_9
+  - 10.0.cuda_11_8_cudnn_8
+  - 10.0.cuda_12_4_cudnn_9
   - BIN
 
 - name: UseTensorrtOssParser
@@ -105,9 +107,15 @@ jobs:
         displayName: 'Build latest ORT Image with TensorRT built-in parser'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
-    # Build ORT with TensorRT OSS parser 
-    - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, true)) }}:
+    # Build ORT with certain version of TensorRT OSS parser
+    - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, true), ne(variables.onnxTensorrtCommitId, '')) }}:
       - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 -o $(onnxTensorrtCommitId) --use_tensorrt_oss_parser'
+        displayName: 'Build latest ORT Image with TensorRT OSS parser and commit id $(onnxTensorrtCommitId)'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+
+    # Build ORT with default version of TensorRT OSS parser
+    - ${{ if and(ne(parameters.TrtVersion, 'BIN'), eq(parameters.UseTensorrtOssParser, true), eq(variables.onnxTensorrtCommitId, '')) }}:
+      - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.py -r $(Build.SourcesDirectory) -i $(image) -b $(branchName) -t $(trtVersion) -a 75 --use_tensorrt_oss_parser'
         displayName: 'Build latest ORT Image with TensorRT OSS parser'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     

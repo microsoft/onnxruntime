@@ -59,6 +59,11 @@ const std::string& GetNodeOutputName(const Node& node, int index);
 */
 const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
 
+/** Move the input edges that src_node has to target_node.
+After the move is complete src_node will have no input edges.
+*/
+void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node);
+
 /** Removes all output edges from the given Node of the Graph.
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
@@ -88,6 +93,9 @@ struct GraphEdge {
 
   /** Returns a vector of the input GraphEdges of a node. */
   static std::vector<GraphEdge> GetNodeInputEdges(const Node& node);
+
+  /** Returns a vector of the input GraphEdges of a node for the provided input index. */
+  static std::vector<GraphEdge> GetNodeInputEdges(const Node& node, size_t index);
 
   /** Returns a vector of the output GraphEdges of a node. */
   static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node);

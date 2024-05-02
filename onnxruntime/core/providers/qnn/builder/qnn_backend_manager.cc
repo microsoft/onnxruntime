@@ -1286,8 +1286,24 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
     return nullptr;
   }
 
-  // search from system lib path first
-  HMODULE mod = LoadLibraryExA(file_name, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+  HMODULE mod;
+  auto file_path = std::filesystem::path(file_name);
+  if (!file_path.is_absolute()) {
+    // construct an absolute path from ORT runtime path + file_name and check whether it exists.
+    auto pathstring = Env::Default().GetRuntimePath() + ToPathString(file_name);
+    auto absolute_path = pathstring.c_str();
+    if (std::filesystem::exists(std::filesystem::path(absolute_path))) {
+      // load library from absolute path and search for dependencies there.
+      mod = LoadLibraryExW(absolute_path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    } else {
+      // use default dll search order for file_name.
+      mod = LoadLibraryExA(file_name, nullptr, 0);
+    }
+  } else {
+    // file_name represents an absolute path.
+    // load library from absolute path and search for dependencies there.
+    mod = LoadLibraryExA(file_name, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+  }
   if (!mod) {
     error_msg = "load library failed";
     return nullptr;

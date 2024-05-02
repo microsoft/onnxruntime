@@ -99,6 +99,15 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
                      static_cast<int32_t>(K),
                      static_cast<int32_t>(block_size));
 
+#if 0
+  for (int i = 0; i < input1_vals.size(); i++)
+  {
+    uint8_t byte = input1_vals[i];
+    uint8_t val_lo = byte & 0x0f;
+    uint8_t val_hi = byte >> 4;
+    std::cout << (int)val_lo << ", " << (int)val_hi << ", ";
+  }
+#endif
   std::vector<float> expected_vals(M * N);
   for (int64_t m = 0; m < M; m++) {
     for (int64_t n = 0; n < N; n++) {
@@ -219,7 +228,7 @@ TEST(MatMulNBits, Float32) {
             RunTest(M, N, K, block_size, accuracy_level, true, false);
           }
 #else
-          for (auto accuracy_level : {0}) {
+          for (auto accuracy_level : {0, 1, 4}) {
             RunTest(M, N, K, block_size, accuracy_level, false, false);
             RunTest(M, N, K, block_size, accuracy_level, true, false);
             RunTest(M, N, K, block_size, accuracy_level, false, false, true);

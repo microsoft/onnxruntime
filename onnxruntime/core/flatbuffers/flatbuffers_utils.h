@@ -40,7 +40,7 @@ void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_st
 #define LOAD_STR_FROM_ORT_FORMAT(protobuf_msg, str_field, fbs_string) \
   {                                                                   \
     if (fbs_string)                                                   \
-      protobuf_msg.set_##str_field(fbs_string->c_str());              \
+      protobuf_msg.set_##str_field(fbs_string->str());                \
   }
 
 onnxruntime::common::Status LoadValueInfoOrtFormat(

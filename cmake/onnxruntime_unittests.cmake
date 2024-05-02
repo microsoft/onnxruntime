@@ -250,9 +250,14 @@ file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/logging/*.h"
 )
 
-file(GLOB onnxruntime_test_quantiztion_src CONFIGURE_DEPENDS
+file(GLOB onnxruntime_test_quantization_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/quantization/*.cc"
   "${TEST_SRC_DIR}/quantization/*.h"
+)
+
+file(GLOB onnxruntime_test_flatbuffers_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/flatbuffers/*.cc"
+  "${TEST_SRC_DIR}/flatbuffers/*.h"
 )
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
@@ -767,7 +772,8 @@ if(NOT IOS)
 endif()
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
-        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantiztion_src})
+        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantization_src}
+        ${onnxruntime_test_flatbuffers_src})
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
@@ -870,6 +876,11 @@ if (MSVC)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26451>")
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
+  # Avoid the error for Win arm64 Release build. error C1128: number of sections exceeded object file format limit: compile with /bigobj
+  string(TOLOWER ${onnxruntime_target_platform} GEN_PLATFORM)
+  if (${GEN_PLATFORM} STREQUAL "arm64" AND "${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+    target_compile_options(onnxruntime_test_all PRIVATE "/bigobj")
+  endif()
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
@@ -986,6 +997,12 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       add_custom_command(
         TARGET ${test_data_target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${test_data_target}>
+        )
+    endif()
+    if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+      add_custom_command(
+        TARGET ${test_data_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf" $<TARGET_FILE_DIR:${test_data_target}>
         )
     endif()
   endif()
@@ -1721,7 +1738,7 @@ endif()
 
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
                                   AND NOT onnxruntime_USE_ROCM)

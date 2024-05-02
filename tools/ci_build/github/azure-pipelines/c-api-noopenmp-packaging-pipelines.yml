@@ -90,9 +90,14 @@ variables:
     value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
 - name: linux_trt_version
   ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: 8.6.1.6-1.cuda11.8
+    value: 10.0.1.6-1.cuda11.8
   ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: 8.6.1.6-1.cuda12.0
+    value: 10.0.1.6-1.cuda12.4
+- name: win_trt_version
+  ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    value: 11.8
+  ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    value: 12.4
 
 stages:
 - stage: Setup
@@ -217,11 +222,11 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
+    buildparameter: --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.CudaVersion }} --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
-    CudaVersion: 11.8
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
@@ -235,11 +240,11 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8"  --cuda_home="$(Agent.TempDirectory)\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-${{ variables.win_trt_version }}"  --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
-    CudaVersion: 11.8
+    CudaVersion: ${{ parameters.CudaVersion }}
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
 
 # ROCm
@@ -464,9 +469,13 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
         Context: tools/ci_build/github/linux/docker/
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg BASEIMAGE=${{ variables.docker_base_image }}
+        --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
+        "
         Repository: onnxruntimeubi8packagestest
         UpdateDepsTxt: false
 
@@ -594,8 +603,8 @@ stages:
   - job:
     workspace:
       clean: all
-    # we need to use the 2022 pool to create the nuget package with both pre-net7+Xamarin and net7 targets.
-    # VS2019 has no support for net7 and we need to use msbuild (from the VS install) to do the packing
+    # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
+    # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
     pool: 'Onnxruntime-Win-CPU-2022'
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -811,8 +820,8 @@ stages:
   - job:
     workspace:
       clean: all
-    # we need to use the 2022 pool to create the nuget package with both pre-net7+Xamarin and net7 targets.
-    # VS2019 has no support for net7 and we need to use msbuild (from the VS install) to do the packing
+    # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
+    # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
     pool: 'Onnxruntime-Win-CPU-2022'
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -876,20 +885,20 @@ stages:
         versionSpec: 6.2.1
 
     - task: PowerShell@2
-      displayName: Build .NET 7 targets using dotnet
+      displayName: Build .NET 6 targets using dotnet
       inputs:
         targetType: 'inline'
         # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net7.0-ios\
-        # which is inconsistent with the msbuild output path for the pre-.net7 targets
+        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
+        # which is inconsistent with the msbuild output path for the pre-.net6 targets
         #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
         # and makes it harder to do the packing
         #
         # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
         script: |
           dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj `
-            -p:SelectedTargets=Net7 `
-            /p:Net7Targets=net7.0 `
+            -p:SelectedTargets=Net6 `
+            /p:Net6Targets=net6.0 `
             -p:Configuration=RelWithDebInfo `
             -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" `
             -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm" `
@@ -898,22 +907,22 @@ stages:
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net7 targets'
+      displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet7 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
+        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Build C# for pre-.net7 targets'
+      displayName: 'Build C# for pre-.net6 targets'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
         msbuildArguments: >
-          -p:SelectedTargets=PreNet7
+          -p:SelectedTargets=PreNet6
           -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
           -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"
           -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
@@ -1050,6 +1059,7 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
@@ -1060,6 +1070,7 @@ stages:
     StageSuffix: 'GPU'
     MoreSuffix: '_Linux'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 

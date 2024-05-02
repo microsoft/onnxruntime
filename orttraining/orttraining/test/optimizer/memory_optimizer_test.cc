@@ -60,7 +60,7 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
     }
   }
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
 
   const std::string alleviation_config("Gelu+:1:-1");
   const std::string probe_config("1:0");
@@ -89,8 +89,6 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
   }
 
   ASSERT_EQ(recompute_gelu_node->MutableInputDefs()[0]->Name(), original_gelu_node->MutableInputDefs()[0]->Name());
-  ASSERT_EQ(recompute_gelu_node->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
-  ASSERT_EQ(original_gelu_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
 }
 
 TEST(MemoryOptimizerTests, TileRecompute) {
@@ -121,12 +119,11 @@ TEST(MemoryOptimizerTests, TileRecompute) {
   Node* recompute_tile_node{nullptr};
   Node* original_tile_node{nullptr};
   for (auto& node : graph.Nodes()) {
-    if (node.Priority() == static_cast<int>(ExecutionPriority::LOCAL_LOW)) {
-      if (node.OpType().compare("Tile") == 0) {
+    if (node.OpType().compare("Tile") == 0) {
+      // if name ends with _recompute, it's the recomputed node
+      if (node.Name().find("_recompute") != std::string::npos) {
         recompute_tile_node = &node;
-      }
-    } else if (node.Priority() == static_cast<int>(ExecutionPriority::DEFAULT)) {
-      if (node.OpType().compare("Tile") == 0) {
+      } else {
         original_tile_node = &node;
       }
     }
@@ -146,10 +143,6 @@ TEST(MemoryOptimizerTests, TileRecompute) {
 
   ASSERT_EQ(recompute_expand_node->InputDefs()[0]->Name(), original_expand_node->InputDefs()[0]->Name());
   ASSERT_EQ(query_layer_grad_node->InputDefs()[1]->Name(), recompute_tile_node->OutputDefs()[0]->Name());
-
-  ASSERT_EQ(recompute_tile_node->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
-  ASSERT_EQ(original_tile_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
-  ASSERT_EQ(query_layer_grad_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
 }
 
 TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
@@ -225,22 +218,17 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
         if (consumer->OpType().compare("LayerNormalization") == 0) {
           if (consumer->Name().find("_recompute") != std::string::npos) {
             recompute_ln_node = consumer;
-            ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
             recompute_ln_node_parent_add_or_ln_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node != nullptr);
-            ASSERT_EQ(recompute_ln_node_parent_add_or_ln_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node->Name().find("_recompute") == std::string::npos);
           } else {
             original_ln_node = consumer;
-            ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             original_ln_node_parent_add_or_ln_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(original_ln_node_parent_add_or_ln_node);
-            ASSERT_EQ(original_ln_node_parent_add_or_ln_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             ASSERT_TRUE(original_ln_node_parent_add_or_ln_node->Name().find("_recompute") == std::string::npos);
           }
         } else if (consumer->OpType().compare("LayerNormalizationGrad") == 0) {
           input_layer_norm_grad_node = consumer;
-          ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
         }
       }
 
@@ -264,21 +252,17 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
         if (consumer->OpType().compare("LayerNormalization") == 0) {
           if (consumer->Name().find("_recompute") != std::string::npos) {
             recompute_ln_node = consumer;
-            ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
             recompute_ln_node_parent_add_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(recompute_ln_node_parent_add_node);
             ASSERT_EQ(recompute_ln_node_parent_add_node->OpType(), "Add");
-            ASSERT_EQ(recompute_ln_node_parent_add_node->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
             ASSERT_TRUE(recompute_ln_node_parent_add_node->Name().find("_recompute") != std::string::npos);
           } else {
             original_ln_node = consumer;
-            ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             original_ln_node_parent_add_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(original_ln_node_parent_add_node);
           }
         } else if (consumer->OpType().compare("LayerNormalizationGrad") == 0) {
           ln_grad_node = consumer;
-          ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
         }
       }
 
@@ -294,7 +278,8 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
 
   std::vector<size_t> nodes_in_topological_order;
   nodes_in_topological_order.reserve(bw_nodes_in_expected_order.size());
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();  // ExecutionOrder::PRIORITY_BASED
+  const auto& node_topology_list =
+      graph_viewer.GetNodesInTopologicalOrder(optimizer::memory_optimizer::TOPOLOGICAL_SORT_ALGORITHM);
 
   size_t j = 0;
   for (auto node_index : node_topology_list) {
@@ -322,7 +307,8 @@ TEST(MemoryOptimizerTests, TransformerLayerDetectionTest) {
   GraphViewer graph_viewer(graph);
 
   InlinedHashMap<NodeIndex, ptrdiff_t> node_index_to_its_order_in_topological_sort_map;
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  const auto& node_ids =
+      graph_viewer.GetNodesInTopologicalOrder(optimizer::memory_optimizer::TOPOLOGICAL_SORT_ALGORITHM);
 
   // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
   ptrdiff_t yield_op_order_in_topological_sort = -1;
