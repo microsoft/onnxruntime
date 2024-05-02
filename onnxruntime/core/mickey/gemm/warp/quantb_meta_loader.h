@@ -234,6 +234,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
   /// [start_n, end_n) was specified in the constructor
   CUTLASS_DEVICE
   void load_to_smem(const int lane_idx, const int start_k, const int k_cnt, ElementT* smem, OffsetT* offset_smem) const {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
     { // Load scales to smem
       int lane_ptr_offset = mul_power2<16 / sizeof(ElementT)>(lane_idx);
 
@@ -279,6 +280,14 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
             "l"(&offsets_ptr[k_idx * offsets_byte_stride + n_idx * sizeof(OffsetT)]),
             "n"(16), "r"(src_in_bytes));
     }
+#else
+      assert(false);
+      (void)(lane_idx);
+      (void)(start_k);
+      (void)(k_cnt);
+      (void)(smem);
+      (void)(offset_smem);
+#endif
   }
 
   CUTLASS_DEVICE
@@ -483,6 +492,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
   /// [start_n, end_n) was specified in the constructor
   CUTLASS_DEVICE
   void load_to_smem(const int lane_idx, const int start_k, const int k_cnt, ElementT* smem, OffsetT* offset_smem) const {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
     {
       // Load scales to smem
       int lane_ptr_offset = mul_power2<16 / sizeof(ElementT)>(lane_idx);
@@ -523,6 +533,14 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
             "l"(&offsets_ptr[n_idx * offsets_byte_stride + k_idx * sizeof(OffsetT)]),
             "n"(16), "r"(src_in_bytes));
     }
+#else
+      assert(false);
+      (void)(lane_idx);
+      (void)(start_k);
+      (void)(k_cnt);
+      (void)(smem);
+      (void)(offset_smem);
+#endif
   }
 
   CUTLASS_DEVICE
