@@ -120,10 +120,8 @@ stages:
       name: Set_Release_Version_Suffix
     - script: |
         # Extracting hours and minutes
-        hours=$(date -d "$(pipeline.startTime)" +'%H')
-        minutes=$(date -d "$(pipeline.startTime)" +'%M')
         date=$(date -d "$(pipeline.startTime)" +'%Y%m%d')
-        hhmm="$hours$minutes"
+        hhmm=$(date -d "$(pipeline.startTime)" +'%H%M')
         # Set the hhmm value as a pipeline variable
         echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
         echo "##vso[task.setvariable variable=BuildDate;isOutput=true]$date"
@@ -143,12 +141,16 @@ stages:
       vmImage: ubuntu-latest
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]
+      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
     steps:
     - checkout: none
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
     - bash: echo $(MyVar)
+    - bash: echo $(BuildTime)
+    - bash: echo $(BuildDate)
     - template: templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'

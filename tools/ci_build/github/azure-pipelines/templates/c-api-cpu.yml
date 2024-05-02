@@ -306,8 +306,8 @@ stages:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[stageDependencies.A.A1.outputs['MyOutputVar.myStageVal']]
-      BuildTime: $[stageDependencies.A.A1.outputs['MyOutputVar.myStageVal']]
+      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]
+      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
