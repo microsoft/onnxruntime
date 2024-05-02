@@ -259,7 +259,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
     }
 
-    Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, actual_name);
+    Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(actual_name);
     QnnTensorWrapper input_tensorwrapper(actual_name, tensor_type, input_info.qnn_data_type,
                                          std::move(input_info.quant_param),
                                          std::move(actual_shape), std::move(unpacked_tensor));
@@ -335,7 +335,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
         ORT_RETURN_IF_ERROR(input0_info.quant_param.HandleUnsqueeze<uint32_t>(input0_info.shape, shape));
       }
 
-      Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, conv_input0_name);
+      Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(conv_input0_name);
       QnnTensorWrapper input_tensorwrapper(conv_input0_name, tensor_type, input0_info.qnn_data_type,
                                            std::move(input0_info.quant_param), std::move(shape),
                                            std::move(unpacked_tensor));
@@ -467,7 +467,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
     }
 
-    Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, conv_weight_input_name);
+    Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(conv_weight_input_name);
     QnnTensorWrapper input_tensorwrapper(conv_weight_input_name, tensor_type, input_info.qnn_data_type,
                                          std::move(input_info.quant_param), std::move(final_shape),
                                          std::move(unpacked_tensor));
@@ -719,7 +719,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     QnnTensorWrapper output_tensorwrapper(conv_output_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type,
                                           output_quantize_param.Copy(), std::vector<uint32_t>(output_shape_2d));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       output_node_type,
                                                       std::move(input_names),
@@ -743,7 +743,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, qnn_data_type,
                                           std::move(output_quantize_param), std::move(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       output_node_type,
                                                       std::move(input_names),
