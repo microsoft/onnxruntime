@@ -401,6 +401,15 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
   return Status::OK();
 }
 
+const std::string& GetNodeName(const NodeUnit& node_unit) {
+  const std::string& node_name = node_unit.Name();
+  if (node_name.empty()) {
+    return node_unit.Outputs()[0].node_arg.Name();
+  }
+
+  return node_name;
+}
+
 bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized) {
   const std::unordered_map<int32_t, Qnn_DataType_t> onnx_to_qnn_data_type = {
       {ONNX_NAMESPACE::TensorProto_DataType_INT8, QNN_DATATYPE_INT_8},
