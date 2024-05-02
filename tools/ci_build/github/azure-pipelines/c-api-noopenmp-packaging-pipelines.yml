@@ -65,8 +65,8 @@ parameters:
   type: string
   default: '11.8'
   values:
-  - 11.8
-  - 12.2
+    - 11.8
+    - 12.2
 
 resources:
   repositories:
@@ -129,8 +129,8 @@ stages:
       name: Set_Build_Time
 
     - template: templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+      parameters :
+        condition : 'succeeded'
 
 
 - stage: Debug
@@ -152,12 +152,12 @@ stages:
     - bash: echo $(BuildTime)
     - bash: echo $(BuildDate)
     - template: templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+      parameters :
+        condition : 'succeeded'
 
 
 - stage: Download_Java_Tools
-  dependsOn: [ ]
+  dependsOn: []
   jobs:
   - job: Download_Java_Tools
     pool:
@@ -183,8 +183,8 @@ stages:
         targetPath: '$(Agent.TempDirectory)/java-tools'
         artifact: 'onnxruntime-java-tools'
     - template: templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+      parameters :
+        condition : 'succeeded'
 
 - template: templates/c-api-cpu.yml
   parameters:
@@ -258,7 +258,7 @@ stages:
 
 # ROCm
 - stage: Linux_C_API_Packaging_ROCm_x64
-  dependsOn: [ ]
+  dependsOn: []
   jobs:
   - job:
     workspace:
@@ -304,10 +304,10 @@ stages:
           -P python3.10
 
     - script: |
-        set -e -x
-        mkdir $(Build.ArtifactStagingDirectory)/testdata
-        cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
-        ls -al $(Build.ArtifactStagingDirectory)
+       set -e -x
+       mkdir $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
+       ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts for CustomOp'  # libcustom_op_library.so from cpu build is built with fp8, ROCm does not support it.
 
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
@@ -387,8 +387,8 @@ stages:
         artifact: 'onnxruntime-java-gpu'
 
     - template: templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+      parameters :
+        condition : 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
@@ -592,8 +592,8 @@ stages:
 
 
     - template: templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+      parameters :
+        condition : 'succeeded'
 
 - stage: NuGet_Packaging_GPU
   dependsOn:
@@ -670,12 +670,12 @@ stages:
         filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files_gpu.ps1
 
     - script: |
-        dir
+       dir
       workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
       displayName: 'List artifacts'
 
     - script: |
-        mklink /D /J models C:\local\models
+       mklink /D /J models C:\local\models
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Create models link'
 
@@ -809,8 +809,8 @@ stages:
       condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
     - template: templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+      parameters :
+        condition : 'succeeded'
 
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
@@ -877,12 +877,12 @@ stages:
           Copy-Item -Path $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-rocm\lib\* -Destination $(Build.BinariesDirectory)\RelWithDebInfo
 
     - script: |
-        tree /F
+       tree /F
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Inspect Build Binaries Directory'
 
     - script: |
-        mklink /D /J models C:\local\models
+       mklink /D /J models C:\local\models
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Create models link'
 
@@ -1030,8 +1030,8 @@ stages:
       condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
     - template: templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+      parameters :
+        condition : 'succeeded'
 
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
