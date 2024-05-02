@@ -59,6 +59,8 @@
 #include <math.h>
 #include <sstream>
 
+#include "test/util/include/file_util.h"
+
 namespace ort_fastertransformer {
 
 // ============================= Variable batched Gemm things ===========================
@@ -426,7 +428,7 @@ void MoeGemmRunner<T, WeightType>::run_gemm<EpilogueTag>(const T* A, const Weigh
     constexpr int warmup = 5;
     constexpr int runs = 10;
     float min_elapsed = std::numeric_limits<float>::max();
-    CutlassGemmConfig chosen_config;
+    size_t chosen_config_id = 0;
     for (size_t ii = 0; ii < candidate_configs.size(); ++ii) {
       for (int jj = 0; jj < warmup; ++jj) {
         dispatch_to_arch<EpilogueTag>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n,
@@ -459,10 +461,24 @@ void MoeGemmRunner<T, WeightType>::run_gemm<EpilogueTag>(const T* A, const Weigh
       if (elapsed < min_elapsed) {
         min_elapsed = elapsed;
         // use chosen_config_id
-        chosen_config = candidate_configs[ii];
+        chosen_config_id = ii;
       }
     }
-    best_config_map.emplace(key, chosen_config);
+    best_config_map.emplace(key, candidate_configs[chosen_config_id]);
+
+    FILE* fp;
+    std::string filename = std::to_string(key);
+    fp = fopen(filename.c_str(), "wb");
+    std::cout << "created test file: " << filename << std::endl;
+    fwrite(&candidate_configs[chosen_config_id], sizeof(CutlassGemmConfig), 1, fp);
+    std::cout << "write config to file:" << candidate_configs[chosen_config_id].to_string() << std::endl;
+
+    CutlassGemmConfig read_struct;
+    auto result = fread(&read_struct, sizeof(CutlassGemmConfig), 1, fp);
+    std::cout << "read config from file: " << read_struct.to_string() << std::endl;
+    std::cout << result << std::endl;
+    fclose(fp);
+
     // cudaDeviceSynchronize();
     //  static constexpr int workspace_bytes = 0;  // No workspace for MoE GEMMs.
     //  static constexpr int split_k_limit = 1;    // MoE GEMM does not support split-k.
