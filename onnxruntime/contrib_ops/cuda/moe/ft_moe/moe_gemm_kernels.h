@@ -19,9 +19,32 @@
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm_configs.h"
 #include <cuda_runtime_api.h>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
 namespace ort_fastertransformer {
+
+struct MoEGemmConfigMap {
+  using MoEGemmConfigMapT = std::unordered_map<int64_t, CutlassGemmConfig>;
+
+  MoEGemmConfigMapT map;
+  std::mutex mutex;
+
+  void Insert(int64_t key, CutlassGemmConfig config) {
+    std::lock_guard<std::mutex> lock(mutex);
+    map[key] = config;
+  }
+
+  bool Contains(int64_t key) {
+    std::lock_guard<std::mutex> lock(mutex);
+    return map.find(key) != map.end();
+  }
+
+  CutlassGemmConfig Get(int64_t key) {
+    std::lock_guard<std::mutex> lock(mutex);
+    return map[key];
+  }
+};
 
 enum class ActivationType { Gelu,
                             Relu,
@@ -47,6 +70,11 @@ class MoeGemmRunner {
   void moe_gemm(const T* A, const WeightType* B, const T* weight_scales, const T* biases, T* C,
                 int64_t* total_rows_before_expert, int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
                 int num_experts, cudaStream_t stream);
+
+  static MoEGemmConfigMap& GetGemmConfigMap() {
+    static MoEGemmConfigMap gFactory;
+    return gFactory;
+  }
 
  private:
   template <typename EpilogueTag>

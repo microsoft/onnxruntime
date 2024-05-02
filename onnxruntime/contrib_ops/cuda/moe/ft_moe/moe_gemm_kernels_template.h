@@ -55,34 +55,9 @@
 
 #include <limits>
 #include <math.h>
-#include <mutex>
 #include <sstream>
 
 namespace ort_fastertransformer {
-
-struct MoEGemmConfigMap {
-  using MoEGemmConfigMapT = std::unordered_map<int64_t, CutlassGemmConfig>;
-
-  MoEGemmConfigMapT map;
-  std::mutex mutex;
-
-  void Insert(int64_t key, CutlassGemmConfig config) {
-    std::lock_guard<std::mutex> lock(mutex);
-    map[key] = config;
-  }
-
-  bool Contains(int64_t key) {
-    std::lock_guard<std::mutex> lock(mutex);
-    return map.find(key) != map.end();
-  }
-
-  CutlassGemmConfig Get(int64_t key) {
-    std::lock_guard<std::mutex> lock(mutex);
-    return map[key];
-  }
-};
-
-inline MoEGemmConfigMap g_moe_gemm_config_map;
 
 // ============================= Variable batched Gemm things ===========================
 template <typename T, typename WeightType, typename arch, typename EpilogueTag, typename ThreadblockShape,
@@ -474,7 +449,7 @@ void MoeGemmRunner<T, WeightType>::profile_gemm<EpilogueTag>(const T* A, const W
     }
   }
   CutlassGemmConfig config = candidate_configs[chosen_config_id];
-  g_moe_gemm_config_map.Insert(key, config);
+  GetGemmConfigMap().Insert(key, config);
 }
 
 template <typename T, typename WeightType>
@@ -483,18 +458,18 @@ void MoeGemmRunner<T, WeightType>::run_gemm<EpilogueTag>(const T* A, const Weigh
                                                          const T* biases, T* C, int64_t* total_rows_before_expert,
                                                          int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
                                                          int num_experts, cudaStream_t stream) {
-  // Generate Key to the g_moe_gemm_config_map
+  // Generate Key to the GetGemmConfigMap()
   // First 32 bits are total_rows, next 16 bits are gemm_n, next 16 bits are gemm_k
   int64_t key = total_rows;
   key = key << 16 | gemm_n;
   key = key << 16 | gemm_k;
 
-  if (!g_moe_gemm_config_map.Contains(key)) {
+  if (!GetGemmConfigMap().Contains(key)) {
     profile_gemm<EpilogueTag>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
                               num_experts, stream, key);
   }
   dispatch_to_arch<EpilogueTag>(A, B, weight_scales, biases, C, total_rows_before_expert, total_rows, gemm_n, gemm_k,
-                                num_experts, g_moe_gemm_config_map.Get(key), stream);
+                                num_experts, GetGemmConfigMap().Get(key), stream);
 }
 
 template <typename T, typename WeightType>
