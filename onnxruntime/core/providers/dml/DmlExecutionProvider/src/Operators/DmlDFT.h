@@ -236,7 +236,7 @@ public:
         }
         else
         {
-            m_axis = -2;
+            m_axis = -2; //-2 is the default axis value for DFT-20 if the optional axis input is not provided
         }
 
         PrepareStockhamFFT(edgeDesc.tensorDataType);
@@ -1012,11 +1012,12 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 throw;
             }
 
-            int64_t axisValue = -2;
-            bool isDft17 = !context->IsInputValid(2);
+            int64_t axisValue = -2; //Set default axis value to -2 for DFT-20 (last signal axis)
+            bool isDft17 = !context->IsInputValid(2); //Check if axis is provided as an input - if yes then it is DFT-20
 
             if (isDft17)
             {
+                axisValue = 1; //Default axis value for DFT-17 should be 1 if axis attribute is not provided
                 ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axisValue)));
             }
             else
@@ -1089,8 +1090,8 @@ public:
     {
         try
         {
+            //If the axis value is provided as an input use DFT-20, otherwise use DFT-17
             int32_t version = 17;
-
             if (context->IsInputValid(2))
             {
                 version = 20;
