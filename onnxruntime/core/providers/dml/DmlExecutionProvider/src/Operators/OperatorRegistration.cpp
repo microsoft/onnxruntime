@@ -530,6 +530,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(BitwiseOr);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseXor);
 DML_OP_EXTERN_CREATION_FUNCTION(BitwiseNot);
 DML_OP_EXTERN_CREATION_FUNCTION(RotaryEmbedding);
+DML_OP_EXTERN_CREATION_FUNCTION(MatMulNBits);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
@@ -544,6 +545,7 @@ DML_OP_EXTERN_QUERY_FUNCTION(SkipLayerNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(QLinearSigmoid);
 DML_OP_EXTERN_QUERY_FUNCTION(QAttention);
 DML_OP_EXTERN_QUERY_FUNCTION(Attention);
+DML_OP_EXTERN_QUERY_FUNCTION(MatMulNBits);
 
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 1> typeNameListDefaultV = {"V"};
@@ -632,6 +634,7 @@ constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListAttent
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRotaryEmbedding = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListGroupNorm = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListNonZero = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Ints8Bit | SupportedTensorDataTypes::Ints16Bit | SupportedTensorDataTypes::Ints32Bit | SupportedTensorDataTypes::Bool};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListMatMulNBits = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::UInt8};
 
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinearMatMul = {
     SupportedTensorDataTypes::Ints8Bit,
@@ -921,6 +924,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     13,  Sign,                               typeNameListDefault,            supportedTypeListFloat16to32Ints8to64,  DmlGraphSupport::Supported)},
     {REG_INFO(      9,  IsNaN,                              typeNameListTwo,                supportedTypeListIsNan,                 DmlGraphSupport::Supported)},
     {REG_INFO(     13,  IsNaN,                              typeNameListTwo,                supportedTypeListIsNan,                 DmlGraphSupport::Supported)},
+    {REG_INFO(     20,  IsNaN,                              typeNameListTwo,                supportedTypeListIsNan,                 DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Sinh,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Cosh,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Asinh,                              typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -967,6 +971,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     12,  ReduceMax,                          typeNameListDefault,            supportedTypeListFloat16to32Ints8to64,  DmlGraphSupport::Supported)},
     {REG_INFO(     13,  ReduceMax,                          typeNameListDefault,            supportedTypeListFloat16to32Ints8to64,  DmlGraphSupport::Supported)},
     {REG_INFO(     18,  ReduceMax,                          typeNameListDefault,            supportedTypeListFloat16to32Ints32to64, DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
+    {REG_INFO(     20,  ReduceMax,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
     {REG_INFO(      7,  ReduceMin,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     11,  ReduceMin,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     12,  ReduceMin,                          typeNameListDefault,            supportedTypeListFloat16to32Ints8to64,  DmlGraphSupport::Supported)},
@@ -1110,6 +1115,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  QLinearConcat,                      typeNameListQLinearConcat,      supportedTypeListQLinearConcat,         DmlGraphSupport::Supported)},
 
     {REG_INFO(     10,  IsInf,                              typeNameListTwo,                supportedTypeListIsInf,                 DmlGraphSupport::Supported)},
+    {REG_INFO(     20,  IsInf,                              typeNameListTwo,                supportedTypeListIsInf,                 DmlGraphSupport::Supported)},
     {REG_INFO(     10,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
     {REG_INFO(     11,  BitShift,                           typeNameListDefault,            supportedTypeListUInt8to64,             DmlGraphSupport::Supported)},
@@ -1140,6 +1146,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  BiasAdd,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  MatMulNBits,                        typeNameListTwo,                supportedTypeListMatMulNBits,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryMatMulNBits)},
 
     // Operators that need to alias an input with an output
     {REG_INFO_MS_ALIAS(1, GroupQueryAttention, Aliases(std::make_pair(3, 1), std::make_pair(4, 2)), typeNameListAttention, supportedTypeListAttention, DmlGraphSupport::Supported, requiredConstantCpuInputs(6))},

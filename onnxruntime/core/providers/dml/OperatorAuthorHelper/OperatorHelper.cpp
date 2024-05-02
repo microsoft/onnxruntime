@@ -839,13 +839,15 @@ namespace OperatorHelper
 
             if (outputShape.size() > 2)
             {
-                ML_CHECK_VALID_ARGUMENT(outputShape[outputShape.size() - 3] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]), "Output channel must be equivalent to filter channel.");
-            }
+                ML_CHECK_VALID_ARGUMENT(outputShape[C] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]),
+                    "Output channel must be equivalent to filter channel.");
+            } 
 
             for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i)
             {
                 size_t outputIndex = outputShape.size() - m_kernel.spatialDimensionCount + i;
-                ML_CHECK_VALID_ARGUMENT(outputShape[outputIndex] >= gsl::narrow_cast<int>(inputDimensions[H + i]), "Output dimension cannot be smaller than input dimension.");
+                ML_CHECK_VALID_ARGUMENT(outputShape[outputIndex] >= gsl::narrow_cast<int>(inputDimensions[H + i]),
+                    "Output dimension cannot be smaller than input dimension.");
                 m_outputShapes[0].GetShape()[H + i] = outputShape[outputIndex];
             }
 
@@ -2917,6 +2919,31 @@ namespace OperatorHelper
         outputShape.back() /= 2;
 
         return { EdgeShapes(std::move(outputShape)) };
+    }
+
+    std::vector<EdgeShapes> MatMulNBitsHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        auto inputShape = shapeInfo.GetInputTensorShape(0);
+        onnxruntime::TensorShape aShape(std::vector<int64_t>(inputShape.begin(), inputShape.end()));
+        onnxruntime::TensorShape bShape({m_bRowCount, m_bColCount});
+
+        onnxruntime::MatMulComputeHelper helper;
+
+        // The B tensor is always transposed
+        ML_CHECK_VALID_ARGUMENT(helper.Compute(aShape, bShape, false, true).IsOK());
+        const auto outputShape = helper.OutputShape().GetDims();
+
+        std::vector<uint32_t> uint32OutputShape;
+        uint32OutputShape.reserve(outputShape.size());
+        std::transform(outputShape.begin(), outputShape.end(), std::back_inserter(uint32OutputShape), [](int64_t dimSize){ return static_cast<uint32_t>(dimSize); });
+
+        return { EdgeShapes(uint32OutputShape) };
+    }
+
+    void MatMulNBitsHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_bRowCount = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::UppercaseN);
+        m_bColCount = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::UppercaseK);
     }
 
 } // namespace OperatorHelper
