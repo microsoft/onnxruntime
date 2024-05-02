@@ -119,7 +119,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
       static_cast<int>(k_), reinterpret_cast<char*>(work_space.get()), reinterpret_cast<CudaT*>(fc2_output.get()),
       reinterpret_cast<CudaT*>(expert_scales.get()),
       reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
-      reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context));
+      reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context), best_config_map_ptr_->map);
 
   Tensor* output = context->Output(0, input->Shape());
 

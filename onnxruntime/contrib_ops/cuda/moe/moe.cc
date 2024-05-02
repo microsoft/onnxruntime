@@ -22,7 +22,8 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info) {}
+MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info) {
+}
 
 template <typename T>
 Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
@@ -72,6 +73,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
 
   const CudaT* fc_scales_ptr = nullptr;
+
   moe_runner.run_moe_fc(
       reinterpret_cast<const CudaT*>(input->template Data<T>()),
       reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),
@@ -93,7 +95,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       static_cast<int>(k_), reinterpret_cast<char*>(work_space.get()), reinterpret_cast<CudaT*>(fc2_output.get()),
       reinterpret_cast<CudaT*>(expert_scales.get()),
       reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
-      reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context));
+      reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context), best_config_map_ptr_->map);
 
   Tensor* output = context->Output(0, input->Shape());
 
