@@ -274,7 +274,6 @@ def plot_prompt_performance(
     kv_num_heads=8,
     max_seq_len=8192,
     head_size=128,
-    dtype=torch.float16,
 ):
     import triton
 
@@ -286,25 +285,21 @@ def plot_prompt_performance(
             line_arg="provider",
             ylabel="ms",
             **algos,
-            plot_name=f"prompt-sm{sm}-batch{batch_size}_{kv_num_heads}-head{num_heads}-d{head_size}-{dtype}",
+            plot_name=f"prompt-sm{sm}-batch{batch_size}-head{num_heads}_kv{kv_num_heads}-d{head_size}-fp16",
             args={
                 "num_heads": num_heads,
                 "kv_num_heads": kv_num_heads,
                 "batch_size": batch_size,
                 "head_size": head_size,
-                "dtype": dtype,
             },
         )
     ]
 
     @triton.testing.perf_report(configs)
-    def benchmark(
-        batch_size, num_heads, kv_num_heads, sequence_length, head_size, provider, dtype=torch.float16, device="cuda"
-    ):
+    def benchmark(batch_size, num_heads, kv_num_heads, sequence_length, head_size, provider, device="cuda"):
         warmup = 15
         repeat = 100
 
-        assert dtype == torch.float16
         config: GroupQueryAttentionConfig = GroupQueryAttentionConfig(
             batch_size=batch_size,
             sequence_length=sequence_length,
@@ -332,7 +327,6 @@ def plot_token_performance(
     kv_num_heads=8,
     max_seq_len=8192,
     head_size=128,
-    dtype=torch.float16,
 ):
     import triton
 
@@ -344,13 +338,12 @@ def plot_token_performance(
             line_arg="provider",
             ylabel="ms",
             **algos,
-            plot_name=f"token-sm{sm}-batch{batch_size}-head{num_heads}_{kv_num_heads}-d{head_size}-{dtype}",
+            plot_name=f"token-sm{sm}-batch{batch_size}-head{num_heads}_kv{kv_num_heads}-d{head_size}-fp16",
             args={
                 "num_heads": num_heads,
                 "kv_num_heads": kv_num_heads,
                 "batch_size": batch_size,
                 "head_size": head_size,
-                "dtype": dtype,
             },
         )
     ]
@@ -363,13 +356,11 @@ def plot_token_performance(
         past_sequence_length,
         head_size,
         provider,
-        dtype=torch.float16,
         device="cuda",
     ):
         warmup = 15
         repeat = 100
 
-        assert dtype == torch.float16
         config: GroupQueryAttentionConfig = GroupQueryAttentionConfig(
             batch_size=batch_size,
             sequence_length=1,
@@ -395,9 +386,9 @@ def run_performance_test(sm: int):
     Run performance tests for prompt and token generation.
 
     """
-    for batch_size in [1, 3, 8, 16]:
-        for num_heads, kv_num_heads in [(8, 8), (16, 8), (32, 32), (12, 3), (128, 64)]:
-            for head_size in [32, 64, 128]:
+    for batch_size in [1, 4, 8, 16]:
+        for num_heads, kv_num_heads in [(8, 8), (16, 8), (32, 8), (64, 8)]:
+            for head_size in [64, 128]:
                 plot_prompt_performance(
                     sm=sm,
                     batch_size=batch_size,
@@ -405,7 +396,6 @@ def run_performance_test(sm: int):
                     kv_num_heads=kv_num_heads,
                     max_seq_len=8192,
                     head_size=head_size,
-                    dtype=torch.float16,
                 )
                 plot_token_performance(
                     sm=sm,
@@ -414,7 +404,6 @@ def run_performance_test(sm: int):
                     kv_num_heads=kv_num_heads,
                     max_seq_len=8192,
                     head_size=head_size,
-                    dtype=torch.float16,
                 )
 
 
