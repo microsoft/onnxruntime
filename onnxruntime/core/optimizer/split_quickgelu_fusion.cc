@@ -208,7 +208,6 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   //   DEBUG_LOG("Failed to find path for QuickGelu mul operation.");
   //   return false;
   // }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!5" << std::endl;
   // for (size_t i = 0; i < edges.size(); i++) {
   //   if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
   //     DEBUG_LOG("Output edge count not expected for nodes.");
