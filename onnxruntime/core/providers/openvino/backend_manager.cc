@@ -304,9 +304,9 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
     // This is the DQ we want to keep, so just return as it's not Uint16
     return true;
   } else if (op_type == "Add") {
-    if (target_input_defs.at(0)->Name().find("DequantizeLinear_Output") &&
-        target_input_defs.at(1)->Name().find("DequantizeLinear_Output")) {
-      if (target_input_defs.at(0)->Name().find("bias_")) {
+    if ((target_input_defs.at(0)->Name().find("DequantizeLinear_Output") != std::string::npos) &&
+        (target_input_defs.at(1)->Name().find("DequantizeLinear_Output") != std::string::npos)) {
+      if (target_input_defs.at(0)->Name().find("bias") != std::string::npos) {
         return false;
       } else {
         // keeps both DQ inputs for this Add
@@ -316,35 +316,35 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
   } else if (op_type == "Div") {
     return true;
   } else if (op_type == "MatMul") {
-    if (!target_input_defs.at(0)->Name().find("Softmax") &&
-        !target_input_defs.at(1)->Name().find("Softmax")) {
+    if ((target_input_defs.at(0)->Name().find("Softmax") == std::string::npos) &&
+        (target_input_defs.at(1)->Name().find("Softmax") == std::string::npos)) {
       ORT_ENFORCE(target_input_defs.size() == 2);
-      ORT_ENFORCE(target_input_defs.at(0)->Name().find("DequantizeLinear_Output") &&
-                  target_input_defs.at(1)->Name().find("DequantizeLinear_Output"));
+      ORT_ENFORCE((target_input_defs.at(0)->Name().find("DequantizeLinear_Output") != std::string::npos) &&
+                  (target_input_defs.at(1)->Name().find("DequantizeLinear_Output") != std::string::npos));
       return true;  // Keep both DQ inputs for this MatMul
     }
+  } else {
+
+    // For unsupported ops, check if connected input NodeUnit is one of supported ops, then keep the DQ
+    for (Node::NodeConstIterator dq_in = dq_node->InputNodesBegin(); dq_in != dq_node->InputNodesEnd(); ++dq_in) {
+      const auto& connected_q_op = *dq_in;
+
+      // Node preceding a DQ should be a Q
+      ORT_ENFORCE(connected_q_op.OpType() == "QuantizeLinear");
+
+      for (Node::NodeConstIterator previous_target = connected_q_op.InputNodesBegin();
+           previous_target != connected_q_op.InputNodesEnd(); ++previous_target) {
+        const auto& previous_target_op = *previous_target;
+
+        if (std::find(supported_qdq_ops.begin(),
+                      supported_qdq_ops.end(), previous_target_op.OpType()) != supported_qdq_ops.end()) {
+          return true;
+        } else {
+          return false;
+        }
+      }
+    }
   }
-  // else {
-  //   // For unsupported ops, check if connected input NodeUnit is one of supported ops, then keep the DQ
-  //   for (Node::NodeConstIterator dq_in = dq_node->InputNodesBegin(); dq_in != dq_node->InputNodesEnd(); ++dq_in) {
-  //     const auto& connected_q_op = *dq_in;
-
-  //     // Node preceding a DQ should be a Q
-  //     ORT_ENFORCE(connected_q_op.OpType() == "QuantizeLinear");
-
-  //     for (Node::NodeConstIterator previous_target = connected_q_op.InputNodesBegin();
-  //          previous_target != connected_q_op.InputNodesEnd(); ++previous_target) {
-  //       const auto& previous_target_op = *previous_target;
-
-  //       if (std::find(supported_qdq_ops.begin(),
-  //                     supported_qdq_ops.end(), previous_target_op.OpType()) != supported_qdq_ops.end()) {
-  //         return true;
-  //       } else {
-  //         return false;
-  //       }
-  //     }
-  //   }
-  // }
   return false;
 }
 
@@ -372,41 +372,40 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
     // This is the Q we want to keep, so just return as it's not Uint16
     return true;
   } else if (op_type == "Add") {
-    if (target_input_defs.at(0)->Name().find("DequantizeLinear_Output") &&
-        target_input_defs.at(1)->Name().find("DequantizeLinear_Output")) {
+    if ((target_input_defs.at(0)->Name().find("DequantizeLinear_Output") != std::string::npos) &&
+        (target_input_defs.at(1)->Name().find("DequantizeLinear_Output") != std::string::npos)) {
       ORT_ENFORCE(target_output_defs.size() == 1);
       return true;
     }
   } else if (op_type == "Div") {
     return true;
   } else if (op_type == "MatMul") {
-    if (!target_input_defs.at(0)->Name().find("Softmax") &&
-        !target_input_defs.at(1)->Name().find("Softmax")) {
+    if (target_input_defs.at(0)->Name().find("Softmax") == std::string::npos &&
+        target_input_defs.at(1)->Name().find("Softmax") == std::string::npos) {
       ORT_ENFORCE(target_output_defs.size() == 1);
       return true;
     }
+  } else {
+    // If connected output is one of supported ops, keep the Q
+    for (Node::NodeConstIterator q_out = q_node->OutputNodesBegin(); q_out != q_node->OutputNodesEnd(); ++q_out) {
+      const auto& connected_dq_op = *q_out;
+
+      // Node following a Q should be a DQ
+      ORT_ENFORCE(connected_dq_op.OpType() == "DequantizeLinear");
+
+      for (Node::NodeConstIterator next_target = connected_dq_op.OutputNodesBegin();
+           next_target != connected_dq_op.OutputNodesEnd(); ++next_target) {
+        const auto& next_target_op = *next_target;
+
+        if (std::find(supported_qdq_ops.begin(),
+                      supported_qdq_ops.end(), next_target_op.OpType()) != supported_qdq_ops.end()) {
+          return true;
+        } else {
+          return false;
+        }
+      }
+    }
   }
-  // else {
-  //   // If connected output is one of supported ops, keep the Q
-  //   for (Node::NodeConstIterator q_out = q_node->OutputNodesBegin(); q_out != q_node->OutputNodesEnd(); ++q_out) {
-  //     const auto& connected_dq_op = *q_out;
-
-  //     // Node following a Q should be a DQ
-  //     ORT_ENFORCE(connected_dq_op.OpType() == "DequantizeLinear");
-
-  //     for (Node::NodeConstIterator next_target = connected_dq_op.OutputNodesBegin();
-  //          next_target != connected_dq_op.OutputNodesEnd(); ++next_target) {
-  //       const auto& next_target_op = *next_target;
-
-  //       if (std::find(supported_qdq_ops.begin(),
-  //                     supported_qdq_ops.end(), next_target_op.OpType()) != supported_qdq_ops.end()) {
-  //         return true;
-  //       } else {
-  //         return false;
-  //       }
-  //     }
-  //   }
-  // }
   return false;
 }
 
