@@ -123,7 +123,6 @@ struct CutlassGemmConfig {
         epilogue_schedule(epilogue_schedule),
         cluster_shape(cluster_shape) {}
 
-  // deep copy assignment operator
   CutlassGemmConfig& operator=(const CutlassGemmConfig& other) {
     tile_config = other.tile_config;
     split_k_style = other.split_k_style;
@@ -132,7 +131,6 @@ struct CutlassGemmConfig {
     return *this;
   }
 
-  // to_string methods
   std::string to_string() {
     std::string str = "tile_config: ";
     switch (tile_config) {
