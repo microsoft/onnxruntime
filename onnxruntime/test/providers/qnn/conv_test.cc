@@ -723,6 +723,41 @@ TEST_F(QnnHTPBackendTests, ConvU8S8S32_PerChannel) {
                                               13);    // opset
 }
 
+// Test per-channel QDQ Conv. in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
+// \QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::QNN_Conv3d_w_scale
+// \QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:1187:ERROR:Op 0x1a preparation failed with err:-1
+// QnnDsp <E> "Conv" generated: could not create op
+// QnnDsp <E> RouterWindows graph prepare failed 12
+// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
+// QnnDsp <V> Wake up free backend 1 thread(s)
+// QnnDsp <I> QnnGraph_finalize done. status 0x3ea
+// onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
+TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U8S8S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
+                                              input_def,
+                                              weight_def,
+                                              bias_def,
+                                              {1, 1, 1},           // Strides
+                                              {0, 0, 0, 0, 0, 0},  // Pads
+                                              {1, 1, 1},           // Dilations
+                                              1,                   // default group
+                                              "NOTSET",
+                                              ExpectedEPNodeAssignment::All,
+                                              false,
+                                              13);
+}
+
 // Test per-channel QDQ Conv that maps to QNN's DepthwiseConv2d (input_chans == output_chans == group).
 // in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
 TEST_F(QnnHTPBackendTests, ConvDepthwiseU8S8S32_PerChannel) {
@@ -751,6 +786,41 @@ TEST_F(QnnHTPBackendTests, ConvDepthwiseU8S8S32_PerChannel) {
                                               13);    // opset
 }
 
+// Conv3D per-channel
+// \QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::QNN_Conv3d_w_scale
+// \QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:1187:ERROR:Op 0x1a preparation failed with err:-1
+// QnnDsp <E> "Conv" generated: could not create op
+// QnnDsp <E> RouterWindows graph prepare failed 12
+// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
+// QnnDsp <V> Wake up free backend 1 thread(s)
+// QnnDsp <I> QnnGraph_finalize done. status 0x3ea
+// onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
+TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel2) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
+  std::vector<int64_t> weight_shape = {2, 1, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {2};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
+                                              input_def,
+                                              weight_def,
+                                              bias_def,
+                                              {1, 1, 1},           // Strides
+                                              {0, 0, 0, 0, 0, 0},  // Pads
+                                              {1, 1, 1},           // Dilations
+                                              2,                   // group
+                                              "NOTSET",
+                                              ExpectedEPNodeAssignment::All,
+                                              false,
+                                              13);
+}
+
 // Test per-channel QDQ ConvTranspose. in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
 TEST_F(QnnHTPBackendTests, ConvTransposeU8S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
@@ -776,6 +846,27 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8S8S32_PerChannel) {
                                               ExpectedEPNodeAssignment::All,
                                               false,  // use_qdq_contrib_ops
                                               13);    // opset
+
+  // ConvTranspose3D
+  input_shape.push_back(4);
+  weight_shape.push_back(2);
+  TestInputDef<float> input_def_3d(input_shape, false,
+                                   GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def_3d(weight_shape, true,
+                                    GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint8_t, int8_t>("ConvTranspose",
+                                              input_def_3d,
+                                              weight_def_3d,
+                                              bias_def,
+                                              {1, 1, 1},            // Strides
+                                              {0, 0, 0, 0, 0, 0},   // Pads
+                                              {1, 1, 1},            // Dilations
+                                              1,                    // default group
+                                              "NOTSET",
+                                              ExpectedEPNodeAssignment::All,
+                                              false,
+                                              13);
 }
 
 // Test per-channel QDQ Conv. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
@@ -805,6 +896,41 @@ TEST_F(QnnHTPBackendTests, ConvU16S8S32_PerChannel) {
                                                13);   // opset
 }
 
+// Conv3D per-channel
+// \QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::QNN_Conv3d_w_scale
+// \QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:1187:ERROR:Op 0x1a preparation failed with err:-1
+// QnnDsp <E> "Conv" generated: could not create op
+// QnnDsp <E> RouterWindows graph prepare failed 12
+// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
+// QnnDsp <V> Wake up free backend 1 thread(s)
+// QnnDsp <I> QnnGraph_finalize done. status 0x3ea
+// onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
+TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U16S8S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint16_t, int8_t>("Conv",
+                                               input_def,
+                                               weight_def,
+                                               bias_def,
+                                               {1, 1, 1},           // Strides
+                                               {0, 0, 0, 0, 0, 0},  // Pads
+                                               {1, 1, 1},           // Dilations
+                                               1,                   // default group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               true,
+                                               13);
+}
+
 // Test per-channel QDQ ConvTranspose. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
 TEST_F(QnnHTPBackendTests, ConvTransposeU16S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
@@ -830,6 +956,27 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU16S8S32_PerChannel) {
                                                ExpectedEPNodeAssignment::All,
                                                true,  // use_qdq_contrib_ops
                                                13);   // opset
+
+  // ConvTranspose3D
+  input_shape.push_back(4);
+  weight_shape.push_back(2);
+  TestInputDef<float> input_def_3d(input_shape, false,
+                                   GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def_3d(weight_shape, true,
+                                    GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint16_t, int8_t>("ConvTranspose",
+                                               input_def_3d,
+                                               weight_def_3d,
+                                               bias_def,
+                                               {1, 1, 1},           // Strides
+                                               {0, 0, 0, 0, 0, 0},  // Pads
+                                               {1, 1, 1},           // Dilations
+                                               1,                   // default group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               true,
+                                               13);
 }
 
 // Test per-channel QDQ Conv that maps to QNN's DepthwiseConv2d (input_chans == output_chans == group).
@@ -858,6 +1005,41 @@ TEST_F(QnnHTPBackendTests, ConvDepthwiseU16S8S32_PerChannel) {
                                                ExpectedEPNodeAssignment::All,
                                                true,  // use_qdq_contrib_ops
                                                13);   // opset
+}
+
+// Test per-channel QDQ Conv3D
+// \QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::QNN_Conv3d_w_scale
+// \QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:1187:ERROR:Op 0x1a preparation failed with err:-1
+// QnnDsp <E> "Conv" generated: could not create op
+// QnnDsp <E> RouterWindows graph prepare failed 12
+// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
+// QnnDsp <V> Wake up free backend 1 thread(s)
+// QnnDsp <I> QnnGraph_finalize done. status 0x3ea
+// onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
+TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U16S8S32_PerChannel2) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
+  std::vector<int64_t> weight_shape = {2, 1, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {2};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint16_t, int8_t>("Conv",
+                                               input_def,
+                                               weight_def,
+                                               bias_def,
+                                               {1, 1, 1},           // Strides
+                                               {0, 0, 0, 0, 0, 0},  // Pads
+                                               {1, 1, 1},           // Dilations
+                                               2,                   // default group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               true,
+                                               13);
 }
 
 // Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's Conv2d)
@@ -942,11 +1124,6 @@ TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_NoBias) {
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with static bias.
 // Uses QNN's DepthwiseConv2d operator.
-// TODO: Inaccuracy detected for output 'output', element 8.
-// Output quant params: scale=0.0027466239407658577, zero_point=10194.
-// Expected val: 152
-// QNN QDQ val: 151.8004150390625 (err 0.1995849609375)
-// CPU QDQ val: 151.9981689453125 (err 0.0018310546875)
 TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
   std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 9);
@@ -980,11 +1157,6 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with static bias.
-// TODO: Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0040235077030956745, zero_point=0.
-// Expected val: 87.354057312011719
-// QNN QDQ val: 87.559577941894531 (err 0.2055206298828125)
-// CPU QDQ val: 87.398635864257812 (err 0.04457855224609375)
 TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 50);
   std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 18);
@@ -1019,11 +1191,6 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
 // Uses QNN's DepthwiseConv2d operator.
-// TODO: Inaccuracy detected for output 'output', element 1.
-// Output quant params: scale=0.0027466239407658577, zero_point=10194.
-// Expected val: -13.000001907348633
-// QNN QDQ val: -13.095903396606445 (err 0.0959014892578125)
-// CPU QDQ val: -12.999771118164062 (err 0.0002307891845703125)
 TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
   std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 9);
@@ -1057,11 +1224,6 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
-// TODO: Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0040235077030956745, zero_point=0.
-// Expected val: 87.354057312011719
-// QNN QDQ val: 87.559577941894531 (err 0.2055206298828125)
-// CPU QDQ val: 87.398635864257812 (err 0.04457855224609375)
 TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 50);
   std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 18);
@@ -1095,11 +1257,6 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
-// TODO: Inaccuracy detected for output 'output', element 7.
-// Output quant params: scale=0.0039929896593093872, zero_point=0.
-// Expected val: 246.98667907714844
-// QNN QDQ val: 247.82090759277344 (err 0.834228515625)
-// CPU QDQ val: 247.24192810058594 (err 0.2552490234375)
 TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 50);
   std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 18);
@@ -1134,11 +1291,6 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
 // Uses QNN's DepthwiseConv2d operator.
-// TODO: Inaccuracy detected for output 'output', element 8.
-// Output quant params: scale=0.0027466239407658577, zero_point=10923.
-// Expected val: 150
-// QNN QDQ val: 149.80087280273438 (err 0.199127197265625)
-// CPU QDQ val: 149.99862670898438 (err 0.001373291015625)
 TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
   std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
   std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 9);

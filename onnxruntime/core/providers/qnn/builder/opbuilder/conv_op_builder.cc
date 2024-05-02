@@ -224,7 +224,12 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
 
       // Transpose quantization parameter's axis if this is using per-channel quantization.
       if (input_info.quant_param.IsPerChannel()) {
-        const std::vector<size_t>& perm = conv_type == OnnxConvType::kConv ? nchw2hwcn_perm : cnhw2hwcn_perm;
+        std::vector<size_t>perm;
+        if (is_3d) {
+          perm = conv_type == OnnxConvType::kConv ? nchw2hwcn_perm_3d : cnhw2hwcn_perm_3d;
+        } else {
+          perm = conv_type == OnnxConvType::kConv ? nchw2hwcn_perm : cnhw2hwcn_perm;
+        }
         std::vector<size_t> perm_inv(perm.size());
         ORT_RETURN_IF_ERROR(utils::InvertPerm<size_t>(perm, perm_inv));
         ORT_RETURN_IF_ERROR(input_info.quant_param.HandleTranspose<size_t>(perm_inv));
