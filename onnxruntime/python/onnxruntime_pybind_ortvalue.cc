@@ -233,20 +233,20 @@ void addOrtValueMethods(pybind11::module& m) {
 #endif
       })
       .def("shape", [](const OrtValue* ort_value) -> py::list {
-        py::list shape_arr;
 #if !defined(DISABLE_SPARSE_TENSORS)
         // OrtValue can only be a Tensor/SparseTensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ort_value->IsTensor() || ort_value->IsSparseTensor(),
                     "Only OrtValues that are Tensors/SpareTensors are currently supported");
 
-        const auto& dims = (ort_value->IsTensor())
-                               ? ort_value->Get<Tensor>().Shape().GetDims()
-                               : ort_value->Get<SparseTensor>().DenseShape().GetDims();
+        const auto dims = (ort_value->IsTensor())
+                              ? ort_value->Get<Tensor>().Shape().GetDims()
+                              : ort_value->Get<SparseTensor>().DenseShape().GetDims();
 #else
         ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are supported in this build");
-        const auto& dims = ort_value->Get<Tensor>().Shape().GetDims();
+        const auto dims = ort_value->Get<Tensor>().Shape().GetDims();
 #endif
 
+        py::list shape_arr{dims.size()};
         for (auto dim : dims) {
           // For sequence tensors - we would append a list of dims to the outermost list
           // For now only tensors are supported in OrtValue

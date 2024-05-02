@@ -377,7 +377,7 @@ void addSparseTensorMethods(pybind11::module& m) {
         const SparseTensor& st = py_tensor->Instance();
         const auto& dims = st.DenseShape().GetDims();
         // We create a copy of dimensions, it is small
-        py::list py_dims;
+        py::list py_dims{dims.size()};
         for (auto d : dims) {
           py_dims.append(d);
         }

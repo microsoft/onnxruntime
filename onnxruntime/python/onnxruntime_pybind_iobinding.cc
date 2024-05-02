@@ -167,10 +167,13 @@ void addIoBindingMethods(pybind11::module& m) {
         size_t pos = 0;
         const auto& dtm = io_binding->GetInferenceSession()->GetDataTransferManager();
 
-        py::list result;
+        py::list result{outputs.size()};
         for (const auto& ort_value : outputs) {
           if (ort_value.IsTensor()) {
-            result.append(AddTensorAsPyObj(ort_value, &dtm, nullptr));
+            // We make a copy of the tensor to CPU even if it is already on CPU
+            // as the function name implies using DataTransferManager.
+            py::array arr = PrimitiveTensorToNumpyFromDevice(ort_value, &dtm, nullptr);
+            result.append(py::cast<py::object>(arr));
           } else if (ort_value.IsSparseTensor()) {
             result.append(GetPyObjectFromSparseTensor(pos, ort_value, &dtm));
           } else {
