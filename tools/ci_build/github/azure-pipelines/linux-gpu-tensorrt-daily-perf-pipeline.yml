@@ -165,7 +165,7 @@ jobs:
         displayName: 'Check and Install Azure CLI'
 
       - task: AzureCLI@2
-        displayName: 'Post EP Perf Results to Dashboard'
+        displayName: 'Azure CLI Post to Dashboard'
         inputs:
           azureSubscription: AIInfraBuildOnnxRuntimeOSS
           scriptLocation: inlineScript
@@ -173,8 +173,8 @@ jobs:
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD) &&
             commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
-
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
+    
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
