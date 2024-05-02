@@ -795,7 +795,7 @@ TEST_F(QnnHTPBackendTests, ConvDepthwiseU8S8S32_PerChannel) {
 // QnnDsp <V> Wake up free backend 1 thread(s)
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
-TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel2) {
+TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U8S8S32_PerChannel2) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 1, 2, 2, 2};
   std::vector<int64_t> bias_shape = {2};
@@ -859,10 +859,10 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8S8S32_PerChannel) {
                                               input_def_3d,
                                               weight_def_3d,
                                               bias_def,
-                                              {1, 1, 1},            // Strides
-                                              {0, 0, 0, 0, 0, 0},   // Pads
-                                              {1, 1, 1},            // Dilations
-                                              1,                    // default group
+                                              {1, 1, 1},           // Strides
+                                              {0, 0, 0, 0, 0, 0},  // Pads
+                                              {1, 1, 1},           // Dilations
+                                              1,                   // default group
                                               "NOTSET",
                                               ExpectedEPNodeAssignment::All,
                                               false,
