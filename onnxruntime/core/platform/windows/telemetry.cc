@@ -216,17 +216,17 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
 
   // build the strings we need
 
-  std::string domain_to_verison_string;
+  std::string domain_to_version_string;
   bool first = true;
   for (auto& i : domain_to_version_map) {
     if (first) {
       first = false;
     } else {
-      domain_to_verison_string += ',';
+      domain_to_version_string += ',';
     }
-    domain_to_verison_string += i.first;
-    domain_to_verison_string += '=';
-    domain_to_verison_string += std::to_string(i.second);
+    domain_to_version_string += i.first;
+    domain_to_version_string += '=';
+    domain_to_version_string += std::to_string(i.second);
   }
 
   std::string model_metadata_string;
@@ -271,7 +271,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
                       TraceLoggingString(model_domain.c_str(), "modelDomain"),
                       TraceLoggingBool(use_fp16, "usefp16"),
-                      TraceLoggingString(domain_to_verison_string.c_str(), "domainToVersionMap"),
+                      TraceLoggingString(domain_to_version_string.c_str(), "domainToVersionMap"),
                       TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
@@ -293,7 +293,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
                       TraceLoggingString(model_domain.c_str(), "modelDomain"),
                       TraceLoggingBool(use_fp16, "usefp16"),
-                      TraceLoggingString(domain_to_verison_string.c_str(), "domainToVersionMap"),
+                      TraceLoggingString(domain_to_version_string.c_str(), "domainToVersionMap"),
                       TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),

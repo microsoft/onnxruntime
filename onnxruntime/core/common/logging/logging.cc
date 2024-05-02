@@ -266,7 +266,7 @@ std::unique_ptr<ISink> EnhanceSinkWithEtw(std::unique_ptr<ISink> existingSink, l
   // On non-Windows platforms, just return the existing logger
   (void)originalSeverity;
   (void)etwSeverity;
-  return existingLogger;
+  return existingSink;
 #endif  // _WIN32
 }
 
