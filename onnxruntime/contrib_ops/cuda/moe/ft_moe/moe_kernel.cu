@@ -708,7 +708,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     int num_rows, const int hidden_size, const int inter_size, int num_experts, int local_num_experts,
     int local_experts_start_index, int k, char *workspace_ptr, T *fc2_result, const bool *finished, int active_rows,
     T *expert_scales, int *expanded_source_row_to_expanded_dest_row, int *expert_for_source_row, cudaStream_t stream,
-    std::unordered_map<int64_t, CutlassGemmConfig> &best_config_map) {
+    MoEGemmConfigMap::type &best_config_map) {
     static constexpr bool scales_required =
         std::is_same<WeightType, uint8_t>::value || std::is_same<WeightType, cutlass::uint4b_t>::value;
 
@@ -802,7 +802,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     int num_rows, const int hidden_size, const int inter_size, int num_experts, int local_num_experts,
     int local_experts_start_index, int k, char *workspace_ptr, T *fc2_result, T *expert_scales,
     int *expanded_source_row_to_expanded_dest_row, int *expert_for_source_row, cudaStream_t stream,
-    std::unordered_map<int64_t, CutlassGemmConfig> &best_config_map) {
+    MoEGemmConfigMap::type &best_config_map) {
     run_moe_fc(input_activations, gating_output, fc1_expert_weights, fc1_scales, fc1_expert_biases, fc1_activation_type,
                fc3_expert_weights, fc3_scales, fc3_expert_biases, fc2_expert_weights, fc2_scales, num_rows, hidden_size,
                inter_size, num_experts, local_num_experts, local_experts_start_index, k, workspace_ptr, fc2_result,

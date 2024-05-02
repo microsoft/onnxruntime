@@ -37,11 +37,6 @@ struct MoEParameters {
   int64_t tensor_shards{1};
 };
 
-struct MoEGemmConfigMap {
-  using MoEGemmConfigMapType = std::unordered_map<int64_t, ort_fastertransformer::CutlassGemmConfig>;
-  MoEGemmConfigMapType map{};
-};
-
 class MoEBase {
  public:
   Status CheckInputs(MoEParameters& parameters, MoEQuantType& quant_type, const Tensor* input,
@@ -236,6 +231,7 @@ class MoEBase {
   int64_t k_;
   ort_fastertransformer::ActivationType activation_type_;
 
+  using MoEGemmConfigMap = ort_fastertransformer::MoEGemmConfigMap;
   std::unique_ptr<MoEGemmConfigMap> best_config_map_ptr_ = std::make_unique<MoEGemmConfigMap>();
 };
 
