@@ -9,11 +9,19 @@ import os
 import shutil
 
 import triton
+import triton.compiler as tc
 
 
 def compile(function_table, out_dir):
     def compile_one(func, sig, **kwargs):
-        ret = triton.compile(func, signature=sig, **kwargs)
+        constants = kwargs.pop('constants', dict())
+        src = tc.ASTSource(
+            fn=func,
+            signature=sig,
+            constants=constants,
+        )
+        # Now that a GPU is available, try without target?
+        ret = triton.compile(src, options=kwargs)
         return ret
 
     metadata = []
