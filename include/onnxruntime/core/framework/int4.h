@@ -10,77 +10,91 @@
 
 namespace onnxruntime {
 
-template <typename T>
-struct UnpackedTypeTraits;
+template <bool Signed>
+struct Int4Traits;
 
 template <>
-struct UnpackedTypeTraits<int8_t> {
+struct Int4Traits<true> {
+  using UnpackedType = int8_t;
   static constexpr int8_t min_val = -8;
   static constexpr int8_t max_val = 7;
 };
 
 template <>
-struct UnpackedTypeTraits<uint8_t> {
+struct Int4Traits<false> {
+  using UnpackedType = uint8_t;
   static constexpr uint8_t min_val = 0;
   static constexpr uint8_t max_val = 15;
 };
 
-template <typename T>
+template <bool Signed>
 struct Int4x2Base {
-  using unpacked_type = T;
-  static constexpr unpacked_type min_val = UnpackedTypeTraits<T>::min_val;
-  static constexpr unpacked_type max_val = UnpackedTypeTraits<T>::max_val;
+  using UnpackedType = typename Int4Traits<Signed>::UnpackedType;
+  static constexpr UnpackedType min_val = Int4Traits<Signed>::min_val;
+  static constexpr UnpackedType max_val = Int4Traits<Signed>::max_val;
 
-  unpacked_type elems{};
+  uint8_t bits_{};
 
   Int4x2Base() = default;
+
   explicit Int4x2Base(uint8_t bits) {
-    elems = static_cast<unpacked_type>(bits);
-  }
-  Int4x2Base(unpacked_type val0, unpacked_type val1) {
-    elems = static_cast<unpacked_type>(((val1 & 0xF) << 4) | (val0 & 0xF));
+    bits_ = bits;
   }
 
-  inline unpacked_type GetElem0() const {
-    if constexpr (std::is_same_v<unpacked_type, int8_t>) {
-      // Need to sign-extend lower 4-bits by left shifting and then doing an arithmetic right shift.
-      return static_cast<unpacked_type>(static_cast<unpacked_type>((elems << 4)) >> 4);
+  Int4x2Base(UnpackedType val0, UnpackedType val1) {
+    bits_ = static_cast<uint8_t>(((val1 & 0xF) << 4) | (val0 & 0xF));
+  }
+
+  static inline int8_t SignExtendLower4Bits(uint8_t bits) {
+    // Sign-extend lower 4-bits by left shifting and then doing an arithmetic right shift.
+    constexpr uint8_t Shift = (sizeof(int32_t) * 8) - 4;
+    return static_cast<int8_t>((static_cast<int32_t>(bits) << Shift) >> Shift);
+  }
+
+  inline UnpackedType GetElem0() const {
+    if constexpr (Signed) {
+      return SignExtendLower4Bits(bits_);
     } else {
-      return static_cast<unpacked_type>(elems & 0xF);
+      return static_cast<UnpackedType>(bits_ & 0xF);
     }
   }
 
-  inline unpacked_type GetElem1() const {
-    return static_cast<unpacked_type>(elems >> 4);
-  }
+  inline UnpackedType GetElem1() const {
+    const uint8_t val = static_cast<uint8_t>((bits_ >> 4) & 0xF);
 
-  inline unpacked_type GetElem(size_t index) const {
-    assert(index <= 1);
-    const uint8_t shift = 4 * static_cast<uint8_t>(index);
-
-    if constexpr (std::is_same_v<unpacked_type, int8_t>) {
-      // if index is 0, need to sign-extend lower 4-bits by left shifting and then doing an arithmetic right shift.
-      const uint8_t unshift = 4 - shift;
-      return static_cast<unpacked_type>(static_cast<unpacked_type>((elems >> shift) << unshift) >> unshift);
+    if constexpr (Signed) {
+      return SignExtendLower4Bits(val);
     } else {
-      return static_cast<unpacked_type>((elems >> shift) & 0xF);
+      return val;
     }
   }
 
-  inline void SetElem(size_t index, unpacked_type val) {
+  inline UnpackedType GetElem(size_t index) const {
     assert(index <= 1);
     const uint8_t shift = 4 * static_cast<uint8_t>(index);
-    const unpacked_type mask = 0xF << shift;
+    const uint8_t val = static_cast<uint8_t>((bits_ >> shift) & 0xF);
 
-    elems &= ~mask;                                             // Clear 4-bit element to 0
-    elems |= static_cast<unpacked_type>((val & 0xF) << shift);  // Set 4-bit element to val
+    if constexpr (Signed) {
+      return SignExtendLower4Bits(val);
+    } else {
+      return val;
+    }
+  }
+
+  inline void SetElem(size_t index, UnpackedType val) {
+    assert(index <= 1);
+    const uint8_t shift = 4 * static_cast<uint8_t>(index);
+    const uint8_t mask = 0xF << shift;
+
+    bits_ &= ~mask;                                       // Clear 4-bit element to 0
+    bits_ |= static_cast<uint8_t>((val & 0xF) << shift);  // Set 4-bit element to val
   }
 
   inline uint8_t ToBits() const {
-    return static_cast<uint8_t>(elems);
+    return bits_;
   }
 
-  static bool Unpack(gsl::span<unpacked_type> dst, gsl::span<const Int4x2Base<T>> src) {
+  static bool Unpack(gsl::span<UnpackedType> dst, gsl::span<const Int4x2Base<Signed>> src) {
     if (((dst.size() + 1) / 2) != src.size()) {
       return false;
     }
@@ -94,7 +108,7 @@ struct Int4x2Base {
     return true;
   }
 
-  static bool Pack(gsl::span<Int4x2Base<T>> dst, gsl::span<const unpacked_type> src) {
+  static bool Pack(gsl::span<Int4x2Base<Signed>> dst, gsl::span<const UnpackedType> src) {
     if (((src.size() + 1) / 2) != dst.size()) {
       return false;
     }
@@ -103,19 +117,19 @@ struct Int4x2Base {
     size_t dst_i = 0;
 
     for (; src_i < src.size() - 1; src_i += 2) {
-      dst[dst_i++] = Int4x2Base<T>(src[src_i], src[src_i + 1]);
+      dst[dst_i++] = Int4x2Base<Signed>(src[src_i], src[src_i + 1]);
     }
 
     if (src_i < src.size()) {
-      dst[dst_i] = Int4x2Base<T>(src[src_i], 0);
+      dst[dst_i] = Int4x2Base<Signed>(src[src_i], 0);
     }
 
     return true;
   }
 };
 
-using Int4x2 = Int4x2Base<int8_t>;
-using UInt4x2 = Int4x2Base<uint8_t>;
-static_assert(sizeof(Int4x2) == sizeof(int8_t));
+using Int4x2 = Int4x2Base<true>;
+using UInt4x2 = Int4x2Base<false>;
+static_assert(sizeof(Int4x2) == sizeof(uint8_t));
 static_assert(sizeof(UInt4x2) == sizeof(uint8_t));
 }  // namespace onnxruntime

@@ -150,7 +150,7 @@ ParQuantizeLinearStd(const float* Input,
                      static_cast<int32_t>(ZeroPoint.GetElem0());                                                 \
       size_t output_index = out_start >> 1;                                                                      \
                                                                                                                  \
-      INT4_TYPE::unpacked_type quant_val = static_cast<INT4_TYPE::unpacked_type>(                                \
+      INT4_TYPE::UnpackedType quant_val = static_cast<INT4_TYPE::UnpackedType>(                                  \
           std::min(static_cast<int32_t>(INT4_TYPE::max_val),                                                     \
                    std::max(static_cast<int32_t>(INT4_TYPE::min_val), ival)));                                   \
       Output[output_index].SetElem(1, quant_val);                                                                \
@@ -165,7 +165,7 @@ ParQuantizeLinearStd(const float* Input,
                      static_cast<int32_t>(ZeroPoint.GetElem0());                                                 \
       size_t output_index = (out_end - 1) >> 1;                                                                  \
                                                                                                                  \
-      INT4_TYPE::unpacked_type quant_val = static_cast<INT4_TYPE::unpacked_type>(                                \
+      INT4_TYPE::UnpackedType quant_val = static_cast<INT4_TYPE::UnpackedType>(                                  \
           std::min(static_cast<int32_t>(INT4_TYPE::max_val),                                                     \
                    std::max(static_cast<int32_t>(INT4_TYPE::min_val), ival)));                                   \
       Output[output_index].SetElem(0, quant_val);                                                                \
@@ -190,7 +190,7 @@ ParQuantizeLinearStd(const float* Input,
                                                                                                                  \
     const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;                                         \
     const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)),                                \
-                                 static_cast<double>(block_size * sizeof(INT4_TYPE::unpacked_type)) / 2.0,       \
+                                 static_cast<double>(block_size * sizeof(INT4_TYPE::UnpackedType)) / 2.0,        \
                                  static_cast<double>(block_size) * 2.0};                                         \
     concurrency::ThreadPool::TryParallelFor(                                                                     \
         thread_pool, num_blocks, unit_cost,                                                                      \
@@ -201,10 +201,10 @@ ParQuantizeLinearStd(const float* Input,
           auto out_idx = begin_idx + static_cast<std::ptrdiff_t>(out_start);                                     \
                                                                                                                  \
           MLAS_FUNC(&(Input[inp_idx]),                                                                           \
-                    reinterpret_cast<INT4_TYPE::unpacked_type*>(&(Output[out_idx >> 1])),                        \
+                    reinterpret_cast<uint8_t*>(&(Output[out_idx >> 1])),                                         \
                     end_idx - begin_idx,                                                                         \
                     Scale,                                                                                       \
-                    ZeroPoint.GetElem0());                                                                       \
+                    static_cast<int8_t>(ZeroPoint.GetElem0()));                                                  \
         });                                                                                                      \
   }
 

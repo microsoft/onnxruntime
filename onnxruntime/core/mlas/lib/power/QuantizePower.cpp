@@ -107,15 +107,15 @@ Return Value:
     }
 }
 
-template<typename UnpackedType>
+template<bool Signed>
 void
 MLASCALL
 MlasQuantizeLinearInt4Kernel(
     const float* Input,
-    UnpackedType* Output,
+    uint8_t* Output,
     size_t N,
     float Scale,
-    UnpackedType ZeroPoint
+    int8_t ZeroPoint
     )
 /*++
 
@@ -142,9 +142,9 @@ Return Value:
 
 --*/
 {
-    static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);
-    constexpr int32_t MinimumValue = Int4Range<UnpackedType>::Min;
-    constexpr int32_t MaximumValue = Int4Range<UnpackedType>::Max;
+    constexpr int32_t MinimumValue = Int4Traits<Signed>::Min;
+    constexpr int32_t MaximumValue = Int4Traits<Signed>::Max;
+    using UnpackedType = typename Int4Traits<Signed>::UnpackedType;
 
     auto ScaleVector = vec_splats(Scale);
     auto MinimumValueVector = vec_splats(float(MinimumValue));
@@ -196,16 +196,15 @@ Return Value:
         auto CharVector = vec_pack(ShortVector0, ShortVector1);
         vec_xst(CharVector, 0, static_cast<int8_t *>(&TmpOutput[0]));
 
-        Output[0] = static_cast<UnpackedType>(((TmpOutput[1] & 0xF) << 4) | (TmpOutput[0] & 0xF));
-        Output[1] = static_cast<UnpackedType>(((TmpOutput[3] & 0xF) << 4) | (TmpOutput[2] & 0xF));
-        Output[2] = static_cast<UnpackedType>(((TmpOutput[5] & 0xF) << 4) | (TmpOutput[4] & 0xF));
-        Output[3] = static_cast<UnpackedType>(((TmpOutput[7] & 0xF) << 4) | (TmpOutput[6] & 0xF));
-        Output[4] = static_cast<UnpackedType>(((TmpOutput[9] & 0xF) << 4) | (TmpOutput[8] & 0xF));
-        Output[5] = static_cast<UnpackedType>(((TmpOutput[11] & 0xF) << 4) | (TmpOutput[10] & 0xF));
-        Output[6] = static_cast<UnpackedType>(((TmpOutput[13] & 0xF) << 4) | (TmpOutput[12] & 0xF));
-        Output[7] = static_cast<UnpackedType>(((TmpOutput[15] & 0xF) << 4) | (TmpOutput[14] & 0xF));
+        MlasPackInt4Elements(Output++, TmpOutput[0], TmpOutput[1]);
+        MlasPackInt4Elements(Output++, TmpOutput[2], TmpOutput[3]);
+        MlasPackInt4Elements(Output++, TmpOutput[4], TmpOutput[5]);
+        MlasPackInt4Elements(Output++, TmpOutput[6], TmpOutput[7]);
+        MlasPackInt4Elements(Output++, TmpOutput[8], TmpOutput[9]);
+        MlasPackInt4Elements(Output++, TmpOutput[10], TmpOutput[11]);
+        MlasPackInt4Elements(Output++, TmpOutput[12], TmpOutput[13]);
+        MlasPackInt4Elements(Output++, TmpOutput[14], TmpOutput[15]);
 
-        Output += 8;
         Input += 16;
         N -= 16;
     }
@@ -217,7 +216,7 @@ Return Value:
         FloatValue = std::min(FloatValue, static_cast<float>(MaximumValue));
         UnpackedType IntValue = static_cast<UnpackedType>(FloatValue);
 
-        MlasSetInt4Element(Output, n, IntValue);
+        MlasSetInt4Element<UnpackedType>(Output, n, IntValue);
     }
 }
 
@@ -280,22 +279,22 @@ MlasQuantizeLinearU4Kernel(
     uint8_t* Output,
     size_t N,
     float Scale,
-    uint8_t ZeroPoint
+    int8_t ZeroPoint
     )
 {
-    MlasQuantizeLinearInt4Kernel<uint8_t>(Input, Output, N, Scale, ZeroPoint);
+    MlasQuantizeLinearInt4Kernel<false>(Input, Output, N, Scale, ZeroPoint);
 }
 
 void
 MLASCALL
 MlasQuantizeLinearS4Kernel(
     const float* Input,
-    int8_t* Output,
+    uint8_t* Output,
     size_t N,
     float Scale,
     int8_t ZeroPoint
     )
 {
-    MlasQuantizeLinearInt4Kernel<int8_t>(Input, Output, N, Scale, ZeroPoint);
+    MlasQuantizeLinearInt4Kernel<true>(Input, Output, N, Scale, ZeroPoint);
 }
 

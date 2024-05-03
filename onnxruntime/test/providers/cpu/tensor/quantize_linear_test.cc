@@ -424,15 +424,15 @@ TEST(QuantizeLinearOpTest, UInt4) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-template <typename T>
-static void GetExpectedInt4Quant(const float* input, Int4x2Base<T>* output, size_t num_elems, float scale,
-                                 T zero_point) {
+template <bool Signed>
+static void GetExpectedInt4Quant(const float* input, Int4x2Base<Signed>* output, size_t num_elems, float scale,
+                                 int8_t zero_point) {
   for (size_t n = 0; n < num_elems; n++) {
     float float_val = std::nearbyintf(input[n] / scale) + static_cast<float>(zero_point);
-    float_val = std::max(float_val, static_cast<float>(Int4x2Base<T>::min_val));
-    float_val = std::min(float_val, static_cast<float>(Int4x2Base<T>::max_val));
+    float_val = std::max(float_val, static_cast<float>(Int4x2Base<Signed>::min_val));
+    float_val = std::min(float_val, static_cast<float>(Int4x2Base<Signed>::max_val));
 
-    T int_val = static_cast<T>(float_val);
+    Int4x2Base<Signed>::UnpackedType int_val = static_cast<Int4x2Base<Signed>::UnpackedType>(float_val);
 
     size_t i = n >> 1;
     size_t j = n & 0x1;
