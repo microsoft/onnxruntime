@@ -19,6 +19,11 @@ Abstract:
 
 #include <cassert>
 
+#define SQ4BITGEMM_USE_TILE
+#if defined SQ4BITGEMM_USE_TILE
+#include "llama.cpp.sgemm.h"
+#endif
+
 namespace
 {
 
@@ -394,6 +399,7 @@ SQ4BitGemm_CompInt8(
     const size_t RangeCountN
 )
 {
+#ifndef SQ4BITGEMM_USE_TILE
 #ifdef MLAS_TARGET_AMD64_IX86
     if (RangeCountM != 1) {
         // perf experiment shows fp32 is faster than int8 in M > 1 cases.
@@ -404,6 +410,7 @@ SQ4BitGemm_CompInt8(
         );
         return;
     }
+#endif
 #endif
     constexpr size_t BlkBitWidth = 4;
 
@@ -468,7 +475,7 @@ SQ4BitGemm_CompInt8(
             (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-
+#ifndef SQ4BITGEMM_USE_TILE
         for (size_t m = 0; m < RangeCountM; ++m) {
             GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
                 BlkLen,
@@ -485,6 +492,28 @@ SQ4BitGemm_CompInt8(
             c_blk += ldc;
             a_row += lda;
         }
+#else
+        int64_t llama_cpp_m = CountN;
+        int64_t llama_cpp_n = RangeCountM;
+        int64_t llama_cpp_k = k_blks;
+        const std::byte* llama_cpp_A = b_col;
+        int64_t llama_cpp_lda = ldb;
+        const std::byte* llama_cpp_B = a_row;
+        int64_t llama_cpp_ldb = lda;
+        float* llama_cpp_C = c_blk;
+        int64_t llama_cpp_ldc = ldc;
+        const float* llama_cpp_QuantBScale = b_col_scale;
+        int64_t llama_cpp_StrideQuantBScale = k_blks;
+        llamafile_sgemm(
+            llama_cpp_m, llama_cpp_n, llama_cpp_k,
+            llama_cpp_A, llama_cpp_lda,
+            llama_cpp_B, llama_cpp_ldb,
+            llama_cpp_C, llama_cpp_ldc,
+            llama_cpp_QuantBScale, llama_cpp_StrideQuantBScale
+        );
+        (void)bias;
+        (void)b_col_zp;
+#endif
     }
 }
 
