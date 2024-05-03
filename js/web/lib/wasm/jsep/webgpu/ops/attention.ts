@@ -364,10 +364,10 @@ const createAttentionProbsProgramInfo =
       ];
 
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
-      if (relativePositionBias) {
+      if (pastKey) {
         inputDependencies.push('type');
       }
-      if (pastKey) {
+      if (relativePositionBias) {
         inputDependencies.push('type');
       }
       const outputs = [{dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default}];
@@ -378,13 +378,13 @@ const createAttentionProbsProgramInfo =
         const qInput = inputVariable('q', q.dataType, q.dims, components);
         const kInput = inputVariable('key', key.dataType, key.dims, components);
         const inputVars = [qInput, kInput];
-        if (relativePositionBias) {
-          inputVars.push(
-              inputVariable('relative_position_bias', relativePositionBias.dataType, relativePositionBias.dims));
-        }
         if (pastKey) {
           const pastKeyInput = inputVariable('past_key', pastKey.dataType, pastKey.dims, components);
           inputVars.push(pastKeyInput);
+        }
+        if (relativePositionBias) {
+          inputVars.push(
+              inputVariable('relative_position_bias', relativePositionBias.dataType, relativePositionBias.dims));
         }
         const output = outputVariable('output', q.dataType, probsShape);
         const outputVars = [output];
