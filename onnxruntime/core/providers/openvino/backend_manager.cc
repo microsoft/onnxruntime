@@ -284,8 +284,14 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
 }
 
 static const std::vector<std::string> supported_qdq_ops = {"Conv", "Add", "Div", "MatMul"};
+enum class SkipReason {
+  Uint16QDQ,
+  DuplicateDQ,
+  Other
+};
 static bool CheckDQRuleSet(const NodeUnit& node_unit,
-                           const Node* dq_node) {
+                           const Node* dq_node,
+                           SkipReason& reason) {
   const auto& dq_input_defs = dq_node->InputDefs();
   const auto& target_input_defs = node_unit.GetNode().InputDefs();
 
@@ -296,6 +302,13 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
 
   // #1 If UInt16 DQ, don't keep it
   if (zero_point_dt == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+    reason = SkipReason::Uint16QDQ;
+    return false;
+  }
+
+  // #2 Reverse DQ duplication
+  if (dq_node->Name().find("/duplicated") != std::string::npos) {
+    reason = SkipReason::DuplicateDQ;
     return false;
   }
 
@@ -307,6 +320,7 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
     if ((target_input_defs.at(0)->Name().find("DequantizeLinear_Output") != std::string::npos) &&
         (target_input_defs.at(1)->Name().find("DequantizeLinear_Output") != std::string::npos)) {
       if (target_input_defs.at(0)->Name().find("bias") != std::string::npos) {
+        reason = SkipReason::Other;
         return false;
       } else {
         // keeps both DQ inputs for this Add
@@ -324,7 +338,6 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
       return true;  // Keep both DQ inputs for this MatMul
     }
   } else {
-
     // For unsupported ops, check if connected input NodeUnit is one of supported ops, then keep the DQ
     for (Node::NodeConstIterator dq_in = dq_node->InputNodesBegin(); dq_in != dq_node->InputNodesEnd(); ++dq_in) {
       const auto& connected_q_op = *dq_in;
@@ -340,16 +353,19 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
                       supported_qdq_ops.end(), previous_target_op.OpType()) != supported_qdq_ops.end()) {
           return true;
         } else {
+          reason = SkipReason::Other;
           return false;
         }
       }
     }
   }
+  reason = SkipReason::Other;
   return false;
 }
 
 static bool CheckQRuleSet(const NodeUnit& node_unit,
-                          const Node* q_node) {
+                          const Node* q_node,
+                          SkipReason& reason) {
   // If the target node of the NodeUnit following this one is one of the supported Op types, then keep this Q
   // This Q should also be uint8
 
@@ -364,6 +380,7 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
 
   // If UInt16 Q, don't keep it
   if (zero_point_dt == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+    reason = SkipReason::Uint16QDQ;
     return false;
   }
 
@@ -419,7 +436,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
                            const logging::Logger& /* logger */) {
   assert(node_unit.UnitType() == NodeUnit::Type::QDQGroup);
 
-  LOGS_DEFAULT(INFO) << "\nNode in QDQ Group: " << node_unit.Name() << " " << node_unit.OpType() << " ";
+  // LOGS_DEFAULT(INFO) << "\nNode in QDQ Group: " << node_unit.Name() << " " << node_unit.OpType() << " ";
 
   // Collect inputs coming into the node unit.
   const auto& node_unit_inputs = node_unit.Inputs();
@@ -432,15 +449,39 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
     const auto& input_defs = dq_node->InputDefs();
     ORT_ENFORCE(input_defs.size() == 3);
 
-    bool keep_dq = CheckDQRuleSet(node_unit, dq_node);
-
-    LOGS_DEFAULT(INFO) << dq_node->Name() << " keep " << keep_dq;
+    SkipReason reason;
+    bool keep_dq = CheckDQRuleSet(node_unit, dq_node, reason);
 
     if (keep_dq) {
       dst_graph.AddNode(*dq_node);  // Add the node to the graph
       dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
                                    &dst_graph.GetOrCreateNodeArg(dq_node->OutputDefs().at(0)->Name(),
                                                                  dq_node->OutputDefs().at(0)->TypeAsProto())});
+    } else {
+
+      // If it's a duplicate DQ AND the previous node unit is not of type SingleNode (i.e, input/output units)
+      if (reason == SkipReason::DuplicateDQ) {
+        // Skips the DQ, but keep the route to the target node
+        // Add the output of the other original DQ as input arg of this target node
+
+        std::vector<const Node*> dst_nodes_present = dst_graph.Nodes();
+
+        // Check if the connected Q was already kept in the dst graph. If it's not found, don't reconnect
+        if (auto it = std::find_if(dst_nodes_present.begin(), dst_nodes_present.end(),
+                                   [&](const Node* n) {
+                                     // search for the connected Q in the dst graph
+                                     return (n->Name() == dq_node->InputNodesBegin()->Name() &&
+                                             n->OpType() == "QuantizeLinear");
+                                   });
+            it == std::end(dst_nodes_present)) continue;  // Skip connecting this duplicate DQ
+
+        std::string target_in_arg_name = dq_node->OutputDefs().at(0)->Name();
+        std::string duplicate_str = "/duplicated";
+        target_in_arg_name.erase(target_in_arg_name.end() - duplicate_str.length(), target_in_arg_name.end());
+        dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
+                                     &dst_graph.GetOrCreateNodeArg(target_in_arg_name,
+                                                                   dq_node->OutputDefs().at(0)->TypeAsProto())});
+      }
     }
   }
 
@@ -469,9 +510,11 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
     ORT_ENFORCE(node_unit.GetQNodes().size() == 1);
     const auto& q_node = node_unit.GetQNodes().at(0);
 
-    bool keep_q = CheckQRuleSet(node_unit, q_node);
+    SkipReason reason;
 
-    LOGS_DEFAULT(INFO) << q_node->Name() << " keep " << keep_q;
+    bool keep_q = CheckQRuleSet(node_unit, q_node, reason);
+
+    // LOGS_DEFAULT(INFO) << q_node->Name() << " keep " << keep_q;
 
     if (keep_q) {
       dst_graph.AddNode(*q_node);  // Add the node to the graph
