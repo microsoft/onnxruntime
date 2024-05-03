@@ -210,8 +210,4 @@ export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Parti
   // #region config
   numThreads?: number;
   // #endregion
-
-  // #region PThread support
-  PThread?: {terminateAllThreads(): void};
-  // #endregion
 }

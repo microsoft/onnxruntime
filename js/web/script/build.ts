@@ -57,9 +57,12 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_TRAINING': 'true',
-  'BUILD_DEFS.PROXY_WORKER_URL': 'proxy.min.mjs',
+  'BUILD_DEFS.DISABLE_EMBEDDING': 'true',
+
+  'BUILD_DEFS.IS_ESM': 'false',
+  'BUILD_DEFS.PROXY_WORKER_URL': '""',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
-};
+} as const;
 
 const COPYRIGHT_HEADER = `/*!
  * ONNX Runtime Web v${require('../package.json').version}
@@ -68,22 +71,124 @@ const COPYRIGHT_HEADER = `/*!
  */`;
 
 interface OrtBuildOptions {
-  isProduction?: boolean;
-  isNode?: boolean;
-  format: 'iife'|'cjs'|'esm';
-  outputBundleName: string;
-  define?: Record<string, string>;
+  readonly isProduction?: boolean;
+  readonly isNode?: boolean;
+  readonly format: 'iife'|'cjs'|'esm';
+  readonly outputName: string;
+  readonly define?: Record<string, string>;
 }
 
-const alreadyBuilt = new Set();
+const terserAlreadyBuilt = new Map();
+
+/**
+ * This function is only used to minify the Emscripten generated JS code. The ESBuild minify option is not able to
+ * tree-shake some unused code as expected. Specifically, there are 2 issues:
+ * 1. the use of `await import("module")`
+ * 2. the use of `await import("worker_threads")`, with top-level "await".
+ *
+ * The 2 code snippets mentioned above are guarded by feature checks to make sure they are only run in Node.js. However,
+ * ESBuild fails to tree-shake them and will include them in the final bundle. It will generate code like this:
+ *
+ * ```js
+ * // original code (example, not exact generated code)
+ * var isNode = typeof process !== 'undefined' && process.versions?.node;
+ * if (isNode) {
+ *   const {createRequire} = await import('module');
+ *   ...
+ * }
+ *
+ * // minimized code (with setting "define: {'process': 'undefined'}")
+ * var x=!0;if(x){const{createRequire:rt}=await import("module");...}
+ * ```
+ *
+ * The remaining dynamic import call makes trouble for further building steps. To solve this issue, we use Terser to
+ * minify the Emscripten generated JS code. Terser does more aggressive optimizations and is able to tree-shake the
+ * unused code with special configurations.
+ *
+ * We assume the minimized code does not contain any dynamic import calls.
+ */
+async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
+  const code = terserAlreadyBuilt.get(filepath);
+  if (code) {
+    return code;
+  }
+
+  const doMinify = (async () => {
+    const TIME_TAG = `BUILD:terserMinify:${filepath}`;
+    console.time(TIME_TAG);
+
+    const contents = await fs.readFile(filepath, {encoding: 'utf-8'});
+
+    // Find the first and the only occurrence of minified function implementation of "_emscripten_thread_set_strongref":
+    // ```js
+    // _emscripten_thread_set_strongref: (thread) => {
+    //   if (ENVIRONMENT_IS_NODE) {
+    //     PThread.pthreads[thread].ref();
+    //   }
+    // }
+    // ```
+    //
+    // It is minified to: (example)
+    // ```js
+    // function Pb(a){D&&N[a>>>0].ref()}
+    // ```
+
+    // The following code will look for the function name and mark the function call as pure, so that Terser will
+    // minify the code correctly.
+
+    const markedAsPure = [];
+    // First, try if we are working on the original (not minified) source file. This is when we are working with the
+    // debug build.
+    const isOriginal = contents.includes('PThread.pthreads[thread].ref()');
+    if (isOriginal) {
+      markedAsPure.push('PThread.pthreads[thread].ref');
+    } else {
+      // If it is not the original source file, we need to find the minified function call.
+      const matches = [...contents.matchAll(/\{[_a-zA-Z][_a-zA-Z0-9]*&&([_a-zA-Z][_a-zA-Z0-9]*\[.+?]\.ref)\(\)}/g)];
+      if (matches.length !== 1) {
+        throw new Error(`Unexpected number of matches for minified "PThread.pthreads[thread].ref()" in "${filepath}": ${
+            matches.length}.`);
+      }
+      // matches[0] is the first and the only match.
+      // matches[0][0] is the full matched string and matches[0][1] is the first capturing group.
+      markedAsPure.push(matches[0][1]);
+    }
+
+    const terser = await import('terser');
+    const result = await terser.minify(contents, {
+
+      module: true,
+      compress: {
+        passes: 2,
+        global_defs: {'process': undefined, 'globalThis.process': undefined},
+        pure_funcs: markedAsPure,
+      },
+    });
+
+    console.timeEnd(TIME_TAG);
+
+    return result.code!;
+  })();
+
+  terserAlreadyBuilt.set(filepath, doMinify);
+  return doMinify;
+}
+
+const esbuildAlreadyBuilt = new Map();
 
 async function buildBundle(options: esbuild.BuildOptions) {
   // Skip if the same build options have been built before.
   const serializedOptions = JSON.stringify(options);
-  if (alreadyBuilt.has(serializedOptions)) {
+  const storedBuildOptions = esbuildAlreadyBuilt.get(options.outfile!);
+  if (storedBuildOptions) {
+    if (serializedOptions !== storedBuildOptions) {
+      throw new Error(`Inconsistent build options for "${options.outfile!}".`);
+    }
+    console.log(`Already built "${options.outfile!}", skipping...`);
     return;
   } else {
-    alreadyBuilt.add(serializedOptions);
+    esbuildAlreadyBuilt.set(options.outfile!, serializedOptions);
+    console.log(`Building "${options.outfile!}"...`);
   }
 
   // Patch banner:
@@ -111,9 +216,13 @@ async function buildBundle(options: esbuild.BuildOptions) {
   const COMMONJS_FOOTER_MIN = 'typeof exports=="object"&&typeof module=="object"&&(module.exports=ort);';
   const footer = options.format === 'iife' ? {js: COMMONJS_FOOTER_MIN} : undefined;
 
-  // For esm, set BUILD_DEFS.ESM_IMPORT_META_URL to the current file's URL.
+  // set BUILD_DEFS for ESM.
   if (options.format === 'esm') {
-    options.define = {...options.define, 'BUILD_DEFS.ESM_IMPORT_META_URL': 'import.meta.url'};
+    options.define = {
+      ...options.define,
+      'BUILD_DEFS.ESM_IMPORT_META_URL': 'import.meta.url',
+      'BUILD_DEFS.IS_ESM': 'true',
+    };
   }
 
   const result = await esbuild.build({
@@ -135,52 +244,80 @@ async function buildBundle(options: esbuild.BuildOptions) {
   }
 }
 
+/**
+ * Build one ort-web target.
+ *
+ * The distribution code is either bundled into a single file:
+ *  - [output-name].bundle[.min].mjs
+ *
+ * Or split into multiple files:
+ *  - [output-name][.min].[m]js
+ *  - [output-name].proxy[.min].mjs
+ *  - ort[-training]-wasm-simd-threaded[.jsep].mjs
+ */
 async function buildOrt({
   isProduction = false,
   isNode = false,
   format,
-  outputBundleName,
+  outputName,
   define = DEFAULT_DEFINE,
 }: OrtBuildOptions) {
-  // distribution code is split into multiple files:
-  // - [bundle-name][.min].[m]js
-  // - [bundle-name].proxy[.min].mjs
-  // - ort[-training]-wasm[-simd][-threaded][.jsep].mjs
   const platform = isNode ? 'node' : 'browser';
-  const external = isNode ? ['onnxruntime-common'] : ['node:fs/promises', 'node:fs', 'node:os'];
+  const external =
+      isNode ? ['onnxruntime-common'] : ['node:fs/promises', 'node:fs', 'node:os', 'module', 'worker_threads'];
   const plugins: esbuild.Plugin[] = [];
+  const defineOverride: Record<string, string> = {};
+  if (!isNode) {
+    defineOverride.process = 'undefined';
+    defineOverride['globalThis.process'] = 'undefined';
+  }
+
+  const proxyFileName = `${outputName}.proxy${isProduction ? '.min' : ''}.mjs`;
+  if (define['BUILD_DEFS.DISABLE_WASM_PROXY'] !== 'true') {
+    defineOverride['BUILD_DEFS.PROXY_WORKER_URL'] = JSON.stringify(proxyFileName);
+  }
 
   // Build proxy worker bundle if needed.
   if (define['BUILD_DEFS.DISABLE_WASM_PROXY'] !== 'true') {
-    const fileName = `${
-        outputBundleName.endsWith('.min') ? outputBundleName.substring(0, outputBundleName.length - 4) :
-                                            outputBundleName}.proxy${isProduction ? '.min' : ''}.mjs`;
-    define['BUILD_DEFS.PROXY_WORKER_URL'] = JSON.stringify(fileName);
     await buildBundle({
       entryPoints: ['web/lib/wasm/proxy-worker/main.ts'],
-      outfile: `web/dist/${fileName}`,
+      outfile: `web/dist/${proxyFileName}`,
       platform,
       format: 'esm',
       plugins,
       external,
       define: {
         ...define,
+        ...defineOverride,
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+        'BUILD_DEFS.DISABLE_EMBEDDING': 'true',
       },
       sourcemap: isProduction ? 'external' : 'inline',
       minify: isProduction,
     });
   }
 
+  if (define['BUILD_DEFS.DISABLE_EMBEDDING'] !== 'true') {
+    plugins.push({
+      name: 'emscripten-threaded-js-handler',
+      setup(build: esbuild.PluginBuild) {
+        build.onLoad(
+            {filter: /ort-.*wasm.*-threaded.*\.mjs$/},
+            async args => ({contents: await minifyWasmModuleJsForBrowser(args.path)}));
+      }
+    });
+  }
+
   await buildBundle({
     entryPoints: ['web/lib/index.ts'],
-    outfile: `web/dist/${outputBundleName}.${format === 'esm' ? 'mjs' : 'js'}`,
+    outfile: `web/dist/${outputName}${define['BUILD_DEFS.DISABLE_EMBEDDING'] !== 'true' ? '.bundle' : ''}${
+        isProduction ? '.min' : ''}.${format === 'esm' ? 'mjs' : 'js'}`,
     platform,
     format,
     globalName: 'ort',
     plugins,
     external,
-    define,
+    define: {...define, ...defineOverride},
     sourcemap: isProduction ? 'linked' : 'inline',
     minify: isProduction,
   });
@@ -368,7 +505,7 @@ async function validate() {
 
       // all files should contain the magic comment to ignore dynamic import calls.
       //
-      if (!file.includes('webgl')) {
+      if (!file.includes('webgl') && !file.startsWith('ort.esm.')) {
         const contentToSearch = isMinified ? '/*webpackIgnore:true*/' : '/* webpackIgnore: true */';
         if (!content.includes(contentToSearch)) {
           throw new Error(`Validation failed: "${file}" does not contain magic comment.`);
@@ -382,11 +519,13 @@ async function main() {
   console.timeLog('BUILD', 'Start building ort-web bundles...');
 
   /**
-   * add all 4 build tasks for web bundles. Includes:
+   * add all 6 build tasks for web bundles. Includes:
    * - IIFE/CJS, debug:                [name].js
    * - IIFE/CJS, production:           [name].min.js
    * - ESM, debug:                     [name].mjs
    * - ESM, production:                [name].min.mjs
+   * - ESM, debug, embedded:           [name].bundle.mjs
+   * - ESM, production, embedded:      [name].bundle.min.mjs
    */
   const addAllWebBuildTasks = async (options: Omit<OrtBuildOptions, 'format'>) => {
     // [name].js
@@ -397,22 +536,37 @@ async function main() {
     // [name].min.js
     await buildOrt({
       ...options,
-      outputBundleName: options.outputBundleName + '.min',
+      outputName: options.outputName,
       format: 'iife',
       isProduction: true,
     });
     // [name].mjs
     await buildOrt({
       ...options,
-      outputBundleName: options.outputBundleName,
+      outputName: options.outputName,
       format: 'esm',
     });
     // [name].min.mjs
     await buildOrt({
       ...options,
-      outputBundleName: options.outputBundleName + '.min',
+      outputName: options.outputName,
       format: 'esm',
       isProduction: true,
+    });
+    // [name].bundle.mjs
+    await buildOrt({
+      ...options,
+      outputName: options.outputName,
+      format: 'esm',
+      define: {...options.define ?? DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_EMBEDDING': 'false'},
+    });
+    // [name].bundle.min.mjs
+    await buildOrt({
+      ...options,
+      outputName: options.outputName,
+      format: 'esm',
+      isProduction: true,
+      define: {...options.define ?? DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_EMBEDDING': 'false'},
     });
   };
 
@@ -422,7 +576,7 @@ async function main() {
       isProduction: true,
       isNode: true,
       format: 'cjs',
-      outputBundleName: 'ort.node.min',
+      outputName: 'ort.node',
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_JSEP': 'true',
@@ -435,7 +589,7 @@ async function main() {
       isProduction: true,
       isNode: true,
       format: 'esm',
-      outputBundleName: 'ort.node.min',
+      outputName: 'ort.node',
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_JSEP': 'true',
@@ -447,59 +601,50 @@ async function main() {
 
   if (BUNDLE_MODE === 'dev') {
     // ort.all.js
-    await buildOrt({outputBundleName: 'ort.all', format: 'iife', define: {...DEFAULT_DEFINE}});
+    await buildOrt({outputName: 'ort.all', format: 'iife', define: {...DEFAULT_DEFINE}});
   }
 
   if (BUNDLE_MODE === 'perf') {
     // ort.all.min.js
     await buildOrt({
       isProduction: true,
-      outputBundleName: 'ort.all.min',
+      outputName: 'ort.all',
       format: 'iife',
     });
   }
 
   if (BUNDLE_MODE === 'prod') {
     // ort.all[.min].[m]js
-    await addAllWebBuildTasks({outputBundleName: 'ort.all'});
+    await addAllWebBuildTasks({outputName: 'ort.all'});
 
     // ort[.min].[m]js
     await addAllWebBuildTasks({
-      outputBundleName: 'ort',
+      outputName: 'ort',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true'},
     });
     // ort.webgpu[.min].[m]js
     await addAllWebBuildTasks({
-      outputBundleName: 'ort.webgpu',
+      outputName: 'ort.webgpu',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
     });
     // ort.wasm[.min].[m]js
     await addAllWebBuildTasks({
-      outputBundleName: 'ort.wasm',
+      outputName: 'ort.wasm',
       define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
     });
     // ort.webgl[.min].[m]js
     await addAllWebBuildTasks({
-      outputBundleName: 'ort.webgl',
+      outputName: 'ort.webgl',
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WASM': 'true',
-      },
-    });
-    // ort.wasm-core[.min].[m]js
-    await addAllWebBuildTasks({
-      outputBundleName: 'ort.wasm-core',
-      define: {
-        ...DEFAULT_DEFINE,
-        'BUILD_DEFS.DISABLE_JSEP': 'true',
-        'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
       },
     });
     // ort.training.wasm[.min].[m]js
     await addAllWebBuildTasks({
-      outputBundleName: 'ort.training.wasm',
+      outputName: 'ort.training.wasm',
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_TRAINING': 'false',

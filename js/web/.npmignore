@@ -11,19 +11,31 @@
 # from https://www.jsdelivr.com/documentation
 #
 # We only include development build in the NPM package for the following targets:
-# - /dist/ort.js
-# - /dist/ort.all.js
+# - /dist/ort.[m]js
+# - /dist/ort.all.[m]js
 #
-/dist/cjs/ort.js
-/dist/esm/ort.js
-/dist/cjs/ort.all.js
-/dist/esm/ort.all.js
-/dist/**/ort.wasm.js
-/dist/**/ort.wasm-core.js
-/dist/**/ort.webgl.js
-/dist/**/ort.webgpu.js
-/dist/**/ort.training.wasm.js
+/dist/ort.training.wasm.bundle.mjs
+/dist/ort.training.wasm.js
+/dist/ort.training.wasm.mjs
+/dist/ort.training.wasm.proxy.mjs
 
+/dist/ort.wasm.bundle.mjs
+/dist/ort.wasm.js
+/dist/ort.wasm.mjs
+/dist/ort.wasm.proxy.mjs
+
+/dist/ort.webgl.bundle.min.mjs
+/dist/ort.webgl.bundle.min.mjs.map
+/dist/ort.webgl.bundle.mjs
+/dist/ort.webgl.js
+/dist/ort.webgl.mjs
+
+/dist/ort.webgpu.bundle.mjs
+/dist/ort.webgpu.js
+/dist/ort.webgpu.mjs
+/dist/ort.webgpu.proxy.mjs
+
+/models/
 /types/
 
 karma.conf.js

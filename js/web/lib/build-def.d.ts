@@ -10,6 +10,8 @@
  * No flags in this file should present in production build.
  */
 interface BuildDefinitions {
+  // #region Build definitions for Tree Shaking
+
   /**
    * defines whether to disable the whole WebGL backend in the build.
    */
@@ -31,6 +33,19 @@ interface BuildDefinitions {
    */
   readonly DISABLE_TRAINING: boolean;
   /**
+   * defines whether to disable embedding modules (proxy, wasm) in the build.
+   */
+  readonly DISABLE_EMBEDDING: boolean;
+
+  // #endregion
+
+  // #region Build definitions for ESM
+
+  /**
+   * defines whether the build is ESM.
+   */
+  readonly IS_ESM: boolean;
+  /**
    * defines the URL of the proxy worker script. This is used when DISABLE_WASM_PROXY is false.
    */
   readonly PROXY_WORKER_URL: string;
@@ -38,6 +53,8 @@ interface BuildDefinitions {
    * placeholder for the import.meta.url in ESM. in CJS, this is undefined.
    */
   readonly ESM_IMPORT_META_URL: string|undefined;
+
+  // #endregion
 }
 
 declare const BUILD_DEFS: BuildDefinitions;

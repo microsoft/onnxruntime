@@ -70,16 +70,24 @@ async function main() {
   // prepare .wasm files for path override testing
   prepareWasmPathOverrideFiles();
 
-  // start a HTTP server for hosting .wasm files (for cross-origin testing)
+  // Setup the wwwroot folder for hosting .wasm files (for cross-origin testing)
   const serverWwwRoot = path.resolve(TEST_E2E_RUN_FOLDER, 'wwwroot');
   fs.emptyDirSync(serverWwwRoot);
+
+  // prepare ESM loaders
+  prepareEsmLoaderFiles();
+
   await fs.symlink(
       path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist'), path.join(serverWwwRoot, 'dist'),
       'junction');
   await fs.symlink(
       path.resolve(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override'), path.join(serverWwwRoot, 'test-wasm-path-override'),
       'junction');
+
+  // start a HTTP server for hosting .wasm files (for cross-origin testing)
   const server = startServer(serverWwwRoot, 8081);
+
+  // await delay(1000 * 3600);  // wait for 1 hour
 
   try {
     // test case run in Node.js
@@ -103,6 +111,22 @@ async function main() {
   }
 }
 
+function prepareEsmLoaderFiles() {
+  const allEsmFiles = [...new Set(BROWSER_TEST_CASES.map(i => i[3]).filter(i => i && i.endsWith('.mjs')))];
+
+  // self-hosted
+  fs.emptyDirSync(path.join(TEST_E2E_RUN_FOLDER, 'esm-loaders'));
+  fs.emptyDirSync(path.join(TEST_E2E_RUN_FOLDER, 'wwwroot', 'esm-loaders'));
+  allEsmFiles.forEach(i => {
+    fs.writeFileSync(
+        path.join(TEST_E2E_RUN_FOLDER, 'esm-loaders', i),
+        `import * as x from '../node_modules/onnxruntime-web/dist/${i}'; globalThis.ort = x;`);
+    fs.writeFileSync(
+        path.join(TEST_E2E_RUN_FOLDER, 'wwwroot', 'esm-loaders', i),
+        `import * as x from '../dist/${i}'; globalThis.ort = x;`);
+  });
+}
+
 function prepareWasmPathOverrideFiles() {
   const folder = path.join(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override');
   const sourceFile =
@@ -115,7 +139,7 @@ function prepareWasmPathOverrideFiles() {
 
 async function testAllNodejsCases() {
   for (const caseName of NODEJS_TEST_CASES) {
-    await runInShell(`node ./node_modules/mocha/bin/mocha ${caseName}`);
+    await runInShell(`node ./node_modules/mocha/bin/mocha --timeout 10000 ${caseName}`);
   }
 }
 

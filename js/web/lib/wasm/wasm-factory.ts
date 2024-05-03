@@ -4,7 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import type {OrtWasmModule} from './wasm-types';
-import {dynamicImportDefault} from './wasm-utils-import';
+import {importWasmModule} from './wasm-utils-import';
 
 let wasm: OrtWasmModule|undefined;
 let initialized = false;
@@ -104,13 +104,12 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   const wasmPaths = flags.wasmPaths;
   const wasmPrefixOverride = typeof wasmPaths === 'string' ? wasmPaths : undefined;
-  const wasmFileName = !BUILD_DEFS.DISABLE_TRAINING ? 'ort-training-wasm-simd-threaded' :
-      !BUILD_DEFS.DISABLE_JSEP                      ? 'ort-wasm-simd-threaded.jsep' :
-                                                      'ort-wasm-simd-threaded';
-  const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[`${wasmFileName}.wasm`] : undefined;
+  const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[
+    !BUILD_DEFS.DISABLE_TRAINING ? 'ort-training-wasm-simd-threaded.wasm' :
+        !BUILD_DEFS.DISABLE_JSEP ? 'ort-wasm-simd-threaded.jsep.wasm' :
+                                   'ort-wasm-simd-threaded.wasm'] : undefined;
 
-  const [objectUrl, ortWasmFactory] = (await dynamicImportDefault<EmscriptenModuleFactory<OrtWasmModule>>(
-      `${wasmFileName}.mjs`, wasmPrefixOverride, numThreads === 1));
+  const [objectUrl, ortWasmFactory] = (await importWasmModule(wasmPrefixOverride, numThreads > 1));
 
   let isTimeout = false;
 
@@ -178,9 +177,11 @@ export const getInstance = (): OrtWasmModule => {
 
 export const dispose = (): void => {
   if (initialized && !initializing && !aborted) {
-    initializing = true;
+    // TODO: currently "PThread.terminateAllThreads()" is not exposed in the wasm module.
+    //       And this function is not yet called by any code.
+    //       If it is needed in the future, we should expose it in the wasm module and uncomment the following line.
 
-    wasm?.PThread?.terminateAllThreads();
+    // wasm?.PThread?.terminateAllThreads();
     wasm = undefined;
 
     initializing = false;

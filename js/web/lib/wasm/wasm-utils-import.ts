@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {env} from 'onnxruntime-common';
+
+import type {OrtWasmModule} from './wasm-types';
 import {isNode} from './wasm-utils-env';
 
 /**
@@ -26,85 +29,161 @@ export const scriptSrc =
 const origin = isNode || typeof location === 'undefined' ? undefined : location.origin;
 
 /**
- * This helper function is used to preload a module from a URL.
- *
- * If the origin of the module URL is different from the current origin, it will fetch the worker URL and create a new
- * Blob URL with the same origin.
- *
- * @param filename - The file name of the module to preload.
- * @param prefixOverride - an optional prefixOverride.
- * @param noPreload - an optional flag to skip preloading the module.
- *
- * @returns - A promise that resolves to a tuple containing 2 elements:
- *            - A boolean indicating whether the module is preloaded.
- *            - The URL of the module to import. If the module is preloaded, it will use a new Blob URL, otherwise the
- *              normalized URL.
+ * Check if the given filename with prefix is from the same origin.
  */
-const preload =
-    async(filename: string, prefixOverride?: string, noPreload?: boolean): Promise<readonly[boolean, string]> => {
-  const fallback = [false, `${prefixOverride ?? './'}${filename}`] as const;
-  if (isNode || noPreload) {
-    // skip preload worker in Node.js or when noPreload is set explicitly
-    return fallback;
-  }
-
-  const baseUrl = prefixOverride ?? scriptSrc;
-  let url: URL;
+const isSameOrigin = (filename: string, prefixOverride?: string) => {
   try {
-    url = baseUrl ? new URL(filename, baseUrl) : new URL(filename);
+    const baseUrl = prefixOverride ?? scriptSrc;
+    const url = baseUrl ? new URL(filename, baseUrl) : new URL(filename);
+    return url.origin === origin;
   } catch {
-    // if failed to resolve from workerUrl and baseUrl, we should skip and return the original workerUrl
-    return fallback;
+    return false;
   }
-
-  if (origin && url.origin !== origin) {
-    // if origin is different, preload worker
-
-    try {
-      // because the origin is different, we need to create a new Blob URL with the same origin
-      const response = await fetch(url);
-      const blob = await response.blob();
-      return [true, URL.createObjectURL(blob)];
-    } catch (e) {
-      // if failed to createURL from prefixOverride, it is not a valid URL, so we should ignore it
-      // eslint-disable-next-line no-console
-      console.warn(`Failed to preload worker from FileName="${filename}", Base="${baseUrl ?? ''}": ${e}`);
-    }
-  }
-
-  return [false, url.href];
 };
 
 /**
- * This helper function is used to dynamically import a module from a URL.
- *
- * This function is used in 2 places:
- * - For the proxy feature, it is used to dynamically import the proxy module.
- * - For WebAssembly, it is used to dynamically import the WebAssembly module.
- *
- * The 2 modules are similar in the following ways:
- * - Both modules are standalone ESM format.
- * - Both are not bundled into the final output.
- * - Both will load themselves as an entry point of a worker.
+ * Normalize the inputs to an absolute URL with the given prefix override. If failed, return undefined.
+ */
+const normalizeUrl = (filename: string, prefixOverride?: string) => {
+  const baseUrl = prefixOverride ?? scriptSrc;
+  try {
+    const url = baseUrl ? new URL(filename, baseUrl) : new URL(filename);
+    return url.href;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Create a fallback URL if an absolute URL cannot be created by the normalizeUrl function.
+ */
+const fallbackUrl = (filename: string, prefixOverride?: string) => `${prefixOverride ?? './'}${filename}`;
+
+/**
+ * This helper function is used to preload a module from a URL.
  *
  * If the origin of the worker URL is different from the current origin, the worker cannot be loaded directly.
  * See discussions in https://github.com/webpack-contrib/worker-loader/issues/154
  *
  * In this case, we will fetch the worker URL and create a new Blob URL with the same origin as a workaround.
  *
+ * @param absoluteUrl - The absolute URL to preload.
+ *
+ * @returns - A promise that resolves to a new Blob URL
+ */
+const preload = async(absoluteUrl: string): Promise<string> => {
+  const response = await fetch(absoluteUrl);
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+};
+
+/**
+ * This helper function is used to dynamically import a module from a URL.
+ *
  * The build script has special handling for this function to ensure that the URL is not bundled into the final output.
  *
- * @param filename - The file name of the module to import.
- * @param prefixOverride - an optional config for prefix override.
- * @param noPreload - an boolean value indicating whether to skip preloading the module. Specifically, this flag should
- *     be set to true when loading wasm module with numThreads === 1, because no worker is needed.
+ * @param url - The URL to import.
  *
- * @returns - A promise that resolves to a tuple containing 2 elements:
- *            - A string representing the URL, if it is created by `URL.createObjectURL()`; otherwise, undefined.
- *            - The default export of the module.
+ * @returns - A promise that resolves to the default export of the module.
  */
-export const dynamicImportDefault =
-    async<T>(filename: string, prefixOverride?: string, noPreload = false): Promise<[undefined | string, T]> => {
-  const [preloaded, url] = await preload(filename, prefixOverride, noPreload);
-  return [preloaded ? url : undefined, (await import(/* webpackIgnore: true */ url)).default];
+const dynamicImportDefault = async<T>(url: string): Promise<T> => (await import(/* webpackIgnore: true */ url)).default;
+
+/**
+ * The embedded proxy module.
+ *
+ * This is only available in ESM and when embedding is not disabled.
+ */
+const embeddedProxyModule: (() => Worker)|undefined = BUILD_DEFS.IS_ESM && !BUILD_DEFS.DISABLE_EMBEDDING ?
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    require('./proxy-worker/main').default :
+    undefined;
+
+/**
+ * Import the proxy module.
+ *
+ * This function will perform the following steps:
+ * 1. If the embedded proxy module is available and the script source is from the same origin, it will return the
+ * embedded module.
+ * 2. Otherwise, if a preload is needed, it will preload the module and return the object URL.
+ * 3. Otherwise, it will perform a dynamic import of the module.
+ *
+ * @returns - A promise that resolves to a tuple of 2 elements:
+ *            - The object URL of the preloaded module, or undefined if no preload is needed.
+ *            - The default export of the module, which is a factory function to create the proxy worker.
+ */
+export const importProxyModule = async(): Promise<[undefined | string, () => Worker]> => {
+  const prefixOverride = typeof env.wasm.wasmPaths === 'string' ? env.wasm.wasmPaths : undefined;
+
+  if (embeddedProxyModule && scriptSrc && isSameOrigin(scriptSrc)) {
+    return [undefined, embeddedProxyModule];
+  }
+
+  const proxyWorkerUrl = BUILD_DEFS.PROXY_WORKER_URL;
+  const moduleAbsUrl = normalizeUrl(proxyWorkerUrl, prefixOverride);
+  // need to preload if all of the following conditions are met:
+  // 1. not in Node.js.
+  //    - Node.js does not have the same origin policy for creating workers.
+  // 2. the absolute URL is available.
+  //    - If the absolute URL is failed to be created, the origin cannot be determined. In this case, we will not
+  //    preload the module.
+  // 3. the worker URL is not from the same origin.
+  //    - If the worker URL is from the same origin, we can create the worker directly.
+  const needPreload = !isNode && moduleAbsUrl && !isSameOrigin(moduleAbsUrl, prefixOverride);
+  const url =
+      needPreload ? (await preload(moduleAbsUrl)) : (moduleAbsUrl ?? fallbackUrl(proxyWorkerUrl, prefixOverride));
+  return [needPreload ? url : undefined, await dynamicImportDefault<() => Worker>(url)];
 };
+
+/**
+ * The embedded WebAssembly module.
+ *
+ * This is only available in ESM and when embedding is not disabled.
+ */
+const embeddedWasmModule: EmscriptenModuleFactory<OrtWasmModule>|undefined =
+    BUILD_DEFS.IS_ESM && !BUILD_DEFS.DISABLE_EMBEDDING ?
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    require(
+        !BUILD_DEFS.DISABLE_TRAINING ? '../../dist/ort-training-wasm-simd-threaded.mjs' :
+            !BUILD_DEFS.DISABLE_JSEP ? '../../dist/ort-wasm-simd-threaded.jsep.mjs' :
+                                       '../../dist/ort-wasm-simd-threaded.mjs')
+        .default :
+    undefined;
+
+/**
+ * Import the proxy module.
+ *
+ * This function will perform the following steps:
+ * 1. If the embedded proxy module is available and the script source is from the same origin, it will return the
+ * embedded module.
+ * 2. Otherwise, if a preload is needed, it will preload the module and return the object URL.
+ * 3. Otherwise, it will perform a dynamic import of the module.
+ *
+ * @returns - A promise that resolves to a tuple of 2 elements:
+ *            - The object URL of the preloaded module, or undefined if no preload is needed.
+ *            - The default export of the module, which is a factory function to create the proxy worker.
+ */
+export const importWasmModule = async(prefixOverride: string|undefined, isMultiThreaded: boolean):
+    Promise<[undefined | string, EmscriptenModuleFactory<OrtWasmModule>]> => {
+      if (embeddedWasmModule && (!isMultiThreaded || scriptSrc && isSameOrigin(scriptSrc))) {
+        return [undefined, embeddedWasmModule];
+      }
+
+      const wasmModuleFilename = !BUILD_DEFS.DISABLE_TRAINING ? 'ort-training-wasm-simd-threaded.mjs' :
+          !BUILD_DEFS.DISABLE_JSEP                            ? 'ort-wasm-simd-threaded.jsep.mjs' :
+                                                                'ort-wasm-simd-threaded.mjs';
+      const wasmModuleUrl = normalizeUrl(wasmModuleFilename, prefixOverride);
+      // need to preload if all of the following conditions are met:
+      // 1. not in Node.js.
+      //    - Node.js does not have the same origin policy for creating workers.
+      // 2. multi-threaded is enabled.
+      //    - If multi-threaded is disabled, no worker will be created. So we don't need to preload the module.
+      // 3. the absolute URL is available.
+      //    - If the absolute URL is failed to be created, the origin cannot be determined. In this case, we will not
+      //    preload the module.
+      // 4. the worker URL is not from the same origin.
+      //    - If the worker URL is from the same origin, we can create the worker directly.
+      const needPreload = !isNode && isMultiThreaded && wasmModuleUrl && !isSameOrigin(wasmModuleUrl, prefixOverride);
+      const url = needPreload ? (await preload(wasmModuleUrl)) :
+                                (wasmModuleUrl ?? fallbackUrl(wasmModuleFilename, prefixOverride));
+      return [needPreload ? url : undefined, await dynamicImportDefault<EmscriptenModuleFactory<OrtWasmModule>>(url)];
+    };

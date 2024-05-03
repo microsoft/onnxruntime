@@ -6,7 +6,7 @@ import {env, InferenceSession} from 'onnxruntime-common';
 import {OrtWasmMessage, SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
 import * as core from './wasm-core-impl';
 import {initializeWebAssembly} from './wasm-factory';
-import {dynamicImportDefault} from './wasm-utils-import';
+import {importProxyModule} from './wasm-utils-import';
 
 const isProxy = (): boolean => !!env.wasm.proxy && typeof document !== 'undefined';
 let proxyWorker: Worker|undefined;
@@ -85,21 +85,20 @@ export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     return new Promise<void>((resolve, reject) => {
       proxyWorker?.terminate();
-      const wasmPrefixOverride = typeof env.wasm.wasmPaths === 'string' ? env.wasm.wasmPaths : undefined;
-      void dynamicImportDefault<Worker>(BUILD_DEFS.PROXY_WORKER_URL, wasmPrefixOverride)
-          .then(async ([objectUrl, worker]) => {
-            try {
-              proxyWorker = worker;
-              proxyWorker.onerror = (ev: ErrorEvent) => reject(ev);
-              proxyWorker.onmessage = onProxyWorkerMessage;
-              initWasmCallbacks = [resolve, reject];
-              const message: OrtWasmMessage = {type: 'init-wasm', in : env};
-              proxyWorker.postMessage(message);
-              temporaryObjectUrl = objectUrl;
-            } catch (e) {
-              reject(e);
-            }
-          }, reject);
+
+      void importProxyModule().then(([objectUrl, createWorker]) => {
+        try {
+          proxyWorker = createWorker();
+          proxyWorker.onerror = (ev: ErrorEvent) => reject(ev);
+          proxyWorker.onmessage = onProxyWorkerMessage;
+          initWasmCallbacks = [resolve, reject];
+          const message: OrtWasmMessage = {type: 'init-wasm', in : env};
+          proxyWorker.postMessage(message);
+          temporaryObjectUrl = objectUrl;
+        } catch (e) {
+          reject(e);
+        }
+      }, reject);
     });
 
   } else {

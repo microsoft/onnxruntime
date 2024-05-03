@@ -15,7 +15,8 @@ const getRequestData = (url, dir) => {
 
   let filepath;
   let mimeType;
-  if (pathname.startsWith('/test-wasm-path-override/') || pathname.startsWith('/dist/')) {
+  if (pathname.startsWith('/test-wasm-path-override/') || pathname.startsWith('/dist/') ||
+      pathname.startsWith('/esm-loaders/')) {
     filepath = path.resolve(dir, pathname.substring(1));
   } else {
     return null;

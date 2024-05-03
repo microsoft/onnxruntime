@@ -176,4 +176,4 @@ if (isProxyWorker) {
   };
 }
 
-export default isProxyWorker ? null : new Worker(import.meta.url, {type: 'module', name: WORKER_NAME});
+export default isProxyWorker ? null : () => new Worker(import.meta.url, {type: 'module', name: WORKER_NAME});

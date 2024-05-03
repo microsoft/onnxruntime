@@ -31,8 +31,13 @@ const files = [
   {pattern: './model_with_orig_ext_data.bin', included: false},
 ];
 if (ORT_MAIN) {
-  files.push(
-      {pattern: (SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/') + ORT_MAIN});
+  if (ORT_MAIN.endsWith('.mjs')) {
+    files.push(
+        {pattern: (SELF_HOST ? './esm-loaders/' : 'http://localhost:8081/esm-loaders/') + ORT_MAIN, type: 'module'});
+  } else {
+    files.push(
+        {pattern: (SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/') + ORT_MAIN});
+  }
 }
 if (FORMAT === 'esm') {
   files.push({pattern: TEST_MAIN, type: 'module'});
