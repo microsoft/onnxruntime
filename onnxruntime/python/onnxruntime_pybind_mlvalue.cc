@@ -220,7 +220,7 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
     // First, check if an I/O binding API that was used before this session or another session has already created a queue
     if (FAILED(d3d12_device->GetPrivateData(dml_execution_context_guid, &execution_context_ptr_size, context.GetAddressOf()))) {
       D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
-      cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+      cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
       cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 
       ComPtr<ID3D12CommandQueue> cmd_queue;
