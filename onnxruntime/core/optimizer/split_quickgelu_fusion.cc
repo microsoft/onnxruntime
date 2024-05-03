@@ -252,11 +252,11 @@ bool GetSplitQuickGeluParams(
     Node& quickgelu_node,
     NodeArg*& input,
     int& axis,
-    int& alpha) {
+    float& alpha) {
   std::cout << "Params part 1" << std::endl;
   input = split_node.MutableInputDefs()[0];
   axis = -1;
-  alpha = -1;
+  alpha = -1.0;
   std::cout << "Params part 2" << std::endl;
   auto& split_attr = split_node.GetAttributes();
   if (split_attr.find("axis") != split_attr.end()) {
@@ -269,7 +269,7 @@ bool GetSplitQuickGeluParams(
   auto& quickgelu_attr = quickgelu_node.GetAttributes();
   if (quickgelu_attr.find("alpha") != quickgelu_attr.end()) {
     auto& alpha_attr = quickgelu_attr.at("alpha");
-    alpha = utils::HasInt(alpha_attr) ? (int)alpha_attr.i() : alpha;
+    alpha = utils::HasFloat(alpha_attr) ? (float)alpha_attr.i() : alpha;
   } else {
     return false;
   }
@@ -285,7 +285,7 @@ void FuseSplitQuickGeluSubgraph(
     Node& mul_node,
     NodeArg* input,
     int axis,
-    int alpha) {
+    float alpha) {
   std::cout << "FUSE SUBGRAPH Part 1" << std::endl;
   std::string fused_desc =
       "fused " + split_node.Name() + " and " + quickgelu_node.Name() + " and " + mul_node.Name() + " into SplitQuickGelu";
@@ -302,9 +302,8 @@ void FuseSplitQuickGeluSubgraph(
 
   // add split axis
   // add QuickGelu alpha
-  std::cout << "FUSE SUBGRAPH Part 2" << std::endl;
   fused_node.AddAttribute("axis", static_cast<int64_t>(axis));
-  fused_node.AddAttribute("alpha", static_cast<int64_t>(alpha));
+  fused_node.AddAttribute("alpha", static_cast<float>(alpha));
   std::cout << "FUSE SUBGRAPH Part 3" << std::endl;
 
   // finalize node fusion (e.g. remove old nodes and shift outputs)
@@ -312,7 +311,7 @@ void FuseSplitQuickGeluSubgraph(
   fused_node.SetExecutionProviderType(split_node.GetExecutionProviderType());
   std::cout << "FUSE SUBGRAPH Part 5" << std::endl;
   graph_utils::FinalizeNodeFusion(graph, {split_node, quickgelu_node, mul_node}, fused_node);
-  std::cout << "FUSE SUBGRAPH Complete" << std::endl;
+  std::cout << "FUSE SUBGRAPH Part 6" << std::endl;
 }
 
 }  // namespace
@@ -344,7 +343,7 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     NodeArg* input;
     int axis;
-    int alpha;
+    float alpha;
     std::cout << "Get Params Now" << std::endl;
     if (!GetSplitQuickGeluParams(*split_node, *quickgelu_node, input, axis, alpha)) {
       continue;
@@ -352,6 +351,7 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     std::cout << "FUSE SUBGRAPH NOW" << std::endl;
     FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, axis, alpha);
     modified = true;
+    std::cout << "FUSION SUBGRAPH COMPLETE NOW" << std::endl;
 
     VLOGF(logger, 1, "Fused S2S Model Split + QuickGelu into S2SModelSplitQuickGelu node.\n");
   }

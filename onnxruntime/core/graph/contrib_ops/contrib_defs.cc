@@ -631,6 +631,39 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           return true;
         }));
 
+// Just copy pasted QuickGelu, needs modification
+constexpr const char* S2SModelSplitQuickGelu_ver1_doc = R"DOC(Compute x * Sigmoid(alpha * x).)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    S2SModelSplitQuickGelu, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .SetDoc(S2SModelSplitQuickGelu_ver1_doc)
+        .Attr("axis", "axis value for split", AttributeProto::INT, static_cast<int64_t>(-11))
+        .Attr("alpha", "Alpha value.", AttributeProto::FLOAT, 1.702f)
+        .Input(0, "X", "The input data as Tensor.", "T")
+        // .Input(1, "split", "split tensor.", "T")
+        .Output(0, "Y", "The output.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+        .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema,
+                                                   FunctionProto& functionProto) {
+          auto* tp = ctx.getInputType(0);
+          if ((tp == nullptr) || (!tp->has_tensor_type())) return false;
+          auto elem_type = (TensorProto_DataType)(tp->tensor_type().elem_type());
+          auto* alpha_attr = ctx.getAttribute("alpha");
+          float alpha = (alpha_attr != nullptr) ? alpha_attr->f() : 1.702f;
+          FunctionBuilder builder(functionProto);
+          builder.AddOpset("", 13).Const("Alpha", ToTensor(alpha, elem_type)).Add(R"(
+                CX = Mul (Alpha, X)
+                SIGMOIDCX = Sigmoid (CX)
+                Y = Mul (X, SIGMOIDCX)
+            )");
+          schema.BuildFunction(functionProto);
+          return true;
+        }));
+
 // Used to be ONNX 1.7 Inverse(12)
 // Comment out docs not to increase the binary size
 //
