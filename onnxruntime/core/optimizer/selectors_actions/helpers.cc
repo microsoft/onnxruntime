@@ -70,7 +70,10 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
 
   auto process = [&](int src_idx) {
     const bool valid_index = static_cast<size_t>(src_idx) < src_defs.size() &&
-                             (move_info.append || static_cast<size_t>(move_info.dest_slot.idx) < dest_defs.size());
+                             (move_info.append ||
+                              move_info.dest_slot.idx != -1);  // don't check that dest_slot.idx < dest_defs.size() yet
+                                                               // as we may need to fill in missing intermediate
+                                                               // optional inputs/outputs.
     if (!valid_index) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Index out of range");
     }
@@ -93,6 +96,17 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
         dest.MutableInputArgsCount().push_back(1);
       }
     } else {
+      if (static_cast<size_t>(move_info.dest_slot.idx) >= dest_defs.size()) {
+        // assume that the gap between dest_slot.idx and dest_defs.size() is due to intermediate optional
+        // inputs/outputs that are not present. fill in those defs with the empty NodeArg.
+        NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
+        dest_defs.resize(move_info.dest_slot.idx, &empty_arg);
+
+        if (move_info.dest_slot.in_out == ArgType::kInput) {
+          dest.MutableInputArgsCount().resize(move_info.dest_slot.idx, 1);
+        }
+      }
+
       if (!only_update_dest_definitions) {
         // remove any edge to the slot we're replacing
         ProcessEdge(graph, dest, move_info.dest_slot, nullptr, nullptr);
@@ -320,6 +334,7 @@ Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node
         ORT_RETURN_IF_ERROR(MoveInputOutputImpl(graph, move.value_move_info, *src, dest,
                                                 only_update_dest_definitions));
       } else if (move.value_move_info.optional &&
+                 move.value_move_info.append &&
                  move.value_move_info.fill_optional_with_empty) {
         auto& dest_defs = (move.value_move_info.dest_slot.in_out == ArgType::kInput)
                               ? dest.MutableInputDefs()
