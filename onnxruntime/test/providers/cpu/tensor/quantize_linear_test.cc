@@ -427,12 +427,14 @@ TEST(QuantizeLinearOpTest, UInt4) {
 template <bool Signed>
 static void GetExpectedInt4Quant(const float* input, Int4x2Base<Signed>* output, size_t num_elems, float scale,
                                  int8_t zero_point) {
+  using UnpackedType = typename Int4x2Base<Signed>::UnpackedType;
+
   for (size_t n = 0; n < num_elems; n++) {
     float float_val = std::nearbyintf(input[n] / scale) + static_cast<float>(zero_point);
     float_val = std::max(float_val, static_cast<float>(Int4x2Base<Signed>::min_val));
     float_val = std::min(float_val, static_cast<float>(Int4x2Base<Signed>::max_val));
 
-    Int4x2Base<Signed>::UnpackedType int_val = static_cast<Int4x2Base<Signed>::UnpackedType>(float_val);
+    UnpackedType int_val = static_cast<UnpackedType>(float_val);
 
     size_t i = n >> 1;
     size_t j = n & 0x1;
