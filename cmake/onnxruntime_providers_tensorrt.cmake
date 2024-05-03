@@ -132,9 +132,9 @@
       unset(PROTOBUF_LIBRARY)
       unset(OLD_CMAKE_CXX_FLAGS)
       unset(OLD_CMAKE_CUDA_FLAGS)
-      set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
+      set_target_properties(${PARSER_LIB} PROPERTIES LINK_FLAGS "/ignore:4199")
       target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
-      target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
+      target_compile_options(${PARSER_LIB} PRIVATE /FIio.h /wd4100)
     endif()
     # Static libraries are just nvonnxparser_static on all platforms
     set(onnxparser_link_libs nvonnxparser_static)
