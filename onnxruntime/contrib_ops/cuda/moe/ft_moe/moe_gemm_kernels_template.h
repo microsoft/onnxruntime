@@ -458,7 +458,7 @@ void MoeGemmRunner<T, WeightType>::run_gemm<EpilogueTag>(const T* A, const Weigh
                                                          const T* biases, T* C, int64_t* total_rows_before_expert,
                                                          int64_t total_rows, int64_t gemm_n, int64_t gemm_k,
                                                          int num_experts, cudaStream_t stream) {
-  // Generate Key to the GetGemmConfigMap()
+  // Generate Key to the GemmConfigMap
   // First 32 bits are total_rows, next 16 bits are gemm_n, next 16 bits are gemm_k
   int64_t key = total_rows;
   key = key << 16 | gemm_n;
