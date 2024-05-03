@@ -230,6 +230,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
   std::vector<NodeArg*> input_args;
   input_args.reserve(node_unit_inputs.size());
 
+  // Handle DQs in the NodeUnit
   std::unordered_map<std::string, NodeArg*> dq_node_args_to_keep;  // These DQ nodes will be retained in the graph
 
   for (auto dq_node : node_unit.GetDQNodes()) {
@@ -256,8 +257,17 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
         if (auto it = std::find_if(dst_nodes_present.begin(), dst_nodes_present.end(),
                                    [&](const Node* n) {
                                      // search for the connected Q in the dst graph
+
+                                     if (src_graph.IsConstantInitializer(input_defs.at(0)->Name(), true)) {
+                                     // If the the DQ's input is a constant initializer, and found in the graph then
+                                     // proceed to remove the duplicate
+                                      return true;
+                                     } else {
+                                      // Otherwise, check if the DQ's Q input is already present in the dst graph
+                                      // Check the OpType so we don't mistake Identity for Q
                                      return (n->Name() == dq_node->InputNodesBegin()->Name() &&
                                              n->OpType() == "QuantizeLinear");
+                                     }
                                    });
             it == std::end(dst_nodes_present)) continue;  // Skip connecting this duplicate DQ
 
@@ -292,6 +302,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
   std::vector<NodeArg*> output_args;
   output_args.reserve(node_unit_outputs.size());
 
+  // Handle Qs in the NodeUnit
   if (!node_unit.GetQNodes().empty()) {
     ORT_ENFORCE(node_unit.GetQNodes().size() == 1);
     const auto& q_node = node_unit.GetQNodes().at(0);
