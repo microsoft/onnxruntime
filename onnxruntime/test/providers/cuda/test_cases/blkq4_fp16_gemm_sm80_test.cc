@@ -337,7 +337,6 @@ TEST(BlkQ4_GEMM, Sm80SmallTileKernelTest) {
   onnxruntime::cuda::test::run_blkq4_small_gemm<32, true, true>(3, 48, 1536 + 32);
   onnxruntime::cuda::test::run_blkq4_small_gemm<64, false, false>(67, 64, 2048 - 16);
   onnxruntime::cuda::test::run_blkq4_small_gemm<128, false, true>(54, 128, 1536 + 16);
-
 }
 
 }  // namespace test

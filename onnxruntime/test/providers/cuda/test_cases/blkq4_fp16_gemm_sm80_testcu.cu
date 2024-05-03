@@ -451,7 +451,7 @@ void run_blkq4_small_gemm(int m, int n, int k) {
 
   // run GEMM
   const void* ptr_zp = has_offsets ? thrust::raw_pointer_cast(d_packed_zp.data()) : nullptr;
-  int zp_byte_stride = has_offsets ? ref_zp.stride(0) * sizeof(ElementQOffset) : 0;
+  size_t zp_byte_stride = has_offsets ? ref_zp.stride(0) * sizeof(ElementQOffset) : size_t(0);
   cutlass::Status status = GemmRunner::run(
       nullptr, problem_size,
       tensor_d.device_data(), tensor_d.stride(0) * sizeof(cutlass::half_t),

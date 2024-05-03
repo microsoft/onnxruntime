@@ -369,7 +369,7 @@ struct QuantB4Gemm {
       std::cerr << "QuantB4Gemm validation fail: params.output_byte_stride_ is not aligned to 16 bytes!" << std::endl;
       return cutlass::Status::kErrorMisalignedOperand;
     }
-    if (params.problem_size_.n() > (params.output_byte_stride_ / kElementSize)) {
+    if (size_t(params.problem_size_.n()) > (params.output_byte_stride_ / kElementSize)) {
       std::cerr << "QuantB4Gemm validation fail: params.problem_size_.n() is greater than params.output_byte_stride_!" << std::endl;
       return cutlass::Status::kErrorInvalidProblem;
     }
@@ -377,7 +377,7 @@ struct QuantB4Gemm {
       std::cerr << "QuantB4Gemm validation fail: params.problem_size_.k() is not aligned to 16 bytes!" << std::endl;
       return cutlass::Status::kErrorInvalidProblem;
     }
-    if (params.problem_size_.k() > params.b_byte_stride_) {
+    if (size_t(params.problem_size_.k()) > params.b_byte_stride_) {
       std::cerr << "QuantB4Gemm validation fail: params.problem_size_.k() is greater than params.b_byte_stride_!" << std::endl;
       // for gemm of 16b floats, weights is packed to shape (k/2,n/2), column major
       // so stride should be greater or equal to k/2, with element size 2, it should be k

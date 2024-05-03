@@ -55,7 +55,7 @@ public:
     void const *ptr_scales,
     size_t scales_byte_stride,
     void const *ptr_zp = nullptr,
-    int zp_byte_stride = 0) {
+    size_t zp_byte_stride = 0) {
 
     Args args(problem_size, ptr_output, output_byte_stride,
               ptr_a, a_byte_stride, ptr_packed_b, b_byte_stride,
@@ -89,7 +89,6 @@ public:
 
     return cutlass::Status::kSuccess;
   }
-
 
 };
 
