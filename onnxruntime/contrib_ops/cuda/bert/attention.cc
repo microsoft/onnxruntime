@@ -128,7 +128,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                              nullptr == past &&
                              nullptr == present &&
                              parameters.hidden_size == parameters.v_hidden_size &&
-                             nullptr == mask_index &&
+                             (nullptr == mask_index || is_mask_1d_seq_len) &&
                              onnxruntime::flash::is_supported(device_prop,
                                                               parameters.head_size,
                                                               parameters.num_heads,
@@ -137,6 +137,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_flash_attention && parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
     use_flash_attention = false;
   }
+
   // Allocate buffers
   size_t softmax_lse_accum_bytes = 0;
   size_t out_accum_bytes = 0;
@@ -303,6 +304,15 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (out_accum_buffer != nullptr) {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
+
+  CumulatedSequenceLengthCache cumulated_sequence_length_cache;
+  if (use_flash_attention && is_mask_1d_seq_len) {
+    cumulated_sequence_length_cache.buffer = GetScratchBuffer<void>(
+        GetSequenceOffsetSize(batch_size, true), context->GetComputeStream());
+    cumulated_sequence_length_cache.max_batch_size = batch_size;
+    cumulated_sequence_length_cache.sequence_length = sequence_length;
+  }
+  data.cumulated_sequence_length_q_cache = &cumulated_sequence_length_cache;
 
   return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);
 }

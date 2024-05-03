@@ -292,7 +292,7 @@ Status FlashAttention(
     AttentionData<T>& data,
     float scale) {
   assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
-  assert(nullptr == data.mask_index);
+  assert(nullptr == data.mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN);
   assert(nullptr == data.relative_position_bias);
   assert(parameters.head_size == parameters.v_head_size);
 
@@ -313,14 +313,27 @@ Status FlashAttention(
                 parameters.batch_size, parameters.total_sequence_length,
                 parameters.num_heads, parameters.v_head_size);
 
-  bool is_bf16 = false;
-  ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
-      device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.scratch),
-      parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
-      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional, is_bf16,
-      parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
-      true));
+  constexpr bool is_bf16 = std::is_same<T, BFloat16>::value;
+  if (nullptr == data.mask_index) {
+    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
+        device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.scratch),
+        parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
+        parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional, is_bf16,
+        parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
+        true));
+  } else {  // 1D mask index
+    int* sequence_offset = reinterpret_cast<int*>(data.cumulated_sequence_length_q_cache->buffer.get());
+    LaunchTrtSequenceOffset(sequence_offset, data.mask_index, parameters.batch_size, parameters.sequence_length, stream);
 
+    printf("mha_varlen_fwd: batch_size=%d, num_heads=%d, head_size=%d, sequence_length=%d, scale=%f, is_unidirectional=%d, is_bf16=%d\n",
+           parameters.batch_size, parameters.num_heads, parameters.head_size, parameters.sequence_length, scale, parameters.is_unidirectional, is_bf16);
+
+    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
+        device_prop, stream, query, key, value, data.output,
+        sequence_offset, sequence_offset, reinterpret_cast<void*>(data.softmax_lse_accum),
+        parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
+        parameters.sequence_length, parameters.sequence_length, scale, parameters.is_unidirectional, is_bf16));
+  }
   DUMP_TENSOR("flash attention output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);
 
