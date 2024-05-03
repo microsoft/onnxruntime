@@ -259,19 +259,19 @@ class WhisperDecoderHelper:
 
         dynamic_axes = {
             "input_ids": {0: "batch_size"},
-            "encoder_hidden_states": {0: "batch_size"},
+            "encoder_hidden_states": {0: "batch_size", 1: "encode_sequence_length / 2"},
             "logits": {0: "batch_size", 1: "sequence_length"},
         }
 
         for name in input_past_names:
             dynamic_axes[name] = {
                 0: "batch_size",
-                2: "past_decode_sequence_length" if "self" in name else decoder.config.max_source_positions,
+                2: "past_decode_sequence_length" if "self" in name else "encode_sequence_length / 2",
             }
 
         for name in output_present_names:
             if "cross" in name:
-                dynamic_axes[name] = {0: "batch_size"}
+                dynamic_axes[name] = {0: "batch_size", 1: "encode_sequence_length / 2"}
             else:  # self attention past state
                 if isinstance(decoder, WhisperDecoder):
                     dynamic_axes[name] = {

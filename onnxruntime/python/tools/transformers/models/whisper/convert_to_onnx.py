@@ -13,6 +13,7 @@ import onnx
 import torch
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from convert_generation import (
+    # replace_mha_with_gqa,
     update_decoder_subgraph_output_cross_attention,
     update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
 )
@@ -390,7 +391,7 @@ def export_onnx_models(
         else:
             logger.info(f"Skip exporting: existing ONNX model {onnx_path}")
 
-        # Optimize ONNX graph. Note that we have not implemented graph optimization for Whisper yet.
+        # Optimize ONNX graph
         if optimize_onnx or precision != Precision.FLOAT32:
             output_path = WhisperHelper.get_onnx_path(
                 output_dir,
@@ -533,7 +534,7 @@ def main(argv=None):
                 os.remove(os.path.join(output_dir, fle))
         output_paths = [args.beam_model_output_dir]
 
-    elif hasattr(args, "use_gpu") and args.use_gpu:
+    elif args.use_gpu and args.precision == Precision.FLOAT16 and args.no_beam_search_op:
         # Replace MultiHeadAttention with DecoderMaskedMultiHeadAttention for CUDA EP inference
         decoder_path = list(filter(lambda path: "decoder" in path and "encoder_decoder" not in path, output_paths))[0]
 

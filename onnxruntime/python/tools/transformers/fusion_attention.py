@@ -717,6 +717,8 @@ class FusionAttention(Fusion):
         )
         mha_node.domain = "com.microsoft"
         mha_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+
+        self.increase_counter("MultiHeadAttention")
         return mha_node
 
     def create_attention_node(
@@ -892,6 +894,8 @@ class FusionAttention(Fusion):
                 outputs=[output],
                 name=attention_node_name,
             )
+            self.increase_counter("MultiHeadAttention")
+
         else:
             attention_inputs = [
                 input,
@@ -928,6 +932,7 @@ class FusionAttention(Fusion):
                 outputs=attention_outputs,
                 name=attention_node_name,
             )
+            self.increase_counter("Attention")
 
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])

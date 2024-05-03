@@ -82,21 +82,12 @@ class FusionBartAttention(FusionAttention):
         matmul_qk,
         add_q,
     ):
-        reshape_qkv_2_path = self.model.match_parent_path(
-            reshape_qkv_2, ["Concat", "Slice", "Gather", "Shape"], [1, 0, 0, 0]
-        )
-        if reshape_qkv_2_path is None:
+        reshape_qkv_path = self.model.match_parent_path(reshape_qkv_2, ["Concat", "Slice", "Shape", "Transpose"], [1, 0, 0, 0])
+        if reshape_qkv_path[-1].input[0] != matmul_qkv.output[0]:
             return False
-        else:
-            if reshape_qkv_2_path[-1].input[0] != matmul_qkv.output[0]:
-                return False
 
-        matmul_qk_path_1 = self.model.match_parent_path(
-            matmul_qk, ["Mul", "Pow", "Cast", "Div", "Gather", "Shape"], [0, 1, 0, 0, 0, 0]
-        )
-        matmul_qk_path_2 = self.model.match_parent_path(
-            matmul_qk, ["Mul", "Pow", "Cast", "Div", "Gather", "Shape"], [1, 1, 0, 0, 0, 0]
-        )
+        matmul_qk_path_1 = self.model.match_parent_path(matmul_qk, ["Mul", "Pow", "Cast", "Div", "Gather", "Shape"], [0, 1, 0, 0, 0, 0])
+        matmul_qk_path_2 = self.model.match_parent_path(matmul_qk, ["Mul", "Pow", "Cast", "Div", "Gather", "Shape"], [1, 1, 0, 0, 0, 0])
         if matmul_qk_path_1 is None or matmul_qk_path_2 is None:
             return False
 
@@ -348,7 +339,7 @@ class FusionBartAttention(FusionAttention):
             ["Transpose", "Reshape", "Transpose", "Reshape", "Add", "MatMul"],
             [1, 0, 0, 0, 0, 1],
         )
-        k_nodes_with_bias_openai = self.model.match_parent_path(
+        k_nodes_no_bias_openai = self.model.match_parent_path(
             matmul_qk,
             ["Mul", "Transpose", "Reshape", "MatMul"],
             [1, 0, 0, 0],
@@ -381,9 +372,9 @@ class FusionBartAttention(FusionAttention):
         if k_nodes_with_bias is not None:
             _, reshape_k_2, transpose_k_1, reshape_k_1, add_k, matmul_k = k_nodes_with_bias
             k_nodes = k_nodes_with_bias
-        elif k_nodes_with_bias_openai is not None:
-            mul_k, transpose_k_1, reshape_k_1, matmul_k = k_nodes_with_bias_openai
-            k_nodes = k_nodes_with_bias_openai
+        elif k_nodes_no_bias_openai is not None:
+            mul_k, transpose_k_1, reshape_k_1, matmul_k = k_nodes_no_bias_openai
+            k_nodes = k_nodes_no_bias_openai
             present_k = matmul_k.output[0]
 
             # Find the child path to access the correct present_k values
@@ -455,7 +446,7 @@ class FusionBartAttention(FusionAttention):
         past_k = past_k if past_k in graph_input_names else ""
         present_k = present_k if present_k in graph_output_names else ""
 
-        if k_nodes in (k_nodes_with_bias_openai, k_nodes_no_bias, k_nodes_no_bias_with_past_self_attn):
+        if k_nodes in (k_nodes_no_bias_openai, k_nodes_no_bias, k_nodes_no_bias_with_past_self_attn):
             # Create empty Add node for attention graph
             bias_dim = self.model.get_initializer(add_v.input[0]).dims[0]
             empty_bias_name = "empty_bias"

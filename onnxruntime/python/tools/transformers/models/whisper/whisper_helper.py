@@ -299,7 +299,7 @@ class WhisperHelper:
             model_type="bart",
             num_heads=num_attention_heads,
             hidden_size=hidden_size,
-            opt_level=2 if not use_external_data_format else None,
+            opt_level=0,
             optimization_options=optimization_options,
             use_gpu=use_gpu,
             only_onnxruntime=False,

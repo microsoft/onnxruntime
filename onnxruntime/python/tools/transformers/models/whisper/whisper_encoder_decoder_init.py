@@ -159,8 +159,8 @@ class WhisperEncoderDecoderInitHelper:
         hidden_size = str(model.config.d_model)
         head_size = str(model.config.d_model // model.config.encoder_attention_heads)
         dynamic_axes = {
-            "encoder_input_ids": {0: "batch_size"},
-            "encoder_hidden_states": {0: "batch_size"},
+            "encoder_input_ids": {0: "batch_size", 1: "feature_size", 2: "encode_sequence_length"},
+            "encoder_hidden_states": {0: "batch_size", 1: "encode_sequence_length / 2", 2: hidden_size},
             "logits": {
                 0: "batch_size",
                 1: "decode_sequence_length",
@@ -179,7 +179,7 @@ class WhisperEncoderDecoderInitHelper:
                 dynamic_axes[name] = {
                     0: "batch_size",
                     1: num_heads,
-                    2: model.config.max_source_positions,
+                    2: "encode_sequence_length / 2",
                     3: head_size,
                 }
 
