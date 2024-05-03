@@ -33,14 +33,14 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_providers_OrtTensorRTProviderOptions_
   OrtTensorRTProviderOptionsV2* opts = (OrtTensorRTProviderOptionsV2*) optionsHandle;
 
   size_t keyLength = (*jniEnv)->GetArrayLength(jniEnv, jKeyArr);
-  const char** keys = allocarray(keyLength, sizeof(char*));
-  const char** values = allocarray(keyLength, sizeof(char*));
+  const char** keys = (const char**) allocarray(keyLength, sizeof(const char*));
+  const char** values = (const char**) allocarray(keyLength, sizeof(const char*));
   if ((keys == NULL) || (values == NULL)) {
     if (keys != NULL) {
-      free(keys);
+      free((void*)keys);
     }
     if (values != NULL) {
-      free(values);
+      free((void*)values);
     }
     throwOrtException(jniEnv, 1, "Not enough memory");
   } else {
@@ -60,6 +60,8 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_providers_OrtTensorRTProviderOptions_
       jobject value = (*jniEnv)->GetObjectArrayElement(jniEnv, jKeyArr, i);
       (*jniEnv)->ReleaseStringUTFChars(jniEnv,value,values[i]);
     }
+    free((void*)keys);
+    free((void*)values);
   }
 }
 

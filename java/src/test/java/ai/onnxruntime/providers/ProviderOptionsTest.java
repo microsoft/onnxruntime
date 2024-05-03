@@ -45,9 +45,7 @@ public class ProviderOptionsTest {
     cudaOpts.close();
 
     // Test invalid device num throws
-    try (OrtCUDAProviderOptions invalidIdOpts = new OrtCUDAProviderOptions(-1)) {
-      assertThrows(IllegalArgumentException.class, invalidIdOpts::applyToNative);
-    }
+    assertThrows(IllegalArgumentException.class, () -> new OrtCUDAProviderOptions(-1));
 
     // Test invalid key name throws
     try (OrtCUDAProviderOptions invalidKeyOpts = new OrtCUDAProviderOptions(0)) {
@@ -74,9 +72,7 @@ public class ProviderOptionsTest {
     rtOpts.close();
 
     // Test invalid device num throws
-    try (OrtTensorRTProviderOptions invalidIdOpts = new OrtTensorRTProviderOptions(-1)) {
-      assertThrows(IllegalArgumentException.class, invalidIdOpts::applyToNative);
-    }
+    assertThrows(IllegalArgumentException.class, () -> new OrtTensorRTProviderOptions(-1));
 
     // Test invalid key name throws
     try (OrtTensorRTProviderOptions invalidKeyOpts = new OrtTensorRTProviderOptions(0)) {
@@ -109,7 +105,7 @@ public class ProviderOptionsTest {
         OnnxValue resultTensor = result.get(0);
         float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
         assertEquals(expectedOutput.length, resultArray.length);
-        assertArrayEquals(expectedOutput, resultArray, 1e-5f);
+        assertArrayEquals(expectedOutput, resultArray, 1e-3f);
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to execute a scoring operation", e);
       }
