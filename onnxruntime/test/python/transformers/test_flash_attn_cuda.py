@@ -1087,7 +1087,6 @@ def attention_qkvpacked_ref(
     )
 
 
-
 def parity_check_mha(
     config,
     packed,
