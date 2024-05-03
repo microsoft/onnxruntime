@@ -246,7 +246,7 @@ void addOrtValueMethods(pybind11::module& m) {
         const auto dims = ort_value->Get<Tensor>().Shape().GetDims();
 #endif
 
-        py::list shape_arr{dims.size()};
+        py::list shape_arr;
         for (auto dim : dims) {
           // For sequence tensors - we would append a list of dims to the outermost list
           // For now only tensors are supported in OrtValue

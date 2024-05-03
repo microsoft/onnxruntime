@@ -167,7 +167,7 @@ void addIoBindingMethods(pybind11::module& m) {
         size_t pos = 0;
         const auto& dtm = io_binding->GetInferenceSession()->GetDataTransferManager();
 
-        py::list result{outputs.size()};
+        py::list result;
         for (const auto& ort_value : outputs) {
           if (ort_value.IsTensor()) {
             // We make a copy of the tensor to CPU even if it is already on CPU

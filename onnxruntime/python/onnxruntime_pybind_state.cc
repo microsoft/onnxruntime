@@ -325,10 +325,10 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
                                    const DataTransferManager* data_transfer_manager,
                                    const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
-  py::list py_list{seq_tensors.Size()};
+  py::list py_list;
   for (const auto& ort_value : seq_tensors) {
     py::object obj = GetPyObjFromTensor(ort_value, data_transfer_manager, mem_cpy_to_host_functions);
-    py_list.append(obj);
+    py_list.append(std::move(obj));
   }
   // XToolChain kills the build
   // local variable 'py_list' will be copied despite being returned by name [-Werror,-Wreturn-std-move]
@@ -1929,7 +1929,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                }
              }
 
-             py::list result{fetches.size()};
+             py::list result;
              size_t pos = 0;
              for (const auto& fet : fetches) {
                if (fet.IsAllocated()) {
@@ -2091,7 +2091,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("get_tuning_results", [](PyInferenceSession* sess) -> py::list {
 #if !defined(ORT_MINIMAL_BUILD)
         auto results = sess->GetSessionHandle()->GetTuningResults();
-        py::list ret{results.size()};
+        py::list ret;
         for (const auto& trs : results) {
           py::dict py_trs;
           py_trs["ep"] = trs.ep;

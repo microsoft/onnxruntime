@@ -375,9 +375,9 @@ void addSparseTensorMethods(pybind11::module& m) {
       })
       .def("dense_shape", [](const PySparseTensor* py_tensor) -> py::list {
         const SparseTensor& st = py_tensor->Instance();
-        const auto& dims = st.DenseShape().GetDims();
+        const auto dims = st.DenseShape().GetDims();
         // We create a copy of dimensions, it is small
-        py::list py_dims{dims.size()};
+        py::list py_dims;
         for (auto d : dims) {
           py_dims.append(d);
         }
