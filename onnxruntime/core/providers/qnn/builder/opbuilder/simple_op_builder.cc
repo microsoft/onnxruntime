@@ -323,17 +323,6 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth" || op_type == "GridSample")) {
       return Status::OK();
     }
-
-    // Explicitly skip the Op validation for Q & DQ node with 5D because of QNN bug.
-    // TODO (hecli), remove once QNN v2.17 is ready
-    if (op_type == "QuantizeLinear" || op_type == "DequantizeLinear") {
-      std::vector<uint32_t> input_shape;
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
-                        "QNN EP: Cannot get input shape");
-      if (input_shape.size() == 5) {
-        return Status::OK();
-      }
-    }
   }
 
   std::vector<std::string> param_tensor_names;
