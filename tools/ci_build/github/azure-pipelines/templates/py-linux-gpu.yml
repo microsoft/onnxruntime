@@ -25,10 +25,10 @@ parameters:
    - nvidia/cuda:12.2.2-cudnn8-devel-ubi8
 - name: trt_version
   type: string
-  default: '8.6.1.6-1.cuda11.8'
+  default: '10.0.1.6-1.cuda11.8'
   values:
-    - 8.6.1.6-1.cuda11.8
-    - 8.6.1.6-1.cuda12.0
+    - 10.0.1.6-1.cuda11.8
+    - 10.0.1.6-1.cuda12.4
 - name: cuda_version
   type: string
   default: '11.8'
