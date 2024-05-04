@@ -22,9 +22,11 @@ pushd .
 mkdir -p "$PROTOC_BUILD_PATH"
 cd "$PROTOC_BUILD_PATH"
 DEP_FILE_PATH="$ORT_REPO_ROOT/cmake/deps.txt"
+PATCH_FILE_PATH="$ORT_REPO_ROOT/cmake/patches/protobuf/protobuf_cmake.patch"
 protobuf_url=$(grep '^protobuf' "$DEP_FILE_PATH" | cut -d ';' -f 2 | sed 's/\.zip$/\.tar.gz/')
 curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o protobuf_src.tar.gz "$protobuf_url"
 tar -zxf protobuf_src.tar.gz --strip=1
+patch --binary --ignore-whitespace -p1 < "$PATCH_FILE_PATH"
 # The second 'cmake' is a folder name
 cmake cmake \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
