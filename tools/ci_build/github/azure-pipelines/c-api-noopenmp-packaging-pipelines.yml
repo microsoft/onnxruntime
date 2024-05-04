@@ -120,8 +120,8 @@ stages:
       name: Set_Release_Version_Suffix
     - script: |
         # Extracting hours and minutes
-        date=$(date -d "$(pipeline.startTime)" +'%Y%m%d')
-        hhmm=$(date -d "$(pipeline.startTime)" +'%H%M')
+        date=$(date +'%Y%m%d')
+        hhmm=$(date +'%H%M')
         # Set the hhmm value as a pipeline variable
         echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
         echo "##vso[task.setvariable variable=BuildDate;isOutput=true]$date"
