@@ -5,6 +5,8 @@
 
 """
 Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of Compute Capability 8.x.
+Install required packages before running this script:
+   pip install matplotlib pandas onnx torch onnxruntime-gpu
 """
 
 import math
@@ -662,10 +664,13 @@ def run_one_relevance_test(config: SparseAttentionConfig):
     ort_output = ort_outputs["output"]
     actual_out = ort_output.view(config.batch_size, config.sequence_length, config.num_heads, config.head_size)
 
+    red_color = "\033[31m"
+    green_color = "\033[32m"
+    reset_color = "\033[0m"
     if torch.allclose(expected_out, actual_out, atol=1e-2, rtol=0):
-        print(f"Relevance test passed: {vars(config)}")
+        print(f"Relevance test {green_color}passed{reset_color}: {vars(config)}")
     else:
-        print(f"Relevance test not passed: {vars(config)}")
+        print(f"Relevance test {red_color}failed{reset_color}: {vars(config)}")
         print("ort_output", actual_out)
         print("expected_out", expected_out)
         print("diff", expected_out - actual_out)
@@ -890,10 +895,39 @@ def run_performance_test(sm: int):
     """
     Run performance tests for prompt and token generation.
 
+    Example results in Azure Standard_ND96isr_H100_v5 VM with NVIDIA H100-80GB-HBM3 GPU (sm=90):
+
+    prompt-sm90-batch4-head32-d128-local16-vert8-torch.float16:
+       sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-GQA-Local  ORT-SparseAtt
+    0             16.0   0.079877       0.006362       0.006403       0.042758
+    1             32.0   0.086920       0.016404       0.016686       0.044183
+    2             64.0   0.090727       0.020429       0.020409       0.045343
+    3            128.0   0.128148       0.032009       0.031984       0.051516
+    4            256.0   0.323933       0.074110       0.073920       0.068308
+    5            512.0   1.021856       0.162167       0.161951       0.109226
+    6           1024.0   3.596002       0.452629       0.452780       0.231653
+    7           2048.0  13.865088       1.499534       1.195749       0.515488
+    8           4096.0   0.000000       5.454785       2.669682       1.163233
+    9           8192.0   0.000000      22.068159       6.018604       2.772873
+
+    token-sm90-batch4-head32-d128-local16-vert8-torch.float16:
+       past_sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-GQA-Local  ORT-SparseAtt
+    0                  16.0   0.104460       0.012652       0.012661       0.069549
+    1                  32.0   0.113866       0.012776       0.012765       0.069024
+    2                  64.0   0.124600       0.016791       0.012672       0.069397
+    3                 128.0   0.108658       0.017900       0.018294       0.074844
+    4                 256.0   0.115463       0.029409       0.029608       0.078911
+    5                 512.0   0.149824       0.033968       0.033701       0.092998
+    6                1024.0   0.234050       0.042930       0.042951       0.116920
+    7                2048.0   0.390695       0.061462       0.043008       0.121555
+    8                4096.0   0.000000       0.097505       0.042948       0.134757
+    9                8191.0   0.000000       0.165861       0.043542       0.158796
+
+
     Example results in A100-SXM4-80GB (sm=80):
 
     prompt-sm80-batch4-head32-d128-local16-vert8-torch.float16:
-    sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-GQA-Local  ORT-SparseAtt
+       sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-GQA-Local  ORT-SparseAtt
     0             16.0   0.274839       0.008849       0.015198       0.054403
     1             32.0   0.272238       0.022875       0.048804       0.055898
     2             64.0   0.272420       0.027722       0.028318       0.073052
@@ -906,7 +940,7 @@ def run_performance_test(sm: int):
     9           8192.0   0.000000      39.664131      10.046236       5.219436
 
     token-sm80-batch4-head32-d128-local16-vert8-torch.float16:
-    past_sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-GQA-Local  ORT-SparseAtt
+       past_sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-GQA-Local  ORT-SparseAtt
     0                  16.0   0.299303       0.020081       0.018587       0.082479
     1                  32.0   0.301700       0.018655       0.041943       0.084583
     2                  64.0   0.305700       0.017825       0.018420       0.085265
@@ -922,7 +956,7 @@ def run_performance_test(sm: int):
     Example results in Standard_NC4as_T4_v3 Azure VM with T4 GPU (sm=75):
 
     prompt-sm75-batch4-head32-d128-local16-vert8-torch.float16:
-    sequence_length   TORCH-GQA  ORT-GQA-Dense  ORT-SparseAtt
+       sequence_length   TORCH-GQA  ORT-GQA-Dense  ORT-SparseAtt
     0             16.0    0.165154       3.003173       0.081945
     1             32.0    0.184173       2.994347       0.089064
     2             64.0    0.303300       3.023986       0.107418
@@ -935,7 +969,7 @@ def run_performance_test(sm: int):
     9           8192.0    0.000000     161.628540      44.336670
 
     token-sm75-batch4-head32-d128-local16-vert8-torch.float16:
-    past_sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-SparseAtt
+       past_sequence_length  TORCH-GQA  ORT-GQA-Dense  ORT-SparseAtt
     0                  16.0   0.144368       4.179228       0.137407
     1                  32.0   0.110353       2.996305       0.137509
     2                  64.0   0.145088       3.006860       0.165424
