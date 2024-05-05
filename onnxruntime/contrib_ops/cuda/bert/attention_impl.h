@@ -132,6 +132,9 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
                               const half* input, half* output, cudaStream_t stream, const int max_threads_per_block);
 
+Status Transpose_BNSH_to_BSNH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const half* input, half* output, cudaStream_t stream, const int max_threads_per_block);
+
 Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const int all_sequence_length,
                                   const int sequence_length,

@@ -1154,6 +1154,14 @@ Padding shall be on the right side.
 
 When do_rotary is True, cos_cache and sin_cache are required.
 
+When total sequence length is less than a threshold (dense_length_threshold), there is no sparsity so dense causal
+attention is applied. When local attention is used, dense_length_threshold = sparse_block_size * local_blocks. It can
+also help performance when there are global attention blocks at the beginning of sequence.
+
+When do_rotary is True, rotary_interleaved is used to determine whether to use interleaved pattern for rotary position embedding.
+
+The sparse_block_size is the number of tokens per sparse block. It must be power of two like 16, 32, 64 or 128.
+
 Only supports unidirectional attention with cache of past key and value in linear buffers.
 For performance, past_key and present_key share same memory buffer, and past_value and present_value too.
 )DOC";
@@ -1164,9 +1172,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(SparseAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads for query", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for key and value", AttributeProto::INT)
-        .Attr("scale", "Scaling factor applied prior to softmax. The default value is 1/sqrt(head_size)", AttributeProto::FLOAT,
-              OPTIONAL_VALUE)
-        .Attr("sparse_block_size", "Number of tokens per sparse block. Choices: 16, 32, 64, 128", AttributeProto::INT)
+        .Attr("scale", "Scaling factor applied prior to softmax. The default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("sparse_block_size", "Number of tokens per sparse block.", AttributeProto::INT)
+        .Attr("dense_length_threshold",
+              "A threshold to use dense causal attention when total sequence length <= threshold. "
+              "Default value is 0.",
+              AttributeProto::INT, OPTIONAL_VALUE)
         .Attr("do_rotary", "Whether to use rotary position embedding. Default value is 0.", AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("rotary_interleaved", "Rotary use interleaved pattern or not. Default value is 0.", AttributeProto::INT,

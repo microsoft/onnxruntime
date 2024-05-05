@@ -8,6 +8,7 @@
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cuda/tunable/cuda_tunable.h"
+#include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 
 using onnxruntime::cuda::tunable::CudaTuningContext;
 
@@ -20,8 +21,8 @@ struct BlockLayout {
   int num_layout;
   int block_size;  // kernel block size, which is <= sparse_block_size
 
-  const int* csr_col_indices;
-  const int* csr_row_indices;
+  const int32_t* csr_col_indices;
+  const int32_t* csr_row_indices;
   int num_rows;
   int num_cols;
 };
@@ -62,10 +63,33 @@ struct SparseAttentionData {
   int* q_batch_ids = nullptr;     // shape (G)
   int* q_start_sids = nullptr;    // shape (G)
   int active_q_blocks = 0;        // G: number of blocks in q that are not masked out
+
+  // Data for mask to CSR conversion
+  IAllocatorUniquePtr<int> csr_col_indices_buffer;
+  IAllocatorUniquePtr<int> csr_row_indices_buffer;
+
+  // Data for dense flash attention
+  IAllocatorUniquePtr<char> softmax_lse_accum;
+  IAllocatorUniquePtr<char> out_accum;
+  IAllocatorUniquePtr<char> softmax_lse;
+  int num_splits = 0;
+
+  // Data for sparse attention v2 kernel.
+  IAllocatorUniquePtr<int32_t> pinned_buffer;                   // buffer to copy total_k_seq_len from GPU to CPU.
+  AutoDestoryCudaEvent is_copy_done;                            // CUDA event to syncronize the copy of total_k_seq_len.
+  IAllocatorUniquePtr<int32_t> v2_kernel_inputs_pinned_buffer;  // v2 kernel inputs in CPU (will be copied to GPU)
+  IAllocatorUniquePtr<int32_t> v2_kernel_buffer;                // v2 kernel inputs in GPU.
 };
 
 template <typename T>
-Status QkvToContext(
+Status QkvToContext_Sparse(
+    const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
+    contrib::SparseAttentionParameters& parameters,
+    SparseAttentionData<T>& data);
+
+template <typename T>
+Status QkvToContext_Dense(
     const cudaDeviceProp& device_prop,
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,

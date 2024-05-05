@@ -270,6 +270,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    kv_bsnh,
                    local_window_size,
                    is_causal ? 0 : -1);
+
   params.dprops = &dprops;
   params.knew_ptr = nullptr;
   params.vnew_ptr = nullptr;

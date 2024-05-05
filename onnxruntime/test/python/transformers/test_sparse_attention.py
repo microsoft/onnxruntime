@@ -186,6 +186,7 @@ class SparseAttentionConfig(AttentionConfig):
         do_rotary: bool = False,
         rotary_interleaved: bool = False,
         device="cuda",
+        dense_length_threshold = None,
     ):
         super().__init__(
             "SparseAttention",
@@ -206,6 +207,7 @@ class SparseAttentionConfig(AttentionConfig):
         self.local_blocks = local_blocks
         self.vert_stride = vert_stride
         self.max_blocks = max_sequence_length // sparse_block_size
+        self.dense_length_threshold = local_blocks * sparse_block_size if dense_length_threshold is None else dense_length_threshold
 
     def block_mask(self):
         return get_block_mask(self.num_layout, self.max_blocks, self.local_blocks, self.vert_stride).to(self.device)
@@ -240,7 +242,6 @@ class SparseAttentionConfig(AttentionConfig):
         return feeds
 
     def get_comparable_gqa_config(self, use_local=False, torch_use_sparse=False) -> GroupQueryAttentionConfig:
-
         attention_mask = None
         if torch_use_sparse:
             attention_mask = self.dense_mask()[:, :, : self.total_sequence_length, : self.total_sequence_length]
@@ -318,6 +319,7 @@ def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
             kv_num_heads=config.kv_num_heads,
             scale=config.softmax_scale,
             sparse_block_size=config.sparse_block_size,
+            dense_length_threshold=config.dense_length_threshold,
             do_rotary=1 if config.do_rotary else 0,
             domain="com.microsoft",
         ),
@@ -697,6 +699,9 @@ def run_relevance_no_past(sm: int, device):
         )
         run_one_relevance_test(config)
 
+        config.dense_length_threshold=0
+        run_one_relevance_test(config)
+
         if sm >= 80:
             config.dtype = torch.bfloat16
             run_one_relevance_test(config)
@@ -753,15 +758,21 @@ def get_plot_algos(sm: int):
         return {
             "line_vals": ["torch_gqa", "ort_gqa", "ort_gqa_local", "ort_sparse_att"],
             "line_names": ["TORCH-GQA", "ORT-GQA-Dense", "ORT-GQA-Local", "ORT-SparseAtt"],
-            "styles": [("red", "-"), ("blue", "-"), ("yellow", "-"), ("green", "-")],
+            "styles": [("red", "solid"), ("blue", "dashed"), ("yellow", "dashdot"), ("green", "dotted")],
         }
     else:
         return {
             "line_vals": ["torch_gqa", "ort_gqa", "ort_sparse_att"],
             "line_names": ["TORCH-GQA", "ORT-GQA-Dense", "ORT-SparseAtt"],
-            "styles": [("red", "-"), ("blue", "-"), ("green", "-")],
+            "styles": [("red", "solid"), ("blue", "dashed"), ("green", "dashdot")],
         }
 
+def get_plot_prompt_algos(sm: int):
+    algos = get_plot_algos(sm)
+    algos["line_vals"].append("ort_sparse_att_fallback")
+    algos["line_names"].append("ORT-SparseAtt-Fallback")
+    algos["styles"].append(("purple", ":"))
+    return algos
 
 def plot_prompt_performance(
     sm: int,
@@ -777,7 +788,7 @@ def plot_prompt_performance(
 ):
     import triton
 
-    algos = get_plot_algos(sm)
+    algos = get_plot_prompt_algos(sm)
     configs = [
         triton.testing.Benchmark(
             x_names=["sequence_length"],
@@ -807,12 +818,14 @@ def plot_prompt_performance(
             num_layout=num_layout,
             local_blocks=local_blocks,
             vert_stride=vert_stride,
-        )
+            do_rotary=True,
+            dense_length_threshold=None if provider == "ort_sparse_att_fallback" else 0
+            )
 
         if provider in ["ort_gqa", "ort_gqa_local"]:
             gqa_config = config.get_comparable_gqa_config(use_local=(provider == "ort_gqa_local"))
             obj = OrtGroupQueryAttention(gqa_config)
-        elif provider == "ort_sparse_att":
+        elif provider in ["ort_sparse_att", "ort_sparse_att_fallback"]:
             obj = OrtSparseAttention(config)
         else:  # Torch GQA
             assert provider == "torch_gqa"
@@ -825,7 +838,6 @@ def plot_prompt_performance(
         return ms
 
     benchmark.run(save_path=".", print_data=True)
-
 
 def plot_token_performance(
     sm: int,
@@ -871,6 +883,7 @@ def plot_token_performance(
             num_layout=num_layout,
             local_blocks=local_blocks,
             vert_stride=vert_stride,
+            do_rotary=True,
         )
 
         if provider in ["ort_gqa", "ort_gqa_local"]:

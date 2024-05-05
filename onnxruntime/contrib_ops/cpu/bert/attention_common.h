@@ -132,6 +132,7 @@ struct SparseAttentionParameters {
   int total_sequence_length;       // maximum total sequence length (past_sequence_length + sequence_length) among keys
   int max_sequence_length;         // max sequence length allowed
   bool past_present_share_buffer;  // whether past_key and present_key share buffer, so is past_value and present_value
+  bool is_dense;                   // whether to fall back to dense attention.
 };
 
 constexpr bool LAYOUT_BSNH = false;

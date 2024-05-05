@@ -9,6 +9,7 @@
 #include "contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_api.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -37,6 +38,26 @@ static inline int32_t DivUp(int32_t m, int32_t n) {
 }
 
 template <typename T>
+void LoadSparseKernel(bool use_v2_kernel, int sm) {
+  if constexpr (std::is_same<T, MLFloat16>::value) {
+    // std::call_once is used in load_sparse_attention_fp16 so no need to use mutex here.
+    // After kernel is loaded, it will stay in memory until the process exits. We do not unload explicitly.
+    // TODO(tianleiwu): use TSharedCubinKernelFactory to manage kernel loading/unloading.
+    if (use_v2_kernel) {
+      sparse_attention_v2::load_sparse_attention_fp16(sm);
+    } else {
+      sparse_attention_v1::load_sparse_attention_fp16(sm);
+    }
+  } else {
+    if (use_v2_kernel) {
+      sparse_attention_v2::load_sparse_attention_bf16(sm);
+    } else {
+      sparse_attention_v1::load_sparse_attention_bf16(sm);
+    }
+  }
+}
+
+template <typename T>
 SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
   int64_t num_heads = 0;
@@ -48,7 +69,7 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
 
   int64_t sparse_block_size = 0;
   ORT_ENFORCE(info.GetAttr("sparse_block_size", &sparse_block_size).IsOK());
-  ORT_ENFORCE(sparse_block_size == 64 || sparse_block_size == 128);
+  ORT_ENFORCE(sparse_block_size == 64);
   sparse_block_size_ = static_cast<int>(sparse_block_size);
 
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
@@ -56,7 +77,9 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-  kernel_loaded_ = false;
+  sparse_kernel_loaded_ = false;
+
+  dense_length_threshold_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("dense_length_threshold", 0));
 
   disable_v1_kernel_ = ParseEnvironmentVariableWithDefault<bool>(sparse_attention::kDisableSparseAttentionV1, false);
 }
@@ -104,6 +127,22 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            block_mask,
                                                            seqlens_k_total,
                                                            total_seq_len));
+  parameters.past_present_share_buffer = true;  // will check it later.
+
+  // Compute output shape and get output tensors.
+  TensorShapeVector output_shape(3);
+  output_shape[0] = static_cast<int64_t>(parameters.batch_size);
+  output_shape[1] = static_cast<int64_t>(parameters.sequence_length);
+  output_shape[2] = static_cast<int64_t>(parameters.hidden_size);
+  Tensor* output = context->Output(0, output_shape);
+
+  std::vector<int64_t> present_dims = {
+      parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
+  TensorShape present_shape(present_dims);
+  Tensor* present_key = context->Output(1, present_shape);
+  Tensor* present_value = context->Output(2, present_shape);
+  onnxruntime::Stream* ort_stream = context->GetComputeStream();
+
   // Some limitations of CUDA kernels
   // The v1 and v2 kernels have same coverage, so only check one of them to see whether it is supported.
   int sm = device_prop.major * 10 + device_prop.minor;
@@ -124,67 +163,24 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                            "num_heads should be no larger than ", device_prop.maxThreadsPerBlock);
   }
 
-  int past_seq_len = parameters.total_sequence_length - parameters.sequence_length;
-  bool is_prompt = (past_seq_len == 0);
+  bool is_prompt = (parameters.total_sequence_length == parameters.sequence_length);
+  assert(is_prompt || parameters.sequence_length == 1);
 
-  // The v1 kernel support only prompt and right padding only.
-  // The v2 kernel support both prompt and token generation, and left/right padding.
-  bool use_v2_kernel = disable_v1_kernel_ || !is_prompt;
+  //parameters.is_dense = false;
+  parameters.is_dense = is_prompt && (parameters.total_sequence_length <= dense_length_threshold_);
 
-  // Async Copy total_k_seq_len from GPU to CPU.
-  IAllocatorUniquePtr<int32_t> pinned_buffer;
-  int32_t* total_k_seq_len_pinned = nullptr;
-  AutoDestoryCudaEvent new_event;
-  cudaEvent_t& isCopyDone = new_event.Get();
-  cudaStream_t cuda_stream = Stream(context);
-  if (use_v2_kernel) {
-    pinned_buffer = AllocateBufferOnCPUPinned<int32_t>(parameters.batch_size);
-
-    total_k_seq_len_pinned = reinterpret_cast<int32_t*>(pinned_buffer.get());
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(total_k_seq_len_pinned,
-                                         seqlens_k_total->Data<int32_t>(),
-                                         sizeof(int32_t) * parameters.batch_size,
-                                         cudaMemcpyDeviceToHost, cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaEventCreate(&isCopyDone));
-    CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, cuda_stream));
+  // The v1 kernel supports prompt and right padding only.
+  // The v2 kernel supports both prompt and token generation, and both left and right padding.
+  bool use_v2_kernel = (disable_v1_kernel_ || !is_prompt) && !parameters.is_dense;
+  if (!sparse_kernel_loaded_) {
+    LoadSparseKernel<T>(use_v2_kernel, sm);
+    sparse_kernel_loaded_ = true;
   }
-
-  if (!kernel_loaded_) {
-    if constexpr (std::is_same<T, MLFloat16>::value) {
-      // std::call_once is used in load_sparse_attention_fp16 so no need to use mutex here.
-      // After kernel is loaded, it will stay in memory until the process exits. We do not unload explicitly.
-      // TODO(tianleiwu): use TSharedCubinKernelFactory to manage kernel loading/unloading.
-      if (use_v2_kernel) {
-        sparse_attention_v2::load_sparse_attention_fp16(sm);
-      } else {
-        sparse_attention_v1::load_sparse_attention_fp16(sm);
-      }
-    } else {
-      if (use_v2_kernel) {
-        sparse_attention_v2::load_sparse_attention_bf16(sm);
-      } else {
-        sparse_attention_v1::load_sparse_attention_bf16(sm);
-      }
-    }
-    kernel_loaded_ = true;
-  }
-
-  // Compute output shape and get output tensors.
-  TensorShapeVector output_shape(3);
-  output_shape[0] = static_cast<int64_t>(parameters.batch_size);
-  output_shape[1] = static_cast<int64_t>(parameters.sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.hidden_size);
-  Tensor* output = context->Output(0, output_shape);
-
-  std::vector<int64_t> present_dims = {
-      parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
-  TensorShape present_shape(present_dims);
-  Tensor* present_key = context->Output(1, present_shape);
-  Tensor* present_value = context->Output(2, present_shape);
 
   // Set input and output data.
   typedef typename ToCudaType<T>::MappedType CudaT;
   SparseAttentionData<CudaT> data;
+  cudaStream_t cuda_stream = Stream(context);
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
@@ -196,12 +192,20 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
 
-  // Check past and present share buffer.
-  parameters.past_present_share_buffer = (data.past_key != nullptr && data.past_key == data.present_key);
-  if (parameters.past_present_share_buffer) {
-    ORT_ENFORCE(data.past_value != nullptr && data.past_value == data.present_value);
+  if (use_v2_kernel) {
+    // copy seqlens_k_total from GPU to pinned_buffer in CPU
+    data.pinned_buffer = AllocateBufferOnCPUPinned<int32_t>(parameters.batch_size);
+    cudaEvent_t& is_copy_done_event = data.is_copy_done.Get();
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(reinterpret_cast<int32_t*>(data.pinned_buffer.get()),
+                                         seqlens_k_total->Data<int32_t>(),
+                                         sizeof(int32_t) * parameters.batch_size,
+                                         cudaMemcpyDeviceToHost, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaEventCreate(&is_copy_done_event));
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(is_copy_done_event, cuda_stream));
   }
-  if (!parameters.past_present_share_buffer) {
+
+  // Check past and present share buffer.
+  if (!(data.past_value != nullptr && data.past_value == data.present_value)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "CUDA implementation of SparseAttention requires past and present points to same buffer");
   }
@@ -211,40 +215,13 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.sin_cache = reinterpret_cast<const CudaT*>(sin_cache->Data<T>());
   }
 
-  // Currently, we use same block size in kernel.
-  // TODO: support kernel block size that is smaller than sparse_block_size in tunable (need expand block mask).
-  data.kernel_layout.block_size = parameters.sparse_block_size;
-  data.kernel_layout.mask = data.block_mask;
-  data.kernel_layout.num_layout = parameters.num_sparse_layout;
-  data.kernel_layout.num_cols = parameters.max_sequence_length / data.kernel_layout.block_size;
-  data.kernel_layout.num_rows = parameters.max_sequence_length / data.kernel_layout.block_size;
-
-  // Allocate buffer for CSR col and row indices.
-  onnxruntime::Stream* stream = context->GetComputeStream();
-  int dense_blocks = data.kernel_layout.num_layout * data.kernel_layout.num_cols * data.kernel_layout.num_rows;
-  auto csr_col_indices_buffer = GetScratchBuffer<int>(static_cast<size_t>(dense_blocks), stream);
-  auto csr_row_indices_buffer = GetScratchBuffer<int>(
-      static_cast<size_t>(data.kernel_layout.num_layout * (data.kernel_layout.num_rows + 1)), stream);
-
-  data.kernel_layout.csr_col_indices = reinterpret_cast<const int*>(csr_col_indices_buffer.get());
-  data.kernel_layout.csr_row_indices = reinterpret_cast<const int*>(csr_row_indices_buffer.get());
-
-  ConvertMaskToCSR(cuda_stream,
-                   data.kernel_layout.mask,
-                   data.kernel_layout.num_layout,
-                   data.kernel_layout.num_rows,
-                   data.kernel_layout.num_cols,
-                   csr_row_indices_buffer.get(),
-                   csr_col_indices_buffer.get(),
-                   device_prop.maxThreadsPerBlock);
-
   size_t rotary_buffer_bytes = 0;
   if (do_rotary_) {
     rotary_buffer_bytes = 2 * sizeof(T) * parameters.batch_size * parameters.num_heads *
                           parameters.sequence_length * parameters.head_size;
     rotary_buffer_bytes += sizeof(int64_t) * parameters.batch_size * parameters.sequence_length;
   }
-  auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, context->GetComputeStream());
+  auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, ort_stream);
   data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
 
   size_t transposed_q_bytes = 0;
@@ -252,7 +229,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     transposed_q_bytes = parameters.batch_size * parameters.sequence_length *
                          parameters.num_heads * parameters.head_size * sizeof(T);
   }
-  auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, context->GetComputeStream());
+  auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, ort_stream);
   if (transposed_q_buffer) {
     data.transposed_q_buffer = reinterpret_cast<CudaT*>(transposed_q_buffer.get());
   }
@@ -263,36 +240,85 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           (parameters.num_heads + 2 * parameters.kv_num_heads) *
                           parameters.head_size * sizeof(T));
   }
-  auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
+  auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, ort_stream);
   if (unpacked_qkv_buffer) {
     data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
 
+  if (parameters.is_dense) {
+    using namespace std;
+    auto [num_splits, softmax_lse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
+        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
+        parameters.head_size, device_prop.multiProcessorCount);
+
+    data.num_splits = num_splits;
+    data.softmax_lse_accum = GetScratchBuffer<char>(static_cast<size_t>(softmax_lse_accum_bytes), ort_stream);
+    data.out_accum = GetScratchBuffer<char>(static_cast<size_t>(o_accum_bytes), ort_stream);
+
+    auto softmax_lse_size = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
+    data.softmax_lse = GetScratchBuffer<char>(static_cast<size_t>(softmax_lse_size), ort_stream);
+
+    return QkvToContext_Dense<CudaT>(device_prop, ort_stream, parameters, data);
+  }
+
+
+  // Currently, we use same block size in kernel.
+  // TODO: support kernel block size that is smaller than sparse_block_size in tunable (need expand block mask).
+  data.kernel_layout.block_size = parameters.sparse_block_size;
+  data.kernel_layout.mask = data.block_mask;
+  data.kernel_layout.num_layout = parameters.num_sparse_layout;
+
+  data.kernel_layout.num_cols = parameters.max_sequence_length / data.kernel_layout.block_size;
+  data.kernel_layout.num_rows = parameters.max_sequence_length / data.kernel_layout.block_size;
+
+  // Allocate buffer for CSR col and row indices.
+  int dense_blocks = data.kernel_layout.num_layout * data.kernel_layout.num_cols * data.kernel_layout.num_rows;
+  data.csr_col_indices_buffer = GetScratchBuffer<int32_t>(static_cast<size_t>(dense_blocks), ort_stream);
+  data.csr_row_indices_buffer = GetScratchBuffer<int32_t>(
+      static_cast<size_t>(data.kernel_layout.num_layout * (data.kernel_layout.num_rows + 1)), ort_stream);
+
+  data.kernel_layout.csr_col_indices = reinterpret_cast<const int32_t*>(data.csr_col_indices_buffer.get());
+  data.kernel_layout.csr_row_indices = reinterpret_cast<const int32_t*>(data.csr_row_indices_buffer.get());
+
+  ConvertMaskToCSR(cuda_stream,
+                  data.kernel_layout.mask,
+                  data.kernel_layout.num_layout,
+                  data.kernel_layout.num_rows,
+                  data.kernel_layout.num_cols,
+                  data.csr_row_indices_buffer.get(),
+                  data.csr_col_indices_buffer.get(),
+                  device_prop.maxThreadsPerBlock);
+
   // Prepare some v2 kernel inputs in CPU then copy to GPU.
-  IAllocatorUniquePtr<int32_t> v2_kernel_inputs_pinned_buffer;
-  IAllocatorUniquePtr<int32_t> v2_kernel_buffer;
   data.use_v2_kernel = use_v2_kernel;
   if (use_v2_kernel) {
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(data.is_copy_done.Get()));
+
+    int batch_size = parameters.batch_size;
+    int32_t* total_k_seq_len_pinned = data.pinned_buffer.get();
+    int kernel_block_size = data.kernel_layout.block_size;
+
     // Compute activate q blocks so that we know the size of buffer to allocate.
-    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
     int active_q_blocks = 0;
     if (is_prompt) {
-      for (int i = 0; i < parameters.batch_size; i++) {
-        active_q_blocks += DivUp(is_prompt ? total_k_seq_len_pinned[i] : 1, data.kernel_layout.block_size);
+      for (int i = 0; i < batch_size; i++) {
+        active_q_blocks += DivUp(is_prompt ? total_k_seq_len_pinned[i] : 1, kernel_block_size);
       }
     } else {  // not prompt
-      assert(parameters.sequence_length == 1);
-      active_q_blocks = parameters.batch_size;
+      active_q_blocks = batch_size;
     }
 
     // Compute buffer size: addresses of 6 buffers for v2 kernel need to be aligned to 16.
-    const size_t aligned_batch_size = DivUp(parameters.batch_size, 16) * 16;
+    const size_t aligned_batch_size = DivUp(batch_size, 16) * 16;
     const size_t aligned_num_q_blocks = DivUp(active_q_blocks, 16) * 16;
     size_t v2_kernel_buffer_size = 4 * aligned_batch_size + 2 * aligned_num_q_blocks;
 
+    data.v2_kernel_inputs_pinned_buffer = AllocateBufferOnCPUPinned<int32_t>(v2_kernel_buffer_size);
+
+    data.v2_kernel_buffer = GetScratchBuffer<int>(v2_kernel_buffer_size, ort_stream);
+
     // Compute those values in CPU, then copy to GPU
-    v2_kernel_inputs_pinned_buffer = AllocateBufferOnCPUPinned<int32_t>(v2_kernel_buffer_size);
-    int32_t* v2_kernel_inputs_pinned = reinterpret_cast<int32_t*>(v2_kernel_inputs_pinned_buffer.get());
+    int32_t* v2_kernel_inputs_pinned = reinterpret_cast<int32_t*>(data.v2_kernel_inputs_pinned_buffer.get());
     int32_t* q_batch_starts = v2_kernel_inputs_pinned;
     int32_t* q_batch_ends = q_batch_starts + aligned_batch_size;
     int32_t* k_batch_starts = q_batch_ends + aligned_batch_size;
@@ -302,14 +328,14 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
     // Here assumes right-side padding
     if (is_prompt) {
-      for (int i = 0; i < parameters.batch_size; i++) {
+      for (int i = 0; i < batch_size; i++) {
         q_batch_starts[i] = 0;
         q_batch_ends[i] = total_k_seq_len_pinned[i];
         k_batch_starts[i] = 0;
         k_batch_ends[i] = total_k_seq_len_pinned[i];
       }
     } else {
-      for (int i = 0; i < parameters.batch_size; i++) {
+      for (int i = 0; i < batch_size; i++) {
         q_batch_starts[i] = 0;
         q_batch_ends[i] = 1;
         k_batch_starts[i] = 0;
@@ -319,20 +345,21 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
     int current_block = 0;
     for (int i = 0; i < parameters.batch_size; i++) {
-      int blocks = DivUp(q_batch_ends[i] - q_batch_starts[i], data.kernel_layout.block_size);
+      int blocks = DivUp(q_batch_ends[i] - q_batch_starts[i], kernel_block_size);
       for (int j = 0; j < blocks; j++) {
         q_batch_ids[current_block] = i;
-        q_start_sids[current_block] = j * data.kernel_layout.block_size;
+        q_start_sids[current_block] = j * kernel_block_size;
         current_block++;
       }
     }
 
-    v2_kernel_buffer = GetScratchBuffer<int>(v2_kernel_buffer_size, context->GetComputeStream());
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(v2_kernel_buffer.get(), v2_kernel_inputs_pinned,
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(data.v2_kernel_buffer.get(), v2_kernel_inputs_pinned,
                                          sizeof(int32_t) * v2_kernel_buffer_size,
                                          cudaMemcpyHostToDevice, cuda_stream));
 
-    data.q_batch_starts = v2_kernel_buffer.get();
+
+
+    data.q_batch_starts = data.v2_kernel_buffer.get();
     data.q_batch_ends = data.q_batch_starts + aligned_batch_size;
     data.k_batch_starts = data.q_batch_ends + aligned_batch_size;
     data.k_batch_ends = data.k_batch_starts + aligned_batch_size;
@@ -341,7 +368,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.active_q_blocks = active_q_blocks;
   }
 
-  return QkvToContext<CudaT>(device_prop, stream, parameters, data);
+  return QkvToContext_Sparse<CudaT>(device_prop, ort_stream, parameters, data);
 }
 
 }  // namespace cuda

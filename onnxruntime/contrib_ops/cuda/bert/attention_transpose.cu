@@ -304,6 +304,12 @@ Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, c
                         max_threads_per_block, false, input, output);
 }
 
+Status Transpose_BNSH_to_BSNH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const half* input, half* output, cudaStream_t stream, const int max_threads_per_block){
+  return  LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads,
+                         max_threads_per_block, false, input, output);
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
