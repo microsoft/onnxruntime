@@ -15,7 +15,7 @@
  */
 
 #include "core/providers/shared_library/provider_api.h"
-#include "custom_reduce.h"
+#include "custom_reduce_impl.h"
 #include <algorithm>
 #include <cstdint>
 #include <tuple>
@@ -500,24 +500,20 @@ void AllReduceDispatchType(AllReduceParams &param, AllReduceStrategyType strat, 
     }
 }
 
-AllReduceParams AllReduceParams::deserialize(int32_t const *buffer, size_t tpSize, size_t tpRank, uint32_t flag_value) {
+AllReduceParams AllReduceParams::deserialize(int32_t const *buffer, size_t tpSize, size_t tpRank) {
     void *const *buffer_ptrs = reinterpret_cast<void *const *>(buffer);
     AllReduceParams params;
-    // Even plugins use ping buffers, odd plugins use pong.
-    // That way, we don't need to wait for other GPUs to be done
-    // before copying input tensor to workspace.
-    auto const buffer_offset = (flag_value % 2 == 0) ? 0 : tpSize;
 
     for (int i = 0; i < tpSize; ++i) {
-        params.peer_comm_buffer_ptrs[i] = buffer_ptrs[buffer_offset + i];
+        params.peer_comm_buffer_ptrs[i] = buffer_ptrs[i];
     }
     for (int i = 0; i < tpSize; ++i) {
-        params.peer_barrier_ptrs_in[i] = reinterpret_cast<uint32_t *>(buffer_ptrs[2 * tpSize + i]);
+        params.peer_barrier_ptrs_in[i] = reinterpret_cast<uint32_t *>(buffer_ptrs[tpSize + i]);
     }
     for (int i = 0; i < tpSize; ++i) {
-        params.peer_barrier_ptrs_out[i] = reinterpret_cast<uint32_t *>(buffer_ptrs[3 * tpSize + i]);
+        params.peer_barrier_ptrs_out[i] = reinterpret_cast<uint32_t *>(buffer_ptrs[2 * tpSize + i]);
     }
-    params.barrier_flag = flag_value;
+    params.barrier_flag = 0;
     params.ranks_per_node = tpSize;
     params.rank = tpRank;
     params.local_rank = tpRank;

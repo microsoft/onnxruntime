@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "custom_reduce_impl.h"
 
 #if defined(ORT_USE_NCCL)
 #include <algorithm>

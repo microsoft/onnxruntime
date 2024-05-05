@@ -13,6 +13,7 @@
 
 #include "nccl_kernels.h"
 #include "mpi_include.h"
+#include "ipc_utils.h"
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cuda/tensor/slice.h"
 #include "core/providers/cuda/math/matmul.h"
@@ -248,11 +249,10 @@ NcclKernel::NcclKernel(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 AllReduce::AllReduce(const OpKernelInfo& info) : NcclKernel(info) {
+  ORT_ENFORCE(ort_trtllm::setPeerAccess(nccl_, true) == Status::OK());
 }
 
 Status AllReduce::ComputeInternal(OpKernelContext* context) const {
-  ncclComm_t comm = nccl_->Comm();
-
   auto input_tensor = context->Input<Tensor>(0);
   const void* input_data = input_tensor->DataRaw();
   const auto in_shape = input_tensor->Shape();
@@ -260,8 +260,41 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
 
   void* output_data = context->Output(0, in_shape)->MutableDataRaw();
 
-  ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
+  // ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
+  // NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl_->Comm(), Stream(context)));
+
+  ort_trtllm::AllReduceStrategyType runtimeStrategy = ort_trtllm::AllReduceStrategyType::ONESHOT;
+  // ort_trtllm::AllReduceStrategyConfig mConfig = ort_trtllm::AllReduceStrategyConfig::PUSH_MODE;
+  ort_trtllm::AllReduceStrategyConfig mConfig = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
+
+  int myRank = nccl_->Rank();
+  int nRanks = nccl_->Size();
+
+  std::vector<std::shared_ptr<ort_trtllm::IpcMemory>> mIpcMemoryHandles;
+  const std::size_t bufferSize = nRanks * input_count * input_tensor->DataType()->Size();
+  mIpcMemoryHandles.emplace_back(std::make_shared<ort_trtllm::IpcMemory>(nccl_, bufferSize));
+  mIpcMemoryHandles.emplace_back(
+      std::make_shared<ort_trtllm::IpcMemory>(nccl_, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
+  mIpcMemoryHandles.emplace_back(
+      std::make_shared<ort_trtllm::IpcMemory>(nccl_, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
+
+  std::vector<int64_t> mCommPtrs(mIpcMemoryHandles.size() * nRanks);
+  auto* const commPtrsData = static_cast<void* const*>(mCommPtrs.data());
+
+  for (size_t memIdx = 0; memIdx < mIpcMemoryHandles.size(); memIdx++) {
+    auto const& memCommPtrs = mIpcMemoryHandles[memIdx]->getCommPtrsTensor();
+    for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(nRanks); tpIdx++) {
+      commPtrsData[memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
+    }
+  }
+
+  ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
+      reinterpret_cast<int32_t const*>(mCommPtrs.data()), nRanks, myRank);
+  params.local_output_buffer_ptr = output_data;
+  params.local_input_buffer_ptr = input_data;
+  params.elts_total = input_count;
+  ort_trtllm::customAllReduce(params, input_tensor->DataType(), runtimeStrategy, mConfig, Stream(context));
+
   return Status::OK();
 }
 
