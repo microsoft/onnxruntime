@@ -33,7 +33,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_providers_OrtCUDAProviderOptions_appl
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtCUDAProviderOptionsV2* opts = (OrtCUDAProviderOptionsV2*) optionsHandle;
 
-  size_t keyLength = (*jniEnv)->GetArrayLength(jniEnv, jKeyArr);
+  jsize keyLength = (*jniEnv)->GetArrayLength(jniEnv, jKeyArr);
   const char** keys = (const char**) allocarray(keyLength, sizeof(const char*));
   const char** values = (const char**) allocarray(keyLength, sizeof(const char*));
   if ((keys == NULL) || (values == NULL)) {
@@ -46,7 +46,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_providers_OrtCUDAProviderOptions_appl
     throwOrtException(jniEnv, 1, "Not enough memory");
   } else {
     // Copy out strings into UTF-8.
-    for (size_t i = 0; i < keyLength; i++) {
+    for (jsize i = 0; i < keyLength; i++) {
       jobject key = (*jniEnv)->GetObjectArrayElement(jniEnv, jKeyArr, i);
       keys[i] = (*jniEnv)->GetStringUTFChars(jniEnv, key, NULL);
       jobject value = (*jniEnv)->GetObjectArrayElement(jniEnv, jValueArr, i);
@@ -55,7 +55,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_providers_OrtCUDAProviderOptions_appl
     // Write to the provider options.
     checkOrtStatus(jniEnv,api,api->UpdateCUDAProviderOptions(opts, keys, values, keyLength));
     // Release allocated strings.
-    for (size_t i = 0; i < keyLength; i++) {
+    for (jsize i = 0; i < keyLength; i++) {
       jobject key = (*jniEnv)->GetObjectArrayElement(jniEnv, jKeyArr, i);
       (*jniEnv)->ReleaseStringUTFChars(jniEnv,key,keys[i]);
       jobject value = (*jniEnv)->GetObjectArrayElement(jniEnv, jKeyArr, i);
