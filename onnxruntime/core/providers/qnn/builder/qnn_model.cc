@@ -287,7 +287,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
   if (QNN_COMMON_ERROR_SYSTEM_COMMUNICATION == execute_status) {
     auto error_message = "NPU crashed. SSR detected. Caused QNN graph execute error. Error code: ";
     LOGS(logger_, ERROR) << error_message << execute_status;
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_message, execute_status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, ENGINE_ERROR, error_message, execute_status);
   }
 
   if (QNN_GRAPH_NO_ERROR != execute_status) {

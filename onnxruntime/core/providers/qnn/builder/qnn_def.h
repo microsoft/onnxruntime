@@ -497,5 +497,10 @@ typedef struct GraphConfigInfo {
   const QnnGraph_Config_t** graphConfigs;
 } GraphConfigInfo_t;
 
+static const std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
+static const std::vector<size_t> nchw2hwcn_perm_3d{2, 3, 4, 1, 0};
+static const std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};
+static const std::vector<size_t> cnhw2hwcn_perm_3d{2, 3, 4, 0, 1};
+
 }  // namespace qnn
 }  // namespace onnxruntime
