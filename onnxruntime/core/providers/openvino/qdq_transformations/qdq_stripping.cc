@@ -1,4 +1,9 @@
+// Copyright (C) Intel Corporation
+// Licensed under the MIT License
+
 #include <array>
+#include <vector>
+#include <iostream>
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
@@ -9,6 +14,18 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+enum class SkipReason {
+  Uint16QDQ,
+  DuplicateDQ,
+  ConstInitUnsupportedDQ,
+  SandwichedDQ,
+  Other
+};
+
+static ONNX_NAMESPACE::TensorProto_DataType GetZeroPointDT(const Node* qdq_node) {
+  return static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
+      qdq_node->InputDefs().at(2)->TypeAsProto()->tensor_type().elem_type());
+}
 // Creates a new NodeArg from an input (or output) of a QDQ node unit. If the input/output is quantized,
 // this function modifies the tensor type to the specified float type.
 static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
@@ -39,6 +56,337 @@ static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph, const onnxrunti
   return dst_graph.GetOrCreateNodeArg(name, orig_type_proto);
 }
 
+static bool IsConnectedQPresent(const onnxruntime::GraphViewer& src_graph,
+                                const std::vector<const Node*>& dst_nodes,
+                                const Node* dq_node,
+                                ConstPointerContainer<std::vector<NodeArg*>> input_defs) {
+  // Check if the connected Q was already kept in the dst graph. If it's not found, don't reconnect
+  if (auto it = std::find_if(dst_nodes.begin(), dst_nodes.end(),
+                             [&](const Node* n) {
+                               // search for the connected Q in the dst graph
+
+                               if (src_graph.IsConstantInitializer(input_defs.at(0)->Name(), true)) {
+                                 // If the the DQ's input is a constant initializer, and found in the graph then
+                                 // proceed to remove the duplicate
+                                 return true;
+                               } else {
+                                 // Otherwise, check if the DQ's Q input is already present in the dst graph
+                                 // Check the OpType so we don't mistake Identity for Q
+                                 return (n->Name() == dq_node->InputNodesBegin()->Name() &&
+                                         n->OpType() == "QuantizeLinear");
+                               }
+                             });
+      it != std::end(dst_nodes)) return true;
+  return false;
+}
+
+static bool IsFirstComputeOpAboveSoftMax(const Node* qdq_node) {
+  if (qdq_node->OpType() != "QuantizeLinear" && qdq_node->OpType() != "DequantizeLinear") {
+    if (qdq_node->OpType() == "Softmax")
+      return true;
+    else
+      return false;
+  } else {
+    if (qdq_node->GetInputEdgesCount())
+      return IsFirstComputeOpAboveSoftMax(&*qdq_node->InputNodesBegin());
+    else
+      return false;
+  }
+}
+
+static bool IsFirstComputeOpBelowConvMatMul(const Node* qdq_node) {
+  if (qdq_node->OpType() != "QuantizeLinear" && qdq_node->OpType() != "DequantizeLinear") {
+    if (qdq_node->OpType() == "Conv" || qdq_node->OpType() == "MatMul")
+      return true;
+    else
+      return false;
+  } else {
+    if (qdq_node->GetOutputEdgesCount())
+      return IsFirstComputeOpBelowConvMatMul(&*qdq_node->OutputNodesBegin());
+    else
+      return false;
+  }
+}
+
+static bool IsAnyDQBias(const Node* target_node) {
+  bool is_bias = false;
+  for (Node::NodeConstIterator it_dq = target_node->InputNodesBegin(); it_dq != target_node->InputNodesEnd(); ++it_dq) {
+    const auto& DQ = &*it_dq;
+    if (DQ->OpType() != "DequantizeLinear") continue;
+    is_bias |= DQ->InputDefs().at(0)->Name().find("bias") != std::string::npos;
+  }
+
+  return is_bias;
+}
+
+static bool IsFirstComputeOpBelowConvMatMulNonBiasAdd(const Node* qdq_node) {
+  if (qdq_node->OpType() != "QuantizeLinear" && qdq_node->OpType() != "DequantizeLinear") {
+    if (qdq_node->OpType() == "Conv" || qdq_node->OpType() == "MatMul")
+      return true;
+    else if (qdq_node->OpType() == "Add")
+      return !IsAnyDQBias(qdq_node);
+    else
+      return false;
+  } else {
+    if (qdq_node->GetOutputEdgesCount())
+      return IsFirstComputeOpBelowConvMatMulNonBiasAdd(&*qdq_node->OutputNodesBegin());
+    else
+      return false;
+  }
+}
+
+static bool IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(const Node* qdq_node) {
+  return IsFirstComputeOpAboveSoftMax(qdq_node) && IsFirstComputeOpBelowConvMatMul(qdq_node);
+}
+
+static const Node* GetFirstComputeOpAboveThisDQ(const Node* dq_node) {
+  if (dq_node->OpType() != "QuantizeLinear" && dq_node->OpType() != "DequantizeLinear") {
+    return dq_node;
+  } else {
+    if (dq_node->GetInputEdgesCount())
+      return GetFirstComputeOpAboveThisDQ(&*dq_node->InputNodesBegin());
+    else
+      return dq_node;
+  }
+}
+
+static const Node* GetFirstComputeOpBelowThisQ(const Node* q_node) {
+  if (q_node->OpType() != "QuantizeLinear" && q_node->OpType() != "DequantizeLinear") {
+    return q_node;
+  } else {
+    if (q_node->GetOutputEdgesCount())
+      return GetFirstComputeOpBelowThisQ(&*q_node->OutputNodesBegin());
+    else
+      return q_node;
+  }
+}
+
+// Used to find if inputs of the target node DQ's are constant initializers
+static bool IsAnyDQAConstantInitializer(const Node* target_node, const onnxruntime::GraphViewer& src_graph) {
+  bool is_const_init = false;
+  for (Node::NodeConstIterator it_dq = target_node->InputNodesBegin(); it_dq != target_node->InputNodesEnd(); ++it_dq) {
+    const auto& DQ = &*it_dq;
+    if (DQ->OpType() != "DequantizeLinear") continue;
+    is_const_init |= src_graph.IsConstantInitializer(DQ->InputDefs().at(0)->Name(), true);
+  }
+
+  return is_const_init;
+}
+
+// Previous Target -> Q -> DQ -> Current Target
+// Traverse back to the previous target node of DQ and check if it's an op listed in supported_ops
+// If the inputs of current target node are constant initializers, then the QDQ pair is invalid
+// Example: MatMul/Conv -> QDQ (uint8) -> (managed) Add/Div/Mul ==> MatMul/Conv -> (managed) Add/Div/Mul
+static bool IsPreviousTargetNodeOfDQValid(const Node* DQ,
+                                          const Node* current_target,
+                                          const onnxruntime::GraphViewer& src_graph,
+                                          bool check_const_init) {
+  // Iterate over all inputs of this DQ. Typically, only one input is expected
+  // We don't check for types here as it's handled in the respective ruleset functions
+
+  const Node* prev_target = GetFirstComputeOpAboveThisDQ(DQ);
+
+  // #1 If previous target is one of supported
+  if (prev_target->OpType() == "Conv" || prev_target->OpType() == "MatMul") {
+    // #2 If any DQ of the previous Conv/MatMul is sandwiched between Softmax and Conv/MatMul,
+    // then don't keep this DQ
+    for (Node::NodeConstIterator it_sw = prev_target->InputNodesBegin();
+         it_sw != prev_target->InputNodesEnd(); ++it_sw) {
+      const auto& sw_dq_node = &*it_sw;
+      if (sw_dq_node->OpType() != "DequantizeLinear") return true;
+      if (IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(sw_dq_node))
+        return false;
+    }
+    // #3 For Mul/Div, the DQ shouldn't be a const init
+    if (check_const_init && IsAnyDQAConstantInitializer(current_target, src_graph))
+      return false;  // because Add/Mul/Div with const init inputs are not supported if prev target is Conv/MatMul
+    else
+      return true;                              // For non-Conv/non-MatMul const init doesn't matter
+  } else if (prev_target->OpType() == "Add") {  // because Add is a supported Op
+    return true;
+  }
+
+  return false;
+}
+
+// Current Target -> Q -> DQ -> Next Target
+// Do the inverse of the function above. Check to keep the Q if the next target is valid
+static bool IsNextTargetNodeOfQValid(const Node* Q,
+                                     const Node* current_target,
+                                     const onnxruntime::GraphViewer& src_graph,
+                                     const std::vector<std::string>& supported_ops,
+                                     bool check_const_init) {
+  const Node* next_target = GetFirstComputeOpBelowThisQ(Q);
+
+  if (std::find(supported_ops.begin(), supported_ops.end(), next_target->OpType()) != supported_ops.end()) {
+    if (check_const_init && IsAnyDQAConstantInitializer(next_target, src_graph)) {
+      return false;  // because Add/Mul/Div with const init inputs are not supported
+    } else if (next_target->OpType() == "Conv" || next_target->OpType() == "MatMul") {
+      // If any DQ of this Conv/MatMul is sandwiched between Softmax and Conv/MatMul, then don't keep it
+      bool is_valid = true;
+      for (Node::NodeConstIterator it_sw = next_target->InputNodesBegin();
+           it_sw != next_target->InputNodesEnd(); ++it_sw) {
+        const auto& sw_dq_node = &*it_sw;
+        if (sw_dq_node->OpType() != "DequantizeLinear") return true;
+        if (IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(sw_dq_node))
+          is_valid &= false;
+      }
+      return is_valid;
+    } else {
+      return true;  // because the next target is supported
+    }
+  } else if (current_target->OpType() == "Conv" || current_target->OpType() == "MatMul") {
+    return true;  // Conv and MatMul can keep all Qs by default. Is there a better way to check this?
+  } else {
+    return false;  // because the next target is not supported
+  }
+
+  if (current_target->OpType() == "Conv" || current_target->OpType() == "MatMul") {
+    return true;  // Conv and MatMul can keep all Qs by default. Is there a better way to check this?
+  } else {
+    return false;  // because the next target is not supported
+  }
+}
+
+static bool CheckDQRuleSet(const NodeUnit& node_unit,
+                           const Node* dq_node,
+                           const onnxruntime::GraphViewer& src_graph,
+                           SkipReason& reason) {
+  const auto& target_node = node_unit.GetNode();
+  auto op_type = node_unit.OpType();
+
+  // #1 Reverse DQ duplication
+  if (dq_node->Name().find("/duplicated") != std::string::npos) {
+    reason = SkipReason::DuplicateDQ;
+    return false;
+  }
+
+  // #2 If it's a constant initializer feeding to even unsupported ops with an unsupported type, keep it
+  // TODO(sspintel): check if this needs to be done only for certain supported Ops
+  if (src_graph.IsConstantInitializer(dq_node->InputDefs().at(0)->Name(), true)) {
+    return true;
+  }
+
+  // #3 If UInt16 DQ, don't keep it
+  if (GetZeroPointDT(dq_node) == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+    reason = SkipReason::Uint16QDQ;
+    return false;
+  }
+
+  // DQs in Double QDQ cases should be kept
+  if (dq_node->InputDefs().at(2)->Name().find("zero_point_convert") != std::string::npos &&
+      !IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(dq_node))
+    return true;
+
+  if (op_type == "Conv" || op_type == "MatMul") {
+    // Conv and MatMul always keeps int8 DQs except if the DQ is sandwiched between Softmax and Conv/MatMul
+    if (IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(dq_node)) {
+      reason = SkipReason::SandwichedDQ;
+      return false;
+    } else {
+      return true;
+    }
+  } else if (op_type == "Add") {
+    // Add keeps all DQs except if it is a BiasAdd
+    return !IsAnyDQBias(&target_node);
+  } else if (op_type == "Mul" || op_type == "Div") {
+    // Keep DQ of Mul and Div only if the target that preceds it is a supported Op in this list and also check if
+    // inputs of Mul and Div have constant initializers. If they do, then don't keep the DQ.
+    return IsPreviousTargetNodeOfDQValid(dq_node, &target_node, src_graph, true);
+  } else {
+    // Keep DQ of an unsupported Op only if the target that preceds it is a supported Op in this list
+    return IsPreviousTargetNodeOfDQValid(dq_node, &target_node, src_graph, false);
+  }
+}
+
+static bool CheckQRuleSet(const NodeUnit& node_unit,
+                          const Node* q_node,
+                          const onnxruntime::GraphViewer& src_graph,
+                          SkipReason& reason) {
+  // If the target node of the NodeUnit following this one is one of the supported Op types, then keep this Q
+  // This Q should also be uint8
+
+  const auto& target_node = node_unit.GetNode();
+  auto op_type = node_unit.OpType();
+
+  // If UInt16 Q, don't keep it
+  if (GetZeroPointDT(q_node) == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+    reason = SkipReason::Uint16QDQ;
+    return false;
+  }
+
+  if (op_type == "Conv" || op_type == "MatMul") {
+    // If any DQ of this Conv/MatMul is sandwiched between Softmax and Conv/MatMul, then don't keep it
+    for (const auto& dq_node : node_unit.GetDQNodes()) {
+      if (IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(dq_node)) {
+        reason = SkipReason::SandwichedDQ;
+        return false;
+      }
+    }
+    // Conv and MatMul keep all Qs except if the target that succeeds it is Add/Mul/Div AND has any const init
+    return IsNextTargetNodeOfQValid(q_node, &target_node, src_graph, {"Add", "Mul", "Div"}, true);
+  } else if (op_type == "Add") {
+    // Add keeps all Qs
+    return true;
+  } else {
+    // Keep Q of an unsupported Op only if the target that succeeds it is a supported Op in this list
+    return IsNextTargetNodeOfQValid(q_node, &target_node, src_graph, {"Conv", "Add", "MatMul"}, false);
+  }
+}
+
+static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
+                            const NodeUnit& node_unit) {
+  int node_unit_input_edge_count = node_unit.InputEdgeCount();
+  int node_unit_output_edge_count = [&]() {
+    int count = 0;
+    for (auto it = node_unit.OutputEdgesBegin(); it != node_unit.OutputEdgesEnd(); ++it)
+      count += 1;
+    return count;
+  }();
+  bool input_edges_exist = node_unit_input_edge_count && node_unit_output_edge_count;
+
+  // Detect a conversion between quantized types (e.g., int16 to int8)
+  // in mixed-precision QDQ models. The pattern a standalone DQ followed by a standalone Q:
+  // Ex: DQ(int16 to float) -> QuantizeLinear(float to int8) ->
+  if (node_unit.OpType() == "QuantizeLinear" && input_edges_exist) {
+    const Node& q_node = node_unit.GetNode();
+    const Node& i_dq_node = *q_node.InputNodesBegin();
+    const Node& o_dq_node = *q_node.OutputNodesBegin();
+
+    if (i_dq_node.OpType() == "DequantizeLinear" && o_dq_node.OpType() == "DequantizeLinear") {
+      auto q_zero_point_dt = GetZeroPointDT(&q_node);
+
+      // Can ignore if this Q is uint16 as it won't be consumed by any supported node
+      if (q_zero_point_dt != ONNX_NAMESPACE::TensorProto_DataType_UINT16 &&
+          !IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(&q_node)) {
+        // if it's unequal, then it's a conversion between quantized types.
+        dst_graph.AddNode(node_unit.GetNode());
+        return true;
+      }
+    }
+  }
+
+  // Keep int8 DQ/Qs in int16 -> int8
+  // Don't keep any QDQs in int8 -> int16
+  // Beginning of a converting QDQ pair. Check if previous Q is int8 and the following Q has a converting zp
+  if (node_unit.OpType() == "DequantizeLinear" && input_edges_exist) {
+    const Node& dq_node = node_unit.GetNode();
+    const Node& i_q_node = *dq_node.InputNodesBegin();
+    const Node& o_q_node = *dq_node.OutputNodesBegin();
+
+    if (i_q_node.OpType() == "QuantizeLinear" && o_q_node.OpType() == "QuantizeLinear") {
+      auto dq_zero_point_dt = GetZeroPointDT(&dq_node);
+
+      if (dq_zero_point_dt != ONNX_NAMESPACE::TensorProto_DataType_UINT16 &&
+          IsConnectedQPresent(src_graph, dst_graph.Nodes(), &dq_node, dq_node.InputDefs()) &&
+          !IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(&dq_node)) {
+        dst_graph.AddNode(node_unit.GetNode());
+        return true;
+      }
+    }
+  }
+  return false;
+}
 // Handles adding a standalone node unit (i.e., one not wrapped with DQ/Q ops) to the dst graph.
 static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
                                   const NodeUnit& node_unit, int32_t float_type,
@@ -46,9 +394,9 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
                                   const logging::Logger& /* logger */) {
   assert(node_unit.UnitType() == NodeUnit::Type::SingleNode);
 
-  if (node_unit.OpType() == "QuantizeLinear" || node_unit.OpType() == "DequantizeLinear") {
-    // Standalone Q (or DQ) operator. Typically seen at the input (or output) of the graph.
-    // Can replace with an Identity op for this demo. Should probably do something better.
+  if (HandleDoubleQDQ(dst_graph, src_graph, node_unit)) return;
+
+  auto add_identity_op = [&]() {
     std::array<NodeArg*, 1> input_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_dequant,
                                                              node_unit.Inputs()[0], float_type)};
     std::array<NodeArg*, 1> output_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_dequant,
@@ -60,157 +408,18 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
                       output_args,
                       nullptr,
                       kOnnxDomain);
+  };
 
-    // TODO: Another scenario to consider is a conversion between quantized types (e.g., int16 to int8)
-    // in mixed-precision QDQ models. The pattern to detect is a standalone DQ followed by a standalone Q:
-    // Ex: DQ(int16 to float) -> QuantizeLinear(float to int8) ->
-    // Replacing both with identity ops (as we do here) may just work.
+  if (node_unit.OpType() == "QuantizeLinear") {
+    add_identity_op();
+  } else if (node_unit.OpType() == "DequantizeLinear") {
+    if (IsConnectedQPresent(src_graph, dst_graph.Nodes(), &node_unit.GetNode(), node_unit.GetNode().InputDefs()))
+      dst_graph.AddNode(node_unit.GetNode());  // Copy standalone node unit.
+    else
+      add_identity_op();
   } else {
     dst_graph.AddNode(node_unit.GetNode());  // Copy standalone node unit.
   }
-}
-
-static const std::vector<std::string> supported_qdq_ops = {"Conv", "Add", "Div", "MatMul"};
-enum class SkipReason {
-  Uint16QDQ,
-  DuplicateDQ,
-  Other
-};
-static bool CheckDQRuleSet(const NodeUnit& node_unit,
-                           const Node* dq_node,
-                           SkipReason& reason) {
-  const auto& dq_input_defs = dq_node->InputDefs();
-  const auto& target_input_defs = node_unit.GetNode().InputDefs();
-
-  // zero point is the third input
-  auto zero_point_dt = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
-      dq_input_defs.at(2)->TypeAsProto()->tensor_type().elem_type());
-  auto op_type = node_unit.OpType();
-
-  // #1 If UInt16 DQ, don't keep it
-  if (zero_point_dt == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
-    reason = SkipReason::Uint16QDQ;
-    return false;
-  }
-
-  // #2 Reverse DQ duplication
-  if (dq_node->Name().find("/duplicated") != std::string::npos) {
-    reason = SkipReason::DuplicateDQ;
-    return false;
-  }
-
-  // Keep DQ for all supported Ops according to the following rules
-  if (op_type == "Conv") {
-    // This is the DQ we want to keep, so just return as it's not Uint16
-    return true;
-  } else if (op_type == "Add") {
-    if ((target_input_defs.at(0)->Name().find("DequantizeLinear_Output") != std::string::npos) &&
-        (target_input_defs.at(1)->Name().find("DequantizeLinear_Output") != std::string::npos)) {
-      if (target_input_defs.at(0)->Name().find("bias") != std::string::npos) {
-        reason = SkipReason::Other;
-        return false;
-      } else {
-        // keeps both DQ inputs for this Add
-        return true;
-      }
-    }
-  } else if (op_type == "Div") {
-    return true;
-  } else if (op_type == "MatMul") {
-    if ((target_input_defs.at(0)->Name().find("Softmax") == std::string::npos) &&
-        (target_input_defs.at(1)->Name().find("Softmax") == std::string::npos)) {
-      ORT_ENFORCE(target_input_defs.size() == 2);
-      ORT_ENFORCE((target_input_defs.at(0)->Name().find("DequantizeLinear_Output") != std::string::npos) &&
-                  (target_input_defs.at(1)->Name().find("DequantizeLinear_Output") != std::string::npos));
-      return true;  // Keep both DQ inputs for this MatMul
-    }
-  } else {
-    // For unsupported ops, check if connected input NodeUnit is one of supported ops, then keep the DQ
-    for (Node::NodeConstIterator dq_in = dq_node->InputNodesBegin(); dq_in != dq_node->InputNodesEnd(); ++dq_in) {
-      const auto& connected_q_op = *dq_in;
-
-      // Node preceding a DQ should be a Q
-      ORT_ENFORCE(connected_q_op.OpType() == "QuantizeLinear");
-
-      for (Node::NodeConstIterator previous_target = connected_q_op.InputNodesBegin();
-           previous_target != connected_q_op.InputNodesEnd(); ++previous_target) {
-        const auto& previous_target_op = *previous_target;
-
-        if (std::find(supported_qdq_ops.begin(),
-                      supported_qdq_ops.end(), previous_target_op.OpType()) != supported_qdq_ops.end()) {
-          return true;
-        } else {
-          reason = SkipReason::Other;
-          return false;
-        }
-      }
-    }
-  }
-  reason = SkipReason::Other;
-  return false;
-}
-
-static bool CheckQRuleSet(const NodeUnit& node_unit,
-                          const Node* q_node,
-                          SkipReason& reason) {
-  // If the target node of the NodeUnit following this one is one of the supported Op types, then keep this Q
-  // This Q should also be uint8
-
-  const auto& q_input_defs = q_node->InputDefs();
-  const auto& target_input_defs = node_unit.GetNode().InputDefs();
-  const auto& target_output_defs = node_unit.GetNode().OutputDefs();
-
-  // zero point is the third input
-  auto zero_point_dt = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
-      q_input_defs.at(2)->TypeAsProto()->tensor_type().elem_type());
-  auto op_type = node_unit.OpType();
-
-  // If UInt16 Q, don't keep it
-  if (zero_point_dt == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
-    reason = SkipReason::Uint16QDQ;
-    return false;
-  }
-
-  // Keep Q for all supported Ops according to the following rules
-  if (op_type == "Conv") {
-    // This is the Q we want to keep, so just return as it's not Uint16
-    return true;
-  } else if (op_type == "Add") {
-    if ((target_input_defs.at(0)->Name().find("DequantizeLinear_Output") != std::string::npos) &&
-        (target_input_defs.at(1)->Name().find("DequantizeLinear_Output") != std::string::npos)) {
-      ORT_ENFORCE(target_output_defs.size() == 1);
-      return true;
-    }
-  } else if (op_type == "Div") {
-    return true;
-  } else if (op_type == "MatMul") {
-    if (target_input_defs.at(0)->Name().find("Softmax") == std::string::npos &&
-        target_input_defs.at(1)->Name().find("Softmax") == std::string::npos) {
-      ORT_ENFORCE(target_output_defs.size() == 1);
-      return true;
-    }
-  } else {
-    // If connected output is one of supported ops, keep the Q
-    for (Node::NodeConstIterator q_out = q_node->OutputNodesBegin(); q_out != q_node->OutputNodesEnd(); ++q_out) {
-      const auto& connected_dq_op = *q_out;
-
-      // Node following a Q should be a DQ
-      ORT_ENFORCE(connected_dq_op.OpType() == "DequantizeLinear");
-
-      for (Node::NodeConstIterator next_target = connected_dq_op.OutputNodesBegin();
-           next_target != connected_dq_op.OutputNodesEnd(); ++next_target) {
-        const auto& next_target_op = *next_target;
-
-        if (std::find(supported_qdq_ops.begin(),
-                      supported_qdq_ops.end(), next_target_op.OpType()) != supported_qdq_ops.end()) {
-          return true;
-        } else {
-          return false;
-        }
-      }
-    }
-  }
-  return false;
 }
 
 // Handles adding a QDQ node unit (e.g., DQ -> Add -> Q) to the dst graph.
@@ -238,7 +447,8 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
     ORT_ENFORCE(input_defs.size() == 3);
 
     SkipReason reason;
-    bool keep_dq = CheckDQRuleSet(node_unit, dq_node, reason);
+    bool keep_dq = CheckDQRuleSet(node_unit, dq_node, src_graph, reason);
+    LOGS_DEFAULT(INFO) << "!!!!!!!! kept DQ " << dq_node->Name() << keep_dq;
 
     if (keep_dq) {
       dst_graph.AddNode(*dq_node);  // Add the node to the graph
@@ -251,32 +461,18 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
         // Skips the DQ, but keep the route to the target node
         // Add the output of the other original DQ as input arg of this target node
 
-        std::vector<const Node*> dst_nodes_present = dst_graph.Nodes();
+        if (!IsConnectedQPresent(src_graph, dst_graph.Nodes(), dq_node, input_defs)) continue;
 
-        // Check if the connected Q was already kept in the dst graph. If it's not found, don't reconnect
-        if (auto it = std::find_if(dst_nodes_present.begin(), dst_nodes_present.end(),
-                                   [&](const Node* n) {
-                                     // search for the connected Q in the dst graph
-
-                                     if (src_graph.IsConstantInitializer(input_defs.at(0)->Name(), true)) {
-                                     // If the the DQ's input is a constant initializer, and found in the graph then
-                                     // proceed to remove the duplicate
-                                      return true;
-                                     } else {
-                                      // Otherwise, check if the DQ's Q input is already present in the dst graph
-                                      // Check the OpType so we don't mistake Identity for Q
-                                     return (n->Name() == dq_node->InputNodesBegin()->Name() &&
-                                             n->OpType() == "QuantizeLinear");
-                                     }
-                                   });
-            it == std::end(dst_nodes_present)) continue;  // Skip connecting this duplicate DQ
-
-        std::string target_in_arg_name = dq_node->OutputDefs().at(0)->Name();
+        std::string target_arg_name = dq_node->OutputDefs().at(0)->Name();
         std::string duplicate_str = "/duplicated";
-        target_in_arg_name.erase(target_in_arg_name.end() - duplicate_str.length(), target_in_arg_name.end());
+        // erase from the first occurence of the search string till the end of the target arg name
+        target_arg_name.erase(target_arg_name.find(duplicate_str), std::string::npos);
         dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
-                                     &dst_graph.GetOrCreateNodeArg(target_in_arg_name,
+                                     &dst_graph.GetOrCreateNodeArg(target_arg_name,
                                                                    dq_node->OutputDefs().at(0)->TypeAsProto())});
+      } else if (reason == SkipReason::SandwichedDQ) {
+        dq_node_args_to_keep.clear();
+        break;
       }
     }
   }
@@ -309,9 +505,9 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
     SkipReason reason;
 
-    bool keep_q = CheckQRuleSet(node_unit, q_node, reason);
+    bool keep_q = CheckQRuleSet(node_unit, q_node, src_graph, reason);
 
-    // LOGS_DEFAULT(INFO) << q_node->Name() << " keep " << keep_q;
+    LOGS_DEFAULT(INFO) << "!!!!!!!! kept Q " << q_node->Name() << keep_q;
 
     if (keep_q) {
       dst_graph.AddNode(*q_node);  // Add the node to the graph
@@ -344,9 +540,9 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
 // Creates a new model without the DQ/Q operators in the src graph.
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
-                                              const logging::Logger& logger,
-                                              int32_t float_type,
-                                              /*out*/ std::unique_ptr<onnxruntime::Model>& model) {
+                                       const logging::Logger& logger,
+                                       int32_t float_type,
+                                       /*out*/ std::unique_ptr<onnxruntime::Model>& model) {
   // NOTE: This function is a re-implementation of GraphViewerToProto() in core/graph/graph_proto_serializer.cc
   // with the following differences:
   //   - Uses onnxruntime::Graph APIs instead of onnx::GraphProto APIs.
