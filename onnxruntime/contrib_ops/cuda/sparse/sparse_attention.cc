@@ -106,14 +106,15 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            total_seq_len));
   // Some limitations of CUDA kernels
   // The v1 and v2 kernels have same coverage, so only check one of them to see whether it is supported.
-  if (!sparse_attention_v1::is_supported_device(device_prop)) {
+  int sm = device_prop.major * 10 + device_prop.minor;
+  if (!sparse_attention_v1::is_supported_device(sm)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparseAttention only support CUDA device with compute capacity 8.*. Got ",
-                           device_prop.major);
+                           "SparseAttention only supports CUDA device with compute capacity 7.5, 8.0, 8.6, 8.9 and 9.0. Got sm=",
+                           sm);
   }
   if (!sparse_attention_v1::is_supported_sparse_attention(parameters.head_size, sparse_block_size_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparseAttention only support head_size=128 and sparse_block_size=64. Got head_size=",
+                           "SparseAttention only supports head_size=128 and sparse_block_size=64. Got head_size=",
                            parameters.head_size,
                            ",sparse_block_size=",
                            sparse_block_size_);
@@ -149,7 +150,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if (!kernel_loaded_) {
-    int sm = device_prop.major * 10 + device_prop.minor;
     if constexpr (std::is_same<T, MLFloat16>::value) {
       // std::call_once is used in load_sparse_attention_fp16 so no need to use mutex here.
       // After kernel is loaded, it will stay in memory until the process exits. We do not unload explicitly.
