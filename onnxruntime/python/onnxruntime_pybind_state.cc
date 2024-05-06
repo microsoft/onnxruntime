@@ -191,12 +191,13 @@ pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value) {
 
   const int numpy_type = OnnxRuntimeTensorToNumpyType(tensor.DataType());
   auto ort_value_ptr = std::make_unique<OrtValue>(ort_value);
+  pybind11::capsule caps(ort_value_ptr.get(), memory_release);
+  ort_value_ptr.release();
+
   // Not using array_t<T> because it may not handle MLFloat16 properly
   pybind11::array result(py::dtype(numpy_type), tensor.Shape().GetDims(),
                          tensor.DataRaw(),
-                         pybind11::capsule(ort_value_ptr.get(), memory_release));
-
-  ort_value_ptr.release();
+                         caps);
   return result;
 }
 

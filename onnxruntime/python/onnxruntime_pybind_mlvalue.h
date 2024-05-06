@@ -155,8 +155,7 @@ pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value);
 /// given priority.
 /// </summary>
 /// <param name="ort_value">Source memory that is not on CPU.</param>
-/// <param name="data_transfer">data transfer manager</param>
-/// <param name="func">copy function if data transfer manager is not available.</param>
+/// <param name="data_transfer">a variant encapsulating aternatives</param>
 /// <returns></returns>
 pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
                                                  const DataTransferAlternative& data_transfer);
