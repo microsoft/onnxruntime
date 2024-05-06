@@ -12,7 +12,7 @@ namespace onnxruntime {
 // - MatMulNBits + Add -> MatMulNBits with bias input
 class MatMulNBitsFusion : public SelectorActionTransformer {
  public:
-  MatMulNBitsFusion(const InlinedHashSet<std::string_view>& compatible_eps,
+  MatMulNBitsFusion(const InlinedHashSet<std::string_view>& compatible_eps = {},
                     const SatApplyContextVariant& apply_context = {});
 
   SelectorActionRegistry CreateSelectorActionRegistry() const;

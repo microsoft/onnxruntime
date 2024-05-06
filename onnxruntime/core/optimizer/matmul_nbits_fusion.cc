@@ -100,7 +100,7 @@ struct BiasFusion : MergeIntoTarget {
 }  // namespace actions
 
 void BiasFusionRule(SelectorActionRegistry& registry) {
-  constexpr char* name = "FuseBias";
+  constexpr const char* name = "FuseBias";
 
   auto action = std::make_unique<actions::BiasFusion>();
 

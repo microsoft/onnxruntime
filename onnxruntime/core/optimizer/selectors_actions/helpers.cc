@@ -96,14 +96,27 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
         dest.MutableInputArgsCount().push_back(1);
       }
     } else {
-      if (static_cast<size_t>(move_info.dest_slot.idx) >= dest_defs.size()) {
+      if (static_cast<size_t>(move_info.dest_slot.idx) + 1 > dest_defs.size()) {
         // assume that the gap between dest_slot.idx and dest_defs.size() is due to intermediate optional
         // inputs/outputs that are not present. fill in those defs with the empty NodeArg.
+        const size_t original_dest_defs_size = dest_defs.size();
+        const size_t num_defs_to_fill = static_cast<size_t>(move_info.dest_slot.idx) + 1 - original_dest_defs_size;
+
         NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
-        dest_defs.resize(move_info.dest_slot.idx, &empty_arg);
+        dest_defs.resize(original_dest_defs_size + num_defs_to_fill, &empty_arg);
 
         if (move_info.dest_slot.in_out == ArgType::kInput) {
-          dest.MutableInputArgsCount().resize(move_info.dest_slot.idx, 1);
+          auto& input_arg_counts = dest.MutableInputArgsCount();
+          for (size_t i = original_dest_defs_size; i < original_dest_defs_size + num_defs_to_fill; ++i) {
+            // input arg counts for optional inputs not present may have already been set to 0 during Graph::Resolve().
+            // handle both updating existing counts and adding new counts here.
+            if (i < input_arg_counts.size()) {
+              input_arg_counts[i] = 1;
+            } else {
+              // TODO can this branch ever be taken with a valid graph or should we treat it as an error?
+              input_arg_counts.push_back(1);
+            }
+          }
         }
       }
 
