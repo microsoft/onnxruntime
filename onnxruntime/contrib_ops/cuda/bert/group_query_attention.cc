@@ -163,6 +163,10 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.sequence_length <= parameters.seqlen_past_kv_cache + parameters.sequence_length &&
       (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2);
+  if (!use_flash_attention && !use_memory_efficient_attention && local_window_size_ != -1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Local attention UNSUPPORTED for sm < 80 on CUDA.");
+  }
   // allocate buffers
   size_t kv_buffer_bytes = 0;
   // need a buffer if we must ungroup kv

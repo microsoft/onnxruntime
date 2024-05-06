@@ -14,6 +14,7 @@ import os
 import platform
 import random
 import unittest
+import pytest
 
 import numpy
 import torch
@@ -22,13 +23,9 @@ from einops import rearrange, repeat
 from onnx import TensorProto, helper
 from rotary_flash import apply_rotary_emb
 
-try:
-    from colorama import Fore, init
-
-    init(autoreset=True)
-except ImportError:
-    print("colorama is not installed, please install it to get prettier output")
-    Fore = None
+RED = '\033[31m'
+GREEN = '\033[32m'
+RESET = '\033[0m'
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
 
@@ -1146,11 +1143,7 @@ def parity_check_mha(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
-    # Compare results
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         " B:",
         config.batch_size,
@@ -1341,11 +1334,7 @@ def parity_check_gqa_prompt(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
-    # Compare results
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "KV-buffer",
         " packed:",
@@ -1544,11 +1533,7 @@ def parity_check_gqa_prompt_no_buff(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
-    # Compare results
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "No buff",
         " packed:",
@@ -1751,11 +1736,7 @@ def parity_check_gqa_past(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
-    # Compare results
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "KV-buffer",
         "past kv format:",
@@ -1960,11 +1941,7 @@ def parity_check_gqa_past_no_buff(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
-    # Compare results
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "NO buff",
         " packed:",
@@ -1999,6 +1976,7 @@ def parity_check_gqa_past_no_buff(
 
 
 class TestMHA(unittest.TestCase):
+    @pytest.mark.slow
     def test_packed_mha(self):
         if not torch.cuda.is_available() or platform.system() != "Linux":
             return
@@ -2018,6 +1996,7 @@ class TestMHA(unittest.TestCase):
                         all_close = parity_check_mha(config, True)
                         self.assertTrue(all_close)
 
+    @pytest.mark.slow
     def test_mha(self):
         if not torch.cuda.is_available() or platform.system() != "Linux":
             return
@@ -2054,6 +2033,7 @@ class TestMHA(unittest.TestCase):
 
 
 class TestGQA(unittest.TestCase):
+    @pytest.mark.slow
     def test_gqa_no_past_memory_efficient(self):
         if not torch.cuda.is_available():
             return
@@ -2111,6 +2091,7 @@ class TestGQA(unittest.TestCase):
                                 )
                                 self.assertTrue(all_close)
 
+    @pytest.mark.slow
     def test_gqa_no_past_flash_attention(self):
         if not torch.cuda.is_available():
             return
@@ -2167,6 +2148,7 @@ class TestGQA(unittest.TestCase):
                                     )
                                     self.assertTrue(all_close)
 
+    @pytest.mark.slow
     def test_gqa_past_memory_efficient(self):
         if not torch.cuda.is_available():
             return
@@ -2225,6 +2207,7 @@ class TestGQA(unittest.TestCase):
                                 )
                                 self.assertTrue(all_close)
 
+    @pytest.mark.slow
     def test_gqa_past_flash_attention(self):
         if not torch.cuda.is_available():
             return

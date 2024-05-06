@@ -13,17 +13,11 @@ import math
 import random
 import unittest
 
+import pytest
 import numpy
 import torch
 from bert_padding import pad_input, unpad_input
 
-try:
-    from colorama import Fore, init
-
-    init(autoreset=True)
-except ImportError:
-    print("colorama is not installed, please install it to get prettier output")
-    Fore = None
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 
@@ -33,6 +27,9 @@ torch.manual_seed(0)
 
 pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
 
+RED = '\033[31m'
+GREEN = '\033[32m'
+RESET = '\033[0m'
 
 class Formats:
     BSNH = 0
@@ -1163,10 +1160,7 @@ def parity_check_gqa_prompt(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "KV-buffer",
         " packed:",
@@ -1333,10 +1327,7 @@ def parity_check_gqa_prompt_no_buff(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "No buff",
         " packed:",
@@ -1534,10 +1525,7 @@ def parity_check_gqa_past(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "KV-buffer",
         "past kv format:",
@@ -1737,15 +1725,7 @@ def parity_check_gqa_past_no_buff(
 
     # Compare results
     all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    # if not all_close:
-    #     print("seqlens", cache_seqlens)
-    #     print("out", out)
-    #     print("out_ref", out_ref)
-    #     print(out - out_ref)
-    if Fore is not None:
-        correct = Fore.GREEN + "True" if all_close else Fore.RED + "False"
-    else:
-        correct = "True" if all_close else "False"
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "NO buff",
         " packed:",
@@ -1780,6 +1760,7 @@ def parity_check_gqa_past_no_buff(
 
 
 class TestGQA(unittest.TestCase):
+    @pytest.mark.slow
     def test_gqa_no_past(self):
         torch.manual_seed(69)
         print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
@@ -1831,6 +1812,7 @@ class TestGQA(unittest.TestCase):
                                     )
                                     self.assertTrue(all_close)
 
+    @pytest.mark.slow
     def test_gqa_past(self):
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
         batches = [1, 3] if pipeline_mode else [1, 3, 5]

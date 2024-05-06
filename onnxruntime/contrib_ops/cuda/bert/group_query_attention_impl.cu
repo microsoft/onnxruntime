@@ -574,13 +574,13 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
 }
 
 // Kernel to convert seqlens_k to position_ids
-__global__ void SeqlensToPosIdsPrompt(int64_t* position_ids, const int seqlen,
+__global__ void SeqlensToPosIdsPrompt(int32_t* seqlens_k, int64_t* position_ids, const int seqlen,
                                       const int batch_size) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
   int b = tid / seqlen;
   int s = tid % seqlen;
   if (b < batch_size) {
-    if (s < seqlen) {
+    if (s < seqlens_k[b] + 1) {
       position_ids[tid] = s;
     } else {
       position_ids[tid] = 1;
@@ -604,7 +604,7 @@ Status LaunchSeqlensToPosIds(contrib::GroupQueryAttentionParameters& parameters,
   const int threads = max_threads_per_block;
   const int blocks = (batch_size * seqlen + threads - 1) / threads;
   if (parameters.is_prompt) {
-    SeqlensToPosIdsPrompt<<<blocks, threads, 0, stream>>>(position_ids, seqlen, batch_size);
+    SeqlensToPosIdsPrompt<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, seqlen, batch_size);
   } else {
     SeqlensToPosIdsToken<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, batch_size);
   }
