@@ -40,24 +40,24 @@
 
   # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
   # for example, nvinfer_10.dll, nvinfer_plugin_10.dll, nvonnxparser_10.dll ...
+  file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
+  string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
+  string(REGEX REPLACE "define NV_TENSORRT_MAJOR * +([0-9]+)" "\\1" NV_TENSORRT_MAJOR "${NV_TENSORRT_MAJOR}")
+  string(REGEX MATCH "define NV_TENSORRT_MINOR * +([0-9]+)" NV_TENSORRT_MINOR "${NVINFER_VER_CONTENT}")
+  string(REGEX REPLACE "define NV_TENSORRT_MINOR * +([0-9]+)" "\\1" NV_TENSORRT_MINOR "${NV_TENSORRT_MINOR}")
+  string(REGEX MATCH "define NV_TENSORRT_PATCH * +([0-9]+)" NV_TENSORRT_PATCH "${NVINFER_VER_CONTENT}")
+  string(REGEX REPLACE "define NV_TENSORRT_PATCH * +([0-9]+)" "\\1" NV_TENSORRT_PATCH "${NV_TENSORRT_PATCH}")
+  math(EXPR NV_TENSORRT_MAJOR_INT "${NV_TENSORRT_MAJOR}")
+  math(EXPR NV_TENSORRT_MINOR_INT "${NV_TENSORRT_MINOR}")
+  math(EXPR NV_TENSORRT_PATCH_INT "${NV_TENSORRT_PATCH}")
+
+  if (NV_TENSORRT_MAJOR)
+    MESSAGE(STATUS "NV_TENSORRT_MAJOR is ${NV_TENSORRT_MAJOR}")
+  else()
+    MESSAGE(STATUS "Can't find NV_TENSORRT_MAJOR macro")
+  endif()
+  
   if (WIN32)
-    file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
-    string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
-    string(REGEX REPLACE "define NV_TENSORRT_MAJOR * +([0-9]+)" "\\1" NV_TENSORRT_MAJOR "${NV_TENSORRT_MAJOR}")
-    string(REGEX MATCH "define NV_TENSORRT_MINOR * +([0-9]+)" NV_TENSORRT_MINOR "${NVINFER_VER_CONTENT}")
-    string(REGEX REPLACE "define NV_TENSORRT_MINOR * +([0-9]+)" "\\1" NV_TENSORRT_MINOR "${NV_TENSORRT_MINOR}")
-    string(REGEX MATCH "define NV_TENSORRT_PATCH * +([0-9]+)" NV_TENSORRT_PATCH "${NVINFER_VER_CONTENT}")
-    string(REGEX REPLACE "define NV_TENSORRT_PATCH * +([0-9]+)" "\\1" NV_TENSORRT_PATCH "${NV_TENSORRT_PATCH}")
-    math(EXPR NV_TENSORRT_MAJOR_INT "${NV_TENSORRT_MAJOR}")
-    math(EXPR NV_TENSORRT_MINOR_INT "${NV_TENSORRT_MINOR}")
-    math(EXPR NV_TENSORRT_PATCH_INT "${NV_TENSORRT_PATCH}")
-
-    if (NV_TENSORRT_MAJOR)
-      MESSAGE(STATUS "NV_TENSORRT_MAJOR is ${NV_TENSORRT_MAJOR}")
-    else()
-      MESSAGE(STATUS "Can't find NV_TENSORRT_MAJOR macro")
-    endif()
-
     # Check TRT version >= 10.0.1.6 (Note: TRT 10 EA is 10.0.0.6 but with no major version appended to the end)
     if ((NV_TENSORRT_MAJOR_INT GREATER 10) OR
         (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_MINOR_INT GREATER 0) OR
@@ -132,18 +132,24 @@
       unset(PROTOBUF_LIBRARY)
       unset(OLD_CMAKE_CXX_FLAGS)
       unset(OLD_CMAKE_CUDA_FLAGS)
-      set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
+      set_target_properties(${PARSER_LIB} PROPERTIES LINK_FLAGS "/ignore:4199")
       target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
-      target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
+      target_compile_options(${PARSER_LIB} PRIVATE /FIio.h /wd4100)
     endif()
     # Static libraries are just nvonnxparser_static on all platforms
-    set(onnxparser_link_libs nvonnxparser_static)
+    # Start from onnx-tensorrt 10-GA branch,
+    # nvonnxparser_static is no longer linked against tensorrt libraries
+    # See https://github.com/onnx/onnx-tensorrt/blame/d609f4ad6275ad39bfac8060a3ed6a5cba5d7a81/CMakeLists.txt#L134
+    if ((NV_TENSORRT_MAJOR_INT GREATER 10) OR
+        (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_MINOR_INT GREATER 0) OR
+        (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_PATCH_INT GREATER 0))
+      set(onnxparser_link_libs nvonnxparser_static ${TENSORRT_LIBRARY})
+    else()
+      set(onnxparser_link_libs nvonnxparser_static)
+    endif()
   endif()
 
   include_directories(${TENSORRT_INCLUDE_DIR})
-  # ${TENSORRT_LIBRARY} is empty if we link nvonnxparser_static.
-  # nvonnxparser_static is linked against tensorrt libraries in onnx-tensorrt
-  # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121
   set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
