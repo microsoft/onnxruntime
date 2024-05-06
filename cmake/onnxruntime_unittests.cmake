@@ -999,6 +999,12 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${test_data_target}>
         )
     endif()
+    if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+      add_custom_command(
+        TARGET ${test_data_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf" $<TARGET_FILE_DIR:${test_data_target}>
+        )
+    endif()
   endif()
 
   if (onnxruntime_USE_DNNL)

@@ -56,18 +56,8 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
     return Status::OK();
   }
 
-  TensorInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
-
-  std::vector<uint8_t> unpacked_tensor;
-  if (input_info.is_initializer) {
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, unpacked_tensor));
-  }
-
-  Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, input_info.qnn_data_type,
-                                       std::move(input_info.quant_param), std::move(input_info.shape),
-                                       std::move(unpacked_tensor));
+  QnnTensorWrapper input_tensorwrapper;
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input, input_tensorwrapper));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   input_names.push_back(input_name);
 
@@ -162,7 +152,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   }
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     qnn_op_type,  // Typically GetQnnOpType(), but can be overridden.
                                                     std::move(input_names),
@@ -282,18 +272,6 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrap
   }
 
   return Status::OK();
-}
-
-Qnn_TensorType_t BaseOpBuilder::GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) const {
-  if (qnn_model_wrapper.IsInitializerInput(input_name)) {
-    return QNN_TENSOR_TYPE_STATIC;
-  } else if (qnn_model_wrapper.IsGraphInput(input_name)) {
-    return QNN_TENSOR_TYPE_APP_WRITE;
-  } else if (qnn_model_wrapper.IsGraphOutput(input_name)) {
-    return QNN_TENSOR_TYPE_APP_READ;
-  } else {
-    return QNN_TENSOR_TYPE_NATIVE;
-  }
 }
 
 Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper, ONNX_NAMESPACE::DataType onnx_tensor_data_type) {
