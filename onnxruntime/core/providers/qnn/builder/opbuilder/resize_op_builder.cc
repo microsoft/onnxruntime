@@ -169,10 +169,10 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   //                                                   nearest_mode:
   // coordinate_transformation_mode: | round_prefer_floor  round_prefer_ceil  floor  ceil
   // -----------------------------------------------------------------------------------------
-  //                      half_pixel |     Resize               X              RNN     X
-  //              pytorch_half_pixel |     Resize               X               X      X
-  //                   align_corners |     Resize               X              RNN     X
-  //                      asymmetric |     Resize               X              RNN     X
+  //                      half_pixel |  Resize(QNN < 2.20)        X            RNN     X
+  //              pytorch_half_pixel |  Resize(QNN < 2.20)        X             X      X
+  //                   align_corners |  Resize(QNN < 2.20)  Resize(QNN 2.20)   RNN     X
+  //                      asymmetric |  Resize(QNN < 2.20)        X            RNN     X
 
   if (interp_mode == "nearest") {
     const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
@@ -181,13 +181,16 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
     if (is_npu_backend) {
       // QNN only supports the following nearest_mode values on HTP:
-      // - "round_prefer_floor" via QNN's Resize operator
+      // - QNN 2.19: "round_prefer_floor" via QNN's Resize operator
+      // - QNN 2.20 (API version 2.14): "round_prefer_ceil" via QNN's Resize operator
       // - "floor" via QNN's ResizeNearestNeighbor operator
-      //
-      // QNN validation does not throw an error if unsupported nearest_mode values are used, so we have to
-      // catch them here. Otherwise, accuracy is significantly degraded.
+#if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 14
+      ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_ceil" || nearest_mode == "floor",
+                        "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
+#else
       ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_floor" || nearest_mode == "floor",
                         "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
+#endif
 
       const bool use_resize_nn_op = nearest_mode == "floor";
 
@@ -200,6 +203,13 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
       // QNN's ResizeNearestNeighbor requires rank 4 inputs.
       ORT_RETURN_IF(use_resize_nn_op && input_rank != 4,
                     "QNN EP: Resize on the NPU with nearest_mode == 'floor' requires an input with rank 4.");
+
+#if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 14
+      // QNN's Resize only supports "round_prefer_ceil" if transformation_mode is "align_corners".
+      ORT_RETURN_IF(!use_resize_nn_op && transformation_mode != "align_corners",
+                    "QNN EP: Resize on the NPU only supports 'round_prefer_ceil' if "
+                    "transformation mode is 'align_corners'");
+#endif
     }
   }
 

@@ -167,6 +167,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateExpandOpBuilder("Expand", *this);
   }
+
+  {
+    CreateHardSigmoidOpBuilder("HardSigmoid", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {
