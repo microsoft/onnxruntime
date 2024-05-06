@@ -17,6 +17,8 @@
 // Licensed under the MIT License.
 
 #include "ipc_utils.h"
+#include "mpi_include.h"
+#include <iostream>
 
 namespace ort_trtllm {
 
@@ -62,9 +64,12 @@ Status IpcMemory::allocateIpcMemory() {
   // Assume no pipeline parallelism.
   std::vector<char> serialHandles(CUDA_IPC_HANDLE_SIZE * nctx_->Size(), 0);
 
-  ncclComm_t comm = nctx_->Comm();
-  NCCL_RETURN_IF_ERROR(
-      ncclAllGather(&localHandle.reserved, serialHandles.data(), CUDA_IPC_HANDLE_SIZE, ncclUint8, comm, 0));
+#ifdef USE_MPI
+  MPI_CHECK(MPI_Allgather(localHandle.reserved, CUDA_IPC_HANDLE_SIZE, MPI_BYTE, serialHandles.data(),
+                          CUDA_IPC_HANDLE_SIZE, MPI_BYTE, MPI_COMM_WORLD));
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please compile ORT with USE_MPI.");
+#endif
 
   std::vector<cudaIpcMemHandle_t> handles(nctx_->Size());
   for (size_t i = 0; i < handles.size(); ++i) {
@@ -81,6 +86,13 @@ Status IpcMemory::allocateIpcMemory() {
       mCommPtrs[nodeId] = foreignBuffer;
     }
   }
+
+  // print mCommPtrs
+  for (size_t nodeId = 0; nodeId < mCommPtrs.size(); nodeId++) {
+    std::cout << "ipc_utils::mCommPtrs[" << nodeId << "]: " << mCommPtrs[nodeId] << std::endl;
+  }
+
+  return Status::OK();
 }
 
 IpcMemory::~IpcMemory() {

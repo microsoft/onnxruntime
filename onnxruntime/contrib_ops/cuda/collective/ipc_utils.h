@@ -26,7 +26,7 @@ namespace ort_trtllm {
 
 using NcclContext = ::onnxruntime::contrib::cuda::NcclContext;
 
-Status setPeerAccess(const NcclContext* nctx, bool enable = true);
+Status setPeerAccess(NcclContext* nctx, bool enable = true);
 
 class IpcMemory {
  public:

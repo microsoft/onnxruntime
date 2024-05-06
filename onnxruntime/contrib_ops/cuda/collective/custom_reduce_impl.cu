@@ -134,6 +134,7 @@ __inline__ __device__ void block_barrier(uint32_t **signals, uint32_t const flag
 
 template <typename T, int RANKS_PER_NODE, bool COPY_INPUT = true, bool PUSH_MODE = false>
 static __global__ void oneShotAllReduceKernel(AllReduceParams params) {
+    printf("oneShotAllReduceKernel\n");
     // Suppose that two GPUs participate in the AR exchange, and we start four blocks.
     // The message is partitioned into chunks as detailed below:
     //               message
@@ -442,15 +443,19 @@ void AllReduceDispatchMemcpy(AllReduceStrategyType algo, AllReduceStrategyConfig
     ORT_ENFORCE(!(USE_MEMCPY && PUSH_MODE), "Memcpy cannot be used with PUSH_MODE.");
     size_t elts_per_thread = 16 / sizeof(T);
     auto [blocks_per_grid, threads_per_block] = kernelLaunchConfig(algo, param, elts_per_thread);
+    std::cout << "blocks_per_grid: " << blocks_per_grid << ", threads_per_block: " << threads_per_block << std::endl;
 
     if (USE_MEMCPY) {
+        std::cout << "cudaMemcpyAsync()" << std::endl;
         cudaMemcpyAsync(param.peer_comm_buffer_ptrs[param.local_rank], param.local_input_buffer_ptr,
                         param.elts_total * sizeof(T), cudaMemcpyDeviceToDevice, stream);
     }
 
     if (algo == AllReduceStrategyType::ONESHOT) {
+        std::cout << "one shot kernel" << std::endl;
         oneShotAllReduceKernel<T, RANKS_PER_NODE, !USE_MEMCPY, PUSH_MODE>
             <<<blocks_per_grid, threads_per_block, 0, stream>>>(param);
+        std::cout << "one shot kernel done" << std::endl;
     } else {
         twoShotAllReduceKernel<T, RANKS_PER_NODE, !USE_MEMCPY, PUSH_MODE>
             <<<blocks_per_grid, threads_per_block, 0, stream>>>(param);
@@ -462,8 +467,10 @@ void AllReduceDispatchPushMode(AllReduceStrategyType algo, AllReduceStrategyConf
                                cudaStream_t stream) {
     if (static_cast<std::underlying_type_t<AllReduceStrategyConfig>>(config) &
         static_cast<std::underlying_type_t<AllReduceStrategyConfig>>(AllReduceStrategyConfig::USE_MEMCPY)) {
+        std::cout << "USE_MEMCPY" << std::endl;
         AllReduceDispatchMemcpy<T, RANKS_PER_NODE, PUSH_MODE, true>(algo, config, param, stream);
     } else {
+        std::cout << "NOT_USE_MEMCPY" << std::endl;
         AllReduceDispatchMemcpy<T, RANKS_PER_NODE, PUSH_MODE, false>(algo, config, param, stream);
     }
 }
@@ -473,8 +480,10 @@ void AllReduceDispatchRanksPerNode(AllReduceStrategyType algo, AllReduceStrategy
                                    cudaStream_t stream) {
     if (static_cast<std::underlying_type_t<AllReduceStrategyConfig>>(config) &
         static_cast<std::underlying_type_t<AllReduceStrategyConfig>>(AllReduceStrategyConfig::PUSH_MODE)) {
+        std::cout << "PUSH_MODE" << std::endl;
         AllReduceDispatchPushMode<T, RANKS_PER_NODE, true>(algo, config, param, stream);
     } else {
+        std::cout << "NOT_PUSH_MODE" << std::endl;
         AllReduceDispatchPushMode<T, RANKS_PER_NODE, false>(algo, config, param, stream);
     }
 }

@@ -278,14 +278,19 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   mIpcMemoryHandles.emplace_back(
       std::make_shared<ort_trtllm::IpcMemory>(nccl_, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
 
-  std::vector<int64_t> mCommPtrs(mIpcMemoryHandles.size() * nRanks);
-  auto* const commPtrsData = static_cast<void* const*>(mCommPtrs.data());
+  std::vector<const void*> mCommPtrs(mIpcMemoryHandles.size() * nRanks);
+  // auto* const commPtrsData = static_cast<void const*>(mCommPtrs.data());
 
   for (size_t memIdx = 0; memIdx < mIpcMemoryHandles.size(); memIdx++) {
     auto const& memCommPtrs = mIpcMemoryHandles[memIdx]->getCommPtrsTensor();
     for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(nRanks); tpIdx++) {
-      commPtrsData[memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
+      mCommPtrs[memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
     }
+  }
+
+  // print mCommPtrs
+  for (size_t nodeId = 0; nodeId < mCommPtrs.size(); nodeId++) {
+    std::cout << "nccl_kernels::mCommPtrs[" << nodeId << "]: " << mCommPtrs[nodeId] << std::endl;
   }
 
   ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
