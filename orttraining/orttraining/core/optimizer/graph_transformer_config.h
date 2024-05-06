@@ -25,6 +25,8 @@ struct TrainingGraphTransformerConfiguration : public GraphTransformerConfigurat
   // Enable compute optimizer.
   bool enable_compute_optimizer{false};
 
+  bool print_input_density{false};
+
   // Enable label sparsity compute optimization for the input names in the below list.
   std::vector<std::string> sparse_label_input_names;
 

@@ -324,7 +324,7 @@ class TrainingManager(GraphExecutionManager):
             else:
                 param_to_append_as_onnx_graph_inputs = self._graph_initializers
 
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+            prepared_input_list = _io._combine_input_buffers_initializers(
                 param_to_append_as_onnx_graph_inputs,
                 self._graph_info.user_input_names,
                 self._input_info,

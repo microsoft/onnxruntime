@@ -161,7 +161,7 @@ class InferenceManager(GraphExecutionManager):
             if self._runtime_options.enable_zero_stage3_support:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+            prepared_input_list = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
                 self._input_info,
