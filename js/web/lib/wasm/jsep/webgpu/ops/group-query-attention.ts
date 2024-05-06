@@ -82,8 +82,6 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
       pastSequenceLength = pastKey.dims[2];
       maxSequenceLength = pastKey.dims[2];
     }
-
-
   } else if (pastKey || pastValue) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
   }
@@ -197,7 +195,7 @@ const createConcatProgramInfo =
       const inputA = inputVariable('new_kv', a.dataType, a.dims.length, component);
       const inputB = inputVariable('past_kv', b.dataType, b.dims.length, component);
 
-      const H = params.headSize / component;
+      const H = Math.ceil(params.headSize / component);
       const dispatch = {x: presentSequenceLength, y: a.dims[0], z: 1};
 
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
