@@ -108,7 +108,8 @@
     if (NOT TENSORRT_LIBRARY_INFER_PLUGIN)
       MESSAGE(STATUS "Can't find ${NVINFER_PLUGIN_LIB}")
     endif()
-
+  endif()
+  
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     find_library(TENSORRT_LIBRARY_NVONNXPARSER ${PARSER_LIB}
       HINTS  ${TENSORRT_ROOT}
