@@ -18,7 +18,7 @@ stages:
 - stage: Linux_C_API_Packaging_GPU_x64
   dependsOn: []
   jobs:
-  - job:
+  - job: Linux_C_API_Packaging_GPU_x64
     workspace:
       clean: all
     timeoutInMinutes: 150
