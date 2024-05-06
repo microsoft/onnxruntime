@@ -47,7 +47,7 @@ stages:
       runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
-      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]
+      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
       BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
       ${{ if eq(parameters.EnableLto, true) }}:
         build_py_lto_flag: --enable_lto

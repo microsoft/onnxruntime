@@ -126,13 +126,18 @@ stages:
     - script: |
         # Extracting hours and minutes
         date=$(date +'%Y%m%d')
+        # Set the hhmm value as a pipeline variable
+        echo "##vso[task.setvariable variable=BuildDate;isOutput=true]$date"
+      displayName: 'Set Start Date as Variable'
+      name: Set_Build_Date
+
+    - script: |
+        # Extracting hours and minutes
         hhmm=$(date +'%H%M')
         # Set the hhmm value as a pipeline variable
         echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
-        echo "##vso[task.setvariable variable=BuildDate;isOutput=true]$date"
       displayName: 'Set Start Time as Variable'
       name: Set_Build_Time
-
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -146,7 +151,7 @@ stages:
       vmImage: ubuntu-latest
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
       BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
     steps:
     - checkout: none
@@ -623,7 +628,7 @@ stages:
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
       BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
@@ -840,7 +845,7 @@ stages:
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildDate']]
+      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
       BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
