@@ -70,7 +70,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
 const tryResolveAndInitializeBackend = async(backendName: string): Promise<Backend|string> => {
   const backendInfo = backends.get(backendName);
   if (!backendInfo) {
-    return `backend not found.`;
+    return 'backend not found.';
   }
 
   if (backendInfo.initialized) {
