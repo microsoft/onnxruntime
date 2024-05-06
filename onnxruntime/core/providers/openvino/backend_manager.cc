@@ -228,8 +228,7 @@ std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                            const onnxruntime::GraphViewer& subgraph,
                                            const logging::Logger& logger) const {
-  int32_t float_type = global_context_.precision_str == "FP32" ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT
-                                                               : ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  int32_t float_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   std::unique_ptr<onnxruntime::Model> model;
   Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, float_type, model);
   auto model_proto = model->ToProto();
@@ -243,6 +242,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 #else
   ORT_UNUSED_PARAMETER(fused_node);
 #endif
+
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 
   return model_proto;
