@@ -240,6 +240,20 @@ load_and_mul_sum_s8_quads_with_zp_avx2(
 }
 
 template <bool HasZeroPoint>
+void MLAS_FORCEINLINE
+get_2_zps(const std::byte* QuantBZeroPointPtr, int8_t& zp0, int8_t& zp1)
+{
+    if constexpr (HasZeroPoint) {
+        zp0 = std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{0x0F});
+        zp1 = std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4);
+    } else {
+        zp0 = 8;
+        zp1 = 8;
+        (void)QuantBZeroPointPtr;
+    }
+} 
+
+template <bool HasZeroPoint>
 int8_t MLAS_FORCEINLINE
 get_zp(bool is_lower_half_byte_zp, const std::byte* QuantBZeroPointPtr)
 {

@@ -228,6 +228,24 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
 
     SQ4BitGemmM1Kernel_CompInt8_Fn* SQ4BitGemmM1Kernel_CompInt8 = nullptr;
 
+    typedef void(SQ4BitGemmKernel_CompInt8_Fn)(
+        const size_t BlkLen,
+        const std::byte* QuantA,
+        const std::byte* QuantBData,
+        const float* QuantBScale,
+        const std::byte* QuantBZeroPoint,
+        float* C,
+        size_t CountM,
+        size_t CountN,
+        size_t CountK,
+        size_t BlockCountK,
+        const float* Bias,
+        size_t lda,
+        size_t ldc
+    );
+
+    SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
+
     /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
      *

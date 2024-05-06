@@ -19,8 +19,8 @@ Abstract:
 
 #include <cassert>
 
-#define SQ4BITGEMM_USE_TILE
-#if defined SQ4BITGEMM_USE_TILE
+//#define SQ4BITGEMM_USE_TILE
+#ifdef SQ4BITGEMM_USE_TILE
 #include "llama.cpp.sgemm.h"
 #endif
 
@@ -399,19 +399,19 @@ SQ4BitGemm_CompInt8(
     const size_t RangeCountN
 )
 {
-#ifndef SQ4BITGEMM_USE_TILE
-#ifdef MLAS_TARGET_AMD64_IX86
-    if (RangeCountM != 1) {
-        // perf experiment shows fp32 is faster than int8 in M > 1 cases.
-        // route to fp32 compute before int8 compute is improved.
-        SQ4BitGemm_CompFp32(
-            BlkLen,
-            K, DataParams, PerGemmWorkspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN
-        );
-        return;
-    }
-#endif
-#endif
+//#ifndef SQ4BITGEMM_USE_TILE
+//#ifdef MLAS_TARGET_AMD64_IX86
+//    if (RangeCountM != 1) {
+//        // perf experiment shows fp32 is faster than int8 in M > 1 cases.
+//        // route to fp32 compute before int8 compute is improved.
+//        SQ4BitGemm_CompFp32(
+//            BlkLen,
+//            K, DataParams, PerGemmWorkspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN
+//        );
+//        return;
+//    }
+//#endif
+//#endif
     constexpr size_t BlkBitWidth = 4;
 
     const size_t k_blks = MlasDivRoundup(K, BlkLen);
@@ -475,24 +475,7 @@ SQ4BitGemm_CompInt8(
             (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-#ifndef SQ4BITGEMM_USE_TILE
-        for (size_t m = 0; m < RangeCountM; ++m) {
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
-                BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
-            );
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
-                );
-            }
-
-            c_blk += ldc;
-            a_row += lda;
-        }
-#else
+#ifdef SQ4BITGEMM_USE_TILE
         int64_t llama_cpp_m = CountN;
         int64_t llama_cpp_n = RangeCountM;
         int64_t llama_cpp_k = k_blks;
@@ -513,6 +496,45 @@ SQ4BitGemm_CompInt8(
         );
         (void)bias;
         (void)b_col_zp;
+#else
+#if 0
+        for (size_t m = 0; m < RangeCountM; ++m) {
+            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
+                BlkLen,
+                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
+            );
+            //GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
+            //    BlkLen,
+            //    a_row, b_col, b_col_scale, b_col_zp, c_blk, /*RangeCountM*/1, CountN,
+            //    K, k_blks, bias, lda, ldc
+            //);
+
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM, RangeStartN + n,
+                    RangeCountM, CountN, ldc
+                );
+            }
+
+            c_blk += ldc;
+            a_row += lda;
+        }
+#else
+        GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
+            BlkLen,
+            a_row,
+            b_col,
+            b_col_scale,
+            b_col_zp,
+            c_blk,
+            RangeCountM,
+            CountN,
+            K,
+            k_blks,
+            bias,
+            lda,
+            ldc);
+#endif
 #endif
     }
 }
