@@ -13,11 +13,10 @@ import math
 import random
 import unittest
 
-import pytest
 import numpy
+import pytest
 import torch
 from bert_padding import pad_input, unpad_input
-
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 
@@ -27,9 +26,10 @@ torch.manual_seed(0)
 
 pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
 
-RED = '\033[31m'
-GREEN = '\033[32m'
-RESET = '\033[0m'
+RED = "\033[31m"
+GREEN = "\033[32m"
+RESET = "\033[0m"
+
 
 class Formats:
     BSNH = 0

@@ -14,20 +14,20 @@ import os
 import platform
 import random
 import unittest
-import pytest
 
 import numpy
+import pytest
 import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 from rotary_flash import apply_rotary_emb
 
-RED = '\033[31m'
-GREEN = '\033[32m'
-RESET = '\033[0m'
-
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
+
+RED = "\033[31m"
+GREEN = "\033[32m"
+RESET = "\033[0m"
 
 torch.manual_seed(0)
 
