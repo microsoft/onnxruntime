@@ -16,7 +16,7 @@ stages:
 # Win/Linux CUDA Combined packaging
 - stage: NuGet_Packaging_GPU
   dependsOn:
-    - Set_ReleaseVersionSuffix
+    - Setup
     - Windows_Packaging_CUDA_Testing
     - Windows_Packaging_TensorRT_Testing
     - Linux_C_API_Packaging_CPU_x64

@@ -100,33 +100,11 @@ variables:
     value: 12.4
 
 stages:
-- stage: Setup
-  jobs:
-  - job: Set_Variables
-    pool:
-      vmImage: ubuntu-latest
-    steps:
-    - checkout: none
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
-    - bash: |
-        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
-        set +x
-        if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-          if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
-            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
-          else
-            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
-          fi
-        else
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
-        fi
-      name: Set_Release_Version_Suffix
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
+- template: stages/setup-variables-stage.yml
+  parameters:
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
 - stage: Debug
   dependsOn: Setup
@@ -180,41 +158,6 @@ stages:
     linux_trt_version: ${{ variables.linux_trt_version }}
     buildJava: true
     buildNodejs: true
-
-#CUDA without tensorrt
-- template: templates/win-packaging.yml
-  parameters:
-    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CUDA
-    buildArch: x64
-    msbuildPlatform: x64
-    packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.CudaVersion }} --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
-    runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: true
-    java_artifact_id: onnxruntime_gpu
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-# CUDA with Tensorrt
-- template: templates/win-packaging.yml
-  parameters:
-    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: TensorRT
-    buildArch: x64
-    msbuildPlatform: x64
-    packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-${{ variables.win_trt_version }}"  --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
-    runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: true
-    java_artifact_id: onnxruntime_gpu
-    CudaVersion: ${{ parameters.CudaVersion }}
-    UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
 
 # ROCm
 - stage: Linux_C_API_Packaging_ROCm_x64
@@ -282,101 +225,18 @@ stages:
         condition: 'succeeded'
     - template: templates/clean-agent-build-directory-step.yml
 
-- template: stages/java-cuda-packing-stage.yml
+- template: stages/java-cuda-packaging-stage.yml
+- template: stages/nuget-win-cuda-packaging-stage.yml
+  parameters:
+    CudaVersion: ${{ parameters.CudaVersion }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
 
-- stage: Windows_Packaging_combined_GPU
-  dependsOn:
-  - Windows_Packaging_CUDA_Testing
-  - Windows_Packaging_TensorRT_Testing
-  condition: succeeded()
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    pool: 'onnxruntime-Win2022-GPU-T4'
-
-    steps:
-    - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
-    - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
-      submodules: false
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
-
-    - script: dir $(Build.SourcesDirectory)
-    - template: templates/jobs/download_win_gpu_library.yml
-      parameters:
-        CudaVersion: ${{ parameters.CudaVersion }}
-        DownloadCUDA: true
-        DownloadTRT: true
-    - template: templates/set-version-number-variables-step.yml
-      parameters:
-        versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
-        workingDirectory: '$(Build.SourcesDirectory)\onnxruntime'
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Combined GPU'
-      inputs:
-        artifactName: 'onnxruntime-win-x64-cuda'
-        targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
-
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Combined GPU'
-      inputs:
-        artifactName: 'onnxruntime-win-x64-tensorrt'
-        targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
-
-    - task: PowerShell@2
-      displayName: 'PowerShell Script'
-      inputs:
-        targetType: filePath
-        filePath: $(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\extract_zip_files_gpu.ps1
-
-    - script: |
-        dir
-      workingDirectory: '$(Build.BinariesDirectory)/zip-artifacts'
-      displayName: 'List artifacts'
-
-    - task: BatchScript@1
-      displayName: 'Bundle CUDA/TRT EP binaries'
-      inputs:
-        filename: $(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\bundle_dlls_gpu.bat
-        workingFolder: $(Build.BinariesDirectory)\zip-artifacts
-
-    - task: CopyFiles@2
-      displayName: 'Copy zip file to: $(Build.ArtifactStagingDirectory)'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\zip-artifacts'
-        Contents: 'onnxruntime-win-x64-gpu-*.zip'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - template: templates/validate-package.yml
-      parameters:
-        PackageType: 'zip'
-        PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
-        ScriptPath: '$(Build.SourcesDirectory)\onnxruntime\tools\nuget\validate_package.py'
-        PlatformsSupported: 'win-x64'
-        VerifyNugetSigning: false
-        workingDirectory: '$(Build.ArtifactStagingDirectory)'
-
-    - task: BatchScript@1
-      displayName: 'Test C API application for GPU package'
-      inputs:
-        filename: $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet\run_capi_application.bat
-        arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet
-        workingFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Combined GPU Package Artifact'
-      inputs:
-        artifactName: 'onnxruntime-win-x64-gpu'
-        targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
-
-
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
+- template:
 - stage: NuGet_Packaging_GPU
   dependsOn:
   - Setup
