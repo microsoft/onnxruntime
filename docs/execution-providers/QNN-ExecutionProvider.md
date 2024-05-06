@@ -469,4 +469,4 @@ sess = ort.InferenceSession(model_path, providers=['QNNExecutionProvider'], prov
 
 ## Error handling
 ### HTP SubSystem Restart - [SSR](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_backend.html#subsystem-restart-ssr-)
-QNN EP wil return StatusCode::ENGINE_ERROR regarding QNN HTP SSR issue. Uppper level framework/application should recreate Onnxruntime session if this error detected during session run.
+QNN EP returns StatusCode::ENGINE_ERROR regarding QNN HTP SSR issue. Uppper level framework/application should recreate Onnxruntime session if this error detected during session run.
