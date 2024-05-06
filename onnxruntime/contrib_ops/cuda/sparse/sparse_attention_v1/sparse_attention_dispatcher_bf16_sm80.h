@@ -11,82 +11,6 @@ namespace contrib {
 namespace cuda {
 namespace sparse_attention_v1 {
 
-// launcher for: sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2
-Status sparse_attention_bf16_sm80_ba65ff9c(SparseAttentionParams& params);
-
-Status sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_ba65ff9c(params);
-}
-
-// load for: sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2
-void load_sparse_attention_bf16_sm80_ba65ff9c();
-void load_sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2() {
-  load_sparse_attention_bf16_sm80_ba65ff9c();
-}
-
-// unload for: sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2
-void unload_sparse_attention_bf16_sm80_ba65ff9c();
-void unload_sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2() {
-  unload_sparse_attention_bf16_sm80_ba65ff9c();
-}
-
-// launcher for: sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2
-Status sparse_attention_bf16_sm80_f951a16d(SparseAttentionParams& params);
-
-Status sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_f951a16d(params);
-}
-
-// load for: sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2
-void load_sparse_attention_bf16_sm80_f951a16d();
-void load_sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2() {
-  load_sparse_attention_bf16_sm80_f951a16d();
-}
-
-// unload for: sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2
-void unload_sparse_attention_bf16_sm80_f951a16d();
-void unload_sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2() {
-  unload_sparse_attention_bf16_sm80_f951a16d();
-}
-
-// launcher for: sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2
-Status sparse_attention_bf16_sm80_646fefc8(SparseAttentionParams& params);
-
-Status sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_646fefc8(params);
-}
-
-// load for: sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2
-void load_sparse_attention_bf16_sm80_646fefc8();
-void load_sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2() {
-  load_sparse_attention_bf16_sm80_646fefc8();
-}
-
-// unload for: sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2
-void unload_sparse_attention_bf16_sm80_646fefc8();
-void unload_sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2() {
-  unload_sparse_attention_bf16_sm80_646fefc8();
-}
-
-// launcher for: sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2
-Status sparse_attention_bf16_sm80_21cac990(SparseAttentionParams& params);
-
-Status sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_21cac990(params);
-}
-
-// load for: sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2
-void load_sparse_attention_bf16_sm80_21cac990();
-void load_sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2() {
-  load_sparse_attention_bf16_sm80_21cac990();
-}
-
-// unload for: sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2
-void unload_sparse_attention_bf16_sm80_21cac990();
-void unload_sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2() {
-  unload_sparse_attention_bf16_sm80_21cac990();
-}
-
 // launcher for: sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2
 Status sparse_attention_bf16_sm80_31acb592(SparseAttentionParams& params);
 
@@ -104,44 +28,6 @@ void load_sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2() {
 void unload_sparse_attention_bf16_sm80_31acb592();
 void unload_sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2() {
   unload_sparse_attention_bf16_sm80_31acb592();
-}
-
-// launcher for: sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2
-Status sparse_attention_bf16_sm80_d55ab166(SparseAttentionParams& params);
-
-Status sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_d55ab166(params);
-}
-
-// load for: sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2
-void load_sparse_attention_bf16_sm80_d55ab166();
-void load_sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2() {
-  load_sparse_attention_bf16_sm80_d55ab166();
-}
-
-// unload for: sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2
-void unload_sparse_attention_bf16_sm80_d55ab166();
-void unload_sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2() {
-  unload_sparse_attention_bf16_sm80_d55ab166();
-}
-
-// launcher for: sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2
-Status sparse_attention_bf16_sm80_b0560d11(SparseAttentionParams& params);
-
-Status sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2(SparseAttentionParams& params) {
-  return sparse_attention_bf16_sm80_b0560d11(params);
-}
-
-// load for: sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2
-void load_sparse_attention_bf16_sm80_b0560d11();
-void load_sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2() {
-  load_sparse_attention_bf16_sm80_b0560d11();
-}
-
-// unload for: sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2
-void unload_sparse_attention_bf16_sm80_b0560d11();
-void unload_sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2() {
-  unload_sparse_attention_bf16_sm80_b0560d11();
 }
 
 // launcher for: sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2
@@ -165,13 +51,7 @@ void unload_sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2() {
 
 typedef Status (*kernel_func_t)(SparseAttentionParams& params);
 kernel_func_t sparse_attention_bf16_sm80_kernels[] = {
-    sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2,
-    sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2,
-    sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2,
-    sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2,
     sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2,
-    sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2,
-    sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2,
     sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2,
 };
 
@@ -185,24 +65,12 @@ Status sparse_attention_bf16_sm80(SparseAttentionParams& params, int algo_id) {
 }
 
 void load_sparse_attention_bf16_sm80(void) {
-  load_sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2();
-  load_sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2();
-  load_sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2();
-  load_sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2();
   load_sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2();
-  load_sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2();
-  load_sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2();
   load_sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2();
 }
 
 void unload_sparse_attention_bf16_sm80(void) {
-  unload_sparse_attention_bf16_sm80_16x0x64x0x64x2_warps1xstages2();
-  unload_sparse_attention_bf16_sm80_16x0x64x1x64x2_warps1xstages2();
-  unload_sparse_attention_bf16_sm80_16x1x64x0x64x2_warps1xstages2();
-  unload_sparse_attention_bf16_sm80_16x1x64x1x64x2_warps1xstages2();
   unload_sparse_attention_bf16_sm80_64x0x64x0x64x2_warps4xstages2();
-  unload_sparse_attention_bf16_sm80_64x0x64x1x64x2_warps4xstages2();
-  unload_sparse_attention_bf16_sm80_64x1x64x0x64x2_warps4xstages2();
   unload_sparse_attention_bf16_sm80_64x1x64x1x64x2_warps4xstages2();
 }
 
