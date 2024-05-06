@@ -7766,8 +7766,14 @@ TEST_F(GraphTransformationTests, ShapeInputMerge) {
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
-  auto run_test = [this](bool bias_is_first_add_input) {
-    SCOPED_TRACE(MakeString("bias_is_first_add_input:", bias_is_first_add_input));
+  struct TestOptions {
+    bool bias_is_first_add_input{false};
+    bool add_produces_graph_output{false};
+  };
+
+  auto run_test = [&logger = *logger_](const TestOptions& opts) {
+    SCOPED_TRACE(MakeString("bias_is_first_add_input:", opts.bias_is_first_add_input,
+                            ", add_produces_graph_output:", opts.add_produces_graph_output));
 
     auto build_test_case = [&](ModelTestBuilder& builder) {
       constexpr size_t qbits = 4;
@@ -7794,11 +7800,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       auto* B_zero_points = builder.MakeInitializer<uint8_t>({static_cast<int64_t>(q_zp_size_in_bytes)},
                                                              uint8_t{0}, uint8_t{255});
 
-      auto* Bias = builder.MakeInput<float>(std::vector{N}, "Bias");
-
       auto* matmul_output = builder.MakeIntermediate();
-
-      auto* graph_output = builder.MakeOutput();
 
       auto& matmul = builder.AddNode("MatMulNBits",
                                      {A, B_data, B_scales, B_zero_points},
@@ -7809,10 +7811,22 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
       matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
 
+      auto* Bias = builder.MakeInput<float>(std::vector{N}, "Bias");
+
+      auto* graph_output = builder.MakeOutput();
+
+      auto* add_output = opts.add_produces_graph_output ? graph_output : builder.MakeIntermediate();
+
       builder.AddNode("Add",
-                      {bias_is_first_add_input ? Bias : matmul_output,
-                       bias_is_first_add_input ? matmul_output : Bias},
-                      {graph_output});
+                      {opts.bias_is_first_add_input ? Bias : matmul_output,
+                       opts.bias_is_first_add_input ? matmul_output : Bias},
+                      {add_output});
+
+      if (!opts.add_produces_graph_output) {
+        builder.AddNode("Identity",
+                        {add_output},
+                        {graph_output});
+      }
     };
 
     auto pre_graph_checker = [](Graph& graph) {
@@ -7827,12 +7841,18 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       return Status::OK();
     };
 
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 21, *logger_, std::make_unique<MatMulNBitsFusion>(),
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 21, logger, std::make_unique<MatMulNBitsFusion>(),
                                           TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   };
 
-  run_test(/*bias_is_first_add_input*/ true);
-  run_test(/*bias_is_first_add_input*/ false);
+  for (bool bias_is_first_add_input : {false, true}) {
+    for (bool add_produces_graph_output : {false, true}) {
+      TestOptions opts{};
+      opts.bias_is_first_add_input = bias_is_first_add_input;
+      opts.add_produces_graph_output = add_produces_graph_output;
+      run_test(opts);
+    }
+  }
 }
 
 }  // namespace test

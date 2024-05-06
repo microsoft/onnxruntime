@@ -90,7 +90,8 @@ struct BiasFusion : MergeIntoTarget {
     NTO::NodeLocation add_location{NTO::NodeType::kOutput, 0};
 
     std::vector<NodeAndMoveInfo> value_moves{
-        MoveToSlot(add_location, ArgType::kInput, bias_index, ArgType::kInput, 5),
+        MoveToSlot(add_location, ArgType::kInput, bias_index, ArgType::kInput, 5),  // move bias input from Add
+        MoveToSlot(add_location, ArgType::kOutput, 0, ArgType::kOutput, 0),         // move output from Add
     };
 
     return value_moves;
