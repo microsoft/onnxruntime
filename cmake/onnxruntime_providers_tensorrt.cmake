@@ -82,6 +82,7 @@
       set(PARSER_LIB "nvonnxparser_${NV_TENSORRT_MAJOR}")
     else()
       set(PARSER_LIB "nvonnxparser")
+    endif()
   endif()
 
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
