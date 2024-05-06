@@ -85,8 +85,12 @@
     endif()
   endif()
 
-  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
-    # Add TensorRT library
+  # Add TensorRT library
+  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER OR
+      (NV_TENSORRT_MAJOR_INT GREATER 10) OR
+      (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_MINOR_INT GREATER 0) OR
+      (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_PATCH_INT GREATER 0))
+
     MESSAGE(STATUS "Search for ${NVINFER_LIB}, ${NVINFER_PLUGIN_LIB} and ${PARSER_LIB}")
 
     find_library(TENSORRT_LIBRARY_INFER ${NVINFER_LIB}
@@ -105,6 +109,7 @@
       MESSAGE(STATUS "Can't find ${NVINFER_PLUGIN_LIB}")
     endif()
 
+  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     find_library(TENSORRT_LIBRARY_NVONNXPARSER ${PARSER_LIB}
       HINTS  ${TENSORRT_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
@@ -114,7 +119,6 @@
     endif()
 
     set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
-    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   else()
     FetchContent_Declare(
       onnx_tensorrt
@@ -148,10 +152,12 @@
     if ((NV_TENSORRT_MAJOR_INT GREATER 10) OR
         (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_MINOR_INT GREATER 0) OR
         (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_PATCH_INT GREATER 0))
+      set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN})
       set(onnxparser_link_libs nvonnxparser_static ${TENSORRT_LIBRARY})
     else()
       set(onnxparser_link_libs nvonnxparser_static)
     endif()
+    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   endif()
 
   include_directories(${TENSORRT_INCLUDE_DIR})
