@@ -8,10 +8,9 @@ namespace contrib {
 namespace cuda {
 namespace sparse_attention_v2 {
 
-bool is_supported_device(const cudaDeviceProp& dprops);
+bool is_supported_device(int sm);
 bool is_supported_sparse_attention(int head_size, int sparse_block_size);
 
-// TODO: use
 void load_sparse_attention_fp16(int sm);
 void load_sparse_attention_bf16(int sm);
 
