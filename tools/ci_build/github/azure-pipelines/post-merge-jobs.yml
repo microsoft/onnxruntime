@@ -20,7 +20,7 @@ stages:
 # o Windows x64
 # o Windows x86
 # Now we don't have coverage for ARM64EC yet. Will add it.
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -34,7 +34,7 @@ stages:
     buildNodejs: false
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -48,7 +48,7 @@ stages:
     buildNodejs: true
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -62,7 +62,7 @@ stages:
     buildNodejs: false
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -76,7 +76,7 @@ stages:
     buildNodejs: true
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -91,7 +91,7 @@ stages:
     buildNodejs: false
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -106,7 +106,7 @@ stages:
     buildNodejs: true
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -121,7 +121,7 @@ stages:
     buildNodejs: false
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -136,7 +136,7 @@ stages:
     buildNodejs: true
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -151,7 +151,7 @@ stages:
     buildNodejs: false
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false
@@ -166,7 +166,7 @@ stages:
     buildNodejs: true
     ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-#- template: templates/win-ci.yml
+#- template: templates/win-packaging.yml
 #  parameters:
 #    DoCompliance: false
 #    DoEsrp: false
@@ -181,7 +181,7 @@ stages:
 #    buildNodejs: false
 #    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
-- template: templates/win-ci.yml
+- template: templates/win-packaging.yml
   parameters:
     DoCompliance: false
     DoEsrp: false

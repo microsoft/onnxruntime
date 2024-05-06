@@ -15,10 +15,10 @@ parameters:
 
 stages:
   # Linux CUDA without TensorRT Packaging
-- stage: Linux_C_API_Packaging_GPU_x64
+- stage: Linux_C_API_Packaging_CUDA_x64
   dependsOn: []
   jobs:
-  - job: Linux_C_API_Packaging_GPU_x64
+  - job: Linux_C_API_Packaging_CUDA_x64
     workspace:
       clean: all
     timeoutInMinutes: 150
@@ -78,8 +78,8 @@ stages:
 # Linux CUDA Combined Testing and Publishing
 - stage: Linux_Packaging_combined_GPU
   dependsOn:
-    - Linux_C_API_Packaging_GPU_x64
-    - Linux_C_API_Packaging_GPU_TensorRT_x64
+    - Linux_C_API_Packaging_CUDA_x64
+    - Linux_C_API_Packaging_TensorRT_x64
   condition: succeeded()
   jobs:
     - job:

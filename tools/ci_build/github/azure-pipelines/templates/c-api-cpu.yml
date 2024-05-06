@@ -161,7 +161,7 @@ stages:
       parameters:
         condition: 'succeeded'
 
-- template: win-ci.yml
+- template: win-packaging.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -174,7 +174,7 @@ stages:
     buildJava: false
     buildNodejs: false
 
-- template: win-ci.yml
+- template: win-packaging.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -187,7 +187,7 @@ stages:
     buildJava: false
     buildNodejs: true
 
-- template: win-ci.yml
+- template: win-packaging.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -517,7 +517,7 @@ stages:
   - Windows_CI_GPU_DML_Dev
   - Windows_CI_GPU_DML_Dev_arm64
   - Linux_C_API_Packaging_CPU
-  - Linux_C_API_Packaging_GPU_TensorRT_x64
+  - Linux_C_API_Packaging_TensorRT_x64
   - MacOS_C_API_Package_Publish
   condition: succeeded()
   jobs:

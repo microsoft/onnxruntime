@@ -35,12 +35,12 @@ parameters:
 
 stages:
 # Windows CUDA without TensorRT Packaging
-- template: ../templates/win-ci.yml
+- template: ../templates/win-packaging.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: gpu
+    stage_name_suffix: CUDA
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
@@ -53,12 +53,12 @@ stages:
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 # Windows CUDA with TensorRT Packaging
-- template: ../templates/win-ci.yml
+- template: ../templates/win-packaging.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: tensorrt
+    stage_name_suffix: TensorRT
     buildArch: x64
     msbuildPlatform: x64
     CudaVersion: ${{ parameters.CudaVersion }}
@@ -74,8 +74,8 @@ stages:
 # Windows CUDA Combined Testing and Publishing
 - stage: Windows_Packaging_combined_GPU
   dependsOn:
-    - Windows_Packaging_gpu_Testing
-    - Windows_Packaging_tensorrt_Testing
+    - Windows_Packaging_CUDA_Testing
+    - Windows_Packaging_TensorRT_Testing
   condition: succeeded()
 
   jobs:
