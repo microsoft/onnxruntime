@@ -77,7 +77,11 @@
   endif()
 
   if (NOT PARSER_LIB)
-     set(PARSER_LIB "nvonnxparser")
+    # See https://github.com/onnx/onnx-tensorrt/blame/d609f4ad6275ad39bfac8060a3ed6a5cba5d7a81/CMakeLists.txt#L108-L112
+    if (NOT onnxruntime_USE_TENSORRT_BUILTIN_PARSER AND MSVC)
+      set(PARSER_LIB "nvonnxparser_${NV_TENSORRT_MAJOR}")
+    else()
+      set(PARSER_LIB "nvonnxparser")
   endif()
 
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
