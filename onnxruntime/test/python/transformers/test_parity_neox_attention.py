@@ -11,8 +11,9 @@
 # -------------------------------------------------------------------------
 
 import unittest
-import pytest
+
 import numpy as np
+import pytest
 import torch
 from onnx import TensorProto, helper
 from torch import nn
