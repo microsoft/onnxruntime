@@ -224,28 +224,53 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
   return has_sym_dims;
 }
 
+static void DumpOpenVINOEPModel(std::string onnx_model_path_name,
+                                ONNX_NAMESPACE::ModelProto* model_proto,
+                                const onnxruntime::Node& fused_node) {
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    auto model_name = onnx_model_path_name;
+#ifdef _WIN32
+    size_t slash = model_name.find_last_of("\\");
+#else
+    size_t slash = model_name.find_last_of("/");
+#endif
+    model_name = model_name.substr(slash + 1, std::string::npos);
+    size_t dot = model_name.find_last_of(".");
+    model_name = model_name.substr(0, dot);
+
+
+    std::string subgraph_name = fused_node.Name();
+    size_t dash = subgraph_name.find_last_of("-");
+    subgraph_name = subgraph_name.substr(dash, std::string::npos);
+
+    const std::string name = model_name + subgraph_name + ".onnx";
+
+    std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
+    model_proto->SerializeToOstream(dump);
+  }
+}
+
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                            const onnxruntime::GraphViewer& subgraph,
                                            const logging::Logger& logger) const {
-  int32_t float_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-  std::unique_ptr<onnxruntime::Model> model;
-  Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, float_type, model);
-  auto model_proto = model->ToProto();
-
-#ifndef NDEBUG
-  if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    const std::string& name = fused_node.Name();
-    std::fstream dump(name + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto->SerializeToOstream(dump);
+  // QDQ stripping enabled only for the NPU
+  if (global_context_.device_type.find("NPU") != std::string::npos) {
+    std::unique_ptr<onnxruntime::Model> model;
+    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, model);
+    auto model_proto = model->ToProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    DumpOpenVINOEPModel(global_context_.onnx_model_path_name, model_proto.get(), fused_node);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+    return model_proto;
+  } else {
+    auto model = subgraph.CreateModel(logger);
+    auto model_proto = model->ToProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    subgraph.ToProto(*model_proto->mutable_graph(), true, true);
+    DumpOpenVINOEPModel(global_context_.onnx_model_path_name, model_proto.get(), fused_node);
+    return model_proto;
   }
-#else
-  ORT_UNUSED_PARAMETER(fused_node);
-#endif
-
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-
-  return model_proto;
 }
 
 std::vector<std::vector<int64_t>> GetInputTensorShapes(const Ort::KernelContext& context) {

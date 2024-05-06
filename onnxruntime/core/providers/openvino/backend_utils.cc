@@ -17,7 +17,6 @@ namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
 
-#ifndef NDEBUG
 bool IsDebugEnabled() {
   const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
   if (!env_name.empty()) {
@@ -25,7 +24,6 @@ bool IsDebugEnabled() {
   }
   return false;
 }
-#endif
 
 bool IsCILogEnabled() {
   const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
