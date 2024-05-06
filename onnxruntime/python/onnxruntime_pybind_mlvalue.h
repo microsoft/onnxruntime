@@ -16,6 +16,8 @@
 #include "core/framework/ort_value.h"
 #include "core/session/inference_session.h"
 
+#include <variant>
+
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
 
 namespace onnxruntime {
@@ -39,6 +41,8 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type);
 
 using MemCpyFunc = void (*)(void*, const void*, size_t);
+
+using DataTransferAlternative = std::variant<const DataTransferManager*, MemCpyFunc>;
 
 void CpuToCpuMemCpy(void*, const void*, size_t);
 
@@ -155,8 +159,7 @@ pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value);
 /// <param name="func">copy function if data transfer manager is not available.</param>
 /// <returns></returns>
 pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
-                                                 const DataTransferManager* data_transfer,
-                                                 MemCpyFunc func);
+                                                 const DataTransferAlternative& data_transfer);
 
 template <class T>
 struct DecRefFn {

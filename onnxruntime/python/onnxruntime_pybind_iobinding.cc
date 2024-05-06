@@ -172,7 +172,7 @@ void addIoBindingMethods(pybind11::module& m) {
           if (ort_value.IsTensor()) {
             // We make a copy of the tensor to CPU even if it is already on CPU
             // as the function name implies using DataTransferManager.
-            py::array arr = PrimitiveTensorToNumpyFromDevice(ort_value, &dtm, nullptr);
+            py::array arr = PrimitiveTensorToNumpyFromDevice(ort_value, &dtm);
             result.append(py::cast<py::object>(arr));
           } else if (ort_value.IsSparseTensor()) {
             result.append(GetPyObjectFromSparseTensor(pos, ort_value, &dtm));

@@ -200,24 +200,19 @@ pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value) {
   return result;
 }
 
-pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
-                                                 const DataTransferManager* data_transfer,
-                                                 MemCpyFunc func) {
+pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, const DataTransferAlternative& dtm) {
   const Tensor& tensor = ort_value.Get<Tensor>();
   const int numpy_type = OnnxRuntimeTensorToNumpyType(tensor.DataType());
   pybind11::array result(py::dtype(numpy_type), tensor.Shape().GetDims());
   void* data = result.mutable_data();
 
-  if (data_transfer != nullptr) {
+  if (std::holds_alternative<const DataTransferManager*>(dtm)) {
+    const DataTransferManager* data_transfer = std::get<const DataTransferManager*>(dtm);
     static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
     const auto span = gsl::make_span<char>(reinterpret_cast<char*>(data), tensor.SizeInBytes());
     ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(*data_transfer, tensor, cpu_alloc_info, span));
-  } else if (func != nullptr) {
-    func(data, tensor.DataRaw(), tensor.SizeInBytes());
   } else {
-    throw std::runtime_error(
-        "Data transfer manager and memcpy function cannot be both null"
-        " in PrimitiveTensorToNumpyFromDevice");
+    std::get<MemCpyFunc>(dtm)(data, tensor.DataRaw(), tensor.SizeInBytes());
   }
   return result;
 }
@@ -252,12 +247,12 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
 
   py::array result;
   if (data_transfer_manager != nullptr) {
-    result = PrimitiveTensorToNumpyFromDevice(ort_value, data_transfer_manager, nullptr);
+    result = PrimitiveTensorToNumpyFromDevice(ort_value, data_transfer_manager);
   } else {
     auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
     ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
                 "Unable to locate a function that can copy data to the host from the device");
-    result = PrimitiveTensorToNumpyFromDevice(ort_value, nullptr, mem_cpy_to_host->second);
+    result = PrimitiveTensorToNumpyFromDevice(ort_value, mem_cpy_to_host->second);
   }
   return py::cast<py::object>(result);
 }
