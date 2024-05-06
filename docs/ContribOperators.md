@@ -2457,10 +2457,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   *Highly recommend using k-v cache share buffer for both CPU and CUDA. Enabled through IOBinding past and present kv.
   Supports different number of heads for q and kv for CPU and CUDA.
-  Only supports causal and local attention. *local attention UNSUPPORTED for sm < 80 on CUDA.
+  Only supports causal and local attention.
   Supports rotary position embedding for CPU and CUDA.
   Supports packed input for CPU and CUDA.
-  CPU EP supports fp32... CUDA EP supports fp16.
 
 #### Version
 
