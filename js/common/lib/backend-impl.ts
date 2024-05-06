@@ -70,7 +70,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
 const tryResolveAndInitializeBackend = async(backendName: string): Promise<Backend|string> => {
   const backendInfo = backends.get(backendName);
   if (!backendInfo) {
-    return `backend ${backendName} not found.`;
+    return `backend not found.`;
   }
 
   if (backendInfo.initialized) {
@@ -111,7 +111,6 @@ export const resolveBackendAndExecutionProviders = async(options: InferenceSessi
     Promise<[backend: Backend, options: InferenceSession.SessionOptions]> => {
       // extract backend hints from session options
       const eps = options.executionProviders || [];
-
       const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
       const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
 

@@ -1014,7 +1014,6 @@ if (onnxruntime_USE_QNN)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${QNN_LIB_FILES}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-        $<TARGET_FILE:onnxruntime_providers_qnn>
   )
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
     add_custom_command(
