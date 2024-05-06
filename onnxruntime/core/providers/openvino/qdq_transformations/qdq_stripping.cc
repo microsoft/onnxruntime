@@ -240,12 +240,6 @@ static bool IsNextTargetNodeOfQValid(const Node* Q,
   } else {
     return false;  // because the next target is not supported
   }
-
-  if (current_target->OpType() == "Conv" || current_target->OpType() == "MatMul") {
-    return true;  // Conv and MatMul can keep all Qs by default. Is there a better way to check this?
-  } else {
-    return false;  // because the next target is not supported
-  }
 }
 
 static bool CheckDQRuleSet(const NodeUnit& node_unit,
