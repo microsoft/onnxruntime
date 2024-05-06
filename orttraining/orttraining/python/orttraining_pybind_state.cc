@@ -233,8 +233,7 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
     for (const auto& layer2_item : layer1_item.second) {
       assert(layer2_item.second.IsTensor());
       py::array arr = PrimitiveTensorToNumpyFromDevice(layer2_item.second,
-                                                       &data_transfer_manager,
-                                                       nullptr);
+                                                       &data_transfer_manager);
       py_tensor_state[layer1_item.first].insert({layer2_item.first, py::cast<py::object>(arr)});
     }
   }
