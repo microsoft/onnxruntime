@@ -92,8 +92,8 @@ class GQAAttentionBase : public AttentionBase {
                              int past_buffer_sequence_length,     // sequence length of past state
                              int present_buffer_sequence_length,  // sequence length of present state
                              int head_size,                       // head size of self-attention
-                             const T* past_key,                   // past key only (if not using past state)
-                             T* present_key,                      // present key only (if not using present state)
+                             const T* past_key,                   // past key only
+                             T* present_key,                      // present key only
                              bool past_present_share_buffer,      // whether present key and value share the same buffer
                              bool packed_qkv,                     // whether Q, K, V are packed
                              ThreadPool* tp) const {              // thread pool
@@ -108,7 +108,6 @@ class GQAAttentionBase : public AttentionBase {
     const int loop_len = batch_size * num_heads_;
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
-    // TODO: cost might differ for gqa because of right padding and total_sequence_length being sequence dependent
     TensorOpCost unit_cost;
     const size_t probs_matrix_bytes = SafeInt<size_t>(sequence_length) * present_buffer_sequence_length * sizeof(T);
     unit_cost.compute_cycles = static_cast<double>(2 * sequence_length * head_size * present_buffer_sequence_length);
@@ -199,8 +198,8 @@ class GQAAttentionBase : public AttentionBase {
                                int present_buffer_sequence_length,  // sequence length in past state
                                int head_size,                       // head size of Q, K, V
                                int hidden_size,                     // hidden size of Output
-                               const T* past_value,                 // past value only (if not using past state)
-                               T* present_value,                    // present value only (if not using present state)
+                               const T* past_value,                 // past value only
+                               T* present_value,                    // present value only
                                bool past_present_share_buffer,      // whether present key and value share the same buffer
                                bool packed_qkv,                     // whether Q, K, V are packed
                                ThreadPool* tp) const {
@@ -211,6 +210,10 @@ class GQAAttentionBase : public AttentionBase {
     const int kv_input_chunk_length = sequence_length * head_size;                                             // L x H
     const size_t past_buff_chunk_length = static_cast<size_t>(past_buffer_sequence_length) * head_size;        // L x H
     const size_t present_buff_chunk_length = static_cast<size_t>(present_buffer_sequence_length) * head_size;  // T x H
+
+    if (!past_present_share_buffer) {
+      memset(present_value, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
+    }
 
     // The cost of Gemm
     TensorOpCost unit_cost;
