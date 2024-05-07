@@ -126,7 +126,7 @@ TEST(TransposeOpTest, TwoDim_Odd_Int4) {
   test.AddInput<Int4x2>("X", input_shape, input_vals);
   test.AddOutput<Int4x2>("Y", expected_shape, expected_vals);
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test UInt4 transpose with odd inner dimension.
@@ -146,7 +146,7 @@ TEST(TransposeOpTest, TwoDim_Odd_UInt4) {
   test.AddInput<UInt4x2>("X", input_shape, input_vals);
   test.AddOutput<UInt4x2>("Y", expected_shape, expected_vals);
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TransposeOpTest, TwoDim_double) {
