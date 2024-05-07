@@ -40,7 +40,7 @@ stages:
       steps:
         - checkout: self
           submodules: true
-        - template: templates/flex-downloadPipelineArtifact.yml
+        - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'onnxruntime-win-x64-cuda'
@@ -48,7 +48,7 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-        - template: templates/flex-downloadPipelineArtifact.yml
+        - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'onnxruntime-win-x64-tensorrt'
@@ -56,7 +56,7 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-        - template: templates/flex-downloadPipelineArtifact.yml
+        - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'onnxruntime-linux-x64-cuda'
@@ -64,7 +64,7 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-        - template: templates/flex-downloadPipelineArtifact.yml
+        - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'onnxruntime-linux-x64-tensorrt'
@@ -72,7 +72,7 @@ stages:
             SpecificArtifact: ${{ parameters.SpecificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-        - template: templates/flex-downloadPipelineArtifact.yml
+        - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'drop-extra'
