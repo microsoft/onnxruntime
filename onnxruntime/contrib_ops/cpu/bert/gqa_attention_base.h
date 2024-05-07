@@ -162,7 +162,6 @@ class GQAAttentionBase : public AttentionBase {
                                   i / kv_num_heads_factor);
         }
 
-        // TODO: CblasTrans stuff what do?
         // Compute Q*K' + AttentionMask
         //                     original                 transposed             each iteration
         // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
@@ -175,7 +174,7 @@ class GQAAttentionBase : public AttentionBase {
           q = Q + q_input_chunk_length * i;
         }
         math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans,
-                                    sequence_length, present_buffer_sequence_length, head_size, alpha,
+                                    sequence_length, total_seqlen, head_size, alpha,
                                     q, head_size, k, head_size,
                                     0.0f /*bata*/,
                                     output, present_buffer_sequence_length, nullptr);
