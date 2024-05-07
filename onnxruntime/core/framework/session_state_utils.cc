@@ -37,7 +37,7 @@ namespace session_state_utils {
 // It can handle arena-based allocators and non-arena based allocators.
 static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const TensorShape& tensor_shape, const DataTypeImpl* type,
                                                                          const AllocatorPtr& alloc, /*out*/ void*& p_data) {
-  int64_t shape_size = tensor_shape.Size();
+  int64_t shape_size = Tensor::GetNumTensorElems(type, tensor_shape);
   if (shape_size < 0)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "shape.Size() must >=0");
 

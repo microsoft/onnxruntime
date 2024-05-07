@@ -145,6 +145,37 @@ class Tensor final {
   /// <returns>Bytes required.</returns>
   static size_t CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape);
 
+  /// <summary>
+  /// Calculate the required storage for the tensor.
+  /// </summary>
+  /// <param name="elt_type">Data type of the tensor elements.</param>
+  /// <param name="shape">Tensor shape.</param>
+  /// <param name="storage_size">The resulting storage size.</param>
+  /// <returns>Status indicating success or failure.</returns>
+  static Status CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape, size_t& storage_size);
+
+  /// <summary>
+  /// Get the number of elements for a Tensor of the given element type and shape.
+  /// For element types smaller than 1 byte (e.g., int4), a single Tensor element stores multiple sub-byte elements.
+  /// So, this function returns the number of Tensor elements, each of which may contain multiple sub-byte elements.
+  /// </summary>
+  /// <param name="elt_type">Data type of the tensor elements.</param>
+  /// <param name="shape">Tensor shape.</param>
+  /// <returns>Number of Tensor elements. Returns -1 if shape has negative dims.</returns>
+  static inline int64_t GetNumTensorElems(MLDataType elt_type, const TensorShape& shape) {
+    return GetNumTensorElems(elt_type, shape.Size());
+  }
+
+  /// <summary>
+  /// Get the number of elements for a Tensor of the given element type and shape size.
+  /// For element types smaller than 1 byte (e.g., int4), a single Tensor element stores multiple sub-byte elements.
+  /// So, this function returns the number of Tensor elements, each of which may contain multiple sub-byte elements.
+  /// </summary>
+  /// <param name="elt_type">Data type of the tensor elements.</param>
+  /// <param name="shape_size">The number of elements indicated by the shape (i.e., shape.Size()).</param>
+  /// <returns>Number of Tensor elements. Returns -1 if shape_size is negative.</returns>
+  static int64_t GetNumTensorElems(MLDataType elt_type, int64_t shape_size);
+
   /**
      Returns the data type.
   */
@@ -200,12 +231,7 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     T* data = reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
-    int64_t num_elems = shape_.Size();
-    if (utils::IsPrimitiveDataType<Int4x2>(dtype_) || utils::IsPrimitiveDataType<UInt4x2>(dtype_)) {
-      num_elems = (num_elems + 1) / 2;
-    }
-
-    return gsl::make_span(data, static_cast<size_t>(num_elems));
+    return gsl::make_span(data, static_cast<size_t>(GetNumTensorElems(dtype_, shape_)));
   }
 
   template <typename T>
@@ -222,11 +248,7 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     const T* data = reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
-    int64_t num_elems = shape_.Size();
-    if (utils::IsPrimitiveDataType<Int4x2>(dtype_) || utils::IsPrimitiveDataType<UInt4x2>(dtype_)) {
-      num_elems = (num_elems + 1) / 2;
-    }
-    return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(num_elems));
+    return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(GetNumTensorElems(dtype_, shape_)));
   }
 
   void* MutableDataRaw(MLDataType type) {

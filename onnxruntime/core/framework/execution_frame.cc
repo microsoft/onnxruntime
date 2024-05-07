@@ -530,7 +530,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   }
 
   size_t size;
-  int64_t len = shape.Size();
+  int64_t len = Tensor::GetNumTensorElems(element_type, shape);
   if (len < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape cannot contain any negative value");
   }

@@ -27,26 +27,41 @@ int64_t GetSizeFromStrides(const TensorShape& shape, gsl::span<const int64_t> st
 }  // namespace
 #endif
 
-size_t Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape) {
-  int64_t shape_size = shape.Size();
-  if (shape_size < 0)
-    ORT_THROW("shape.Size() must >=0");
+int64_t Tensor::GetNumTensorElems(MLDataType elt_type, int64_t shape_size) {
+  int64_t num_elems = shape_size;
+  auto prim_type = elt_type->AsPrimitiveDataType();
 
-  if (shape_size > 0) {
-    SafeInt<size_t> len = 0;
-
-    // TODO(adrianlizarraga): Handle more cleanly.
-    if (utils::IsPrimitiveDataType<Int4x2>(elt_type) || utils::IsPrimitiveDataType<UInt4x2>(elt_type)) {
-      shape_size = (shape_size + 1) / 2;
-    }
-
-    if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_size), elt_type->Size(), &len))
-      ORT_THROW("tensor failed memory size calculation");
-
-    return len;
+  if (prim_type != nullptr && prim_type->HasSubElems() && num_elems > 0) {
+    const int64_t num_sub_elems = prim_type->GetNumSubElems();
+    num_elems = (num_elems + (num_sub_elems - 1)) / num_sub_elems;
   }
 
-  return 0;
+  return num_elems;
+}
+
+Status Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape,
+                                          /*out*/ size_t& storage_size) {
+  int64_t num_elems = GetNumTensorElems(elt_type, shape.Size());
+  ORT_RETURN_IF(num_elems < 0, "Tensor shape.Size() must be >= 0");
+
+  if (num_elems > 0) {
+    if (static_cast<uint64_t>(num_elems) > std::numeric_limits<size_t>::max()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape is too large");
+    }
+    if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(num_elems), elt_type->Size(), &storage_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation for Tensor storage size");
+    }
+  } else {
+    storage_size = 0;
+  }
+
+  return Status::OK();
+}
+
+size_t Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape) {
+  size_t storage_size = 0;
+  ORT_THROW_IF_ERROR(CalculateTensorStorageSize(elt_type, shape, storage_size));
+  return storage_size;
 }
 
 Tensor::Tensor(MLDataType elt_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location,
@@ -106,18 +121,14 @@ void Tensor::InitOrtValue(Tensor&& tensor, OrtValue& ort_value) {
 
 size_t Tensor::SizeInBytes() const {
 #ifdef ENABLE_STRIDED_TENSORS
-  int64_t size = IsContiguous() ? shape_.Size() : GetSizeFromStrides(shape_, strides_);
+  int64_t shape_size = IsContiguous() ? shape_.Size() : GetSizeFromStrides(shape_, strides_);
 #else
-  int64_t size = shape_.Size();
+  int64_t shape_size = shape_.Size();
 #endif
   size_t ret = 0;
+  const int64_t num_elems = GetNumTensorElems(dtype_, shape_size);
 
-  // TODO(adrianlizarraga): Handle more cleanly.
-  if (utils::IsPrimitiveDataType<Int4x2>(dtype_) || utils::IsPrimitiveDataType<UInt4x2>(dtype_)) {
-    size = (size + 1) / 2;
-  }
-
-  if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(size), dtype_->Size(), &ret)) {
+  if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(num_elems), dtype_->Size(), &ret)) {
     ORT_THROW("tensor size overflow");
   }
   return ret;

@@ -215,16 +215,10 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
   }
 
-  auto elem_count = narrow<size_t>(tensor_shape.Size());
-
-  // TODO(adrianlizarraga): Handle this more cleanly.
-  if (utils::IsPrimitiveDataType<Int4x2>(ml_type) || utils::IsPrimitiveDataType<UInt4x2>(ml_type)) {
-    elem_count = (elem_count + 1) / 2;
-  }
-
-  size_t size_to_allocate;
-  if (!IAllocator::CalcMemSizeForArray(ml_type->Size(), elem_count, &size_to_allocate)) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "size overflow");
+  size_t size_to_allocate = 0;
+  Status status = Tensor::CalculateTensorStorageSize(ml_type, tensor_shape, size_to_allocate);
+  if (!status.IsOK()) {
+    return ToOrtStatus(status);
   }
   if (size_to_allocate > p_data_len) {
     std::ostringstream oss;

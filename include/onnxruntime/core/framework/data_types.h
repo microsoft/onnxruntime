@@ -937,12 +937,21 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
     return data_type_;
   }
 
+  int32_t GetNumSubElems() const {
+    return num_sub_elems_;
+  }
+
+  bool HasSubElems() const {
+    return num_sub_elems_ > 1;
+  }
+
  protected:
-  PrimitiveDataTypeBase(size_t size, int32_t data_type)
-      : DataTypeImpl{GeneralType::kPrimitive, size}, data_type_{data_type} {}
+  PrimitiveDataTypeBase(size_t size, int32_t data_type, int32_t num_sub_elems)
+      : DataTypeImpl{GeneralType::kPrimitive, size}, data_type_{data_type}, num_sub_elems_{num_sub_elems} {}
 
  private:
   const int32_t data_type_;
+  const int32_t num_sub_elems_;
 };
 
 /**
@@ -968,9 +977,9 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   }
 
  private:
-  PrimitiveDataType()
+  explicit PrimitiveDataType(int32_t num_sub_elems)
       : PrimitiveDataTypeBase{sizeof(T),
-                              utils::ToTensorProtoElementType<T>()} {
+                              utils::ToTensorProtoElementType<T>(), num_sub_elems} {
   }
 };
 
@@ -1077,15 +1086,26 @@ inline const PrimitiveDataTypeBase* DataTypeImpl::AsPrimitiveDataType() const {
     return SequenceTensorType<ELEM_TYPE>::Type();               \
   }
 
-#define ORT_REGISTER_PRIM_TYPE(TYPE)               \
-  template <>                                      \
-  MLDataType PrimitiveDataType<TYPE>::Type() {     \
-    static PrimitiveDataType<TYPE> prim_data_type; \
-    return &prim_data_type;                        \
-  }                                                \
-  template <>                                      \
-  MLDataType DataTypeImpl::GetType<TYPE>() {       \
-    return PrimitiveDataType<TYPE>::Type();        \
+#define ORT_REGISTER_PRIM_TYPE(TYPE)                  \
+  template <>                                         \
+  MLDataType PrimitiveDataType<TYPE>::Type() {        \
+    static PrimitiveDataType<TYPE> prim_data_type(1); \
+    return &prim_data_type;                           \
+  }                                                   \
+  template <>                                         \
+  MLDataType DataTypeImpl::GetType<TYPE>() {          \
+    return PrimitiveDataType<TYPE>::Type();           \
+  }
+
+#define ORT_REGISTER_PRIM_SUBBYTE_TYPE(TYPE, NUM_SUB_ELEMS)       \
+  template <>                                                     \
+  MLDataType PrimitiveDataType<TYPE>::Type() {                    \
+    static PrimitiveDataType<TYPE> prim_data_type(NUM_SUB_ELEMS); \
+    return &prim_data_type;                                       \
+  }                                                               \
+  template <>                                                     \
+  MLDataType DataTypeImpl::GetType<TYPE>() {                      \
+    return PrimitiveDataType<TYPE>::Type();                       \
   }
 
 #define ORT_REGISTER_OPAQUE_TYPE(CPPType, Domain, Name)   \
