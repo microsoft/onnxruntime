@@ -522,7 +522,9 @@ class TestQDQFormatConvRelu(TestQDQFormat):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def construct_model_conv_relu(self, output_model_path, input_shape, weight_shape, output_shape):
+    def construct_model_conv_relu(
+        self, output_model_path, input_shape, weight_shape, output_shape, opset=13, ir_version=7
+    ):
         #    (input)
         #      |
         #     Conv
@@ -557,19 +559,31 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             [output_tensor],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = 7  # use stable onnx ir version
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+        model.ir_version = ir_version
 
         onnx.save(model, output_model_path)
 
-    def verify_qdq(self, per_channel, activation_type, weight_type, extra_options=None):
+    def verify_qdq(
+        self,
+        per_channel,
+        activation_type,
+        weight_type,
+        extra_options=None,
+        opset=13,
+        ir_version=7,
+        rtol=1e-2,
+        atol=0.05,
+    ):
         np.random.seed(1)
         model_fp32_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_fp32.{per_channel}.onnx")
         model_qdq_path = str(
             Path(self._tmp_model_dir.name) / f"conv_relu_quant_qdq.{activation_type}.{weight_type}.{per_channel}.onnx"
         )
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
-        self.construct_model_conv_relu(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31])
+        self.construct_model_conv_relu(
+            model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31], opset=opset, ir_version=ir_version
+        )
         quantize_static(
             model_fp32_path,
             model_qdq_path,
@@ -595,7 +609,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
                 "DequantizeLinear",
             ],
         )
-        check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next())
+        check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next(), rtol=rtol, atol=atol)
 
         # If the model uses Q/DQ ops with "com.microsoft" domain (e.g., for int16 support),
         # then ensure the model has the appropriate opset import.
@@ -647,6 +661,16 @@ class TestQDQFormatConvRelu(TestQDQFormat):
         self.verify_qdq(True, QuantType.QInt16, QuantType.QInt16, {"UseQDQContribOps": True})
         self.verify_qdq(True, QuantType.QUInt16, QuantType.QUInt8, {"UseQDQContribOps": True})
         self.verify_qdq(True, QuantType.QInt16, QuantType.QInt8, {"UseQDQContribOps": True})
+
+        # 4-bit QDQ
+        self.verify_qdq(False, QuantType.QInt16, QuantType.QInt4, opset=21, ir_version=10, atol=0.4)  # per-tensor
+        self.verify_qdq(True, QuantType.QInt16, QuantType.QInt4, opset=21, ir_version=10)  # per-channel
+        self.verify_qdq(
+            False, QuantType.QInt16, QuantType.QInt4, {"UseQDQContribOps": True}, opset=21, ir_version=10, atol=0.4
+        )  # per-tensor
+        self.verify_qdq(
+            True, QuantType.QInt16, QuantType.QInt4, {"UseQDQContribOps": True}, opset=21, ir_version=10
+        )  # per-channel
 
     def test_quantize_relu_conv(self):
         float_model_path = str(Path(self._tmp_model_dir.name) / "float_relu_convs_model.onnx")
