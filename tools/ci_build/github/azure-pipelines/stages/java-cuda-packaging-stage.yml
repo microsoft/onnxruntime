@@ -19,8 +19,7 @@ stages:
     workspace:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'
-    dependsOn:
-    - Download_Java_Tools
+    dependsOn: []
     condition: succeeded()
     steps:
     - checkout: self
