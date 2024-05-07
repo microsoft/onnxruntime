@@ -168,7 +168,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     return Status::OK();
   }
 
-  MLAS_THREADPOOL* pool = NULL;
+  MLAS_THREADPOOL* pool = nullptr;
 
   auto comp_type = static_cast<NS_SQNBIT_COMPUTE_TYPE>(accuracy_level_);
   auto nbits = static_cast<int>(nbits_);
