@@ -18,8 +18,10 @@ parameters:
 - name: CudaVersion
   type: string
   default: '11.8'
+
 - name: win_cuda_home
   type: string
+
 - name: win_trt_home
   type: string
 

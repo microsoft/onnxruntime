@@ -254,15 +254,6 @@ stages:
     win_trt_home: ${{ variables.win_trt_home }}
     win_cuda_home: ${{ variables.win_cuda_home }}
 
-- template: stages/nuget-win-dml-packaging-stage.yml
-  parameters:
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    DoCompliance: ${{ parameters.DoCompliance }}
-    UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
-    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-
 - template: stages/nuget-combine-cuda-stage.yml
   parameters:
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
