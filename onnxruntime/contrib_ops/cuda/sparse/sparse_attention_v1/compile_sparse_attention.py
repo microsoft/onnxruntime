@@ -4,8 +4,8 @@
 # --------------------------------------------------------------------------
 
 # Use triton AoT compiler to convert sparse_attention_triton.py to C source files including cubin and dispatcher.
-# Example to use this script (Tested with CUDA 12.3 in Ubuntu 20.04):
-#    python3 -m pip install triton==2.3.0
+# Example to use this script (Tested with Python 3.10 and CUDA 12.3 in Ubuntu 20.04):
+#    python3 -m pip install numpy==1.26.4 torch==2.3.0 triton==2.3.0
 #    python3 compile_sparse_attention.py | sh
 #
 # Note that sparse_attention_v1_*.cc and sparse_attention_dispatcher_*.h are the generated files.
@@ -13,12 +13,12 @@
 import math
 from itertools import product
 
+import torch
 
-def generate_triton_compile_shell_script(dtype="fp16"):
+
+def generate_triton_compile_shell_script(sm, dtype="fp16"):
     assert dtype in ["fp16", "bf16"]
     print("export TRITON_ROOT=$(pip show triton | grep Location | cut -d' ' -f2)")
-    print('export ARCH="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader|head -n 1)"')
-    print("export SM=$(echo $ARCH | sed -e 's/\\.//g')")
 
     # Modify the compile.py to use custom template file template_h.txt and template_c.txt in current directory.
     # Also pass block_m to the template.
@@ -35,34 +35,38 @@ def generate_triton_compile_shell_script(dtype="fp16"):
     print(f"rm -rf {out_dir}")
     print(f"mkdir -p {out_dir}")
 
-    # Note that block_n * num_block_d is the head_size. We support head_size = 128 for now.
     block_n_values = [64]
     block_d_values = [64]
     num_block_d_values = [2]
-    even_m_values = [True, False]
     even_n_values = [True, False]
-
     # Use triton compiler to compile the kernel of different combinations of constant parameters.
-    for block_n, block_d, num_blocks_d, even_m, even_n in product(
-        block_n_values, block_d_values, num_block_d_values, even_m_values, even_n_values
+    for block_n, block_d, num_blocks_d, even_n in product(
+        block_n_values, block_d_values, num_block_d_values, even_n_values
     ):
-        block_m_values = [16, block_n] if block_n != 16 else [block_n]
-        for block_m in block_m_values:
-            scalar_params = "i32,i32,i32,fp32,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32,i32,i32"
-            sig = f"*{dtype}:16,*{dtype}:16,*{dtype}:16,*{dtype}:16,*i32:16,*i32:16,{scalar_params},{block_m},{int(even_m)},{block_n},{int(even_n)},{block_d},{num_blocks_d}"
-            prefix = "python compile.py sparse_attention_triton.py"
-            filename = f"sparse_attention_v1_{dtype}_m{block_m}_{int(even_m)}_n{block_n}_{int(even_n)}_d{block_d}_{num_blocks_d}_sm${{SM}}"
-            name = f"sparse_attention_{dtype}_sm${{SM}}"
-            num_warps = max(1, 2 ** int(math.log2(min(block_m, block_n, block_d) / 16)))
-            num_stages = 2
-            # TODO: use different kernel name (change the name in sparse_attention_triton.py before running compile.py)
-            print(
-                f"{prefix} -n block_sparse_attention_kernel -o {out_dir}/{filename} --out-name {name} "
-                f'-w {num_warps} -ns {num_stages} -s "{sig}" -g "(total_seq_len - past_seq_len + {block_m} - 1) / {block_m}, batch_size * num_heads, 1"'
-            )
+        head_size = block_d * num_blocks_d
+        block_m = block_n
+        even_m = even_n
+        scalar_params = "i32,i32,i32,fp32,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32:16,i32,i32,i32"
+        sig = f"*{dtype}:16,*{dtype}:16,*{dtype}:16,*{dtype}:16,*i32:16,*i32:16,{scalar_params},{block_m},{int(even_m)},{block_n},{int(even_n)},{block_d},{num_blocks_d}"
+        prefix = "python compile.py sparse_attention_triton.py"
+        filename = f"sparse_attention_v1_{dtype}_d{head_size}_n{block_n}_e{int(even_n)}_sm{sm}"
+        name = f"sparse_attention_{dtype}_sm{sm}"
+        num_warps = max(1, 2 ** int(math.log2(min(block_m, block_n, block_d) / 16)))
+
+        # Shared memory is 96KB for V100 (sm70), 64KB for T4 (sm75), 164KB for A100 (sm80), 228KB for H100 (sm90).
+        # Adjust stages so that shared memory size is within limit, and choose the one with best performance.
+        sm_to_stages = {90: 3, 80: 2, 75: 2}
+
+        num_stages = sm_to_stages[sm]
+
+        # TODO: use different kernel name (change the name in sparse_attention_triton.py before running compile.py)
+        print(
+            f"{prefix} -n block_sparse_attention_kernel -o {out_dir}/{filename} --out-name {name} "
+            f'-w {num_warps} -ns {num_stages} -s "{sig}" -g "(total_seq_len - past_seq_len + {block_m} - 1) / {block_m}, batch_size * num_heads, 1"'
+        )
 
     # Generate the dispatcher.
-    dispatcher = f"sparse_attention_dispatcher_{dtype}_sm${{SM}}"
+    dispatcher = f"sparse_attention_dispatcher_{dtype}_sm{sm}"
     print(f"cd {out_dir}")
     print(f"python ${{TRITON_ROOT}}/triton/tools/link.py sparse_attention_v1_*.h -o {dispatcher}")
     print("rm *.h")
@@ -122,5 +126,10 @@ def generate_triton_compile_shell_script(dtype="fp16"):
 
 
 if __name__ == "__main__":
-    for dtype in ["fp16", "bf16"]:
-        generate_triton_compile_shell_script(dtype)
+    major, minor = torch.cuda.get_device_capability()
+    print(f"echo Generate sparse attention v1 kernels for compute capability:{major}.{minor}")
+    assert major >= 7, "triton only supports compute capability >= 7.0"
+
+    sm = major * 10 + minor
+    for dtype in ["fp16", "bf16"] if major >= 8 else ["fp16"]:
+        generate_triton_compile_shell_script(sm, dtype)
