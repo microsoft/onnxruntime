@@ -1,19 +1,19 @@
 parameters:
 - name: DoCompliance
   type: boolean
-  default: true
 
 - name: DoEsrp
   type: boolean
-  default: true
 
 - name: IsReleaseBuild
   type: boolean
-  default: false
 
 - name: SpecificArtifact
   type: boolean
-  default: false
+
+- name: BuildId
+  type: string
+
 stages:
 ######## Nuget ########
 # Win/Linux CUDA Combined packaging

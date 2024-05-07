@@ -260,6 +260,7 @@ stages:
     BuildId: ${{ parameters.BuildId }}
     DoEsrp: ${{ parameters.DoEsrp }}
     DoCompliance: ${{ parameters.DoCompliance }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
 - stage: NuGet_Packaging_ROCm
   dependsOn:
