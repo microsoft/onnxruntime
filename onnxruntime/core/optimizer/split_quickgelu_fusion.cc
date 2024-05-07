@@ -24,8 +24,8 @@ using namespace onnxruntime;
 namespace {
 
 // pattern match on split, quickgelu and mult subgraph
-bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult, const logging::Logger& logger) {
-// bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult) {
+// bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult, const logging::Logger& logger) {
+bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quickgelu, Node*& mult) {
   Node& node = start;
   split = quickgelu = mult = nullptr;
 
@@ -33,22 +33,14 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // TODO: 1. Check ONNX Op Types to Support
   // Split version 13 has axis as attribute and split as input (Should we only specify it for v13?)
   // raise(SIGTRAP);
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!0" << std::endl;
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {11, 13, 18})) {
-    std::cout << "not op type 11, 13, 18" << std::endl;
-  }
   if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
     std::cout << "not cuda rocm, it is:" << node.GetExecutionProviderType() << " is it here?" << std::endl;
-  }
-  if (!optimizer_utils::CheckOutputEdges(graph, node, 2)) {
-    std::cout << "not output edges 2" << std::endl;
   }
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {11, 13, 18}) ||
       // !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 2)) {
     return false;
   }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1" << std::endl;
 
   // check shape information is not available for input
   Node& split_node = node;
@@ -57,9 +49,9 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   if (S == nullptr || S->dim_size() < 1) {
     return false;
   }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!2" << std::endl;
 
   // Split supports only float/float16/double/bfloat16 (OR MORE!!!!!????) - see ./onnxruntime/core/graph/contrib_ops/contrib_defs.cc
+  // Which operators to support?
   auto type_allowed = [](NodeArg* input) {
     auto data_type = input->TypeAsProto()->tensor_type().elem_type();
     if (data_type != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE &&
@@ -70,179 +62,49 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
     }
     return true;
   };
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!3" << std::endl;
   if (!type_allowed(input)) {
     return false;
   }
-  std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!4" << std::endl;
 
   // Trying to find Split->QuickGelu->Mul Path
   // What does the 0,0 represent here?
   // node -> getconsumer
-  //
 
   // check all output edges
   const Node* p_quickgelu_node = nullptr;
   const Node* p_mul_node = nullptr;
-  // Node& q_node = node;
-  // Node& m_node = node;
   unsigned int quickgelu_count = 0;
   unsigned int mul_count = 0;
   unsigned int other_count = 0;
   for (auto it = split_node.OutputNodesBegin(); it != split_node.OutputNodesEnd(); ++it) {
     if ((*it).OpType().compare("QuickGelu") == 0) {
-      std::cout << "QuickGelu found in iteration" << std::endl;
-      // quickgelu_node = *graph.GetNode((*it));
-      // quickgelu_node = *graph.GetNode(it->Index());
-      // quickgelu_node = *graph.GetNode((*it).Index());
-      // quickgelu_node = (*it);
-      // q_node = const_cast<Node&>(*it);
       p_quickgelu_node = &(*it);
       quickgelu_count++;
     } else if ((*it).OpType().compare("Mul") == 0) {
-      std::cout << "Mul found in iteration" << std::endl;
-      // mul_node = *graph.GetNode((*it));
-      // m_node = const_cast<Node&>(*it);
       p_mul_node = &(*it);
       mul_count++;
     } else {
       other_count++;
-      std::cout << "Some other operator found, investigate!!" << std::endl;
     }
   }
 
-  std::cout << "Quickgelu, mul and other count" << quickgelu_count << mul_count << other_count << std::endl;
-  if (quickgelu_count == 0 || mul_count == 0) {
+  // QuickGelu and Mul Node count should exactly be 1, other nodes should be 0
+  if (quickgelu_count != 1 || mul_count != 1 || other_count != 0) {
     return false;
   }
   Node& quickgelu_node = *graph.GetNode(p_quickgelu_node->Index());
   Node& mul_node = *graph.GetNode(p_mul_node->Index());
 
+  // Check Mul node is also the output of QuickGelu
   Node& next_node = *graph.GetNode(quickgelu_node.OutputNodesBegin()->Index());
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7, 13, 14})) {
-    std::cout << "not Mul Node found initially" << std::endl;
     return false;
   }
-
-  // if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuickGelu", {1}, kMSDomain)) {
-  //   std::cout << "not QuickGelu" << std::endl;
-  //   return false;
-  // }
-  // Node& quickgelu_node = next_node;
-  // Node& quickgelu_next_node = *graph.GetNode(quickgelu_node.OutputNodesBegin()->Index());
-
-  // if (!graph_utils::IsSupportedOptypeVersionAndDomain(quickgelu_next_node, "Mul", {7, 13, 14})) {
-  //   std::cout << "not Mul Node" << std::endl;
-  //   return false;
-  // }
-  // Node& mul_node = quickgelu_next_node;
-  // if (next_node.GetExecutionProviderType() != split_node.GetExecutionProviderType()) {
-  //   std::cout << "Mismatch EP Type" << std::endl;
-  // }
-
-  std::vector<const Node::EdgeEnd*> edges;
-  std::vector<graph_utils::EdgeEndToMatch> only_mul_path{
-      {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
-
-  if (!graph_utils::FindPath(node, true, only_mul_path, edges, logger)) {
-    std::cout << "Failed to find path for Mul operation." << std::endl;
-    DEBUG_LOG("Failed to find for direct Mul.");
-    // return false;
-  }
-
-  if (!graph_utils::FindPath(node, false, only_mul_path, edges, logger)) {
-    std::cout << "Failed to find path for Mul operation v2." << std::endl;
-    DEBUG_LOG("Failed to find for direct Mul.");
-    // return false;
-  }
-
-  if (!graph_utils::FindPath(split_node, true, only_mul_path, edges, logger)) {
-    std::cout << "Failed to find path for Mul operation v3." << std::endl;
-    DEBUG_LOG("Failed to find for direct Mul.");
-    // return false;
-  }
-
-  if (!graph_utils::FindPath(split_node, false, only_mul_path, edges, logger)) {
-    std::cout << "Failed to find path for Mul operation v4." << std::endl;
-    DEBUG_LOG("Failed to find for direct Mul.");
-    // return false;
-  }
-
-  std::vector<graph_utils::EdgeEndToMatch> quickgelu_path{
-    {0, 1, "QuickGelu", {1}, kMSDomain}};
-
-  if (!graph_utils::FindPath(node, true, quickgelu_path, edges, logger)) {
-    std::cout << "Failed to find path for QuickGelu operation." << std::endl;
-    DEBUG_LOG("Failed to find path for QuickGelu operation.");
-    // return false;
-  }
-
-  if (!graph_utils::FindPath(node, false, quickgelu_path, edges, logger)) {
-    std::cout << "Failed to find path for QuickGelu operation v2." << std::endl;
-    DEBUG_LOG("Failed to find path for QuickGelu operation.");
-    // return false;
-  }
-
-  std::vector<graph_utils::EdgeEndToMatch> quickgelu_path_v2{
-    {0, 1, "QuickGelu", {1}, kMSDomain}};
-
-    if (!graph_utils::FindPath(node, true, quickgelu_path_v2, edges, logger)) {
-    std::cout << "Failed to find path for QuickGelu_v2 operation." << std::endl;
-    DEBUG_LOG("Failed to find path for QuickGelu operation.");
-    // return false;
-  }
-
-  if (!graph_utils::FindPath(node, false, quickgelu_path_v2, edges, logger)) {
-    std::cout << "Failed to find path for QuickGelu_v2 operation v2." << std::endl;
-    DEBUG_LOG("Failed to find path for QuickGelu operation.");
-    // return false;
-  }
-
-  // std::vector<const Node::EdgeEnd*> edges;
-  // // TODO: Replace QuickGelu by other Elementwise Op for better generalization
-  // std::vector<graph_utils::EdgeEndToMatch> quickgelu_mul_path{
-  //     {0, 0, "QuickGelu", {1}, kMSDomain},
-  //     {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
-
-  // if (!graph_utils::FindPath(node, true, quickgelu_mul_path, edges, logger)) {
-  //   DEBUG_LOG("Failed to find path for QuickGelu mul operation.");
-  //   return false;
-  // }
-  // for (size_t i = 0; i < edges.size(); i++) {
-  //   if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
-  //     DEBUG_LOG("Output edge count not expected for nodes.");
-  //     return false;
-  //   }
-  // }
-  // std::cout << "Continuing part !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!6" << std::endl;
-  // Node& quickgelu_node = *graph.GetNode(edges[0]->GetNode().Index());
-  // Node& mul_node = *graph.GetNode(edges[1]->GetNode().Index());
-
-  // std::vector<graph_utils::EdgeEndToMatch> only_mul_path{
-  //     {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
-
-  // if (!graph_utils::FindPath(node, true, only_mul_path, edges, logger)) {
-  //   DEBUG_LOG("Failed to find for direct Mul.");
-  //   return false;
-  // }
-  // for (size_t i = 0; i < edges.size(); i++) {
-  //   if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
-  //     DEBUG_LOG("Output edge count not expected for nodes.");
-  //     return false;
-  //   }
-  // }
-
-  // Node& mul_node_2 = *graph.GetNode(edges[0]->GetNode().Index());
-
-  // Compare if the two mul_nodes are same
-  // Figure this out?
-  // node api to get name and then compare
 
   // pattern match succeeded
   split = &split_node;
   quickgelu = &quickgelu_node;
   mult = &mul_node;
-  std::cout << "FINISHED MATCH, RETURNING TRUE" << std::endl;
   return true;
 }
 
@@ -253,11 +115,9 @@ bool GetSplitQuickGeluParams(
     NodeArg*& input,
     int& axis,
     float& alpha) {
-  std::cout << "Params part 1" << std::endl;
   input = split_node.MutableInputDefs()[0];
   axis = -1;
   alpha = -1.0;
-  std::cout << "Params part 2" << std::endl;
   auto& split_attr = split_node.GetAttributes();
   if (split_attr.find("axis") != split_attr.end()) {
     auto& axis_attr = split_attr.at("axis");
@@ -265,7 +125,6 @@ bool GetSplitQuickGeluParams(
   } else {
     return false;
   }
-  std::cout << "Params part 3" << std::endl;
   auto& quickgelu_attr = quickgelu_node.GetAttributes();
   if (quickgelu_attr.find("alpha") != quickgelu_attr.end()) {
     auto& alpha_attr = quickgelu_attr.at("alpha");
@@ -273,7 +132,6 @@ bool GetSplitQuickGeluParams(
   } else {
     return false;
   }
-  std::cout << "FINAL PARAMS, return true" << std::endl;
   return true;
 }
 
@@ -286,12 +144,10 @@ void FuseSplitQuickGeluSubgraph(
     NodeArg* input,
     int axis,
     float alpha) {
-  std::cout << "FUSE SUBGRAPH Part 1" << std::endl;
   std::string fused_desc =
       "fused " + split_node.Name() + " and " + quickgelu_node.Name() + " and " + mul_node.Name() + " into SplitQuickGelu";
 
   std::string op_type = "S2SModelSplitQuickGelu";
-  std::cout << "FUSE SUBGRAPH Part 2" << std::endl;
   Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
                                    op_type,
                                    fused_desc,
@@ -304,14 +160,10 @@ void FuseSplitQuickGeluSubgraph(
   // add QuickGelu alpha
   fused_node.AddAttribute("axis", static_cast<int64_t>(axis));
   fused_node.AddAttribute("alpha", static_cast<float>(alpha));
-  std::cout << "FUSE SUBGRAPH Part 3" << std::endl;
 
   // finalize node fusion (e.g. remove old nodes and shift outputs)
-  std::cout << "FUSE SUBGRAPH Part 4" << std::endl;
   fused_node.SetExecutionProviderType(split_node.GetExecutionProviderType());
-  std::cout << "FUSE SUBGRAPH Part 5" << std::endl;
   graph_utils::FinalizeNodeFusion(graph, {split_node, quickgelu_node, mul_node}, fused_node);
-  std::cout << "FUSE SUBGRAPH Part 6" << std::endl;
 }
 
 }  // namespace
@@ -336,19 +188,17 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     Node *split_node, *quickgelu_node, *mul_node;
-    if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node, logger)) {
-    // if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node)) {
+    // if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node, logger)) {
+    if (!TrySplitQuickGeluMatch(graph, node, split_node, quickgelu_node, mul_node)) {
       continue;
     }
 
     NodeArg* input;
     int axis;
     float alpha;
-    std::cout << "Get Params Now" << std::endl;
     if (!GetSplitQuickGeluParams(*split_node, *quickgelu_node, input, axis, alpha)) {
       continue;
     }
-    std::cout << "FUSE SUBGRAPH NOW" << std::endl;
     FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, axis, alpha);
     modified = true;
     std::cout << "FUSION SUBGRAPH COMPLETE NOW" << std::endl;

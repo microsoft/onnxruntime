@@ -631,7 +631,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           return true;
         }));
 
-// Just copy pasted QuickGelu, needs modification
+// TODO: Needs modification, inspired from QuickGelu code
 constexpr const char* S2SModelSplitQuickGelu_ver1_doc = R"DOC(Compute x * Sigmoid(alpha * x).)DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(
     S2SModelSplitQuickGelu, 1,
@@ -639,29 +639,29 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDomain(kMSDomain)
         .SinceVersion(1)
         .SetDoc(S2SModelSplitQuickGelu_ver1_doc)
-        .Attr("axis", "axis value for split", AttributeProto::INT, static_cast<int64_t>(-11))
+        .Attr("axis", "axis value for split", AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("alpha", "Alpha value.", AttributeProto::FLOAT, 1.702f)
         .Input(0, "X", "The input data as Tensor.", "T")
         // .Input(1, "split", "split tensor.", "T")
         .Output(0, "Y", "The output.", "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
-        .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema,
-                                                   FunctionProto& functionProto) {
-          auto* tp = ctx.getInputType(0);
-          if ((tp == nullptr) || (!tp->has_tensor_type())) return false;
-          auto elem_type = (TensorProto_DataType)(tp->tensor_type().elem_type());
-          auto* alpha_attr = ctx.getAttribute("alpha");
-          float alpha = (alpha_attr != nullptr) ? alpha_attr->f() : 1.702f;
-          FunctionBuilder builder(functionProto);
-          builder.AddOpset("", 13).Const("Alpha", ToTensor(alpha, elem_type)).Add(R"(
-                CX = Mul (Alpha, X)
-                SIGMOIDCX = Sigmoid (CX)
-                Y = Mul (X, SIGMOIDCX)
-            )");
-          schema.BuildFunction(functionProto);
-          return true;
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          // Prop elem type
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          // create shape and add all dimensions
+          if (!hasInputShape(ctx, 0)) return;
+          auto& input_shape = getInputShape(ctx, 0);
+          const int rank = input_shape.dim_size();
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          for (int d = 0; d < rank; d++) {
+            if (d == rank-1){
+              *output_shape.add_dim() = input_shape.dim(d) / 2;
+            } else {
+              *output_shape.add_dim() = input_shape.dim(d);
+            }
+          }
+          updateOutputShape(ctx, 0, output_shape);
         }));
 
 // Used to be ONNX 1.7 Inverse(12)
