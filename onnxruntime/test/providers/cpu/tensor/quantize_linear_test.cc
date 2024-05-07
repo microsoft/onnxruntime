@@ -450,7 +450,7 @@ TEST(QuantizeLinearOpTest, OddLarge_Int4) {
   constexpr int8_t unused_val = 0;
   constexpr std::array<float, 6> pattern = {-20.0f, -14.0f, -4.1f, -0.0f, 3.0f, 3.3f};
   std::vector<float> input_f32s(static_cast<size_t>(dims[0]));
-  std::vector<Int4x2> output((input_f32s.size() + 1) / 2);
+  std::vector<Int4x2> output(Int4x2::CalcNumInt4Pairs(input_f32s.size()));
 
   for (size_t i = 0; i < input_f32s.size(); ++i) {
     input_f32s[i] = pattern[i % pattern.size()];
@@ -476,7 +476,7 @@ TEST(QuantizeLinearOpTest, OddLarge_UInt4) {
   constexpr uint8_t unused_val = 0;
   constexpr std::array<float, 6> pattern = {-20.0f, -14.0f, -4.1f, -0.0f, 3.0f, 3.3f};
   std::vector<float> input_f32s(static_cast<size_t>(dims[0]));
-  std::vector<UInt4x2> output((input_f32s.size() + 1) / 2);
+  std::vector<UInt4x2> output(UInt4x2::CalcNumInt4Pairs(input_f32s.size()));
 
   for (size_t i = 0; i < input_f32s.size(); ++i) {
     input_f32s[i] = pattern[i % pattern.size()];
