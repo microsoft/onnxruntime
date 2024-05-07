@@ -257,7 +257,7 @@ void RunTest(const TestOptions& opts,
     test.ConfigEps(std::move(explicit_eps));
   }
 
-  test.Run();
+  test.RunWithConfig();
 }
 
 }  // namespace
