@@ -7765,6 +7765,8 @@ TEST_F(GraphTransformationTests, ShapeInputMerge) {
                                         1, pre_graph_checker, post_graph_checker));
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
+
 TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
   struct TestOptions {
     bool bias_is_first_add_input{false};
@@ -7854,6 +7856,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
     }
   }
 }
+
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace test
 }  // namespace onnxruntime
