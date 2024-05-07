@@ -260,42 +260,6 @@ void RunTest(const TestOptions& opts,
   test.Run();
 }
 
-// Legacy test function.
-// This has too many parameters of the same type that must be specified in the correct order.
-// Consider using the overload with a TestOptions parameter.
-void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
-             bool has_zeropoint, bool use_float16, bool has_g_idx = false,
-             bool zp_is_4bit = true, float fp16_abs_error = 0.02f, bool has_bias = false) {
-  TestOptions opts{};
-  opts.M = M;
-  opts.N = N;
-  opts.K = K;
-  opts.block_size = block_size;
-  opts.accuracy_level = accuracy_level;
-  opts.has_zero_point = has_zeropoint;
-  opts.zp_is_4bit = zp_is_4bit;
-  opts.has_g_idx = has_g_idx;
-  opts.has_bias = has_bias;
-
-  if (use_float16) {
-    opts.output_abs_error = fp16_abs_error;
-  }
-
-  if (use_float16) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-#endif
-#ifdef USE_DML
-    execution_providers.push_back(DefaultDmlExecutionProvider());
-#endif
-
-    RunTest<MLFloat16>(opts, std::move(execution_providers));
-  } else {
-    RunTest<float>(opts);
-  }
-}
-
 }  // namespace
 
 TEST(MatMulNBits, Float32) {
@@ -356,6 +320,45 @@ TEST(MatMulNBits, Float32) {
 }
 
 #if defined(USE_CUDA) || defined(USE_DML)
+
+namespace {
+// Legacy test function.
+// This has too many parameters of the same type that must be specified in the correct order.
+// Consider using the overload with a TestOptions parameter.
+void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
+                              bool has_zeropoint, bool use_float16, bool has_g_idx = false,
+                              bool zp_is_4bit = true, float fp16_abs_error = 0.02f, bool has_bias = false) {
+  TestOptions opts{};
+  opts.M = M;
+  opts.N = N;
+  opts.K = K;
+  opts.block_size = block_size;
+  opts.accuracy_level = accuracy_level;
+  opts.has_zero_point = has_zeropoint;
+  opts.zp_is_4bit = zp_is_4bit;
+  opts.has_g_idx = has_g_idx;
+  opts.has_bias = has_bias;
+
+  if (use_float16) {
+    opts.output_abs_error = fp16_abs_error;
+  }
+
+  if (use_float16) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+#ifdef USE_DML
+    execution_providers.push_back(DefaultDmlExecutionProvider());
+#endif
+
+    RunTest<MLFloat16>(opts, std::move(execution_providers));
+  } else {
+    RunTest<float>(opts);
+  }
+}
+}  // namespace
+
 TEST(MatMulNBits, Float16) {
 #ifdef USE_CUDA
   auto has_gidx_options = {true, false};
@@ -401,8 +404,9 @@ TEST(MatMulNBits, Float16Large) {
   }
 }
 
-#endif
+#endif  // defined(USE_CUDA) || defined(USE_DML)
 
+#if defined(ORT_NEURAL_SPEED)
 namespace {
 void RunSharedPrepackedWeightsTest(int64_t M, int64_t N, int64_t K, int block_size, bool is_asym,
                                    int64_t acc_lvl) {
@@ -563,7 +567,6 @@ void RunSharedPrepackedWeightsTest(int64_t M, int64_t N, int64_t K, int block_si
 }
 }  // namespace
 
-#ifdef ORT_NEURAL_SPEED
 TEST(MatMulNBits, SharedPrepackedWeights) {
   RunSharedPrepackedWeightsTest(2, 4096, 4096, 32, true, 1);
   RunSharedPrepackedWeightsTest(2, 4096, 4096, 32, false, 1);
@@ -572,7 +575,7 @@ TEST(MatMulNBits, SharedPrepackedWeights) {
   RunSharedPrepackedWeightsTest(2, 4096, 4096, 1024, false, 4);
   RunSharedPrepackedWeightsTest(2, 4096, 4096, 4096, false, 4);
 }
-#endif
+#endif  // defined(ORT_NEURAL_SPEED)
 }  // namespace test
 }  // namespace onnxruntime
 
