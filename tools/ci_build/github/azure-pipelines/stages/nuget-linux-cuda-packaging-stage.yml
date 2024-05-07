@@ -104,14 +104,14 @@ stages:
           --build-arg BUILD_UID=$( id -u )
           "
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
-    - template: ../set-version-number-variables-step.yml
+    - template: ../templates/set-version-number-variables-step.yml
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_tensorrt_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build and Test'
 
     - ${{ if eq(parameters.buildJava, true) }}:
-      - template: ../java-api-artifacts-package-and-publish-steps-posix.yml
+      - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
         parameters:
           arch: 'linux-x64'
           buildConfig: 'Release'
@@ -121,13 +121,13 @@ stages:
           nativeLibraryName: 'libonnxruntime4j_jni.so'
 
     - ${{ if eq(parameters.buildNodejs, 'true') }}:
-      - template: ../nodejs-artifacts-package-and-publish-steps-posix.yml
+      - template: ../templates/nodejs-artifacts-package-and-publish-steps-posix.yml
         parameters:
           arch: 'x64'
           os: 'linux'
           artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
 
-    - template: ../c-api-artifacts-package-and-publish-steps-posix.yml
+    - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
         artifactName: 'onnxruntime-linux-x64-gpu-tensorrt-$(OnnxRuntimeVersion)'
@@ -135,10 +135,10 @@ stages:
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
 
-    - template: ../component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - template: ../clean-agent-build-directory-step.yml
+    - template: ../templates/clean-agent-build-directory-step.yml
 
 # Linux CUDA Combined Testing and Publishing
   - job: Linux_Packaging_combined_CUDA
