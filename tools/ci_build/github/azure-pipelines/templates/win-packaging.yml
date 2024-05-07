@@ -105,14 +105,14 @@ stages:
         value: ''
     workspace:
       clean: all
-      ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-        pool: onnxruntime-Win-CPU-2022
-      ${{ else }}:
-        pool: ${{ parameters.ort_build_pool_name }}
-      ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-        timeoutInMinutes: 1200
-      ${{ if ne(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-        timeoutInMinutes: 360
+    ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+      pool: onnxruntime-Win-CPU-2022
+    ${{ else }}:
+      pool: ${{ parameters.ort_build_pool_name }}
+    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+      timeoutInMinutes: 1200
+    ${{ if ne(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+      timeoutInMinutes: 360
 
 
     steps:
