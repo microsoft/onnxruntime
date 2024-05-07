@@ -139,6 +139,10 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
+  if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+    return false;
+  }
+
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
@@ -172,6 +176,10 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
+  if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+    return false;
+  }
+
   auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
     return graph_viewer.GetConstantInitializer(initializer_name, true);
   };
@@ -198,6 +206,10 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     return false;
   }
 
+  if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -220,6 +232,10 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   // 16-bit int types must be explicitly allowed.
   if (!allow_16bit_ && Is16BitIntType(dt_input_1)) {
+    return false;
+  }
+
+  if (!allow_4bit_ && Is4BitIntType(dt_input_1)) {
     return false;
   }
 
@@ -258,6 +274,10 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
+  if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -279,6 +299,10 @@ bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   const Node& dq_node = *dq_nodes.front();
   int32_t dt_input = dq_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+    return false;
+  }
 
   // All Q outputs should have same data type and (optionally) equal quantization parameters as the input.
   for (size_t q_idx = 0; q_idx < q_nodes.size(); q_idx++) {
@@ -421,6 +445,10 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
+  if (!allow_4bit_ && (Is4BitIntType(dt_A) || Is4BitIntType(dt_B))) {
+    return false;
+  }
+
   if (dq_nodes.size() < 3) {  // no bias
     return true;
   }
@@ -456,6 +484,10 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
 
   // 16-bit int types must be explicitly allowed.
   if (!allow_16bit_ && Is16BitIntType(dt_input_1)) {
+    return false;
+  }
+
+  if (!allow_4bit_ && Is4BitIntType(dt_input_1)) {
     return false;
   }
 
