@@ -760,11 +760,11 @@ INSTANTIATE_UNPACK_TENSOR(UInt4x2)
     }                                                                                              \
     break;
 
-#define CASE_PROTO_TRACE_INT4(X)                                                                   \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                             \
-    if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>((size + 1) / 2, 1, out)) {        \
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto"); \
-    }                                                                                              \
+#define CASE_PROTO_TRACE_INT4(X, Y)                                                                            \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                         \
+    if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(Y::CalcNumInt4Pairs(size), sizeof(Y), out)) { \
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");             \
+    }                                                                                                          \
     break;
 
 template <size_t alignment>
@@ -800,8 +800,8 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
     CASE_PROTO_TRACE(FLOAT8E5M2, Float8E5M2);
     CASE_PROTO_TRACE(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
 #endif
-    CASE_PROTO_TRACE_INT4(UINT4);
-    CASE_PROTO_TRACE_INT4(INT4);
+    CASE_PROTO_TRACE_INT4(UINT4, UInt4x2);
+    CASE_PROTO_TRACE_INT4(INT4, Int4x2);
     default:
       return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
   }
