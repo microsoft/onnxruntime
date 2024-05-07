@@ -99,6 +99,17 @@ variables:
   ${{ if eq(parameters.CudaVersion, '12.2') }}:
     value: 12.4
 
+- name: win_trt_home
+  ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8
+  ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-12.4
+- name: win_cuda_home
+  ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    value: $(Agent.TempDirectory)\v11.8
+  ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    value: $(Agent.TempDirectory)\v12.2
+
 stages:
 - template: stages/setup-variables-stage.yml
   parameters:
@@ -240,6 +251,8 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+    win_trt_home: ${{ variables.win_trt_home }}
+    win_cuda_home: ${{ variables.win_cuda_home }}
 
 - template: stages/nuget-win-dml-packaging-stage.yml
   parameters:
