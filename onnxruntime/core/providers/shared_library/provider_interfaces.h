@@ -651,8 +651,6 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() = 0;
 #endif
-  virtual MLDataType DataTypeImpl__GetSparseTensorType_Int4x2() = 0;
-  virtual MLDataType DataTypeImpl__GetSparseTensorType_UInt4x2() = 0;
 #endif
 
   virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;

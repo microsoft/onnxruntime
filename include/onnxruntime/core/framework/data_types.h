@@ -297,8 +297,7 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
 template <typename T>
 struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                                     int32_t, int64_t, std::string, bool, MLFloat16,
-                                                    double, uint32_t, uint64_t, BFloat16,
-                                                    Int4x2, UInt4x2
+                                                    double, uint32_t, uint64_t, BFloat16
 #if !defined(DISABLE_FLOAT8_TYPES)
                                                     ,
                                                     Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
