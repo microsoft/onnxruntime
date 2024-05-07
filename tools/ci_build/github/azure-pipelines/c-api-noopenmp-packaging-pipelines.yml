@@ -226,6 +226,11 @@ stages:
     - template: templates/clean-agent-build-directory-step.yml
 
 - template: stages/java-cuda-packaging-stage.yml
+  parameters:
+    CudaVersion: ${{ parameters.CudaVersion }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+
 - template: stages/nuget-win-cuda-packaging-stage.yml
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
