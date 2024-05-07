@@ -16,7 +16,6 @@ import random
 import unittest
 
 import numpy
-import pytest
 import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
