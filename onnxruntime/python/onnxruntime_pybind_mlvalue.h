@@ -151,11 +151,9 @@ pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value);
 /// <summary>
 /// Creates a numpy array with shape with a copy of OrtValue data.
 /// This function is used when the OrtValue memory is not on CPU.
-/// Either data_transfer or func should not be null. data_transfer is
-/// given priority.
 /// </summary>
 /// <param name="ort_value">Source memory that is not on CPU.</param>
-/// <param name="data_transfer">a variant encapsulating aternatives</param>
+/// <param name="data_transfer">a variant encapsulating alternatives for copying data</param>
 /// <returns></returns>
 pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
                                                  const DataTransferAlternative& data_transfer);
