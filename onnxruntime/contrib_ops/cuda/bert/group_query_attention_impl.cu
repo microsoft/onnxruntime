@@ -531,19 +531,22 @@ __global__ void UnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* 
     int offset = tid % d;
     if (output_bnsh) {  // output BNSH
       int head_count = kv_num_heads;
+      T* unpacked;
       if (offset < q_hidden) {
+        unpacked = unpacked_q;
         head_count = num_heads;
       } else if (offset < q_hidden + k_hidden) {
+        unpacked = unpacked_k;
         offset -= q_hidden;
       } else {
+        unpacked = unpacked_v;
         offset -= (q_hidden + k_hidden);
       }
       int n = offset / head_size;
       int h = offset % head_size;
 
       int unpacked_i = INDEX_4D(head_count, sequence_length, head_size, b, n, s, h);
-
-      unpacked_q[unpacked_i] = packed_qkv[tid];
+      unpacked[unpacked_i] = packed_qkv[tid];
     } else {  // output BSNH
       if (offset < q_hidden) {
         int unpacked_i = b * sequence_length * num_heads * head_size + s * num_heads * head_size + offset;

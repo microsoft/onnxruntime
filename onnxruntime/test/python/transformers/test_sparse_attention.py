@@ -65,10 +65,12 @@ class AttentionConfig:
         self.dtype = dtype
 
     def shape_dict(self):
-        return {
-            "query": (self.batch_size, self.sequence_length, self.num_heads * self.head_size),
-            "key": (self.batch_size, self.sequence_length, self.kv_num_heads * self.head_size),
-            "value": (self.batch_size, self.sequence_length, self.kv_num_heads * self.head_size),
+        shapes = {
+            "query": (
+                self.batch_size,
+                self.sequence_length,
+                (self.num_heads + 2 * self.kv_num_heads) * self.head_size,
+            ),
             "past_key": (self.batch_size, self.kv_num_heads, self.past_buffer_length, self.head_size),
             "past_value": (self.batch_size, self.kv_num_heads, self.past_buffer_length, self.head_size),
             "total_sequence_length": (1,),
@@ -78,6 +80,16 @@ class AttentionConfig:
             "cos_cache": (self.max_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
             "sin_cache": (self.max_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
         }
+
+        if not self.is_packed_qkv:
+            shapes.update(
+                {
+                    "query": (self.batch_size, self.sequence_length, self.num_heads * self.head_size),
+                    "key": (self.batch_size, self.sequence_length, self.kv_num_heads * self.head_size),
+                    "value": (self.batch_size, self.sequence_length, self.kv_num_heads * self.head_size),
+                }
+            )
+        return shapes
 
     def get_cos_sin_cache(self, dtype):
         rotary_fraction = 1.0
@@ -91,9 +103,14 @@ class AttentionConfig:
         device = self.device
         # Since bfloat16 is not supported in ORT python I/O binding API, we always use float16 as model inputs.
         dtype = torch.float16
-        shape_dict = self.shape_dict()
 
+        # Always use non-packed qkv to generate same inputs for Torch and ORT.
+        packed = self.is_packed_qkv  # Save the original value.
+        self.is_packed_qkv = False
+        shape_dict = self.shape_dict()
+        self.is_packed_qkv = packed  # Restore the original value.
         torch.manual_seed(123)
+
         feeds = {
             "query": torch.empty(shape_dict["query"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
             "key": torch.empty(shape_dict["key"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
@@ -102,6 +119,14 @@ class AttentionConfig:
             "past_value": torch.empty(shape_dict["past_value"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
             "total_sequence_length": torch.tensor([self.total_sequence_length], dtype=torch.int32),
         }
+
+        if packed:
+            query = feeds["query"].view(self.batch_size, self.sequence_length, self.num_heads, self.head_size)
+            key = feeds["key"].view(self.batch_size, self.sequence_length, self.kv_num_heads, self.head_size)
+            value = feeds["value"].view(self.batch_size, self.sequence_length, self.kv_num_heads, self.head_size)
+            feeds["query"] = torch.dstack((query, key, value)).reshape(self.batch_size, self.sequence_length, -1)
+            del feeds["key"]
+            del feeds["value"]
 
         if self.do_rotary:
             cos_cache, sin_cache = self.get_cos_sin_cache(dtype)
@@ -127,6 +152,7 @@ class GroupQueryAttentionConfig(AttentionConfig):
         device="cuda",
         local_window_size: int = -1,
         attention_mask=None,
+        is_packed_qkv=False,
     ):
         super().__init__(
             "GroupQueryAttention",
@@ -141,6 +167,7 @@ class GroupQueryAttentionConfig(AttentionConfig):
             do_rotary,
             rotary_interleaved,
             device,
+            is_packed_qkv=is_packed_qkv,
         )
         # local_window_size is for ORT only, not for Torch implementation.
         self.local_window_size = local_window_size
@@ -186,6 +213,7 @@ class SparseAttentionConfig(AttentionConfig):
         do_rotary: bool = False,
         rotary_interleaved: bool = False,
         device="cuda",
+        is_packed_qkv=False,
     ):
         super().__init__(
             "SparseAttention",
@@ -200,6 +228,7 @@ class SparseAttentionConfig(AttentionConfig):
             do_rotary,
             rotary_interleaved,
             device,
+            is_packed_qkv=is_packed_qkv,
         )
         self.sparse_block_size = sparse_block_size
         self.num_layout = num_layout
@@ -239,10 +268,27 @@ class SparseAttentionConfig(AttentionConfig):
         )
         return feeds
 
-    def get_comparable_gqa_config(self, use_local=False, torch_use_sparse=False) -> GroupQueryAttentionConfig:
+    def get_comparable_ort_gqa_config(self, use_local=False) -> GroupQueryAttentionConfig:
+        return GroupQueryAttentionConfig(
+            self.batch_size,
+            self.sequence_length,
+            self.max_sequence_length,
+            self.past_sequence_length,
+            self.num_heads,
+            self.kv_num_heads,
+            self.head_size,
+            self.softmax_scale,
+            self.do_rotary,
+            self.rotary_interleaved,
+            self.device,
+            local_window_size=self.local_blocks * self.sparse_block_size if use_local else -1,
+            is_packed_qkv=self.is_packed_qkv,
+        )
 
+    def get_comparable_torch_gqa_config(self, use_sparse=False) -> GroupQueryAttentionConfig:
         attention_mask = None
-        if torch_use_sparse:
+
+        if use_sparse is True:
             attention_mask = self.dense_mask()[:, :, : self.total_sequence_length, : self.total_sequence_length]
             if self.past_sequence_length > 0:
                 attention_mask = attention_mask[:, :, -self.sequence_length :, :]
@@ -259,8 +305,8 @@ class SparseAttentionConfig(AttentionConfig):
             self.do_rotary,
             self.rotary_interleaved,
             self.device,
-            local_window_size=self.local_blocks * self.sparse_block_size if use_local else -1,
             attention_mask=attention_mask,
+            is_packed_qkv=False,  # torch reference implementation does not support packed qkv.
         )
 
 
@@ -328,7 +374,11 @@ def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
         nodes.extend(
             [
                 helper.make_node("Cast", [input], [input + suffix], f"Cast_{input}", to=TensorProto.BFLOAT16)
-                for input in ["query", "key", "value", "past_key", "past_value"]
+                for input in (
+                    ["query", "key", "value", "past_key", "past_value"]
+                    if not config.is_packed_qkv
+                    else ["query", "past_key", "past_value"]
+                )
             ]
         )
         if config.do_rotary:
@@ -348,18 +398,29 @@ def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
     shape_dict = config.shape_dict()
     graph_input = [
         helper.make_tensor_value_info("query", io_float_type, list(shape_dict["query"])),
-        helper.make_tensor_value_info("key", io_float_type, list(shape_dict["key"])),
-        helper.make_tensor_value_info("value", io_float_type, list(shape_dict["value"])),
-        helper.make_tensor_value_info("past_key", io_float_type, list(shape_dict["past_key"])),
-        helper.make_tensor_value_info("past_value", io_float_type, list(shape_dict["past_value"])),
-        helper.make_tensor_value_info("block_mask", TensorProto.INT32, list(shape_dict["block_mask"])),
-        helper.make_tensor_value_info(
-            "total_sequence_length", TensorProto.INT32, list(shape_dict["total_sequence_length"])
-        ),
-        helper.make_tensor_value_info(
-            "key_total_sequence_lengths", TensorProto.INT32, list(shape_dict["key_total_sequence_lengths"])
-        ),
     ]
+
+    if not config.is_packed_qkv:
+        graph_input.extend(
+            [
+                helper.make_tensor_value_info("key", io_float_type, list(shape_dict["key"])),
+                helper.make_tensor_value_info("value", io_float_type, list(shape_dict["value"])),
+            ]
+        )
+
+    graph_input.extend(
+        [
+            helper.make_tensor_value_info("past_key", io_float_type, list(shape_dict["past_key"])),
+            helper.make_tensor_value_info("past_value", io_float_type, list(shape_dict["past_value"])),
+            helper.make_tensor_value_info("block_mask", TensorProto.INT32, list(shape_dict["block_mask"])),
+            helper.make_tensor_value_info(
+                "total_sequence_length", TensorProto.INT32, list(shape_dict["total_sequence_length"])
+            ),
+            helper.make_tensor_value_info(
+                "key_total_sequence_lengths", TensorProto.INT32, list(shape_dict["key_total_sequence_lengths"])
+            ),
+        ]
+    )
 
     if config.do_rotary:
         graph_input += [
@@ -417,15 +478,26 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
     shape_dict = config.shape_dict()
     graph_input = [
         helper.make_tensor_value_info("query", float_type, list(shape_dict["query"])),
-        helper.make_tensor_value_info("key", float_type, list(shape_dict["key"])),
-        helper.make_tensor_value_info("value", float_type, list(shape_dict["value"])),
-        helper.make_tensor_value_info("past_key", float_type, list(shape_dict["past_key"])),
-        helper.make_tensor_value_info("past_value", float_type, list(shape_dict["past_value"])),
-        helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, list(shape_dict["seqlens_k"])),
-        helper.make_tensor_value_info(
-            "total_sequence_length", TensorProto.INT32, list(shape_dict["total_sequence_length"])
-        ),
     ]
+
+    if not config.is_packed_qkv:
+        graph_input.extend(
+            [
+                helper.make_tensor_value_info("key", float_type, list(shape_dict["key"])),
+                helper.make_tensor_value_info("value", float_type, list(shape_dict["value"])),
+            ]
+        )
+
+    graph_input.extend(
+        [
+            helper.make_tensor_value_info("past_key", float_type, list(shape_dict["past_key"])),
+            helper.make_tensor_value_info("past_value", float_type, list(shape_dict["past_value"])),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, list(shape_dict["seqlens_k"])),
+            helper.make_tensor_value_info(
+                "total_sequence_length", TensorProto.INT32, list(shape_dict["total_sequence_length"])
+            ),
+        ]
+    )
 
     if config.do_rotary:
         graph_input += [
@@ -562,7 +634,6 @@ class OrtGroupQueryAttention:
     """A wrapper of ORT GroupQueryAttention to test relevance and performance."""
 
     def __init__(self, config: GroupQueryAttentionConfig):
-        device = config.device
         cuda_provider_options = CudaSession.get_cuda_provider_options(
             torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
         )
@@ -570,7 +641,7 @@ class OrtGroupQueryAttention:
         self.ort_session = create_session(onnx_model_str, cuda_provider_options=cuda_provider_options)
         self.gpu_binding_manager = GpuBindingManager(
             ort_session=self.ort_session,
-            device=device,
+            device=config.device,
             stream=torch.cuda.current_stream().cuda_stream,
             max_cuda_graphs=2,
         )
@@ -580,7 +651,7 @@ class OrtGroupQueryAttention:
         )
         self.feed_dict = config.random_inputs()
 
-        if ENABLE_DEBUG:
+        if ENABLE_DEBUG and not config.is_packed_qkv:
             query = self.feed_dict["query"].view(
                 config.batch_size, config.sequence_length, config.num_heads, config.head_size
             )
@@ -604,7 +675,6 @@ class OrtSparseAttention:
     """A wrapper of ORT SparseAttention to test relevance and performance."""
 
     def __init__(self, config: SparseAttentionConfig):
-        device = config.device
         cuda_provider_options = CudaSession.get_cuda_provider_options(
             torch.cuda.current_device(), enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
         )
@@ -612,7 +682,7 @@ class OrtSparseAttention:
         self.ort_session = create_session(onnx_model_str, cuda_provider_options=cuda_provider_options)
         self.gpu_binding_manager = GpuBindingManager(
             ort_session=self.ort_session,
-            device=device,
+            device=config.device,
             stream=torch.cuda.current_stream().cuda_stream,
             max_cuda_graphs=2,
         )
@@ -622,7 +692,7 @@ class OrtSparseAttention:
         )
         self.feed_dict = config.random_inputs()
 
-        if ENABLE_DEBUG:
+        if ENABLE_DEBUG and not config.is_packed_qkv:
             query = self.feed_dict["query"].view(
                 config.batch_size, config.sequence_length, config.num_heads, config.head_size
             )
@@ -645,13 +715,14 @@ class OrtSparseAttention:
 
 
 def run_one_relevance_test(config: SparseAttentionConfig):
-    # Run QGA
-    if not config.do_rotary:  # config.past_sequence_length == 0:
-        gqa_config: GroupQueryAttentionConfig = config.get_comparable_gqa_config(torch_use_sparse=True)
+    if not config.do_rotary:
+        # Run QGA by Torch
+        gqa_config: GroupQueryAttentionConfig = config.get_comparable_torch_gqa_config(use_sparse=True)
         obj = TorchGroupQueryAttention(gqa_config)
         expected_out = obj.infer()
     else:
-        gqa_config: GroupQueryAttentionConfig = config.get_comparable_gqa_config(use_local=False)
+        # Run QGA by ORT
+        gqa_config: GroupQueryAttentionConfig = config.get_comparable_ort_gqa_config(use_local=False)
         obj = OrtGroupQueryAttention(gqa_config)
         ort_qga_outputs = obj.infer()
         expected_out = ort_qga_outputs["output"].view(
@@ -680,58 +751,62 @@ def run_one_relevance_test(config: SparseAttentionConfig):
 def run_relevance_no_past(sm: int, device):
     """Test prompt prefilling without past kv cache."""
     for seq_len in [1, 64, 127, 128, 192, 256]:
-        config = SparseAttentionConfig(
-            batch_size=3,
-            sequence_length=seq_len,
-            max_sequence_length=256,
-            past_sequence_length=0,
-            num_heads=8,
-            kv_num_heads=4,
-            head_size=128,
-            sparse_block_size=64,
-            num_layout=2,
-            local_blocks=2,
-            vert_stride=2,
-            softmax_scale=1.8 / (128**0.5),
-            device=device,
-        )
-        run_one_relevance_test(config)
-
-        if sm >= 80:
-            config.dtype = torch.bfloat16
+        for packed_qkv in [False, True]:
+            config = SparseAttentionConfig(
+                batch_size=3,
+                sequence_length=seq_len,
+                max_sequence_length=256,
+                past_sequence_length=0,
+                num_heads=8,
+                kv_num_heads=4,
+                head_size=128,
+                sparse_block_size=64,
+                num_layout=2,
+                local_blocks=2,
+                vert_stride=2,
+                softmax_scale=1.8 / (128**0.5),
+                device=device,
+                is_packed_qkv=packed_qkv,
+            )
             run_one_relevance_test(config)
+
+            if sm >= 80 and not packed_qkv:
+                config.dtype = torch.bfloat16
+                run_one_relevance_test(config)
 
 
 def run_relevance_past(sm: int, device, do_rotary: bool):
     """Test token generation with past kv cache."""
     for past_seq_len in [1, 63, 64, 127, 128, 511]:
-        config = SparseAttentionConfig(
-            batch_size=3,
-            sequence_length=1,
-            max_sequence_length=512,
-            past_sequence_length=past_seq_len,
-            num_heads=8,
-            kv_num_heads=4,
-            head_size=128,
-            sparse_block_size=64,
-            num_layout=4,
-            local_blocks=2,
-            vert_stride=4,
-            softmax_scale=None,
-            do_rotary=do_rotary,
-            rotary_interleaved=(past_seq_len % 2 == 1),
-            device=device,
-        )
+        for packed_qkv in [False, True]:
+            config = SparseAttentionConfig(
+                batch_size=3,
+                sequence_length=1,
+                max_sequence_length=512,
+                past_sequence_length=past_seq_len,
+                num_heads=8,
+                kv_num_heads=4,
+                head_size=128,
+                sparse_block_size=64,
+                num_layout=4,
+                local_blocks=2,
+                vert_stride=4,
+                softmax_scale=None,
+                do_rotary=do_rotary,
+                rotary_interleaved=(past_seq_len % 2 == 1),
+                device=device,
+                is_packed_qkv=packed_qkv,
+            )
 
-        if do_rotary:
-            # When there is rotary, we use ORT GQA as reference: ORT GQA does not support mask so here we use dense.
-            config.local_blocks = config.max_blocks
+            if do_rotary:
+                # When there is rotary, we use ORT GQA as reference: ORT GQA does not support mask so here we use dense.
+                config.local_blocks = config.max_blocks
 
-        run_one_relevance_test(config)
-
-        if sm >= 80:
-            config.dtype = torch.bfloat16
             run_one_relevance_test(config)
+
+            if sm >= 80 and not packed_qkv:
+                config.dtype = torch.bfloat16
+                run_one_relevance_test(config)
 
 
 def run_relevance_test(sm: int):
@@ -753,13 +828,13 @@ def get_plot_algos(sm: int):
         return {
             "line_vals": ["torch_gqa", "ort_gqa", "ort_gqa_local", "ort_sparse_att"],
             "line_names": ["TORCH-GQA", "ORT-GQA-Dense", "ORT-GQA-Local", "ORT-SparseAtt"],
-            "styles": [("red", "-"), ("blue", "-"), ("yellow", "-"), ("green", "-")],
+            "styles": [("red", "solid"), ("blue", "dashed"), ("yellow", "dashdot"), ("green", "dotted")],
         }
     else:
         return {
             "line_vals": ["torch_gqa", "ort_gqa", "ort_sparse_att"],
             "line_names": ["TORCH-GQA", "ORT-GQA-Dense", "ORT-SparseAtt"],
-            "styles": [("red", "-"), ("blue", "-"), ("green", "-")],
+            "styles": [("red", "solid"), ("blue", "dashed"), ("green", "dashdot")],
         }
 
 
@@ -773,6 +848,7 @@ def plot_prompt_performance(
     local_blocks=16,
     vert_stride=8,
     num_layout=8,
+    packed_qkv=False,
     dtype=torch.float16,
 ):
     import triton
@@ -785,13 +861,22 @@ def plot_prompt_performance(
             line_arg="provider",
             ylabel="ms",
             **algos,
-            plot_name=f"prompt-sm{sm}-batch{batch_size}-head{num_heads}-d{head_size}-local{local_blocks}-vert{vert_stride}-{dtype}",
-            args={"num_heads": num_heads, "batch_size": batch_size, "head_size": head_size, "dtype": dtype},
+            plot_name=f"prompt-sm{sm}-batch{batch_size}-head{num_heads}-d{head_size}"
+            f"-local{local_blocks}-vert{vert_stride}-packed{int(packed_qkv)}-{dtype}",
+            args={
+                "num_heads": num_heads,
+                "batch_size": batch_size,
+                "head_size": head_size,
+                "dtype": dtype,
+                "packed_qkv": packed_qkv,
+            },
         )
     ]
 
     @triton.testing.perf_report(configs)
-    def benchmark(batch_size, num_heads, sequence_length, head_size, provider, dtype=torch.float16, device="cuda"):
+    def benchmark(
+        batch_size, num_heads, sequence_length, head_size, provider, packed_qkv, dtype=torch.float16, device="cuda"
+    ):
         warmup = 15
         repeat = 100
 
@@ -807,18 +892,20 @@ def plot_prompt_performance(
             num_layout=num_layout,
             local_blocks=local_blocks,
             vert_stride=vert_stride,
+            do_rotary=True,
+            is_packed_qkv=packed_qkv,
         )
 
         if provider in ["ort_gqa", "ort_gqa_local"]:
-            gqa_config = config.get_comparable_gqa_config(use_local=(provider == "ort_gqa_local"))
+            gqa_config = config.get_comparable_ort_gqa_config(use_local=(provider == "ort_gqa_local"))
             obj = OrtGroupQueryAttention(gqa_config)
-        elif provider == "ort_sparse_att":
+        elif provider in ["ort_sparse_att", "ort_sparse_att_fallback"]:
             obj = OrtSparseAttention(config)
         else:  # Torch GQA
             assert provider == "torch_gqa"
             if sequence_length > 2048:  # out of memory
                 return 0
-            gqa_config = config.get_comparable_gqa_config(torch_use_sparse=True)
+            gqa_config = config.get_comparable_torch_gqa_config(use_sparse=True)
             obj = TorchGroupQueryAttention(gqa_config)
 
         ms = triton.testing.do_bench(obj.infer, warmup=warmup, rep=repeat)
@@ -837,6 +924,7 @@ def plot_token_performance(
     local_blocks=16,
     vert_stride=8,
     num_layout=8,
+    packed_qkv=False,
     dtype=torch.float16,
 ):
     import triton
@@ -849,13 +937,22 @@ def plot_token_performance(
             line_arg="provider",
             ylabel="ms",
             **algos,
-            plot_name=f"token-sm{sm}-batch{batch_size}-head{num_heads}-d{head_size}-local{local_blocks}-vert{vert_stride}-{dtype}",
-            args={"num_heads": num_heads, "batch_size": batch_size, "head_size": head_size, "dtype": dtype},
+            plot_name=f"token-sm{sm}-batch{batch_size}-head{num_heads}-d{head_size}"
+            f"-local{local_blocks}-vert{vert_stride}-packed{int(packed_qkv)}-{dtype}",
+            args={
+                "num_heads": num_heads,
+                "batch_size": batch_size,
+                "head_size": head_size,
+                "dtype": dtype,
+                "packed_qkv": packed_qkv,
+            },
         )
     ]
 
     @triton.testing.perf_report(configs)
-    def benchmark(batch_size, num_heads, past_sequence_length, head_size, provider, dtype=torch.float16, device="cuda"):
+    def benchmark(
+        batch_size, num_heads, past_sequence_length, head_size, provider, packed_qkv, dtype=torch.float16, device="cuda"
+    ):
         warmup = 15
         repeat = 100
 
@@ -871,10 +968,12 @@ def plot_token_performance(
             num_layout=num_layout,
             local_blocks=local_blocks,
             vert_stride=vert_stride,
+            do_rotary=True,
+            is_packed_qkv=packed_qkv,
         )
 
         if provider in ["ort_gqa", "ort_gqa_local"]:
-            gqa_config = config.get_comparable_gqa_config(use_local=(provider == "ort_gqa_local"))
+            gqa_config = config.get_comparable_ort_gqa_config(use_local=(provider == "ort_gqa_local"))
             obj = OrtGroupQueryAttention(gqa_config)
         elif provider == "ort_sparse_att":
             obj = OrtSparseAttention(config)
@@ -882,7 +981,7 @@ def plot_token_performance(
             assert provider == "torch_gqa"
             if past_sequence_length > 2048:  # out of memory
                 return 0
-            gqa_config = config.get_comparable_gqa_config(torch_use_sparse=True)
+            gqa_config = config.get_comparable_torch_gqa_config(use_sparse=True)
             obj = TorchGroupQueryAttention(gqa_config)
 
         ms = triton.testing.do_bench(obj.infer, warmup=warmup, rep=repeat)
@@ -984,17 +1083,20 @@ def run_performance_test(sm: int):
 
     """
     with torch.no_grad():
-        plot_prompt_performance(sm=sm)
-        plot_token_performance(sm=sm)
+        plot_prompt_performance(sm=sm, packed_qkv=False)
+        plot_prompt_performance(sm=sm, packed_qkv=True)
+        plot_token_performance(sm=sm, packed_qkv=False)
+        plot_token_performance(sm=sm, packed_qkv=False)
 
 
 if __name__ == "__main__":
     torch.set_printoptions(precision=6, edgeitems=3, linewidth=150, profile="default", sci_mode=False)
+    if torch.cuda.is_available():
+        major, minor = torch.cuda.get_device_capability()
+        sm = major * 10 + minor
 
-    major, minor = torch.cuda.get_device_capability()
-    sm = major * 10 + minor
-
-    s = torch.cuda.Stream()
-    with torch.cuda.stream(s):
-        run_relevance_test(sm)
-        run_performance_test(sm)
+        if sm in [75, 80, 86, 89, 90]:
+            s = torch.cuda.Stream()
+            with torch.cuda.stream(s):
+                run_relevance_test(sm)
+                run_performance_test(sm)
