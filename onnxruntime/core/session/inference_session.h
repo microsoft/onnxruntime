@@ -223,12 +223,12 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
-    * Register a graph transformer. If you've one to register, call this before invoking Initialize().
-    * Calling this API is optional.
-    * @param p_graph_transformer The graph transformer to register.
-    * @param level Optional. Level to which this transformer should be registered. Default is set to 2.
-    * @return OK if success.
-    */
+   * Register a graph transformer. If you've one to register, call this before invoking Initialize().
+   * Calling this API is optional.
+   * @param p_graph_transformer The graph transformer to register.
+   * @param level Optional. Level to which this transformer should be registered. Default is set to 2.
+   * @return OK if success.
+   */
   [[nodiscard]] common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                                         TransformerLevel level = TransformerLevel::Level2);
 

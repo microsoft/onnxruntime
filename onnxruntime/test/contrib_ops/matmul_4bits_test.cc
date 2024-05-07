@@ -326,8 +326,8 @@ namespace {
 // This has too many parameters of the same type that must be specified in the correct order.
 // Consider using the overload with a TestOptions parameter.
 void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
-                              bool has_zeropoint, bool use_float16, bool has_g_idx = false,
-                              bool zp_is_4bit = true, float fp16_abs_error = 0.02f, bool has_bias = false) {
+             bool has_zeropoint, bool use_float16, bool has_g_idx = false,
+             bool zp_is_4bit = true, float fp16_abs_error = 0.02f, bool has_bias = false) {
   TestOptions opts{};
   opts.M = M;
   opts.N = N;
