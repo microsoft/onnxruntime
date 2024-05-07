@@ -110,7 +110,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 
  * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and cuDNN, and setup environment variables.
  * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.6.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.0.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
    * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
    * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
@@ -146,7 +146,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 
 ---
 
-## NVIDIA Jetson TX1/TX2/Nano/Xavier
+## NVIDIA Jetson TX1/TX2/Nano/Xavier/Orin
 
 ### Build Instructions
 {: .no_toc }
