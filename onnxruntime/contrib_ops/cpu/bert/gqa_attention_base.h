@@ -135,7 +135,6 @@ class GQAAttentionBase : public AttentionBase {
         const int output_offset = static_cast<int>(i) * sequence_length * present_buffer_sequence_length;
         T* output = attention_probs + output_offset;
 
-
         const T* k;
         if (packed_qkv) {
           k = K + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
@@ -167,15 +166,11 @@ class GQAAttentionBase : public AttentionBase {
 
         // compute Softmax
         T* output_softmax = output;
-        for(int seq = 0; seq < sequence_length; seq++) {
-          if (sequence_length == 1) { // token generation or prompt length is 1 in which case total_seqlen is also 1
-            ComputeAttentionSoftmaxInplace(output_softmax, 1, total_seqlen, nullptr);
-          } else { // prompt
-            int seq_causal_length = seq + 1;
-            ComputeAttentionSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
-            for (int total_seq = seq_causal_length; total_seq < total_seqlen; total_seq++) {
-              output_softmax[total_seq] = 0.f;
-            }
+        for (int seq = 0; seq < sequence_length; seq++) {
+          int seq_causal_length = sequence_length == 1 ? total_seqlen : seq + 1;
+          ComputeAttentionSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
+          for (int total_seq_id = seq_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
+            output_softmax[total_seq_id] = 0.f;
           }
 
           output_softmax += present_buffer_sequence_length;
