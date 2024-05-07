@@ -110,13 +110,6 @@ stages:
       parameters:
         xcodeVersion: 14.2
 
-    - script: |
-        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-          $(Build.SourcesDirectory) \
-          $(Build.BinariesDirectory)/protobuf \
-          $(Build.BinariesDirectory)/protobuf_install
-      displayName: Build Host Protoc
-
     - template: download-deps.yml
 
     - task: PythonScript@0
@@ -130,7 +123,6 @@ stages:
         set -e -x
         python3 tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
-          --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
           tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
         mkdir $(Build.BinariesDirectory)/artifacts
         mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
