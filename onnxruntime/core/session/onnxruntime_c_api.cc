@@ -216,7 +216,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   }
 
   size_t size_to_allocate = 0;
-  Status status = Tensor::CalculateTensorStorageSize(ml_type, tensor_shape, size_to_allocate);
+  Status status = Tensor::CalculateTensorStorageSize(ml_type, tensor_shape, 0 /*alignment*/, size_to_allocate);
   if (!status.IsOK()) {
     return ToOrtStatus(status);
   }

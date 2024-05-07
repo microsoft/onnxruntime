@@ -31,7 +31,7 @@ int64_t Tensor::GetNumTensorElems(MLDataType elt_type, int64_t shape_size) {
   int64_t num_elems = shape_size;
   auto prim_type = elt_type->AsPrimitiveDataType();
 
-  if (prim_type != nullptr && prim_type->HasSubElems() && num_elems > 0) {
+  if (prim_type != nullptr && num_elems > 0 && prim_type->HasSubElems()) {
     const int64_t num_sub_elems = prim_type->GetNumSubElems();
     num_elems = (num_elems + (num_sub_elems - 1)) / num_sub_elems;
   }
@@ -39,7 +39,7 @@ int64_t Tensor::GetNumTensorElems(MLDataType elt_type, int64_t shape_size) {
   return num_elems;
 }
 
-Status Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape,
+Status Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape, size_t alignment,
                                           /*out*/ size_t& storage_size) {
   int64_t num_elems = GetNumTensorElems(elt_type, shape.Size());
   ORT_RETURN_IF(num_elems < 0, "Tensor shape.Size() must be >= 0");
@@ -48,8 +48,9 @@ Status Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape
     if (static_cast<uint64_t>(num_elems) > std::numeric_limits<size_t>::max()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape is too large");
     }
-    if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(num_elems), elt_type->Size(), &storage_size)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation for Tensor storage size");
+    if (!IAllocator::CalcMemSizeForArrayWithAlignment(static_cast<size_t>(num_elems), elt_type->Size(), alignment,
+                                                      &storage_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Calculation for Tensor storage size overflowed");
     }
   } else {
     storage_size = 0;
@@ -60,7 +61,7 @@ Status Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape
 
 size_t Tensor::CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape) {
   size_t storage_size = 0;
-  ORT_THROW_IF_ERROR(CalculateTensorStorageSize(elt_type, shape, storage_size));
+  ORT_THROW_IF_ERROR(CalculateTensorStorageSize(elt_type, shape, 0, storage_size));
   return storage_size;
 }
 
@@ -119,14 +120,25 @@ void Tensor::InitOrtValue(Tensor&& tensor, OrtValue& ort_value) {
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 }
 
+int64_t Tensor::NumElements() const {
+  int64_t num_elems = shape_.Size();
+
+  if (dtype_ != nullptr && num_elems > 0 && dtype_->HasSubElems()) {
+    const int64_t num_sub_elems = dtype_->GetNumSubElems();
+    num_elems = (num_elems + (num_sub_elems - 1)) / num_sub_elems;
+  }
+
+  return num_elems;
+}
+
 size_t Tensor::SizeInBytes() const {
 #ifdef ENABLE_STRIDED_TENSORS
-  int64_t shape_size = IsContiguous() ? shape_.Size() : GetSizeFromStrides(shape_, strides_);
+  int64_t size = IsContiguous() ? shape_.Size() : GetSizeFromStrides(shape_, strides_);
 #else
-  int64_t shape_size = shape_.Size();
+  int64_t size = shape_.Size();
 #endif
   size_t ret = 0;
-  const int64_t num_elems = GetNumTensorElems(dtype_, shape_size);
+  const int64_t num_elems = GetNumTensorElems(dtype_, size);
 
   if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(num_elems), dtype_->Size(), &ret)) {
     ORT_THROW("tensor size overflow");
@@ -161,6 +173,8 @@ void Tensor::Init(MLDataType elt_type, const TensorShape& shape, void* p_raw_dat
     ORT_ENFORCE(shape.NumDimensions() == strides.size(), "Length of strides doesn't match tensor dimension size.");
     strides_.assign(strides.begin(), strides.end());
     is_contiguous_ = CheckIsContiguous();
+    ORT_ENFORCE(is_contiguous_ || !dtype_->HasSubElems(),
+                "Do not support subbyte element types with non-contiguous strided tensors.");
   }
 #else
   ORT_UNUSED_PARAMETER(strides);
@@ -277,6 +291,8 @@ void Tensor::SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const in
   shape_ = new_shape;
   strides_ = ToShapeVector(new_strides);
   is_contiguous_ = CheckIsContiguous();
+  ORT_ENFORCE(is_contiguous_ || !dtype_->HasSubElems(),
+              "Do not support subbyte element types with non-contiguous strided tensors.");
 }
 #endif
 
