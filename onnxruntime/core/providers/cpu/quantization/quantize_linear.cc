@@ -20,12 +20,22 @@ class DequantizeLinear final : public OpKernel {
     if (!info.GetAttr<int64_t>("axis", &axis_).IsOK()) {
       axis_ = 1;
     }
+
+    if (!info.GetAttr<int64_t>("block_size", &block_size_).IsOK()) {
+      block_size_ = 0;
+    }
+
+    // TODO(adrianlizarraga): Support the block_size attribute added in opset 21.
+    if (block_size_ != 0) {
+      ORT_THROW("DequantizeLinear does not yet support the 'block_size' attribute.");
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   int64_t axis_;
+  int64_t block_size_;
 };
 
 template <typename T>
@@ -38,6 +48,15 @@ class QuantizeLinear final : public OpKernel {
     if (!info.GetAttr<int64_t>("saturate", &saturate_).IsOK()) {
       saturate_ = 1;
     }
+
+    if (!info.GetAttr<int64_t>("block_size", &block_size_).IsOK()) {
+      block_size_ = 0;
+    }
+
+    // TODO(adrianlizarraga): Support the block_size attribute added in opset 21.
+    if (block_size_ != 0) {
+      ORT_THROW("QuantizeLinear does not yet support the 'block_size' attribute.");
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -45,6 +64,7 @@ class QuantizeLinear final : public OpKernel {
  private:
   int64_t axis_;
   int64_t saturate_;
+  int64_t block_size_;
 };
 
 static void PrepareForQDQ(const TensorShape& input_shape,
