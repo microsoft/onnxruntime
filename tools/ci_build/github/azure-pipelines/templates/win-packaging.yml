@@ -87,19 +87,33 @@ stages:
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     variables:
-      GRADLE_OPTS: '-Dorg.gradle.daemon=false'
-      VSGenerator: 'Visual Studio 17 2022'
-      CUDA_MODULE_LOADING: 'LAZY'
+    - name: GRADLE_OPTS
+      value: '-Dorg.gradle.daemon=false'
+    - name: VSGenerator
+      value: 'Visual Studio 17 2022'
+    - name: CUDA_MODULE_LOADING
+      value:
+    - name: buildJavaParameter
+      $ {{ if eq(parameters.buildJava, 'true') }}:
+        value: '--build_java'
+      $ {{ else }}:
+        value: ''
+    - name: timeoutParameter
+      $ {{ if eq(parameters.UseIncreasedTimeoutForTests, 'true') }}:
+        value: '--test_all_timeout 72000'
+      $ {{ else }}:
+        value: ''
     workspace:
       clean: all
-    ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-      pool: onnxruntime-Win-CPU-2022
-    ${{ else }}:
-      pool: ${{ parameters.ort_build_pool_name }}
-    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-      timeoutInMinutes: 1200
-    ${{ else }}:
-      timeoutInMinutes: 360
+      ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+        pool: onnxruntime-Win-CPU-2022
+      ${{ else }}:
+        pool: ${{ parameters.ort_build_pool_name }}
+      ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+        timeoutInMinutes: 1200
+      ${{ if ne(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+        timeoutInMinutes: 360
+
 
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -166,10 +180,17 @@ stages:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-          arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000'
-        ${{ else }}:
-          arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
+        arguments: '--config RelWithDebInfo 
+                    --use_binskim_compliant_compile_flags 
+                    --enable_lto 
+                    --disable_rtti 
+                    --build_dir $(Build.BinariesDirectory) 
+                    --skip_submodule_sync 
+                    --build_shared_lib 
+                    --update 
+                    --cmake_generator "$(VSGenerator)" 
+                    --enable_onnx_tests $(TelemetryOption) 
+                    ${{ parameters.buildparameter }} $(timeoutParameter) $(buildJavaParameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
 
