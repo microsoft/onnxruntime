@@ -144,7 +144,7 @@ class GQAAttentionBase : public AttentionBase {
         const int head_index = static_cast<int>(i) % num_heads_;
         const int past_seqlen = sequence_length == 1 ? static_cast<int>(seqlens_k[batch_index]) : past_buffer_sequence_length;
         const size_t past_chunk_length = static_cast<size_t>(past_seqlen) * head_size;
-        //const int total_seqlen = seqlens_k[batch_index] + 1;
+        const int total_seqlen = seqlens_k[batch_index] + 1;
 
         const int output_offset = static_cast<int>(i) * sequence_length * present_buffer_sequence_length;
         const int mask_offset = batch_index * sequence_length * present_buffer_sequence_length;
@@ -191,13 +191,18 @@ class GQAAttentionBase : public AttentionBase {
                                     output, present_buffer_sequence_length, nullptr);
         // math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha,
         //                           q, head_size, k, head_size, 0.0f /*beta*/, output, present_buffer_sequence_length, nullptr);
+
+        // compute Softmax
+        T* output_softmax = output;
+        for(int seq = 0; seq < sequence_length; seq++) {
+          ComputeAttentionSoftmaxInplace(output_softmax, 1, total_seqlen, nullptr);
+          for(int total_seq = total_seqlen; total_seq < present_buffer_sequence_length; total_seq++){
+            output_softmax[total_seq] = 0.f;
+          }
+          output_softmax += present_buffer_sequence_length;
+        }
       }
     });
-
-    // attention_probs(B, N, S, T) = Softmax(attention_probs)
-    const int N = batch_size * num_heads_ * sequence_length;
-    const int D = present_buffer_sequence_length;
-    ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
   }
 
   template <typename T>
