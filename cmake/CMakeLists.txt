@@ -797,6 +797,8 @@ if (onnxruntime_USE_QNN)
         message(STATUS "Building MSVC for architecture ${CMAKE_SYSTEM_PROCESSOR} with CMAKE_GENERATOR_PLATFORM as ${GEN_PLATFORM}")
         if (${GEN_PLATFORM} STREQUAL "arm64")
           set(QNN_ARCH_ABI aarch64-windows-msvc)
+        elseif (${GEN_PLATFORM} STREQUAL "arm64ec")
+          set(QNN_ARCH_ABI arm64x-windows-msvc)
         else()
           set(QNN_ARCH_ABI x86_64-windows-msvc)
         endif()
@@ -815,7 +817,7 @@ if (onnxruntime_USE_QNN)
 
     if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
       file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libQnn*.so" "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/Qnn*.dll")
-      if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc")
+      if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc" OR ${QNN_ARCH_ABI} STREQUAL "arm64x-windows-msvc")
         file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so"
 		                                       "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so"
 		                                       "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libqnnhtpv73.cat")
