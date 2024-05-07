@@ -184,8 +184,11 @@ class GQAAttentionBase : public AttentionBase {
         } else {
           q = Q + q_input_chunk_length * i;
         }
-        math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, present_buffer_sequence_length, head_size, alpha,
-                                  q, k, mask_data != nullptr ? 1.0f : 0.0f, output, nullptr);
+        math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans,
+                                    sequence_length, present_buffer_sequence_length, head_size, alpha,
+                                    q, head_size, k, head_size,
+                                    mask_data != nullptr ? 1.0f : 0.0f /*bata*/,
+                                    output, present_buffer_sequence_length, nullptr);
         // math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha,
         //                           q, head_size, k, head_size, 0.0f /*beta*/, output, present_buffer_sequence_length, nullptr);
       }
