@@ -1,18 +1,9 @@
 jobs:
 - job: j
-  pool: onnxruntime-mac-m1-cpu
+  pool: onnxruntime-Win-CPU-2022
   
   steps:
   - checkout: none
 
-  - bash: echo "##vso[task.prependpath]/usr/local/miniconda3/bin"
-    displayName: "add Conda to PATH"
-
-  - bash: |
-      set -e -x
-      conda create --name test_env --yes python=3.9
-      ~/.conda/envs/test_env/bin/python --version
-
-  - bash: |
-      set -e -x
-      conda env remove --name test_env --yes
+  - script:
+      az login --identity
