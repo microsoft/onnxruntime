@@ -575,6 +575,8 @@ struct ProviderHost {
 
   // PrimitiveDataTypeBase
   virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;
+  virtual int32_t PrimitiveDataTypeBase__GetNumSubElems(const PrimitiveDataTypeBase* p) = 0;
+  virtual bool PrimitiveDataTypeBase__HasSubElems(const PrimitiveDataTypeBase* p) = 0;
 
   // DataTypeImpl
   virtual MLDataType DataTypeImpl__GetType_Tensor() = 0;
