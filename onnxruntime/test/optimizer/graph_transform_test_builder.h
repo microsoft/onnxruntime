@@ -120,7 +120,8 @@ class ModelTestBuilder {
       std::is_same_v<TInt4, Int4x2> || std::is_same_v<TInt4, UInt4x2>,
       NodeArg*>::type
   MakeInputInt4(const std::vector<int64_t>& shape, typename TInt4::UnpackedType min, typename TInt4::UnpackedType max) {
-    std::vector<TInt4::UnpackedType> data_int8 = rand_gen_.Uniform<TInt4::UnpackedType>(shape, min, max);
+    using UnpackedType = typename TInt4::UnpackedType;
+    std::vector<UnpackedType> data_int8 = rand_gen_.Uniform<UnpackedType>(shape, min, max);
     std::vector<TInt4> data(TInt4::CalcNumInt4Pairs(data_int8.size()));
     for (size_t i = 0; i < data_int8.size(); i++) {
       size_t r = i >> 1;
