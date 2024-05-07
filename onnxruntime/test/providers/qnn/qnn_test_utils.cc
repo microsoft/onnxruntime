@@ -65,6 +65,22 @@ std::vector<float> GetSequentialFloatData(const std::vector<int64_t>& shape, flo
   return data;
 }
 
+TestInputDef<MLFloat16> ConvertToFP16InputDef(const TestInputDef<float>& input_def) {
+  if (input_def.IsRawData()) {
+    std::vector<MLFloat16> input_data_fp16;
+    input_data_fp16.reserve(input_def.GetRawData().size());
+    for (float f32_val : input_def.GetRawData()) {
+      input_data_fp16.push_back(MLFloat16(f32_val));
+    }
+
+    return TestInputDef<MLFloat16>(input_def.GetShape(), input_def.IsInitializer(), input_data_fp16);
+  } else {
+    auto rand_data = input_def.GetRandomDataInfo();
+    return TestInputDef<MLFloat16>(input_def.GetShape(), input_def.IsInitializer(),
+                                   MLFloat16(rand_data.min), MLFloat16(rand_data.max));
+  }
+}
+
 void TryEnableQNNSaver(ProviderOptions& qnn_options) {
   // Allow dumping QNN API calls to file by setting an environment variable that enables the QNN Saver backend.
   constexpr auto kEnableQNNSaverEnvironmentVariableName = "ORT_UNIT_TEST_ENABLE_QNN_SAVER";
