@@ -94,14 +94,14 @@ stages:
     - name: CUDA_MODULE_LOADING
       value:
     - name: buildJavaParameter
-      $ {{ if eq(parameters.buildJava, 'true') }}:
+      ${{ if eq(parameters.buildJava, 'true') }}:
         value: '--build_java'
-      $ {{ else }}:
+      ${{ else }}:
         value: ''
     - name: timeoutParameter
-      $ {{ if eq(parameters.UseIncreasedTimeoutForTests, 'true') }}:
+      ${{ if eq(parameters.UseIncreasedTimeoutForTests, 'true') }}:
         value: '--test_all_timeout 72000'
-      $ {{ else }}:
+      ${{ else }}:
         value: ''
     workspace:
       clean: all
