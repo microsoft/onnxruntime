@@ -255,7 +255,8 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                            const onnxruntime::GraphViewer& subgraph,
                                            const logging::Logger& logger) const {
   // QDQ stripping enabled only for the NPU
-  if (global_context_.device_type.find("NPU") != std::string::npos) {
+  if (global_context_.device_type.find("NPU") != std::string::npos &&
+      global_context_.is_ptq) {
     std::unique_ptr<onnxruntime::Model> model;
     Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, model);
     auto model_proto = model->ToProto();
