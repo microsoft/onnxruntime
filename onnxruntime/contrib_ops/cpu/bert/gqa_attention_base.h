@@ -199,7 +199,7 @@ class GQAAttentionBase : public AttentionBase {
 
   template <typename T>
   void ComputeVxAttentionScore(T* output,                           // buffer for the result with size BxSxNxH
-                               T* tmp_buffer,                       // buffer for temp use with size is BxNxSxH
+                               T* /*tmp_buffer*/,                   // buffer for temp use with size is BxNxSxH
                                const T* attention_probs,            // Attention probs with size BxNxSxT
                                const T* V,                          // V value with size BxN_kvxSxH
                                const int32_t* seqlens_k,            // past sequence lengths tensor
@@ -218,8 +218,7 @@ class GQAAttentionBase : public AttentionBase {
     const int packed_batch_stride = packed_qkv ? (num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size : 0;
     const int kv_num_heads_factor = num_heads_ / kv_num_heads_;
     // TODO: what is with these being ptrdiff_t?
-    const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * head_size;                    // S x H
-    const ptrdiff_t kv_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * head_size;                   // L x H
+    const int kv_input_chunk_length = sequence_length * head_size;                                             // L x H
     const size_t past_buff_chunk_length = static_cast<size_t>(past_buffer_sequence_length) * head_size;        // L x H
     const size_t present_buff_chunk_length = static_cast<size_t>(present_buffer_sequence_length) * head_size;  // T x H
 
@@ -260,7 +259,7 @@ class GQAAttentionBase : public AttentionBase {
                                   i / kv_num_heads_factor);
         }
 
-        T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
+        T* output_current = output + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;
 
         math::GemmEx<T, ThreadPool>(CblasNoTrans,
@@ -270,17 +269,7 @@ class GQAAttentionBase : public AttentionBase {
                                     attention_probs + attention_probs_offset, present_buffer_sequence_length,
                                     v, head_size,
                                     0.0f /*beta*/,
-                                    current_tmp_data, head_size, nullptr);
-
-        // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
-        T* src = current_tmp_data;
-        ptrdiff_t dest_offset = (SafeInt<ptrdiff_t>(batch_index) * sequence_length * num_heads_ + head_index) * head_size;
-        T* dest = output + dest_offset;
-        for (int j = 0; j < sequence_length; j++) {
-          memcpy(dest, src, bytes_to_copy_trans);
-          src += head_size;
-          dest += hidden_size;
-        }
+                                    output_current, hidden_size, nullptr);
       }
     });
   }
