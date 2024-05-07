@@ -305,7 +305,7 @@ stages:
 
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
     dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
-    condition: contains('${{parameters.ort_build_pool_name}}', 'GPU')
+    condition: and(contains('${{parameters.ort_build_pool_name}}', 'GPU'),  succeeded())
     workspace:
       clean: all
     pool: ${{ parameters.ort_build_pool_name }}
