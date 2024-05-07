@@ -147,6 +147,8 @@ class Env {
 
   virtual std::vector<LogicalProcessors> GetDefaultThreadAffinities() const = 0;
 
+  virtual int GetL2CacheSize() const = 0;
+
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {
     return env_time_->NowMicros();

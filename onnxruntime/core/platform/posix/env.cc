@@ -302,6 +302,10 @@ class PosixEnv : public Env {
     return ret;
   }
 
+  int GetL2CacheSize() const override {
+    return sysconf(_SC_LEVEL2_CACHE_SIZE);
+  }
+
   void SleepForMicroseconds(int64_t micros) const override {
     while (micros > 0) {
       timespec sleep_time;

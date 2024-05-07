@@ -39,6 +39,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/sqnbitgemm.h
   ${MLAS_SRC_DIR}/sqnbitgemm.cpp
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
+  ${MLAS_SRC_DIR}/flashattn.cpp
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -47,6 +48,7 @@ target_sources(onnxruntime_mlas PRIVATE
   ${MLAS_INC_DIR}/mlas_q4.h
   ${MLAS_INC_DIR}/mlas_qnbit.h
   ${MLAS_INC_DIR}/mlas.h
+  ${MLAS_INC_DIR}/mlas_flashattn.h
 )
 
 if (NOT onnxruntime_ORT_MINIMAL_BUILD)
