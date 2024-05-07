@@ -14,7 +14,7 @@ parameters:
   default: false
 
 stages:
-- stage: Linux_C_API_Packaging_CUDA_x64
+- stage: Linux_C_API_Packaging_CUDA_x64_stage
   dependsOn: []
   jobs:
   - job: Linux_C_API_Packaging_CUDA_x64
