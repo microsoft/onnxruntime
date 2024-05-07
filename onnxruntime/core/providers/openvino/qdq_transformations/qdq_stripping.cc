@@ -189,21 +189,12 @@ static bool IsPreviousTargetNodeOfDQValid(const Node* DQ,
 
   // #1 If previous target is one of supported
   if (prev_target->OpType() == "Conv" || prev_target->OpType() == "MatMul") {
-    // #2 If any DQ of the previous Conv/MatMul is sandwiched between Softmax and Conv/MatMul,
-    // then don't keep this DQ
-    for (Node::NodeConstIterator it_sw = prev_target->InputNodesBegin();
-         it_sw != prev_target->InputNodesEnd(); ++it_sw) {
-      const auto& sw_dq_node = &*it_sw;
-      if (sw_dq_node->OpType() != "DequantizeLinear") return true;
-      if (IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(sw_dq_node))
-        return false;
-    }
-    // #3 For Mul/Div, the DQ shouldn't be a const init
+    // #2 For Mul/Div, the DQ shouldn't be a const init
     if (check_const_init && IsAnyDQAConstantInitializer(current_target, src_graph))
       return false;  // because Add/Mul/Div with const init inputs are not supported if prev target is Conv/MatMul
     else
       return true;                              // For non-Conv/non-MatMul const init doesn't matter
-  } else if (prev_target->OpType() == "Add") {  // because Add is a supported Op
+} else if (prev_target->OpType() == "Add") {  // because Add is a supported Op
     return true;
   }
 
@@ -220,7 +211,8 @@ static bool IsNextTargetNodeOfQValid(const Node* Q,
   const Node* next_target = GetFirstComputeOpBelowThisQ(Q);
 
   if (std::find(supported_ops.begin(), supported_ops.end(), next_target->OpType()) != supported_ops.end()) {
-    if (check_const_init && IsAnyDQAConstantInitializer(next_target, src_graph)) {
+    // Always check const inits if Add is the next target
+    if ((check_const_init || next_target->OpType() == "Add") && IsAnyDQAConstantInitializer(next_target, src_graph)) {
       return false;  // because Add/Mul/Div with const init inputs are not supported
     } else if (next_target->OpType() == "Conv" || next_target->OpType() == "MatMul") {
       // If any DQ of this Conv/MatMul is sandwiched between Softmax and Conv/MatMul, then don't keep it
@@ -282,8 +274,8 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
       return true;
     }
   } else if (op_type == "Add") {
-    // Add keeps all DQs except if it is a BiasAdd
-    return !IsAnyDQBias(&target_node);
+    // Add keeps all DQs except if it has const inits
+    return !IsAnyDQAConstantInitializer(&target_node, src_graph);
   } else if (op_type == "Mul" || op_type == "Div") {
     // Keep DQ of Mul and Div only if the target that preceds it is a supported Op in this list and also check if
     // inputs of Mul and Div have constant initializers. If they do, then don't keep the DQ.
@@ -311,13 +303,6 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
   }
 
   if (op_type == "Conv" || op_type == "MatMul") {
-    // If any DQ of this Conv/MatMul is sandwiched between Softmax and Conv/MatMul, then don't keep it
-    for (const auto& dq_node : node_unit.GetDQNodes()) {
-      if (IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(dq_node)) {
-        reason = SkipReason::SandwichedDQ;
-        return false;
-      }
-    }
     // Conv and MatMul keep all Qs except if the target that succeeds it is Add/Mul/Div AND has any const init
     return IsNextTargetNodeOfQValid(q_node, &target_node, src_graph, {"Add", "Mul", "Div"}, true);
   } else if (op_type == "Add") {
