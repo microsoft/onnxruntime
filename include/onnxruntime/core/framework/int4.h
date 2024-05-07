@@ -98,8 +98,12 @@ struct Int4x2Base {
     return bits_;
   }
 
+  static size_t CalcNumInt4Pairs(size_t num_int4_elems) {
+    return (num_int4_elems + 1) / 2;
+  }
+
   static bool Unpack(gsl::span<UnpackedType> dst, gsl::span<const Int4x2Base<Signed>> src) {
-    if (((dst.size() + 1) / 2) != src.size()) {
+    if (CalcNumInt4Pairs(dst.size()) != src.size()) {
       return false;
     }
 
@@ -113,7 +117,7 @@ struct Int4x2Base {
   }
 
   static bool Pack(gsl::span<Int4x2Base<Signed>> dst, gsl::span<const UnpackedType> src) {
-    if (((src.size() + 1) / 2) != dst.size()) {
+    if (CalcNumInt4Pairs(src.size()) != dst.size()) {
       return false;
     }
 
