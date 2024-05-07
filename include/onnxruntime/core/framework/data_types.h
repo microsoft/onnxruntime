@@ -919,7 +919,8 @@ class OpaqueType : public NonTensorType<T> {
  *        Base class for primitive Tensor contained types
  *
  * \details This class contains an integer constant that can be
- *          used for input data type dispatching
+ *          used for input data type dispatching. This class also stores the number of subelements per size units.
+ *          Example: For int4, the size unit is 1 byte and the number of subelements is 2.
  *
  */
 class PrimitiveDataTypeBase : public DataTypeImpl {
@@ -950,7 +951,7 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
 
  private:
   const int32_t data_type_;
-  const int32_t num_sub_elems_;
+  const int32_t num_sub_elems_;  // > 1 for subbyte primitives, 1 for normal primitives.
 };
 
 /**
@@ -1096,6 +1097,10 @@ inline const PrimitiveDataTypeBase* DataTypeImpl::AsPrimitiveDataType() const {
     return PrimitiveDataType<TYPE>::Type();           \
   }
 
+// Registers a subbyte primitive.
+// Examples:
+//   - Int4x2 stores 2 packed 4-bit elements in 1 byte: ORT_*_SUBBYTE_TYPE(Int4x2, 2)
+//   - [not supported] Int3x8 could store 8 packed 3-bit elements in 3 bytes: ORT_*_SUBBYTE_TYPE(Int3x8, 8)
 #define ORT_REGISTER_PRIM_SUBBYTE_TYPE(TYPE, NUM_SUB_ELEMS)       \
   template <>                                                     \
   MLDataType PrimitiveDataType<TYPE>::Type() {                    \

@@ -27,6 +27,10 @@ struct Int4Traits<false> {
   static constexpr uint8_t max_val = 15;
 };
 
+/// <summary>
+/// Stores 2 packed 4-bit elements in 1 byte.
+/// </summary>
+/// <typeparam name="Signed">Set to true if signed int4, or false if unsigned uint4.</typeparam>
 template <bool Signed>
 struct Int4x2Base {
   using UnpackedType = typename Int4Traits<Signed>::UnpackedType;
