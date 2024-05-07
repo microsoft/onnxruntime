@@ -82,7 +82,7 @@ parameters:
   default: '0'
 
 stages:
-- stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Stage
+- stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
