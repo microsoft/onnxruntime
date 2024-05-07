@@ -144,6 +144,7 @@ class GQAAttentionBase : public AttentionBase {
         const int head_index = static_cast<int>(i) % num_heads_;
         const int past_seqlen = sequence_length == 1 ? static_cast<int>(seqlens_k[batch_index]) : past_buffer_sequence_length;
         const size_t past_chunk_length = static_cast<size_t>(past_seqlen) * head_size;
+        //const int total_seqlen = seqlens_k[batch_index] + 1;
 
         const int output_offset = static_cast<int>(i) * sequence_length * present_buffer_sequence_length;
         const int mask_offset = batch_index * sequence_length * present_buffer_sequence_length;
@@ -152,8 +153,12 @@ class GQAAttentionBase : public AttentionBase {
         // Broadcast mask data: (Bx)SxT -> (BxNx)SxT
         // TODO: mask after present_sequence_length
         memcpy(output,
-               mask_data + mask_offset,
-               probs_matrix_bytes);
+        mask_data + mask_offset,
+        probs_matrix_bytes);
+
+        //for (size_t output_idx = 0; output_idx < SafeInt<size_t>(sequence_length) * present_buffer_sequence_length; output_idx++) {
+        //  output[output_idx] = std::numeric_limits<T>::lowest();
+        //}
 
         const T* k;
         if (packed_qkv) {
@@ -181,6 +186,8 @@ class GQAAttentionBase : public AttentionBase {
         }
         math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, present_buffer_sequence_length, head_size, alpha,
                                   q, k, mask_data != nullptr ? 1.0f : 0.0f, output, nullptr);
+        // math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha,
+        //                           q, head_size, k, head_size, 0.0f /*beta*/, output, present_buffer_sequence_length, nullptr);
       }
     });
 
@@ -239,6 +246,7 @@ class GQAAttentionBase : public AttentionBase {
         const int head_index = static_cast<int>(i % num_heads_);
         const int past_seqlen = sequence_length == 1 ? static_cast<int>(seqlens_k[batch_index]) : past_buffer_sequence_length;
         const size_t past_chunk_length = static_cast<size_t>(past_seqlen) * head_size;
+        const int total_seqlen = seqlens_k[batch_index] + 1;
 
         const T* v;
         if (packed_qkv) {
@@ -254,9 +262,15 @@ class GQAAttentionBase : public AttentionBase {
 
         T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;
-        math::MatMul<T>(sequence_length, head_size, present_buffer_sequence_length,
-                        attention_probs + attention_probs_offset,
-                        v, current_tmp_data, nullptr);
+
+        math::GemmEx<T, ThreadPool>(CblasNoTrans,
+                                    CblasNoTrans,
+                                    sequence_length, head_size, total_seqlen,
+                                    1.f, /*alpha*/
+                                    attention_probs + attention_probs_offset, present_buffer_sequence_length,
+                                    v, head_size,
+                                    0.0f /*beta*/,
+                                    current_tmp_data, head_size, nullptr);
 
         // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
         T* src = current_tmp_data;
