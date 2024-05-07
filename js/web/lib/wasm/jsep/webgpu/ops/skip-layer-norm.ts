@@ -128,8 +128,8 @@ const createSkipLayerNormProgramInfo =
             return `
 
       ${shaderHelper.registerUniforms(uniformsArray).declareVariables(...variables)}
-      var<workgroup> sumShared : array<${vecDataType}, ${workgroupSize}>;
-      var<workgroup> sumSquaredShared : array<${vecDataType}, ${workgroupSize}>;
+      var<workgroup> sum_shared : array<${vecDataType}, ${workgroupSize}>;
+      var<workgroup> sum_squared_shared : array<${vecDataType}, ${workgroupSize}>;
 
       ${shaderHelper.mainStart([
               workgroupSize, 1, 1
@@ -152,25 +152,25 @@ const createSkipLayerNormProgramInfo =
           ${hasInputSkipBiasSumOutput ? 'input_skip_bias_sum[offset + i] = value;' : ''}
           output[offset + i] = value;
           let f32_value = ${castToF32(dataType, components, 'value')};
-          sumShared[ix] += f32_value;
-          sumSquaredShared[ix] += f32_value * f32_value;
+          sum_shared[ix] += f32_value;
+          sum_squared_shared[ix] += f32_value * f32_value;
         }
         workgroupBarrier();
 
-        var reduceSize : u32 = ${workgroupSize};
-        for (var currSize = reduceSize >> 1;  currSize > 0; currSize = reduceSize >> 1) {
-          reduceSize = currSize + (reduceSize & 1);
-          if (ix < currSize) {
-            sumShared[ix] += sumShared[ix + reduceSize];
-            sumSquaredShared[ix] += sumSquaredShared[ix + reduceSize];
+        var reduce_size : u32 = ${workgroupSize};
+        for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {
+          reduce_size = curr_size + (reduce_size & 1);
+          if (ix < curr_size) {
+            sum_shared[ix] += sum_shared[ix + reduce_size];
+            sum_squared_shared[ix] += sum_squared_shared[ix + reduce_size];
           }
           workgroupBarrier();
         }
 
-        let sum = sumShared[0];
-        let squareSum = sumSquaredShared[0];
+        let sum = sum_shared[0];
+        let square_sum = sum_squared_shared[0];
         let mean = ${sumVector('sum', components)} / f32(uniforms.hidden_size);
-        let inv_std_dev = inverseSqrt(${sumVector('squareSum', components)} / f32(uniforms.hidden_size) ${
+        let inv_std_dev = inverseSqrt(${sumVector('square_sum', components)} / f32(uniforms.hidden_size) ${
                 simplified ? '' : '- mean * mean'} + uniforms.epsilon);
         ${hasMeanOutput ? 'mean_output[global_idx] = mean;' : ''}
         ${hasInvStdDevOutput ? 'inv_std_output[global_idx] = inv_std_dev;' : ''}
