@@ -55,6 +55,10 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |'basic'||
 |'detailed'||
 
+|`"profiling_file_path"`|Description|
+|---|---|
+|'your_qnn_profile_path.csv'|Specify the csv file path to dump the QNN profiling events|
+
 See [profiling-tools](../performance/tune-performance/profiling-tools.md) for more info on profiling  
 Alternatively to setting profiling_level at compile time, profiling can be enabled dynamically with ETW (Windows). See [tracing](../performance/tune-performance/logging_tracing.md) for more details
 
@@ -461,3 +465,8 @@ sess = ort.InferenceSession(model_path, providers=['QNNExecutionProvider'], prov
 ### Inference example
 
 [Image classification with Mobilenetv2 in CPP using QNN Execution Provider with QNN CPU & HTP Backend](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP/mobilenetv2_classification)
+
+
+## Error handling
+### HTP SubSystem Restart - [SSR](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_backend.html#subsystem-restart-ssr-)
+QNN EP returns StatusCode::ENGINE_ERROR regarding QNN HTP SSR issue. Uppper level framework/application should recreate Onnxruntime session if this error detected during session run.
