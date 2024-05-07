@@ -13,7 +13,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
                           const char* cache_dir, const char* model_priority,
                           int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
-                          bool export_ep_ctx_blob)
+                          bool export_ep_ctx_blob, bool is_ptq)
       : precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
@@ -22,7 +22,8 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
         disable_dynamic_shapes_(disable_dynamic_shapes),
-        export_ep_ctx_blob_(export_ep_ctx_blob) {
+        export_ep_ctx_blob_(export_ep_ctx_blob),
+        is_ptq_(is_ptq) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
   }
@@ -43,12 +44,13 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   bool enable_opencl_throttling_;
   bool disable_dynamic_shapes_;
   bool export_ep_ctx_blob_;
+  bool is_ptq_;
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_,
                                      cache_dir_, model_priority_, num_streams_, context_, enable_opencl_throttling_,
-                                     disable_dynamic_shapes_, export_ep_ctx_blob_);
+                                     disable_dynamic_shapes_, export_ep_ctx_blob_, is_ptq_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 
@@ -94,6 +96,8 @@ struct OpenVINO_Provider : Provider {
     bool export_ep_ctx_blob = false;         // Whether to export the pre-compiled blob as an EPContext model.
 
     void* context = nullptr;
+
+    bool is_ptq = false;
 
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
       device_type = provider_options_map.at("device_type").c_str();
@@ -214,6 +218,15 @@ struct OpenVINO_Provider : Provider {
       bool_flag = "";
     }
 
+    if (provider_options_map.find("is_ptq") != provider_options_map.end()) {
+      bool_flag = provider_options_map.at("is_ptq");
+      if (bool_flag == "true" || bool_flag == "True")
+        is_ptq = true;
+      else if (bool_flag == "false" || bool_flag == "False")
+        is_ptq = false;
+      bool_flag = "";
+    }
+
     // [disable_dynamic_shapes]:  Rewrite dynamic shaped models to static shape at runtime and execute.
     // Always true for NPU plugin.
     bool disable_dynamic_shapes = false;
@@ -253,7 +266,8 @@ struct OpenVINO_Provider : Provider {
                                                      context,
                                                      enable_opencl_throttling,
                                                      disable_dynamic_shapes,
-                                                     export_ep_ctx_blob);
+                                                     export_ep_ctx_blob,
+                                                     is_ptq);
   }
 
   void Initialize() override {
