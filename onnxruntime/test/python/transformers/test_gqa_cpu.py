@@ -1760,7 +1760,6 @@ def parity_check_gqa_past_no_buff(
 
 
 class TestGQA(unittest.TestCase):
-    @pytest.mark.slow
     def test_gqa_no_past(self):
         torch.manual_seed(69)
         print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
@@ -1812,7 +1811,6 @@ class TestGQA(unittest.TestCase):
                                     )
                                     self.assertTrue(all_close)
 
-    @pytest.mark.slow
     def test_gqa_past(self):
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
         batches = [1, 3] if pipeline_mode else [1, 3, 5]

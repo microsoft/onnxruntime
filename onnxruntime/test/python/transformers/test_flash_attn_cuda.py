@@ -1976,7 +1976,6 @@ def parity_check_gqa_past_no_buff(
 
 
 class TestMHA(unittest.TestCase):
-    @pytest.mark.slow
     def test_packed_mha(self):
         if not torch.cuda.is_available() or platform.system() != "Linux":
             return
@@ -1996,7 +1995,6 @@ class TestMHA(unittest.TestCase):
                         all_close = parity_check_mha(config, True)
                         self.assertTrue(all_close)
 
-    @pytest.mark.slow
     def test_mha(self):
         if not torch.cuda.is_available() or platform.system() != "Linux":
             return
@@ -2033,7 +2031,6 @@ class TestMHA(unittest.TestCase):
 
 
 class TestGQA(unittest.TestCase):
-    @pytest.mark.slow
     def test_gqa_no_past_memory_efficient(self):
         if not torch.cuda.is_available():
             return
@@ -2091,7 +2088,6 @@ class TestGQA(unittest.TestCase):
                                 )
                                 self.assertTrue(all_close)
 
-    @pytest.mark.slow
     def test_gqa_no_past_flash_attention(self):
         if not torch.cuda.is_available():
             return
@@ -2148,7 +2144,6 @@ class TestGQA(unittest.TestCase):
                                     )
                                     self.assertTrue(all_close)
 
-    @pytest.mark.slow
     def test_gqa_past_memory_efficient(self):
         if not torch.cuda.is_available():
             return
@@ -2207,7 +2202,6 @@ class TestGQA(unittest.TestCase):
                                 )
                                 self.assertTrue(all_close)
 
-    @pytest.mark.slow
     def test_gqa_past_flash_attention(self):
         if not torch.cuda.is_available():
             return
