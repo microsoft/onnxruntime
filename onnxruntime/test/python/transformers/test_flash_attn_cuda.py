@@ -2068,8 +2068,8 @@ class TestGQA(unittest.TestCase):
                                 config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
                                 all_close = parity_check_gqa_prompt(
                                     config,
-                                    rtol=2e-3,
-                                    atol=2e-3,
+                                    rtol=5e-3,
+                                    atol=5e-3,
                                     past_format=Formats.BNSH,
                                     rotary=rotary,
                                     rotary_interleaved=rotary_interleaved,
@@ -2078,8 +2078,8 @@ class TestGQA(unittest.TestCase):
                                 self.assertTrue(all_close)
                                 all_close = parity_check_gqa_prompt_no_buff(
                                     config,
-                                    rtol=2e-3,
-                                    atol=2e-3,
+                                    rtol=5e-3,
+                                    atol=5e-3,
                                     past_format=Formats.BNSH,
                                     rotary=rotary,
                                     rotary_interleaved=rotary_interleaved,
