@@ -74,8 +74,8 @@ stages:
 # Windows CUDA Combined Testing and Publishing
 - stage: Windows_Packaging_combined_GPU
   dependsOn:
-    - Windows_Packaging_CUDA_Testing
-    - Windows_Packaging_TensorRT_Testing
+    - Windows_Packaging_CUDA
+    - Windows_Packaging_TensorRT
   condition: succeeded()
 
   jobs:
