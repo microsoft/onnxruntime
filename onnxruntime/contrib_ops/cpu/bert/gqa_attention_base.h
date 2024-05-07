@@ -168,7 +168,16 @@ class GQAAttentionBase : public AttentionBase {
         T* output_softmax = output;
         for (int seq = 0; seq < sequence_length; seq++) {
           int seq_causal_length = sequence_length == 1 ? total_seqlen : seq + 1;
-          ComputeAttentionSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
+          if (local_window_size_ > 0 && seq_causal_length > local_window_size_ + 1) {
+            for (int total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
+              output_softmax[total_seq_id] = 0.f;
+            }
+            ComputeAttentionSoftmaxInplace(output_softmax + seq_causal_length - local_window_size_ - 1, 1, local_window_size_ + 1, nullptr);
+          } else {
+            ComputeAttentionSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
+          }
+
+          // set causal [seq_causal_length, total_seqlen) to 0.f
           for (int total_seq_id = seq_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
             output_softmax[total_seq_id] = 0.f;
           }
