@@ -11,6 +11,8 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/mlas/inc/mlas_flashattn.h"
 
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
@@ -137,6 +139,58 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       context, allocator, batch_size, num_heads_, kv_sequence_length, qk_head_size, key, bias, k_bias_offset, K));
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, kv_sequence_length, v_head_size, value, bias, v_bias_offset, V));
+
+  bool disableFlash;
+  {
+    char * env;
+    #ifdef _WIN32
+    _dupenv_s(&env, nullptr, "ORT_DISABLE_FLASH_ATTENTION");
+    #else
+    env = std::getenv("ORT_DISABLE_FLASH_ATTENTION");
+    #endif
+    if(env == nullptr || std::atoi(env) == 0){
+      disableFlash = false;
+    }
+    else{
+      disableFlash = true;
+    }
+    #ifdef _WIN32
+    free(env);
+    #endif
+  }
+
+  if(!disableFlash && key_padding_mask == nullptr && extra_add_qk == nullptr && past_key == nullptr && past_value == nullptr){
+    FlashAttentionThreadedArgs args;
+    args.batch_size = batch_size;
+    args.num_heads = num_heads_;
+    args.q_sequence_length = q_sequence_length;
+    args.kv_sequence_length = kv_sequence_length;
+    args.qk_head_size = qk_head_size;
+    args.v_head_size = v_head_size;
+
+    const auto& env = Env::Default();
+    int l2_cache_size = env.GetL2CacheSize();
+    args.row_size_kv = l2_cache_size / sizeof(T) / 4 / (qk_head_size + v_head_size);
+    args.row_size_q = std::min(args.row_size_kv, qk_head_size + v_head_size);
+
+    auto* tp = context->GetOperatorThreadPool();
+    args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
+
+    args.bufferSizePerThread = args.row_size_q * 2 + args.row_size_q * args.row_size_kv + args.row_size_q * args.v_head_size;
+    args.buffer = static_cast<float*>(allocator->AllocArray(args.bufferSizePerThread * args.thread_count, sizeof(T)));
+    args.bufferSizePerThread *= sizeof(T);
+
+    args.QData = Q.Get<Tensor>().Data<T>();
+    args.KData = K.Get<Tensor>().Data<T>();
+    args.VData = V.Get<Tensor>().Data<T>();
+    args.output = output->MutableData<T>();
+
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id){
+      FlashAttentionThreaded(thread_id, &args);
+    });
+
+    return Status::OK();
+  }
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(),
