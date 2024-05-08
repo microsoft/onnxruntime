@@ -877,7 +877,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 f"Optimization Config: [{opt_config_to_display}]"
             )
         else:
-            mem_infos = "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+            mem_infos = "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<config.json>"
 
         mem_row = _add_record(
             tbl,

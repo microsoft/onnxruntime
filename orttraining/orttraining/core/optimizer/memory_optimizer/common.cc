@@ -132,7 +132,7 @@ Status ParseOptimizationConfigFromString(std::string_view memory_optimization_co
       const json j = json::parse(in);
       j.get_to<InlinedVector<std::string>>(configs_by_cluster_id);
     } catch (const std::exception& ex) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+      ORT_THROW("Fail to parse from json file: ", ex.what());
     }
 
     for (const auto& config_for_cur_cluster : configs_by_cluster_id) {

@@ -754,7 +754,7 @@ class MemoryObserver:
                 saving_recommendation = (
                     "Or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
                 )
-                saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+                saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<config.json>"
 
                 notes.append(saving_recommendation)
 

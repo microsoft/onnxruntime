@@ -619,8 +619,7 @@ void FormatRecomputeMemoryRecords(int option_index,
         ", actual applied count=" + std::to_string(actual_count));
   } else {
     rows.push_back(empty_first_col + ToFixedLengthString("  Status", kTitleWidthInSecondColumn) +
-                   ": Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=" +
-                   subgraph_str + ":" + std::to_string(static_cast<int>(opt_type)) + ":-1");
+                   ": Disabled.");
   }
 
   std::string activation_str = empty_first_col + "  Stashed Activations: ";
