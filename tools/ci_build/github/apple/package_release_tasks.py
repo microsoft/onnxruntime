@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Note: This script is intended to be called from the CocoaPods package release pipeline or a similar context.
 
