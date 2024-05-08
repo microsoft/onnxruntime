@@ -145,8 +145,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
  * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
  * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
  *   Used to re-order the collected subgraph nodes.
- * @param candidate_output_args_map A map from node to its candidate activations, which are consumed by both fw and
- *  bw ops.
+ * @param candidate_output_args_map A map from node to its candidate activations.
  * @param layer_boundary_ln_nodes A set of LayerNormalization nodes, which are used as the boundary for subgraph.
  * @param subgraph_stores A store to maintain all found subgraphs.
  * @param logger Logger.

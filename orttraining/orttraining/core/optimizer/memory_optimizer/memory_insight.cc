@@ -110,7 +110,7 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
  * @param graph_viewer Graph to iterate.
  * @param boundary_op_order_in_topological_sort The order of the boundary op in the topological sort.
  * @param fw_op_output_arg_used_map Activation usage mapping.
- * @param candidate_output_args_map Candidate activations, which are consumed by both fw and bw ops.
+ * @param candidate_output_args_map Candidate activations generated in forward, and are consumed by backward ops.
  * @param is_forward_nodes Whether a node is a forward node.
  * @param logger Logger.
  * @return Status
@@ -146,13 +146,14 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
                            is_forward_nodes);
 
   for (auto& kv : fw_op_output_arg_used_map) {
-    // used by fw and bw, then it is a candidate.
-    if (kv.second.first && kv.second.second) {
-      const Node* n = graph_viewer.GetProducerNode(kv.first);
+    const auto& fw_out_arg = kv.first;
+    const Node* n = graph_viewer.GetProducerNode(fw_out_arg);
+    // Node run in forward pass, and the result is used by bw, then it is a candidate.
+    if (is_forward_nodes.count(n) > 0 && kv.second.second) {
       ORT_ENFORCE(n, "Activation should have a producer node");
       size_t k = 0;
       for (k = 0; k < n->OutputDefs().size(); ++k) {
-        if (n->OutputDefs()[k]->Name().compare(kv.first) == 0) {
+        if (n->OutputDefs()[k]->Name().compare(fw_out_arg) == 0) {
           break;
         }
       }
