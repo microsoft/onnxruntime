@@ -1314,7 +1314,8 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         ));
     }
 
-    GpuDFTOperatorFactory::RegisterDFTKernel(registry);
+    GpuDFTOperatorFactory::RegisterDFTKernel(registry, 17);
+    GpuDFTOperatorFactory::RegisterDFTKernel(registry, 20);
     DmlSTFTOperatorFactory::RegisterSTFTKernel(registry);
     DmlGridSampleOperatorFactory::RegisterGridSampleKernel(registry);
 }

@@ -104,8 +104,8 @@ class GQAAttentionBase : public AttentionBase {
                              int past_buffer_sequence_length,     // sequence length of past state
                              int present_buffer_sequence_length,  // sequence length of present state
                              int head_size,                       // head size of self-attention
-                             const T* past_key,                   // past key only (if not using past state)
-                             T* present_key,                      // present key only (if not using present state)
+                             const T* past_key,                   // past key only
+                             T* present_key,                      // present key only
                              bool past_present_share_buffer,      // whether present key and value share the same buffer
                              bool packed_qkv,                     // whether Q, K, V are packed
                              ThreadPool* tp) const {              // thread pool
@@ -118,11 +118,13 @@ class GQAAttentionBase : public AttentionBase {
     const size_t present_buff_chunk_length = static_cast<size_t>(present_buffer_sequence_length) * head_size;  // T x H
 
     PrepareMaskGQA(mask_data, batch_size, sequence_length, present_buffer_sequence_length, local_window_size_, seqlens_k);
+    if (!past_present_share_buffer) {
+      memset(present_key, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
+    }
 
     const int loop_len = batch_size * num_heads_;
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
-    // TODO: cost might differ for gqa because of right padding and total_sequence_length being sequence dependent
     TensorOpCost unit_cost;
     const size_t probs_matrix_bytes = SafeInt<size_t>(sequence_length) * present_buffer_sequence_length * sizeof(T);
     unit_cost.compute_cycles = static_cast<double>(2 * sequence_length * head_size * present_buffer_sequence_length);
@@ -150,7 +152,6 @@ class GQAAttentionBase : public AttentionBase {
         T* output = attention_probs + output_offset;
 
         // Broadcast mask data: (Bx)SxT -> (BxNx)SxT
-        // TODO: mask after present_sequence_length
         memcpy(output,
                mask_data + mask_offset,
                probs_matrix_bytes);
@@ -202,19 +203,22 @@ class GQAAttentionBase : public AttentionBase {
                                int present_buffer_sequence_length,  // sequence length in past state
                                int head_size,                       // head size of Q, K, V
                                int hidden_size,                     // hidden size of Output
-                               const T* past_value,                 // past value only (if not using past state)
-                               T* present_value,                    // present value only (if not using present state)
+                               const T* past_value,                 // past value only
+                               T* present_value,                    // present value only
                                bool past_present_share_buffer,      // whether present key and value share the same buffer
                                bool packed_qkv,                     // whether Q, K, V are packed
                                ThreadPool* tp) const {
     const bool is_prompt = sequence_length != 1;
     const int packed_batch_stride = packed_qkv ? (num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size : 0;
     const int kv_num_heads_factor = num_heads_ / kv_num_heads_;
-    // TODO: what is with these being ptrdiff_t?
-    const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * head_size;                    // S x H
-    const ptrdiff_t kv_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * head_size;                   // L x H
+    const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;                      // S x H
+    const size_t kv_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;                     // L x H
     const size_t past_buff_chunk_length = static_cast<size_t>(past_buffer_sequence_length) * head_size;        // L x H
     const size_t present_buff_chunk_length = static_cast<size_t>(present_buffer_sequence_length) * head_size;  // T x H
+
+    if (!past_present_share_buffer) {
+      memset(present_value, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
+    }
 
     // The cost of Gemm
     TensorOpCost unit_cost;
@@ -252,15 +256,15 @@ class GQAAttentionBase : public AttentionBase {
                                   i / kv_num_heads_factor);
         }
 
-        T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
-        ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;
+        T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * static_cast<int>(i);
+        const int attention_probs_offset = sequence_length * present_buffer_sequence_length * static_cast<int>(i);
         math::MatMul<T>(sequence_length, head_size, present_buffer_sequence_length,
                         attention_probs + attention_probs_offset,
                         v, current_tmp_data, nullptr);
 
         // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
         T* src = current_tmp_data;
-        ptrdiff_t dest_offset = (SafeInt<ptrdiff_t>(batch_index) * sequence_length * num_heads_ + head_index) * head_size;
+        const int dest_offset = (batch_index * sequence_length * num_heads_ + head_index) * head_size;
         T* dest = output + dest_offset;
         for (int j = 0; j < sequence_length; j++) {
           memcpy(dest, src, bytes_to_copy_trans);

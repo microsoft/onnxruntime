@@ -578,7 +578,7 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       scale_rmin,
                                       scale_quant_param,
                                       scale_raw_tensor));
-      Qnn_TensorType_t scale_tensor_type = GetInputTensorType(qnn_model_wrapper, scale_name);
+      Qnn_TensorType_t scale_tensor_type = qnn_model_wrapper.GetTensorType(scale_name);
       QnnTensorWrapper input_tensorwrapper(scale_name, scale_tensor_type, scale_info.qnn_data_type,
                                            std::move(scale_quant_param), std::move(scale_info.shape),
                                            std::move(scale_raw_tensor));
@@ -595,7 +595,7 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       bias_rmin,
                                       bias_quant_param,
                                       bias_raw_tensor));
-      Qnn_TensorType_t bias_tensor_type = GetInputTensorType(qnn_model_wrapper, bias_name);
+      Qnn_TensorType_t bias_tensor_type = qnn_model_wrapper.GetTensorType(bias_name);
       QnnTensorWrapper input_tensorwrapper(bias_name, bias_tensor_type, bias_info.qnn_data_type,
                                            std::move(bias_quant_param), std::move(bias_info.shape),
                                            std::move(bias_raw_tensor));

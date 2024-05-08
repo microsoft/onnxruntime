@@ -726,8 +726,9 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
         const float cpu_f16_val = cpu_f16_vals[j].ToFloat();  // f16@CPU_EP val
 
         // Get errors of f16@CPU_EP and f16@QNN_EP against f32@CPU_EP.
-        const float cpu_relative_err = std::fabs(expected_val - cpu_f16_val) / expected_val;
-        const float qnn_relative_err = std::fabs(expected_val - qnn_f16_val) / expected_val;
+        constexpr float epsilon = 1e-16f;
+        const float cpu_relative_err = std::fabs(expected_val - cpu_f16_val) / (expected_val + epsilon);
+        const float qnn_relative_err = std::fabs(expected_val - qnn_f16_val) / (expected_val + epsilon);
 
         // Also compare the FP16 values against each other.
         // This is equivalent to abs(f16@QNN_EP - f16@CPU_EP) / output_range
