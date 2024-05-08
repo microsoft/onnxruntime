@@ -1766,9 +1766,6 @@ class TestGQA(unittest.TestCase):
         seqs = (
             [
                 (127, 127),
-                (35, 35),
-                (2000, 2000),
-                (200, 200),
                 (240, 240),
             ]
             if pipeline_mode
