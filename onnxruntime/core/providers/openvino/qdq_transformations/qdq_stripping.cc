@@ -29,8 +29,9 @@ static ONNX_NAMESPACE::TensorProto_DataType GetZeroPointDT(const Node* qdq_node)
 }
 // Creates a new NodeArg from an input (or output) of a QDQ node unit. If the input/output is quantized,
 // this function modifies the tensor type to the specified float type.
-static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
-                                  std::set<std::string>& initializers_to_ignore,
+static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph,
+                                  const onnxruntime::GraphViewer& src_graph,
+                                  std::set<std::string>& initializers_to_keep,
                                   const NodeUnitIODef& io_def) {
   const std::string& name = io_def.node_arg.Name();
   const ONNX_NAMESPACE::TypeProto* orig_type_proto = io_def.node_arg.TypeAsProto();
@@ -43,7 +44,7 @@ static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph, const onnxrunti
     type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
     if (src_graph.GetAllInitializedTensors().count(name)) {
-      initializers_to_ignore.insert({name});
+      initializers_to_keep.insert({name});
     }
 
     return dst_graph.GetOrCreateNodeArg(name, type_proto.get());
@@ -53,14 +54,22 @@ static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph, const onnxrunti
   return dst_graph.GetOrCreateNodeArg(name, orig_type_proto);
 }
 
-static void IgnoreInitsFromDstGraph(std::set<std::string>& initializers_to_ignore,
-                                    const onnxruntime::GraphViewer& src_graph,
-                                    const Node* qdq_node) {
+static void KeepInitsInDstGraph(std::set<std::string>& initializers_to_keep,
+                                const onnxruntime::GraphViewer& src_graph,
+                                const Node* qdq_node) {
   for (const auto& def : qdq_node->InputDefs()) {
     if (src_graph.GetAllInitializedTensors().count(def->Name())) {
-      initializers_to_ignore.insert({def->Name()});
+      initializers_to_keep.insert({def->Name()});
     }
   }
+}
+
+static void AddNode(std::set<std::string>& initializers_to_keep,
+                    const onnxruntime::GraphViewer& src_graph,
+                    onnxruntime::Graph& dst_graph,
+                    const Node& node) {
+  dst_graph.AddNode(node);
+  KeepInitsInDstGraph(initializers_to_keep, src_graph, &node);
 }
 
 static bool IsConnectedQPresent(const onnxruntime::GraphViewer& src_graph,
@@ -321,7 +330,7 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
 }
 
 static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
-                            const NodeUnit& node_unit) {
+                            const NodeUnit& node_unit, std::set<std::string>& initializers_to_keep) {
   int node_unit_input_edge_count = node_unit.InputEdgeCount();
   int node_unit_output_edge_count = [&]() {
     int count = 0;
@@ -346,7 +355,7 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
       if (q_zero_point_dt != ONNX_NAMESPACE::TensorProto_DataType_UINT16 &&
           !IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(&q_node)) {
         // if it's unequal, then it's a conversion between quantized types.
-        dst_graph.AddNode(node_unit.GetNode());
+        AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
         return true;
       }
     }
@@ -366,7 +375,7 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
       if (dq_zero_point_dt != ONNX_NAMESPACE::TensorProto_DataType_UINT16 &&
           IsConnectedQPresent(src_graph, dst_graph.Nodes(), &dq_node, dq_node.InputDefs()) &&
           !IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(&dq_node)) {
-        dst_graph.AddNode(node_unit.GetNode());
+        AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
         return true;
       }
     }
@@ -376,16 +385,16 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
 // Handles adding a standalone node unit (i.e., one not wrapped with DQ/Q ops) to the dst graph.
 static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
                                   const NodeUnit& node_unit,
-                                  std::set<std::string>& initializers_to_ignore,
+                                  std::set<std::string>& initializers_to_keep,
                                   const logging::Logger& /* logger */) {
   assert(node_unit.UnitType() == NodeUnit::Type::SingleNode);
 
-  if (HandleDoubleQDQ(dst_graph, src_graph, node_unit)) return;
+  if (HandleDoubleQDQ(dst_graph, src_graph, node_unit, initializers_to_keep)) return;
 
   auto add_identity_op = [&]() {
-    std::array<NodeArg*, 1> input_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_ignore,
+    std::array<NodeArg*, 1> input_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
                                                              node_unit.Inputs()[0])};
-    std::array<NodeArg*, 1> output_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_ignore,
+    std::array<NodeArg*, 1> output_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
                                                               node_unit.Outputs()[0])};
     dst_graph.AddNode(node_unit.Name(),
                       "Identity",
@@ -399,12 +408,13 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
   if (node_unit.OpType() == "QuantizeLinear") {
     add_identity_op();
   } else if (node_unit.OpType() == "DequantizeLinear") {
-    if (IsConnectedQPresent(src_graph, dst_graph.Nodes(), &node_unit.GetNode(), node_unit.GetNode().InputDefs()))
-      dst_graph.AddNode(node_unit.GetNode());  // Copy standalone node unit.
-    else
+    if (IsConnectedQPresent(src_graph, dst_graph.Nodes(), &node_unit.GetNode(), node_unit.GetNode().InputDefs())) {
+      AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
+    } else {
       add_identity_op();
+    }
   } else {
-    dst_graph.AddNode(node_unit.GetNode());  // Copy standalone node unit.
+    AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
   }
 }
 
@@ -413,11 +423,9 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
 static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
                            const onnxruntime::GraphViewer& src_graph,
                            const NodeUnit& node_unit,
-                           std::set<std::string>& initializers_to_ignore,
+                           std::set<std::string>& initializers_to_keep,
                            const logging::Logger& /* logger */) {
   assert(node_unit.UnitType() == NodeUnit::Type::QDQGroup);
-
-  // LOGS_DEFAULT(INFO) << "\nNode in QDQ Group: " << node_unit.Name() << " " << node_unit.OpType() << " ";
 
   // Collect inputs coming into the node unit.
   const auto& node_unit_inputs = node_unit.Inputs();
@@ -433,17 +441,13 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
     SkipReason reason;
     bool keep_dq = CheckDQRuleSet(node_unit, dq_node, src_graph, reason);
-    LOGS_DEFAULT(INFO) << "!!!!!!!! kept DQ " << dq_node->Name() << keep_dq;
 
     if (keep_dq) {
-      dst_graph.AddNode(*dq_node);  // Add the node to the graph
+      AddNode(initializers_to_keep, src_graph, dst_graph, *dq_node);
       dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
                                    &dst_graph.GetOrCreateNodeArg(dq_node->OutputDefs().at(0)->Name(),
                                                                  dq_node->OutputDefs().at(0)->TypeAsProto())});
     } else {
-      // Remove initializers for QDQs we're not going to add
-      IgnoreInitsFromDstGraph(initializers_to_ignore, src_graph, dq_node);
-
       // If it's a duplicate DQ AND the previous node unit is not of type SingleNode (i.e, input/output units)
       if (reason == SkipReason::DuplicateDQ) {
         // Skips the DQ, but keep the route to the target node
@@ -473,8 +477,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
       input_args.push_back(dq_node_arg->second);
     } else {
       // Otherwise, convert to float
-      NodeArg& input_arg = ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_ignore,
-                                             node_unit_input);
+      NodeArg& input_arg = ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep, node_unit_input);
       input_args.push_back(&input_arg);
     }
   }
@@ -495,24 +498,20 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
     bool keep_q = CheckQRuleSet(node_unit, q_node, src_graph, reason);
 
-    LOGS_DEFAULT(INFO) << "!!!!!!!! kept Q " << q_node->Name() << keep_q;
-
     if (keep_q) {
-      dst_graph.AddNode(*q_node);  // Add the node to the graph
+      AddNode(initializers_to_keep, src_graph, dst_graph, *q_node);
       // if keep_q, then output defs of the target node doesn't change
       output_args.push_back(&dst_graph.GetOrCreateNodeArg(target_node.OutputDefs().at(0)->Name(),
                                                           target_node.OutputDefs().at(0)->TypeAsProto()));
     } else {
-      // Remove initializers for QDQs we're not going to add
-      IgnoreInitsFromDstGraph(initializers_to_ignore, src_graph, q_node);
       // convert this Q to float
-      output_args.push_back(&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_ignore,
+      output_args.push_back(&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
                                                node_unit_outputs.at(0)));
     }
   } else {
     for (const auto& node_unit_output : node_unit_outputs) {
       // convert non-qdq outputs to float
-      NodeArg& output_arg = ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_ignore,
+      NodeArg& output_arg = ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
                                               node_unit_output);
       output_args.push_back(&output_arg);
     }
@@ -526,6 +525,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
                     output_args,
                     &target_node.GetAttributes(),
                     target_node.Domain());
+  KeepInitsInDstGraph(initializers_to_keep, src_graph, &target_node);
 }
 
 // Creates a new model without the DQ/Q operators in the src graph.
@@ -566,7 +566,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   //
 
   // Keep track of all the initializers we need to dequantize to float.
-  std::set<std::string> initializers_to_ignore{};
+  std::set<std::string> initializers_to_keep{};
 
   // Get all the NodeUnits in the graph_viewer
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
@@ -595,9 +595,9 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
     }
 
     if (node_unit->UnitType() == NodeUnit::Type::SingleNode) {
-      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_ignore, logger);
+      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger);
     } else {
-      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_ignore, logger);
+      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger);
     }
 
     seen_node_units.insert(node_unit);
@@ -619,7 +619,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   std::sort(const_inits.begin(), const_inits.end());
 
   for (auto& it : const_inits) {
-    if (!initializers_to_ignore.count(it))
+    if (initializers_to_keep.count(it))
       dst_graph.AddInitializedTensor(*(initializers.at(it)));
     current_scope_initializer_set.insert(it);
   }
@@ -632,7 +632,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
         continue;
       }
       if (src_graph.IsConstantInitializer(input->Name(), true)) {
-        if (!initializers_to_ignore.count(input->Name()))
+        if (initializers_to_keep.count(input->Name()))
           dst_graph.AddInitializedTensor(*(src_graph.GetConstantInitializer(input->Name(), true)));
         current_scope_initializer_set.insert(input->Name());
       }
