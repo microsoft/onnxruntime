@@ -114,12 +114,6 @@ const setExecutionProviders =
               }
             }
             break;
-          case 'qnn':
-            epName = 'QNN';
-            // if (typeof ep !== 'string') {
-            //   const qnnOptions = ep as InferenceSession.QnnExecutionProviderOption;
-            // }
-            break;
           case 'wasm':
           case 'cpu':
             continue;
