@@ -108,6 +108,7 @@ class GQAAttentionBase : public AttentionBase {
     if (!past_present_share_buffer) {
       memset(present_key, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
     }
+
     const int loop_len = batch_size * num_heads_;
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
