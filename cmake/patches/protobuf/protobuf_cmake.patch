@@ -29,3 +29,27 @@ index 04cb3303a..4025805cf 100644
    # When building with "make", "lib" prefix will be added automatically by
    # the build tool.
    set(LIB_PREFIX)
+diff --git a/src/google/protobuf/map.h b/src/google/protobuf/map.h
+index 008c19225..cbab108c2 100644
+--- a/src/google/protobuf/map.h
++++ b/src/google/protobuf/map.h
+@@ -52,7 +52,8 @@
+ #endif  // defined(__cpp_lib_string_view)
+ 
+ #if !defined(GOOGLE_PROTOBUF_NO_RDTSC) && defined(__APPLE__)
+-#include <mach/mach_time.h>
++// apply update from https://github.com/protocolbuffers/protobuf/pull/15662/
++#include <time.h>
+ #endif
+ 
+ #include <google/protobuf/stubs/common.h>
+@@ -1154,7 +1155,8 @@ class Map {
+ #if defined(__APPLE__)
+       // Use a commpage-based fast time function on Apple environments (MacOS,
+       // iOS, tvOS, watchOS, etc).
+-      s += mach_absolute_time();
++      // apply update from https://github.com/protocolbuffers/protobuf/pull/15662/
++      s += clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+ #elif defined(__x86_64__) && defined(__GNUC__)
+       uint32_t hi, lo;
+       asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
