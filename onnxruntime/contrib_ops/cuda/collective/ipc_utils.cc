@@ -94,14 +94,14 @@ IpcMemory::~IpcMemory() {
 }
 
 Status IpcMemory::destroyIpcMemory() {
-  // for (int nodeId = 0; nodeId < nctx_->Size(); ++nodeId) {
-  //   if (nodeId == nctx_->Rank()) {
-  //     CUDA_RETURN_IF_ERROR(cudaFree(mCommPtrs[nodeId]));
-  //   } else {
-  //     CUDA_RETURN_IF_ERROR(cudaIpcCloseMemHandle(mCommPtrs[nodeId]));
-  //   }
-  // }
-  // cudaFree(mBufferPtr);
+  for (int nodeId = 0; nodeId < nRanks_; ++nodeId) {
+    if (nodeId == myRank_) {
+      CUDA_RETURN_IF_ERROR(cudaFree(mCommPtrs[nodeId]));
+    } else {
+      CUDA_RETURN_IF_ERROR(cudaIpcCloseMemHandle(mCommPtrs[nodeId]));
+    }
+  }
+  cudaFree(mBufferPtr);
   return Status::OK();
 }
 
