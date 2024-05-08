@@ -8,29 +8,55 @@
 
 
 MLAS_FORCEINLINE void
-accumulate_dot(const __m256i av_32_epi8, const __m256i bv_32_epi8, const float combined_scale, const __m256i one, __m256& acc)
+accumulate_1blk_dot(const __m256i& av_32_epi8, const __m256i& bv_32_epi8,
+  const float& combined_scale, const __m256i& one_16_epi16, __m256& acc)
 {
     const __m256i dot_16_epi16 = _mm256_maddubs_epi16(
         _mm256_sign_epi8(bv_32_epi8, bv_32_epi8), _mm256_sign_epi8(av_32_epi8, bv_32_epi8)
     );
-    const __m256i sum_8_epi32 = _mm256_madd_epi16(one, dot_16_epi16);
+    const __m256i sum_8_epi32 = _mm256_madd_epi16(one_16_epi16, dot_16_epi16);
     const __m256 sum_ps = _mm256_cvtepi32_ps(sum_8_epi32);
     acc = _mm256_fmadd_ps(sum_ps, _mm256_set1_ps(combined_scale), acc);
+}
+
+MLAS_FORCEINLINE void
+accumulate_2blk_dot(
+  const __m256i& av0_32_epi8, const __m256i& av1_32_epi8,
+  const __m256i& bv0_32_epi8, const __m256i& bv1_32_epi8,
+  const float& combined_scale0, const float& combined_scale1,
+  const __m256i& one_16_epi16,
+  __m256& acc)
+{
+    const __m256i dot0_16_epi16 = _mm256_maddubs_epi16(
+        _mm256_sign_epi8(bv0_32_epi8, bv0_32_epi8), _mm256_sign_epi8(av0_32_epi8, bv0_32_epi8)
+    );
+    const __m256i dot1_16_epi16 = _mm256_maddubs_epi16(
+        _mm256_sign_epi8(bv1_32_epi8, bv1_32_epi8), _mm256_sign_epi8(av1_32_epi8, bv1_32_epi8)
+    );
+    const __m256i sum_16_epi16 = _mm256_hadd_epi16(dot0_16_epi16, dot1_16_epi16);
+    const __m256i sum_8_epi32 = _mm256_madd_epi16(one_16_epi16, sum_16_epi16);
+
+    const __m256 sum_ps = _mm256_cvtepi32_ps(sum_8_epi32);
+    const __m256 scale_8_ps = _mm256_set_ps(
+        combined_scale0, combined_scale1, combined_scale0, combined_scale1,
+        combined_scale0, combined_scale1, combined_scale0, combined_scale1
+    );
+    acc = _mm256_fmadd_ps(sum_ps, scale_8_ps, acc);
 }
 
 template <bool HasZeroPoint>
 static MLAS_FORCEINLINE void
 accumulate_blklen32_r2c1blk2_avx2(
-  const __m256i av00_32_epi8,
-  const __m256i av01_32_epi8,
-  const __m256i av10_32_epi8,
-  const __m256i av11_32_epi8,
+  const __m256i& av00_32_epi8,
+  const __m256i& av01_32_epi8,
+  const __m256i& av10_32_epi8,
+  const __m256i& av11_32_epi8,
   const std::byte* QuantBDataPtr,
   const std::byte* QuantBZeroPointPtr,
-  const float combined_scale00,
-  const float combined_scale01,
-  const float combined_scale10,
-  const float combined_scale11,
+  const float& combined_scale00,
+  const float& combined_scale01,
+  const float& combined_scale10,
+  const float& combined_scale11,
   __m256& acc0,
   __m256& acc1
 )
@@ -38,15 +64,19 @@ accumulate_blklen32_r2c1blk2_avx2(
     // | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 | v32 v48 | v33 v49 | ... | v46 v62 | v47 v63 |
     const __m256i bv_packed = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr));
 
+    // generating low_mask of 0x0Fs is not as fast as just calling _mm256_set1_epi8(0x0F).
+    // however, it is faster to generate one_16_epi16 than calling _mm256_set1_ep16(1);
     const __m256i low_mask = _mm256_set1_epi8(0x0F);
+    //__m256i low_mask = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv_packed, bv_packed), 12);
+    //low_mask = _mm256_packus_epi16(low_mask, low_mask);
     const __m256i bv0 = _mm256_and_si256(bv_packed, low_mask);  // 0, 1,...14, 15, 32, 33,...46, 47
-    // TODO: will this be faster and save a use of low_mask?
+    // TODO: will this (the second line below) be faster and not keep low_mask in use?
     // const __m256i bv1 = _mm256_and_si256(_mm256_srli_epi16(bv_packed, 4), low_mask);  // 16, 17,...30, 31, 48, 49,...,62, 63
     const __m256i bv1 = _mm256_srli_epi16(_mm256_sub_epi8(bv_packed, bv0), 4);  // 16, 17,...30, 31, 48, 49,...,62, 63
 
     __m256i bv0_32_epi8 = _mm256_set_m128i(_mm256_castsi256_si128(bv1), _mm256_castsi256_si128(bv0)); 
 
-    // This saves one _mm256_extracti128_si256 against using _mm256_set_m128i.
+    // This (the second line below) saves one _mm256_extracti128_si256 against using _mm256_set_m128i.
     //__m256i bv1_32_epi8 = _mm256_set_m128i(_mm256_extracti128_si256(bv1, 1), _mm256_extracti128_si256(bv0, 1));
     __m256i bv1_32_epi8 = _mm256_insertf128_si256(bv1, _mm256_extracti128_si256(bv0, 1), 0);
 
@@ -54,23 +84,29 @@ accumulate_blklen32_r2c1blk2_avx2(
     get_2_zps<HasZeroPoint>(QuantBZeroPointPtr, zp0, zp1);
     bv0_32_epi8 = _mm256_sub_epi8(bv0_32_epi8, _mm256_set1_epi8(zp0));
     bv1_32_epi8 = _mm256_sub_epi8(bv1_32_epi8, _mm256_set1_epi8(zp1));
-    
-    __m256i one = _mm256_set1_epi16(1);
-    accumulate_dot(av00_32_epi8, bv0_32_epi8, combined_scale00, one, acc0);
-    accumulate_dot(av01_32_epi8, bv1_32_epi8, combined_scale01, one, acc0);
-    accumulate_dot(av10_32_epi8, bv0_32_epi8, combined_scale10, one, acc1);
-    accumulate_dot(av11_32_epi8, bv1_32_epi8, combined_scale11, one, acc1);
+
+    // generating constant 1s is fater here.
+    // __m256i one = _mm256_set1_epi16(1);
+    __m256i one_16_epi16 = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv0_32_epi8, bv0_32_epi8), 15);
+
+    // performance gains 7% by calling this (accumulate_2blk_dot) instead of 2 accumulate_1blk_dot calls.
+    // accumulate_1blk_dot(av00_32_epi8, bv0_32_epi8, combined_scale00, one_16_epi16, acc0);
+    // accumulate_1blk_dot(av01_32_epi8, bv1_32_epi8, combined_scale01, one_16_epi16, acc0);
+    // accumulate_1blk_dot(av10_32_epi8, bv0_32_epi8, combined_scale10, one_16_epi16, acc1);
+    // accumulate_1blk_dot(av11_32_epi8, bv1_32_epi8, combined_scale11, one_16_epi16, acc1);
+    accumulate_2blk_dot(av00_32_epi8, av01_32_epi8, bv0_32_epi8, bv1_32_epi8, combined_scale00, combined_scale01, one_16_epi16, acc0);
+    accumulate_2blk_dot(av10_32_epi8, av11_32_epi8, bv0_32_epi8, bv1_32_epi8, combined_scale10, combined_scale11, one_16_epi16, acc1);
 }
 
 template <bool HasZeroPoint>
 static MLAS_FORCEINLINE void
 accumulate_blklen32_r2c1blk1_avx2(
-    const __m256i av00_32_epi8,
-    const __m256i av10_32_epi8,
+    const __m256i& av00_32_epi8,
+    const __m256i& av10_32_epi8,
     const std::byte* QuantBDataPtr,
     const std::byte* QuantBZeroPointPtr,
-    const float combined_scale00,
-    const float combined_scale10,
+    const float& combined_scale00,
+    const float& combined_scale10,
     __m256& acc0,
     __m256& acc1
 )
@@ -84,20 +120,20 @@ accumulate_blklen32_r2c1blk1_avx2(
     const __m256i bzp = _mm256_set1_epi8(zp);
     bv_32_epi8 = _mm256_sub_epi8(bv_32_epi8, bzp);
 
-    __m256i one = _mm256_set1_epi16(1);
-    accumulate_dot(av00_32_epi8, bv_32_epi8, combined_scale00, one, acc0);
-    accumulate_dot(av10_32_epi8, bv_32_epi8, combined_scale10, one, acc1);
+    __m256i one_16_epi16 = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv_32_epi8, bv_32_epi8), 15);
+    accumulate_1blk_dot(av00_32_epi8, bv_32_epi8, combined_scale00, one_16_epi16, acc0);
+    accumulate_1blk_dot(av10_32_epi8, bv_32_epi8, combined_scale10, one_16_epi16, acc1);
 }
 
 template <bool HasZeroPoint>
 static MLAS_FORCEINLINE void
 accumulate_blklen32_r1c1blk2_avx2(
-    const __m256i av00_32_epi8,
-    const __m256i av01_32_epi8,
+    const __m256i& av00_32_epi8,
+    const __m256i& av01_32_epi8,
     const std::byte* QuantBDataPtr,
     const std::byte* QuantBZeroPointPtr,
-    const float combined_scale00,
-    const float combined_scale01,
+    const float& combined_scale00,
+    const float& combined_scale01,
     __m256& acc0)
 {
     // | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 | v32 v48 | v33 v49 | ... | v46 v62 | v47 v63 |
@@ -120,18 +156,19 @@ accumulate_blklen32_r1c1blk2_avx2(
     bv0_32_epi8 = _mm256_sub_epi8(bv0_32_epi8, _mm256_set1_epi8(zp0));
     bv1_32_epi8 = _mm256_sub_epi8(bv1_32_epi8, _mm256_set1_epi8(zp1));
 
-    __m256i one = _mm256_set1_epi16(1);
-    accumulate_dot(av00_32_epi8, bv0_32_epi8, combined_scale00, one, acc0);
-    accumulate_dot(av01_32_epi8, bv1_32_epi8, combined_scale01, one, acc0);
+    __m256i one_16_epi16 = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv0_32_epi8, bv0_32_epi8), 15);
+    //accumulate_1blk_dot(av00_32_epi8, bv0_32_epi8, combined_scale00, one_16_epi16, acc0);
+    //accumulate_1blk_dot(av01_32_epi8, bv1_32_epi8, combined_scale01, one_16_epi16, acc0);
+    accumulate_2blk_dot(av00_32_epi8, av01_32_epi8, bv0_32_epi8, bv1_32_epi8, combined_scale00, combined_scale01, one_16_epi16, acc0);
 }
 
 template <bool HasZeroPoint>
 static MLAS_FORCEINLINE void
 accumulate_blklen32_r1c1blk1_avx2(
-    const __m256i av00_32_epi8,
+    const __m256i& av00_32_epi8,
     const std::byte* QuantBDataPtr,
     const std::byte* QuantBZeroPointPtr,
-    const float combined_scale00,
+    const float& combined_scale00,
     __m256& acc0
 )
 {
@@ -144,8 +181,8 @@ accumulate_blklen32_r1c1blk1_avx2(
     const __m256i bzp = _mm256_set1_epi8(zp);
     bv_32_epi8 = _mm256_sub_epi8(bv_32_epi8, bzp);
 
-    __m256i one = _mm256_set1_epi16(1);
-    accumulate_dot(av00_32_epi8, bv_32_epi8, combined_scale00, one, acc0);
+    __m256i one_16_epi16 = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv_32_epi8, bv_32_epi8), 15);
+    accumulate_1blk_dot(av00_32_epi8, bv_32_epi8, combined_scale00, one_16_epi16, acc0);
 }
 
 template <bool HasZeroPoint>
