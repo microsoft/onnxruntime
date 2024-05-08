@@ -182,7 +182,7 @@ stages:
 
         - task: PublishPipelineArtifact@1
           inputs:
-            targetPath: '/bert_data'
+            targetPath: '/hf_models_cache'
             artifactName: 'hf_models_cache'
 
         - template: flex-downloadPipelineArtifact.yml
