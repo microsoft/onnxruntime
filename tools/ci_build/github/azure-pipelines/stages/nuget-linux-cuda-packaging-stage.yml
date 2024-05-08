@@ -130,7 +130,7 @@ stages:
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
-        artifactName: 'onnxruntime-linux-x64-gpu-tensorrt-$(OnnxRuntimeVersion)'
+        artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
         artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
