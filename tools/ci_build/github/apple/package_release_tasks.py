@@ -16,9 +16,9 @@ class Task(Enum):
 
 
 def _run(command: list[str], **kwargs):
-    print(f"Running command: {shlex.join(command)}")
+    print(f"Running command: {shlex.join(command)}", flush=True)
     kwargs.setdefault("check", True)
-    return subprocess.run(command, **kwargs)
+    return subprocess.run(command, **kwargs)  # noqa: PLW1510  # we add 'check' to kwargs if not present
 
 
 def upload_pod_archive(pod_archive_path: Path):
