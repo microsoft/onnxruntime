@@ -68,6 +68,7 @@ ONNX Runtime supports all opsets from the latest released version of the [ONNX](
 
 | ONNX Runtime version | [ONNX version](https://github.com/onnx/onnx/blob/master/docs/Versioning.md) | ONNX opset version | ONNX ML opset version | ONNX IR version |
 |------------------------------|--------------------|--------------------|----------------------|------------------|
+| 1.18 | **1.16** | 21 | 4 | 10 |
 | 1.17 | **1.15** | 20 | 4 | 9 |
 | 1.16 | **1.14.1** | 19 | 3 | 9 |
 | 1.15 | **1.14** | 19 | 3 | 8 |
