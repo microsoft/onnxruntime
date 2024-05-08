@@ -5,6 +5,7 @@
 
 #include "core/providers/cuda/cuda_kernel.h"
 #include "custom_reduce_impl.h"
+#include "ipc_utils.h"
 
 #if defined(ORT_USE_NCCL)
 #include <algorithm>
@@ -71,6 +72,9 @@ class AllReduce final : public NcclKernel {
   explicit AllReduce(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+  mutable std::vector<std::shared_ptr<ort_trtllm::IpcMemory>> mIpcMemoryHandles;
+  mutable std::vector<const void*> mCommPtrs;
 };
 
 class AllGather final : public NcclKernel {

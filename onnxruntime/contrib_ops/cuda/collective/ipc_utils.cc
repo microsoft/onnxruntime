@@ -18,16 +18,15 @@
 
 #include "ipc_utils.h"
 #include "mpi_include.h"
-#include <iostream>
 
 namespace ort_trtllm {
 
 using namespace onnxruntime;
 
-Status setPeerAccess(NcclContext* nctx, bool enable) {
-  const int srcNode = nctx->Rank();
+Status setPeerAccess(int myRank, int nRanks, bool enable) {
+  const int srcNode = myRank;
 
-  for (int destNode = 0; destNode < nctx->Size(); destNode++) {
+  for (int destNode = 0; destNode < nRanks; destNode++) {
     if (destNode == srcNode) {
       continue;
     }
@@ -49,8 +48,8 @@ Status setPeerAccess(NcclContext* nctx, bool enable) {
   return Status::OK();
 }
 
-IpcMemory::IpcMemory(NcclContext* nctx, std::size_t bufferSize)
-    : nctx_(nctx), mCommPtrs(nctx_->Size()), mBufferSize(bufferSize) {
+IpcMemory::IpcMemory(int myRank, int nRanks, std::size_t bufferSize)
+    : myRank_(myRank), nRanks_(nRanks), mCommPtrs(nRanks), mBufferSize(bufferSize) {
   ORT_ENFORCE(allocateIpcMemory() == Status::OK());
 }
 
@@ -62,7 +61,7 @@ Status IpcMemory::allocateIpcMemory() {
   CUDA_RETURN_IF_ERROR(cudaIpcGetMemHandle(&localHandle, mBufferPtr));
 
   // Assume no pipeline parallelism.
-  std::vector<char> serialHandles(CUDA_IPC_HANDLE_SIZE * nctx_->Size(), 0);
+  std::vector<char> serialHandles(CUDA_IPC_HANDLE_SIZE * nRanks_, 0);
 
 #ifdef USE_MPI
   MPI_CHECK(MPI_Allgather(localHandle.reserved, CUDA_IPC_HANDLE_SIZE, MPI_BYTE, serialHandles.data(),
@@ -71,13 +70,13 @@ Status IpcMemory::allocateIpcMemory() {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please compile ORT with USE_MPI.");
 #endif
 
-  std::vector<cudaIpcMemHandle_t> handles(nctx_->Size());
+  std::vector<cudaIpcMemHandle_t> handles(nRanks_);
   for (size_t i = 0; i < handles.size(); ++i) {
     memcpy(handles[i].reserved, &serialHandles[i * CUDA_IPC_HANDLE_SIZE], CUDA_IPC_HANDLE_SIZE);
   }
 
   for (size_t nodeId = 0; nodeId < handles.size(); nodeId++) {
-    if ((int)nodeId == nctx_->Rank()) {
+    if ((int)nodeId == myRank_) {
       mCommPtrs[nodeId] = mBufferPtr;
     } else {
       uint8_t* foreignBuffer;

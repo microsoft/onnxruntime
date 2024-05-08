@@ -13,7 +13,6 @@
 
 #include "nccl_kernels.h"
 #include "mpi_include.h"
-#include "ipc_utils.h"
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cuda/tensor/slice.h"
 #include "core/providers/cuda/math/matmul.h"
@@ -251,9 +250,6 @@ NcclKernel::NcclKernel(const OpKernelInfo& info) : CudaKernel(info) {
 AllReduce::AllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
-static std::vector<std::shared_ptr<ort_trtllm::IpcMemory>> mIpcMemoryHandles;
-static std::vector<const void*> mCommPtrs;
-
 Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   auto input_tensor = context->Input<Tensor>(0);
   const void* input_data = input_tensor->DataRaw();
@@ -276,17 +272,17 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   //     ort_trtllm::getCustomAllReduceWorkspace(nccl_, input_count * input_tensor->DataType()->Size());
   ///////////////////////////////////////////////////////////////////////
   if (mCommPtrs.size() == 0) {
-    ORT_ENFORCE(ort_trtllm::setPeerAccess(nccl_, true) == Status::OK());
+    ORT_ENFORCE(ort_trtllm::setPeerAccess(myRank, nRanks, true) == Status::OK());
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     const std::size_t bufferSize = nRanks * input_count * input_tensor->DataType()->Size();
 
     mIpcMemoryHandles.clear();
-    mIpcMemoryHandles.emplace_back(std::make_shared<ort_trtllm::IpcMemory>(nccl_, bufferSize));
+    mIpcMemoryHandles.emplace_back(std::make_shared<ort_trtllm::IpcMemory>(myRank, nRanks, bufferSize));
     mIpcMemoryHandles.emplace_back(
-        std::make_shared<ort_trtllm::IpcMemory>(nccl_, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
+        std::make_shared<ort_trtllm::IpcMemory>(myRank, nRanks, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
     mIpcMemoryHandles.emplace_back(
-        std::make_shared<ort_trtllm::IpcMemory>(nccl_, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
+        std::make_shared<ort_trtllm::IpcMemory>(myRank, nRanks, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
 
     mCommPtrs.reserve(mIpcMemoryHandles.size() * nRanks);
     mCommPtrs.resize(mIpcMemoryHandles.size() * nRanks);
