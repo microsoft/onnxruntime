@@ -251,6 +251,9 @@ NcclKernel::NcclKernel(const OpKernelInfo& info) : CudaKernel(info) {
 AllReduce::AllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
+static std::vector<std::shared_ptr<ort_trtllm::IpcMemory>> mIpcMemoryHandles;
+static std::vector<const void*> mCommPtrs;
+
 Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   auto input_tensor = context->Input<Tensor>(0);
   const void* input_data = input_tensor->DataRaw();
@@ -272,24 +275,27 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   // std::vector<const void*> mCommPtrs =
   //     ort_trtllm::getCustomAllReduceWorkspace(nccl_, input_count * input_tensor->DataType()->Size());
   ///////////////////////////////////////////////////////////////////////
-  ORT_ENFORCE(ort_trtllm::setPeerAccess(nccl_, true) == Status::OK());
-  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  if (mCommPtrs.size() == 0) {
+    ORT_ENFORCE(ort_trtllm::setPeerAccess(nccl_, true) == Status::OK());
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-  const std::size_t bufferSize = nRanks * input_count * input_tensor->DataType()->Size();
+    const std::size_t bufferSize = nRanks * input_count * input_tensor->DataType()->Size();
 
-  std::vector<std::shared_ptr<ort_trtllm::IpcMemory>> mIpcMemoryHandles;
-  mIpcMemoryHandles.emplace_back(std::make_shared<ort_trtllm::IpcMemory>(nccl_, bufferSize));
-  mIpcMemoryHandles.emplace_back(
-      std::make_shared<ort_trtllm::IpcMemory>(nccl_, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
-  mIpcMemoryHandles.emplace_back(
-      std::make_shared<ort_trtllm::IpcMemory>(nccl_, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
+    mIpcMemoryHandles.clear();
+    mIpcMemoryHandles.emplace_back(std::make_shared<ort_trtllm::IpcMemory>(nccl_, bufferSize));
+    mIpcMemoryHandles.emplace_back(
+        std::make_shared<ort_trtllm::IpcMemory>(nccl_, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
+    mIpcMemoryHandles.emplace_back(
+        std::make_shared<ort_trtllm::IpcMemory>(nccl_, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
 
-  std::vector<const void*> mCommPtrs(mIpcMemoryHandles.size() * nRanks);
+    mCommPtrs.reserve(mIpcMemoryHandles.size() * nRanks);
+    mCommPtrs.resize(mIpcMemoryHandles.size() * nRanks);
 
-  for (size_t memIdx = 0; memIdx < mIpcMemoryHandles.size(); memIdx++) {
-    auto const& memCommPtrs = mIpcMemoryHandles[memIdx]->getCommPtrsTensor();
-    for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(nRanks); tpIdx++) {
-      mCommPtrs[memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
+    for (size_t memIdx = 0; memIdx < mIpcMemoryHandles.size(); memIdx++) {
+      auto const& memCommPtrs = mIpcMemoryHandles[memIdx]->getCommPtrsTensor();
+      for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(nRanks); tpIdx++) {
+        mCommPtrs[memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
+      }
     }
   }
   ///////////////////////////////////////////////////////////////////////
