@@ -24,6 +24,8 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MyTritonSoftmax);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MyTritonSoftmax);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, FastGelu);
@@ -232,6 +234,8 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
     BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
+    BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MyTritonSoftmax)>,
+    BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MyTritonSoftmax)>,
     BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample)>,
     BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu)>,
     BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, FastGelu)>,
