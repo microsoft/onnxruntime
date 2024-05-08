@@ -85,12 +85,6 @@ class TensorrtLogger : public nvinfer1::ILogger {
       }
     }
   }
-  void set_level(Severity verbosity) {
-    verbosity_ = verbosity;
-  }
-  Severity get_level() const {
-    return verbosity_;
-  }
 };
 
 namespace tensorrt_ptr {
@@ -558,6 +552,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * Get the pointer to the IBuilder instance.
    * This function only creates the instance at the first time it's being called."
    */
-  nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
+  nvinfer1::IBuilder* GetBuilder() const;
 };
 }  // namespace onnxruntime
