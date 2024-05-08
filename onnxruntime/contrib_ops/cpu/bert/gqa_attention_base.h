@@ -105,6 +105,9 @@ class GQAAttentionBase : public AttentionBase {
     const size_t past_buff_chunk_length = static_cast<size_t>(past_buffer_sequence_length) * head_size;        // L x H
     const size_t present_buff_chunk_length = static_cast<size_t>(present_buffer_sequence_length) * head_size;  // T x H
 
+    if (!past_present_share_buffer) {
+      memset(present_key, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
+    }
     const int loop_len = batch_size * num_heads_;
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
@@ -206,7 +209,6 @@ class GQAAttentionBase : public AttentionBase {
     const bool is_prompt = sequence_length != 1;
     const int packed_batch_stride = packed_qkv ? (num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size : 0;
     const int kv_num_heads_factor = num_heads_ / kv_num_heads_;
-    // TODO: what is with these being ptrdiff_t?
     const int kv_input_chunk_length = sequence_length * head_size;                                             // L x H
     const size_t past_buff_chunk_length = static_cast<size_t>(past_buffer_sequence_length) * head_size;        // L x H
     const size_t present_buff_chunk_length = static_cast<size_t>(present_buffer_sequence_length) * head_size;  // T x H
