@@ -87,11 +87,6 @@ Status IpcMemory::allocateIpcMemory() {
     }
   }
 
-  // print mCommPtrs
-  for (size_t nodeId = 0; nodeId < mCommPtrs.size(); nodeId++) {
-    std::cout << "ipc_utils::mCommPtrs[" << nodeId << "]: " << mCommPtrs[nodeId] << std::endl;
-  }
-
   return Status::OK();
 }
 
@@ -107,8 +102,7 @@ Status IpcMemory::destroyIpcMemory() {
       CUDA_RETURN_IF_ERROR(cudaIpcCloseMemHandle(mCommPtrs[nodeId]));
     }
   }
-  cudaFree(mBufferPtr);
-
+  // cudaFree(mBufferPtr);
   return Status::OK();
 }
 

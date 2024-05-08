@@ -52,4 +52,72 @@ class IpcMemory {
   void* mBufferPtr{nullptr};
 };
 
+// static std::unordered_map<int, std::vector<const void*>> mCommPtrsMap;
+// static std::unordered_map<int, size_t> bufferSizeMap;
+// static std::vector<const void*> getCustomAllReduceWorkspace(NcclContext* nctx, size_t input_size) {
+//   const int myRank = nctx->Rank();
+
+//   std::cout << "input_size: " << input_size << "bufferSizeMap[myRank]: " << bufferSizeMap[myRank] << std::endl;
+//   if (input_size <= bufferSizeMap[myRank]) {
+//     return mCommPtrsMap[myRank];
+//   }
+//   bufferSizeMap[myRank] = input_size;
+
+//   ORT_ENFORCE(setPeerAccess(nctx, true) == Status::OK());
+
+//   const int nRanks = nctx->Size();
+//   const std::size_t bufferSize = nRanks * bufferSizeMap[myRank];
+
+//   std::vector<std::shared_ptr<IpcMemory>> mIpcMemoryHandles;
+//   mIpcMemoryHandles.emplace_back(std::make_shared<IpcMemory>(nctx, bufferSize));
+//   mIpcMemoryHandles.emplace_back(
+//       std::make_shared<IpcMemory>(nctx, IpcMemory::FLAGS_SIZE * nRanks));
+//   mIpcMemoryHandles.emplace_back(
+//       std::make_shared<IpcMemory>(nctx, IpcMemory::FLAGS_SIZE * nRanks));
+
+//   mCommPtrsMap[myRank].resize(mIpcMemoryHandles.size() * nRanks);
+
+//   for (size_t memIdx = 0; memIdx < mIpcMemoryHandles.size(); memIdx++) {
+//     auto const& memCommPtrs = mIpcMemoryHandles[memIdx]->getCommPtrsTensor();
+//     for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(nRanks); tpIdx++) {
+//       mCommPtrsMap[myRank][memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
+//     }
+//   }
+
+//   return mCommPtrsMap[myRank];
+// }
+
+static std::vector<const void*> getCustomAllReduceWorkspace(NcclContext* nctx, size_t input_size) {
+  static std::vector<const void*> mCommPtrs;
+  static size_t bufferSizePerRank;
+  static std::vector<std::shared_ptr<IpcMemory>> mIpcMemoryHandles;
+
+  if (input_size <= bufferSizePerRank) {
+    return mCommPtrs;
+  }
+
+  ORT_ENFORCE(setPeerAccess(nctx, true) == Status::OK());
+
+  const int nRanks = nctx->Size();
+  const std::size_t bufferSize = nRanks * input_size;
+
+  mIpcMemoryHandles.clear();
+  mIpcMemoryHandles.emplace_back(std::make_shared<IpcMemory>(nctx, bufferSize));
+  mIpcMemoryHandles.emplace_back(
+      std::make_shared<IpcMemory>(nctx, IpcMemory::FLAGS_SIZE * nRanks));
+  mIpcMemoryHandles.emplace_back(
+      std::make_shared<IpcMemory>(nctx, IpcMemory::FLAGS_SIZE * nRanks));
+
+  mCommPtrs.resize(mIpcMemoryHandles.size() * nRanks);
+
+  for (size_t memIdx = 0; memIdx < mIpcMemoryHandles.size(); memIdx++) {
+    auto const& memCommPtrs = mIpcMemoryHandles[memIdx]->getCommPtrsTensor();
+    for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(nRanks); tpIdx++) {
+      mCommPtrs[memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
+    }
+  }
+
+  return mCommPtrs;
+}
+
 }  // namespace ort_trtllm
