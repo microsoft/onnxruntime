@@ -2,6 +2,8 @@
 
 # Note: This script is intended to be called from the CocoaPods package release pipeline or a similar context.
 
+from __future__ import annotations
+
 import argparse
 import os
 import shlex
