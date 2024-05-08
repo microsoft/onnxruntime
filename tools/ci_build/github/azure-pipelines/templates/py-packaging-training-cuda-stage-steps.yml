@@ -155,6 +155,36 @@ stages:
 
         - template: set-python-manylinux-variables-step.yml
 
+        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
+          displayName: 'Mount MNIST'
+          condition: succeededOrFailed()
+          workingDirectory: $(Build.SourcesDirectory)
+
+        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
+          displayName: 'Mount bert-data'
+          condition: succeededOrFailed()
+          workingDirectory: $(Build.SourcesDirectory)
+
+        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+          displayName: 'Mount hf-models-cache'
+          condition: succeededOrFailed()
+          workingDirectory: $(Build.SourcesDirectory)
+
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '/mnist'
+            artifactName: 'mnist'
+
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '/bert_data'
+            artifactName: 'bert-data'
+
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '/bert_data'
+            artifactName: 'hf_models_cache'
+
         - template: flex-downloadPipelineArtifact.yml
           parameters:
             ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}_${{ parameters.python_version }}"
@@ -187,36 +217,6 @@ stages:
               --build-arg PREPEND_PATH=/usr/local/cuda/bin:
               --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
             Repository: $(Repository)
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-          displayName: 'Mount MNIST'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
-          displayName: 'Mount bert-data'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-          displayName: 'Mount hf-models-cache'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)
-
-        - task: PublishPipelineArtifact@1
-          inputs:
-            targetPath: '/mnist'
-            artifactName: 'mnist'
-
-        - task: PublishPipelineArtifact@1
-          inputs:
-            targetPath: '/bert_data'
-            artifactName: 'bert-data'
-
-        - task: PublishPipelineArtifact@1
-          inputs:
-            targetPath: '/bert_data'
-            artifactName: 'hf_models_cache'
 
         - task: CmdLine@2
           displayName: 'test ortmodule'
