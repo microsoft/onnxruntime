@@ -272,6 +272,7 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   //     ort_trtllm::getCustomAllReduceWorkspace(nccl_, input_count * input_tensor->DataType()->Size());
   ///////////////////////////////////////////////////////////////////////
   if (mCommPtrs.size() == 0) {
+    std::cout << "allocate new mCommPtrs" << std::endl;
     ORT_ENFORCE(ort_trtllm::setPeerAccess(myRank, nRanks, true) == Status::OK());
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
@@ -293,14 +294,15 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
         mCommPtrs[memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
       }
     }
+
+    // print mCommPtrs
+    for (size_t i = 0; i < mCommPtrs.size(); i++) {
+      std::cout << mCommPtrs[i] << " ";
+    }
+    std::cout << std::endl;
   }
   ///////////////////////////////////////////////////////////////////////
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  // print mCommPtrs
-  for (size_t i = 0; i < mCommPtrs.size(); i++) {
-    std::cout << mCommPtrs[i] << " ";
-  }
-  std::cout << std::endl;
   ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
       reinterpret_cast<int32_t const*>(mCommPtrs.data()), nRanks, myRank);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
