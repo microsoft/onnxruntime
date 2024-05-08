@@ -347,7 +347,7 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_u8u8(self):
         self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT, 18, 8)
 
-    @unittest.skip(reason="Shape inference bug, see onnx PR #5709")
+    @unittest.skip(reason="QLinearMatMul(21), which supports float16, is not implemented in ORT.")
     @skip_if_new_opset_exception_raised
     def test_quantize_matmul_u8u8_f16(self):
         self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT16, 21, 9)
@@ -393,22 +393,22 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_s8s8_distribution(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT, 18, 8, calibrate_method=CalibrationMethod.Distribution)
 
-    @unittest.skip(reason="Shape inference bug, see onnx PR #5709")
+    @unittest.skip(reason="QLinearMatMul(21), which supports float16, is not implemented in ORT.")
     @skip_if_new_opset_exception_raised
     def test_quantize_matmul_s8s8_f16(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 21, 9)
 
-    @unittest.skip(reason="Shape inference bug, see onnx PR #5709")
+    @unittest.skip(reason="QLinearMatMul(21), which supports float16, is not implemented in ORT.")
     @skip_if_new_opset_exception_raised
     def test_quantize_matmul_s8s8_f16_entropy(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 21, 9, calibrate_method=CalibrationMethod.Entropy)
 
-    @unittest.skip(reason="Shape inference bug, see onnx PR #5709")
+    @unittest.skip(reason="QLinearMatMul(21), which supports float16, is not implemented in ORT.")
     @skip_if_new_opset_exception_raised
     def test_quantize_matmul_s8s8_f16_percentile(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 21, 9, calibrate_method=CalibrationMethod.Percentile)
 
-    @unittest.skip(reason="Shape inference bug, see onnx PR #5709")
+    @unittest.skip(reason="QLinearMatMul(21), which supports float16, is not implemented in ORT.")
     @skip_if_new_opset_exception_raised
     def test_quantize_matmul_s8s8_f16_distribution(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 21, 9, calibrate_method=CalibrationMethod.Distribution)

@@ -115,18 +115,10 @@ void SetQnnTensorClientBufData(Qnn_Tensor_t& qnn_tensor, void* client_buf_data) 
 }
 
 void SetQnnTensorQParams(Qnn_Tensor_t& qnn_tensor, const Qnn_QuantizeParams_t& quantize_params) {
-  Qnn_QuantizationEncoding_t encoding = quantize_params.quantizationEncoding;
-  if (encoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET ||
-      encoding == QNN_QUANTIZATION_ENCODING_UNDEFINED) {
-    if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
-      qnn_tensor.v1.quantizeParams = quantize_params;
-    } else {
-      ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-    }
-  } else if (encoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
-    ORT_THROW("Axis scale offset quantization parameter is not supported.");
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    qnn_tensor.v1.quantizeParams = quantize_params;
   } else {
-    ORT_THROW("quantizationEncoding incorrect value.");
+    ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
   }
 }
 

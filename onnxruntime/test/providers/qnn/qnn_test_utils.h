@@ -4,10 +4,12 @@
 #pragma once
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include <string>
 #include <cmath>
+#include <string>
+#include <type_traits>
 #include <unordered_map>
 #include "core/framework/provider_options.h"
+#include "core/framework/tensor_shape.h"
 #include "core/util/qmath.h"
 
 #include "test/optimizer/qdq_test_utils.h"
@@ -30,7 +32,7 @@ struct QuantParams {
   float scale;
   QType zero_point;
 
-  static QuantParams<QType> Compute(float rmin, float rmax) {
+  static QuantParams<QType> Compute(float rmin, float rmax, bool symmetric = false) {
     // Ensure a minimum range of 0.0001 (required by QNN)
     rmax = std::max(rmax, rmin + 0.0001f);
 
@@ -41,8 +43,23 @@ struct QuantParams {
     constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
     constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
 
-    const float scale = rmax == rmin ? 1.0f : (rmax - rmin) / (qmax - qmin);
-    const float initial_zero_point = qmin - (rmin / scale);
+    if (symmetric) {
+      const float abs_max = std::max(std::abs(rmin), std::abs(rmax));
+      rmax = abs_max;
+      rmin = -abs_max;
+    }
+
+    const float scale = (rmax - rmin) / (qmax - qmin);
+    float initial_zero_point = 0.0f;
+
+    if (symmetric) {
+      // Symmetric uses same formula for zero-point as asymmetric, but we can cancel out terms for
+      // increased numerical accuracy.
+      initial_zero_point = (qmin + qmax) / 2.0f;
+    } else {
+      initial_zero_point = qmin - (rmin / scale);
+    }
+
     const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin, std::min(qmax, initial_zero_point))));
 
     return QuantParams<QType>{scale, zero_point};
@@ -55,11 +72,12 @@ struct QuantParams {
 // range of output values. Note that the function is able to overwrite the output_qparams parameter if necessary
 // (Example: MaxPool must have identical input and output quantization params).
 template <typename QuantType>
-using GetTestQDQModelFn = std::function<void(ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams)>;
+using GetTestQDQModelFn = std::function<void(ModelTestBuilder& builder,
+                                             std::vector<QuantParams<QuantType>>& output_qparams)>;
 
 // Computes quantization parameters for an array of floating-point values.
 template <typename QType = uint8_t>
-inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data) {
+inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data, bool symmetric = false) {
   // Get min/max of raw data.
   float min_val = std::numeric_limits<float>::max();
   float max_val = std::numeric_limits<float>::min();
@@ -69,7 +87,7 @@ inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data) {
     max_val = std::max(max_val, val);
   }
 
-  return QuantParams<QType>::Compute(min_val, max_val);
+  return QuantParams<QType>::Compute(min_val, max_val, symmetric);
 }
 
 /**
@@ -150,6 +168,10 @@ struct TestInputDef {
     return shape_;
   }
 
+  const TensorShape GetTensorShape() const {
+    return TensorShape(shape_);
+  }
+
   bool IsInitializer() const {
     return is_initializer_;
   }
@@ -201,6 +223,42 @@ struct TestInputDef {
     return range;
   }
 
+  std::vector<std::pair<T, T>> GetRangePerChannel(size_t axis) const {
+    auto which_type = data_info_.index();
+    const size_t num_ranges = static_cast<size_t>(shape_.at(axis));
+
+    // Random. All axis dims get the same ranges (rand_min -> rand_max)
+    if (which_type == 1) {
+      RandomData rand_info = std::get<RandomData>(data_info_);
+      return std::vector<std::pair<T, T>>(num_ranges, std::pair<T, T>(rand_info.min, rand_info.max));
+    }
+
+    // Raw data. Get min/max per axis dim val
+    assert(which_type == 0);
+
+    const std::vector<T>& raw_data = std::get<RawData>(data_info_).data;
+    std::pair<T, T> init_range(std::numeric_limits<T>::max(), std::numeric_limits<T>::min());
+    std::vector<std::pair<T, T>> per_axis_ranges(num_ranges, init_range);
+    TensorShape shape(shape_);
+    size_t num_blocks = shape.SizeToDimension(axis);
+    size_t block_size = shape.SizeFromDimension(axis + 1);
+
+    size_t i = 0;
+    for (size_t n = 0; n < num_blocks; n++) {
+      for (size_t r = 0; r < num_ranges; r++) {
+        for (size_t j = 0; j < block_size; j++) {
+          std::pair<T, T>& range = per_axis_ranges[r];
+          range.first = std::min(range.first, raw_data[i]);
+          range.second = std::max(range.second, raw_data[i]);
+          i++;
+        }
+      }
+    }
+    assert(i == raw_data.size());
+
+    return per_axis_ranges;
+  }
+
  private:
   std::vector<int64_t> shape_;
   std::variant<RawData, RandomData> data_info_;
@@ -210,9 +268,64 @@ struct TestInputDef {
 };
 
 template <typename QType>
-inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& input_def) {
+inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& input_def, bool symmetric = false) {
   const std::pair<float, float> frange = input_def.GetRange();
-  return QuantParams<QType>::Compute(frange.first, frange.second);
+  return QuantParams<QType>::Compute(frange.first, frange.second, symmetric);
+}
+
+template <typename QType>
+static void GetTestInputQuantParamsPerChannel(const TestInputDef<float>& input_def, std::vector<float>& scales,
+                                              std::vector<QType>& zero_points, size_t axis, bool symmetric = false) {
+  const auto f32_ranges = input_def.GetRangePerChannel(axis);
+
+  scales.reserve(f32_ranges.size());
+  zero_points.reserve(f32_ranges.size());
+
+  for (const auto& range : f32_ranges) {
+    QuantParams<QType> params = QuantParams<QType>::Compute(range.first, range.second, symmetric);
+    scales.push_back(params.scale);
+    zero_points.push_back(params.zero_point);
+  }
+}
+
+template <typename FloatType, typename QuantType>
+static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType> output, const TensorShape& shape,
+                           gsl::span<const FloatType> scales, gsl::span<const QuantType> zero_points,
+                           std::optional<int64_t> axis) {
+  const size_t input_rank = shape.NumDimensions();
+  const size_t num_elems = static_cast<size_t>(shape.Size());
+  ORT_ENFORCE(input.size() == num_elems);
+  ORT_ENFORCE(output.size() == num_elems);
+
+  size_t block_count = 1;
+  size_t broadcast_dim = 1;
+  size_t block_size = num_elems;
+
+  if (axis.has_value()) {
+    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + input_rank : static_cast<size_t>(*axis);
+    block_count = shape.SizeToDimension(axis_no_neg);
+    broadcast_dim = shape[axis_no_neg];
+    block_size = shape.SizeFromDimension(axis_no_neg + 1);
+  }
+
+  ORT_ENFORCE(scales.size() == broadcast_dim);
+  ORT_ENFORCE(zero_points.empty() || zero_points.size() == broadcast_dim);
+
+  size_t i = 0;
+
+  for (size_t n = 0; n < block_count; n++) {
+    for (size_t bd = 0; bd < broadcast_dim; bd++) {
+      QuantType zp = zero_points.empty() ? static_cast<QuantType>(0) : zero_points[bd];
+      if constexpr (std::is_same_v<QuantType, int32_t>) {
+        for (size_t e = 0; e < block_size; e++) {
+          output[i + e] = static_cast<QuantType>(input[i + e] / scales[bd]) + zp;
+        }
+      } else {
+        ParQuantizeLinearStd(&input[i], &output[i], block_size, scales[bd], zp, nullptr);
+      }
+      i += block_size;
+    }
+  }
 }
 
 /**
@@ -281,8 +394,8 @@ struct QDQTolerance {
  * \param qnn_options QNN EP provider options.
  * \param opset_version The opset version.
  * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
- * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the QDQ model on CPU EP.
- *                  This tolerance is a percentage of the output range.
+ * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the QDQ model
+ *                  on CPU EP. This tolerance is a percentage of the output range.
  * \param log_severity The logger's severity setting.
  */
 template <typename QuantType>
@@ -482,8 +595,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
  * \param qnn_options QNN EP provider options.
  * \param opset_version The opset version.
  * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
- * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the FP16 model on CPU EP.
- *                  This tolerance is a percentage of the output range.
+ * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the FP16 model
+ *                  on CPU EP. This tolerance is a percentage of the output range.
  * \param log_severity The logger's severity setting.
  */
 inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
@@ -708,9 +821,10 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
   return input;
 }
 
-// ONNX spec does not allow quantizing float to int32. However, this function will create an int32 input (divide by scale)
-// and then return the output of DequantizeLinear. Note that bias_scale should be generally be equal
-// to input_scale * weights_scale. See quantization tool: onnx_quantizer.py::quantize_bias_static()
+// ONNX spec does not allow quantizing float to int32. However, this function will create an int32
+// input (divide by scale) and then return the output of DequantizeLinear. Note that bias_scale should
+// be generally be equal to input_scale * weights_scale.
+// See quantization tool: onnx_quantizer.py::quantize_bias_static()
 //
 // i.e., initial bias => manual quantization (int32) => DQ => final float bias
 NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
@@ -767,12 +881,13 @@ inline GetTestModelFn BuildOpTestCase(const std::string& op_type,
  * \returns A model building function.
  */
 template <typename QuantType, typename OtherInputType = int64_t>
-inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(const std::string& op_type,
-                                                       const std::vector<TestInputDef<float>>& quant_input_defs,
-                                                       const std::vector<TestInputDef<OtherInputType>>& non_quant_input_defs,
-                                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                                       const std::string& op_domain = kOnnxDomain,
-                                                       bool use_contrib_qdq = false) {
+inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
+    const std::string& op_type,
+    const std::vector<TestInputDef<float>>& quant_input_defs,
+    const std::vector<TestInputDef<OtherInputType>>& non_quant_input_defs,
+    const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+    const std::string& op_domain = kOnnxDomain,
+    bool use_contrib_qdq = false) {
   return [op_type, quant_input_defs, non_quant_input_defs, attrs, op_domain,
           use_contrib_qdq](ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams) {
     std::vector<NodeArg*> op_inputs;
