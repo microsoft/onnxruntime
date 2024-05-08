@@ -194,7 +194,6 @@ export interface TestRunnerCliArgs {
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
   webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
-  qnnOptions?: InferenceSession.QnnExecutionProviderOption;
   globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
   userDataDir?: string;
@@ -358,11 +357,6 @@ function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.WebNNExe
   return {name: 'webnn', deviceType};
 }
 
-function parseQNNOptions(_args: minimist.ParsedArgs): InferenceSession.QnnExecutionProviderOption {
-  // TODO implement me
-  return {name: 'qnn'};
-}
-
 function parseGlobalEnvFlags(args: minimist.ParsedArgs) {
   const wasm = parseWasmFlags(args);
   const webgl = parseWebglFlags(args);
@@ -481,7 +475,6 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   const webglOptions = parseWebglOptions(args);
   const webnnOptions = parseWebNNOptions(args);
-  const qnnOptions = parseQNNOptions(args);
 
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
@@ -524,7 +517,6 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     cpuOptions,
     webglOptions,
     webnnOptions,
-    qnnOptions,
     wasmOptions,
     globalEnvFlags,
     noSandbox,
