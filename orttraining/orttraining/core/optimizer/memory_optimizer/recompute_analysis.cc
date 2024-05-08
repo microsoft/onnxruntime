@@ -21,7 +21,7 @@ namespace onnxruntime::optimizer::memory_optimizer {
 namespace {
 
 // We don't usually need maximum recompute node count from our existing use cases, so loose the constraints here.
-constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = std::numeric_limits<int32_t>::max;
+constexpr size_t MAXIMUM_RECOMPUTE_NODE_COUNT = std::numeric_limits<size_t>::max();
 
 static size_t GetElementSize(const ONNX_NAMESPACE::DataType& tensor_type) {
   const ONNX_NAMESPACE::TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);

@@ -27,6 +27,7 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/temp_dir.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
@@ -64,9 +65,16 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
 
   const std::string alleviation_config("Gelu+:1:-1");
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("memory_optimizer_test_tmp_dir")};
+  PathString config_path{ConcatPathComponent(tmp_dir.Path(),
+                                             ORT_TSTR("gelurecompute.json"))};
+  std::ofstream outfile(ToUTF8String(config_path));
+  outfile << "[" << alleviation_config << "]" << std::endl;
+  outfile.close();
+
   const std::string probe_config("1:0");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(alleviation_config, probe_config), TransformerLevel::Level3));
+      std::make_unique<MemoryOptimizer>(config_path, probe_config), TransformerLevel::Level3));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
@@ -106,9 +114,16 @@ TEST(MemoryOptimizerTests, TileRecompute) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
   const std::string alleviation_config("Expand+Tile+:1:-1");
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("memory_optimizer_test_tmp_dir")};
+  PathString config_path{ConcatPathComponent(tmp_dir.Path(),
+                                             ORT_TSTR("tilerecompute.json"))};
+  std::ofstream outfile(ToUTF8String(config_path));
+  outfile << "[" << alleviation_config << "]" << std::endl;
+  outfile.close();
+
   const std::string probe_config("1:0");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(alleviation_config, probe_config), TransformerLevel::Level3));
+      std::make_unique<MemoryOptimizer>(config_path, probe_config), TransformerLevel::Level3));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
@@ -163,6 +178,7 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
       optimizer::memory_optimizer::GetSerializedORTModuleMemoryStat(graph_viewer,
                                                                     initial_mem_config,
                                                                     probe_config,
+                                                                    true, /*enable this for test converage*/
                                                                     *logger,
                                                                     cluster_id_combinations_to_saved_symbolic_byte_map,
                                                                     nullptr,
@@ -187,8 +203,15 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
   // Apply the transformer
   GraphTransformerManager graph_transformation_mgr{5};
   const std::string layer_wise_recompute_config(oss.str());
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("memory_optimizer_test_tmp_dir")};
+  PathString config_path{ConcatPathComponent(tmp_dir.Path(),
+                                             ORT_TSTR("layerrecompute.json"))};
+  std::ofstream outfile(ToUTF8String(config_path));
+  outfile << "[" << layer_wise_recompute_config << "]" << std::endl;
+  outfile.close();
+
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(layer_wise_recompute_config, probe_config), TransformerLevel::Level3));
+      std::make_unique<MemoryOptimizer>(config_path, probe_config), TransformerLevel::Level3));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
@@ -400,10 +423,6 @@ TEST(MemoryOptimizerTests, PythonOpRecompute) {
   };
 
   auto post_graph_checker = [](Graph& graph) {
-    // Save the graph into local file for debugging
-    const std::string model_uri = "PythonOpRecompute.onnx";
-    TEST_RETURN_IF_NOT(Model::Save(*const_cast<Model*>(&graph.GetModel()), model_uri).IsOK());
-
     const Node* recompute_node = nullptr;
     const Node* grad_node = nullptr;
     for (auto& node : graph.Nodes()) {
@@ -487,12 +506,19 @@ TEST(MemoryOptimizerTests, PythonOpRecompute) {
     pythonop_grad_node->AddAttribute("output_tensor_requires_grads", std::vector<int64_t>{1});
   };
 
+  const std::string alleviation_config("PythonOp+:1:-1");
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("memory_optimizer_test_tmp_dir")};
+  PathString config_path{ConcatPathComponent(tmp_dir.Path(),
+                                             ORT_TSTR("pythonoprecompute.json"))};
+  std::ofstream outfile(ToUTF8String(config_path));
+  outfile << "[" << alleviation_config << "]" << std::endl;
+  outfile.close();
+
   const std::vector<int> opsets{12, 13, 14, 15, 16, 17};  // Clip support int64_t since opset 12
   for (auto& opset_version : opsets) {
-    const std::string alleviation_config("PythonOp+:1:-1");
     const std::string probe_config("1:0");
     std::unique_ptr<GraphTransformer> transformer =
-        std::make_unique<MemoryOptimizer>(alleviation_config, probe_config);
+        std::make_unique<MemoryOptimizer>(config_path, probe_config);
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
                                           TransformerLevel::Level1,
                                           1, pre_graph_checker, post_graph_checker));

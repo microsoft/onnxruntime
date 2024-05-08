@@ -659,7 +659,7 @@ void FormatRecomputeMemoryRecords(int option_index,
 
 std::string SerializeMemoryRecords(
     const std::vector<std::pair<std::string, MemoryRecord>>& records_grouped_by_node_cluster_id,
-    std::string_view user_config) {
+    std::string_view memory_optimization_config_file_path) {
   InlinedVector<std::string> rows;
   rows.push_back(kTableBorder);
   rows.push_back("|" + ToFixedLengthString("Freq", kFirstColumnWidth) +
@@ -715,7 +715,10 @@ std::string SerializeMemoryRecords(
   std::string table_border_full(max_length, '=');
   std::ostringstream summary;
   summary << std::endl;
-  summary << MakeString("MemoryInsight Summary - User config: ", (user_config.empty() ? "not provided" : user_config))
+  summary << MakeString("MemoryInsight Summary - User config file path: ",
+                        (memory_optimization_config_file_path.empty()
+                             ? "not provided"
+                             : memory_optimization_config_file_path))
           << std::endl;
   for (auto& row : rows) {
     if (row == kTableRowSeparator) {
@@ -733,8 +736,9 @@ std::string SerializeMemoryRecords(
 }
 
 std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
-                                             std::string_view memory_optimization_config,
+                                             std::string_view memory_optimization_config_file_path,
                                              std::string_view recompute_probe_config,
+                                             const bool return_opportunity_table,
                                              const logging::Logger& logger,
                                              std::map<std::string, std::pair<std::string, int>>&
                                                  cluster_id_combinations_to_saved_symbolic_byte_map,
@@ -765,8 +769,8 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
 
   NodeToClusterApplyContextMap node_to_apply_context_map;
 
-  if (!memory_optimization_config.empty()) {
-    ORT_ENFORCE(ParseOptimizationConfigFromString(memory_optimization_config, cluster_id_to_config_map)
+  if (!memory_optimization_config_file_path.empty()) {
+    ORT_ENFORCE(ParseOptimizationConfigFromString(memory_optimization_config_file_path, cluster_id_to_config_map)
                     .IsOK());
     InlinedHashMap<const Node*, std::shared_ptr<NodeOptimizationPlanBase>> node_to_opt_plan_map;
     ORT_ENFORCE(memory_opt_planner.FinalizeNodePlansFromUserConfig(cluster_id_to_config_map,
@@ -782,12 +786,16 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
                     .IsOK());
   }
 
-  std::vector<std::pair<std::string, MemoryRecord>> records;
-  GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, node_to_apply_context_map, records);
-
   GetMemorySavingSymbolicString(memory_opt_planner, logger, cluster_id_combinations_to_saved_symbolic_byte_map);
 
-  return SerializeMemoryRecords(records, memory_optimization_config);
+  if (return_opportunity_table) {
+    std::vector<std::pair<std::string, MemoryRecord>> records;
+    GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, node_to_apply_context_map, records);
+    return SerializeMemoryRecords(records, memory_optimization_config_file_path);
+  }
+
+  // Otherwise, return empty.
+  return "";
 }
 
 }  // namespace onnxruntime::optimizer::memory_optimizer

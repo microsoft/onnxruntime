@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import json
+import tempfile
 from enum import IntEnum
 from logging import Logger
 from typing import Dict, List, Optional, Tuple, Union
@@ -499,7 +501,6 @@ class MemoryObserver:
         self._is_enabled = True
 
         # Memory optimization related.
-        self.memory_optimization_opportunity_table_str = None
         self.cluster_id_combination_to_saving_symbolics_map: Dict[str, MemoryOptimizationSummary] = {}
         ## The value is a list of symbolic dim values parsed from the first batch.
         self.symbolic_dim_name_to_value_map: Dict = {}
@@ -526,6 +527,8 @@ class MemoryObserver:
         self._is_first_inspect = True
 
         self._m = m
+
+        self._json_file = None
 
     def is_enabled(self) -> bool:
         """Check if memory inspector is enabled."""
@@ -557,20 +560,22 @@ class MemoryObserver:
         """
 
         recompute_probe_config = runtime_options.recompute_probe_config
-        memory_optimizer_config = runtime_options.memory_optimizer_config
+        memory_optimizer_config_file_path = runtime_options.memory_optimizer_config_file_path
 
         # If the memory optimization level is aggressive, we will first collect all
-        # recompute subgraph by passing empty memory_optimizer_config to get_serialized_ortmodule_memory_stat.
+        # recompute subgraph by passing empty memory_optimizer_config_file_path to get_serialized_ortmodule_memory_stat.
         if runtime_options.memory_optimization_level in [
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
         ]:
-            memory_optimizer_config = ""
+            memory_optimizer_config_file_path = None
 
         (
-            self.memory_optimization_opportunity_table_str,
+            _,
             memory_optimization_saving_symbolics,
-        ) = execution_agent.get_serialized_ortmodule_memory_stat(memory_optimizer_config, recompute_probe_config)
+        ) = execution_agent.get_serialized_ortmodule_memory_stat(
+            memory_optimizer_config_file_path, recompute_probe_config, False
+        )
 
         cluster_id_to_saving_symbol_map: Dict[str, MemoryOptimizationSummary] = {}
         for cluster_id, memory_saving_stat in memory_optimization_saving_symbolics.items():
@@ -599,30 +604,43 @@ class MemoryObserver:
         for cluster_id, values in sorted_list:
             self.cluster_id_combination_to_saving_symbolics_map[cluster_id] = values
 
-        # For aggressive memory optimization, we update the memory_optimizer_config using all.
-        if runtime_options.memory_optimization_level > 0:
-            recompute_configs = []
-            for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
-                config_values = cluster_id.split(":")
-                opt_type = int(config_values[1])
-                if (
-                    runtime_options.memory_optimization_level
-                    == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
-                    and opt_type == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
-                ):
-                    recompute_configs.append(cluster_id)
-                elif (
-                    runtime_options.memory_optimization_level
-                    == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE
-                    and opt_type
-                    in [
-                        _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
-                        _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
-                    ]
-                ):
-                    recompute_configs.append(cluster_id)
+        # For aggressive memory optimization, we update the memory_optimizer_config_file_path using all.
+        if runtime_options.memory_optimization_level in [
+            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
+            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
+        ]:
 
-            runtime_options.memory_optimizer_config = ",".join(recompute_configs)
+            apply_config = []
+
+            for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
+                plans = cluster_id.split(",")
+                recompute_configs = []
+                for plan in plans:
+                    config_values = plan.split(":")
+                    opt_type = int(config_values[1])
+                    if (
+                        runtime_options.memory_optimization_level
+                        == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+                        and opt_type == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
+                    ):
+                        recompute_configs.append(plan)
+                    elif (
+                        runtime_options.memory_optimization_level
+                        == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE
+                        and opt_type
+                        in [
+                            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
+                            _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
+                        ]
+                    ):
+                        recompute_configs.append(cluster_id)
+
+                apply_config.append(",".join(recompute_configs))
+
+            self._json_file = tempfile.NamedTemporaryFile(mode="w+")
+            json.dump(apply_config, self._json_file)
+            self._json_file.flush()
+            runtime_options.memory_optimizer_config = self._json_file.name
 
     def inspect_memory(self, cur_phase: Phase):
         """Inspect memory usage and print statistics.

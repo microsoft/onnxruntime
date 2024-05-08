@@ -112,6 +112,7 @@ std::string SerializeMemoryRecords(const std::vector<std::pair<std::string, Memo
  * @param graph_viewer The graph to analyze.
  * @param memory_optimization_config The user configuration to control the memory optimization.
  * @param recompute_probe_level The level to control allowed operations during recomputable subgraph detecting.
+ * @param return_opportunity_table Need return detailed opportunity_table or not, mainly used for debugging.
  * @param logger Logger.
  * @param ortvalue_name_to_idx_map Optional. If provided, we will use it to map ort value name to index.
  * @param p_seq_exec_plan Optional. If provided, we will use it to get allocation plans.
@@ -120,6 +121,7 @@ std::string SerializeMemoryRecords(const std::vector<std::pair<std::string, Memo
 std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
                                              std::string_view memory_optimization_config,
                                              std::string_view recompute_probe_level,
+                                             const bool return_opportunity_table,
                                              const logging::Logger& logger,
                                              // used as Python binding, so used std::map instead of InlinedHashMap
                                              std::map<std::string, std::pair<std::string, int>>&

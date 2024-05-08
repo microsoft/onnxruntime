@@ -67,12 +67,12 @@ bool SetTrainingModeForForwardPythonOpNode(Node& node) {
 
 }  // namespace
 
-Status MemoryOptimizer::ParseOptimizationConfigFromString(const std::string& memory_optimizer_config,
+Status MemoryOptimizer::ParseOptimizationConfigFromString(const std::string& memory_optimization_config_file_path,
                                                           const std::string& recompute_probe_config) {
-  optimizer_config_ = memory_optimizer_config;
+  optimizer_config_file_path_ = memory_optimization_config_file_path;
 
   ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseOptimizationConfigFromString(
-      memory_optimizer_config,
+      memory_optimization_config_file_path,
       pattern_subgraph_to_user_optimizer_config_map_));
 
   ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseProbeConfigFromString(
@@ -155,7 +155,7 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
 Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger)
     const {
-  LOGS(logger, VERBOSE) << "Memory optimization config: " << optimizer_config_ << ", probe level: "
+  LOGS(logger, VERBOSE) << "Memory optimization config: " << optimizer_config_file_path_ << ", probe level: "
                         << static_cast<int>(recompute_probe_config_.probe_level)
                         << ", enable_transformer_layer_as_boundary:"
                         << recompute_probe_config_.enable_transformer_layer_as_boundary;
@@ -206,7 +206,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     bool has_been_modified = false;
     if (node_to_opt_plan_map.find(p_node) != node_to_opt_plan_map.end()) {
       has_been_modified = ModifyGraph(graph, node_index_to_its_order_in_topological_sort_map,
-                                      candidate_output_args_map, logger,
+                                      logger,
                                       yield_op_order_in_topological_sort,
                                       p_node,
                                       node_to_opt_plan_map[p_node],
@@ -239,7 +239,7 @@ void MemoryOptimizer::PrintSummary(const optimizer::memory_optimizer::MemoryOpti
   optimizer::memory_optimizer::GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner,
                                                                       node_to_apply_contexts_map,
                                                                       records_grouped_by_node_cluster_id);
-  LOGS(logger, INFO) << SerializeMemoryRecords(records_grouped_by_node_cluster_id, optimizer_config_) << "\n";
+  LOGS(logger, INFO) << SerializeMemoryRecords(records_grouped_by_node_cluster_id, optimizer_config_file_path_) << "\n";
 }
 
 /******************************************************
