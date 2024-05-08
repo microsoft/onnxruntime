@@ -27,25 +27,25 @@ __global__ void MaskToCSR(const int* mask, int* csr_row_indices, int* csr_col_in
     }
   }
 
-  extern __shared__ int non_zero_counts[];
-  non_zero_counts[row + 1] = count;
+  extern __shared__ int shared_row_indices[];
+  shared_row_indices[row + 1] = count;
   __syncthreads();
 
   // The first thread will calculate the accumulated partial sum of non-zero counts.
   // The result is csr_row_indices stored in shared memory.
   if (row == 0) {
-    non_zero_counts[0] = 0;
+    shared_row_indices[0] = 0;
     for (int i = 1; i < num_rows; i++) {
-      non_zero_counts[i + 1] += non_zero_counts[i];
+      shared_row_indices[i + 1] += shared_row_indices[i];
     }
 
-    // The first thread output the last element.
-    csr_row_indices[num_rows] = non_zero_counts[num_rows];
+    // The first thread outputs the last element.
+    csr_row_indices[num_rows] = shared_row_indices[num_rows];
   }
   __syncthreads();
 
     // The starting index of current row in csr_col_indices
-  int offset = non_zero_counts[row];
+  int offset = shared_row_indices[row];
 
   // Output row indices.
   csr_row_indices[row] = offset;
@@ -66,9 +66,9 @@ __global__ void MaskToCSR_Large(const int* mask,
                                 int* csr_col_indices,
                                 int num_rows,
                                 int num_cols,
-                                int rows_per_thread  // Each thread handle mutliple rows
+                                int rows_per_thread  // Each thread handles multiple rows
 ) {
-  extern __shared__ int non_zero_counts[];
+  extern __shared__ int shared_row_indices[];
 
   // Update input and output data pointers to the start of current head
   int head = blockIdx.x;
@@ -84,25 +84,25 @@ __global__ void MaskToCSR_Large(const int* mask,
         count++;
       }
     }
-    non_zero_counts[row + 1] = count;
+    shared_row_indices[row + 1] = count;
   }
 
   __syncthreads();
 
   // The first thread will calculate the accumulated partial sum of non-zero counts.
   if (tid == 0) {
-    non_zero_counts[0] = 0;
+    shared_row_indices[0] = 0;
     for (int i = 1; i < num_rows; i++) {
-      non_zero_counts[i + 1] += non_zero_counts[i];
+      shared_row_indices[i + 1] += shared_row_indices[i];
     }
 
-    csr_row_indices[num_rows] = non_zero_counts[num_rows];
+    csr_row_indices[num_rows] = shared_row_indices[num_rows];
   }
 
   __syncthreads();
 
   for (int row = tid * rows_per_thread; row < num_rows && row < (tid + 1) * rows_per_thread; row++) {
-    int offset = non_zero_counts[row];
+    int offset = shared_row_indices[row];
     csr_row_indices[row] = offset;
 
     for (int col = 0; col < num_cols; col++) {
