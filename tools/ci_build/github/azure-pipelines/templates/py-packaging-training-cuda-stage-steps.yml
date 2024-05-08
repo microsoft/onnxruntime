@@ -203,6 +203,21 @@ stages:
           condition: succeededOrFailed()
           workingDirectory: $(Build.SourcesDirectory)
 
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '/mnist'
+            artifactName: 'mnist'
+
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '/bert_data'
+            artifactName: 'bert-data'
+
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '/bert_data'
+            artifactName: 'hf_models_cache'
+
         - task: CmdLine@2
           displayName: 'test ortmodule'
           inputs:
