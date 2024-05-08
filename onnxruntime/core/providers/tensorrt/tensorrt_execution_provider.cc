@@ -2125,9 +2125,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
         auto trt_builder = GetBuilder(trt_logger);
         auto network_flags = 0;
-#if NV_TENSORRT_MAJOR > 8
-        network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
-#endif
         network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
 
