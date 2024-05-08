@@ -14,6 +14,7 @@
 ;   multiply operation (QGEMM).
 ;
 ;   This implementation uses AVX2 and AVX VNNI instructions.
+;   AVX-VNNI-INT8 support also included.
 ;
 ;--
 
@@ -25,10 +26,10 @@ INCLUDE AssembleAvxVnni.inc
         EXTERN  MlasMaskMoveTableAvx:NEAR
 
 ;
-; Stack frame layout for the U8X8 kernel.
+; Stack frame layout for the Int8 kernel.
 ;
 
-GemmU8X8KernelFrame STRUCT
+GemmInt8KernelFrame STRUCT
 
         SavedXmm6 OWORD ?
         SavedXmm7 OWORD ?
@@ -60,7 +61,7 @@ GemmU8X8KernelFrame STRUCT
         ZeroPointB QWORD ?
         ZeroMode QWORD ?
 
-GemmU8X8KernelFrame ENDS
+GemmInt8KernelFrame ENDS
 
 ;
 ; Macro Description:
@@ -135,7 +136,7 @@ ENDIF
 ;   ymm12 - Supplies a 256-bit with the broadcasted word value 0x0001.
 ;
 
-ComputeBlockU8S8Avx2 MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset
+ComputeBlockAvx2 MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset, ASigned, BSigned
 
 IF RowCount EQ 1
         vpbroadcastd ymm2,DWORD PTR [rcx+BroadcastOffset]
@@ -189,13 +190,40 @@ ENDIF
 ;   ymm2 - Supplies the broadcast value loaded from matrix A.
 ;
 
-MultiplyAccumulateRowU8S8AvxVnni MACRO ColumnCount, Vec1Reg, Vec2Reg
+MultiplyAccumulateRowAvxVnni MACRO ColumnCount, Vec1Reg, Vec2Reg, ASigned, BSigned
 
-IF ColumnCount EQ 16
-        VpdpbusdsYmmYmmYmm Vec1Reg,ymm2,ymm0
-        VpdpbusdsYmmYmmYmm Vec2Reg,ymm2,ymm1
+IF ASigned EQ 1
+    IF BSigned EQ 1
+        IF ColumnCount EQ 16
+            VpdpbssdsYmmYmmYmm Vec1Reg,ymm2,ymm0
+            VpdpbssdsYmmYmmYmm Vec2Reg,ymm2,ymm1
+        ELSE
+            VpdpbssdsYmmYmmYmm Vec2Reg,ymm2,ymm0
+        ENDIF
+    ELSE
+        IF ColumnCount EQ 16
+            VpdpbsudsYmmYmmYmm Vec1Reg,ymm2,ymm0
+            VpdpbsudsYmmYmmYmm Vec2Reg,ymm2,ymm1
+        ELSE
+            VpdpbsudsYmmYmmYmm Vec2Reg,ymm2,ymm0
+        ENDIF
+    ENDIF
 ELSE
-        VpdpbusdsYmmYmmYmm Vec2Reg,ymm2,ymm0
+    IF BSigned EQ 1
+        IF ColumnCount EQ 16
+            VpdpbusdsYmmYmmYmm Vec1Reg,ymm2,ymm0
+            VpdpbusdsYmmYmmYmm Vec2Reg,ymm2,ymm1
+        ELSE
+            VpdpbusdsYmmYmmYmm Vec2Reg,ymm2,ymm0
+        ENDIF
+    ELSE
+        IF ColumnCount EQ 16
+            VpdpbuudsYmmYmmYmm Vec1Reg,ymm2,ymm0
+            VpdpbuudsYmmYmmYmm Vec2Reg,ymm2,ymm1
+        ELSE
+            VpdpbuudsYmmYmmYmm Vec2Reg,ymm2,ymm0
+        ENDIF
+    ENDIF
 ENDIF
 
         ENDM
@@ -229,22 +257,22 @@ ENDIF
 ;   ymm4-ymm15 - Supplies the block accumulators.
 ;
 
-ComputeBlockU8S8AvxVnni MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset
+ComputeBlockAvxVnni MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset, ASigned, BSigned
 
         vmovdqu ymm0,YMMWORD PTR [rdx+VectorOffset]
         EmitIfCountGE ColumnCount, 16, <vmovdqu ymm1,YMMWORD PTR [rdx+VectorOffset+32]>
         EmitIfCountGE RowCount, 1, <vpbroadcastd ymm2,DWORD PTR [rcx+BroadcastOffset]>
-        EmitIfCountGE RowCount, 1, <MultiplyAccumulateRowU8S8AvxVnni ColumnCount, ymm4, ymm5>
+        EmitIfCountGE RowCount, 1, <MultiplyAccumulateRowAvxVnni ColumnCount, ymm4, ymm5, ASigned, BSigned>
         EmitIfCountGE RowCount, 2, <vpbroadcastd ymm2,DWORD PTR [rcx+r9+BroadcastOffset]>
-        EmitIfCountGE RowCount, 2, <MultiplyAccumulateRowU8S8AvxVnni ColumnCount, ymm6, ymm7>
+        EmitIfCountGE RowCount, 2, <MultiplyAccumulateRowAvxVnni ColumnCount, ymm6, ymm7, ASigned, BSigned>
         EmitIfCountGE RowCount, 3, <vpbroadcastd ymm2,DWORD PTR [rcx+r9*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 3, <MultiplyAccumulateRowU8S8AvxVnni ColumnCount, ymm8, ymm9>
+        EmitIfCountGE RowCount, 3, <MultiplyAccumulateRowAvxVnni ColumnCount, ymm8, ymm9, ASigned, BSigned>
         EmitIfCountGE RowCount, 4, <vpbroadcastd ymm2,DWORD PTR [rbx+BroadcastOffset]>
-        EmitIfCountGE RowCount, 4, <MultiplyAccumulateRowU8S8AvxVnni ColumnCount, ymm10, ymm11>
+        EmitIfCountGE RowCount, 4, <MultiplyAccumulateRowAvxVnni ColumnCount, ymm10, ymm11, ASigned, BSigned>
         EmitIfCountGE RowCount, 5, <vpbroadcastd ymm2,DWORD PTR [rbx+r9+BroadcastOffset]>
-        EmitIfCountGE RowCount, 5, <MultiplyAccumulateRowU8S8AvxVnni ColumnCount, ymm12, ymm13>
+        EmitIfCountGE RowCount, 5, <MultiplyAccumulateRowAvxVnni ColumnCount, ymm12, ymm13, ASigned, BSigned>
         EmitIfCountGE RowCount, 6, <vpbroadcastd ymm2,DWORD PTR [rbx+r9*2+BroadcastOffset]>
-        EmitIfCountGE RowCount, 6, <MultiplyAccumulateRowU8S8AvxVnni ColumnCount, ymm14, ymm15>
+        EmitIfCountGE RowCount, 6, <MultiplyAccumulateRowAvxVnni ColumnCount, ymm14, ymm15, ASigned, BSigned>
 
         ENDM
 
@@ -275,7 +303,7 @@ ComputeBlockU8S8AvxVnni MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffs
 ;   ymm4-ymm11 - Supplies the block accumulators.
 ;
 
-ComputeBlockLoopU8S8 MACRO Isa, ColumnCount, RowCount
+ComputeBlockLoop MACRO Isa, ColumnCount, RowCount, ASigned, BSigned
 
         LOCAL   ComputeBlockBy4Loop
         LOCAL   ProcessRemainingBlocks
@@ -289,10 +317,10 @@ IF (ColumnCount EQ 16) AND (RowCount EQ 1)
         jb      ProcessRemainingBlocks
 
 ComputeBlockBy4Loop:
-        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 0*64, 0
-        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 1*64, 4
-        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 2*64, 8
-        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 3*64, 12
+        ComputeBlock&Isa& ColumnCount, RowCount, 0*64, 0, ASigned, BSigned
+        ComputeBlock&Isa& ColumnCount, RowCount, 1*64, 4, ASigned, BSigned
+        ComputeBlock&Isa& ColumnCount, RowCount, 2*64, 8, ASigned, BSigned
+        ComputeBlock&Isa& ColumnCount, RowCount, 3*64, 12, ASigned, BSigned
         add     rcx,4*4                     ; advance matrix A by 4 quads
         add     rdx,4*64                    ; advance matrix B
         sub     rsi,4*4
@@ -304,7 +332,7 @@ ProcessRemainingBlocks:
 ENDIF
 
 ComputeBlockBy1Loop:
-        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 0, 0
+        ComputeBlock&Isa& ColumnCount, RowCount, 0, 0, ASigned, BSigned
         add     rcx,4                       ; advance matrix A by 1 quad
 IF RowCount GT 3
         add     rbx,4                       ; advance matrix A plus 3 rows by 1 quad
@@ -506,11 +534,11 @@ ExitComputeBlockLoop:
 ;   ymm4-ymm15 - Supplies the block accumulators.
 ;
 
-ProduceOutputBlock MACRO ColumnCount, RowCount
+ProduceOutputBlock MACRO ColumnCount, RowCount, ASigned, BSigned
 
         LOCAL   SkipScaleByZeroPointB
         LOCAL   AccumulatorsInitialized
-        LOCAL   ProduceWithU8S8AvxVnni
+        LOCAL   ProduceWithInt8AvxVnni
         LOCAL   ProduceWithU8U8Avx2
         LOCAL   ExitProduceOutputBlock
 
@@ -590,16 +618,16 @@ IF RowCount GT 3
         lea     rbx,[r9*2+r9]
         add     rbx,rcx                     ; compute matrix A plus 3 rows
 ENDIF
-        cmp     DWORD PTR GemmU8X8KernelFrame.PreviousP1Home[rsp],0
+        cmp     DWORD PTR GemmInt8KernelFrame.PreviousP1Home[rsp],0
         jg      ProduceWithU8U8Avx2
 IF RowCount LE 4
-        jl      ProduceWithU8S8AvxVnni
-        ComputeBlockLoopU8S8 Avx2, ColumnCount, RowCount
+        jl      ProduceWithInt8AvxVnni
+        ComputeBlockLoop Avx2, ColumnCount, RowCount, ASigned, BSigned
         jmp     ExitProduceOutputBlock
 ENDIF
 
-ProduceWithU8S8AvxVnni:
-        ComputeBlockLoopU8S8 AvxVnni, ColumnCount, RowCount
+ProduceWithInt8AvxVnni:
+        ComputeBlockLoop AvxVnni, ColumnCount, RowCount, ASigned, BSigned
         jmp     ExitProduceOutputBlock
 
 ProduceWithU8U8Avx2:
@@ -649,7 +677,7 @@ ENDIF
 ;   r13 - Optionally supplies the address of the matrix B zero point buffer.
 ;
 
-ProcessCountM MACRO RowCount, Fallthrough
+ProcessCountM MACRO RowCount, ASigned, BSigned, Fallthrough
 
         LOCAL   ProcessNextColumnLoop16xN
         LOCAL   SkipAccumulateOutput16xNBlock
@@ -665,7 +693,7 @@ ProcessCountM MACRO RowCount, Fallthrough
         jbe     ProcessRemainingCountN
 
 ProcessNextColumnLoop16xN:
-        ProduceOutputBlock 16, RowCount
+        ProduceOutputBlock 16, RowCount, ASigned, BSigned
         sub     rbp,16
         jb      OutputMasked16xNBlock
         test    r10b,r10b                   ; ZeroMode?
@@ -708,7 +736,7 @@ ExitProcessCountM:
         jmp     ExitKernel
 
 ProcessRemainingCountN:
-        ProduceOutputBlock 8, RowCount
+        ProduceOutputBlock 8, RowCount, ASigned, BSigned
         cmp     rbp,8
         jb      OutputMasked8xNBlock
         test    r10b,r10b                   ; ZeroMode?
@@ -782,31 +810,6 @@ SkipAccumulateOutputMasked8xNBlock:
 
         ENDM
 
-;
-; Reduce code size for the various types of kernels by sharing the outer logic
-; and switching on the selector codes (using sign bit to discriminate).
-;
-
-        LEAF_ENTRY MlasGemmU8S8KernelAvxVnni, _TEXT
-
-        mov     eax,-1
-        jmp     MlasGemmU8X8KernelAvx2
-
-        LEAF_END MlasGemmU8S8KernelAvxVnni, _TEXT
-
-        LEAF_ENTRY MlasGemmU8U8KernelAvx2, _TEXT
-
-        mov     eax,1
-        jmp     MlasGemmU8X8KernelAvx2
-
-        LEAF_END MlasGemmU8U8KernelAvx2, _TEXT
-
-        LEAF_ENTRY MlasGemmU8S8KernelAvx2, _TEXT
-
-        xor     eax,eax
-        jmp     MlasGemmU8X8KernelAvx2
-
-        LEAF_END MlasGemmU8S8KernelAvx2, _TEXT
 
 ;++
 ;
@@ -818,10 +821,10 @@ SkipAccumulateOutputMasked8xNBlock:
 ; Arguments:
 ;
 ;   A (rcx) - Supplies the address of matrix A. The matrix data has been packed
-;       using MlasGemmU8X8CopyPackAAvx2.
+;       using MlasGemmCopyPackAAvx2.
 ;
 ;   B (rdx) - Supplies the address of matrix B. The matrix data has been packed
-;       using MlasGemmU8X8CopyPackBAvx2.
+;       using MlasGemmCopyPackBAvx2.
 ;
 ;   C (r8) - Supplies the address of matrix C.
 ;
@@ -859,7 +862,7 @@ SkipAccumulateOutputMasked8xNBlock:
 ;
 ;--
 
-        NESTED_ENTRY MlasGemmU8X8KernelAvx2, _TEXT
+MlasGemmInt8KernelAvx2 MACRO ASigned, BSigned
 
         rex_push_reg rbp
         push_reg rbx
@@ -867,34 +870,34 @@ SkipAccumulateOutputMasked8xNBlock:
         push_reg rdi
         push_reg r12
         push_reg r13
-        alloc_stack (GemmU8X8KernelFrame.SavedR13)
-        save_xmm128 xmm6,GemmU8X8KernelFrame.SavedXmm6
-        save_xmm128 xmm7,GemmU8X8KernelFrame.SavedXmm7
-        save_xmm128 xmm8,GemmU8X8KernelFrame.SavedXmm8
-        save_xmm128 xmm9,GemmU8X8KernelFrame.SavedXmm9
-        save_xmm128 xmm10,GemmU8X8KernelFrame.SavedXmm10
-        save_xmm128 xmm11,GemmU8X8KernelFrame.SavedXmm11
-        save_xmm128 xmm12,GemmU8X8KernelFrame.SavedXmm12
-        save_xmm128 xmm13,GemmU8X8KernelFrame.SavedXmm13
-        save_xmm128 xmm14,GemmU8X8KernelFrame.SavedXmm14
-        save_xmm128 xmm15,GemmU8X8KernelFrame.SavedXmm15
+        alloc_stack (GemmInt8KernelFrame.SavedR13)
+        save_xmm128 xmm6,GemmInt8KernelFrame.SavedXmm6
+        save_xmm128 xmm7,GemmInt8KernelFrame.SavedXmm7
+        save_xmm128 xmm8,GemmInt8KernelFrame.SavedXmm8
+        save_xmm128 xmm9,GemmInt8KernelFrame.SavedXmm9
+        save_xmm128 xmm10,GemmInt8KernelFrame.SavedXmm10
+        save_xmm128 xmm11,GemmInt8KernelFrame.SavedXmm11
+        save_xmm128 xmm12,GemmInt8KernelFrame.SavedXmm12
+        save_xmm128 xmm13,GemmInt8KernelFrame.SavedXmm13
+        save_xmm128 xmm14,GemmInt8KernelFrame.SavedXmm14
+        save_xmm128 xmm15,GemmInt8KernelFrame.SavedXmm15
 
         END_PROLOGUE
 
-        mov     DWORD PTR GemmU8X8KernelFrame.PreviousP1Home[rsp],eax
+        mov     DWORD PTR GemmInt8KernelFrame.PreviousP1Home[rsp],eax
         mov     rdi,rcx
-        mov     rbx,GemmU8X8KernelFrame.CountM[rsp]
-        mov     rbp,GemmU8X8KernelFrame.CountN[rsp]
-        mov     rax,GemmU8X8KernelFrame.ldc[rsp]
+        mov     rbx,GemmInt8KernelFrame.CountM[rsp]
+        mov     rbp,GemmInt8KernelFrame.CountN[rsp]
+        mov     rax,GemmInt8KernelFrame.ldc[rsp]
         shl     rax,2                       ; convert ldc to bytes
         shl     r9,2                        ; convert to row length
-        movzx   r10,BYTE PTR GemmU8X8KernelFrame.ZeroMode[rsp]
-        mov     r11,GemmU8X8KernelFrame.RowSumBuffer[rsp]
-        mov     r12,GemmU8X8KernelFrame.ColumnSumBuffer[rsp]
-        mov     r13,GemmU8X8KernelFrame.ZeroPointB[rsp]
+        movzx   r10,BYTE PTR GemmInt8KernelFrame.ZeroMode[rsp]
+        mov     r11,GemmInt8KernelFrame.RowSumBuffer[rsp]
+        mov     r12,GemmInt8KernelFrame.ColumnSumBuffer[rsp]
+        mov     r13,GemmInt8KernelFrame.ZeroPointB[rsp]
         vpcmpeqw ymm12,ymm12,ymm12          ; generate 256-bit word vector [0xFFFF]
         vpsrlw  ymm12,ymm12,15              ; generate 256-bit word vector [0x0001]
-        cmp     DWORD PTR GemmU8X8KernelFrame.PreviousP1Home[rsp],0
+        cmp     DWORD PTR GemmInt8KernelFrame.PreviousP1Home[rsp],0
         je      CheckCountM4OrMore          ; U8S8 AVX2 kernel requires extra registers
 
 ;
@@ -914,13 +917,13 @@ CheckCountM4OrMore:
         je      ProcessCountM1
 
 ProcessCountM2:
-        ProcessCountM 2
+        ProcessCountM 2, ASigned, BSigned
 
 ProcessCountM4:
-        ProcessCountM 4
+        ProcessCountM 4, ASigned, BSigned
 
 ProcessCountM6:
-        ProcessCountM 6
+        ProcessCountM 6, ASigned, BSigned
 
 ;
 ; Restore non-volatile registers and return.
@@ -928,17 +931,17 @@ ProcessCountM6:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,GemmU8X8KernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,GemmU8X8KernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,GemmU8X8KernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,GemmU8X8KernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,GemmU8X8KernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,GemmU8X8KernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,GemmU8X8KernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,GemmU8X8KernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,GemmU8X8KernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,GemmU8X8KernelFrame.SavedXmm15[rsp]
-        add     rsp,(GemmU8X8KernelFrame.SavedR13)
+        movaps  xmm6,GemmInt8KernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,GemmInt8KernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,GemmInt8KernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,GemmInt8KernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,GemmInt8KernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,GemmInt8KernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,GemmInt8KernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,GemmInt8KernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,GemmInt8KernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,GemmInt8KernelFrame.SavedXmm15[rsp]
+        add     rsp,(GemmInt8KernelFrame.SavedR13)
 
         BEGIN_EPILOGUE
 
@@ -951,14 +954,54 @@ ExitKernel:
         ret
 
 ProcessCountM1:
-        ProcessCountM 1
+        ProcessCountM 1, ASigned, BSigned
 
 ProcessCountM3:
-        ProcessCountM 3
+        ProcessCountM 3, ASigned, BSigned
 
 ProcessCountM5:
-        ProcessCountM 5
+        ProcessCountM 5, ASigned, BSigned
 
-        NESTED_END MlasGemmU8X8KernelAvx2, _TEXT
+        ENDM
+
+;
+; Reduce code size for the various types of kernels by sharing the outer logic
+; and switching on the selector codes (using sign bit to discriminate).
+;
+
+        NESTED_ENTRY MlasGemmU8S8KernelAvxVnni, _TEXT
+
+        mov     eax,-1
+        MlasGemmInt8KernelAvx2 0, 1
+
+        NESTED_END MlasGemmU8S8KernelAvxVnni, _TEXT
+
+        NESTED_ENTRY MlasGemmU8U8KernelAvx2, _TEXT
+
+        mov     eax,1
+        MlasGemmInt8KernelAvx2 0, 0
+
+        NESTED_END MlasGemmU8U8KernelAvx2, _TEXT
+
+        NESTED_ENTRY MlasGemmU8S8KernelAvx2, _TEXT
+
+        xor     eax,eax
+        MlasGemmInt8KernelAvx2 0, 1
+
+        NESTED_END MlasGemmU8S8KernelAvx2, _TEXT
+
+        NESTED_ENTRY MlasGemmS8S8KernelAvx2Vnni, _TEXT
+
+        mov     eax,-1
+        MlasGemmInt8KernelAvx2 1, 1
+
+        NESTED_END MlasGemmS8S8KernelAvx2Vnni, _TEXT
+
+        NESTED_ENTRY MlasGemmS8U8KernelAvx2Vnni, _TEXT
+
+        mov     eax,-1
+        MlasGemmInt8KernelAvx2 1, 0
+
+        NESTED_END MlasGemmS8U8KernelAvx2Vnni, _TEXT
 
         END

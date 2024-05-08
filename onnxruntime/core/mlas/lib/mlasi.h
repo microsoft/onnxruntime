@@ -791,6 +791,8 @@ extern "C" {
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvxVnni;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvxVnni;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmS8S8KernelAvx2Vnni;
+    MLAS_GEMM_U8S8_KERNEL MlasGemmS8U8KernelAvx2Vnni;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
 #endif
@@ -934,6 +936,8 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchLSX;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchAvx2Vnni;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8U8DispatchAvx2Vnni;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAmx;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
@@ -1083,6 +1087,8 @@ struct MLAS_PLATFORM {
 #if defined(MLAS_TARGET_AMD64_IX86)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch{&MlasGemmQuantDispatchDefault};
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8U8Dispatch{&MlasGemmQuantDispatchDefault};
 #elif defined(MLAS_TARGET_ARM64)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
@@ -1114,6 +1120,8 @@ struct MLAS_PLATFORM {
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* TransposePackB16x4Routine;
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
     MLAS_GEMM_U8S8_KERNEL* GemmU8S8Kernel;
+    MLAS_GEMM_U8S8_KERNEL* GemmS8S8Kernel;
+    MLAS_GEMM_U8S8_KERNEL* GemmS8U8Kernel;
     MLAS_GEMV_U8S8_KERNEL* GemvU8S8Kernel;
     MLAS_GEMM_U8U8_KERNEL* GemmU8U8Kernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;

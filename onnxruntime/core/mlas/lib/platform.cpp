@@ -468,6 +468,16 @@ Return Value:
                     }
                 }
 
+                //
+                // Check if the processor supports AVX-VNNI-INT8
+                //
+                if ((Cpuid7_1[3] & 0x10) != 0) {
+                    this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchAvx2Vnni;
+                    this->GemmS8S8Kernel = MlasGemmS8S8KernelAvx2Vnni;
+                    this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchAvx2Vnni;
+                    this->GemmS8U8Kernel = MlasGemmS8U8KernelAvx2Vnni;
+                }
+
 #ifndef __APPLE__
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8

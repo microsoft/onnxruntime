@@ -337,7 +337,7 @@ Return Value:
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix A if the
-    // kernel requires signed data.
+    // kernel requires opposite-signed data.
     //
 
     ZeroPointA = MlasGemmQuantFixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
@@ -865,20 +865,15 @@ MlasGemmQuantGetDispatch(
     bool BIsSigned
 )
 {
-    const MLAS_GEMM_QUANT_DISPATCH* GemmQuantDispatch = nullptr;
-
-    if (!AIsSigned || BIsSigned) {
-        GemmQuantDispatch = &MlasGemmQuantDispatchDefault;
-    }
+    const MLAS_GEMM_QUANT_DISPATCH* GemmQuantDispatch = &MlasGemmQuantDispatchDefault;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_LARCH64)
-    if (!AIsSigned) {
-        if (BIsSigned) {
-            GemmQuantDispatch = GetMlasPlatform().GemmU8S8Dispatch;
-        }
-        else {
-            GemmQuantDispatch = GetMlasPlatform().GemmU8U8Dispatch;
-        }
+    if (AIsSigned) {
+        GemmQuantDispatch =
+            BIsSigned ? GetMlasPlatform().GemmS8S8Dispatch : GetMlasPlatform().GemmS8U8Dispatch;
+    } else {
+        GemmQuantDispatch =
+            BIsSigned ? GetMlasPlatform().GemmU8S8Dispatch : GetMlasPlatform().GemmU8U8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64)
     if(BIsSigned) {
