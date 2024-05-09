@@ -38,21 +38,27 @@ class AttentionConfig:
         dtype=torch.float16,
         share_buffer: bool = True,
         is_packed_qkv: bool = False,
+        max_cache_sequence_length=None,
+        max_rotary_sequence_length=None,
     ):
         self.operator = operator
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.max_sequence_length = max_sequence_length
+        self.max_cache_sequence_length = max_cache_sequence_length or max_sequence_length
+        self.max_rotary_sequence_length = max_rotary_sequence_length or max_sequence_length
         self.past_sequence_length = past_sequence_length
         self.num_heads = num_heads
         self.kv_num_heads = kv_num_heads
         self.head_size = head_size
-        self.softmax_scale = softmax_scale if softmax_scale is not None else 1.0 / (head_size**0.5)
+        self.softmax_scale = softmax_scale or (1.0 / (head_size**0.5))
 
         # Derived values
         self.total_sequence_length = sequence_length + past_sequence_length
-        self.past_buffer_length = max_sequence_length if share_buffer else past_sequence_length
-        self.present_buffer_length = max_sequence_length if share_buffer else (past_sequence_length + sequence_length)
+        self.past_buffer_length = self.max_cache_sequence_length if share_buffer else past_sequence_length
+        self.present_buffer_length = (
+            self.max_cache_sequence_length if share_buffer else (past_sequence_length + sequence_length)
+        )
 
         self.do_rotary = do_rotary
         self.rotary_interleaved = rotary_interleaved
@@ -75,8 +81,8 @@ class AttentionConfig:
             "output": (self.batch_size, self.sequence_length, self.num_heads * self.head_size),
             "present_key": (self.batch_size, self.kv_num_heads, self.present_buffer_length, self.head_size),
             "present_value": (self.batch_size, self.kv_num_heads, self.present_buffer_length, self.head_size),
-            "cos_cache": (self.max_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
-            "sin_cache": (self.max_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
+            "cos_cache": (self.max_rotary_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
+            "sin_cache": (self.max_rotary_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
         }
 
         if not self.is_packed_qkv:
@@ -92,7 +98,7 @@ class AttentionConfig:
     def get_cos_sin_cache(self, dtype):
         rotary_fraction = 1.0
         rotary_dim = math.floor(int(rotary_fraction * self.head_size) / 16) * 16
-        angle = torch.rand(self.max_sequence_length, rotary_dim // 2, device="cpu") * 2 * math.pi
+        angle = torch.rand(self.max_rotary_sequence_length, rotary_dim // 2, device="cpu") * 2 * math.pi
         cos = torch.cos(angle).to(dtype=dtype)
         sin = torch.sin(angle).to(dtype=dtype)
         return cos.to(device=self.device), sin.to(device=self.device)
@@ -151,6 +157,8 @@ class GroupQueryAttentionConfig(AttentionConfig):
         local_window_size: int = -1,
         attention_mask=None,
         is_packed_qkv=False,
+        max_cache_sequence_length=None,
+        max_rotary_sequence_length=None,
     ):
         super().__init__(
             "GroupQueryAttention",
@@ -166,6 +174,8 @@ class GroupQueryAttentionConfig(AttentionConfig):
             rotary_interleaved,
             device,
             is_packed_qkv=is_packed_qkv,
+            max_cache_sequence_length=max_cache_sequence_length,
+            max_rotary_sequence_length=max_rotary_sequence_length,
         )
         # local_window_size is for ORT only, not for Torch implementation.
         self.local_window_size = local_window_size
@@ -212,6 +222,8 @@ class SparseAttentionConfig(AttentionConfig):
         rotary_interleaved: bool = False,
         device="cuda",
         is_packed_qkv=False,
+        max_cache_sequence_length=None,
+        max_rotary_sequence_length=None,
     ):
         super().__init__(
             "SparseAttention",
@@ -227,6 +239,8 @@ class SparseAttentionConfig(AttentionConfig):
             rotary_interleaved,
             device,
             is_packed_qkv=is_packed_qkv,
+            max_cache_sequence_length=max_cache_sequence_length,
+            max_rotary_sequence_length=max_rotary_sequence_length,
         )
         self.sparse_block_size = sparse_block_size
         self.num_layout = num_layout
@@ -287,6 +301,8 @@ class SparseAttentionConfig(AttentionConfig):
             self.device,
             local_window_size=self.local_blocks * self.sparse_block_size if use_local else -1,
             is_packed_qkv=self.is_packed_qkv,
+            max_cache_sequence_length=self.max_cache_sequence_length,
+            max_rotary_sequence_length=self.max_rotary_sequence_length,
         )
 
     def get_comparable_torch_gqa_config(self, use_sparse=False) -> GroupQueryAttentionConfig:
@@ -311,6 +327,8 @@ class SparseAttentionConfig(AttentionConfig):
             self.device,
             attention_mask=attention_mask,
             is_packed_qkv=False,  # torch reference implementation does not support packed qkv.
+            max_cache_sequence_length=self.max_cache_sequence_length,
+            max_rotary_sequence_length=self.max_rotary_sequence_length,
         )
 
 
@@ -804,6 +822,7 @@ class TestSparseAttention(unittest.TestCase):
                     softmax_scale=1.8 / (128**0.5),
                     device=device,
                     is_packed_qkv=packed_qkv,
+                    max_cache_sequence_length=None if seq_len >= 128 else 128,  # test smaller kv cache buffer.
                 )
                 self.run_one_relevance_test(config)
 
@@ -832,6 +851,7 @@ class TestSparseAttention(unittest.TestCase):
                     rotary_interleaved=(past_seq_len % 2 == 1),
                     device=device,
                     is_packed_qkv=packed_qkv,
+                    max_rotary_sequence_length=None if past_seq_len >= 128 else 128,  # test smaller rotary buffer.
                 )
 
                 if do_rotary:

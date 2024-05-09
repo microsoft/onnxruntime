@@ -1152,8 +1152,23 @@ block_mask can be used to configure sparse layout for different head.
 When number of sparse layout is 1, all heads have same sparse layout. Otherwise, different layouts are used cyclically.
 For example, given 4 layouts (S0, S1, S2, S3), 8 heads will have layouts like (S0, S1, S2, S3, S0, S1, S2, S3).
 
-block_mask can be either dense format, or CSR format by block_row_indices and block_col_indices inputs.
-The CSR format might get better performance since it avoids converting to CSR format internally.
+The block_row_indices and block_col_indices are the CSR representation of block mask. The block_col_indices might contain
+paddings at the right side when different layout has different number of non-zeros in block mask.
+
+An example of block mask with 2 layouts where each layout is 4 x 4 blocks:
+  [[[1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [0, 1, 1, 0],
+    [0, 1, 1, 1]],
+
+   [[1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [1, 1, 1, 0],
+    [1, 0, 1, 1]]]
+
+The corresponding CSR format:
+  block_col_indices = [[0,  0,  1,  1,  2,  1,  2,  3, -1], [0,  0,  1,  0,  1,  2,  0,  2,  3]]
+  block_row_indices = [[0, 1, 3, 5, 8], [0, 1, 3, 6, 9]]
 
 When do_rotary is True, cos_cache and sin_cache are required. Note that the maximum sequence length supported by cos
 or sin cache can be different from the maximum sequence length used by kv cache.
@@ -1207,7 +1222,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(6,
                "block_col_indices",
                "The col indices of CSR format of block mask with shape (num_layout, max_nnz_blocks)."
-               "The max_nnz_blocks is no less than the maximum number of non-zeros of any layout.",
+               "The max_nnz_blocks is the maximum number of non-zeros per layout in block mask.",
                "M")
         .Input(7,
                "total_sequence_length",
