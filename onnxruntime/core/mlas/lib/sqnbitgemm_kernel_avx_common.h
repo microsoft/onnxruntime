@@ -27,7 +27,7 @@ SQ4BitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE /* ComputeType*/,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool
@@ -39,12 +39,17 @@ SQ4BitGemmPackQuantBData(
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t Iterations = N * BlockCountK;  // one iteration per block
+    const size_t BlkBytePairCount = BlkLen / 4;
 
     size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
+    if (BlkLen == 32 && ComputeType == CompInt8) {
+        SubBlkLen = 64;
+    }
 
     const size_t SubBlkDataSize = SubBlkLen / 2;
     const size_t SubBlkBytePairCount = SubBlkLen / 4;
+    const size_t SubBlkCountK = MlasDivRoundup(BlockCountK * BlkLen, SubBlkLen);
+    const size_t Iterations = N * SubBlkCountK;  // one iteration per sub block
 
     //
     // For SubBlkLen == 16, pack 16 4-bit values (8 bytes) at a time like this:
@@ -65,35 +70,45 @@ SQ4BitGemmPackQuantBData(
     //
     // For SubBlkLen == 64, pack 32 4-bit values (16 bytes) at a time like this:
     //
-    // src: | v0  v1  | v2  v3  | ... | v28 v29 | v30 v31 | v32 v33 | v34 v33 |
+    // src: | v0  v1  | v2  v3  | ... | v60 v61 | v62 v63 |
     //   =>
     // dst: | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
+    //
+    // When BlkLen = 32 for the remaining blk, it shall be:
+    // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
     //
 
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
         [&](ptrdiff_t tid) {
-            const size_t n = tid / BlockCountK;
-            const size_t k_blk = tid % BlockCountK;
+            const size_t n = tid / SubBlkCountK;
+            const size_t k_subblk = tid % SubBlkCountK;
 
-            const size_t data_offset = n * BlockCountK * BlkDataSize + k_blk * BlkDataSize;
+            const size_t data_offset = n * BlockCountK * BlkDataSize + k_subblk * SubBlkDataSize;
             const std::byte* QuantBData = QuantBDataBegin + data_offset;
             std::byte* PackedQuantBData = PackedQuantBDataBegin + data_offset;
 
-            for (size_t kk = 0; kk < BlkLen; kk += SubBlkLen) {
-                for (size_t byte_pair_idx = 0; byte_pair_idx < SubBlkBytePairCount; ++byte_pair_idx) {
-                    const std::byte src0 = QuantBData[byte_pair_idx];
-                    const std::byte src1 = QuantBData[byte_pair_idx + SubBlkDataSize / 2];
-
-                    std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
-                    std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
-
-                    dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
-                    dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
+            size_t PackBytePairCount = SubBlkBytePairCount;
+            size_t PackDataSize = SubBlkDataSize;
+            if (SubBlkLen > BlkLen && k_subblk == SubBlkCountK - 1) {
+              // this is the last subblk of the column. check if it extends out of the
+              // BlockCountK. If it does, we shall pack per blocks so that can compute
+              // on each block instead of each subblk.
+                if (SubBlkLen * SubBlkCountK > BlkLen * BlockCountK) {
+                  PackBytePairCount = BlkBytePairCount;
+                    PackDataSize = BlkDataSize;
                 }
+            }
 
-                QuantBData += SubBlkDataSize;
-                PackedQuantBData += SubBlkDataSize;
+            for (size_t byte_pair_idx = 0; byte_pair_idx < PackBytePairCount; ++byte_pair_idx) {
+                const std::byte src0 = QuantBData[byte_pair_idx];
+                const std::byte src1 = QuantBData[byte_pair_idx + PackDataSize / 2];
+
+                std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
+                std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
+
+                dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
+                dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
             }
         }
     );

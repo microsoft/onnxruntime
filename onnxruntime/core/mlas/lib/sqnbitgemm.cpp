@@ -497,44 +497,45 @@ SQ4BitGemm_CompInt8(
         (void)bias;
         (void)b_col_zp;
 #else
-#if 0
-        for (size_t m = 0; m < RangeCountM; ++m) {
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
+        if (BlkLen == 32) {
+            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                 BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
+                a_row,
+                b_col,
+                b_col_scale,
+                b_col_zp,
+                c_blk,
+                RangeCountM,
+                CountN,
+                K,
+                k_blks,
+                bias,
+                lda,
+                ldc
             );
-            //GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
-            //    BlkLen,
-            //    a_row, b_col, b_col_scale, b_col_zp, c_blk, /*RangeCountM*/1, CountN,
-            //    K, k_blks, bias, lda, ldc
-            //);
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
+        } else {
+            for (size_t m = 0; m < RangeCountM; ++m) {
+                GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
+                    BlkLen,
+                    a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
                 );
-            }
+                // GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
+                //     BlkLen,
+                //     a_row, b_col, b_col_scale, b_col_zp, c_blk, /*RangeCountM*/1, CountN,
+                //     K, k_blks, bias, lda, ldc
+                //);
 
-            c_blk += ldc;
-            a_row += lda;
+                if (DataParams->PostProcessor != nullptr) {
+                    DataParams->PostProcessor->Process(
+                        DataParams->C, RangeStartM, RangeStartN + n,
+                        RangeCountM, CountN, ldc
+                    );
+                }
+
+                c_blk += ldc;
+                a_row += lda;
+            }
         }
-#else
-        GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
-            BlkLen,
-            a_row,
-            b_col,
-            b_col_scale,
-            b_col_zp,
-            c_blk,
-            RangeCountM,
-            CountN,
-            K,
-            k_blks,
-            bias,
-            lda,
-            ldc);
-#endif
 #endif
     }
 }

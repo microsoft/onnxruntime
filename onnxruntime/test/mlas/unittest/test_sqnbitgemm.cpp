@@ -396,6 +396,8 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           // tests_registered += RegisterSingleTest(1001, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
 
           for (bool has_bias : {false, true}) {
+            tests_registered += RegisterSingleTest(1, 1, 33, ComputeType, WithThreadpool, Symmetric, has_bias);
+
             tests_registered += RegisterSingleTest(2, 1, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(2, 1, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(2, 2, 64, ComputeType, WithThreadpool, Symmetric, has_bias);

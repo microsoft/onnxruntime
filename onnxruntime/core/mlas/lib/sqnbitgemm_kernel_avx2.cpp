@@ -462,16 +462,30 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
                 Bias
             );
         } else if (BlkLen == 32) {
-            SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
+            MlasQ4Int8TileGemmKernelBlkLen32Avx2<HasZeroPoint>(
                 QuantA,
                 QuantBData,
                 QuantBScale,
                 QuantBZeroPoint,
                 C,
+                1,  // CountM
                 CountN,
+                CountK,
                 BlockStrideQuantB,
-                Bias
+                Bias,
+                0,  // lda, not needed when CountM = 1
+                0   // ldc, not needed when CountM = 1
             );
+            // SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
+            //    QuantA,
+            //    QuantBData,
+            //    QuantBScale,
+            //    QuantBZeroPoint,
+            //    C,
+            //    CountN,
+            //    BlockStrideQuantB,
+            //    Bias
+            //);
         } else {
             SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx2>(
                 BlkLen,
@@ -501,16 +515,30 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
                 Bias
             );
         } else if (BlkLen == 32) {
-            SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
+            MlasQ4Int8TileGemmKernelBlkLen32Avx2<HasZeroPoint>(
                 QuantA,
                 QuantBData,
                 QuantBScale,
                 QuantBZeroPoint,
                 C,
+                1,  // CountM
                 CountN,
+                CountK,
                 BlockStrideQuantB,
-                Bias
+                Bias,
+                0,  // lda, not needed when CountM = 1
+                0   // ldc, not needed when CountM = 1
             );
+            // SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
+            //    QuantA,
+            //    QuantBData,
+            //    QuantBScale,
+            //    QuantBZeroPoint,
+            //    C,
+            //    CountN,
+            //    BlockStrideQuantB,
+            //    Bias
+            //);
         } else {
             SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx2>(
                 BlkLen,
