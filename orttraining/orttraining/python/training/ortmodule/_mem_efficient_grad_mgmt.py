@@ -10,9 +10,8 @@ import ctypes
 import torch
 from onnx import ModelProto, NodeProto, TensorProto, helper
 
+from onnxruntime.training.ortmodule._pythonop_helper import make_pythonop_node
 from onnxruntime.training.utils import onnx_dtype_to_pytorch_dtype, pytorch_type_to_onnx_dtype
-
-from ._pythonop_helper import make_pythonop_node
 
 MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME = "mem_efficient_pull_weight_trigger"
 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE = TensorProto.FLOAT
@@ -40,14 +39,15 @@ def post_processing_enable_mem_efficient_training(
     named_params: dict[str, torch.nn.parameter.Parameter],
     device: torch.device,
 ) -> tuple[bool, ModelProto, torch.Tensor]:
-    """This function is used to enable zero stage3 compatibility.
+    """This function is used to enable memory efficient gradient management.
 
     Args:
-        exported_model (ModelProto): The exported model.
-        named_params (Optional[Dict[str, torch.nn.parameter.Parameter]]): The full parameter map.
+        exported_model: The exported model.
+        named_params: The full parameter map.
+        device: The device to run the model.
 
     Returns:
-        tuple[bool, ModelProto]: A tuple of bool and ModelProto. The bool indicates whether the model is modified.
+        A tuple of bool, ModelProto and param_trigger_grad tensor. The bool indicates whether the model is modified.
 
     """
     trainable_named_params = get_params_connected_to_pull_param_trigger(named_params, exported_model)
@@ -134,7 +134,15 @@ _PARAM_FUNCTION_INDEX = [0]
 def _create_param_retrieval_function(
     trainable_named_params: dict[str, torch.nn.parameter.Parameter], param_trigger: torch.Tensor
 ):
-    """This function is used to create a weight retrieving function using trainable_named_params."""
+    """This function is used to create a weight retrieving function using trainable_named_params.
+
+    Args:
+        trainable_named_params: The trainable named parameters.
+        param_trigger: The trigger tensor for pulling the weights. param_trigger is pre-alloced just once
+            before model execution, later it will be reused by each iteration. This could save the unnecessary
+            overhead allocating for each iteration run.
+
+    """
 
     @staticmethod
     def forward(ctx, param_trigger, param_name):
