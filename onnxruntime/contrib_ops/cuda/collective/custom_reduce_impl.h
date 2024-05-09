@@ -55,7 +55,7 @@ struct AllReduceParams {
     void *local_output_buffer_ptr;
     void const *local_input_buffer_ptr;
 
-    static AllReduceParams deserialize(int32_t const *buffer, size_t tpSize, size_t tpRank);
+    static AllReduceParams deserialize(int32_t const *buffer, size_t tp_size, size_t tp_rank);
 };
 
 bool ConfigurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t world_size,

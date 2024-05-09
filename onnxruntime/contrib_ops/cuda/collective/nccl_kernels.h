@@ -74,7 +74,7 @@ class AllReduce final : public NcclKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  mutable ort_trtllm::IPCMemoryResourcePack ipc_mem_res_pack_;
+  mutable ort_trtllm::GlobalIPCMemoryResourcePack g_ipc_mem_res_pack_;
 };
 
 class AllGather final : public NcclKernel {

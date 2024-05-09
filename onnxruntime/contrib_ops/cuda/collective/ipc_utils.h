@@ -37,8 +37,8 @@ class IpcMemory {
   }
 
  private:
-  Status AllocateIpcMemory();
   Status DestroyIpcMemory();
+  Status AllocateIpcMemory();
 
   int rank_;
   int world_size_;
@@ -53,7 +53,15 @@ struct IPCMemoryResourcePack {
   mutable int64_t max_input_count{0};
 };
 
-Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
-                                   IPCMemoryResourcePack& ipc_mem_res_pack);
+Status
+GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size, IPCMemoryResourcePack& ipc_mem_res_pack);
+
+class GlobalIPCMemoryResourcePack {
+ public:
+  IPCMemoryResourcePack& GetIPCMemoryResourcePack() {
+    static IPCMemoryResourcePack g_ipc_mem_res_pack;
+    return g_ipc_mem_res_pack;
+  }
+};
 
 }  // namespace ort_trtllm

@@ -265,7 +265,7 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
                              output_data,
                              input_count,
                              input_tensor->DataType(),
-                             ipc_mem_res_pack_);
+                             g_ipc_mem_res_pack_.GetIPCMemoryResourcePack());
 }
 
 AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
@@ -445,6 +445,7 @@ Status FuncCustomAllReduce(
   ort_trtllm::AllReduceStrategyConfig m_config = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
 
   if (input_count > ipc_mem_res_pack.max_input_count) {
+    std::cout << "input_count:" << input_count << " ipc_mem_res_pack.max_input_count:" << ipc_mem_res_pack.max_input_count << std::endl;
     ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank, world_size, input_count * data_type->Size(),
                                                                 ipc_mem_res_pack));
     ipc_mem_res_pack.max_input_count = input_count;
