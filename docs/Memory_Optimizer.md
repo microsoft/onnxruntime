@@ -84,7 +84,8 @@ There are two modes to enable the memory optimizations:
 
 	# Content of mem_opt.json:
 	[
-		"BiasGelu+:1:1"
+		"BiasGelu+:1:1",
+		"Dropout+:1:-1"
 	]
 	# Use comma as a separator for enabling more than one subgraphs in the json file.
 
