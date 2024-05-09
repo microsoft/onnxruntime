@@ -160,6 +160,7 @@ def get_qnn_qdq_config(
     extra_options = {
         "MinimumRealRange": 0.0001,
         "DedicatedQDQPair": False,  # Let ORT optimizer duplicate DQ nodes
+        "QDQKeepRemovableActivations": True,  # Do not automatically remove Clip/Relu from QDQ model
         "TensorQuantOverrides": overrides_helper.get_dict(),
         "ActivationSymmetric": activation_symmetric,
         "WeightSymmetric": weight_symmetric,
