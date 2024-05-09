@@ -90,11 +90,11 @@ stages:
     CUDA_MODULE_LOADING: 'LAZY'
     ${{ if eq(parameters['buildJava'], 'true') }}:
       buildJavaParameter: '--build_java'
-    ${{ if eq(parameters['buildJava'], 'false') }}:
+    ${{ else }}:
       buildJavaParameter: ''
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
       timeoutParameter: '--test_all_timeout 72000'
-    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'false') }}:
+    ${{ else }}:
       timeoutParameter: ''
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
