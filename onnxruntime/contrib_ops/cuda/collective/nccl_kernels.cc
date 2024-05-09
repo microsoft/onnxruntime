@@ -447,6 +447,7 @@ Status FuncCustomAllReduce(
   if (input_count > ipc_mem_res_pack.max_input_count) {
     ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank, world_size, input_count * data_type->Size(),
                                                                 ipc_mem_res_pack));
+    ipc_mem_res_pack.max_input_count = input_count;
   }
 
   ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
