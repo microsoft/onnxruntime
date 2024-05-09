@@ -640,7 +640,7 @@ class MemoryObserver:
                 if all(recompute_config not in recomputed_configs for recompute_config in recompute_configs):
                     apply_config.append(",".join(recompute_configs))
                     for recompute_config in recompute_configs:
-                        recomputed_configs.insert(recompute_config)
+                        recomputed_configs.add(recompute_config)
                 else:
                     self._logger.verbose(f"Skip duplicated recompute config: {recompute_configs}")
 
