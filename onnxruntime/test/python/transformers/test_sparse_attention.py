@@ -4,9 +4,7 @@
 # --------------------------------------------------------------------------
 
 """
-Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of Compute Capability 8.x.
-Install required packages before running this script:
-   pip install matplotlib pandas onnx torch onnxruntime-gpu
+Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of Compute Capability 7.5 or above.
 """
 import math
 import unittest
@@ -726,13 +724,13 @@ class TestSparseAttention(unittest.TestCase):
         self.run_relevance_test(sm)
 
     def run_one_relevance_test(self, config: SparseAttentionConfig):
-        if not config.do_rotary:
-            # Run QGA by Torch
+        if (not config.do_rotary) and config.total_sequence_length <= 2048:
+            # Run QGA by Torch (support mask, but not packed QKV, rotary and very long sequence)
             gqa_config: GroupQueryAttentionConfig = config.get_comparable_torch_gqa_config(use_sparse=True)
             obj = TorchGroupQueryAttention(gqa_config)
             expected_out = obj.infer()
         else:
-            # Run QGA by ORT
+            # Run QGA by ORT (support packed QKV, rotary and very long sequence, but no mask so dense only).
             gqa_config: GroupQueryAttentionConfig = config.get_comparable_ort_gqa_config(use_local=False)
             obj = OrtGroupQueryAttention(gqa_config)
             ort_qga_outputs = obj.infer()
@@ -820,10 +818,66 @@ class TestSparseAttention(unittest.TestCase):
                     config.dtype = torch.bfloat16
                     self.run_one_relevance_test(config)
 
+    def run_relevance_no_past_128k(self, sm: int, device):
+        """Test kernel could support up to 128K sequence length."""
+        for seq_len in [131072]:
+            for packed_qkv in [False, True]:
+                config = SparseAttentionConfig(
+                    batch_size=1,
+                    sequence_length=seq_len,
+                    max_sequence_length=131072,
+                    past_sequence_length=0,
+                    num_heads=1,
+                    kv_num_heads=1,
+                    head_size=128,
+                    sparse_block_size=64,
+                    num_layout=1,
+                    local_blocks=2048,  # use dense to compare with GQA
+                    vert_stride=8,
+                    softmax_scale=None,
+                    device=device,
+                    is_packed_qkv=packed_qkv,
+                )
+                self.run_one_relevance_test(config)
+
+                if sm >= 80 and not packed_qkv:
+                    config.dtype = torch.bfloat16
+                    self.run_one_relevance_test(config)
+
+    def run_relevance_past_128k(self, sm: int, device):
+        """Test kernel could support up to 128K sequence length."""
+        for past_seq_len in [131071]:
+            for packed_qkv in [False, True]:
+                config = SparseAttentionConfig(
+                    batch_size=1,
+                    sequence_length=1,
+                    max_sequence_length=131072,
+                    past_sequence_length=past_seq_len,
+                    num_heads=1,
+                    kv_num_heads=1,
+                    head_size=128,
+                    sparse_block_size=64,
+                    num_layout=1,
+                    local_blocks=2048,  # use dense to compare with GQA
+                    vert_stride=8,
+                    softmax_scale=None,
+                    device=device,
+                    is_packed_qkv=packed_qkv,
+                )
+                self.run_one_relevance_test(config)
+
+                if sm >= 80 and not packed_qkv:
+                    config.dtype = torch.bfloat16
+                    self.run_one_relevance_test(config)
+
     def run_relevance_test(self, sm: int):
         device_id = torch.cuda.current_device()
         device = torch.device("cuda", device_id)
         with torch.no_grad():
+            # Test long sequence when GPU memory is enough (need about 12 GB for 128K sequence length)
+            if torch.cuda.get_device_properties(device_id).total_memory > 13 * 1024 * 1024 * 1024:
+                self.run_relevance_no_past_128k(sm, device)
+                self.run_relevance_past_128k(sm, device)
             self.run_relevance_no_past(sm, device)
             self.run_relevance_past(sm, device, do_rotary=False)
             self.run_relevance_past(sm, device, do_rotary=True)
