@@ -22,7 +22,6 @@ stages:
     - Setup
     - Windows_Packaging_CUDA
     - Windows_Packaging_TensorRT
-    - Windows_Packaging_CPU_x64_default
     - Linux_C_API_Packaging_Combined_CUDA
   condition: succeeded()
   jobs:
