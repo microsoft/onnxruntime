@@ -153,37 +153,7 @@ stages:
           clean: true
           submodules: none
 
-        # - template: set-python-manylinux-variables-step.yml
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-          displayName: 'Mount MNIST'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)/onnxruntime
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
-          displayName: 'Mount bert-data'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)/onnxruntime
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-          displayName: 'Mount hf-models-cache'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)/onnxruntime
-
-        - task: PublishPipelineArtifact@1
-          inputs:
-            targetPath: '/mnist'
-            artifactName: 'mnist'
-
-        - task: PublishPipelineArtifact@1
-          inputs:
-            targetPath: '/bert_data'
-            artifactName: 'bert-data'
-
-        - task: PublishPipelineArtifact@1
-          inputs:
-            targetPath: '/hf_models_cache'
-            artifactName: 'hf_models_cache'
+        - template: set-python-manylinux-variables-step.yml
 
         - template: flex-downloadPipelineArtifact.yml
           parameters:
@@ -218,6 +188,8 @@ stages:
               --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
             Repository: $(Repository)
 
+        - template: jobs/download_training_test_data.yml
+
         - task: CmdLine@2
           displayName: 'test ortmodule'
           inputs:
@@ -230,9 +202,7 @@ stages:
                 --gpus all \
                 -e NVIDIA_VISIBLE_DEVICES=all \
                 --volume $(Build.ArtifactStagingDirectory):/build \
-                --volume /mnist:/mnist \
-                --volume /bert_data:/bert_data \
-                --volume /hf_models_cache:/hf_models_cache \
+                --volume $(Agent.TempDirectory)/MNIST:/mnist \
                 $(Repository) \
                   bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$basefilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
             workingDirectory: $(Build.SourcesDirectory)

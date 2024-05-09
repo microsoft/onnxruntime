@@ -1,0 +1,8 @@
+steps:
+  - script: |
+      azcopy cp --recursive https://orttrainingtestdatascus.blob.core.windows.net/MNIST/ $(Agent.TempDirectory)/MNIST
+    displayName: 'Download Training Test Data MNIST'
+
+  - script: |
+      ls -al $(Agent.TempDirectory)/MNIST
+    displayName: 'Print contents of Training Test Data MNIST'
