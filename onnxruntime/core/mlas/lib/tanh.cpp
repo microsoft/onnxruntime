@@ -36,14 +36,14 @@ MLAS_INTERNAL_DATA const struct {
     uint32_t _absmask;
     uint32_t _ubound;
 } MlasTanhConstants = {
-    0x3c520a84,  /* _nc2  */
-    0x3edef102,  /* _nc1  */
-    0x3f800000,  /* _nc0  */
-    0x3a2fc8e6,  /* _dc2  */
-    0x3dd1c060,  /* _dc1  */
-    0xb859e195,  /* _dc0  */
-    0x7fffffff,  /* _absmask  */
-    0x40a00000,  /* _ubound = +5.0f */
+    0x3c520a84, /* _nc2  */
+    0x3edef102, /* _nc1  */
+    0x3f800000, /* _nc0  */
+    0x3a2fc8e6, /* _dc2  */
+    0x3dd1c060, /* _dc1  */
+    0xb859e195, /* _dc0  */
+    0x7fffffff, /* _absmask  */
+    0x40a00000, /* _ubound = +5.0f */
 };
 
 void
@@ -73,29 +73,27 @@ Return Value:
 
 --*/
 {
-    const MLAS_FLOAT32X4 nc0 = MlasBroadcastFloat32x4((float*)&MlasTanhConstants._nc0);
-    const MLAS_FLOAT32X4 nc1 = MlasBroadcastFloat32x4((float*)&MlasTanhConstants._nc1);
-    const MLAS_FLOAT32X4 nc2 = MlasBroadcastFloat32x4((float*)&MlasTanhConstants._nc2);
-    const MLAS_FLOAT32X4 dc0 = MlasBroadcastFloat32x4((float*)&MlasTanhConstants._dc0);
-    const MLAS_FLOAT32X4 dc1 = MlasBroadcastFloat32x4((float*)&MlasTanhConstants._dc1);
-    const MLAS_FLOAT32X4 dc2 = MlasBroadcastFloat32x4((float*)&MlasTanhConstants._dc2);
-    const MLAS_FLOAT32X4 ub  = MlasBroadcastFloat32x4((float*)&MlasTanhConstants._ubound);
-    const MLAS_FLOAT32X4 absmask = MlasBroadcastFloat32x4((float*)&MlasTanhConstants._absmask);
+    const MLAS_FLOAT32X4 nc0 = MlasBroadcastFloat32x4(reinterpret_cast<const float*>(&MlasTanhConstants._nc0));
+    const MLAS_FLOAT32X4 nc1 = MlasBroadcastFloat32x4(reinterpret_cast<const float*>(&MlasTanhConstants._nc1));
+    const MLAS_FLOAT32X4 nc2 = MlasBroadcastFloat32x4(reinterpret_cast<const float*>(&MlasTanhConstants._nc2));
+    const MLAS_FLOAT32X4 dc0 = MlasBroadcastFloat32x4(reinterpret_cast<const float*>(&MlasTanhConstants._dc0));
+    const MLAS_FLOAT32X4 dc1 = MlasBroadcastFloat32x4(reinterpret_cast<const float*>(&MlasTanhConstants._dc1));
+    const MLAS_FLOAT32X4 dc2 = MlasBroadcastFloat32x4(reinterpret_cast<const float*>(&MlasTanhConstants._dc2));
+    const MLAS_FLOAT32X4 ub = MlasBroadcastFloat32x4(reinterpret_cast<const float*>(&MlasTanhConstants._ubound));
+    const MLAS_FLOAT32X4 absmask = MlasBroadcastFloat32x4(reinterpret_cast<const float*>(&MlasTanhConstants._absmask));
     MLAS_FLOAT32X4 Val;
 
     size_t count = 0;
     while (count < N) {
-
         if (N - count >= 4) {
             Val = MlasLoadFloat32x4(Input);
-        }
-        else {
+        } else {
             Val = MlasPartialLoadFloat32x4(Input, N - count);
         }
-        MLAS_FLOAT32X4 ValAbs       = MlasAndFloat32x4(Val, absmask);
-        MLAS_FLOAT32X4 boundmask    = MlasGreaterThanEqualFloat32x4(ValAbs, ub);
-        MLAS_FLOAT32X4 signVal      = MlasXorFloat32x4(ValAbs, Val);
-        MLAS_FLOAT32X4 ValSq        = MlasMultiplyFloat32x4(ValAbs, ValAbs);
+        MLAS_FLOAT32X4 ValAbs = MlasAndFloat32x4(Val, absmask);
+        MLAS_FLOAT32X4 boundmask = MlasGreaterThanEqualFloat32x4(ValAbs, ub);
+        MLAS_FLOAT32X4 signVal = MlasXorFloat32x4(ValAbs, Val);
+        MLAS_FLOAT32X4 ValSq = MlasMultiplyFloat32x4(ValAbs, ValAbs);
 
         MLAS_FLOAT32X4 npoly = MlasMultiplyAddFloat32x4(nc2, ValSq, nc1);
         npoly = MlasMultiplyAddFloat32x4(npoly, ValSq, nc0);
@@ -110,8 +108,7 @@ Return Value:
 
         if (N - count >= 4) {
             MlasStoreFloat32x4(Output, out);
-        }
-        else {
+        } else {
             MlasPartialStoreFloat32x4(Output, out, N - count);
         }
 
