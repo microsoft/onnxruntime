@@ -91,6 +91,6 @@ jobs:
     displayName: 'Run unit tests'
 
   - script: |
-      .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\x86_64-windows-msvc\QnnHtp.dll" C:\data\qdq_models
+      .\$(BuildConfig)\onnx_test_runner -j 1 -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\x86_64-windows-msvc\QnnHtp.dll" C:\data\qdq_models
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
     displayName: 'Run QDQ model tests'
