@@ -31,7 +31,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_->num_of_threads = info.num_of_threads_;
   global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
   global_context_->export_ep_ctx_blob = info.export_ep_ctx_blob_;
-  global_context_->is_ptq = info.is_ptq_;
+  global_context_->enable_qdq_optimizer = info.enable_qdq_optimizer_;
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in

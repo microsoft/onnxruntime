@@ -548,6 +548,29 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
 
   auto& dst_graph = model->MainGraph();
 
+  // Set inputs outputs explicitly to make sure the order is same as the user model.
+  auto inputs = src_graph.GetInputs();
+  auto outputs = src_graph.GetOutputs();
+
+  InlinedVector<const NodeArg*> dst_graph_inputs;
+  dst_graph_inputs.reserve(inputs.size());
+  for (auto& input : inputs) {
+    auto input_arg = src_graph.GetNodeArg(input->Name());
+    auto& ep_graph_input_arg = dst_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+    dst_graph_inputs.push_back(&ep_graph_input_arg);
+  }
+
+  InlinedVector<const NodeArg*> dst_graph_outputs;
+  dst_graph_outputs.reserve(outputs.size());
+  for (auto& output : outputs) {
+    auto output_arg = src_graph.GetNodeArg(output->Name());
+    auto& ep_graph_output_arg = dst_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+    dst_graph_outputs.push_back(&ep_graph_output_arg);
+  }
+
+  dst_graph.SetInputs(dst_graph_inputs);
+  dst_graph.SetOutputs(dst_graph_outputs);
+
   // TODO: add Graph::SetName() provider api
   // dst_graph.SetName(src_graph.Name());
 
@@ -621,8 +644,8 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   for (auto& it : const_inits) {
     if (initializers_to_keep.count(it))
       dst_graph.AddInitializedTensor(*(initializers.at(it)));
-    current_scope_initializer_set.insert(it);
-  }
+      current_scope_initializer_set.insert(it);
+      }
 
   // handle outer scope value which is a constant initializer
   for (auto& node_idx : src_graph.GetNodesInTopologicalOrder()) {
@@ -634,8 +657,8 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
       if (src_graph.IsConstantInitializer(input->Name(), true)) {
         if (initializers_to_keep.count(input->Name()))
           dst_graph.AddInitializedTensor(*(src_graph.GetConstantInitializer(input->Name(), true)));
-        current_scope_initializer_set.insert(input->Name());
-      }
+          current_scope_initializer_set.insert(input->Name());
+              }
     }
   }
 
