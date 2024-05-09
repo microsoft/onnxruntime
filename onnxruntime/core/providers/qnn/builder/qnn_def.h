@@ -202,15 +202,15 @@ class QnnTensorWrapper {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnTensorWrapper);
 
   QnnTensorWrapper(QnnTensorWrapper&& other) noexcept {
-    std::swap(tensor_name_, other.tensor_name_);
-    std::swap(dimensions_, other.dimensions_);
-    std::swap(client_buf_, other.client_buf_);
-    std::swap(quant_params_, other.quant_params_);
-    std::swap(qnn_tensor_, other.qnn_tensor_);
-    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
-    SetQnnTensorDim(qnn_tensor_, dimensions_);
-    SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
-    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
+    SwapOther(std::move(other));
+  }
+
+  QnnTensorWrapper& operator=(QnnTensorWrapper&& other) noexcept {
+    if (this != &other) {
+      SwapOther(std::move(other));
+    }
+
+    return *this;
   }
 
   ~QnnTensorWrapper() = default;
@@ -248,6 +248,18 @@ class QnnTensorWrapper {
   }
 
  private:
+  void SwapOther(QnnTensorWrapper&& other) noexcept {
+    std::swap(tensor_name_, other.tensor_name_);
+    std::swap(dimensions_, other.dimensions_);
+    std::swap(client_buf_, other.client_buf_);
+    std::swap(quant_params_, other.quant_params_);
+    std::swap(qnn_tensor_, other.qnn_tensor_);
+    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+    SetQnnTensorDim(qnn_tensor_, dimensions_);
+    SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
+    SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
+  }
+
   std::string tensor_name_;
   std::vector<uint32_t> dimensions_;
   std::vector<uint8_t> client_buf_;
@@ -484,6 +496,11 @@ typedef struct GraphConfigInfo {
   const char* graphName;
   const QnnGraph_Config_t** graphConfigs;
 } GraphConfigInfo_t;
+
+static const std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
+static const std::vector<size_t> nchw2hwcn_perm_3d{2, 3, 4, 1, 0};
+static const std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};
+static const std::vector<size_t> cnhw2hwcn_perm_3d{2, 3, 4, 0, 1};
 
 }  // namespace qnn
 }  // namespace onnxruntime
