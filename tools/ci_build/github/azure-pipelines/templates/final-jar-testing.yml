@@ -45,6 +45,10 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
+    - template: ../stages/jobs/steps/download-java-tools-step.yml
+      parameters:
+        TargetPath: '$(Build.BinariesDirectory)\final-jar'
+
     - template: flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Jar Tools'

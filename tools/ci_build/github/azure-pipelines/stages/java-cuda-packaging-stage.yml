@@ -12,7 +12,6 @@ stages:
   - Linux_C_API_Packaging_Combined_CUDA
   - Windows_Packaging_CUDA
   - Windows_Packaging_TensorRT
-  - Download_Java_Tools
   jobs:
   - job: Jar_Packaging_GPU
     workspace:
@@ -104,13 +103,9 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - template: ../templates/flex-downloadPipelineArtifact.yml
+    - template: jobs/steps/download-java-tools-step.yml
       parameters:
-        StepName: 'Download Jar Tools'
-        ArtifactName: onnxruntime-java-tools
         TargetPath: '$(Build.BinariesDirectory)\final-jar'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
 
     - task: CmdLine@2
       inputs:
