@@ -326,8 +326,6 @@ stages:
 
 - template: stages/nuget-combine-cuda-stage.yml
   parameters:
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
     DoEsrp: ${{ parameters.DoEsrp }}
     DoCompliance: ${{ parameters.DoCompliance }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}

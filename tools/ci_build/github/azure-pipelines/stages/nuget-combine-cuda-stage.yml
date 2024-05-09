@@ -8,12 +8,6 @@ parameters:
 - name: IsReleaseBuild
   type: boolean
 
-- name: SpecificArtifact
-  type: boolean
-
-- name: BuildId
-  type: string
-
 stages:
 ######## Nuget ########
 # Win/Linux CUDA Combined packaging
@@ -43,40 +37,30 @@ stages:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'onnxruntime-win-x64-cuda'
             TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
 
         - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'onnxruntime-win-x64-tensorrt'
             TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
 
         - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'onnxruntime-linux-x64-cuda'
             TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
 
         - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'onnxruntime-linux-x64-tensorrt'
             TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
 
         - template: ../templates/flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'drop-extra'
             TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
 
         # Reconstruct the build dir
         - task: PowerShell@2
@@ -249,7 +233,6 @@ stages:
         - template: ../templates/component-governance-component-detection-steps.yml
           parameters:
             condition: 'succeeded'
-
 
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'
