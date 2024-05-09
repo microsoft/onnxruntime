@@ -23,13 +23,13 @@
 
 namespace ort_trtllm {
 
-Status SetPeerAccess(int rank_id, int n_ranks, bool enable = true);
+Status SetPeerAccess(int rank, int world_size, bool enable = true);
 
 class IpcMemory {
  public:
   size_t static constexpr FLAGS_SIZE = (MAX_ALL_REDUCE_BLOCKS + 1) * sizeof(uint32_t);
 
-  IpcMemory(int rank_id, int n_ranks, std::size_t buffer_size);
+  IpcMemory(int rank, int world_size, std::size_t buffer_size);
   ~IpcMemory();
 
   std::vector<void*> const& GetCommPtrsTensor() const {
@@ -40,14 +40,14 @@ class IpcMemory {
   Status AllocateIpcMemory();
   Status DestroyIpcMemory();
 
-  int rank_id_;
-  int n_ranks_;
+  int rank_;
+  int world_size_;
   std::vector<void*> m_comm_ptrs_;
   std::size_t mbuffer_size_;
   void* m_buffer_ptr_{nullptr};
 };
 
-Status GetCustomAllReduceWorkspace(int rank_id, int n_ranks, size_t input_size,
+Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
                                    std::vector<std::unique_ptr<IpcMemory>>& m_ipc_momery_handles,
                                    std::vector<const void*>& m_comm_ptrs);
 

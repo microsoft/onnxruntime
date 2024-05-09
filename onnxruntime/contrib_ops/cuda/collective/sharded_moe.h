@@ -31,6 +31,7 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
 
   mutable std::vector<std::unique_ptr<ort_trtllm::IpcMemory>> m_ipc_momery_handles_;
   mutable std::vector<const void*> m_comm_ptrs_;
+  mutable int64_t max_input_count_{0};
 };
 
 #endif

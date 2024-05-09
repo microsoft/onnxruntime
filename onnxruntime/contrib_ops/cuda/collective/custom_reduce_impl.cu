@@ -379,9 +379,10 @@ static __global__ void twoShotAllReduceKernel(AllReduceParams params) {
     }
 }
 
-bool configurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t n_ranks, onnxruntime::MLDataType type) {
+bool ConfigurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t world_size,
+                            onnxruntime::MLDataType type) {
     size_t elts_per_thread = 16 / type->Size();
-    int const msg_align = (algo == AllReduceStrategyType::TWOSHOT) ? n_ranks * elts_per_thread : elts_per_thread;
+    int const msg_align = (algo == AllReduceStrategyType::TWOSHOT) ? world_size * elts_per_thread : elts_per_thread;
     bool supported_algo = (algo == AllReduceStrategyType::ONESHOT || algo == AllReduceStrategyType::TWOSHOT);
     return supported_algo && (msg_size % msg_align == 0);
 }
@@ -520,16 +521,16 @@ AllReduceParams AllReduceParams::deserialize(int32_t const *buffer, size_t tp_si
     return params;
 }
 
-void customAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
+void CustomAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
                      AllReduceStrategyConfig config, cudaStream_t stream) {
-    ORT_ENFORCE(configurationSupported(strat, params.elts_total, params.ranks_per_node, data_type),
+    ORT_ENFORCE(ConfigurationSupported(strat, params.elts_total, params.ranks_per_node, data_type),
                 "Custom all-reduce configuration unsupported");
     if (data_type == onnxruntime::DataTypeImpl::GetType<float>()) {
         AllReduceDispatchType<float>(params, strat, config, stream);
     } else if (data_type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
         AllReduceDispatchType<half>(params, strat, config, stream);
     } else {
-        ORT_THROW("Unsupported data type for customAllReduce");
+        ORT_THROW("Unsupported data type for CustomAllReduce");
     }
 }
 

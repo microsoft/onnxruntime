@@ -23,10 +23,10 @@ namespace ort_trtllm {
 
 using namespace onnxruntime;
 
-Status SetPeerAccess(int rank_id, int n_ranks, bool enable) {
-  const int src_node = rank_id;
+Status SetPeerAccess(int rank, int world_size, bool enable) {
+  const int src_node = rank;
 
-  for (int dst_node = 0; dst_node < n_ranks; dst_node++) {
+  for (int dst_node = 0; dst_node < world_size; dst_node++) {
     if (dst_node == src_node) {
       continue;
     }
@@ -48,8 +48,8 @@ Status SetPeerAccess(int rank_id, int n_ranks, bool enable) {
   return Status::OK();
 }
 
-IpcMemory::IpcMemory(int rank_id, int n_ranks, std::size_t buffer_size)
-    : rank_id_(rank_id), n_ranks_(n_ranks), m_comm_ptrs_(n_ranks), mbuffer_size_(buffer_size) {
+IpcMemory::IpcMemory(int rank, int world_size, std::size_t buffer_size)
+    : rank_(rank), world_size_(world_size), m_comm_ptrs_(world_size), mbuffer_size_(buffer_size) {
   ORT_ENFORCE(AllocateIpcMemory() == Status::OK());
 }
 
@@ -61,7 +61,7 @@ Status IpcMemory::AllocateIpcMemory() {
   CUDA_RETURN_IF_ERROR(cudaIpcGetMemHandle(&local_handle, m_buffer_ptr_));
 
   // Assume no pipeline parallelism.
-  std::vector<char> serial_handles(CUDA_IPC_HANDLE_SIZE * n_ranks_, 0);
+  std::vector<char> serial_handles(CUDA_IPC_HANDLE_SIZE * world_size_, 0);
 
 #ifdef USE_MPI
   MPI_CHECK(MPI_Allgather(local_handle.reserved, CUDA_IPC_HANDLE_SIZE, MPI_BYTE, serial_handles.data(),
@@ -70,13 +70,13 @@ Status IpcMemory::AllocateIpcMemory() {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please compile ORT with USE_MPI.");
 #endif
 
-  std::vector<cudaIpcMemHandle_t> handles(n_ranks_);
+  std::vector<cudaIpcMemHandle_t> handles(world_size_);
   for (size_t i = 0; i < handles.size(); ++i) {
     memcpy(handles[i].reserved, &serial_handles[i * CUDA_IPC_HANDLE_SIZE], CUDA_IPC_HANDLE_SIZE);
   }
 
   for (size_t node_id = 0; node_id < handles.size(); node_id++) {
-    if ((int)node_id == rank_id_) {
+    if ((int)node_id == rank_) {
       m_comm_ptrs_[node_id] = m_buffer_ptr_;
     } else {
       uint8_t* foreign_buffer;
@@ -94,8 +94,8 @@ IpcMemory::~IpcMemory() {
 }
 
 Status IpcMemory::DestroyIpcMemory() {
-  for (int node_id = 0; node_id < n_ranks_; ++node_id) {
-    if (node_id == rank_id_) {
+  for (int node_id = 0; node_id < world_size_; ++node_id) {
+    if (node_id == rank_) {
       CUDA_RETURN_IF_ERROR(cudaFree(m_comm_ptrs_[node_id]));
     } else {
       CUDA_RETURN_IF_ERROR(cudaIpcCloseMemHandle(m_comm_ptrs_[node_id]));
@@ -105,29 +105,29 @@ Status IpcMemory::DestroyIpcMemory() {
   return Status::OK();
 }
 
-Status GetCustomAllReduceWorkspace(int rank_id, int n_ranks, size_t input_size,
+Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
                                    std::vector<std::unique_ptr<IpcMemory>>& m_ipc_memory_handles,
                                    std::vector<const void*>& m_comm_ptrs) {
-  ORT_ENFORCE(ort_trtllm::SetPeerAccess(rank_id, n_ranks, true) == Status::OK());
+  ORT_ENFORCE(ort_trtllm::SetPeerAccess(rank, world_size, true) == Status::OK());
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-  const std::size_t buffer_size = n_ranks * input_size;
+  const std::size_t buffer_size = world_size * input_size;
 
   m_ipc_memory_handles.clear();
-  m_ipc_memory_handles.emplace_back(std::make_unique<ort_trtllm::IpcMemory>(rank_id, n_ranks, buffer_size));
+  m_ipc_memory_handles.emplace_back(std::make_unique<ort_trtllm::IpcMemory>(rank, world_size, buffer_size));
   m_ipc_memory_handles.emplace_back(
-      std::make_unique<ort_trtllm::IpcMemory>(rank_id, n_ranks, ort_trtllm::IpcMemory::FLAGS_SIZE * n_ranks));
+      std::make_unique<ort_trtllm::IpcMemory>(rank, world_size, ort_trtllm::IpcMemory::FLAGS_SIZE * world_size));
   m_ipc_memory_handles.emplace_back(
-      std::make_unique<ort_trtllm::IpcMemory>(rank_id, n_ranks, ort_trtllm::IpcMemory::FLAGS_SIZE * n_ranks));
+      std::make_unique<ort_trtllm::IpcMemory>(rank, world_size, ort_trtllm::IpcMemory::FLAGS_SIZE * world_size));
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-  m_comm_ptrs.reserve(m_ipc_memory_handles.size() * n_ranks);
-  m_comm_ptrs.resize(m_ipc_memory_handles.size() * n_ranks);
+  m_comm_ptrs.reserve(m_ipc_memory_handles.size() * world_size);
+  m_comm_ptrs.resize(m_ipc_memory_handles.size() * world_size);
 
   for (size_t mem_idx = 0; mem_idx < m_ipc_memory_handles.size(); mem_idx++) {
     auto const& mem_comm_ptrs = m_ipc_memory_handles[mem_idx]->GetCommPtrsTensor();
-    for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(n_ranks); tpIdx++) {
-      m_comm_ptrs[mem_idx * n_ranks + tpIdx] = mem_comm_ptrs[tpIdx];
+    for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(world_size); tpIdx++) {
+      m_comm_ptrs[mem_idx * world_size + tpIdx] = mem_comm_ptrs[tpIdx];
     }
   }
 

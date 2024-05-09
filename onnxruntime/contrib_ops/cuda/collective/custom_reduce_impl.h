@@ -56,9 +56,49 @@ struct AllReduceParams {
     static AllReduceParams deserialize(int32_t const *buffer, size_t tpSize, size_t tpRank);
 };
 
-bool configurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t n_ranks, onnxruntime::MLDataType type);
+bool ConfigurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t world_size,
+                            onnxruntime::MLDataType type);
 
-void customAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
+void CustomAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
                      AllReduceStrategyConfig config, cudaStream_t stream);
+
+inline size_t GetMaxRequiredWorkspaceSize(int world_size) noexcept {
+    if (world_size <= 2) {
+        return 16 * 1000 * 1000;
+    }
+    return 8 * 1000 * 1000;
+}
+
+inline AllReduceStrategyType SelectImplementation(size_t message_size, int world_size,
+                                                  onnxruntime::MLDataType type) noexcept {
+    const size_t maxWorkspaceSize = GetMaxRequiredWorkspaceSize(world_size);
+
+    AllReduceStrategyType strat = AllReduceStrategyType::NCCL;
+    const size_t message_size_bytes = message_size * type->Size();
+
+    if (message_size_bytes <= maxWorkspaceSize) {
+        if (world_size <= 2) {
+            strat = AllReduceStrategyType::ONESHOT;
+        } else if (world_size <= 4) {
+            if (message_size_bytes < 1 * 1000 * 1000) {
+                strat = AllReduceStrategyType::ONESHOT;
+            } else {
+                strat = AllReduceStrategyType::TWOSHOT;
+            }
+        } else {
+            if (message_size_bytes < 500 * 1000) {
+                strat = AllReduceStrategyType::ONESHOT;
+            } else {
+                strat = AllReduceStrategyType::TWOSHOT;
+            }
+        }
+    }
+
+    if (!ConfigurationSupported(strat, message_size, world_size, type)) {
+        strat = AllReduceStrategyType::NCCL;
+    }
+
+    return strat;
+}
 
 } // namespace ort_trtllm
