@@ -237,18 +237,23 @@ class SparseAttentionConfig(AttentionConfig):
     def block_mask(self):
         return get_block_mask(self.num_layout, self.max_blocks, self.local_blocks, self.vert_stride).to(self.device)
 
+    def block_indices(self):
+        row_indices, col_indices = dense_to_csr(self.block_mask())
+        return row_indices.to(torch.int32).to(self.device), col_indices.to(torch.int32).to(self.device)
+
     def dense_mask(self):
-        expand_block_mask = self.block_mask()
         dense_mask = get_dense_mask(
-            expand_block_mask, self.total_sequence_length, self.sequence_length, self.sparse_block_size
+            self.block_mask(), self.total_sequence_length, self.sequence_length, self.sparse_block_size
         )
         return dense_mask.repeat(self.batch_size, self.num_heads // self.num_layout, 1, 1).to(self.device)
 
     def shape_dict(self):
         shapes = super().shape_dict()
+        block_row_indices, block_col_indices = self.block_indices()
         shapes.update(
             {
-                "block_mask": (self.num_layout, self.max_blocks, self.max_blocks),
+                "block_row_indices": tuple(block_row_indices.shape),
+                "block_col_indices": tuple(block_col_indices.shape),
                 "key_total_sequence_lengths": (self.batch_size,),
             }
         )
@@ -257,10 +262,11 @@ class SparseAttentionConfig(AttentionConfig):
     def random_inputs(self):
         feeds = super().random_inputs()
         k_seqlens = torch.ones((self.batch_size,), device=self.device, dtype=torch.int32) * self.total_sequence_length
+        block_row_indices, block_col_indices = self.block_indices()
         feeds.update(
             {
-                "block_mask": self.block_mask(),
-                "total_sequence_length": torch.tensor([self.total_sequence_length], dtype=torch.int32),
+                "block_row_indices": block_row_indices,
+                "block_col_indices": block_col_indices,
                 "key_total_sequence_lengths": k_seqlens,
             }
         )
@@ -327,6 +333,19 @@ def get_block_mask(num_layout, max_blocks, local_blocks, vert_stride):
     return block_mask
 
 
+def dense_to_csr(x):
+    """Turning a 3D torch tensor (x) to CSR rows/cols indexing."""
+    assert x.dim() == 3
+    pad = -1
+    x = [xi.to_sparse_csr() for xi in x]
+    row_indices = torch.vstack([xi.crow_indices() for xi in x])
+    cols = [xi.col_indices() for xi in x]
+    max_cols = max(len(xi) for xi in cols)
+    cols = [torch.cat([xi, pad + xi.new_zeros(max_cols - xi.shape[0])]) for xi in cols]
+    col_indices = torch.vstack(cols)
+    return row_indices, col_indices
+
+
 def get_dense_mask(block_mask, total_seq_len, query_seq_len, block_size):
     dense_mask = torch.kron(block_mask, block_mask.new_ones((block_size, block_size)))[
         :, :total_seq_len, :total_seq_len
@@ -350,7 +369,8 @@ def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
                 "value" + suffix if not config.is_packed_qkv else "",
                 "past_key" + suffix,
                 "past_value" + suffix,
-                "block_mask",
+                "block_row_indices",  # no suffix since int32 need not cast for bfloat graph.
+                "block_col_indices",
                 "total_sequence_length" if config.share_buffer else "",
                 "key_total_sequence_lengths",
                 "cos_cache" + suffix if config.do_rotary else "",
@@ -410,7 +430,12 @@ def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
         [
             helper.make_tensor_value_info("past_key", io_float_type, list(shape_dict["past_key"])),
             helper.make_tensor_value_info("past_value", io_float_type, list(shape_dict["past_value"])),
-            helper.make_tensor_value_info("block_mask", TensorProto.INT32, list(shape_dict["block_mask"])),
+            helper.make_tensor_value_info(
+                "block_row_indices", TensorProto.INT32, list(shape_dict["block_row_indices"])
+            ),
+            helper.make_tensor_value_info(
+                "block_col_indices", TensorProto.INT32, list(shape_dict["block_col_indices"])
+            ),
             helper.make_tensor_value_info(
                 "total_sequence_length", TensorProto.INT32, list(shape_dict["total_sequence_length"])
             ),
@@ -704,7 +729,8 @@ class OrtSparseAttention:
             print("query(BSNH, SA)", query)
             print("key(BSNH, SA)", key)
             print("value(BSNH, SA)", value)
-            print("block_mask (SA)", self.feed_dict["block_mask"])
+            print("block_row_indices", self.feed_dict["block_row_indices"])
+            print("block_col_indices", self.feed_dict["block_col_indices"])
             print("total_sequence_length", self.feed_dict["total_sequence_length"])
             print("key_total_sequence_lengths", self.feed_dict["key_total_sequence_lengths"])
 
