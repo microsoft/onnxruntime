@@ -981,7 +981,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "export_ep_ctx_blob") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if (option.first == "is_ptq") {
+        } else if (option.first == "enable_qdq_optimizer") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else {
