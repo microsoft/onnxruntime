@@ -41,6 +41,8 @@ stages:
       clean: true
       submodules: recursive
 
+    - template: templates/jobs/download_training_test_data.yml
+
     - template: templates/run-docker-build-steps.yml
       parameters:
         RunDockerBuildArgs: |
@@ -57,8 +59,6 @@ stages:
           -u \
           -e
         DisplayName: 'Build'
-
-    - template: templates/jobs/download_training_test_data.yml
 
       # Entry point for all ORTModule distributed tests
       # Refer to orttraining/orttraining/test/python/how_to_add_ortmodule_distributed_ci_pipeline_tests.md for guidelines on how to add new tests to this pipeline.
