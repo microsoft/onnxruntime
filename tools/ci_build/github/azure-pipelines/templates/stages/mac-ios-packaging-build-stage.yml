@@ -142,7 +142,7 @@ stages:
         done
 
         # copy over helper script for use in release pipeline
-        cp tools/ci_build/github/apple/upload_pod_archive_and_update_podspec.sh "$(Build.ArtifactStagingDirectory)"
+        cp tools/ci_build/github/apple/package_release_tasks.py "$(Build.ArtifactStagingDirectory)"
       displayName: "Assemble artifacts"
 
     - script: |

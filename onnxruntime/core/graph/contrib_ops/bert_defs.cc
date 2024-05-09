@@ -1104,6 +1104,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(5,
                "seqlens_k",
+               // For prompt, the value is number of tokens (excluding padding) - 1.
                "1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.",
                "M")
         .Input(6,
