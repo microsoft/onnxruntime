@@ -73,8 +73,8 @@ class AllReduce final : public NcclKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
-  mutable std::vector<std::shared_ptr<ort_trtllm::IpcMemory>> mIpcMemoryHandles;
-  mutable std::vector<const void*> mCommPtrs;
+  mutable std::vector<std::unique_ptr<ort_trtllm::IpcMemory>> m_ipc_momery_handles;
+  mutable std::vector<const void*> m_comm_ptrs;
 };
 
 class AllGather final : public NcclKernel {
@@ -104,6 +104,14 @@ Status FuncAllReduce(
     cudaStream_t stream,
     const Tensor* input,
     Tensor* output);
+
+Status FuncCustomAllReduce(
+    NcclContext* nccl,
+    cudaStream_t stream,
+    const Tensor* input,
+    Tensor* output,
+    std::vector<std::unique_ptr<ort_trtllm::IpcMemory>>& m_ipc_momery_handles,
+    std::vector<const void*>& m_comm_ptrs);
 
 void FuncAllGather(
     const NcclKernel* nccl_kernel,

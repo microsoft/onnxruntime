@@ -23,99 +23,32 @@
 
 namespace ort_trtllm {
 
-Status setPeerAccess(int myRank, int nRanks, bool enable = true);
+Status SetPeerAccess(int rank_id, int n_ranks, bool enable = true);
 
 class IpcMemory {
  public:
-  // using TensorPtr = ITensor::SharedPtr;
-
-  // MAX_ALL_REDUCE_BLOCKS for block_barrier, 1 for multi_gpu_barrier
   size_t static constexpr FLAGS_SIZE = (MAX_ALL_REDUCE_BLOCKS + 1) * sizeof(uint32_t);
 
-  IpcMemory(int myRank, int nRanks, std::size_t bufferSize);
+  IpcMemory(int rank_id, int n_ranks, std::size_t buffer_size);
   ~IpcMemory();
 
-  std::vector<void*> const& getCommPtrsTensor() const {
-    return mCommPtrs;
+  std::vector<void*> const& GetCommPtrsTensor() const {
+    return m_comm_ptrs_;
   }
 
  private:
-  Status allocateIpcMemory();
-  Status destroyIpcMemory();
+  Status AllocateIpcMemory();
+  Status DestroyIpcMemory();
 
-  int myRank_;
-  int nRanks_;
-  std::vector<void*> mCommPtrs;
-  std::size_t mBufferSize;
-  void* mBufferPtr{nullptr};
+  int rank_id_;
+  int n_ranks_;
+  std::vector<void*> m_comm_ptrs_;
+  std::size_t mbuffer_size_;
+  void* m_buffer_ptr_{nullptr};
 };
 
-// static std::unordered_map<int, std::vector<const void*>> mCommPtrsMap;
-// static std::unordered_map<int, size_t> bufferSizeMap;
-// static std::vector<const void*> getCustomAllReduceWorkspace(NcclContext* nctx, size_t input_size) {
-//   const int myRank = nctx->Rank();
-
-//   std::cout << "input_size: " << input_size << "bufferSizeMap[myRank]: " << bufferSizeMap[myRank] << std::endl;
-//   if (input_size <= bufferSizeMap[myRank]) {
-//     return mCommPtrsMap[myRank];
-//   }
-//   bufferSizeMap[myRank] = input_size;
-
-//   ORT_ENFORCE(setPeerAccess(nctx, true) == Status::OK());
-
-//   const int nRanks = nctx->Size();
-//   const std::size_t bufferSize = nRanks * bufferSizeMap[myRank];
-
-//   std::vector<std::shared_ptr<IpcMemory>> mIpcMemoryHandles;
-//   mIpcMemoryHandles.emplace_back(std::make_shared<IpcMemory>(nctx, bufferSize));
-//   mIpcMemoryHandles.emplace_back(
-//       std::make_shared<IpcMemory>(nctx, IpcMemory::FLAGS_SIZE * nRanks));
-//   mIpcMemoryHandles.emplace_back(
-//       std::make_shared<IpcMemory>(nctx, IpcMemory::FLAGS_SIZE * nRanks));
-
-//   mCommPtrsMap[myRank].resize(mIpcMemoryHandles.size() * nRanks);
-
-//   for (size_t memIdx = 0; memIdx < mIpcMemoryHandles.size(); memIdx++) {
-//     auto const& memCommPtrs = mIpcMemoryHandles[memIdx]->getCommPtrsTensor();
-//     for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(nRanks); tpIdx++) {
-//       mCommPtrsMap[myRank][memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
-//     }
-//   }
-
-//   return mCommPtrsMap[myRank];
-// }
-
-// static std::vector<const void*> getCustomAllReduceWorkspace(NcclContext* nctx, size_t input_size) {
-//   static std::vector<const void*> mCommPtrs;
-//   static size_t bufferSizePerRank;
-//   static std::vector<std::shared_ptr<IpcMemory>> mIpcMemoryHandles;
-
-//   if (input_size <= bufferSizePerRank) {
-//     return mCommPtrs;
-//   }
-
-//   ORT_ENFORCE(setPeerAccess(nctx, true) == Status::OK());
-
-//   const int nRanks = nctx->Size();
-//   const std::size_t bufferSize = nRanks * input_size;
-
-//   mIpcMemoryHandles.clear();
-//   mIpcMemoryHandles.emplace_back(std::make_shared<IpcMemory>(nctx, bufferSize));
-//   mIpcMemoryHandles.emplace_back(
-//       std::make_shared<IpcMemory>(nctx, IpcMemory::FLAGS_SIZE * nRanks));
-//   mIpcMemoryHandles.emplace_back(
-//       std::make_shared<IpcMemory>(nctx, IpcMemory::FLAGS_SIZE * nRanks));
-
-//   mCommPtrs.resize(mIpcMemoryHandles.size() * nRanks);
-
-//   for (size_t memIdx = 0; memIdx < mIpcMemoryHandles.size(); memIdx++) {
-//     auto const& memCommPtrs = mIpcMemoryHandles[memIdx]->getCommPtrsTensor();
-//     for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(nRanks); tpIdx++) {
-//       mCommPtrs[memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
-//     }
-//   }
-
-//   return mCommPtrs;
-// }
+Status getCustomAllReduceWorkspace(int rank_id, int n_ranks, size_t input_size,
+                                   std::vector<std::unique_ptr<IpcMemory>>& m_ipc_momery_handles,
+                                   std::vector<const void*>& m_comm_ptrs);
 
 }  // namespace ort_trtllm

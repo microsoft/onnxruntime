@@ -252,67 +252,10 @@ AllReduce::AllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 
 Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   auto input_tensor = context->Input<Tensor>(0);
-  const void* input_data = input_tensor->DataRaw();
   const auto in_shape = input_tensor->Shape();
-  int64_t input_count = in_shape.Size();
+  auto output_tensor = context->Output(0, in_shape);
 
-  void* output_data = context->Output(0, in_shape)->MutableDataRaw();
-
-  // ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
-  // NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl_->Comm(), Stream(context)));
-
-  ort_trtllm::AllReduceStrategyType runtimeStrategy = ort_trtllm::AllReduceStrategyType::ONESHOT;
-  // ort_trtllm::AllReduceStrategyConfig mConfig = ort_trtllm::AllReduceStrategyConfig::PUSH_MODE;
-  ort_trtllm::AllReduceStrategyConfig mConfig = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
-
-  int myRank = nccl_->Rank();
-  int nRanks = nccl_->Size();
-
-  // std::vector<const void*> mCommPtrs =
-  //     ort_trtllm::getCustomAllReduceWorkspace(nccl_, input_count * input_tensor->DataType()->Size());
-  ///////////////////////////////////////////////////////////////////////
-  if (mCommPtrs.size() == 0) {
-    std::cout << "allocate new mCommPtrs" << std::endl;
-    ORT_ENFORCE(ort_trtllm::setPeerAccess(myRank, nRanks, true) == Status::OK());
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
-    const std::size_t bufferSize = nRanks * input_count * input_tensor->DataType()->Size();
-
-    mIpcMemoryHandles.clear();
-    mIpcMemoryHandles.emplace_back(std::make_shared<ort_trtllm::IpcMemory>(myRank, nRanks, bufferSize));
-    mIpcMemoryHandles.emplace_back(
-        std::make_shared<ort_trtllm::IpcMemory>(myRank, nRanks, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
-    mIpcMemoryHandles.emplace_back(
-        std::make_shared<ort_trtllm::IpcMemory>(myRank, nRanks, ort_trtllm::IpcMemory::FLAGS_SIZE * nRanks));
-
-    mCommPtrs.reserve(mIpcMemoryHandles.size() * nRanks);
-    mCommPtrs.resize(mIpcMemoryHandles.size() * nRanks);
-
-    for (size_t memIdx = 0; memIdx < mIpcMemoryHandles.size(); memIdx++) {
-      auto const& memCommPtrs = mIpcMemoryHandles[memIdx]->getCommPtrsTensor();
-      for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(nRanks); tpIdx++) {
-        mCommPtrs[memIdx * nRanks + tpIdx] = memCommPtrs[tpIdx];
-      }
-    }
-
-    // print mCommPtrs
-    for (size_t i = 0; i < mCommPtrs.size(); i++) {
-      std::cout << mCommPtrs[i] << " ";
-    }
-    std::cout << std::endl;
-  }
-  ///////////////////////////////////////////////////////////////////////
-  CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
-      reinterpret_cast<int32_t const*>(mCommPtrs.data()), nRanks, myRank);
-  CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  params.local_output_buffer_ptr = output_data;
-  params.local_input_buffer_ptr = input_data;
-  params.elts_total = input_count;
-
-  ort_trtllm::customAllReduce(params, input_tensor->DataType(), runtimeStrategy, mConfig, Stream(context));
-  CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  return Status::OK();
+  return FuncCustomAllReduce(nccl_, Stream(context), input_tensor, output_tensor, m_ipc_momery_handles, m_comm_ptrs);
 }
 
 AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
@@ -465,6 +408,47 @@ Status FuncAllReduce(
 
   ncclDataType_t dtype = GetNcclDataType(input->DataType());
   NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
+  return Status::OK();
+}
+
+Status FuncCustomAllReduce(
+    NcclContext* nccl,
+    cudaStream_t stream,
+    const Tensor* input,
+    Tensor* output,
+    std::vector<std::unique_ptr<ort_trtllm::IpcMemory>>& m_ipc_momery_handles,
+    std::vector<const void*>& m_comm_ptrs) {
+  const void* input_data = input->DataRaw();
+  int64_t input_count = input->Shape().Size();
+
+  void* output_data = output->MutableDataRaw();
+
+  // ncclDataType_t dtype = GetNcclDataType(input->DataType());
+  // NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl->Comm(), stream));
+
+  ort_trtllm::AllReduceStrategyType runtimeStrategy = ort_trtllm::AllReduceStrategyType::ONESHOT;
+  // ort_trtllm::AllReduceStrategyConfig mConfig = ort_trtllm::AllReduceStrategyConfig::PUSH_MODE;
+  ort_trtllm::AllReduceStrategyConfig mConfig = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
+
+  int rank_id = nccl->Rank();
+  int n_ranks = nccl->Size();
+
+  if (m_comm_ptrs.size() == 0) {
+    ORT_RETURN_IF_ERROR(ort_trtllm::getCustomAllReduceWorkspace(rank_id, n_ranks, input_count * input->DataType()->Size(),
+                                                                m_ipc_momery_handles, m_comm_ptrs));
+  }
+
+  ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
+      reinterpret_cast<int32_t const*>(m_comm_ptrs.data()), n_ranks, rank_id);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  params.local_output_buffer_ptr = output_data;
+  params.local_input_buffer_ptr = input_data;
+  params.elts_total = input_count;
+
+  ort_trtllm::customAllReduce(params, input->DataType(), runtimeStrategy, mConfig, stream);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
   return Status::OK();
 }
 
