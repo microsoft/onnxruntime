@@ -112,6 +112,7 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
+    - task: CmdLine@2
       inputs:
         script: |
           mkdir test
