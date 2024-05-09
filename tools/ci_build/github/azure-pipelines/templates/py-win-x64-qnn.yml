@@ -113,7 +113,7 @@ jobs:
         displayName: 'Build'
         inputs:
           solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-          platform: 'x64'
+          platform: 'arm64ec'
           configuration: RelWithDebInfo
           msbuildArchitecture: 'x64'
           maximumCpuCount: true
