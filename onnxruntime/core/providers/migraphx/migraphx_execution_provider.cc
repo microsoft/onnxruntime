@@ -153,6 +153,28 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     }
   }
 
+  //Save/load migraphx compiled models
+  const std::string save_comp_model_env = onnxruntime::GetenvironmentVar(migraphx_env_vars::kSaveCompiledModel);
+  if (!save_comp_model_env.empty()) {
+    save_compiled_model_ = (std::stoi(save_comp_model_env) == 0 ? false : true);
+  }
+
+  const std::string save_model_path_env = onnxruntime::GetenvironmentVar(migraphx_env_vars::ksaveCompiledPath);
+
+  if (save_compiled_model_ && !save_model_path_env.empty()) {
+    save_compiled_path_ = save_model_path_env;
+  }
+
+  const std::string load_comp_model_env = onnxruntime::GetenvironmentVar(migraphx_env_vars::kLoadCompiledModel);
+  if (!load_comp_model_env.empty()) {
+    load_compiled_model_ = (std::stoi(load_comp_model_env) == 0 ? false : true);
+  }
+
+  const std::string load_model_path_env = onnxruntime::GetenvironmentVar(migraphx_env_vars::kLoadCompiledPath);
+  if (load_compiled_model_ && !load_model_path_env.empty()) {
+    load_compiled_path_ = load_model_path_env;
+  }
+
   // dump unsupported ops
   const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::dumpModelOps);
   if (!dump_model_ops_env.empty()) {
@@ -171,10 +193,15 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
                         << "device_id: " << device_id_
                         << ", migraphx_fp16_enable: " << fp16_enable_
                         << ", migraphx_int8_enable: " << int8_enable_
+                        << ", migraphx_int8_enable: " << int8_enable_
                         << ", dump_model_ops: " << dump_model_ops_
                         << ", migraphx_int8_calibration_cache_name: " << int8_calibration_cache_name_
                         << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
-                        << ", use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_;
+                        << ", use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_
+                        << ", migraphx_save_compiled_model: " << save_compiled_model_
+                        << ", migraphx_save_compiled_model_path: " << save_compiled_model_path_
+                        << ", migraphx_load_compiled_model: " << load_compiled_model_
+                        << ", migraphx_load_compiled_model_path: " << load_compiled_model_path_;
 }
 
 MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
