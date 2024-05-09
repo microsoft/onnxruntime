@@ -6,7 +6,7 @@ parameters:
 
 steps:
 
-- template: templates/jobs/download_training_test_data.yml
+- template: jobs/download_training_test_data.yml
 
   # Entry point for all ORTModule tests
   # The onnxruntime folder is deleted in the build directory
