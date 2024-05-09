@@ -611,7 +611,6 @@ class MemoryObserver:
         ]:
 
             apply_config = []
-            recomputed_configs = set()
 
             for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
                 plans = cluster_id.split(",")
@@ -636,13 +635,7 @@ class MemoryObserver:
                     ):
                         recompute_configs.append(plan)
 
-                # Make sure the recompute config is not duplicated.
-                if all(recompute_config not in recomputed_configs for recompute_config in recompute_configs):
-                    apply_config.append(",".join(recompute_configs))
-                    for recompute_config in recompute_configs:
-                        recomputed_configs.add(recompute_config)
-                else:
-                    self._logger.verbose(f"Skip duplicated recompute config: {recompute_configs}")
+                apply_config.append(",".join(recompute_configs))
 
             self._json_file_for_layerwise_recompute = tempfile.NamedTemporaryFile(mode="w+")
             json.dump(apply_config, self._json_file_for_layerwise_recompute)

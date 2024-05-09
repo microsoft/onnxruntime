@@ -860,21 +860,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
         )
 
-        if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
-            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER"
-        elif (
-            self._runtime_options.memory_optimization_level
-            == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE
-        ):
-            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER_WITH_COMPROMISE"
-        else:
-            opt_config_to_display = self._runtime_options.memory_optimizer_config_file_path
-
         mem_infos = ""
         if self._runtime_options.memory_optimizer_is_enabled():
             mem_infos += (
                 f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
-                f"Optimization Config: [{opt_config_to_display}]"
+                f"Optimization Config: [{self._runtime_options.memory_optimizer_config_file_path}]"
             )
         else:
             mem_infos = "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<config.json>"

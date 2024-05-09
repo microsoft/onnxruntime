@@ -322,8 +322,8 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
       graph.AddConsumerNode(input_arg->Name(), &recompute_node);
     }
 
-    bool input_require_grads_reset = SetTrainingModeForForwardPythonOpNode(*node_to_duplicate);
-    if (input_require_grads_reset) {
+    bool training_mode_reset = SetTrainingModeForForwardPythonOpNode(*node_to_duplicate);
+    if (training_mode_reset) {
       LOGS(logger, VERBOSE) << "Set training mode for Node " << node_to_duplicate->Name()
                             << "(" << node_to_duplicate->OpType() << ").";
     }
