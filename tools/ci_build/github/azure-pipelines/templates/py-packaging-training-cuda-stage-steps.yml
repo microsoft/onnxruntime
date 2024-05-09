@@ -153,6 +153,8 @@ stages:
           clean: true
           submodules: none
 
+        - template: jobs/download_training_test_data.yml
+
         - template: set-python-manylinux-variables-step.yml
 
         - template: flex-downloadPipelineArtifact.yml
@@ -187,8 +189,6 @@ stages:
               --build-arg PREPEND_PATH=/usr/local/cuda/bin:
               --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
             Repository: $(Repository)
-
-        - template: jobs/download_training_test_data.yml
 
         - task: CmdLine@2
           displayName: 'test ortmodule'
