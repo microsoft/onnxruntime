@@ -106,12 +106,13 @@ Status IpcMemory::DestroyIpcMemory() {
 }
 
 Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
-                                   std::vector<std::unique_ptr<IpcMemory>>& m_ipc_memory_handles,
-                                   std::vector<const void*>& m_comm_ptrs) {
+                                   IPCMemoryResourcePack& ipc_mem_res_pack) {
   ORT_ENFORCE(ort_trtllm::SetPeerAccess(rank, world_size, true) == Status::OK());
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   const std::size_t buffer_size = world_size * input_size;
+
+  std::vector<std::unique_ptr<IpcMemory>>& m_ipc_memory_handles = ipc_mem_res_pack.m_ipc_momery_handles;
 
   m_ipc_memory_handles.clear();
   m_ipc_memory_handles.emplace_back(std::make_unique<ort_trtllm::IpcMemory>(rank, world_size, buffer_size));
@@ -121,6 +122,7 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
       std::make_unique<ort_trtllm::IpcMemory>(rank, world_size, ort_trtllm::IpcMemory::FLAGS_SIZE * world_size));
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
+  std::vector<const void*>& m_comm_ptrs = ipc_mem_res_pack.m_comm_ptrs;
   m_comm_ptrs.reserve(m_ipc_memory_handles.size() * world_size);
   m_comm_ptrs.resize(m_ipc_memory_handles.size() * world_size);
 

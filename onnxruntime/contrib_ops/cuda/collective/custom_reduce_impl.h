@@ -64,8 +64,8 @@ bool ConfigurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t 
 void CustomAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
                      AllReduceStrategyConfig config, cudaStream_t stream);
 
-size_t GetMaxRequiredWorkspaceSize(int world_size) noexcept;
+size_t GetMaxRequiredWorkspaceSize(int world_size);
 
-AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, onnxruntime::MLDataType type) noexcept;
+AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, onnxruntime::MLDataType type);
 
 } // namespace ort_trtllm

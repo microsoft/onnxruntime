@@ -47,14 +47,13 @@ class IpcMemory {
   void* m_buffer_ptr_{nullptr};
 };
 
-// struct IPCMemoryResourcePack {
-//   mutable std::vector<std::unique_ptr<IpcMemory>> m_ipc_momery_handles_;
-//   mutable std::vector<const void*> m_comm_ptrs_;
-//   mutable int64_t max_input_count_{0};
-// }
+struct IPCMemoryResourcePack {
+  mutable std::vector<std::unique_ptr<IpcMemory>> m_ipc_momery_handles;
+  mutable std::vector<const void*> m_comm_ptrs;
+  mutable int64_t max_input_count{0};
+};
 
 Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
-                                   std::vector<std::unique_ptr<IpcMemory>>& m_ipc_momery_handles,
-                                   std::vector<const void*>& m_comm_ptrs);
+                                   IPCMemoryResourcePack& ipc_mem_res_pack);
 
 }  // namespace ort_trtllm

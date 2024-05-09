@@ -264,10 +264,8 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
                              input_data,
                              output_data,
                              input_count,
-                             max_input_count_,
                              input_tensor->DataType(),
-                             m_ipc_momery_handles_,
-                             m_comm_ptrs_);
+                             ipc_mem_res_pack_);
 }
 
 AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
@@ -429,10 +427,8 @@ Status FuncCustomAllReduce(
     const void* input_data,
     void* output_data,
     int64_t input_count,
-    int64_t& max_input_count,
     onnxruntime::MLDataType data_type,
-    std::vector<std::unique_ptr<ort_trtllm::IpcMemory>>& m_ipc_momery_handles,
-    std::vector<const void*>& m_comm_ptrs) {
+    ort_trtllm::IPCMemoryResourcePack& ipc_mem_res_pack) {
   int rank = nccl->Rank();
   int world_size = nccl->Size();
 
@@ -442,26 +438,27 @@ Status FuncCustomAllReduce(
   if (runtime_strategy == ort_trtllm::AllReduceStrategyType::NCCL) {
     ncclDataType_t dtype = GetNcclDataType(data_type);
     NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl->Comm(), stream));
-  } else {
-    ort_trtllm::AllReduceStrategyConfig m_config = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
 
-    if (input_count > max_input_count) {
-      ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank, world_size, input_count * data_type->Size(),
-                                                                  m_ipc_momery_handles, m_comm_ptrs));
-      max_input_count = input_count;
-    }
-
-    ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
-        reinterpret_cast<int32_t const*>(m_comm_ptrs.data()), world_size, rank);
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
-    params.local_output_buffer_ptr = output_data;
-    params.local_input_buffer_ptr = input_data;
-    params.elts_total = input_count;
-
-    ort_trtllm::CustomAllReduce(params, data_type, runtime_strategy, m_config, stream);
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    return Status::OK();
   }
+
+  ort_trtllm::AllReduceStrategyConfig m_config = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
+
+  if (input_count > ipc_mem_res_pack.max_input_count) {
+    ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank, world_size, input_count * data_type->Size(),
+                                                                ipc_mem_res_pack));
+  }
+
+  ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
+      reinterpret_cast<int32_t const*>(ipc_mem_res_pack.m_comm_ptrs.data()), world_size, rank);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  params.local_output_buffer_ptr = output_data;
+  params.local_input_buffer_ptr = input_data;
+  params.elts_total = input_count;
+
+  ort_trtllm::CustomAllReduce(params, data_type, runtime_strategy, m_config, stream);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   return Status::OK();
 }

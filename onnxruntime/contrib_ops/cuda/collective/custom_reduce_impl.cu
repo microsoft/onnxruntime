@@ -536,14 +536,14 @@ void CustomAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type,
     }
 }
 
-size_t GetMaxRequiredWorkspaceSize(int world_size) noexcept {
+size_t GetMaxRequiredWorkspaceSize(int world_size) {
     if (world_size <= 2) {
         return 16 * 1000 * 1000;
     }
     return 8 * 1000 * 1000;
 }
 
-AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, onnxruntime::MLDataType type) noexcept {
+AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, onnxruntime::MLDataType type) {
     AllReduceStrategyType strat = AllReduceStrategyType::NCCL;
     if (type != onnxruntime::DataTypeImpl::GetType<float>() &&
         type != onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
