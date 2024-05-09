@@ -84,25 +84,25 @@ parameters:
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
+  variables:
+  - name: GRADLE_OPTS
+    value: '-Dorg.gradle.daemon=false'
+  - name: VSGenerator
+    value: 'Visual Studio 17 2022'
+  - name: CUDA_MODULE_LOADING
+    value:
+  - name: buildJavaParameter
+    ${{ if eq(parameters.buildJava, 'true') }}:
+      value: '--build_java'
+    ${{ else }}:
+      value: ''
+  - name: timeoutParameter
+    ${{ if eq(parameters.UseIncreasedTimeoutForTests, 'true') }}:
+      value: '--test_all_timeout 72000'
+    ${{ else }}:
+      value: ''
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
-    variables:
-    - name: GRADLE_OPTS
-      value: '-Dorg.gradle.daemon=false'
-    - name: VSGenerator
-      value: 'Visual Studio 17 2022'
-    - name: CUDA_MODULE_LOADING
-      value:
-    - name: buildJavaParameter
-      ${{ if eq(parameters.buildJava, 'true') }}:
-        value: '--build_java'
-      ${{ else }}:
-        value: ''
-    - name: timeoutParameter
-      ${{ if eq(parameters.UseIncreasedTimeoutForTests, 'true') }}:
-        value: '--test_all_timeout 72000'
-      ${{ else }}:
-        value: ''
     workspace:
       clean: all
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
