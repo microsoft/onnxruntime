@@ -528,7 +528,7 @@ class MemoryObserver:
 
         self._m = m
 
-        self._json_file = None
+        self._json_file_for_layerwise_recompute = None
 
     def is_enabled(self) -> bool:
         """Check if memory inspector is enabled."""
@@ -568,7 +568,7 @@ class MemoryObserver:
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
         ]:
-            memory_optimizer_config_file_path = None
+            memory_optimizer_config_file_path = ""
 
         (
             _,
@@ -611,6 +611,7 @@ class MemoryObserver:
         ]:
 
             apply_config = []
+            recomputed_configs = set()
 
             for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
                 plans = cluster_id.split(",")
@@ -633,14 +634,20 @@ class MemoryObserver:
                             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
                         ]
                     ):
-                        recompute_configs.append(cluster_id)
+                        recompute_configs.append(plan)
 
-                apply_config.append(",".join(recompute_configs))
+                # Make sure the recompute config is not duplicated.
+                if all(recompute_config not in recomputed_configs for recompute_config in recompute_configs):
+                    apply_config.append(",".join(recompute_configs))
+                    for recompute_config in recompute_configs:
+                        recomputed_configs.insert(recompute_config)
+                else:
+                    self._logger.verbose(f"Skip duplicated recompute config: {recompute_configs}")
 
-            self._json_file = tempfile.NamedTemporaryFile(mode="w+")
-            json.dump(apply_config, self._json_file)
-            self._json_file.flush()
-            runtime_options.memory_optimizer_config = self._json_file.name
+            self._json_file_for_layerwise_recompute = tempfile.NamedTemporaryFile(mode="w+")
+            json.dump(apply_config, self._json_file_for_layerwise_recompute)
+            self._json_file_for_layerwise_recompute.flush()
+            runtime_options.memory_optimizer_config_file_path = self._json_file_for_layerwise_recompute.name
 
     def inspect_memory(self, cur_phase: Phase):
         """Inspect memory usage and print statistics.
@@ -689,7 +696,9 @@ class MemoryObserver:
     def _increase_step(self):
         self._current_step += 1
 
-    def display_memory_optimization_plans(self, memory_optimizer_config, details=False) -> Tuple[List[str], PTable]:
+    def display_memory_optimization_plans(
+        self, memory_optimizer_config_file_path, details=False
+    ) -> Tuple[List[str], PTable]:
         mem_plan_count = len(self.cluster_id_combination_to_saving_symbolics_map)
 
         if mem_plan_count > 0:
@@ -714,8 +723,11 @@ class MemoryObserver:
                 return configs_with_out_freq
 
             user_configs_with_out_freq = []
-            if memory_optimizer_config:
-                user_configs_with_out_freq = _get_user_config_without_freq(memory_optimizer_config)
+            if memory_optimizer_config_file_path:
+                with open(memory_optimizer_config_file_path) as conf:
+                    data = json.load(conf)
+                    for user_specified_plan in data:
+                        user_configs_with_out_freq.extend(_get_user_config_without_freq(user_specified_plan))
 
             for (
                 cluster_id,

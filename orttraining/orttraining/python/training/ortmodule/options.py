@@ -284,7 +284,7 @@ class _RuntimeOptions:
             _MemoryOptimizationLevel.USER_SPECIFIED
         )  # 0: use `memory_optimizer_config_file_path`; 1: aggressive optimization, enable all recomputable subgraphs.
         self.memory_optimizer_config_file_path = (
-            None  # This is an advanced config, please refer to onnxruntime docs for details.
+            ""  # This is an advanced config, please refer to onnxruntime docs for details.
         )
         # 1 is the op set level; 0 indicates whether consider the Transformer-based model's layer boundary when
         # detecting recompute subgraphs.
@@ -429,7 +429,7 @@ class _RuntimeOptions:
     def memory_optimizer_is_enabled(self) -> bool:
         """Check whether memory optimizer is enabled."""
         if self.memory_optimization_level == _MemoryOptimizationLevel.USER_SPECIFIED:
-            return self.memory_optimizer_config_file_path is not None
+            return len(self.memory_optimizer_config_file_path) > 0
         elif self.memory_optimization_level in [
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,

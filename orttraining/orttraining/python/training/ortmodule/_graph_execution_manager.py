@@ -868,7 +868,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         ):
             opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER_WITH_COMPROMISE"
         else:
-            opt_config_to_display = self._runtime_options.memory_optimizer_config
+            opt_config_to_display = self._runtime_options.memory_optimizer_config_file_path
 
         mem_infos = ""
         if self._runtime_options.memory_optimizer_is_enabled():
@@ -890,7 +890,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.logging.log_level < LogLevel.WARNING:
             mem_notes, mem_tbl = self._runtime_inspector.memory_ob.display_memory_optimization_plans(
-                self._runtime_options.memory_optimizer_config,
+                self._runtime_options.memory_optimizer_config_file_path,
                 details=True,
             )
             if mem_tbl is not None:
