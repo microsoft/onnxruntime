@@ -99,23 +99,27 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
       if (static_cast<size_t>(move_info.dest_slot.idx) + 1 > dest_defs.size()) {
         // assume that the gap between dest_slot.idx and dest_defs.size() is due to intermediate optional
         // inputs/outputs that are not present. fill in those defs with the empty NodeArg.
+        // dest_defs[dest_slot.idx] will also be initialized to the empty NodeArg here but overwritten later.
         const size_t original_dest_defs_size = dest_defs.size();
-        const size_t num_defs_to_fill = static_cast<size_t>(move_info.dest_slot.idx) + 1 - original_dest_defs_size;
+        const size_t new_dest_defs_size = static_cast<size_t>(move_info.dest_slot.idx) + 1;
 
         NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
-        dest_defs.resize(original_dest_defs_size + num_defs_to_fill, &empty_arg);
+        dest_defs.resize(new_dest_defs_size, &empty_arg);
 
         if (move_info.dest_slot.in_out == ArgType::kInput) {
+          // input arg counts for optional inputs that were not present should have been set to 0 during
+          // Graph::Resolve(). as the inputs are present now (albeit set to the empty NodeArg), set those counts to 1.
           auto& input_arg_counts = dest.MutableInputArgsCount();
-          for (size_t i = original_dest_defs_size; i < original_dest_defs_size + num_defs_to_fill; ++i) {
-            // input arg counts for optional inputs not present may have already been set to 0 during Graph::Resolve().
-            // handle both updating existing counts and adding new counts here.
-            if (i < input_arg_counts.size()) {
-              input_arg_counts[i] = 1;
-            } else {
-              // TODO can this branch ever be taken with a valid graph or should we treat it as an error?
-              input_arg_counts.push_back(1);
-            }
+
+          ORT_RETURN_IF(input_arg_counts.size() < new_dest_defs_size,
+                        "Expected at least ", new_dest_defs_size, " input arg counts but there are only ",
+                        input_arg_counts.size());
+
+          for (size_t i = original_dest_defs_size; i < new_dest_defs_size; ++i) {
+            ORT_RETURN_IF(input_arg_counts[i] != 0,
+                          "Expected input arg count of zero for input ", i,
+                          ", actual input arg count: ", input_arg_counts[i]);
+            input_arg_counts[i] = 1;
           }
         }
       }
