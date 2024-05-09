@@ -88,10 +88,14 @@ stages:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
     CUDA_MODULE_LOADING: 'LAZY'
-    ${{ if eq(parameters.buildJava, 'true') }}:
+    ${{ if eq(parameters['buildJava'], 'true') }}:
       buildJavaParameter: '--build_java'
-    ${{ if eq(parameters.UseIncreasedTimeoutForTests, 'true') }}:
+    ${{ if eq(parameters['buildJava'], 'false') }}:
+      buildJavaParameter: ''
+    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
       timeoutParameter: '--test_all_timeout 72000'
+    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'false') }}:
+      timeoutParameter: ''
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -102,7 +106,7 @@ stages:
       pool: ${{ parameters.ort_build_pool_name }}
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
       timeoutInMinutes: 1200
-    ${{ else }}:
+    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'false') }}:
       timeoutInMinutes: 360
 
     steps:
