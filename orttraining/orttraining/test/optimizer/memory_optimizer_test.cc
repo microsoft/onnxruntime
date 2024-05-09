@@ -227,7 +227,7 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
   PathString config_path{ConcatPathComponent(tmp_dir.Path(),
                                              ORT_TSTR("layerrecompute.json"))};
   const std::string config_path_str = ToUTF8String(config_path);
-  std::ofstream outfile();
+  std::ofstream outfile(config_path_str);
   outfile << oss.str() << std::endl;
   outfile.close();
 
