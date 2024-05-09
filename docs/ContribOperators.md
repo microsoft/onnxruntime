@@ -2455,10 +2455,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Group Query Self/Cross Attention.
   
-  Supports different number of heads for q and kv. Only supports causal or local attention.
-  Supports rotary position embedding.
-  Supports k-v cache.
-  CPU EP supports fp32... CUDA EP supports fp16.
+  *Highly recommend using k-v cache share buffer for both CPU and CUDA. Enabled through IOBinding past and present kv.
+  Supports different number of heads for q and kv for CPU and CUDA.
+  Only supports causal and local attention.
+  Supports rotary position embedding for CPU and CUDA.
+  Supports packed input for CPU and CUDA.
 
 #### Version
 
