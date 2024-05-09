@@ -14,10 +14,10 @@ parameters:
   default: false
 
 stages:
-- stage: Linux_C_API_Packaging_CUDA_x64
+- stage: Linux_C_API_Packaging_Combined_CUDA
   dependsOn: []
   jobs:
-  - job: Linux_C_API_Packaging_CUDA_x64
+  - job: Linux_C_API_Packaging_CUDA
     workspace:
       clean: all
     timeoutInMinutes: 150
@@ -64,7 +64,7 @@ stages:
       parameters:
         condition: 'succeeded'
     - template: ../templates/clean-agent-build-directory-step.yml
-  - job: Linux_C_API_Packaging_TensorRT_x64
+  - job: Linux_C_API_Packaging_TensorRT
     dependsOn: []
     workspace:
       clean: all
@@ -143,8 +143,8 @@ stages:
 # Linux CUDA Combined Testing and Publishing
   - job: Linux_Packaging_combined_CUDA
     dependsOn:
-    - Linux_C_API_Packaging_CUDA_x64
-    - Linux_C_API_Packaging_TensorRT_x64
+    - Linux_C_API_Packaging_CUDA
+    - Linux_C_API_Packaging_TensorRT
     condition: succeeded()
     workspace:
       clean: all

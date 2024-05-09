@@ -9,7 +9,7 @@ parameters:
 stages:
 - stage: Java_GPU_Packaging
   dependsOn:
-  - Linux_C_API_Packaging_CUDA_x64
+  - Linux_C_API_Packaging_Combined_CUDA
   - Windows_Packaging_CUDA
   - Windows_Packaging_TensorRT
   - Download_Java_Tools
