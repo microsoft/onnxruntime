@@ -85,22 +85,13 @@ stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
   variables:
-  - name: GRADLE_OPTS
-    value: '-Dorg.gradle.daemon=false'
-  - name: VSGenerator
-    value: 'Visual Studio 17 2022'
-  - name: CUDA_MODULE_LOADING
-    value: 'LAZY'
-  - name: buildJavaParameter
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+    VSGenerator: 'Visual Studio 17 2022'
+    CUDA_MODULE_LOADING: 'LAZY'
     ${{ if eq(parameters.buildJava, 'true') }}:
-      value: '--build_java'
-    ${{ else }}:
-      value: ''
-  - name: timeoutParameter
+      buildJavaParameter: '--build_java'
     ${{ if eq(parameters.UseIncreasedTimeoutForTests, 'true') }}:
-      value: '--test_all_timeout 72000'
-    ${{ else }}:
-      value: ''
+      timeoutParameter: '--test_all_timeout 72000'
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
