@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
 #include "custom_reduce_impl.h"
@@ -532,6 +534,48 @@ void CustomAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type,
     } else {
         ORT_THROW("Unsupported data type for CustomAllReduce");
     }
+}
+
+size_t GetMaxRequiredWorkspaceSize(int world_size) noexcept {
+    if (world_size <= 2) {
+        return 16 * 1000 * 1000;
+    }
+    return 8 * 1000 * 1000;
+}
+
+AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, onnxruntime::MLDataType type) noexcept {
+    AllReduceStrategyType strat = AllReduceStrategyType::NCCL;
+    if (type != onnxruntime::DataTypeImpl::GetType<float>() &&
+        type != onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
+        return strat;
+    }
+
+    const size_t maxWorkspaceSize = GetMaxRequiredWorkspaceSize(world_size);
+    const size_t message_size_bytes = message_size * type->Size();
+
+    if (message_size_bytes <= maxWorkspaceSize) {
+        if (world_size <= 2) {
+            strat = AllReduceStrategyType::ONESHOT;
+        } else if (world_size <= 4) {
+            if (message_size_bytes < 1 * 1000 * 1000) {
+                strat = AllReduceStrategyType::ONESHOT;
+            } else {
+                strat = AllReduceStrategyType::TWOSHOT;
+            }
+        } else {
+            if (message_size_bytes < 500 * 1000) {
+                strat = AllReduceStrategyType::ONESHOT;
+            } else {
+                strat = AllReduceStrategyType::TWOSHOT;
+            }
+        }
+    }
+
+    if (!ConfigurationSupported(strat, message_size, world_size, type)) {
+        strat = AllReduceStrategyType::NCCL;
+    }
+
+    return strat;
 }
 
 } // namespace ort_trtllm
