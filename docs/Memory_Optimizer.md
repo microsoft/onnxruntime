@@ -46,7 +46,7 @@ There are two modes to enable the memory optimizations:
 1. Set memory optimization level to be TRANSFORMER_LAYERWISE_RECOMPUTE, by `export ORTMODULE_MEMORY_OPT_LEVEL=1`
 2. Run the training as usual; check the logs, you could find something like this if the current log level <= LogLevel.INFO:
 	```
-	Memory Optimizer     :  ON   :  Memory Optimization Level: [TRANSFORMER_LAYERWISE_RECOMPUTE], Optimization Config: [Reshape+Where+:1:-1,BiasSoftmax+:1:-1,Cast+:1:-1,BiasGelu+:1:-1,FusedMatMul+:1:-1,Add+:1:-1,Reshape+Unsqueeze+Unsqueeze+Cast+Sub+Mul+Cast+:1:-1]
+	Memory Optimizer     :  ON   :  Memory Optimization Level: [TRANSFORMER_LAYERWISE_RECOMPUTE], Optimization Config: mem_opt.json
 									Configs                                              Freq  Max Saving(Bytes)  Saving Symbolic(Bytes)
 	- Plan 1            :  ON   :  Reshape+Where+:1:-1                                  1     134,217,728        128.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
 	- Plan 2            :  ON   :  BiasSoftmax+:1:-1                                    1     134,086,656        128.0*inputs_input_ids_dim0*inputs_input_ids_dim1*(inputs_input_ids_dim1 - 1)
