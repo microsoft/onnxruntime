@@ -58,7 +58,7 @@ struct AllReduceParams {
 
 bool configurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t n_ranks, onnxruntime::MLDataType type);
 
-void customAllReduce(AllReduceParams &params, onnxruntime::MLDataType dataType, AllReduceStrategyType strat,
+void customAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
                      AllReduceStrategyConfig config, cudaStream_t stream);
 
 } // namespace ort_trtllm

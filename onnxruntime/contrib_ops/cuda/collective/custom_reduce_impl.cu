@@ -415,7 +415,7 @@ std::tuple<int, int> kernelLaunchConfig(AllReduceStrategyType algo, AllReducePar
         threads_per_block = total_threads / blocks_per_grid;
 
         // NOTE: need to adjust here
-        if (blocks_per_grid > MAX_ALL_REDUCE_BLOCKS) {
+        if (static_cast<size_t>(blocks_per_grid) > MAX_ALL_REDUCE_BLOCKS) {
             size_t iter_factor = 1;
             while (blocks_per_grid / iter_factor > MAX_ALL_REDUCE_BLOCKS || blocks_per_grid % iter_factor) {
                 iter_factor += 1;
@@ -499,37 +499,37 @@ void AllReduceDispatchType(AllReduceParams &param, AllReduceStrategyType strat, 
     }
 }
 
-AllReduceParams AllReduceParams::deserialize(int32_t const *buffer, size_t tpSize, size_t tpRank) {
+AllReduceParams AllReduceParams::deserialize(int32_t const *buffer, size_t tp_size, size_t tp_rank) {
     void *const *buffer_ptrs = reinterpret_cast<void *const *>(buffer);
     AllReduceParams params;
 
-    for (int i = 0; i < tpSize; ++i) {
+    for (size_t i = 0; i < tp_size; ++i) {
         params.peer_comm_buffer_ptrs[i] = buffer_ptrs[i];
     }
-    for (int i = 0; i < tpSize; ++i) {
-        params.peer_barrier_ptrs_in[i] = reinterpret_cast<uint32_t *>(buffer_ptrs[tpSize + i]);
+    for (size_t i = 0; i < tp_size; ++i) {
+        params.peer_barrier_ptrs_in[i] = reinterpret_cast<uint32_t *>(buffer_ptrs[tp_size + i]);
     }
-    for (int i = 0; i < tpSize; ++i) {
-        params.peer_barrier_ptrs_out[i] = reinterpret_cast<uint32_t *>(buffer_ptrs[2 * tpSize + i]);
+    for (size_t i = 0; i < tp_size; ++i) {
+        params.peer_barrier_ptrs_out[i] = reinterpret_cast<uint32_t *>(buffer_ptrs[2 * tp_size + i]);
     }
     params.barrier_flag = 0;
-    params.ranks_per_node = tpSize;
-    params.rank = tpRank;
-    params.local_rank = tpRank;
+    params.ranks_per_node = tp_size;
+    params.rank = tp_rank;
+    params.local_rank = tp_rank;
 
     return params;
 }
 
-void customAllReduce(AllReduceParams &params, onnxruntime::MLDataType dataType, AllReduceStrategyType strat,
+void customAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
                      AllReduceStrategyConfig config, cudaStream_t stream) {
-    ORT_ENFORCE(configurationSupported(strat, params.elts_total, params.ranks_per_node, dataType),
+    ORT_ENFORCE(configurationSupported(strat, params.elts_total, params.ranks_per_node, data_type),
                 "Custom all-reduce configuration unsupported");
-    if (dataType == onnxruntime::DataTypeImpl::GetType<float>()) {
+    if (data_type == onnxruntime::DataTypeImpl::GetType<float>()) {
         AllReduceDispatchType<float>(params, strat, config, stream);
-    } else if (dataType == onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
+    } else if (data_type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
         AllReduceDispatchType<half>(params, strat, config, stream);
     } else {
-        ORT_THROW("Unsupported dataType for customAllReduce");
+        ORT_THROW("Unsupported data type for customAllReduce");
     }
 }
 

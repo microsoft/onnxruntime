@@ -252,10 +252,21 @@ AllReduce::AllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 
 Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   auto input_tensor = context->Input<Tensor>(0);
-  const auto in_shape = input_tensor->Shape();
-  auto output_tensor = context->Output(0, in_shape);
+  const void* input_data = input_tensor->DataRaw();
 
-  return FuncCustomAllReduce(nccl_, Stream(context), input_tensor, output_tensor, m_ipc_momery_handles, m_comm_ptrs);
+  const auto in_shape = input_tensor->Shape();
+  int64_t input_count = in_shape.Size();
+
+  void* output_data = context->Output(0, in_shape)->MutableDataRaw();
+
+  return FuncCustomAllReduce(nccl_,
+                             Stream(context),
+                             input_data,
+                             output_data,
+                             input_count,
+                             input_tensor->DataType(),
+                             m_ipc_momery_handles_,
+                             m_comm_ptrs_);
 }
 
 AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
@@ -414,16 +425,13 @@ Status FuncAllReduce(
 Status FuncCustomAllReduce(
     NcclContext* nccl,
     cudaStream_t stream,
-    const Tensor* input,
-    Tensor* output,
+    const void* input_data,
+    void* output_data,
+    int64_t input_count,
+    onnxruntime::MLDataType data_type,
     std::vector<std::unique_ptr<ort_trtllm::IpcMemory>>& m_ipc_momery_handles,
     std::vector<const void*>& m_comm_ptrs) {
-  const void* input_data = input->DataRaw();
-  int64_t input_count = input->Shape().Size();
-
-  void* output_data = output->MutableDataRaw();
-
-  // ncclDataType_t dtype = GetNcclDataType(input->DataType());
+  // ncclDataType_t dtype = GetNcclDataType(data_type);
   // NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl->Comm(), stream));
 
   ort_trtllm::AllReduceStrategyType runtimeStrategy = ort_trtllm::AllReduceStrategyType::ONESHOT;
@@ -434,7 +442,7 @@ Status FuncCustomAllReduce(
   int n_ranks = nccl->Size();
 
   if (m_comm_ptrs.size() == 0) {
-    ORT_RETURN_IF_ERROR(ort_trtllm::getCustomAllReduceWorkspace(rank_id, n_ranks, input_count * input->DataType()->Size(),
+    ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank_id, n_ranks, input_count * data_type->Size(),
                                                                 m_ipc_momery_handles, m_comm_ptrs));
   }
 
@@ -446,7 +454,7 @@ Status FuncCustomAllReduce(
   params.local_input_buffer_ptr = input_data;
   params.elts_total = input_count;
 
-  ort_trtllm::customAllReduce(params, input->DataType(), runtimeStrategy, mConfig, stream);
+  ort_trtllm::customAllReduce(params, data_type, runtimeStrategy, mConfig, stream);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   return Status::OK();

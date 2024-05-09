@@ -27,7 +27,10 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
 
   int64_t local_experts_start_index_;
   int64_t tensor_shards_;
-  std::vector<int64_t> rank_to_experts_start_index_;
+  mutable std::vector<int64_t> rank_to_experts_start_index_;
+
+  mutable std::vector<std::unique_ptr<ort_trtllm::IpcMemory>> m_ipc_momery_handles_;
+  mutable std::vector<const void*> m_comm_ptrs_;
 };
 
 #endif

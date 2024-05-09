@@ -133,11 +133,20 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (moe_params.parallel_type == MoEParallelType::TP) {
     ORT_ENFORCE(moe_params.tensor_shards == nccl_->Size());
-    NCCL_RETURN_IF_ERROR(ncclGroupStart());
-    NCCL_RETURN_IF_ERROR(ncclAllReduce(reinterpret_cast<const char*>(fc2_output.get()),
-                                       reinterpret_cast<char*>(fc2_output_bc.get()), fc2_output_size / sizeof(CudaT),
-                                       GetNcclDataType(input->DataType()), ncclSum, nccl_->Comm(), Stream(context)));
-    NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+    // NCCL_RETURN_IF_ERROR(ncclGroupStart());
+    // NCCL_RETURN_IF_ERROR(ncclAllReduce(reinterpret_cast<const char*>(fc2_output.get()),
+    //                                    reinterpret_cast<char*>(fc2_output_bc.get()), fc2_output_size / sizeof(CudaT),
+    //                                    GetNcclDataType(input->DataType()), ncclSum, nccl_->Comm(), Stream(context)));
+    // NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+
+    ORT_RETURN_IF_ERROR(FuncCustomAllReduce(nccl_,
+                                            Stream(context),
+                                            fc2_output.get(),
+                                            fc2_output_bc.get(),
+                                            static_cast<int64_t>(fc2_output_size / sizeof(CudaT)),
+                                            input->DataType(),
+                                            m_ipc_momery_handles_,
+                                            m_comm_ptrs_));
   }
 
   if (moe_params.parallel_type == MoEParallelType::EP) {
@@ -191,7 +200,7 @@ Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator, OpKe
   IAllocatorUniquePtr<IndexType> rank_to_experts_start_index_d =
       IAllocator::MakeUniquePtr<IndexType>(allocator, nccl_->Size(), false, stream);
 
-  // Only happens in the first run.
+  // Only happens in the first run. TODO: use MPIAllGather to avoid Memcpy between Host and Device.
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(experts_start_index_d.get(), &local_experts_start_index_, IndexTypeSize,
                                        cudaMemcpyHostToDevice, Stream(context)));
   NCCL_RETURN_IF_ERROR(ncclAllGather(reinterpret_cast<const char*>(experts_start_index_d.get()),

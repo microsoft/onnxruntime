@@ -105,7 +105,7 @@ Status IpcMemory::DestroyIpcMemory() {
   return Status::OK();
 }
 
-Status getCustomAllReduceWorkspace(int rank_id, int n_ranks, size_t input_size,
+Status GetCustomAllReduceWorkspace(int rank_id, int n_ranks, size_t input_size,
                                    std::vector<std::unique_ptr<IpcMemory>>& m_ipc_memory_handles,
                                    std::vector<const void*>& m_comm_ptrs) {
   ORT_ENFORCE(ort_trtllm::SetPeerAccess(rank_id, n_ranks, true) == Status::OK());

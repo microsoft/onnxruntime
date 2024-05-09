@@ -47,7 +47,7 @@ class IpcMemory {
   void* m_buffer_ptr_{nullptr};
 };
 
-Status getCustomAllReduceWorkspace(int rank_id, int n_ranks, size_t input_size,
+Status GetCustomAllReduceWorkspace(int rank_id, int n_ranks, size_t input_size,
                                    std::vector<std::unique_ptr<IpcMemory>>& m_ipc_momery_handles,
                                    std::vector<const void*>& m_comm_ptrs);
 
