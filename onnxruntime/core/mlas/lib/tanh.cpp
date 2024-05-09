@@ -88,7 +88,7 @@ Return Value:
         if (N - count >= 4) {
             Val = MlasLoadFloat32x4(Input);
         } else {
-            Val = MlasPartialLoadFloat32x4(Input, N - count);
+            Val = MlasPartialLoadFloat32x4(Input, static_cast<int>(N - count));
         }
         MLAS_FLOAT32X4 ValAbs = MlasAndFloat32x4(Val, absmask);
         MLAS_FLOAT32X4 boundmask = MlasGreaterThanEqualFloat32x4(ValAbs, ub);
@@ -109,7 +109,7 @@ Return Value:
         if (N - count >= 4) {
             MlasStoreFloat32x4(Output, out);
         } else {
-            MlasPartialStoreFloat32x4(Output, out, N - count);
+            MlasPartialStoreFloat32x4(Output, out, static_cast<int>(N - count));
         }
 
         Input += 4;
