@@ -197,6 +197,7 @@ stages:
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Download_Java_Tools
   condition: succeeded()
   jobs:
   - job:
