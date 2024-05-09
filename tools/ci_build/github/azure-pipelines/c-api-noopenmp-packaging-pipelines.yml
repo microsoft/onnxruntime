@@ -174,10 +174,11 @@ stages:
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
+
 - stage: Download_Java_Tools
+  dependsOn: []
   jobs:
   - job: Download_Java_Tools
-    dependsOn: []
     pool:
       vmImage: ubuntu-latest
     steps:
@@ -200,9 +201,9 @@ stages:
       inputs:
         targetPath: '$(Agent.TempDirectory)/java-tools'
         artifact: 'onnxruntime-java-tools'
-    - template: ../templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
 - template: templates/c-api-cpu.yml
   parameters:
