@@ -47,7 +47,7 @@ stages:
     PackageJava: false
     PackageNodeJS: false
 
-- template: win-packaging.yml
+- template: win-ci.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -61,7 +61,7 @@ stages:
     buildJava: false
     buildNodejs: false
 
-- template: win-packaging.yml
+- template: win-ci.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -75,7 +75,7 @@ stages:
     buildJava: false
     buildNodejs: false
 
-- template: win-packaging.yml
+- template: win-ci.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}

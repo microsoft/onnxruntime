@@ -37,7 +37,7 @@ parameters:
 
 stages:
 # Windows CUDA without TensorRT Packaging
-- template: ../templates/win-packaging.yml
+- template: ../templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -55,7 +55,7 @@ stages:
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 # Windows CUDA with TensorRT Packaging
-- template: ../templates/win-packaging.yml
+- template: ../templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
