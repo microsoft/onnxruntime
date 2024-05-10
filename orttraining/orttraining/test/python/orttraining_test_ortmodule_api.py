@@ -5756,9 +5756,6 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         loss.backward()
         return loss
 
-    # batch_size = 3
-    # sequence = 4
-
     if embed_is_sparse:
         input = torch.tensor([[0, 2, 3, 4], [2, 3, 1, 1], [1, 1, 1, 1]], device=device)
     else:
@@ -5778,9 +5775,13 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     found_embed_is_sparse = False
     found_embed_is_dense = False
     found_label_is_sparse = False
+    found_label_is_dense = False
     for record in caplog.records:
         if "Label sparsity-based optimization is ON for" in record.getMessage():
             found_label_is_sparse = True
+
+        if "Label sparsity-based optimization is OFF for" in record.getMessage():
+            found_label_is_dense = True
 
         if "Embedding sparsity-based optimization is OFF for" in record.getMessage():
             found_embed_is_dense = True
@@ -5789,7 +5790,9 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
             found_embed_is_sparse = True
 
     if label_is_sparse:
-        assert found_label_is_sparse
+        assert found_label_is_sparse and not found_label_is_dense
+    else:
+        assert not found_label_is_sparse and found_label_is_dense
 
     if embed_is_sparse:
         assert found_embed_is_sparse and not found_embed_is_dense
