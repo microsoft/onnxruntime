@@ -231,13 +231,11 @@ def run_ort_with_parity_check(
             ort_session.get_inputs()[1].name: np.random.rand(num_rows, num_experts).astype(NP_TYPE),
         }
 
-        ort_session.run(None, ort_inputs)
-        ort_session_local.run(None, ort_inputs)
-
         output = ort_session.run(None, ort_inputs)
         sharded_output = ort_session_local.run(None, ort_inputs)
 
-        print_out("max diff:", np.max(np.abs(output[0] - sharded_output[0])))
+        max_diff = np.max(np.abs(output[0] - sharded_output[0]))
+        print_out("max diff:", max_diff)
         #assert np.allclose(output[0], sharded_output[0], atol=threshold, rtol=threshold)
 
         print_out(
@@ -251,8 +249,10 @@ def run_ort_with_parity_check(
             num_rows,
             " world_size:",
             get_size(),
-            " Parity: OK",
+            " Parity: OK" if max_diff < 0.001 else " Parity: FAIL!!"
         )
+
+        print_out("-------------------------------------------------------------")
 
     del ort_session
     del ort_session_local
@@ -390,10 +390,10 @@ def test_moe_with_expert_parallelism(
 
 class TestMoE(unittest.TestCase):
     def test_moe_parallelism(self):
-        for hidden_size in [128, 256, 512]:
-            for inter_size in [1024]:
+        for hidden_size in [256, 512, 128, 1024]:
+            for inter_size in [1024, 2048]:
                 for num_experts in [64]:
-                    num_rows_list=list(range(16, 128, 16)) + list(range(128, 1028, 128)) + list(range(1024, 10240, 1024))
+                    num_rows_list=list(range(128, 1028, 128)) + list(range(16, 128, 16)) + list(range(1024, 10240, 1024))
                     num_rows_list.reverse()
                     # print_out("EP")
                     # test_moe_with_expert_parallelism(
