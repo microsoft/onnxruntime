@@ -141,28 +141,36 @@ MlasGemmQuantCopyPackA8x8(
             Vtype vx10 = vec_xxpermdi (vx, vx1, 3);
             Vtype vx11 = vec_xxpermdi (vx2, vx3, 3);
             vec_t vxx =
-              AIsSigned ? reinterpret_cast<vec_t>(vx4) : reinterpret_cast<vec_t>(vec_sub (vx4, vmask));
+              AIsSigned ? reinterpret_cast<vec_t>(vx4) :
+                          reinterpret_cast<vec_t>(vec_sub(vx4, vmask));
             vsum = vec_sum4s (vxx, vsum);
             *reinterpret_cast<vec_t *>(&D[0]) = vxx;
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx5) : reinterpret_cast<vec_t>(vec_sub (vx5, vmask));
+            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx5) :
+                              reinterpret_cast<vec_t>(vec_sub(vx5, vmask));
             vsum = vec_sum4s (vxx, vsum);
             *reinterpret_cast<vec_t *>(&D[16]) = vxx;
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx6) : reinterpret_cast<vec_t>(vec_sub (vx6, vmask));
+            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx6) :
+                              reinterpret_cast<vec_t>(vec_sub(vx6, vmask));
             vsum = vec_sum4s (vxx, vsum);
             *reinterpret_cast<vec_t *>(&D[32]) = vxx;
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx7) : reinterpret_cast<vec_t>(vec_sub (vx7, vmask));
+            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx7) :
+                              reinterpret_cast<vec_t>(vec_sub(vx7, vmask));
             vsum = vec_sum4s (vxx, vsum);
             *reinterpret_cast<vec_t *>(&D[48]) = vxx;
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx8) : reinterpret_cast<vec_t>(vec_sub (vx8, vmask));
+            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx8) :
+                              reinterpret_cast<vec_t>(vec_sub(vx8, vmask));
             *reinterpret_cast<vec_t *>(&D[64]) = vxx;
             vsum2 = vec_sum4s (vxx, vsum2);
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx9) : reinterpret_cast<vec_t>(vec_sub (vx9, vmask));
+            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx9) :
+                              reinterpret_cast<vec_t>(vec_sub(vx9, vmask));
             *reinterpret_cast<vec_t *>(&D[80]) = vxx;
             vsum2 = vec_sum4s (vxx, vsum2);
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx10) : reinterpret_cast<vec_t>(vec_sub (vx10, vmask));
+            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx10) :
+                              reinterpret_cast<vec_t>(vec_sub(vx10, vmask));
             *reinterpret_cast<vec_t *>(&D[96]) = vxx;
             vsum2 = vec_sum4s (vxx, vsum2);
-            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx11) : reinterpret_cast<vec_t>(vec_sub (vx11, vmask));
+            vxx = AIsSigned ? reinterpret_cast<vec_t>(vx11) :
+                              reinterpret_cast<vec_t>(vec_sub(vx11, vmask));
             *reinterpret_cast<vec_t *>(&D[112]) = vxx;
             vsum2 = vec_sum4s (vxx, vsum2);
             D += 16 * 8;
@@ -178,7 +186,8 @@ MlasGemmQuantCopyPackA8x8(
             int a4 = *reinterpret_cast<const int *>(&a[lda*3]);
             __vector int vx1 = { a1, a2, a3, a4};
             vec_t vx =
-              AIsSigned ? reinterpret_cast<vec_t>(vx1) : reinterpret_cast<vec_t>(vec_sub (reinterpret_cast<Vtype>(vx1), vmask));
+              AIsSigned ? reinterpret_cast<vec_t>(vx1) :
+                          reinterpret_cast<vec_t>(vec_sub(reinterpret_cast<Vtype>(vx1), vmask));
             vsum = vec_sum4s (vx, vsum);
             *reinterpret_cast<vec_t *>(&D[0]) = vx;
             a1 = *reinterpret_cast<const int *>(&a[lda*4]);
@@ -186,7 +195,8 @@ MlasGemmQuantCopyPackA8x8(
             a3 = *reinterpret_cast<const int *>(&a[lda*6]);
             a4 = *reinterpret_cast<const int *>(&a[lda*7]);
             __vector int vx2 = { a1, a2, a3, a4};
-            vx = AIsSigned ? reinterpret_cast<vec_t>(vx2) : reinterpret_cast<vec_t>(vec_sub (reinterpret_cast<Vtype>(vx2), vmask));
+            vx = AIsSigned ? reinterpret_cast<vec_t>(vx2) :
+                             reinterpret_cast<vec_t>(vec_sub(reinterpret_cast<Vtype>(vx2), vmask));
             vsum2 = vec_sum4s (vx, vsum2);
             if (CountK & 3) {
                 if (yval >= 12) {
@@ -252,7 +262,8 @@ MlasGemmQuantCopyPackA8x8(
                                reinterpret_cast<__vector int>(a4)));
             Vtype vx2 = vec_xxpermdi (vx, vx1, 0);
             vec_t vx3 =
-              AIsSigned ? reinterpret_cast<vec_t>(vx2) : reinterpret_cast<vec_t>(vec_sub (vx2, vmask));
+              AIsSigned ? reinterpret_cast<vec_t>(vx2) :
+                          reinterpret_cast<vec_t>(vec_sub(vx2, vmask));
             vsum = vec_sum4s (vx3, vsum);
             *reinterpret_cast<vec_t *>(&D[0]) = vx3;
             a1 = vmask;
@@ -282,7 +293,8 @@ MlasGemmQuantCopyPackA8x8(
               reinterpret_cast<Vtype>(vec_mergee (reinterpret_cast<__vector int>(a3),
                                reinterpret_cast<__vector int>(a4)));
             vx2 = vec_xxpermdi (vx, vx1, 0);
-            vx3 = AIsSigned ? reinterpret_cast<vec_t>(vx2) : reinterpret_cast<vec_t>(vec_sub (vx2, vmask));
+            vx3 = AIsSigned ? reinterpret_cast<vec_t>(vx2) :
+                              reinterpret_cast<vec_t>(vec_sub(vx2, vmask));
             vsum2 = vec_sum4s (vx3, vsum2);
             if (CountK % 16 >= 12) {
                 *reinterpret_cast<vec_t *>(&D[64]) = vx3;
@@ -342,16 +354,20 @@ MlasGemmQuantCopyPackA8x8(
             Vtype vx6 = vec_xxpermdi (vx, vx1, 3);
             Vtype vx7 = vec_xxpermdi (vx2, vx3, 3);
             vec_t vx0 =
-              AIsSigned ? reinterpret_cast<vec_t>(vx4) : reinterpret_cast<vec_t>(vec_sub (vx4, vmask));
+              AIsSigned ? reinterpret_cast<vec_t>(vx4) :
+                          reinterpret_cast<vec_t>(vec_sub(vx4, vmask));
             *reinterpret_cast<vec_t *>(&D[0]) = vx0;
             vsum = vec_sum4s (vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx5) : reinterpret_cast<vec_t>(vec_sub (vx5, vmask));
+            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx5) :
+                              reinterpret_cast<vec_t>(vec_sub(vx5, vmask));
             *reinterpret_cast<vec_t *>(&D[16]) = vx0;
             vsum = vec_sum4s (vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx6) : reinterpret_cast<vec_t>(vec_sub (vx6, vmask));
+            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx6) :
+                              reinterpret_cast<vec_t>(vec_sub(vx6, vmask));
             *reinterpret_cast<vec_t *>(&D[32]) = vx0;
             vsum = vec_sum4s (vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx7) : reinterpret_cast<vec_t>(vec_sub (vx7, vmask));
+            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx7) :
+                              reinterpret_cast<vec_t>(vec_sub(vx7, vmask));
             *reinterpret_cast<vec_t *>(&D[48]) = vx0;
             vsum = vec_sum4s (vx0, vsum);
             D += 16 * 4;
@@ -366,7 +382,8 @@ MlasGemmQuantCopyPackA8x8(
             int a4 = *reinterpret_cast<const int *>(&a[lda*3]);
             __vector int vx1 = { a1, a2, a3, a4};
             vec_t vx =
-              AIsSigned ? reinterpret_cast<vec_t>(vx1) : reinterpret_cast<vec_t>(vec_sub (reinterpret_cast<Vtype>(vx1), vmask));
+              AIsSigned ? reinterpret_cast<vec_t>(vx1) :
+                          reinterpret_cast<vec_t>(vec_sub(reinterpret_cast<Vtype>(vx1), vmask));
             *reinterpret_cast<vec_t *>(&D[0]) = vx;
             vsum = vec_sum4s (vx, vsum);
             D += 16;
@@ -393,7 +410,8 @@ MlasGemmQuantCopyPackA8x8(
                 vx[14] = a[lda * 3 + 2];
             }
             vec_t vx1 =
-               AIsSigned ? reinterpret_cast<vec_t>(vx) : reinterpret_cast<vec_t>(vec_sub (vx, vmask));
+               AIsSigned ? reinterpret_cast<vec_t>(vx) :
+                           reinterpret_cast<vec_t>(vec_sub(vx, vmask));
             *reinterpret_cast<vec_t *>(&D[0]) = vx1;
             vsum = vec_sum4s (vx1, vsum);
             D += 16;
@@ -442,16 +460,20 @@ MlasGemmQuantCopyPackA8x8(
             Vtype vx6 = vec_xxpermdi (vx, vx1, 3);
             Vtype vx7 = vec_xxpermdi (vx2, vx3, 3);
             vec_t vx0 =
-              AIsSigned ? reinterpret_cast<vec_t>(vx4) : reinterpret_cast<vec_t>(vec_sub (vx4, vmask));
+              AIsSigned ? reinterpret_cast<vec_t>(vx4) :
+                          reinterpret_cast<vec_t>(vec_sub(vx4, vmask));
             *reinterpret_cast<vec_t *>(&D[0]) = vx0;
             vsum = vec_sum4s (vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx5) : reinterpret_cast<vec_t>(vec_sub (vx5, vmask));
+            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx5) :
+                              reinterpret_cast<vec_t>(vec_sub(vx5, vmask));
             *reinterpret_cast<vec_t *>(&D[16]) = vx0;
             vsum = vec_sum4s (vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx6) : reinterpret_cast<vec_t>(vec_sub (vx6, vmask));
+            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx6) :
+                              reinterpret_cast<vec_t>(vec_sub(vx6, vmask));
             *reinterpret_cast<vec_t *>(&D[32]) = vx0;
             vsum = vec_sum4s (vx0, vsum);
-            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx7) : reinterpret_cast<vec_t>(vec_sub (vx7, vmask));
+            vx0 = AIsSigned ? reinterpret_cast<vec_t>(vx7) :
+                              reinterpret_cast<vec_t>(vec_sub(vx7, vmask));
             *reinterpret_cast<vec_t *>(&D[48]) = vx0;
             vsum = vec_sum4s (vx0, vsum);
             D += 16 * 4;
@@ -470,7 +492,8 @@ MlasGemmQuantCopyPackA8x8(
                 vx1[2] = *reinterpret_cast<const int *>(&a[lda*2]);
             }
             vec_t vx =
-              AIsSigned ? reinterpret_cast<vec_t>(vx1) : reinterpret_cast<vec_t>(vec_sub (reinterpret_cast<Vtype>(vx1), vmask));
+              AIsSigned ? reinterpret_cast<vec_t>(vx1) :
+                          reinterpret_cast<vec_t>(vec_sub(reinterpret_cast<Vtype>(vx1), vmask));
             *reinterpret_cast<vec_t *>(&D[0]) = vx;
             vsum = vec_sum4s (vx, vsum);
             D += 16;
@@ -572,10 +595,14 @@ MlasGemmQuantCopyPackB8x8(
                 b2 = vec_mergel(t1, t3);
                 b3 = vec_mergeh(t2, t4);
                 b4 = vec_mergel(t2, t4);
-                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b1, vmask)) : reinterpret_cast<vec_t>(b1);
-                vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b2, vmask)) : reinterpret_cast<vec_t>(b2);
-                vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b3, vmask)) : reinterpret_cast<vec_t>(b3);
-                vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b4, vmask)) : reinterpret_cast<vec_t>(b4);
+                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b1, vmask)) :
+                                        reinterpret_cast<vec_t>(b1);
+                vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b2, vmask)) :
+                                        reinterpret_cast<vec_t>(b2);
+                vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b3, vmask)) :
+                                        reinterpret_cast<vec_t>(b3);
+                vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b4, vmask)) :
+                                        reinterpret_cast<vec_t>(b4);
                 *reinterpret_cast<vec_t *>(&D[0]) = vx1;
                 *reinterpret_cast<vec_t *>(&D[k2]) = vx2;
                 *reinterpret_cast<vec_t *>(&D[k3]) = vx3;
@@ -602,10 +629,14 @@ MlasGemmQuantCopyPackB8x8(
             b2 = vec_mergel(t1, t3);
             b3 = vec_mergeh(t2, t4);
             b4 = vec_mergel(t2, t4);
-            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b1, vmask)) : reinterpret_cast<vec_t>(b1);
-            vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b2, vmask)) : reinterpret_cast<vec_t>(b2);
-            vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b3, vmask)) : reinterpret_cast<vec_t>(b3);
-            vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (b4, vmask)) : reinterpret_cast<vec_t>(b4);
+            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b1, vmask)) :
+                                    reinterpret_cast<vec_t>(b1);
+            vec_t vx2 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b2, vmask)) :
+                                    reinterpret_cast<vec_t>(b2);
+            vec_t vx3 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b3, vmask)) :
+                                    reinterpret_cast<vec_t>(b3);
+            vec_t vx4 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(b4, vmask)) :
+                                    reinterpret_cast<vec_t>(b4);
             *reinterpret_cast<vec_t *>(&D[0]) = vx1;
             *reinterpret_cast<vec_t *>(&D[k2]) = vx2;
             *reinterpret_cast<vec_t *>(&D[k3]) = vx3;
@@ -652,7 +683,8 @@ MlasGemmQuantCopyPackB8x8(
                 int b4 = *reinterpret_cast<const int *>(&b[ldb*3]);
                 __vector int vb = {b1, b2, b3, b4};
                 Vtype vx = vec_perm(reinterpret_cast<Vtype>(vb), reinterpret_cast<Vtype>(vb), mask);
-                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (vx, vmask)) : reinterpret_cast<vec_t>(vx);
+                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(vx, vmask)) :
+                                        reinterpret_cast<vec_t>(vx);
                 *reinterpret_cast<vec_t *>(&D[0]) = vx1;
                 vsum = vec_sum4s (vx1, vsum);
                 D += 16;
@@ -671,7 +703,8 @@ MlasGemmQuantCopyPackB8x8(
                 vb1[2] = *reinterpret_cast<const int *>(&b[ldb*2]);
             }
             Vtype vx = vec_perm(reinterpret_cast<Vtype>(vb1), reinterpret_cast<Vtype>(vb1), mask);
-            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (vx, vmask)) : reinterpret_cast<vec_t>(vx);
+            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(vx, vmask)) :
+                                    reinterpret_cast<vec_t>(vx);
             *reinterpret_cast<vec_t *>(&D[0]) = vx1;
             vsum = vec_sum4s (vx1, vsum);
             D += 16;
@@ -725,7 +758,8 @@ MlasGemmQuantCopyPackB8x8(
                     vb[14] = b[ldb*3+2];
                 }
                 Vtype vx = vec_perm(reinterpret_cast<Vtype>(vb), reinterpret_cast<Vtype>(vb), mask);
-                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (vx, vmask)) : reinterpret_cast<vec_t>(vx);
+                vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(vx, vmask)) :
+                                        reinterpret_cast<vec_t>(vx);
                 *reinterpret_cast<vec_t *>(&D[0]) = vx1;
                 vsum = vec_sum4s (vx1, vsum);
                 D += 16;
@@ -772,7 +806,8 @@ MlasGemmQuantCopyPackB8x8(
                 }
             }
             Vtype vx = vec_perm(reinterpret_cast<Vtype>(vb), reinterpret_cast<Vtype>(vb), mask);
-            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add (vx, vmask)) : reinterpret_cast<vec_t>(vx);
+            vec_t vx1 = BIsSigned ? reinterpret_cast<vec_t>(vec_add(vx, vmask)) :
+                                    reinterpret_cast<vec_t>(vx);
             *reinterpret_cast<vec_t *>(&D[0]) = vx1;
             vsum = vec_sum4s (vx1, vsum);
             D += 16;
