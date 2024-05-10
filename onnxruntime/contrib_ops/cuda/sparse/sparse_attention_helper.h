@@ -224,7 +224,7 @@ Status CheckInputs(void* params,
                              "cos_cache and sin_cache dimension 0 should be same size.");
     }
 
-    max_rotary_sequence_length = cos_dims[0];
+    max_rotary_sequence_length = static_cast<int>(cos_dims[0]);
     if (max_rotary_sequence_length < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "max_rotary_sequence_length should be no less than total_sequence_length:",
