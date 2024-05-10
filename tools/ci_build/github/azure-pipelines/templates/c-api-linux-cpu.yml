@@ -40,8 +40,7 @@ jobs:
     clean: all
   variables:
   - name: skipComponentGovernanceDetection
-    value: ${{or(eq('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64'),
-      eq('${{parameters.OnnxruntimeNodejsBindingArch}}', 'aarch64'))}}
+    value: ${{ in('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64', 'aarch64') }}
   timeoutInMinutes:  210
   pool: ${{parameters.PoolName}}
   steps:
