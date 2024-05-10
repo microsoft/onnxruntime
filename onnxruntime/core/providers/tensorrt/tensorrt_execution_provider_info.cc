@@ -27,7 +27,6 @@ constexpr const char* kDLACore = "trt_dla_core";
 constexpr const char* kDumpSubgraphs = "trt_dump_subgraphs";
 constexpr const char* kEngineCacheEnable = "trt_engine_cache_enable";
 constexpr const char* kEngineCachePath = "trt_engine_cache_path";
-constexpr const char* kEngineCachePrefix = "trt_engine_cache_prefix";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
 constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine_build";
@@ -51,6 +50,9 @@ constexpr const char* kCudaGraphEnable = "trt_cuda_graph_enable";
 constexpr const char* kEpContextEmbedMode = "trt_ep_context_embed_mode";
 constexpr const char* kEpContextFilePath = "trt_ep_context_file_path";
 constexpr const char* kDumpEpContextModel = "trt_dump_ep_context_model";
+constexpr const char* kEngineCachePrefix = "trt_engine_cache_prefix";
+constexpr const char* kEngineHwCompatible = "trt_engine_hw_compatible";
+
 }  // namespace provider_option_names
 }  // namespace tensorrt
 
@@ -220,6 +222,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kEpContextFilePath, kEpContextFilePath_},
       {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.trt_dump_ep_context_model)},
       {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.trt_ep_context_embed_mode)},
+      {tensorrt::provider_option_names::kEngineHwCompatible, MakeStringWithClassicLocale(info.trt_engine_hw_compatible)},
   };
   return options;
 }
@@ -319,5 +322,6 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_dump_ep_context_model = internal_options.dump_ep_context_model;
   trt_provider_options_v2.trt_ep_context_embed_mode = internal_options.ep_context_embed_mode;
   trt_provider_options_v2.trt_ep_context_file_path = copy_string_if_needed(internal_options.ep_context_file_path);
+  trt_provider_options_v2.trt_engine_hw_compatible = internal_options.engine_hw_compatible;
 }
 }  // namespace onnxruntime

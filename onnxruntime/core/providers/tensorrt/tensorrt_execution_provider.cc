@@ -1287,6 +1287,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_max_shapes = info.profile_max_shapes;
     profile_opt_shapes = info.profile_opt_shapes;
     cuda_graph_enable_ = info.cuda_graph_enable;
+    engine_hw_compatible_ = info.engine_hw_compatible;
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1513,6 +1514,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
   }
 
+  // Hardware compatibility: pre-check on hardware environment
+  if (engine_hw_compatible_ && engine_cache_enable_) {
+    if (std::stoi(compute_capability_) < 80) {
+      LOGS_DEFAULT(ERROR) << "Engine Hardware Compatibility cannot be enabled as GPU arch < 80. ";
+      engine_hw_compatible_ = false;
+    }
+  }
+
   if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
     if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
       if (!fs::create_directory(cache_path_)) {
@@ -1639,6 +1648,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_ep_context_file_path: " << ep_context_file_path_
                         << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", trt_cache_prefix: " << cache_prefix_;
+                        << ", trt_engine_hw_compatible: " << engine_hw_compatible_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2792,6 +2802,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     tactics |= GetTacticSourceFromString(tactic_sources_);
     trt_config->setTacticSources(tactics);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
+  }
+
+  // Enable hardware compatility mode if assigned
+  if (trt_engine_hw_compatible) {
+    trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Ampere+ Engine hardware compatibility is enabled. Current GPU arch is " << compute_capability_;
   }
 
   // Build TRT engine (if needed) and load TRT engine if:

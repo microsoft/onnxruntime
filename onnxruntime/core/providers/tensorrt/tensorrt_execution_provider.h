@@ -303,6 +303,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
   std::string cache_prefix_;
+  bool engine_hw_compatible_ = false;
 
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.
