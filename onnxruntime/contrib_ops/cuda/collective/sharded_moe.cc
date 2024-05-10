@@ -134,6 +134,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   if (moe_params.parallel_type == MoEParallelType::TP) {
     ORT_ENFORCE(moe_params.tensor_shards == nccl_->Size());
 
+    std::cout << "fc2_output_size:" << fc2_output_size << std::endl;
     ORT_RETURN_IF_ERROR(FuncCustomAllReduce(nccl_,
                                             Stream(context),
                                             fc2_output.get(),

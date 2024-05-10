@@ -48,9 +48,9 @@ class IpcMemory {
 };
 
 struct IPCMemoryResourcePack {
-  mutable std::vector<std::unique_ptr<IpcMemory>> m_ipc_momery_handles;
+  mutable std::vector<std::shared_ptr<IpcMemory>> m_ipc_momery_handles;
   mutable std::vector<const void*> m_comm_ptrs;
-  mutable int64_t max_input_count{0};
+  mutable int64_t max_input_size{0};
 };
 
 Status

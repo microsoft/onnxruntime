@@ -106,20 +106,24 @@ Status IpcMemory::DestroyIpcMemory() {
 
 Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
                                    IPCMemoryResourcePack& ipc_mem_res_pack) {
+  if (input_size <= ipc_mem_res_pack.max_input_size) {
+    return Status::OK();
+  }
+
   ORT_ENFORCE(SetPeerAccess(rank, world_size, true) == Status::OK());
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   const std::size_t buffer_size = world_size * input_size;
 
-  std::vector<std::unique_ptr<IpcMemory>>& m_ipc_memory_handles = ipc_mem_res_pack.m_ipc_momery_handles;
+  std::vector<std::shared_ptr<IpcMemory>>& m_ipc_memory_handles = ipc_mem_res_pack.m_ipc_momery_handles;
   const size_t handles_size{m_ipc_memory_handles.size()};
   constexpr size_t k_num_handles{3};
 
-  m_ipc_memory_handles.emplace_back(std::make_unique<IpcMemory>(rank, world_size, buffer_size));
+  m_ipc_memory_handles.emplace_back(std::make_shared<IpcMemory>(rank, world_size, buffer_size));
   m_ipc_memory_handles.emplace_back(
-      std::make_unique<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
+      std::make_shared<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
   m_ipc_memory_handles.emplace_back(
-      std::make_unique<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
+      std::make_shared<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   std::vector<const void*>& m_comm_ptrs = ipc_mem_res_pack.m_comm_ptrs;
@@ -132,6 +136,16 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
       m_comm_ptrs[(mem_idx - handles_size) * world_size + tpIdx] = mem_comm_ptrs[tpIdx];
     }
   }
+
+  ////////////////////////////////
+  std::cout << "allocation ipc memory with input_size: " << input_size << " ";
+  for (size_t j = 0; j < m_comm_ptrs.size(); j++) {
+    std::cout << m_comm_ptrs[j] << " ";
+  }
+  std::cout << std::endl;
+  ///////////////////////////////
+
+  ipc_mem_res_pack.max_input_size = input_size;
 
   return Status::OK();
 }

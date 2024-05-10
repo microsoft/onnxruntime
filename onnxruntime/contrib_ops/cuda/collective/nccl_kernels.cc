@@ -444,12 +444,8 @@ Status FuncCustomAllReduce(
 
   ort_trtllm::AllReduceStrategyConfig m_config = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
 
-  if (input_count > ipc_mem_res_pack.max_input_count) {
-    std::cout << "input_count:" << input_count << " ipc_mem_res_pack.max_input_count:" << ipc_mem_res_pack.max_input_count << std::endl;
-    ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank, world_size, input_count * data_type->Size(),
-                                                                ipc_mem_res_pack));
-    ipc_mem_res_pack.max_input_count = input_count;
-  }
+  ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank, world_size, input_count * data_type->Size(),
+                                                              ipc_mem_res_pack));
 
   ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
       reinterpret_cast<int32_t const*>(ipc_mem_res_pack.m_comm_ptrs.data()), world_size, rank);
