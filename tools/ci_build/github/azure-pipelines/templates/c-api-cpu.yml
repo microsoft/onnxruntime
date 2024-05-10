@@ -192,7 +192,7 @@ stages:
     buildJava: true
     buildNodejs: true
 
-- stage: Jar_Packaging
+- stage: Jar_Packaging_CPU
   dependsOn:
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Package_Publish
@@ -200,7 +200,7 @@ stages:
   - Download_Java_Tools
   condition: succeeded()
   jobs:
-  - job: Jar_Packaging
+  - job: Jar_Packaging_CPU
     workspace:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'

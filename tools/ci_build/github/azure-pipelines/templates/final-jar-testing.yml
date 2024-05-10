@@ -19,7 +19,7 @@ parameters:
 jobs:
 - job: Final_Jar_Testing_${{parameters.OS}}
   dependsOn:
-    Jar_Packaging
+    Jar_Packaging_CPU
   workspace:
     clean: all
   ${{ if eq(parameters.OS, 'MacOS') }}:
