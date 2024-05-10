@@ -1150,45 +1150,59 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     // the input fused_node
     migraphx::program prog;
 
-    if (!no_input_shape) {
-      LOGS_DEFAULT(INFO) << "No Input shapes detected quantizing model" << std::endl;
-      prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
+    if(!load_compiled_model)
+    {
+      if (!no_input_shape) {
+        LOGS_DEFAULT(INFO) << "No Input shapes detected quantizing model" << std::endl;
+        prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
 
-      // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
-      if (int8_enable_ && int8_calibration_cache_available_) {
-        LOGS_DEFAULT(INFO) << "Quantizing input program to int8" << std::endl;
-        migraphx::quantize_int8_options quant_opts;
-        migraphx::program_parameters quant_params;
+        // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
+        if (int8_enable_ && int8_calibration_cache_available_) {
+          LOGS_DEFAULT(INFO) << "Quantizing input program to int8" << std::endl;
+          migraphx::quantize_int8_options quant_opts;
+          migraphx::program_parameters quant_params;
 
-        auto param_shapes = prog.get_parameter_shapes();
+          auto param_shapes = prog.get_parameter_shapes();
 
-        // Add all calibration data read in from int8 table
-        for (auto& [cal_key, cal_val] : dynamic_range_map) {
-          auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
-          quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
+          // Add all calibration data read in from int8 table
+          for (auto& [cal_key, cal_val] : dynamic_range_map) {
+            auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
+            quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
+          }
+          quant_opts.add_calibration_data(quant_params);
+
+          // specify thing we want to int8 quantize
+          quant_opts.add_op_name("convolution");
+          quant_opts.add_op_name("dot");
+
+          // perform static quantization on the programs
+          migraphx::quantize_int8(prog, t_, quant_opts);
+          LOGS_DEFAULT(INFO) << "Quantizing input program to int8: Complete" << std::endl;
         }
-        quant_opts.add_calibration_data(quant_params);
 
-        // specify thing we want to int8 quantize
-        quant_opts.add_op_name("convolution");
-        quant_opts.add_op_name("dot");
+        if (fp16_enable_) {
+          LOGS_DEFAULT(INFO) << "Quantizing input program to fp16" << std::endl;
+          migraphx::quantize_fp16(prog);
+          LOGS_DEFAULT(INFO) << "Quantizing input program to fp16: Complete" << std::endl;
+        }
 
-        // perform static quantization on the programs
-        migraphx::quantize_int8(prog, t_, quant_opts);
-        LOGS_DEFAULT(INFO) << "Quantizing input program to int8: Complete" << std::endl;
+        migraphx::compile_options co;
+        co.set_fast_math(false);
+        LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
+        prog.compile(t_, co);
+        LOGS_DEFAULT(INFO) << "Model Compile: Complete" << std::endl;
+        if (save_compiled_mode)
+        {
+          migraphx::file_options fo;
+          fo.set_file_format("msgpack");
+          migraphx::save(prog, save_compiled_path, fo);
+        }
+      }
+      else
+      {
+        prog = migraphx::load(load_compiled_path);
       }
 
-      if (fp16_enable_) {
-        LOGS_DEFAULT(INFO) << "Quantizing input program to fp16" << std::endl;
-        migraphx::quantize_fp16(prog);
-        LOGS_DEFAULT(INFO) << "Quantizing input program to fp16: Complete" << std::endl;
-      }
-
-      migraphx::compile_options co;
-      co.set_fast_math(false);
-      LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
-      prog.compile(t_, co);
-      LOGS_DEFAULT(INFO) << "Model Compile: Complete" << std::endl;
       auto prog_output_shapes = prog.get_output_shapes();
       for (std::size_t i = 0; i < output_names.size(); ++i) {
         auto out_len = prog_output_shapes[i].lengths();
@@ -1208,7 +1222,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
             map_no_input_shape_[context->node_name], fp16_enable_, int8_enable_,
-            int8_calibration_cache_available_, dynamic_range_map, dump_model_ops_};
+            int8_calibration_cache_available_, dynamic_range_map,
+            save_compiled_mode_, save_compiled_path_,
+            load_compiled_mode_, load_compiled_path_, dump_model_ops_};
       *state = p.release();
       return 0;
     };
@@ -1281,67 +1297,81 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         }
       }
 
-      // input shapes are different, needs to re-parse onnx and
-      // re-compile the program
-      if (!input_shape_match) {
-        LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
-        prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
+      if(!load_compiled_model)
+      {
+        // input shapes are different, needs to re-parse onnx and
+        // re-compile the program
+        if (!input_shape_match) {
+  <<<<<<< HEAD
+          LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
+          prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
 
-        // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
-        if (int8_enable && int8_calibration_cache_available) {
-          LOGS_DEFAULT(INFO) << "Quantize Int8: Begin" << std::endl;
-          migraphx::quantize_int8_options quant_opts;
-          migraphx::program_parameters quant_params;
+          // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
+          if (int8_enable && int8_calibration_cache_available) {
+            LOGS_DEFAULT(INFO) << "Quantize Int8: Begin" << std::endl;
+            migraphx::quantize_int8_options quant_opts;
+            migraphx::program_parameters quant_params;
 
-          auto param_shapes = prog.get_parameter_shapes();
+            auto param_shapes = prog.get_parameter_shapes();
 
-          // Add input parameter data and the values they're set to
-          for (auto&& name : param_shapes.names()) {
-            if (map_input_name_index.count(name) > 0) {
-              auto input_tensor = ctx.GetInput(map_input_name_index[name]);
-              auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-              const auto tensor_shape = tensor_info.GetShape();
-              const auto tensor_type = tensor_info.GetElementType();
+            // Add input parameter data and the values they're set to
+            for (auto&& name : param_shapes.names()) {
+              if (map_input_name_index.count(name) > 0) {
+                auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+                auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+                const auto tensor_shape = tensor_info.GetShape();
+                const auto tensor_type = tensor_info.GetElementType();
 
-              migraphx_shape_datatype_t mgx_type;
-              getMIGraphXType(tensor_type, mgx_type);
-              auto mgx_s = param_shapes[name];
+                migraphx_shape_datatype_t mgx_type;
+                getMIGraphXType(tensor_type, mgx_type);
+                auto mgx_s = param_shapes[name];
 
-              if (mgx_type != mgx_s.type()) {
-                LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
+                if (mgx_type != mgx_s.type()) {
+                  LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
+                }
+                quant_params.add(name, migraphx::argument(param_shapes[name], const_cast<void*>(input_tensor.GetTensorRawData())));
               }
-              quant_params.add(name, migraphx::argument(param_shapes[name], const_cast<void*>(input_tensor.GetTensorRawData())));
             }
+
+            // Add all calibration data read in from int8 table
+            for (auto& [cal_key, cal_val] : map_dynamic_range) {
+              auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
+              quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
+            }
+            quant_opts.add_calibration_data(quant_params);
+
+            // specify thing we want to int8 quantize
+            quant_opts.add_op_name("convolution");
+            quant_opts.add_op_name("dot");
+
+            // perform static quantization on the programs
+            migraphx::quantize_int8(prog, t, quant_opts);
+            LOGS_DEFAULT(INFO) << "Quantize Int8: Completed" << std::endl;
           }
 
-          // Add all calibration data read in from int8 table
-          for (auto& [cal_key, cal_val] : map_dynamic_range) {
-            auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
-            quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
+          if (fp16_enable) {
+            LOGS_DEFAULT(INFO) << "Quantize fp16: Begin" << std::endl;
+            migraphx::quantize_fp16(prog);
+            LOGS_DEFAULT(INFO) << "Quantize fp16: Completed" << std::endl;
           }
-          quant_opts.add_calibration_data(quant_params);
 
-          // specify thing we want to int8 quantize
-          quant_opts.add_op_name("convolution");
-          quant_opts.add_op_name("dot");
+          LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
+          migraphx::compile_options co;
+          co.set_fast_math(false);
+          prog.compile(t, co);
 
-          // perform static quantization on the programs
-          migraphx::quantize_int8(prog, t, quant_opts);
-          LOGS_DEFAULT(INFO) << "Quantize Int8: Completed" << std::endl;
+          LOGS_DEFAULT(INFO) << "Model Compile: Completed" << std::endl;
+          if (save_compiled_mode)
+          {
+            migraphx::file_options fo;
+            fo.set_file_format("msgpack");
+            migraphx::save(prog, save_compiled_path, fo);
+          }
+        else
+        {
+          prog = migraphx::load(load_compiled_path);
         }
 
-        if (fp16_enable) {
-          LOGS_DEFAULT(INFO) << "Quantize fp16: Begin" << std::endl;
-          migraphx::quantize_fp16(prog);
-          LOGS_DEFAULT(INFO) << "Quantize fp16: Completed" << std::endl;
-        }
-
-        LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
-        migraphx::compile_options co;
-        co.set_fast_math(false);
-        prog.compile(t, co);
-
-        LOGS_DEFAULT(INFO) << "Model Compile: Completed" << std::endl;
         mgx_state->prog = prog;
         param_shapes = prog.get_parameter_shapes();
         no_input_shape = false;
