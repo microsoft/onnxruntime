@@ -5792,7 +5792,7 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     if label_is_sparse:
         assert found_label_is_sparse and not found_label_is_dense
     else:
-        assert not found_label_is_sparse and found_embed_is_dense
+        assert not found_label_is_sparse and found_label_is_dense
 
     if embed_is_sparse:
         assert found_embed_is_sparse and not found_embed_is_dense

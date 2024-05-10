@@ -730,8 +730,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         """
         Add hook to check label sparsity and enable sceloss compute optimization if applicable.
         1. Register forward pre hook to the sceloss module in the model and the hook will check sparsity of the label input.
-        2. If the sparsity is below a threshold, enable sceloss compute optimization by adding FlagSceLossSparse after the
-           output. GraphTransformer of InsertGatherBeforeSceLoss will check the FlagSceLossSparse and do the actual
+        2. If the sparsity is below a threshold, enable sceloss compute optimization by adding FlagAndPrintDensity after the
+           output. GraphTransformer of InsertGatherBeforeSceLoss will check the FlagAndPrintDensity and do the actual
            sceloss compute optimization graph modification.
 
         """
@@ -764,9 +764,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         return label_check_hook_handles
 
     @_logger.TrackTime(_logger.ORTModuleInitPhase.DETECTION)
-    def _enable_conditional_optimizations(
-        self, graph_transformer_config: C.TrainingGraphTransformerConfiguration, inputs: Tuple, kwargs: Dict
-    ):
+    def _detect_from_inputs(self, inputs: Tuple, kwargs: Dict):
         """
         Based on runtime inspection, enable conditional optimizations if applicable.
 
