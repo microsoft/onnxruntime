@@ -23,6 +23,8 @@ enum class SkipReason {
   Other
 };
 
+constexpr std::string_view DuplicateDQ = "/duplicated";
+
 static ONNX_NAMESPACE::TensorProto_DataType GetZeroPointDT(const Node* qdq_node) {
   return static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
       qdq_node->InputDefs().at(2)->TypeAsProto()->tensor_type().elem_type());
@@ -258,7 +260,7 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
   auto op_type = node_unit.OpType();
 
   // #1 Reverse DQ duplication
-  if (dq_node->Name().find("/duplicated") != std::string::npos) {
+  if (dq_node->Name().find(DuplicateDQ) != std::string::npos) {
     reason = SkipReason::DuplicateDQ;
     return false;
   }
@@ -338,12 +340,12 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
       count += 1;
     return count;
   }();
-  bool input_edges_exist = node_unit_input_edge_count && node_unit_output_edge_count;
+  bool edges_exist = node_unit_input_edge_count && node_unit_output_edge_count;
 
   // Detect a conversion between quantized types (e.g., int16 to int8)
   // in mixed-precision QDQ models. The pattern a standalone DQ followed by a standalone Q:
   // Ex: DQ(int16 to float) -> QuantizeLinear(float to int8) ->
-  if (node_unit.OpType() == "QuantizeLinear" && input_edges_exist) {
+  if (node_unit.OpType() == "QuantizeLinear" && edges_exist) {
     const Node& q_node = node_unit.GetNode();
     const Node& i_dq_node = *q_node.InputNodesBegin();
     const Node& o_dq_node = *q_node.OutputNodesBegin();
@@ -364,7 +366,7 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
   // Keep int8 DQ/Qs in int16 -> int8
   // Don't keep any QDQs in int8 -> int16
   // Beginning of a converting QDQ pair. Check if previous Q is int8 and the following Q has a converting zp
-  if (node_unit.OpType() == "DequantizeLinear" && input_edges_exist) {
+  if (node_unit.OpType() == "DequantizeLinear" && edges_exist) {
     const Node& dq_node = node_unit.GetNode();
     const Node& i_q_node = *dq_node.InputNodesBegin();
     const Node& o_q_node = *dq_node.OutputNodesBegin();
@@ -391,11 +393,24 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
 
   if (HandleDoubleQDQ(dst_graph, src_graph, node_unit, initializers_to_keep)) return;
 
-  auto add_identity_op = [&]() {
-    std::array<NodeArg*, 1> input_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
-                                                             node_unit.Inputs()[0])};
-    std::array<NodeArg*, 1> output_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
-                                                              node_unit.Outputs()[0])};
+  auto add_identity_op = [&](bool duplicate_dq) {
+    std::array<NodeArg*, 1> input_args, output_args;
+
+    // Case to handle standalone duplicate DQs. Just redirect this arg to the original DQ instead and change the
+    // arg type to FLOAT as we're replacing it with Identity
+    if (duplicate_dq) {
+      std::string orig_dq_name = node_unit.Outputs()[0].node_arg.Name();  // ex: dql_output/duplicated
+      std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = ONNX_NAMESPACE::TypeProto::Create();
+      type_proto->copy_from(node_unit.Inputs()[0].node_arg.TypeAsProto());
+      type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      orig_dq_name.erase(orig_dq_name.find(DuplicateDQ), std::string::npos);  // ex: dql_output
+      input_args = {&dst_graph.GetOrCreateNodeArg(orig_dq_name, type_proto.get())};
+    } else {
+      input_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
+                                       node_unit.Inputs()[0])};
+    }
+    output_args = {&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
+                                      node_unit.Outputs()[0])};
     dst_graph.AddNode(node_unit.Name(),
                       "Identity",
                       "",
@@ -406,13 +421,20 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
   };
 
   if (node_unit.OpType() == "QuantizeLinear") {
-    add_identity_op();
-  } else if (node_unit.OpType() == "DequantizeLinear") {
-    if (IsConnectedQPresent(src_graph, dst_graph.Nodes(), &node_unit.GetNode(), node_unit.GetNode().InputDefs())) {
+    SkipReason reason;
+    // keep if next target is supported
+    if (CheckQRuleSet(node_unit, &node_unit.GetNode(), src_graph, reason))
       AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
-    } else {
-      add_identity_op();
-    }
+    else
+      add_identity_op(false);
+  } else if (node_unit.OpType() == "DequantizeLinear") {
+    // keep if prev target is supported
+    if (node_unit.GetNode().Name().find(DuplicateDQ) != std::string::npos)
+      add_identity_op(true);
+    else if (IsConnectedQPresent(src_graph, dst_graph.Nodes(), &node_unit.GetNode(), node_unit.GetNode().InputDefs()))
+      AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
+    else
+      add_identity_op(false);
   } else {
     AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
   }
@@ -456,9 +478,8 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
         if (!IsConnectedQPresent(src_graph, dst_graph.Nodes(), dq_node, input_defs)) continue;
 
         std::string target_arg_name = dq_node->OutputDefs().at(0)->Name();
-        std::string duplicate_str = "/duplicated";
         // erase from the first occurence of the search string till the end of the target arg name
-        target_arg_name.erase(target_arg_name.find(duplicate_str), std::string::npos);
+        target_arg_name.erase(target_arg_name.find(DuplicateDQ), std::string::npos);
         dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
                                      &dst_graph.GetOrCreateNodeArg(target_arg_name,
                                                                    dq_node->OutputDefs().at(0)->TypeAsProto())});
@@ -644,8 +665,8 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   for (auto& it : const_inits) {
     if (initializers_to_keep.count(it))
       dst_graph.AddInitializedTensor(*(initializers.at(it)));
-      current_scope_initializer_set.insert(it);
-      }
+    current_scope_initializer_set.insert(it);
+  }
 
   // handle outer scope value which is a constant initializer
   for (auto& node_idx : src_graph.GetNodesInTopologicalOrder()) {
@@ -657,8 +678,8 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
       if (src_graph.IsConstantInitializer(input->Name(), true)) {
         if (initializers_to_keep.count(input->Name()))
           dst_graph.AddInitializedTensor(*(src_graph.GetConstantInitializer(input->Name(), true)));
-          current_scope_initializer_set.insert(input->Name());
-              }
+        current_scope_initializer_set.insert(input->Name());
+      }
     }
   }
 
