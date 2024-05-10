@@ -22,8 +22,6 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
 // Create a model with Case + Add (quantized)
 // input1 -> Add -> Q -> DQ \
 //                           FusedMatMul -> Q -> DQ -> output
@@ -731,8 +729,6 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
   ASSERT_EQ(std::remove(context_bin.string().c_str()), 0);
 }
-
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime

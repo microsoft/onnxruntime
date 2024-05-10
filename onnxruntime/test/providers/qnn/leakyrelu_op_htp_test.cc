@@ -14,7 +14,6 @@
 
 namespace onnxruntime {
 namespace test {
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Checks the accuracy of a QDQ LeakyRelu model by comparing to ORT CPU EP.
 template <typename QuantType>
@@ -76,8 +75,6 @@ TEST_F(QnnHTPBackendTests, LeakyReluFP16OpSet16) {
                         16,
                         ExpectedEPNodeAssignment::All);
 }
-
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime
 

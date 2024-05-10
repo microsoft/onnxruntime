@@ -109,7 +109,6 @@ TEST_F(QnnCPUBackendTests, TopK_LargestInt32s_LastAxis) {
                             ExpectedEPNodeAssignment::All);
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
@@ -203,7 +202,6 @@ TEST_F(QnnHTPBackendTests, DISABLED_TopK_LargestFloats_U16_LastAxis) {
                                 true);  // Use com.microsoft Q/DQ ops
 }
 
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

@@ -592,8 +592,6 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
                    ExpectedEPNodeAssignment::All);
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
 // The bug is from a QDQ model, and Conv node gets processed before it's producer Mul node
 // A Transpose node gets inserted between Mul and the dynamic weight tensor shape on Conv
 // to make Conv weight with shape HWNC
@@ -1664,8 +1662,6 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {
                                      "NOTSET",                                                  // auto_pad
                                      ExpectedEPNodeAssignment::All);
 }
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
 }  // namespace test
 }  // namespace onnxruntime
 

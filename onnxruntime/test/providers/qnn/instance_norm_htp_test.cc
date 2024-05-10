@@ -14,7 +14,6 @@
 
 namespace onnxruntime {
 namespace test {
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Function that builds a QDQ model with an InstanceNormalization operator.
 template <typename QuantType>
@@ -186,9 +185,6 @@ TEST_F(QnnHTPBackendTests, InstanceNormU8Rank5) {
                          {},
                          ExpectedEPNodeAssignment::None);
 }
-
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
 }  // namespace test
 }  // namespace onnxruntime
 

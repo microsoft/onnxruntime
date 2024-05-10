@@ -14,7 +14,6 @@
 
 namespace onnxruntime {
 namespace test {
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Runs an LayerNorm model on the QNN CPU backend. Checks the graph node assignment and that inference
 // outputs for QNN and CPU match.
@@ -177,8 +176,6 @@ TEST_F(QnnHTPBackendTests, DISABLED_LayerNorm1D_LastAxis_DynamicScale) {
                                         {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},             // Last axis
                                         ExpectedEPNodeAssignment::All);
 }
-
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime

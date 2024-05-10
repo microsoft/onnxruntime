@@ -110,8 +110,6 @@ TEST_F(QnnCPUBackendTests, DISABLED_UnaryOp_Relu) {
                  ExpectedEPNodeAssignment::All);
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model
 // and the QDQ model.
 template <typename InputQType = uint8_t>
@@ -1352,8 +1350,6 @@ TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP16) {
                         18,  // opset
                         ExpectedEPNodeAssignment::All);
 }
-
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime

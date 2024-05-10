@@ -297,8 +297,6 @@ TEST_F(QnnCPUBackendTests, ReduceMeanOpset13) {
                             ExpectedEPNodeAssignment::All);
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
 // Creates the following graph if axes is an input (newer opsets):
 //                                _______________________
 //    input (f32) -> Q -> DQ ->  |                       | -> Q -> DQ -> output (f32)
@@ -642,7 +640,6 @@ TEST_F(QnnHTPBackendTests, ReduceMeanS8Opset18) {
                              ExpectedEPNodeAssignment::All);
 }
 
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime
 

@@ -13,7 +13,6 @@
 
 namespace onnxruntime {
 namespace test {
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Returns a function that creates a graph with a QDQ Gather operator.
 template <typename QuantType, typename IndicesType>
@@ -141,8 +140,6 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis1) {
                                        13,
                                        ExpectedEPNodeAssignment::All);
 }
-
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime
 

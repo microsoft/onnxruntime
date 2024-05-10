@@ -123,7 +123,6 @@ TEST_F(QnnCPUBackendTests, LogicalOpLessOrEqual4D) {
   RunCPULogicalOpTest("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
@@ -189,8 +188,6 @@ TEST_F(QnnHTPBackendTests, EqualToCast4D) {
                   ExpectedEPNodeAssignment::All,
                   1);  // expected nodes in graph
 }
-
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime

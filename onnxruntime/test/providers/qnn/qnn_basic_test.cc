@@ -441,8 +441,6 @@ TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
   }
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
 // Returns a function that builds a QDQ model that adds 3 tensors. Forces all scales and zero-points to be (1.0f, 0),
 // so it is only accurate when using non-fractional positive inputs.
 template <typename QuantType>
@@ -855,8 +853,6 @@ TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
                   0.008f);
 }
 
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
 }  // namespace test
 }  // namespace onnxruntime
