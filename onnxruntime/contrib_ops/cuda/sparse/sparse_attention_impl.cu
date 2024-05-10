@@ -138,6 +138,7 @@ Status QkvToContext(
     auto q = reinterpret_cast<T*>(data.unpacked_qkv_buffer);
     auto k = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size);
     auto v = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size + k_size);
+
     Status status = LaunchUnpackQKV<T, LAYOUT_BNSH>(data.query, q, k, v, num_heads, kv_num_heads, head_size,
                                                     sequence_length, batch_size, stream, max_threads_per_block);
     if (status != Status::OK()) {
@@ -152,15 +153,15 @@ Status QkvToContext(
   constexpr bool q_layout = LAYOUT_BNSH;
   bool kv_layout = parameters.is_packed_qkv ? LAYOUT_BNSH : LAYOUT_BSNH;
 
-  DUMP_TENSOR("query", reinterpret_cast<const T*>(query), batch_size, num_heads, sequence_length, head_size);
-
 #if DUMP_TENSOR_LEVEL > 0
+  DUMP_TENSOR("query (BNSH)", reinterpret_cast<const T*>(query), batch_size, num_heads, sequence_length, head_size);
+
   if (LAYOUT_BNSH == kv_layout) {
-    DUMP_TENSOR("key", reinterpret_cast<const T*>(key), batch_size, kv_num_heads, sequence_length, head_size);
-    DUMP_TENSOR("value", reinterpret_cast<const T*>(value), batch_size, kv_num_heads, sequence_length, head_size);
+    DUMP_TENSOR("key (BNSH)", reinterpret_cast<const T*>(key), batch_size, kv_num_heads, sequence_length, head_size);
+    DUMP_TENSOR("value (BNSH)", reinterpret_cast<const T*>(value), batch_size, kv_num_heads, sequence_length, head_size);
   } else {
-    DUMP_TENSOR("key", reinterpret_cast<const T*>(key), batch_size, sequence_length, kv_num_heads, head_size);
-    DUMP_TENSOR("value", reinterpret_cast<const T*>(value), batch_size, sequence_length, kv_num_heads, head_size);
+    DUMP_TENSOR("key (BSNH)", reinterpret_cast<const T*>(key), batch_size, sequence_length, kv_num_heads, head_size);
+    DUMP_TENSOR("value (BSNH)", reinterpret_cast<const T*>(value), batch_size, sequence_length, kv_num_heads, head_size);
   }
 #endif
 
@@ -317,6 +318,9 @@ Status QkvToContext(
       ORT_RETURN_IF_ERROR(sparse_attention_v1::run_sparse_attention_fp16(params));
     }
   }
+
+  DUMP_TENSOR("output", reinterpret_cast<const T*>(data.output), batch_size, num_heads, sequence_length, head_size);
+
   return Status::OK();
 }
 
