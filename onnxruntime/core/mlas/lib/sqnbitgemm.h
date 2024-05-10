@@ -231,6 +231,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     typedef void(SQ4BitGemmKernel_CompInt8_Fn)(
         const size_t BlkLen,
         const std::byte* QuantA,
+        const float* QuantAScale,
         const std::byte* QuantBData,
         const float* QuantBScale,
         const std::byte* QuantBZeroPoint,
@@ -263,4 +264,13 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     );
 
     QuantizeARow_CompInt8_Fn* QuantizeARow_CompInt8 = nullptr;
+
+    typedef void(QuantizeARow_CompInt8_Fn2)(
+        size_t BlkLen,
+        const float* A,
+        size_t CountK,
+        std::byte* QuantA,
+        float* QuantAScale
+    );
+    QuantizeARow_CompInt8_Fn2* QuantizeARow_CompInt8_2 = nullptr;
 };

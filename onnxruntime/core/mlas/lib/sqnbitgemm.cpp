@@ -84,8 +84,9 @@ MlasIsSQNBitGemmAvailable(
                    Dispatch->Q4BitBlkDequantBForSgemm_CompFp32 != nullptr;
         }
         case SQNBitGemmVariant_BitWidth4_CompInt8: {
-            return Dispatch->SQ4BitGemmM1Kernel_CompInt8 != nullptr &&
-                   Dispatch->QuantizeARow_CompInt8 != nullptr;
+            return
+              (Dispatch->SQ4BitGemmM1Kernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr) ||
+              (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8_2 != nullptr);
         }
         default: {
             return false;
@@ -498,9 +499,12 @@ SQ4BitGemm_CompInt8(
         (void)b_col_zp;
 #else
         if (BlkLen == 32) {
+          // TODO: this does not work is RangeCountM is not the total M.
+            const float* a_row_scale = (const float*)(QuantA + RangeCountM * k_blks * BlkLen);
             GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                 BlkLen,
                 a_row,
+                a_row_scale,
                 b_col,
                 b_col_scale,
                 b_col_zp,
@@ -568,6 +572,7 @@ InitializeWorkspace_CompInt8(
     MLAS_UNREFERENCED_PARAMETER(N);
 
     const auto QuantizeARow = GetMlasPlatform().SQNBitGemmDispatch->QuantizeARow_CompInt8;
+    const auto QuantizeARow2 = GetMlasPlatform().SQNBitGemmDispatch->QuantizeARow_CompInt8_2;
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
@@ -577,12 +582,22 @@ InitializeWorkspace_CompInt8(
 
         const float* ARowPtr = data.A;
         std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
+        if (QuantizeARow) {
+            for (size_t m = 0; m < M; ++m) {
+                QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
 
-        for (size_t m = 0; m < M; ++m) {
-            QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
+                ARowPtr += data.lda;
+                QuantARowPtr += QuantAStride;
+            }
+        } else {
+            float* QuantARowScalePtr = (float*)(QuantARowPtr + M * BlockCountK * BlkLen);
+            for (size_t m = 0; m < M; ++m) {
+                QuantizeARow2(BlkLen, ARowPtr, K, QuantARowPtr, QuantARowScalePtr);
 
-            ARowPtr += data.lda;
-            QuantARowPtr += QuantAStride;
+                ARowPtr += data.lda;
+                QuantARowPtr += BlockCountK * BlkLen;
+                QuantARowScalePtr += BlockCountK;
+            }
         }
     });
 }
@@ -712,6 +727,6 @@ MlasSQNBitGemmBatch(
         const size_t RangeStartN = ThreadIdN * StrideN;
         const size_t RangeCountN = std::min(N - RangeStartN, (size_t)StrideN);
 
-        ComputeOperation(BlkLen, K, Data, PerGemmWorkspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+         ComputeOperation(BlkLen, K, Data, PerGemmWorkspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
     });
 }

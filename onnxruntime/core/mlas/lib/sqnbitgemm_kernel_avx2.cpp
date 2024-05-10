@@ -344,6 +344,7 @@ void
 SQ4BitGemmKernel_CompInt8_avx2(
     const size_t BlkLen,
     const std::byte* QuantA,
+    const float* QuantAScale,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
@@ -353,7 +354,7 @@ SQ4BitGemmKernel_CompInt8_avx2(
     size_t CountK,
     size_t BlockCountK,
     const float* Bias,
-    size_t lda,
+    size_t /*lda*/,
     size_t ldc
 )
 {
@@ -364,6 +365,7 @@ SQ4BitGemmKernel_CompInt8_avx2(
         } else if (BlkLen == 32) {
             MlasQ4Int8TileGemmKernelBlkLen32Avx2<HasZeroPoint>(
                   QuantA,
+                  QuantAScale,
                   QuantBData,
                   QuantBScale,
                   QuantBZeroPoint,
@@ -373,7 +375,6 @@ SQ4BitGemmKernel_CompInt8_avx2(
                   CountK,
                   BlockCountK,
                   Bias,
-                  lda,
                   ldc
             );
             //MlasQ4Int8GemmKernelBlkLen32Avx2<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
@@ -400,6 +401,7 @@ SQ4BitGemmKernel_CompInt8_avx2(
         } else if (BlkLen == 32) {
             MlasQ4Int8TileGemmKernelBlkLen32Avx2<HasZeroPoint>(
                 QuantA,
+                QuantAScale,
                 QuantBData,
                 QuantBScale,
                 QuantBZeroPoint,
@@ -409,7 +411,6 @@ SQ4BitGemmKernel_CompInt8_avx2(
                 CountK,
                 BlockCountK,
                 Bias,
-                lda,
                 ldc
             );
             // MlasQ4Int8GemmKernelBlkLen32Avx2<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
@@ -462,8 +463,10 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
                 Bias
             );
         } else if (BlkLen == 32) {
+            const float* QuantAScale = (const float*)(QuantA + BlockStrideQuantB * BlkLen);
             MlasQ4Int8TileGemmKernelBlkLen32Avx2<HasZeroPoint>(
                 QuantA,
+                QuantAScale,
                 QuantBData,
                 QuantBScale,
                 QuantBZeroPoint,
@@ -473,7 +476,6 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
                 CountK,
                 BlockStrideQuantB,
                 Bias,
-                0,  // lda, not needed when CountM = 1
                 0   // ldc, not needed when CountM = 1
             );
             // SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
@@ -515,8 +517,10 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
                 Bias
             );
         } else if (BlkLen == 32) {
+            const float* QuantAScale = (const float*)(QuantA + BlockStrideQuantB * BlkLen);
             MlasQ4Int8TileGemmKernelBlkLen32Avx2<HasZeroPoint>(
                 QuantA,
+                QuantAScale,
                 QuantBData,
                 QuantBScale,
                 QuantBZeroPoint,
@@ -526,7 +530,6 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
                 CountK,
                 BlockStrideQuantB,
                 Bias,
-                0,  // lda, not needed when CountM = 1
                 0   // ldc, not needed when CountM = 1
             );
             // SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx2<HasZeroPoint>>(
@@ -1154,13 +1157,15 @@ QuantizeARow_CompInt8_avx2(
     size_t BlkLen,
     const float* A,
     size_t CountK,
-    std::byte* QuantA
+    std::byte* QuantA,
+    float* QuantAScale
 )
 {
     // port from MlasQ80BlkQuantRow
     assert(BlkLen % 16 == 0);
     const __m256 signBit = _mm256_set1_ps(-0.0f);
     int8_t* blob = reinterpret_cast<int8_t*>(QuantA);
+    float* scale_ptr = QuantAScale;
     for (size_t k = 0; k < CountK; k += BlkLen) {
         const size_t step = std::min(BlkLen, CountK - k);
 
@@ -1181,8 +1186,8 @@ QuantizeARow_CompInt8_avx2(
 
         // Quantize these floats
         const float scale = maxScalar / 127.f;
-        *reinterpret_cast<float*>(blob) = scale;
-        blob += sizeof(float);
+        *scale_ptr = scale;
+        scale_ptr++;
 
         const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
         const __m256 mul = _mm256_set1_ps(inverse_scale);
@@ -1230,7 +1235,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
 
     d.SQ4BitGemmM1Kernel_CompInt8 = SQ4BitGemmM1Kernel_CompInt8_avx2;
     d.SQ4BitGemmKernel_CompInt8 = SQ4BitGemmKernel_CompInt8_avx2;
-    d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8_avx2;
+    d.QuantizeARow_CompInt8_2 = QuantizeARow_CompInt8_avx2;
 
     return d;
 }();
