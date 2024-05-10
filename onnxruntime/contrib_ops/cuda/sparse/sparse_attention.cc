@@ -4,7 +4,6 @@
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
 #include "contrib_ops/cuda/sparse/sparse_attention.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_helper.h"
-#include "contrib_ops/cuda/sparse/block_mask.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_api.h"
 #include "core/platform/env_var_utils.h"
@@ -26,7 +25,7 @@ namespace cuda {
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
           .MayInplace(3, 1)                                            \
           .MayInplace(4, 2)                                            \
-          .InputMemoryType(OrtMemTypeCPUInput, 6),                     \
+          .InputMemoryType(OrtMemTypeCPUInput, 7),                     \
       SparseAttention<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -77,15 +76,16 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* past_key = context->Input<Tensor>(3);
   const Tensor* past_value = context->Input<Tensor>(4);
-  const Tensor* block_mask = context->Input<Tensor>(5);
-  const Tensor* total_seq_len = context->Input<Tensor>(6);
-  const Tensor* seqlens_k_total = context->Input<Tensor>(7);
-  const Tensor* cos_cache = context->Input<Tensor>(8);
-  const Tensor* sin_cache = context->Input<Tensor>(9);
+  const Tensor* block_row_indices = context->Input<Tensor>(5);
+  const Tensor* block_col_indices = context->Input<Tensor>(6);
+  const Tensor* total_seq_len = context->Input<Tensor>(7);
+  const Tensor* seqlens_k_total = context->Input<Tensor>(8);
+  const Tensor* cos_cache = context->Input<Tensor>(9);
+  const Tensor* sin_cache = context->Input<Tensor>(10);
 
   SparseAttentionParameters parameters;
 
-  // Parameters from node attribute
+  // Parameters from node attribute shall be set before calling CheckInputs
   parameters.sparse_block_size = sparse_block_size_;
   parameters.num_heads = num_heads_;
   parameters.kv_num_heads = kv_num_heads_;
@@ -101,7 +101,8 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            past_value,
                                                            cos_cache,
                                                            sin_cache,
-                                                           block_mask,
+                                                           block_row_indices,
+                                                           block_col_indices,
                                                            seqlens_k_total,
                                                            total_seq_len));
   // Some limitations of CUDA kernels
@@ -177,7 +178,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims = {
-      parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
+      parameters.batch_size, parameters.kv_num_heads, parameters.max_cache_sequence_length, parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(1, present_shape);
   Tensor* present_value = context->Output(2, present_shape);
@@ -188,13 +189,12 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
-  data.past_key = (nullptr == past_key) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
-  data.past_value = (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
-  data.block_mask = block_mask->Data<int32_t>();
+  data.past_key = reinterpret_cast<const CudaT*>(past_key->Data<T>());
+  data.past_value = reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.seqlens_k_total = (nullptr == seqlens_k_total) ? nullptr : seqlens_k_total->Data<int32_t>();
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
-  data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
-  data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+  data.present_key = reinterpret_cast<CudaT*>(present_key->MutableData<T>());
+  data.present_value = reinterpret_cast<CudaT*>(present_value->MutableData<T>());
 
   // Check past and present share buffer.
   parameters.past_present_share_buffer = (data.past_key != nullptr && data.past_key == data.present_key);
@@ -214,29 +214,9 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Currently, we use same block size in kernel.
   // TODO: support kernel block size that is smaller than sparse_block_size in tunable (need expand block mask).
   data.kernel_layout.block_size = parameters.sparse_block_size;
-  data.kernel_layout.mask = data.block_mask;
   data.kernel_layout.num_layout = parameters.num_sparse_layout;
-  data.kernel_layout.num_cols = parameters.max_sequence_length / data.kernel_layout.block_size;
-  data.kernel_layout.num_rows = parameters.max_sequence_length / data.kernel_layout.block_size;
-
-  // Allocate buffer for CSR col and row indices.
-  onnxruntime::Stream* stream = context->GetComputeStream();
-  int dense_blocks = data.kernel_layout.num_layout * data.kernel_layout.num_cols * data.kernel_layout.num_rows;
-  auto csr_col_indices_buffer = GetScratchBuffer<int>(static_cast<size_t>(dense_blocks), stream);
-  auto csr_row_indices_buffer = GetScratchBuffer<int>(
-      static_cast<size_t>(data.kernel_layout.num_layout * (data.kernel_layout.num_rows + 1)), stream);
-
-  data.kernel_layout.csr_col_indices = reinterpret_cast<const int*>(csr_col_indices_buffer.get());
-  data.kernel_layout.csr_row_indices = reinterpret_cast<const int*>(csr_row_indices_buffer.get());
-
-  ConvertMaskToCSR(cuda_stream,
-                   data.kernel_layout.mask,
-                   data.kernel_layout.num_layout,
-                   data.kernel_layout.num_rows,
-                   data.kernel_layout.num_cols,
-                   csr_row_indices_buffer.get(),
-                   csr_col_indices_buffer.get(),
-                   device_prop.maxThreadsPerBlock);
+  data.kernel_layout.csr_col_indices = block_col_indices->Data<int32_t>();
+  data.kernel_layout.csr_row_indices = block_row_indices->Data<int32_t>();
 
   size_t rotary_buffer_bytes = 0;
   if (do_rotary_) {
@@ -244,7 +224,8 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           parameters.sequence_length * parameters.head_size;
     rotary_buffer_bytes += sizeof(int64_t) * parameters.batch_size * parameters.sequence_length;
   }
-  auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, context->GetComputeStream());
+  onnxruntime::Stream* stream = context->GetComputeStream();
+  auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, stream);
   data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
 
   size_t transposed_q_bytes = 0;
@@ -252,7 +233,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     transposed_q_bytes = parameters.batch_size * parameters.sequence_length *
                          parameters.num_heads * parameters.head_size * sizeof(T);
   }
-  auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, context->GetComputeStream());
+  auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, stream);
   if (transposed_q_buffer) {
     data.transposed_q_buffer = reinterpret_cast<CudaT*>(transposed_q_buffer.get());
   }
@@ -263,7 +244,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           (parameters.num_heads + 2 * parameters.kv_num_heads) *
                           parameters.head_size * sizeof(T));
   }
-  auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
+  auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, stream);
   if (unpacked_qkv_buffer) {
     data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
@@ -327,7 +308,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
       }
     }
 
-    v2_kernel_buffer = GetScratchBuffer<int>(v2_kernel_buffer_size, context->GetComputeStream());
+    v2_kernel_buffer = GetScratchBuffer<int>(v2_kernel_buffer_size, stream);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(v2_kernel_buffer.get(), v2_kernel_inputs_pinned,
                                          sizeof(int32_t) * v2_kernel_buffer_size,
                                          cudaMemcpyHostToDevice, cuda_stream));
