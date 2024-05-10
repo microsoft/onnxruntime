@@ -113,6 +113,7 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
 
   std::vector<std::unique_ptr<IpcMemory>>& m_ipc_memory_handles = ipc_mem_res_pack.m_ipc_momery_handles;
   const size_t handles_size{m_ipc_memory_handles.size()};
+  constexpr size_t k_num_handles{3};
 
   m_ipc_memory_handles.emplace_back(std::make_unique<IpcMemory>(rank, world_size, buffer_size));
   m_ipc_memory_handles.emplace_back(
@@ -122,13 +123,13 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   std::vector<const void*>& m_comm_ptrs = ipc_mem_res_pack.m_comm_ptrs;
-  m_comm_ptrs.reserve(m_ipc_memory_handles.size() * world_size);
-  m_comm_ptrs.resize(m_ipc_memory_handles.size() * world_size);
+  m_comm_ptrs.reserve(k_num_handles * world_size);
+  m_comm_ptrs.resize(k_num_handles * world_size);
 
   for (size_t mem_idx = handles_size; mem_idx < m_ipc_memory_handles.size(); mem_idx++) {
     auto const& mem_comm_ptrs = m_ipc_memory_handles[mem_idx]->GetCommPtrsTensor();
     for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(world_size); tpIdx++) {
-      m_comm_ptrs[mem_idx * world_size + tpIdx] = mem_comm_ptrs[tpIdx];
+      m_comm_ptrs[(mem_idx - handles_size) * world_size + tpIdx] = mem_comm_ptrs[tpIdx];
     }
   }
 
