@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -52,6 +52,13 @@ public abstract class OrtProviderOptions implements AutoCloseable {
    * @return The provider enum.
    */
   public abstract OrtProvider getProvider();
+
+  /**
+   * Applies the Java side configuration to the native side object.
+   *
+   * @throws OrtException If the native call failed.
+   */
+  protected abstract void applyToNative() throws OrtException;
 
   /**
    * Is the native object closed?

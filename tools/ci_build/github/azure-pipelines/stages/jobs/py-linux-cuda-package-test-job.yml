@@ -49,9 +49,9 @@ jobs:
           value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
       - name: linux_trt_version
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: 8.6.1.6-1.cuda11.8
+          value: 10.0.1.6-1.cuda11.8
         ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: 8.6.1.6-1.cuda12.0
+          value: 10.0.1.6-1.cuda12.4
     pool: ${{ parameters.machine_pool }}
     steps:
       - checkout: self

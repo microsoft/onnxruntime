@@ -13,6 +13,10 @@ parameters:
   type: boolean
   default: false
 
+- name: DownloadTRT
+  type: boolean
+  default: false
+
 - name: InstallONNX
   type: boolean
   default: true
@@ -87,6 +91,7 @@ steps:
   parameters:
     EnvSetupScript: ${{parameters.EnvSetupScript}}
     DownloadCUDA: ${{parameters.DownloadCUDA}}
+    DownloadTRT: ${{parameters.DownloadTRT}}
 
 - ${{ if eq(parameters.WITHCACHE, true) }}:
   - powershell: |

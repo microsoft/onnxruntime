@@ -228,18 +228,13 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
-void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
-  // Output 0 has shape (batch_size, sequence_length, hidden_size)
-
-  // Q, K and V:
-  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-  //   Input 1 (key) has shape (batch_size, kv_sequence_length, kv_hidden_size)
-  //   Input 2 (value) has shape (batch_size, kv_sequence_length, kv_hidden_size)
-
-  // Type inference
+// Type and shape inference for group query attention and sparse attention.
+void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
+                                                  int past_key_index = -1,
+                                                  int use_max_past_present_buffer = -1) {
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
-  // Shape inference
+  int64_t kv_sequence_length = -1;
   if (hasInputShape(ctx, 0)) {
     auto& query_shape = getInputShape(ctx, 0);
     auto& query_dims = query_shape.dim();
@@ -249,18 +244,22 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
     }
 
     if (hasInputShape(ctx, 2)) {
+      //   Input 0 (query) has shape (batch_size, sequence_length, num_heads * head_size)
+      //   Input 1 (key) has shape (batch_size, kv_sequence_length, kv_num_heads * head_size)
+      //   Input 2 (value) has shape (batch_size, kv_sequence_length, kv_num_heads * head_size)
+      //   Output 0 has shape (batch_size, sequence_length, num_heads * head_size)
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+
       auto& value_shape = getInputShape(ctx, 2);
       auto& value_dims = value_shape.dim();
-      if (value_dims.size() != 3) {
-        fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
+      if (value_dims.size() == 3 && value_dims[1].has_dim_value()) {
+        kv_sequence_length = value_dims[1].dim_value();
       }
-
-      ONNX_NAMESPACE::TensorShapeProto output_shape;
-      *output_shape.add_dim() = query_dims[0];
-      *output_shape.add_dim() = query_dims[1];
-      *output_shape.add_dim() = query_dims[2];
-      updateOutputShape(ctx, 0, output_shape);
     } else {
+      // Packed QKV:
+      //   Input 0 (query) has shape (batch_size, sequence_length, (num_heads + 2 * kv_num_heads) * head_size)
+      //   Input 1 (key) is not present
+      //   Input 2 (value) is not present
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       int64_t num_heads = getAttribute(ctx, "num_heads", 0);
       int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
@@ -270,23 +269,62 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       *output_shape.add_dim() = query_dims[1];
       output_shape.add_dim()->set_dim_value(head_size * num_heads);
       updateOutputShape(ctx, 0, output_shape);
+
+      if (query_dims[1].has_dim_value()) {
+        kv_sequence_length = query_dims[1].dim_value();
+      }
     }
   }
 
   if (ctx.getNumOutputs() > 1) {  // has present output
-    if (hasInputShape(ctx, past_key_index)) {
-      // auto& query_shape = getInputShape(ctx, 0);
-      // auto& query_dims = query_shape.dim();
+    // copy the type from query to present key
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+
+    // copy the type from query to present value
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
+
+    if (past_key_index >= 0 && hasInputShape(ctx, past_key_index)) {
       auto& past_shape = getInputShape(ctx, past_key_index);
       auto& past_dims = past_shape.dim();
+
+      // past key has shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size)
       if (past_dims.size() != 4) {
         fail_shape_inference("The past_key input shall be 4 dimensions");
       }
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
-      // TODO(aciddelgado): propagate output shapes depending if kv-share buffer is on or not
+
+      if (use_max_past_present_buffer == 1) {
+        // When past and present use max buffer, they have the same shape
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, past_key_index, 1);
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
+      } else if (use_max_past_present_buffer == 0) {
+        if (kv_sequence_length > 0 && past_dims[2].has_dim_value()) {
+          int64_t total_sequence_length = kv_sequence_length + past_dims[2].dim_value();
+
+          ONNX_NAMESPACE::TensorShapeProto present_shape;
+          for (auto& dim : past_dims) {
+            *present_shape.add_dim() = dim;
+          }
+
+          // shape of present key/value is (batch_size, kv_num_heads, total_sequence_length, head_size)
+          present_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
+
+          updateOutputShape(ctx, 1, present_shape);
+          updateOutputShape(ctx, 2, present_shape);
+        }
+      }
     }
   }
+}
+
+void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
+  // TODO(aciddelgado): propagate output shapes depending if kv-share buffer is on or not
+  constexpr int use_max_past_present_buffer = -1;
+  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer);
+}
+
+void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
+  constexpr int use_max_past_present_buffer = 1;
+  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer);
 }
 
 constexpr const char* Attention_ver1_doc = R"DOC(
@@ -432,7 +470,7 @@ An input as above will be packed into 3 tensors like below:
 
 Input tensors contains the hidden embedding of real tokens.
 Token_offset records the offset of token in the unpacked input.
-cumulated_token_count records cumulated length of each sequnces length.
+cumulated_token_count records cumulated length of each sequence length.
 
 The operator only supports BERT like model with padding on right now.
 
@@ -561,7 +599,7 @@ An input as above will be packed into 3 tensors like below:
 
 The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
 Token_offset records the offset of token in the unpacked input.
-cumulative_sequence_length records cumulated length of each sequnces length.
+cumulative_sequence_length records cumulated length of each sequence length.
 
 The operator only supports BERT like model with padding on right now.
 )DOC";
@@ -1008,10 +1046,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
 Group Query Self/Cross Attention.
 
-Supports different number of heads for q and kv. Only supports causal or local attention.
-Supports rotary position embedding.
-Supports k-v cache.
-CPU EP supports fp32... CUDA EP supports fp16.
+*Highly recommend using k-v cache share buffer for both CPU and CUDA. Enabled through IOBinding past and present kv.
+Supports different number of heads for q and kv for CPU and CUDA.
+Only supports causal and local attention.
+Supports rotary position embedding for CPU and CUDA.
+Supports packed input for CPU and CUDA.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1065,6 +1104,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(5,
                "seqlens_k",
+               // For prompt, the value is number of tokens (excluding padding) - 1.
                "1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.",
                "M")
         .Input(6,
@@ -1101,6 +1141,123 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);
+        }));
+
+constexpr const char* SparseAttention_ver1_doc = R"DOC(
+Block Sparse Attention used in Phi-3-small (https://arxiv.org/pdf/2404.14219).
+
+It is inspired by Sparse Transformers (https://arxiv.org/pdf/1904.10509) and BigBird (https://arxiv.org/pdf/2007.14062).
+
+block_mask can be used to configure sparse layout for different head.
+When number of sparse layout is 1, all heads have same sparse layout. Otherwise, different layouts are used cyclically.
+For example, given 4 layouts (S0, S1, S2, S3), 8 heads will have layouts like (S0, S1, S2, S3, S0, S1, S2, S3).
+
+The block_row_indices and block_col_indices are the CSR representation of block mask. The block_col_indices might contain
+paddings at the right side when different layout has different number of non-zeros in block mask.
+
+An example of block mask with 2 layouts where each layout is 4 x 4 blocks:
+  [[[1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [0, 1, 1, 0],
+    [0, 1, 1, 1]],
+
+   [[1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [1, 1, 1, 0],
+    [1, 0, 1, 1]]]
+
+The corresponding CSR format:
+  block_col_indices = [[0,  0,  1,  1,  2,  1,  2,  3, -1], [0,  0,  1,  0,  1,  2,  0,  2,  3]]
+  block_row_indices = [[0, 1, 3, 5, 8], [0, 1, 3, 6, 9]]
+
+When do_rotary is True, cos_cache and sin_cache are required. Note that the maximum sequence length supported by cos
+or sin cache can be different from the maximum sequence length used by kv cache.
+
+Only supports unidirectional attention with cache of past key and value in linear buffers.
+
+For performance, past_key and present_key share same memory buffer, and past_value and present_value too.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SparseAttention, 1,
+    OpSchema()
+        .SetDoc(SparseAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads for query", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of attention heads for key and value", AttributeProto::INT)
+        .Attr("scale", "Scaling factor applied prior to softmax. The default value is 1/sqrt(head_size)", AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("sparse_block_size", "Number of tokens per sparse block. Choices: 16, 32, 64, 128", AttributeProto::INT)
+        .Attr("do_rotary", "Whether to use rotary position embedding. Default value is 0.", AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("rotary_interleaved", "Rotary use interleaved pattern or not. Default value is 0.", AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "query",
+               "Query with shape (batch_size, sequence_length, num_heads * head_size), or packed QKV with shape is"
+               "(batch_size, sequence_length, d) where d is (num_heads + 2 * kv_num_heads) * head_size.",
+               "T")
+        .Input(1,
+               "key",
+               "Key with shape (batch_size, sequence_length, kv_num_heads * head_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(2,
+               "value",
+               "Value with shape (batch_size, sequence_length, kv_num_heads * head_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(3,
+               "past_key",
+               "Key cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size)",
+               "T")
+        .Input(4,
+               "past_value",
+               "Value cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size)",
+               "T")
+        .Input(5,
+               "block_row_indices",
+               "The row indices of CSR format of block mask with shape (num_layout, max_blocks + 1)."
+               "The num_heads is divisible by num_layout, and max_blocks is max_sequence_length / sparse_block_size.",
+               "M")
+        .Input(6,
+               "block_col_indices",
+               "The col indices of CSR format of block mask with shape (num_layout, max_nnz_blocks)."
+               "The max_nnz_blocks is the maximum number of non-zeros per layout in block mask.",
+               "M")
+        .Input(7,
+               "total_sequence_length",
+               "Scalar tensor of maximum total sequence length (past_sequence_length + sequence_length) among keys.",
+               "M")
+        .Input(8,
+               "key_total_sequence_lengths",
+               "1D tensor with shape (batch_size) where each value is total sequence length of key excluding paddings.",
+               "M")
+        .Input(9,
+               "cos_cache",
+               "Cos cache of rotary with shape (max_rotary_sequence_length, head_size / 2).",
+               "T",
+               OpSchema::Optional)
+        .Input(10,
+               "sin_cache",
+               "Sin cache of rotary with shape (max_rotary_sequence_length, head_size / 2).",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "3D output tensor with shape (batch_size, sequence_length, num_heads * head_size)",
+                "T")
+        .Output(1,
+                "present_key",
+                "Updated key cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size).",
+                "T")
+        .Output(2,
+                "present_value",
+                "Updated value cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size).",
+                "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain integer type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          SparseAttentionTypeAndShapeInference(ctx, 3);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(

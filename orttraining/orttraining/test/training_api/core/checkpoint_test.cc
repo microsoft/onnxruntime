@@ -117,8 +117,8 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 
   // Check loaded parameter's values are same with original ones.
   ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), restored_trainable_param_names.size());
-  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), 7);
-  ASSERT_EQ(restored_param_name_to_ort_values.size(), 9);
+  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), size_t{7});
+  ASSERT_EQ(restored_param_name_to_ort_values.size(), size_t{9});
 
   std::sort(expected_trainable_param_names.begin(), expected_trainable_param_names.end());
   std::sort(restored_trainable_param_names.begin(), restored_trainable_param_names.end());
@@ -225,8 +225,8 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpointThenLoadFromBufferCPU) {
 
   // Check loaded parameter's values are same with original ones.
   ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), restored_trainable_param_names.size());
-  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), 7);
-  ASSERT_EQ(restored_param_name_to_ort_values.size(), 9);
+  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), size_t{7});
+  ASSERT_EQ(restored_param_name_to_ort_values.size(), size_t{9});
 
   std::sort(expected_trainable_param_names.begin(), expected_trainable_param_names.end());
   std::sort(restored_trainable_param_names.begin(), restored_trainable_param_names.end());
@@ -308,7 +308,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
 
   std::vector<Ort::Value> all_weights_values;
   data_loader.GetNextSampleBatch(all_weights_values);
-  ASSERT_EQ(all_weights_values.size(), 4);
+  ASSERT_EQ(all_weights_values.size(), size_t{4});
   NameMLValMap name_to_ort_value{
       {"fc1.weight", *all_weights_values[0]},
       {"fc1.bias", *all_weights_values[1]},
@@ -360,7 +360,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
   InlinedHashMap<std::string, std::shared_ptr<GroupOptimizerState>>&
       group_optimizer_states = optimizer_state.group_named_optimizer_states;
 
-  ASSERT_EQ(group_optimizer_states.size(), 1);
+  ASSERT_EQ(group_optimizer_states.size(), size_t{1});
   ASSERT_EQ(group_optimizer_states.begin()->first, "group0");
 
   InlinedHashMap<std::string, ParameterOptimizerState>&
@@ -429,7 +429,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   CheckpointState checkpoint_state_to_load;
   ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
   PropertyBag& restored_property_bag = checkpoint_state_to_load.property_bag;
-  ASSERT_EQ(restored_property_bag.size(), 3);
+  ASSERT_EQ(restored_property_bag.size(), size_t{3});
   float restored_f_data = restored_property_bag.GetProperty<float>(f_property_name);
   ASSERT_FLOAT_EQ(f_data, restored_f_data);
   int64_t restored_i_data = restored_property_bag.GetProperty<int64_t>(i_property_name);
@@ -559,8 +559,8 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_WithExternalData) {
 
   // Check loaded parameter's values are same with original ones.
   ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), restored_trainable_param_names.size());
-  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), 7);
-  ASSERT_EQ(restored_param_name_to_ort_values.size(), 9);
+  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), size_t{7});
+  ASSERT_EQ(restored_param_name_to_ort_values.size(), size_t{9});
 
   std::sort(expected_trainable_param_names.begin(), expected_trainable_param_names.end());
   std::sort(restored_trainable_param_names.begin(), restored_trainable_param_names.end());

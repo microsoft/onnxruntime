@@ -90,9 +90,14 @@ variables:
     value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
 - name: linux_trt_version
   ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: 8.6.1.6-1.cuda11.8
+    value: 10.0.1.6-1.cuda11.8
   ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: 8.6.1.6-1.cuda12.0
+    value: 10.0.1.6-1.cuda12.4
+- name: win_trt_version
+  ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    value: 11.8
+  ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    value: 12.4
 
 stages:
 - stage: Setup
@@ -118,6 +123,21 @@ stages:
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
         fi
       name: Set_Release_Version_Suffix
+    - script: |
+        # Extracting hours and minutes
+        date=$(date +'%Y%m%d')
+        # Set the hhmm value as a pipeline variable
+        echo "##vso[task.setvariable variable=BuildDate;isOutput=true]$date"
+      displayName: 'Set Start Date as Variable'
+      name: Set_Build_Date
+
+    - script: |
+        # Extracting hours and minutes
+        hhmm=$(date +'%H%M')
+        # Set the hhmm value as a pipeline variable
+        echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
+      displayName: 'Set Start Time as Variable'
+      name: Set_Build_Time
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -131,12 +151,16 @@ stages:
       vmImage: ubuntu-latest
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
     steps:
     - checkout: none
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
     - bash: echo $(MyVar)
+    - bash: echo $(BuildTime)
+    - bash: echo $(BuildDate)
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -217,11 +241,11 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
+    buildparameter: --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.CudaVersion }} --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
-    CudaVersion: 11.8
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
@@ -235,11 +259,11 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8"  --cuda_home="$(Agent.TempDirectory)\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-${{ variables.win_trt_version }}"  --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
-    CudaVersion: 11.8
+    CudaVersion: ${{ parameters.CudaVersion }}
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
 
 # ROCm
@@ -464,9 +488,13 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
         Context: tools/ci_build/github/linux/docker/
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg BASEIMAGE=${{ variables.docker_base_image }}
+        --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
+        "
         Repository: onnxruntimeubi8packagestest
         UpdateDepsTxt: false
 
@@ -600,8 +628,8 @@ stages:
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[format('{0:yyyyMMdd}', pipeline.startTime)]
-      BuildTime: $[format('{0:HHmm}', pipeline.startTime)]
+      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
@@ -675,7 +703,7 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          dotnet workload install android ios
+          dotnet workload install android ios maccatalyst
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
@@ -817,6 +845,8 @@ stages:
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
@@ -944,7 +974,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentTime=$(BuildTime) -p:CurrentDate=$(BuildDate)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2
@@ -1023,8 +1053,8 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-A10'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     Skipx86Tests: 'true'
@@ -1034,8 +1064,8 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-A10'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
+    AgentPool: 'onnxruntime-Win2022-GPU-A10'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     MoreSuffix: '_Windows'
@@ -1046,20 +1076,22 @@ stages:
 
 - template: nuget/templates/test_linux.yml
   parameters:
-    AgentPool : Onnxruntime-Linux-GPU-A10
+    AgentPool: Onnxruntime-Linux-GPU-A10
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/test_linux.yml
   parameters:
-    AgentPool : Onnxruntime-Linux-GPU-A10
+    AgentPool: Onnxruntime-Linux-GPU-A10
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     MoreSuffix: '_Linux'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
@@ -1068,14 +1100,14 @@ stages:
     AgentPool: AMD-GPU
     ArtifactSuffix: 'ROCm'
     StageSuffix: 'ROCm'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.ROCm'
+    NugetPackageName: 'Microsoft.ML.OnnxRuntime.ROCm'
     SpecificArtifact: ${{ parameters.specificArtifact }}
     CustomOpArtifactName: 'onnxruntime-linux-x64-rocm'
     BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
+    AgentPool: 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-nuget-dml'
     StageName: 'Windows_CI_GPU_DML_Dev'
@@ -1085,11 +1117,11 @@ stages:
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
-    DoNugetPack : 'true'
+    DoNugetPack: 'true'
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentData=$(BuildDate) /p:CurrentTime=$(BuildTime)
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
@@ -1097,7 +1129,7 @@ stages:
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
+    AgentPool: 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-x86-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_x86'
@@ -1106,7 +1138,7 @@ stages:
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
     DoDebugBuild: 'false'
-    DoNugetPack : 'true'
+    DoNugetPack: 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
@@ -1120,7 +1152,7 @@ stages:
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
+    AgentPool: 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm64-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm64'
@@ -1129,7 +1161,7 @@ stages:
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm64'
     DoDebugBuild: 'false'
-    DoNugetPack : 'true'
+    DoNugetPack: 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
@@ -1235,5 +1267,5 @@ stages:
         artifactName: 'drop-signed-nuget-dml'
         targetPath: '$(Build.ArtifactStagingDirectory)'
     - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
