@@ -18,7 +18,6 @@ TEST(ImmutabilityTest, DNNL_LayerNorm) {
   tester.AddInput("input", {3, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f});
   tester.AddOutput("output_add", {3, 3}, {-0.22473586f, 2.0f, 4.2247357f, 2.7752638f, 5.0f, 7.224736f, 5.775262f, 8.0f, 10.224738f});
   tester.RunWithConfig();
-
 }
 
 #endif  // USE_DNNL
