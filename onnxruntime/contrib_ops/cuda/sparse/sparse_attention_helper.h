@@ -35,7 +35,7 @@ Status CheckInputs(void* params,
   //   past_key             (batch_size, kv_num_heads, max_cache_sequence_length, head_size)
   //   past_value           (batch_size, kv_num_heads, max_cache_sequence_length, head_size)
   //   block_row_indices    (num_layout, max_blocks + 1), where max_blocks = max_sequence_length / sparse_block_size
-  //   block_col_indices    (num_layout, max_nnz_blocks)
+  //   block_col_indices    (num_layout, max_nnz)
   //   seqlens_k_total      (batch_size) when do_rotary is True, optional otherwise
   //   total_seq_len        (1)
   //   cos_cache            (max_rotary_sequence_length, rotary_dim / 2) when do_rotary is true.
@@ -142,19 +142,20 @@ Status CheckInputs(void* params,
   // Check block_col_indices
   const auto& block_col_indices_dim = block_col_indices->Shape().GetDims();
   if (!(block_col_indices_dim.size() == 2 &&
-        block_row_indices_dim[0] == block_col_indices_dim[0] &&
-        block_row_indices_dim[1] <= max_blocks * max_blocks)) {
+        block_col_indices_dim[0] == block_row_indices_dim[0] &&
+        block_col_indices_dim[1] <= max_blocks * max_blocks)) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
-        "block_col_indices must have shape (num_layout, max_nnz_blocks) where max_nnz_blocks < max_blocks * max_blocks.");
+        "block_col_indices must have shape (num_layout, max_nnz), "
+        "where max_nnz <= max_blocks * max_blocks.");
   }
 
   int max_sequence_length = max_blocks * parameters->sparse_block_size;
   if (max_sequence_length < total_sequence_length) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "max_sequence_length deduced from block_row_indices shape < total_sequence_length:",
+                           "max_sequence_length should be no less than total_sequence_length:",
                            total_sequence_length,
-                           ", max_sequence_length:", max_sequence_length);
+                           ", max_sequence_length deduced from block_row_indices:", max_sequence_length);
   }
 
   // Check kv cache
@@ -184,7 +185,8 @@ Status CheckInputs(void* params,
   int max_cache_sequence_length = static_cast<int>(past_key_dims[is_past_bsnh ? 1 : 2]);
   if (max_cache_sequence_length < total_sequence_length) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "kv cache buffer is too small for total_sequence_length:", total_sequence_length,
+                           "max_cache_sequence_length should be no less than total_sequence_length:",
+                           total_sequence_length,
                            ", max_cache_sequence_length:", max_cache_sequence_length);
   }
 
@@ -225,7 +227,9 @@ Status CheckInputs(void* params,
     max_rotary_sequence_length = cos_dims[0];
     if (max_rotary_sequence_length < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "max_rotary_sequence_length should be not be less than total_sequence_length.");
+                             "max_rotary_sequence_length should be no less than total_sequence_length:",
+                             total_sequence_length,
+                             ", max_rotary_sequence_length:", max_rotary_sequence_length);
     }
 
     if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
@@ -255,8 +259,8 @@ Status CheckInputs(void* params,
   parameters->rotary_dim = rotary_dim;
   parameters->is_packed_qkv = is_packed_qkv;
   parameters->num_sparse_layout = static_cast<int>(block_row_indices_dim[0]);
-  parameters->stride_col_indices = static_cast<int>(block_col_indices_dim[1]);
   parameters->stride_row_indices = static_cast<int>(block_row_indices_dim[1]);
+  parameters->stride_col_indices = static_cast<int>(block_col_indices_dim[1]);
 
   return Status::OK();
 }

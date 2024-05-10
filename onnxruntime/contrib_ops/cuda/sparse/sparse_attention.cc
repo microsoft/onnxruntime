@@ -85,7 +85,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   SparseAttentionParameters parameters;
 
-  // Parameters from node attribute
+  // Parameters from node attribute shall be set before calling CheckInputs
   parameters.sparse_block_size = sparse_block_size_;
   parameters.num_heads = num_heads_;
   parameters.kv_num_heads = kv_num_heads_;
