@@ -251,18 +251,21 @@ AllReduce::AllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
 Status AllReduce::ComputeInternal(OpKernelContext* context) const {
-  ncclComm_t comm = nccl_->Comm();
-
   auto input_tensor = context->Input<Tensor>(0);
   const void* input_data = input_tensor->DataRaw();
+
   const auto in_shape = input_tensor->Shape();
   int64_t input_count = in_shape.Size();
 
   void* output_data = context->Output(0, in_shape)->MutableDataRaw();
 
-  ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
-  return Status::OK();
+  return FuncCustomAllReduce(nccl_,
+                             Stream(context),
+                             input_data,
+                             output_data,
+                             input_count,
+                             input_tensor->DataType(),
+                             g_ipc_mem_res_pack_.GetIPCMemoryResourcePack());
 }
 
 AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
@@ -415,6 +418,50 @@ Status FuncAllReduce(
 
   ncclDataType_t dtype = GetNcclDataType(input->DataType());
   NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
+  return Status::OK();
+}
+
+Status FuncCustomAllReduce(
+    NcclContext* nccl,
+    cudaStream_t stream,
+    const void* input_data,
+    void* output_data,
+    int64_t input_count,
+    onnxruntime::MLDataType data_type,
+    ort_trtllm::IPCMemoryResourcePack& ipc_mem_res_pack) {
+  int rank = nccl->Rank();
+  int world_size = nccl->Size();
+
+  ort_trtllm::AllReduceStrategyType runtime_strategy =
+      ort_trtllm::SelectImplementation(input_count, world_size, data_type);
+
+  if (runtime_strategy == ort_trtllm::AllReduceStrategyType::NCCL) {
+    ncclDataType_t dtype = GetNcclDataType(data_type);
+    NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl->Comm(), stream));
+
+    return Status::OK();
+  }
+
+  ort_trtllm::AllReduceStrategyConfig m_config = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
+
+  if (input_count > ipc_mem_res_pack.max_input_count) {
+    std::cout << "input_count:" << input_count << " ipc_mem_res_pack.max_input_count:" << ipc_mem_res_pack.max_input_count << std::endl;
+    ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank, world_size, input_count * data_type->Size(),
+                                                                ipc_mem_res_pack));
+    ipc_mem_res_pack.max_input_count = input_count;
+  }
+
+  ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
+      reinterpret_cast<int32_t const*>(ipc_mem_res_pack.m_comm_ptrs.data()), world_size, rank);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  params.local_output_buffer_ptr = output_data;
+  params.local_input_buffer_ptr = input_data;
+  params.elts_total = input_count;
+
+  ort_trtllm::CustomAllReduce(params, data_type, runtime_strategy, m_config, stream);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
   return Status::OK();
 }
 
