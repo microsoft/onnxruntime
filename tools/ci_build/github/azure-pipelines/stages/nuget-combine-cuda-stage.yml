@@ -246,7 +246,7 @@ stages:
           displayName: 'Clean Agent Directories'
           condition: always()
 
-    - template: nuget/templates/test_linux.yml
+    - template: ../nuget/templates/test_linux.yml
       parameters:
         AgentPool: Onnxruntime-Linux-GPU-A10
         ArtifactSuffix: 'GPU'
@@ -256,7 +256,7 @@ stages:
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - template: nuget/templates/test_linux.yml
+    - template: ../nuget/templates/test_linux.yml
       parameters:
         AgentPool: Onnxruntime-Linux-GPU-A10
         ArtifactSuffix: 'GPU'
