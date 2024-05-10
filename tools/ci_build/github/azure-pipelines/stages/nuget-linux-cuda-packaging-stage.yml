@@ -49,7 +49,8 @@ stages:
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
-      displayName: 'Build and Test'
+      displayName: 'Build CUDA C API Package'
+
     - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         arch: 'linux-x64'
@@ -114,7 +115,7 @@ stages:
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_tensorrt_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
-      displayName: 'Build and Test'
+      displayName: 'Build TensorRT C API Package'
 
     - ${{ if eq(parameters.buildJava, true) }}:
       - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
