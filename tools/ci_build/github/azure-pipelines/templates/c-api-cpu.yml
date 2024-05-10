@@ -819,18 +819,18 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-- template: ../nodejs/templates/test_win.yml
-  parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
-    StageSuffix : 'Win_CPU_x64'
+  - template: ../nodejs/templates/test_win.yml
+    parameters:
+      AgentPool : 'onnxruntime-Win-CPU-2022'
+      StageSuffix : 'Win_CPU_x64'
 
-- template: ../nodejs/templates/test_linux.yml
-  parameters:
-    AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
-    StageSuffix : 'Linux_CPU_x64'
+  - template: ../nodejs/templates/test_linux.yml
+    parameters:
+      AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
+      StageSuffix : 'Linux_CPU_x64'
 
-- template: ../nodejs/templates/test_macos.yml
-  parameters:
-    StageSuffix : 'macOS_CPU_x64'
+  - template: ../nodejs/templates/test_macos.yml
+    parameters:
+      StageSuffix : 'macOS_CPU_x64'
 
 
