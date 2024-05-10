@@ -3,16 +3,16 @@ parameters:
   StageSuffix: ''
 
 jobs:
-- job: Nodejs_Test_${{ parameters.StageSuffix }}
-  dependsOn:
-  - Nodejs_Packaging
-  condition: succeeded()
-  workspace:
-    clean: all
-  timeoutInMinutes:  120
-  pool: ${{ parameters.AgentPool }}
-  variables:
-  - name: OnnxRuntimeBuildDirectory
-    value: '$(Build.BinariesDirectory)'
-  steps:
-  - template: test.yml
+  - job: Nodejs_Test_${{ parameters.StageSuffix }}
+    dependsOn:
+    - Nodejs_Packaging
+    condition: succeeded()
+    workspace:
+      clean: all
+    timeoutInMinutes: 120
+    pool: ${{ parameters.AgentPool }}
+    variables:
+    - name: OnnxRuntimeBuildDirectory
+      value: '$(Build.BinariesDirectory)'
+    steps:
+    - template: test.yml
