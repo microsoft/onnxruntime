@@ -1932,6 +1932,22 @@ struct GroupNode {
   InlinedVector<const Node*> nodes;
 };
 
+struct NodeCompareByMaxDistance {
+  explicit NodeCompareByMaxDistance(const InlinedHashMap<NodeIndex, int>& max_distance)
+      : max_distance_(max_distance) {}
+  bool operator()(const Node* n1, const Node* n2) const {
+    if (max_distance_.at(n1->Index()) != max_distance_.at(n2->Index())) {
+      // The longer distance node should be executed first.
+      return max_distance_.at(n1->Index()) < max_distance_.at(n2->Index());
+    }
+
+    return n1->Index() < n2->Index();
+  }
+
+ private:
+  const InlinedHashMap<NodeIndex, int>& max_distance_;
+};
+
 void SortForwardNodesByReverseDFS(const Graph* graph,
                                   const InlinedVector<const Node*>& forward_output_nodes,
                                   const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
@@ -1941,6 +1957,38 @@ void SortForwardNodesByReverseDFS(const Graph* graph,
   // Note 2: While it is also possible some nodes not contributing to the forward output nodes will be
   //   executed before YieldOp, for example, if one forward node's output is used by Shape/Size, then
   //   the Shape/Size node should be executed before YieldOp to release the memory as soon as possible.
+  InlinedVector<size_t> nodes_in_degree;
+  std::queue<const Node*> to_visit;
+  nodes_in_degree.resize(graph->MaxNodeIndex(), 0);
+  for (auto& node : graph->Nodes()) {
+    size_t input_edge_count = node.GetInputEdgesCount();
+    nodes_in_degree[node.Index()] = input_edge_count;
+    if (input_edge_count == 0) {
+      to_visit.push(&node);
+    }
+  }
+
+  InlinedHashMap<NodeIndex, int> max_distance;
+  max_distance.reserve(graph->NumberOfNodes());
+  while (!to_visit.empty()) {
+    const Node* current = to_visit.front();
+    to_visit.pop();
+
+    if (!current) continue;
+
+    for (auto output_edge_it = current->OutputEdgesBegin();
+         output_edge_it != current->OutputEdgesEnd();
+         ++output_edge_it) {
+      const Node* out_node = &output_edge_it->GetNode();
+      max_distance[out_node->Index()] = std::max(max_distance[out_node->Index()],
+                                                 max_distance[current->Index()] + 1);
+      auto& node_in_degree = nodes_in_degree[out_node->Index()];
+      node_in_degree--;
+      if (node_in_degree == 0) {
+        to_visit.push(out_node);
+      }
+    }
+  }
 
   // Reverse DFS from forward output nodes to find all "forward" nodes.
   // The forward nodes are ordered by Reverse DFS tranverse.
@@ -1951,7 +1999,7 @@ void SortForwardNodesByReverseDFS(const Graph* graph,
         nodes_to_execute_before_yieldop.insert(n);
         node_orders.push_back(n->Index());
       },
-      NodeCompare());
+      NodeCompareByMaxDistance(max_distance));
 
   for (const auto& parent_to_children_pair : shape_size_parents) {
     const NodeIndex& parent_index = parent_to_children_pair.first;
@@ -1976,13 +2024,13 @@ void SortForwardNodesByReverseDFS(const Graph* graph,
 }
 
 void PrepareToFindBranchGraph(const Graph* graph,
-                              const InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
+                              std::function<bool(const Node*)> is_forward_node,
                               InlinedVector<const Node*>& branch_graph_input_nodes,
                               InlinedVector<size_t>& backward_node_in_degree,
                               std::queue<const Node*>& to_visit) {
   for (auto& node : graph->Nodes()) {
     // Ignore forward.
-    if (nodes_to_execute_before_yieldop.find(&node) != nodes_to_execute_before_yieldop.end()) {
+    if (is_forward_node(&node)) {
       continue;
     }
 
@@ -2004,7 +2052,7 @@ void PrepareToFindBranchGraph(const Graph* graph,
     for (auto input_edge_it = node.InputEdgesBegin(); input_edge_it != node.InputEdgesEnd(); ++input_edge_it) {
       const Node* input_node = &input_edge_it->GetNode();
       // If the input edge connect to forward nodes, then we remove the in_degree of the node.
-      if (nodes_to_execute_before_yieldop.find(input_node) != nodes_to_execute_before_yieldop.end()) {
+      if (is_forward_node(input_node)) {
         input_edge_count--;
       }
     }
@@ -2203,11 +2251,15 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
   topo_order.reserve(num_of_backward_nodes);
   std::queue<const Node*> to_visit;
 
+  auto is_forward_op = [&nodes_to_execute_before_yieldop](const Node* n) -> bool {
+    return nodes_to_execute_before_yieldop.find(n) != nodes_to_execute_before_yieldop.end();
+  };
+
   InlinedVector<const Node*> branch_graph_input_nodes;
   branch_graph_input_nodes.reserve(num_of_backward_nodes);
 
   PrepareToFindBranchGraph(this,
-                           nodes_to_execute_before_yieldop,
+                           is_forward_op,
                            branch_graph_input_nodes,
                            backward_node_in_degree,
                            to_visit);
