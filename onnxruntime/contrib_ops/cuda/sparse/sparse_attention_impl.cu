@@ -221,8 +221,7 @@ Status QkvToContext(
   DUMP_TENSOR("csr_col_indices",
               data.kernel_layout.csr_col_indices,
               data.kernel_layout.num_layout,
-              parameters.stride_col_indices,
-              data.kernel_layout.num_cols);
+              parameters.stride_col_indices);
 
   DUMP_TENSOR("csr_row_indices",
               data.kernel_layout.csr_row_indices,
@@ -266,9 +265,9 @@ Status QkvToContext(
         parameters.total_sequence_length,
         parameters.max_cache_sequence_length,
         parameters.scale,
-        data.kernel_layout.block_size,                              // kernel_block_size
-        data.kernel_layout.csr_row_indices,                         // shape (num_layout, stride_row_indices)
-        data.kernel_layout.csr_col_indices,                         // shape (num_layout, stride_col_indices)
+        data.kernel_layout.block_size,       // kernel_block_size
+        data.kernel_layout.csr_row_indices,  // shape (num_layout, stride_row_indices)
+        data.kernel_layout.csr_col_indices,  // shape (num_layout, stride_col_indices)
         parameters.stride_row_indices,
         parameters.stride_col_indices,
         data.kernel_layout.num_layout,
@@ -302,9 +301,9 @@ Status QkvToContext(
         parameters.total_sequence_length,
         parameters.max_cache_sequence_length,
         parameters.scale,
-        data.kernel_layout.block_size,                              // kernel_block_size
-        data.kernel_layout.csr_row_indices,                         // (num_layout, stride_row_indices)
-        data.kernel_layout.csr_col_indices,                         // (num_layout, stride_row_indices)
+        data.kernel_layout.block_size,       // kernel_block_size
+        data.kernel_layout.csr_row_indices,  // (num_layout, stride_row_indices)
+        data.kernel_layout.csr_col_indices,  // (num_layout, stride_row_indices)
         parameters.stride_row_indices,
         parameters.stride_col_indices,
         data.kernel_layout.num_layout);
