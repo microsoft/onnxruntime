@@ -329,6 +329,9 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     DoCompliance: ${{ parameters.DoCompliance }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    CudaVersion: ${{ parameters.CudaVersion }}
+    specificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - stage: NuGet_Packaging_ROCm
   dependsOn:

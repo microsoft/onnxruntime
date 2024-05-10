@@ -8,6 +8,14 @@ parameters:
 - name: IsReleaseBuild
   type: boolean
 
+- name: CudaVersion
+  type: string
+
+- name: specificArtifact
+  type: boolean
+
+- name: BuildId
+  type: string
 stages:
 ######## Nuget ########
 # Win/Linux CUDA Combined packaging
