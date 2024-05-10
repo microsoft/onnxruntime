@@ -19,7 +19,7 @@ stages:
     - Linux_C_API_Packaging_Combined_CUDA
   condition: succeeded()
   jobs:
-    - job:
+    - job: NuGet_Packaging_GPU
       workspace:
         clean: all
       pool: 'Onnxruntime-Win-CPU-2022'
@@ -237,3 +237,24 @@ stages:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'
           condition: always()
+
+    - template: nuget/templates/test_linux.yml
+      parameters:
+        AgentPool: Onnxruntime-Linux-GPU-A10
+        ArtifactSuffix: 'GPU'
+        StageSuffix: 'GPU'
+        NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+        CudaVersion: ${{ parameters.CudaVersion }}
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: nuget/templates/test_linux.yml
+      parameters:
+        AgentPool: Onnxruntime-Linux-GPU-A10
+        ArtifactSuffix: 'GPU'
+        StageSuffix: 'GPU'
+        MoreSuffix: '_Linux'
+        NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+        CudaVersion: ${{ parameters.CudaVersion }}
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}

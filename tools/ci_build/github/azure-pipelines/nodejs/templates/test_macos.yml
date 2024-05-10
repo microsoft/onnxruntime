@@ -1,20 +1,19 @@
 parameters:
   StageSuffix: ''
-stages:
-- stage: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
+
+jobs:
+- job: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
   dependsOn:
   - Nodejs_Packaging
   condition: succeeded()
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    timeoutInMinutes:  120
-    pool:
-      vmImage: 'macOS-latest'
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool:
+    vmImage: 'macOS-latest'
 
-    variables:
-    - name: OnnxRuntimeBuildDirectory
-      value: '$(Build.BinariesDirectory)'
-    steps:
-    - template: test.yml
+  variables:
+  - name: OnnxRuntimeBuildDirectory
+    value: '$(Build.BinariesDirectory)'
+  steps:
+  - template: test.yml
