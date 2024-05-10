@@ -136,6 +136,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_PaddingAndBroadcast_BLargerThanA) {
                     ExpectedEPNodeAssignment::All, 7);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
@@ -230,6 +231,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_Broadcast_A16_W16) {
                                                     18,
                                                     true);  // Use com.microsoft Q/DQ ops
 }
+
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime

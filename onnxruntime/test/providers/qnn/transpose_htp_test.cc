@@ -14,6 +14,7 @@
 
 namespace onnxruntime {
 namespace test {
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Function that builds a model with a Transpose operator.
 template <typename DataType>
@@ -124,6 +125,8 @@ TEST_F(QnnHTPBackendTests, TransposeFloatOnHTP) {
                                  {utils::MakeAttribute("perm", std::vector<int64_t>{0, 2, 3, 1})},
                                  ExpectedEPNodeAssignment::All);
 }
+
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime

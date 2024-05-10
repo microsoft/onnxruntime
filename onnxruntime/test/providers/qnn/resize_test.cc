@@ -318,6 +318,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_Resize_DownSample_Linear_HalfPixel_scales) {
                                ExpectedEPNodeAssignment::All);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
@@ -467,6 +468,8 @@ TEST_F(QnnHTPBackendTests, ResizeU8_HalfNearestAsymmetricFloor) {
                               {1, 3, 2, 2}, "nearest", "asymmetric", "floor",
                               ExpectedEPNodeAssignment::All);
 }
+
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime

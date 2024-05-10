@@ -121,6 +121,7 @@ TEST_F(QnnCPUBackendTests, ArgMaxMin_DefaultAttrs) {
                      ExpectedEPNodeAssignment::All, 13);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
@@ -230,6 +231,8 @@ TEST_F(QnnHTPBackendTests, ArgMaxMin_AsGraphOutputUnsupported) {
                   ExpectedEPNodeAssignment::None,  // No nodes should be assigned to QNN EP!
                   expected_nodes_in_graph);
 }
+
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

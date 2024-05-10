@@ -56,6 +56,8 @@ TEST_F(QnnCPUBackendTests, Slice_SharedInitializersBugFix) {
                   ExpectedEPNodeAssignment::All);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
 /**
  * Runs an Slice model on the QNN HTP backend. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
@@ -199,6 +201,7 @@ TEST_F(QnnHTPBackendTests, SliceU8_MultAxes_LargeEnd) {
                            TestInputDef<int64_t>({2}, true, {1, 1}),      // steps
                            ExpectedEPNodeAssignment::All);
 }
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime

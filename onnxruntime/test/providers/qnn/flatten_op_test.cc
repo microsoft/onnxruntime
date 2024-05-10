@@ -60,6 +60,7 @@ TEST_F(QnnCPUBackendTests, Flatten_Rank5_Axis2) {
                       ExpectedEPNodeAssignment::All);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
@@ -194,6 +195,8 @@ TEST_F(QnnHTPBackendTests, Flatten_Int32_Rank5_Axis2) {
                                {utils::MakeAttribute("axis", static_cast<int64_t>(2))},
                                ExpectedEPNodeAssignment::All);
 }
+
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

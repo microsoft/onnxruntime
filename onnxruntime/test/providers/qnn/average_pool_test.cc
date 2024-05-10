@@ -112,6 +112,7 @@ TEST_F(QnnCPUBackendTests, AveragePool_AutopadSameLower) {
                        ExpectedEPNodeAssignment::All);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
@@ -181,6 +182,9 @@ TEST_F(QnnHTPBackendTests, AveragePool_AutopadSameLower_HTP_u8) {
                                    // Need to use tolerance of 0.414% of output range after QNN SDK 2.17
                                    QDQTolerance(0.00414f));
 }
+
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
 }  // namespace test
 }  // namespace onnxruntime
 

@@ -159,6 +159,7 @@ TEST_F(QnnCPUBackendTests, GlobalMaxPoolTest) {
                 ExpectedEPNodeAssignment::All);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
@@ -291,6 +292,8 @@ TEST_F(QnnHTPBackendTests, GlobalMaxPool_LargeInput2_u8) {
                             {},
                             ExpectedEPNodeAssignment::All);
 }
+
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime

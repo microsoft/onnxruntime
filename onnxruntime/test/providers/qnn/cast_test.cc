@@ -85,6 +85,7 @@ TEST_F(QnnCPUBackendTests, TestCastFloatToInt32) {
                        false);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
 //
@@ -106,6 +107,8 @@ TEST_F(QnnHTPBackendTests, TestCastFloatToInt32HTP) {
   RunCastOpTest<float>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32, ExpectedEPNodeAssignment::All,
                        true);
 }
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
 }  // namespace test
 }  // namespace onnxruntime
 

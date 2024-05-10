@@ -14,6 +14,7 @@
 
 namespace onnxruntime {
 namespace test {
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Computes the mean and variance of inputs within a channel.
 // Requires an input with rank >= 3
@@ -276,6 +277,9 @@ TEST_F(QnnHTPBackendTests, BatchNorm3D) {
                       TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),                                // Bias initializer
                       ExpectedEPNodeAssignment::None);
 }
+
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
 }  // namespace test
 }  // namespace onnxruntime
 
