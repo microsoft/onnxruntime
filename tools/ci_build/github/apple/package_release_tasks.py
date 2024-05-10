@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import shlex
 import subprocess
@@ -50,6 +51,15 @@ def update_podspec(pod_archive_path: Path, podspec_path: Path):
     podspec_path.write_text(podspec_content)
 
 
+def _resolve_single_path_from_pattern(path_pattern: str) -> Path:
+    matches = glob.glob(path_pattern)
+    if len(matches) != 1:
+        raise argparse.ArgumentTypeError(
+            f"Expected exactly 1 match for pattern '{path_pattern}' but got {len(matches)} matches."
+        )
+    return Path(matches[0]).resolve(strict=True)
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(
         description="Helper script to perform release tasks. "
@@ -58,14 +68,14 @@ def _parse_args():
 
     parser.add_argument(
         "--pod-archive-path",
-        type=Path,
-        help="Pod archive path.",
+        type=_resolve_single_path_from_pattern,
+        help="Pod archive path. It may be a pattern, in which case it must match exactly one path.",
     )
 
     parser.add_argument(
         "--podspec-path",
-        type=Path,
-        help="Podspec path.",
+        type=_resolve_single_path_from_pattern,
+        help="Podspec path. It may be a pattern, in which case it must match exactly one path.",
     )
 
     parser.add_argument(
@@ -82,11 +92,9 @@ def _validate_args(
 ):
     if require_pod_archive_path:
         assert args.pod_archive_path is not None, "--pod-archive-path must be specified."
-        args.pod_archive_path = args.pod_archive_path.resolve(strict=True)
 
     if require_podspec_path:
         assert args.podspec_path is not None, "--podspec-path must be specified."
-        args.podspec_path = args.podspec_path.resolve(strict=True)
 
 
 def main():
