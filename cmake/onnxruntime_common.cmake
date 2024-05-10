@@ -71,6 +71,12 @@ if(onnxruntime_target_platform STREQUAL "ARM64EC")
     endif()
 endif()
 
+if(onnxruntime_target_platform STREQUAL "ARM64")
+    if (MSVC)
+        add_compile_options("/bigobj")
+    endif()
+endif()
+
 file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
