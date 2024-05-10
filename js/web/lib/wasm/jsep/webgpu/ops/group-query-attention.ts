@@ -63,10 +63,11 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   let pastSequenceLength = 0;
   let maxSequenceLength = 0;
   const headSize = Math.floor(hiddenSize / attributes.numHeads);
+  const hasPastKey = pastKey && pastKey.dims.length !== 0;
+  const hasPastValue = pastValue && pastValue.dims.length !== 0;
   // TODO : this should be from attributes.
-  const isPastkvBSNH = false;
-
-  if (pastKey && pastValue) {
+  const isPastkvBSNH = true;
+  if (hasPastKey && hasPastValue) {
     if (pastKey.dims.length !== 4) {
       throw new Error('Input "past_key" is expected to have 4 dimensions');
     }
@@ -82,7 +83,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
       pastSequenceLength = pastKey.dims[2];
       maxSequenceLength = pastKey.dims[2];
     }
-  } else if (pastKey || pastValue) {
+  } else if (hasPastKey || hasPastValue) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
   }
 
@@ -186,19 +187,19 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
 };
 
 const createConcatProgramInfo =
-    (a: TensorView, b: TensorView, dataType: DataType, params: AttentionParameters): ProgramInfo => {
+    (a: TensorView, b: TensorView|undefined, dataType: DataType, params: AttentionParameters): ProgramInfo => {
       const outputShape = [params.batchSize, params.totalSequenceLength, params.kvNumHeads!, params.headSize];
       const component = 4;
       const outputSize = ShapeUtil.size(outputShape) / component;
       const presentSequenceLength = params.totalSequenceLength;
       const output = outputVariable('present_kv', dataType, outputShape.length, component);
       const inputA = inputVariable('new_kv', a.dataType, a.dims.length, component);
-      const inputB = inputVariable('past_kv', b.dataType, b.dims.length, component);
+      const inputB = b ? inputVariable('past_kv', b.dataType, b.dims.length, component) : undefined;
 
       const H = Math.ceil(params.headSize / component);
       const dispatch = {x: presentSequenceLength, y: a.dims[0], z: 1};
 
-      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
+      const inputDependencies: ProgramInputTensorInfoDependency[] = b ? ['rank', 'rank'] : ['rank'];
 
       const programUniforms: ProgramUniform[] = [
         {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: params.pastSequenceLength},
@@ -206,18 +207,45 @@ const createConcatProgramInfo =
         {type: DataType.uint32, data: params.totalSequenceLength}
       ];
 
-      programUniforms.push(
-          ...createTensorShapeVariables(a.dims), ...createTensorShapeVariables(b.dims),
-          ...createTensorShapeVariables(outputShape));
+      const inputs = [inputA];
+      if (inputB) {
+        programUniforms.push(
+            ...createTensorShapeVariables(a.dims), ...createTensorShapeVariables(b.dims),
+            ...createTensorShapeVariables(outputShape));
+        inputs.push(inputB);
+      } else {
+        programUniforms.push(...createTensorShapeVariables(a.dims), ...createTensorShapeVariables(outputShape));
+      }
       const uniforms: UniformsArrayType = [
         {name: 'output_size', type: 'u32'}, {name: 'past_seqlen', type: 'u32'}, {name: 'new_seqlen', type: 'u32'},
         {name: 'present_seqlen', type: 'u32'}
       ];
 
+      const pastStr = `      let past_batch_stride = uniforms.past_seqlen * num_heads * H;
+        var past_head_stride = uniforms.past_seqlen * H;
+        if (is_bsnh) {
+          past_head_stride = H;
+        }
+        let in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
+        present_kv[out_offset] = past_kv[in_offset];`;
+      const newStr = `      let new_batch_stride = uniforms.new_seqlen * num_heads * H;
+        let new_row_stride = num_heads * H;
+        let new_head_stride = H;
+        let in_offset = b * new_batch_stride + (s - past_seqlen) * new_row_stride + n * new_head_stride + h;
+        present_kv[out_offset] = new_kv[in_offset];`;
+      const concatStr = b ? `if (s < past_seqlen) {
+        ${pastStr}
+        } else if (s < past_seqlen + uniforms.new_seqlen) {
+        ${newStr}
+        }` :
+                            `if (s < past_seqlen + uniforms.new_seqlen) {
+          ${newStr}
+        }`;
+
       // TODO: handle H * params.kvNumHeads greater than maxComputeInvocationsPerWorkgroup limit.
       const getShaderSource = (shaderHelper: ShaderHelper) => `
 
-  ${shaderHelper.registerUniforms(uniforms).declareVariables(...[inputA, inputB], output)}
+  ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputs, output)}
   ${shaderHelper.mainStart([
         H, params.kvNumHeads!, 1
       ])}
@@ -234,6 +262,7 @@ const createConcatProgramInfo =
     let present_batch_stride = present_seqlen * num_heads * H;
     var row_stride = H;
     let is_bsnh = ${params.isPastkvBSNH};
+
     if (is_bsnh) {
       row_stride = num_heads * H;
     }
@@ -245,26 +274,12 @@ const createConcatProgramInfo =
     let past_seqlen = uniforms.past_seqlen;
 
     let out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
-    if (s < past_seqlen) {
-      let past_batch_stride = uniforms.past_seqlen * num_heads * H;
-      var past_head_stride = uniforms.past_seqlen * H;
-      if (is_bsnh) {
-        past_head_stride = H;
-      }
-      let in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
-      present_kv[out_offset] = past_kv[in_offset];
-    } else if (s < past_seqlen + uniforms.new_seqlen) {
-      let new_batch_stride = uniforms.new_seqlen * num_heads * H;
-      let new_row_stride = num_heads * H;
-      let new_head_stride = H;
-      let in_offset = b * new_batch_stride + (s - past_seqlen) * new_row_stride + n * new_head_stride + h;
-      present_kv[out_offset] = new_kv[in_offset];
-    }
+    ${concatStr}
   }`;
 
       return {
         name: 'ConcatPastNew',
-        shaderCache: {hint: `${params.kvNumHeads!}${H}`, inputDependencies},
+        shaderCache: {hint: `${params.kvNumHeads!}${H}${!!b}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType}],
           dispatchGroup: dispatch,
@@ -292,7 +307,11 @@ const maybeExpandAndTransposeToBNSH =
       if (pastKV) {
         reshapedInput = context.compute(
             createConcatProgramInfo(reshapedInput, pastKV, reshapedInput.dataType, params),
-            {inputs: [reshapedInput, pastKV], outputs: [outputIndex]})[0];
+            {inputs: [reshapedInput, pastKV], outputs: [params.isPastkvBSNH ? outputIndex : -1]})[0];
+      } else {
+        reshapedInput = context.compute(
+            createConcatProgramInfo(reshapedInput, undefined, reshapedInput.dataType, params),
+            {inputs: [reshapedInput], outputs: [params.isPastkvBSNH ? outputIndex : -1]})[0];
       }
       if (nReps !== 1) {
         reshapedInput = context.compute(
@@ -319,10 +338,9 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
   const Q = maybeTransposeToBNSHAndAddBias(
       context, params.batchSize, params.numHeads, params.sequenceLength, params.headSize, context.inputs[0], undefined,
       0);
-  const hasMultipleOutputs = context.inputs[3] && context.inputs[4];
-  const K =
-      maybeExpandAndTransposeToBNSH(context, context.inputs[1], context.inputs[3], params, hasMultipleOutputs ? 1 : -1);
-  const V =
-      maybeExpandAndTransposeToBNSH(context, context.inputs[2], context.inputs[4], params, hasMultipleOutputs ? 2 : -1);
+  const pastKey = context.inputs[3] && context.inputs[3].dims.length !== 0 ? context.inputs[3] : undefined;
+  const pastValue = context.inputs[4] && context.inputs[4].dims.length !== 0 ? context.inputs[4] : undefined;
+  const K = maybeExpandAndTransposeToBNSH(context, context.inputs[1], pastKey, params, 1);
+  const V = maybeExpandAndTransposeToBNSH(context, context.inputs[2], pastValue, params, 2);
   applyAttention(context, Q, K, V, undefined, undefined, undefined, undefined, undefined, params, attributes);
 };
