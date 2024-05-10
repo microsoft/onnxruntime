@@ -36,7 +36,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
     std::cout << "not cuda rocm, it is:" << node.GetExecutionProviderType() << " is it here?" << std::endl;
   }
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {11, 13, 18}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {13, 18}) ||
       // !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 2)) {
     return false;
@@ -54,8 +54,7 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // Which operators to support?
   auto type_allowed = [](NodeArg* input) {
     auto data_type = input->TypeAsProto()->tensor_type().elem_type();
-    if (data_type != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE &&
-        data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+    if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
         data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
         data_type != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
       return false;
@@ -196,6 +195,7 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     NodeArg* input;
     int axis;
     float alpha;
+    // Call this from match fn
     if (!GetSplitQuickGeluParams(*split_node, *quickgelu_node, input, axis, alpha)) {
       continue;
     }

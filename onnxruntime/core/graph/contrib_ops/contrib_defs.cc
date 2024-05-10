@@ -632,7 +632,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 // TODO: Needs modification, inspired from QuickGelu code
-constexpr const char* S2SModelSplitQuickGelu_ver1_doc = R"DOC(Compute x * Sigmoid(alpha * x).)DOC";
+constexpr const char* S2SModelSplitQuickGelu_ver1_doc = R"DOC(Split x * Sigmoid(alpha * x).)DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(
     S2SModelSplitQuickGelu, 1,
     OpSchema()
@@ -644,7 +644,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0, "X", "The input data as Tensor.", "T")
         // .Input(1, "split", "split tensor.", "T")
         .Output(0, "Y", "The output.", "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           // Prop elem type
