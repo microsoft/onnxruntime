@@ -210,7 +210,7 @@ const createConcatProgramInfo =
       const inputs = [inputA];
       if (inputB) {
         programUniforms.push(
-            ...createTensorShapeVariables(a.dims), ...createTensorShapeVariables(b.dims),
+            ...createTensorShapeVariables(a.dims), ...createTensorShapeVariables(b!.dims),
             ...createTensorShapeVariables(outputShape));
         inputs.push(inputB);
       } else {
