@@ -2,11 +2,15 @@ resources:
   pipelines:
   - pipeline: build
     source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
-    trigger: 
+    trigger:
       branches:
         include:
         - main
-    branch: main
+        - rel-*
+    branch:
+      include:
+      - main
+      - rel-*
 
 stages:
 - stage: Publish_NuGet_Package_And_Report
@@ -23,13 +27,13 @@ stages:
     - checkout: self
       submodules: false
     - template: templates/set-version-number-variables-step.yml
-    
+
     - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
-    
+
     - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-CPU'
-   
+
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-CPU\*" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
 
     - template: nuget/templates/get-nuget-package-version-as-variable.yml
@@ -117,7 +121,7 @@ stages:
 
     - task: CodeSign@1
       displayName: 'Run Codesign Validation'
-      
+
 
     - task: PublishSecurityAnalysisLogs@3
       displayName: 'Publish Security Analysis Logs'

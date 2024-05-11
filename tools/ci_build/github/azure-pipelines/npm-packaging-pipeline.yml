@@ -28,7 +28,10 @@ resources:
   - pipeline: build
     source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
     trigger: true
-    branch: main
+    branch:
+        include:
+        - main
+        - rel-*
   repositories:
   - repository: manylinux
     type: Github
