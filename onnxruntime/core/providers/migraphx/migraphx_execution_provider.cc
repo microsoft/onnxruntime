@@ -154,23 +154,23 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   }
 
   //Save/load migraphx compiled models
-  const std::string save_comp_model_env = onnxruntime::GetenvironmentVar(migraphx_env_vars::kSaveCompiledModel);
+  const std::string save_comp_model_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kSaveCompiledModel);
   if (!save_comp_model_env.empty()) {
     save_compiled_model_ = (std::stoi(save_comp_model_env) == 0 ? false : true);
   }
 
-  const std::string save_model_path_env = onnxruntime::GetenvironmentVar(migraphx_env_vars::ksaveCompiledPath);
+  const std::string save_model_path_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kSavedModelPath);
 
   if (save_compiled_model_ && !save_model_path_env.empty()) {
     save_compiled_path_ = save_model_path_env;
   }
 
-  const std::string load_comp_model_env = onnxruntime::GetenvironmentVar(migraphx_env_vars::kLoadCompiledModel);
+  const std::string load_comp_model_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kLoadCompiledModel);
   if (!load_comp_model_env.empty()) {
     load_compiled_model_ = (std::stoi(load_comp_model_env) == 0 ? false : true);
   }
 
-  const std::string load_model_path_env = onnxruntime::GetenvironmentVar(migraphx_env_vars::kLoadCompiledPath);
+  const std::string load_model_path_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kLoadModelPath);
   if (load_compiled_model_ && !load_model_path_env.empty()) {
     load_compiled_path_ = load_model_path_env;
   }
@@ -199,9 +199,9 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
                         << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
                         << ", use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_
                         << ", migraphx_save_compiled_model: " << save_compiled_model_
-                        << ", migraphx_save_compiled_model_path: " << save_compiled_model_path_
+                        << ", migraphx_save_compiled_model_path: " << save_compiled_path_
                         << ", migraphx_load_compiled_model: " << load_compiled_model_
-                        << ", migraphx_load_compiled_model_path: " << load_compiled_model_path_;
+                        << ", migraphx_load_compiled_model_path: " << load_compiled_path_;
 }
 
 MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
@@ -1150,9 +1150,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     // the input fused_node
     migraphx::program prog;
 
-    if(!load_compiled_model)
-    {
-      if (!no_input_shape) {
+    if (!no_input_shape) {
+      if(!load_compiled_model_)
+      {
         LOGS_DEFAULT(INFO) << "No Input shapes detected quantizing model" << std::endl;
         prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
 
@@ -1191,16 +1191,19 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
         prog.compile(t_, co);
         LOGS_DEFAULT(INFO) << "Model Compile: Complete" << std::endl;
-        if (save_compiled_mode)
+
+        if (save_compiled_model_)
         {
+          LOGS_DEFAULT(INFO) << "Model Save: Begin" << std::endl;
           migraphx::file_options fo;
           fo.set_file_format("msgpack");
-          migraphx::save(prog, save_compiled_path, fo);
+          migraphx::save(prog, save_compiled_path_.c_str(), fo);
+          LOGS_DEFAULT(INFO) << "Model Save: Complete" << std::endl;
         }
       }
       else
       {
-        prog = migraphx::load(load_compiled_path);
+        prog = migraphx::load(load_compiled_path_.c_str());
       }
 
       auto prog_output_shapes = prog.get_output_shapes();
@@ -1223,8 +1226,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
             map_no_input_shape_[context->node_name], fp16_enable_, int8_enable_,
             int8_calibration_cache_available_, dynamic_range_map,
-            save_compiled_mode_, save_compiled_path_,
-            load_compiled_mode_, load_compiled_path_, dump_model_ops_};
+            save_compiled_model_, save_compiled_path_,
+            load_compiled_model_, load_compiled_path_, dump_model_ops_};
       *state = p.release();
       return 0;
     };
@@ -1297,12 +1300,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         }
       }
 
-      if(!load_compiled_model)
-      {
-        // input shapes are different, needs to re-parse onnx and
-        // re-compile the program
-        if (!input_shape_match) {
-  <<<<<<< HEAD
+      // input shapes are different, needs to re-parse onnx and
+      // re-compile the program
+      if (!input_shape_match) {
+        if(!load_compiled_model_)
+        {
           LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
           prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
 
@@ -1361,15 +1363,17 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           prog.compile(t, co);
 
           LOGS_DEFAULT(INFO) << "Model Compile: Completed" << std::endl;
-          if (save_compiled_mode)
+          if (save_compiled_model_)
           {
+            LOGS_DEFAULT(INFO) << "Model Save: Begin" << std::endl;
             migraphx::file_options fo;
             fo.set_file_format("msgpack");
-            migraphx::save(prog, save_compiled_path, fo);
+            migraphx::save(prog, save_compiled_path_.c_str(), fo);
+            LOGS_DEFAULT(INFO) << "Model Save: Completed" << std::endl;
           }
         else
         {
-          prog = migraphx::load(load_compiled_path);
+          prog = migraphx::load(load_compiled_path_.c_str());
         }
 
         mgx_state->prog = prog;

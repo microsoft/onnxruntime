@@ -50,9 +50,9 @@ struct MIGraphXFuncState {
   bool int8_calibration_cache_available = false;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool save_compiled_mode = false;
-  std::string save_compiled_path = false;
+  std::string save_compiled_path;
   bool load_compiled_mode = false;
-  std::string load_compiled_path = false;
+  std::string load_compiled_path;
   bool dump_model_ops = false;
 };
 

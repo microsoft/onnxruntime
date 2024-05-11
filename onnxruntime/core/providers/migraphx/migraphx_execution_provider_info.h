@@ -20,9 +20,9 @@ struct MIGraphXExecutionProviderInfo {
   std::string int8_calibration_table_name{""};
   bool int8_use_native_calibration_table{false};
   bool save_compiled_model{false};
-  std::string save_model_file("");
+  std::string save_model_file{""};
   bool load_compiled_model{false};
-  std::string load_model_file("");
+  std::string load_model_file{""};
 
   static MIGraphXExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const MIGraphXExecutionProviderInfo& info);
