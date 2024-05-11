@@ -113,6 +113,9 @@ endif()
 if (onnxruntime_USE_AZURE)
   set(PROVIDERS_AZURE onnxruntime_providers_azure)
 endif()
+if(onnxruntime_USE_NPU)
+  set(PROVIDERS_NPU onnxruntime_providers_npu)
+endif()
 
 
 if(onnxruntime_USE_SNPE)
@@ -199,3 +202,8 @@ endif()
 if (onnxruntime_USE_AZURE)
   include(onnxruntime_providers_azure.cmake)
 endif()
+
+if (onnxruntime_USE_NPU)
+  include(onnxruntime_providers_npu.cmake)
+endif()
+
