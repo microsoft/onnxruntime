@@ -6,7 +6,7 @@
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_npu_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_npu ${onnxruntime_providers_npu_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+  onnxruntime_add_include_to_target(onnxruntime_providers_npu onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
   add_dependencies(onnxruntime_providers_npu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_npu PROPERTIES FOLDER "ONNXRuntime")
   #target_include_directories(onnxruntime_providers_npu PRIVATE

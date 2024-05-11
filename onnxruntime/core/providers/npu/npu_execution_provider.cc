@@ -7,7 +7,7 @@ NPUExecutionProvider::NPUExecutionProvider(const NPUExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kNpuExecutionProvider}, info_{info} {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
-GetCapability(const onnxruntime::GraphViewer& graph,
+NPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
               const IKernelLookup& kernel_lookup) const {
   for (const auto& node : graph.Nodes()) {
     std::cout << " Node Name : " << node.Name() << std::endl;
