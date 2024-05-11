@@ -142,7 +142,6 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
  * @param graph_viewer The graph viewer to get node information.
  * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
  * @param probe_config The config for subgraph detecting.
- * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
  * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
  *   Used to re-order the collected subgraph nodes.
  * @param candidate_output_args_map A map from node to its candidate activations.
@@ -158,7 +157,6 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
 std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& graph_viewer,
                                                          const Node& node,
                                                          const ProbeConfig& probe_config,
-                                                         const ActivationUsedMap& fw_op_output_arg_used_map,
                                                          const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                                              node_index_to_its_order_in_topological_sort_map,
                                                          const InlinedHashMap<const Node*, InlinedVector<size_t>>&
