@@ -797,7 +797,7 @@ stages:
     build_config: RelWithDebInfo
 
 - stage: NuGet_Packaging_QNN
-  pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+  pool: Onnxruntime-QNNEP-Windows-2022-CPU
   dependsOn:
   - OnnxRuntime_QNN_Nuget_Win_x64
   - OnnxRuntime_QNN_Nuget_Win_Arm64
