@@ -777,7 +777,6 @@ stages:
 
 - template: templates/qnn-ep-win.yml
   parameters:
-    qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
     QnnSdk: ${{ parameters.QnnSdk }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -787,7 +786,6 @@ stages:
 
 - template: templates/qnn-ep-win.yml
   parameters:
-    qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
     QnnSdk: ${{ parameters.QnnSdk }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoEsrp: ${{ parameters.DoEsrp }}
