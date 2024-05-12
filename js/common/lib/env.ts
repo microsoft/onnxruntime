@@ -5,16 +5,30 @@ import {env as envImpl} from './env-impl.js';
 
 export declare namespace Env {
   export type WasmPathPrefix = string;
-  /**
-   * @deprecated Using per-file override is deprecating. Use path prefix instead.
-   */
-  export type WasmFilePaths = {
-    /* eslint-disable @typescript-eslint/naming-convention */
-    'ort-wasm-simd-threaded.wasm': string;
-    'ort-wasm-simd-threaded.jsep.wasm'?: string;
-    'ort-training-wasm-simd-threaded.wasm'?: string;
-    /* eslint-enable @typescript-eslint/naming-convention */
-  };
+  export interface WasmFilePaths {
+    /**
+     * Specify the override path for the main .wasm file.
+     *
+     * This path should be an absolute path.
+     *
+     * If not modified, the filename of the .wasm file is:
+     * - `ort-wasm-simd-threaded.wasm` for default build
+     * - `ort-wasm-simd-threaded.jsep.wasm` for JSEP build (with WebGPU and WebNN)
+     * - `ort-training-wasm-simd-threaded.wasm` for training build
+     */
+    wasm?: string;
+    /**
+     * Specify the override path for the main .mjs file.
+     *
+     * This path should be an absolute path.
+     *
+     * If not modified, the filename of the .mjs file is:
+     * - `ort-wasm-simd-threaded.mjs` for default build
+     * - `ort-wasm-simd-threaded.jsep.mjs` for JSEP build (with WebGPU and WebNN)
+     * - `ort-training-wasm-simd-threaded.mjs` for training build
+     */
+    mjs?: string;
+  }
   export type WasmPrefixOrFilePaths = WasmPathPrefix|WasmFilePaths;
   export interface WebAssemblyFlags {
     /**
@@ -55,10 +69,8 @@ export declare namespace Env {
     initTimeout?: number;
 
     /**
-     * Set a custom URL prefix to the .wasm files or a set of overrides for each .wasm file. The override path should be
-     * an absolute path.
-     *
-     * Using per-file override is deprecating. Use path prefix instead.
+     * Set a custom URL prefix to the .wasm/.mjs files, or an object of overrides for both .wasm/.mjs file. The override
+     * path should be an absolute path.
      */
     wasmPaths?: WasmPrefixOrFilePaths;
 

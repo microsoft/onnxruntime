@@ -134,6 +134,7 @@ function prepareWasmPathOverrideFiles() {
   fs.emptyDirSync(folder);
   fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'ort-wasm-simd-threaded.mjs'));
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'ort-wasm-simd-threaded.wasm'));
+  fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'renamed.mjs'));
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'renamed.wasm'));
 }
 

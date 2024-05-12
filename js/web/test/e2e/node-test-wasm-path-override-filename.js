@@ -14,7 +14,8 @@ it('Node.js E2E testing - WebAssembly backend (path override filename)', async f
 
   // override .wasm file path for 'ort-wasm.wasm'
   ort.env.wasm.wasmPaths = {
-    'ort-wasm-simd-threaded.wasm': path.join(__dirname, 'test-wasm-path-override/renamed.wasm')
+    'mjs': path.join(__dirname, 'test-wasm-path-override/renamed.mjs'),
+    'wasm': path.join(__dirname, 'test-wasm-path-override/renamed.wasm')
   };
 
   await testFunction(ort, {executionProviders: ['wasm']});

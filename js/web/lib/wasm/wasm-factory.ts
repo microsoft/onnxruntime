@@ -104,12 +104,10 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   const wasmPaths = flags.wasmPaths;
   const wasmPrefixOverride = typeof wasmPaths === 'string' ? wasmPaths : undefined;
-  const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths[
-    !BUILD_DEFS.DISABLE_TRAINING ? 'ort-training-wasm-simd-threaded.wasm' :
-        !BUILD_DEFS.DISABLE_JSEP ? 'ort-wasm-simd-threaded.jsep.wasm' :
-                                   'ort-wasm-simd-threaded.wasm'] : undefined;
+  const mjsPathOverride = typeof wasmPaths === 'object' ? wasmPaths.mjs : undefined;
+  const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths.wasm : undefined;
 
-  const [objectUrl, ortWasmFactory] = (await importWasmModule(wasmPrefixOverride, numThreads > 1));
+  const [objectUrl, ortWasmFactory] = (await importWasmModule(mjsPathOverride, wasmPrefixOverride, numThreads > 1));
 
   let isTimeout = false;
 

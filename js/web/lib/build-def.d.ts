@@ -32,10 +32,6 @@ interface BuildDefinitions {
    * defines whether to disable training APIs in WebAssembly backend.
    */
   readonly DISABLE_TRAINING: boolean;
-  /**
-   * defines whether to disable embedding modules (proxy, wasm) in the build.
-   */
-  readonly DISABLE_EMBEDDING: boolean;
 
   // #endregion
 
@@ -45,10 +41,6 @@ interface BuildDefinitions {
    * defines whether the build is ESM.
    */
   readonly IS_ESM: boolean;
-  /**
-   * defines the URL of the proxy worker script. This is used when DISABLE_WASM_PROXY is false.
-   */
-  readonly PROXY_WORKER_URL: string;
   /**
    * placeholder for the import.meta.url in ESM. in CJS, this is undefined.
    */

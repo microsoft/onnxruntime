@@ -86,6 +86,7 @@ declare global {
 import type {OrtWasmMessage, SerializableTensorMetadata} from '../proxy-messages.js';
 import {createSession, copyFromExternalBuffer, endProfiling, extractTransferableBuffers, initEp, initRuntime, releaseSession, run} from '../wasm-core-impl.js';
 import {initializeWebAssembly} from '../wasm-factory.js';
+import {scriptSrc} from '../wasm-utils-import.js';
 
 const WORKER_NAME = 'ort-wasm-proxy-worker';
 const isProxyWorker = globalThis.self?.name === WORKER_NAME;
@@ -176,4 +177,6 @@ if (isProxyWorker) {
   };
 }
 
-export default isProxyWorker ? null : () => new Worker(import.meta.url, {type: 'module', name: WORKER_NAME});
+export default isProxyWorker ?
+    null :
+    () => new Worker(scriptSrc!, {type: BUILD_DEFS.IS_ESM ? 'module' : 'classic', name: WORKER_NAME});
