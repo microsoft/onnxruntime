@@ -790,11 +790,11 @@ stages:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoEsrp: ${{ parameters.DoEsrp }}
     ArtifactName: drop-nuget-qnn-arm64
-    buildParameter: '--arm64'
-    buildPlatform: 'ARM64'
-    buildArch: 'ARM64'
-    StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
-    build_config: 'RelWithDebInfo'
+    buildParameter: --arm64
+    buildPlatform: ARM64
+    buildArch: ARM64
+    StageName: OnnxRuntime_QNN_Nuget_Win_Arm64
+    build_config: RelWithDebInfo
 
 - stage: NuGet_Packaging_QNN
   pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
