@@ -808,21 +808,21 @@ stages:
       clean: all
     steps:
     - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - QNN NuGet x64'
+      displayName: Download Pipeline Artifact - QNN NuGet x64
       inputs:
-        artifactName: 'drop-nuget-qnn-x64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
+        artifactName: drop-nuget-qnn-x64
+        targetPath: $(Build.BinariesDirectory)/nuget-artifact-x64
         
     - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - QNN NuGet arm64'
+      displayName: Download Pipeline Artifact - QNN NuGet arm64
       inputs:
-        artifactName: 'drop-nuget-qnn-arm64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
+        artifactName: drop-nuget-qnn-arm64
+        targetPath: $(Build.BinariesDirectory)/nuget-artifact-arm64
     
     - task: PowerShell@2
-      displayName: 'Bundle NuGet'
+      displayName: Bundle NuGet
       inputs:
-        targetType: 'inline'
+        targetType: inline
         script: |
         
           $x64_nupkgs = (Get-ChildItem $(Build.BinariesDirectory)/nuget-artifact-x64 -Filter Microsoft.ML.OnnxRuntime.QNN*.nupkg -Recurse)
@@ -855,12 +855,12 @@ stages:
 
     - template: templates/esrp_nuget.yml
       parameters:
-        DisplayName: 'ESRP - sign NuGet package'
-        FolderPath: '$(Build.ArtifactStagingDirectory)/nuget-artifact-merged'
+        DisplayName: ESRP - sign NuGet package
+        FolderPath: $(Build.ArtifactStagingDirectory)/nuget-artifact-merged
         DoEsrp: ${{ parameters.DoEsrp }}
 
     - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline NuGet Artifact'
+      displayName: Publish Pipeline NuGet Artifact
       inputs:
-        artifactName: 'drop-signed-nuget-qnn'
-        targetPath: '$(Build.ArtifactStagingDirectory)/nuget-artifact-merged'
+        artifactName: drop-signed-nuget-qnn
+        targetPath: $(Build.ArtifactStagingDirectory)/nuget-artifact-merged
