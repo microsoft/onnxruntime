@@ -845,7 +845,7 @@ stages:
               New-Item -Path $merged_nuget_path -ItemType Directory
           }
 
-          $merged_zip = [System.IO.Path]::Combine($merged_nuget_path, 'qnn_nuget.zip')
+          $merged_zip = [System.IO.Path]::Combine($merged_nuget_path, qnn_nuget.zip)
           $zip_cmd = "7z.exe a -r $merged_zip $nupkg_unzipped_directory/*" 
           Invoke-Expression -Command $zip_cmd
           
