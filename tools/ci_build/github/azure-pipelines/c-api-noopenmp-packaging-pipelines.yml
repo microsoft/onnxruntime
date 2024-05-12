@@ -770,7 +770,7 @@ stages:
       parameters:
         condition: 'succeeded'
 
-- template: nuget/templates/qnn-ep-win.yml
+- template: templates/qnn-ep-win.yml
   parameters:
     qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
     QnnSdk: ${{ parameters.QnnSdk }}
@@ -780,7 +780,7 @@ stages:
     StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
     build_config: ${{ parameters.build_config }}
 
-- template: nuget/templates/qnn-ep-win.yml
+- template: templates/qnn-ep-win.yml
   parameters:
     qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
     QnnSdk: ${{ parameters.QnnSdk }}
