@@ -789,7 +789,7 @@ stages:
     QnnSdk: ${{ parameters.QnnSdk }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    ArtifactName: 'drop-nuget-qnn-arm64'
+    ArtifactName: drop-nuget-qnn-arm64
     buildParameter: '--arm64'
     buildPlatform: 'ARM64'
     buildArch: 'ARM64'
