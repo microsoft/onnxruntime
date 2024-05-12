@@ -318,6 +318,12 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
+    if (!int8_allowed_) {
+      return false;
+    }
+  }
+
   if (dq_nodes.size() == 3) {  // has bias
     int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
@@ -350,6 +356,12 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
     if (!int8_allowed_ || dt_weight != dt_input) {
+      return false;
+    }
+  }
+
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
+    if (!int8_allowed_) {
       return false;
     }
   }
@@ -514,6 +526,12 @@ bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
     if (!int8_allowed_ || dt_scale != dt_input) {
+      return false;
+    }
+  }
+
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
+    if (!int8_allowed_) {
       return false;
     }
   }
