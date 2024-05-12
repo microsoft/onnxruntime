@@ -4,7 +4,7 @@ parameters:
   IsReleaseBuild: false
   DoEsrp: false
   qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-  nugetArtificateName: 'drop-nuget-qnn'
+  ArtifactName: 'drop-nuget-qnn'
   buildParameter: ''
   OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.QNN'
   buildPlatform: 'x64'
@@ -163,5 +163,5 @@ stages:
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline x64 NuGet Artifact'
         inputs:
-          artifactName: ${{ parameters.nugetArtificateName }}
+          artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
