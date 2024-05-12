@@ -864,3 +864,7 @@ stages:
       inputs:
         artifactName: drop-signed-nuget-qnn
         targetPath: $(Build.ArtifactStagingDirectory)/nuget-artifact-merged
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
