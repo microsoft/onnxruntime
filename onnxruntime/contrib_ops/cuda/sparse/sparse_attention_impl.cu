@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
-#include "contrib_ops/cuda/sparse/block_mask.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
@@ -88,7 +87,7 @@ Status LaunchConcatKVInPlace(contrib::SparseAttentionParameters& parameters,
   return LaunchConcatKVInPlace(parameters.batch_size,
                                parameters.kv_num_heads,
                                parameters.head_size,
-                               parameters.max_sequence_length,
+                               parameters.max_cache_sequence_length,
                                nullptr,
                                data.seqlens_k_total,
                                parameters.sequence_length,
@@ -112,7 +111,6 @@ Status QkvToContext(
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
-  // const int present_sequence_length = parameters.max_sequence_length;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
@@ -138,6 +136,7 @@ Status QkvToContext(
     auto q = reinterpret_cast<T*>(data.unpacked_qkv_buffer);
     auto k = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size);
     auto v = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size + k_size);
+
     Status status = LaunchUnpackQKV<T, LAYOUT_BNSH>(data.query, q, k, v, num_heads, kv_num_heads, head_size,
                                                     sequence_length, batch_size, stream, max_threads_per_block);
     if (status != Status::OK()) {
@@ -152,15 +151,15 @@ Status QkvToContext(
   constexpr bool q_layout = LAYOUT_BNSH;
   bool kv_layout = parameters.is_packed_qkv ? LAYOUT_BNSH : LAYOUT_BSNH;
 
-  DUMP_TENSOR("query", reinterpret_cast<const T*>(query), batch_size, num_heads, sequence_length, head_size);
-
 #if DUMP_TENSOR_LEVEL > 0
+  DUMP_TENSOR("query (BNSH)", reinterpret_cast<const T*>(query), batch_size, num_heads, sequence_length, head_size);
+
   if (LAYOUT_BNSH == kv_layout) {
-    DUMP_TENSOR("key", reinterpret_cast<const T*>(key), batch_size, kv_num_heads, sequence_length, head_size);
-    DUMP_TENSOR("value", reinterpret_cast<const T*>(value), batch_size, kv_num_heads, sequence_length, head_size);
+    DUMP_TENSOR("key (BNSH)", reinterpret_cast<const T*>(key), batch_size, kv_num_heads, sequence_length, head_size);
+    DUMP_TENSOR("value (BNSH)", reinterpret_cast<const T*>(value), batch_size, kv_num_heads, sequence_length, head_size);
   } else {
-    DUMP_TENSOR("key", reinterpret_cast<const T*>(key), batch_size, sequence_length, kv_num_heads, head_size);
-    DUMP_TENSOR("value", reinterpret_cast<const T*>(value), batch_size, sequence_length, kv_num_heads, head_size);
+    DUMP_TENSOR("key (BSNH)", reinterpret_cast<const T*>(key), batch_size, sequence_length, kv_num_heads, head_size);
+    DUMP_TENSOR("value (BSNH)", reinterpret_cast<const T*>(value), batch_size, sequence_length, kv_num_heads, head_size);
   }
 #endif
 
@@ -181,14 +180,14 @@ Status QkvToContext(
                                                        position_ids_buff, data.cos_cache, data.sin_cache,
                                                        parameters.batch_size, parameters.sequence_length,
                                                        parameters.num_heads, parameters.head_size,
-                                                       parameters.rotary_dim, parameters.max_sequence_length,
+                                                       parameters.rotary_dim, parameters.max_rotary_sequence_length,
                                                        /*position_ids_format*/ 1, parameters.rotary_interleaved,
                                                        max_threads_per_block, q_layout));
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(stream, k_buffer, reinterpret_cast<const T*>(key),
                                                        position_ids_buff, data.cos_cache, data.sin_cache,
                                                        parameters.batch_size, parameters.sequence_length,
                                                        parameters.kv_num_heads, parameters.head_size,
-                                                       parameters.rotary_dim, parameters.max_sequence_length,
+                                                       parameters.rotary_dim, parameters.max_rotary_sequence_length,
                                                        /*position_ids_format*/ 1, parameters.rotary_interleaved,
                                                        max_threads_per_block, kv_layout));
     query = reinterpret_cast<const void*>(q_buffer);
@@ -214,29 +213,24 @@ Status QkvToContext(
 
   // TODO: only dump to total sequence length instead of max sequence length.
 #if DUMP_TENSOR_LEVEL > 0
-  DUMP_TENSOR("key cache", data.present_key, batch_size, kv_num_heads, parameters.max_sequence_length, head_size);
-  DUMP_TENSOR("value cache", data.present_value, batch_size, kv_num_heads, parameters.max_sequence_length, head_size);
-
-  DUMP_TENSOR("block_mask",
-              data.kernel_layout.mask,
-              data.kernel_layout.num_layout,
-              data.kernel_layout.num_rows,
-              data.kernel_layout.num_cols);
+  DUMP_TENSOR("key cache", data.present_key, batch_size, kv_num_heads,
+              parameters.max_cache_sequence_length, head_size);
+  DUMP_TENSOR("value cache", data.present_value, batch_size, kv_num_heads,
+              parameters.max_cache_sequence_length, head_size);
 
   DUMP_TENSOR("csr_col_indices",
               data.kernel_layout.csr_col_indices,
               data.kernel_layout.num_layout,
-              data.kernel_layout.num_rows,
-              data.kernel_layout.num_cols);
+              parameters.stride_col_indices);
 
   DUMP_TENSOR("csr_row_indices",
               data.kernel_layout.csr_row_indices,
               data.kernel_layout.num_layout,
-              data.kernel_layout.num_rows + 1);
+              parameters.stride_row_indices);
 
   printf(
       "batch_size=%d, sequence_length=%d, num_heads=%d, kv_num_heads=%d head_size=%d, "
-      "total_sequence_length=%d, max_sequence_length=%d scale=%f block_size=%d "
+      "total_sequence_length=%d, max_sequence_length=%d max_cache_sequence_length=%d scale=%f block_size=%d "
       "row_stride=%d col_stride=%d num_layout=%d\n",
       parameters.batch_size,
       parameters.sequence_length,
@@ -245,10 +239,11 @@ Status QkvToContext(
       parameters.head_size,
       parameters.total_sequence_length,
       parameters.max_sequence_length,
+      parameters.max_cache_sequence_length,
       parameters.scale,
       data.kernel_layout.block_size,
-      data.kernel_layout.num_rows + 1,
-      data.kernel_layout.num_rows * data.kernel_layout.num_cols,
+      parameters.stride_row_indices,
+      parameters.stride_col_indices,
       data.kernel_layout.num_layout);
 #endif
 
@@ -261,19 +256,20 @@ Status QkvToContext(
         reinterpret_cast<const void*>(query),
         reinterpret_cast<const void*>(data.present_key),
         reinterpret_cast<const void*>(data.present_value),
+        q_layout == LAYOUT_BNSH,
         parameters.batch_size,
         parameters.sequence_length,
         parameters.num_heads,
         parameters.kv_num_heads,
         parameters.head_size,
         parameters.total_sequence_length,
-        parameters.max_sequence_length,
+        parameters.max_cache_sequence_length,
         parameters.scale,
-        data.kernel_layout.block_size,                              // kernel_block_size
-        data.kernel_layout.csr_row_indices,                         // skip past_seq_len in row indices
-        data.kernel_layout.csr_col_indices,                         // (num_layout, num_rows, num_cols)
-        data.kernel_layout.num_rows + 1,                            // stride per head in row indices
-        data.kernel_layout.num_rows * data.kernel_layout.num_cols,  // stride per head in col indices
+        data.kernel_layout.block_size,       // kernel_block_size
+        data.kernel_layout.csr_row_indices,  // shape (num_layout, stride_row_indices)
+        data.kernel_layout.csr_col_indices,  // shape (num_layout, stride_col_indices)
+        parameters.stride_row_indices,
+        parameters.stride_col_indices,
         data.kernel_layout.num_layout,
         data.active_q_blocks,
         data.q_batch_starts,
@@ -296,19 +292,20 @@ Status QkvToContext(
         reinterpret_cast<const void*>(query),
         reinterpret_cast<const void*>(data.present_key),
         reinterpret_cast<const void*>(data.present_value),
+        q_layout == LAYOUT_BNSH,
         parameters.batch_size,
         parameters.sequence_length,
         parameters.num_heads,
         parameters.kv_num_heads,
         parameters.head_size,
         parameters.total_sequence_length,
-        parameters.max_sequence_length,
+        parameters.max_cache_sequence_length,
         parameters.scale,
-        data.kernel_layout.block_size,                              // kernel_block_size
-        data.kernel_layout.csr_row_indices,                         // (num_layout, num_rows + 1)
-        data.kernel_layout.csr_col_indices,                         // (num_layout, num_rows, num_cols)
-        data.kernel_layout.num_rows + 1,                            // stride per head in row indices
-        data.kernel_layout.num_rows * data.kernel_layout.num_cols,  // stride per head in col indices
+        data.kernel_layout.block_size,       // kernel_block_size
+        data.kernel_layout.csr_row_indices,  // (num_layout, stride_row_indices)
+        data.kernel_layout.csr_col_indices,  // (num_layout, stride_row_indices)
+        parameters.stride_row_indices,
+        parameters.stride_col_indices,
         data.kernel_layout.num_layout);
 
     if constexpr (std::is_same<T, BFloat16>::value) {
@@ -317,6 +314,9 @@ Status QkvToContext(
       ORT_RETURN_IF_ERROR(sparse_attention_v1::run_sparse_attention_fp16(params));
     }
   }
+
+  DUMP_TENSOR("output", reinterpret_cast<const T*>(data.output), batch_size, sequence_length, num_heads, head_size);
+
   return Status::OK();
 }
 

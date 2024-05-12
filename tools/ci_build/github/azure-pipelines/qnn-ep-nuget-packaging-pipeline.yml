@@ -73,6 +73,7 @@ jobs:
           FolderPath: '$(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }}'
           DisplayName: 'ESRP - Sign dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
+          Pattern: 'onnxruntime.dll'
 
       - task: CmdLine@2
         displayName: 'Generating nuspec for the native Nuget package x64'
@@ -178,6 +179,7 @@ jobs:
           FolderPath: '$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }}'
           DisplayName: 'ESRP - Sign dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
+          Pattern: 'onnxruntime.dll'
 
       - task: CmdLine@2
         displayName: 'Generating nuspec for the native Nuget package arm64'
