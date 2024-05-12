@@ -68,6 +68,11 @@ parameters:
     - 11.8
     - 12.2
 
+- name: QnnSdk
+  displayName: QNN SDK Version
+  type: string
+  default: 2.21.0.240401
+
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -778,7 +783,7 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     nugetArtificateName: 'drop-nuget-qnn-x64'
     StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
-    build_config: ${{ parameters.build_config }}
+    build_config: 'RelWithDebInfo"
 
 - template: templates/qnn-ep-win.yml
   parameters:
@@ -791,7 +796,7 @@ stages:
     buildPlatform: 'ARM64'
     buildArch: 'ARM64'
     StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
-    build_config: ${{ parameters.build_config }}
+    build_config: 'RelWithDebInfo'
 
 - stage: NuGet_Packaging_QNN
   pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
