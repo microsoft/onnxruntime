@@ -20,7 +20,7 @@ using namespace ONNX_NAMESPACE;
 namespace {
 
 // TODO(pengwa): remove this once customized PythonOp shape inference is supported.
-constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation";
 constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
 
 std::array<TensorShapeProto::Dimension, 6> GetRNNDimensions(InferenceContext& ctx) {
@@ -3949,7 +3949,7 @@ Return true if all elements are true and false otherwise.
           static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Allow inputs and outputs to be any kind of tensor.")
       .TypeConstraint(
           "TInt64",
@@ -4116,7 +4116,7 @@ Return true if all elements are true and false otherwise.
           static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Allow inputs and outputs to be any kind of tensor.")
       .TypeConstraint(
           "TInt64",

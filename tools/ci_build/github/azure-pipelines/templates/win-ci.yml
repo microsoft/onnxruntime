@@ -88,8 +88,16 @@ stages:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
     CUDA_MODULE_LOADING: 'LAZY'
+    ${{ if eq(parameters['buildJava'], 'true') }}:
+      buildJavaParameter: '--build_java'
+    ${{ else }}:
+      buildJavaParameter: ''
+    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+      timeoutParameter: '--test_all_timeout 72000'
+    ${{ else }}:
+      timeoutParameter: ''
   jobs:
-  - job:
+  - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
       clean: all
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
@@ -99,7 +107,7 @@ stages:
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
       timeoutInMinutes: 1200
     ${{ else }}:
-      timeoutInMinutes: 300
+      timeoutInMinutes: 360
 
     steps:
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -166,10 +174,7 @@ stages:
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000'
-          ${{ else }}:
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
+          arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} $(timeoutParameter) $(buildJavaParameter)'
           workingDirectory: '$(Build.BinariesDirectory)'
 
 
@@ -214,7 +219,6 @@ stages:
             Get-ChildItem -Path "$(Agent.TempDirectory)/RelWithDebInfo" -Include *.pdb -File -Recurse | ForEach-Object { $_.Delete() }
             Get-ChildItem -Path "$(Agent.TempDirectory)/RelWithDebInfo" -Include *.lib -File -Recurse | ForEach-Object { $_.Delete() }
             Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
-            Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime4j_jni.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
             cd $(Agent.TempDirectory)/RelWithDebInfo
             tree /f
           displayName: 'Copy native test needs files'
@@ -222,10 +226,11 @@ stages:
 
         - ${{ if eq(parameters['buildJava'], 'true') }}:
           - powershell: |
+              Copy-Item -Path $(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo/onnxruntime4j_jni.pdb -Destination $(Agent.TempDirectory)/RelWithDebInfo/RelWithDebInfo -Force
               Copy-Item -Path "$(Build.BinariesDirectory)/RelWithDebInfo/java" -Destination $(Agent.TempDirectory)/RelWithDebInfo/ -Recurse -Force
               cd $(Agent.TempDirectory)/RelWithDebInfo
               tree /f
-            displayName: 'Copy java folder for java test'
+            displayName: 'Copy java pad and folder for java test'
             workingDirectory: '$(Build.BinariesDirectory)'
 
         - task: PublishPipelineArtifact@1
@@ -302,18 +307,13 @@ stages:
       - template: component-governance-component-detection-steps.yml
         parameters :
           condition : 'succeeded'
-
-- ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-  - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
-    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
-    variables:
-      CUDA_MODULE_LOADING: 'LAZY'
-    jobs:
+  - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
     - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
+      dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
       workspace:
         clean: all
       pool: ${{ parameters.ort_build_pool_name }}
-      timeoutInMinutes: 120
+      timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
           displayName: 'Clean Agent Directories'

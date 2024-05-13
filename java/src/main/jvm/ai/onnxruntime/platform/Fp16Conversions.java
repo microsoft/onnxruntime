@@ -54,6 +54,8 @@ public final class Fp16Conversions {
     fp32ToFp16 = tmp32;
   }
 
+  private Fp16Conversions() {}
+
   /**
    * Rounds a buffer of floats into a buffer containing fp16 values (stored as shorts in Java).
    *

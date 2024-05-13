@@ -6,6 +6,7 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder.h"
+#include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 #include "core/framework/allocator.h"
 
 #include "QnnOpDef.h"
@@ -57,7 +58,7 @@ class BaseOpBuilder : public IOpBuilder {
                                           const std::vector<std::string>& input_names,
                                           size_t output_index,
                                           Qnn_DataType_t qnn_data_type,
-                                          Qnn_QuantizeParams_t& quant_param) const ORT_MUST_USE_RESULT {
+                                          QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT {
     // Do nothing by default. Op builders like Split implement this function to override output quant params.
     ORT_UNUSED_PARAMETER(qnn_model_wrapper);
     ORT_UNUSED_PARAMETER(node_unit);
@@ -94,15 +95,6 @@ class BaseOpBuilder : public IOpBuilder {
                       const logging::Logger& logger,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  const std::string& GetNodeName(const NodeUnit& node_unit) const {
-    const std::string& node_name(node_unit.Name());
-    if (node_name.empty()) {
-      return node_unit.Outputs()[0].node_arg.Name();
-    }
-
-    return node_name;
-  }
-
   Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
                                                   const logging::Logger& logger,
@@ -110,10 +102,9 @@ class BaseOpBuilder : public IOpBuilder {
                                                   size_t input_index,
                                                   size_t output_index,
                                                   Qnn_DataType_t qnn_data_type,
-                                                  Qnn_QuantizeParams_t& quant_param) const ORT_MUST_USE_RESULT;
+                                                  QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT;
 
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
-    // TODO: Use QNN operator names defined in "QnnOpDef.h"
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {
         {"Add", QNN_OP_ELEMENT_WISE_ADD},
         {"Mul", QNN_OP_ELEMENT_WISE_MULTIPLY},
@@ -226,22 +217,40 @@ class BaseOpBuilder : public IOpBuilder {
 
   // NCHW shape to HWCN shape, required for Conv weight
   Status NchwShapeToHwcn(const std::vector<uint32_t>& nchw_shape, std::vector<uint32_t>& hwcn_shape) const {
-    ORT_ENFORCE(nchw_shape.size() == 4, "shape should have 4 dimension NCHW.");
-    hwcn_shape[0] = nchw_shape[2];
-    hwcn_shape[1] = nchw_shape[3];
-    hwcn_shape[2] = nchw_shape[1];
-    hwcn_shape[3] = nchw_shape[0];
+    if (nchw_shape.size() == 4) {
+      hwcn_shape[0] = nchw_shape[2];
+      hwcn_shape[1] = nchw_shape[3];
+      hwcn_shape[2] = nchw_shape[1];
+      hwcn_shape[3] = nchw_shape[0];
+    } else if (nchw_shape.size() == 5) {
+      hwcn_shape[0] = nchw_shape[2];
+      hwcn_shape[1] = nchw_shape[3];
+      hwcn_shape[2] = nchw_shape[4];
+      hwcn_shape[3] = nchw_shape[1];
+      hwcn_shape[4] = nchw_shape[0];
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported rank! only support 4 or 5.");
+    }
 
     return Status::OK();
   }
 
   // CNHW shape to HWCN shape, required for Conv weight
   Status CnhwShapeToHwcn(const std::vector<uint32_t>& cnhw_shape, std::vector<uint32_t>& hwcn_shape) const {
-    ORT_ENFORCE(cnhw_shape.size() == 4, "shape should have 4 dimension CNHW.");
-    hwcn_shape[0] = cnhw_shape[2];
-    hwcn_shape[1] = cnhw_shape[3];
-    hwcn_shape[2] = cnhw_shape[0];
-    hwcn_shape[3] = cnhw_shape[1];
+    if (cnhw_shape.size() == 4) {
+      hwcn_shape[0] = cnhw_shape[2];
+      hwcn_shape[1] = cnhw_shape[3];
+      hwcn_shape[2] = cnhw_shape[0];
+      hwcn_shape[3] = cnhw_shape[1];
+    } else if (cnhw_shape.size() == 5) {
+      hwcn_shape[0] = cnhw_shape[2];
+      hwcn_shape[1] = cnhw_shape[3];
+      hwcn_shape[2] = cnhw_shape[4];
+      hwcn_shape[3] = cnhw_shape[0];
+      hwcn_shape[4] = cnhw_shape[1];
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported rank! only support 4 or 5.");
+    }
 
     return Status::OK();
   }
@@ -252,14 +261,18 @@ class BaseOpBuilder : public IOpBuilder {
 
   Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
                                  const onnx::TensorProto& initializer,
-                                 std::vector<uint8_t>& transposed_data) const {
-    return TransposeInitializer(qnn_model_wrapper, initializer, nchw2hwcn_perm, transposed_data);
+                                 std::vector<uint8_t>& transposed_data,
+                                 bool is_3d = false) const {
+    auto& perm = is_3d ? nchw2hwcn_perm_3d : nchw2hwcn_perm;
+    return TransposeInitializer(qnn_model_wrapper, initializer, perm, transposed_data);
   }
 
   Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
                                  const onnx::TensorProto& initializer,
-                                 std::vector<uint8_t>& transposed_data) const {
-    return TransposeInitializer(qnn_model_wrapper, initializer, cnhw2hwcn_perm, transposed_data);
+                                 std::vector<uint8_t>& transposed_data,
+                                 bool is_3d = false) const {
+    auto& perm = is_3d ? cnhw2hwcn_perm_3d : cnhw2hwcn_perm;
+    return TransposeInitializer(qnn_model_wrapper, initializer, perm, transposed_data);
   }
 
   Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
@@ -288,7 +301,6 @@ class BaseOpBuilder : public IOpBuilder {
                               const NodeUnit& node_unit,
                               Qnn_Scalar_t& axis_qnn_scalar,
                               int32_t& default_axis_value) const;
-  Qnn_TensorType_t GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) const;
 
   size_t GetInputCountQnnRequired(const NodeUnit& node_unit) const {
     auto input_output_cout = GetInputOutputCountQnnRequired(node_unit.OpType());
@@ -320,9 +332,6 @@ class BaseOpBuilder : public IOpBuilder {
 
  private:
   std::string op_builder_type_;
-  const std::vector<size_t> nchw2nhwc_perm{0, 2, 3, 1};
-  const std::vector<size_t> nchw2hwcn_perm{2, 3, 1, 0};
-  const std::vector<size_t> cnhw2hwcn_perm{2, 3, 0, 1};
 };
 
 // Type that holds information about an ONNX attribute.

@@ -97,7 +97,6 @@ FetchContent_Declare(
 )
 
 
-
 # Flatbuffers
 # We do not need to build flatc for iOS or Android Cross Compile
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -121,6 +120,19 @@ FetchContent_Declare(
     PATCH_COMMAND ${ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND}
     FIND_PACKAGE_ARGS 23.5.9 NAMES Flatbuffers
 )
+
+
+#Protobuf depends on utf8_range
+FetchContent_Declare(
+    utf8_range
+    URL ${DEP_URL_utf8_range}
+    URL_HASH SHA1=${DEP_SHA1_utf8_range}
+    FIND_PACKAGE_ARGS NAMES utf8_range
+)
+
+set(utf8_range_ENABLE_TESTS OFF CACHE BOOL "Build test suite" FORCE)
+set(utf8_range_ENABLE_INSTALL OFF CACHE BOOL "Configure installation" FORCE)
+
 
 # Download a protoc binary from Internet if needed
 if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
@@ -148,6 +160,7 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
         FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
         FetchContent_Populate(protoc_binary)
       endif()
+
       if(protoc_binary_SOURCE_DIR)
         message("Use prebuilt protoc")
         set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc.exe)
@@ -164,13 +177,28 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
         FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64})
         FetchContent_Populate(protoc_binary)
       endif()
+
       if(protoc_binary_SOURCE_DIR)
         message("Use prebuilt protoc")
         set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
         set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
       endif()
     endif()
+
+    if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
+      message(FATAL_ERROR "ONNX_CUSTOM_PROTOC_EXECUTABLE must be set to cross-compile.")
+    endif()
   endif()
+endif()
+
+# if ONNX_CUSTOM_PROTOC_EXECUTABLE is set we don't need to build the protoc binary
+if (ONNX_CUSTOM_PROTOC_EXECUTABLE)
+  if (NOT EXISTS "${ONNX_CUSTOM_PROTOC_EXECUTABLE}")
+    message(FATAL_ERROR "ONNX_CUSTOM_PROTOC_EXECUTABLE is set to '${ONNX_CUSTOM_PROTOC_EXECUTABLE}' "
+                        "but protoc executable was not found there.")
+  endif()
+
+  set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protoc" FORCE)
 endif()
 
 #Here we support two build mode:
@@ -182,17 +210,6 @@ if(Patch_FOUND)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
-
-FetchContent_Declare(
-    utf8_range
-    URL ${DEP_URL_utf8_range}
-    URL_HASH SHA1=${DEP_SHA1_utf8_range}
-    FIND_PACKAGE_ARGS NAMES utf8_range
-)
-
-set(utf8_range_ENABLE_TESTS OFF CACHE BOOL "Build test suite" FORCE)
-set(utf8_range_ENABLE_INSTALL OFF CACHE BOOL "Configure installation" FORCE)
-
 
 #Protobuf depends on absl and utf8_range
 FetchContent_Declare(
@@ -211,10 +228,10 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #set(protobuf_INSTALL OFF CACHE BOOL "Install protobuf binaries and files" FORCE)
 set(protobuf_USE_EXTERNAL_GTEST ON CACHE BOOL "" FORCE)
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-  set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
-  set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
+if (ANDROID)
+  set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build protobuf with zlib support" FORCE)
 endif()
+
 if (onnxruntime_DISABLE_RTTI)
   set(protobuf_DISABLE_RTTI ON CACHE BOOL "Remove runtime type information in the binaries" FORCE)
 endif()

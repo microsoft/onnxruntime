@@ -39,6 +39,18 @@ class TestQDQFormat(unittest.TestCase):
 
 
 class TestQDQExtraOptions(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.qdq.extra_options_")
+
+        # Note: swap with the commented line if you want to see the models in local test dir.
+        cls._tmp_dir_path = cls._tmp_model_dir.name
+        # cls._tmp_dir_path = "."
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
     def test_qdq_extra_options(self):
         #   (input)
         #      |
@@ -235,6 +247,123 @@ class TestQDQExtraOptions(unittest.TestCase):
                         "O_QuantizeLinear_Input",
                     },
                 )
+
+    def test_qdq_keep_removable_activations_option(self):
+        #
+        # Create f32 model with Relu and Clip.
+        # input0 ---> Conv ---> Relu ---> Conv ---> Clip ---> output
+        #
+        shape1 = (1, 1, 3, 3)
+        w_shape1 = (2, 1, 2, 2)
+        w_shape2 = (2, 2, 2, 2)
+        shape3 = (1, 2, 1, 1)
+
+        input0 = onnx.helper.make_tensor_value_info("input0", onnx.TensorProto.FLOAT, shape1)
+        output = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, shape3)
+
+        # Conv1
+        weight1_data = np.random.normal(-1.0, 1.0, w_shape1).astype(np.float32)
+        weight1_const = onnx.numpy_helper.from_array(weight1_data, "weight1_const")
+        conv1_node = onnx.helper.make_node("Conv", ["input0", "weight1_const"], ["conv1_out"], name="conv1_node")
+
+        # Relu1
+        relu1_node = onnx.helper.make_node("Relu", ["conv1_out"], ["relu1_out"], name="relu1_node")
+
+        # Conv2
+        weight2_data = np.random.normal(-1.8, 1.8, w_shape2).astype(np.float32)
+        weight2_const = onnx.numpy_helper.from_array(weight2_data, "weight2_const")
+        conv2_node = onnx.helper.make_node("Conv", ["relu1_out", "weight2_const"], ["conv2_out"], name="conv2_node")
+
+        # Clip1
+        min_const = onnx.numpy_helper.from_array(np.array(0.0, dtype=np.float32), "min_const")
+        max_const = onnx.numpy_helper.from_array(np.array(0.5, dtype=np.float32), "max_const")
+        clip1_node = onnx.helper.make_node(
+            "Clip", ["conv2_out", "min_const", "max_const"], ["output"], name="clip1_node"
+        )
+
+        graph = onnx.helper.make_graph(
+            [conv1_node, relu1_node, conv2_node, clip1_node],
+            "keep_qdq_activations",
+            [input0],
+            [output],
+            initializer=[weight1_const, weight2_const, min_const, max_const],
+        )
+        opset_imports = [
+            onnx.helper.make_opsetid("", 18),
+        ]
+        f32_model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        f32_model = onnx.shape_inference.infer_shapes(f32_model)
+        f32_model_path = os.path.join(self._tmp_dir_path, "keep.act.model.onnx")
+        onnx.save_model(f32_model, f32_model_path)
+
+        # Create a data reader.
+        input_data_list = []
+        for _ in range(5):
+            inputs = {"input0": np.random.randint(-10, 10, shape1).astype(np.float32)}
+            input_data_list.extend([inputs])
+        data_reader = TestDataFeeds(input_data_list)
+
+        #
+        # Quantize model with extra option to KEEP removable activations.
+        #
+        qdq_model_path = os.path.join(self._tmp_dir_path, "keep.act.model.qdq.onnx")
+
+        # Create u8_act/u8_wgt qdq model
+        quantize_static(
+            f32_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QUInt8,
+            op_types_to_quantize=[node.op_type for node in f32_model.graph.node],
+            extra_options={"QDQKeepRemovableActivations": True},
+        )
+
+        has_relu = False
+        has_clip = False
+
+        qdq_model = onnx.load_model(qdq_model_path)
+
+        for node in qdq_model.graph.node:
+            if node.op_type == "Relu":
+                has_relu = True
+            if node.op_type == "Clip":
+                has_clip = True
+
+        self.assertTrue(has_relu)
+        self.assertTrue(has_clip)
+
+        #
+        # Quantize model without extra option. Clip and Relu should be removed by default.
+        #
+        qdq_model_path = os.path.join(self._tmp_dir_path, "nokeep.act.model.qdq.onnx")
+        data_reader.rewind()
+
+        # Create u8_act/u8_wgt qdq model
+        quantize_static(
+            f32_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QUInt8,
+            op_types_to_quantize=[node.op_type for node in f32_model.graph.node],
+        )
+
+        has_relu = False
+        has_clip = False
+
+        qdq_model = onnx.load_model(qdq_model_path)
+
+        for node in qdq_model.graph.node:
+            if node.op_type == "Relu":
+                has_relu = True
+            if node.op_type == "Clip":
+                has_clip = True
+
+        self.assertFalse(has_relu)
+        self.assertFalse(has_clip)
 
 
 class TestQDQFormatConv(TestQDQFormat):

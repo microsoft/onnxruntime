@@ -347,13 +347,6 @@ stages:
       condition: succeededOrFailed()
       displayName: Publish React Native Detox iOS e2e Test Results
 
-    - task: PublishPipelineArtifact@1
-      inputs:
-        artifact: e2e_test_logs
-        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-      condition: succeededOrFailed()
-      displayName: Publish React Native Detox E2E test logs
-
     - script: |
         git restore .
       workingDirectory: '$(Build.SourcesDirectory)/js'
@@ -381,14 +374,21 @@ stages:
         targetFolder: $(Build.ArtifactStagingDirectory)
       displayName: Create Artifacts onnxruntime-react-native
 
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
+    - task: PublishPipelineArtifact@1
+      inputs:
+        artifact: e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox E2E test logs
+
     - task: PublishPipelineArtifact@0
       inputs:
         artifactName: '${{parameters.PackageName}}'
         targetPath: '$(Build.ArtifactStagingDirectory)'
       displayName: Publish Pipeline Artifact
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
 
     - template: explicitly-defined-final-tasks.yml

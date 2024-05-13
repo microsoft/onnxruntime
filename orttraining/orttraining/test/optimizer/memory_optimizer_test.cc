@@ -29,6 +29,7 @@
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
+#include "orttraining/core/optimizer/memory_optimizer/transformer_specific.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -59,7 +60,7 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
     }
   }
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
 
   const std::string alleviation_config("Gelu+:1:-1");
   const std::string probe_config("1:0");
@@ -88,8 +89,6 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
   }
 
   ASSERT_EQ(recompute_gelu_node->MutableInputDefs()[0]->Name(), original_gelu_node->MutableInputDefs()[0]->Name());
-  ASSERT_EQ(recompute_gelu_node->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
-  ASSERT_EQ(original_gelu_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
 }
 
 TEST(MemoryOptimizerTests, TileRecompute) {
@@ -120,12 +119,11 @@ TEST(MemoryOptimizerTests, TileRecompute) {
   Node* recompute_tile_node{nullptr};
   Node* original_tile_node{nullptr};
   for (auto& node : graph.Nodes()) {
-    if (node.Priority() == static_cast<int>(ExecutionPriority::LOCAL_LOW)) {
-      if (node.OpType().compare("Tile") == 0) {
+    if (node.OpType().compare("Tile") == 0) {
+      // if name ends with _recompute, it's the recomputed node
+      if (node.Name().find("_recompute") != std::string::npos) {
         recompute_tile_node = &node;
-      }
-    } else if (node.Priority() == static_cast<int>(ExecutionPriority::DEFAULT)) {
-      if (node.OpType().compare("Tile") == 0) {
+      } else {
         original_tile_node = &node;
       }
     }
@@ -145,10 +143,6 @@ TEST(MemoryOptimizerTests, TileRecompute) {
 
   ASSERT_EQ(recompute_expand_node->InputDefs()[0]->Name(), original_expand_node->InputDefs()[0]->Name());
   ASSERT_EQ(query_layer_grad_node->InputDefs()[1]->Name(), recompute_tile_node->OutputDefs()[0]->Name());
-
-  ASSERT_EQ(recompute_tile_node->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
-  ASSERT_EQ(original_tile_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
-  ASSERT_EQ(query_layer_grad_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
 }
 
 TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
@@ -224,22 +218,17 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
         if (consumer->OpType().compare("LayerNormalization") == 0) {
           if (consumer->Name().find("_recompute") != std::string::npos) {
             recompute_ln_node = consumer;
-            ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
             recompute_ln_node_parent_add_or_ln_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node != nullptr);
-            ASSERT_EQ(recompute_ln_node_parent_add_or_ln_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node->Name().find("_recompute") == std::string::npos);
           } else {
             original_ln_node = consumer;
-            ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             original_ln_node_parent_add_or_ln_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(original_ln_node_parent_add_or_ln_node);
-            ASSERT_EQ(original_ln_node_parent_add_or_ln_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             ASSERT_TRUE(original_ln_node_parent_add_or_ln_node->Name().find("_recompute") == std::string::npos);
           }
         } else if (consumer->OpType().compare("LayerNormalizationGrad") == 0) {
           input_layer_norm_grad_node = consumer;
-          ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
         }
       }
 
@@ -263,21 +252,17 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
         if (consumer->OpType().compare("LayerNormalization") == 0) {
           if (consumer->Name().find("_recompute") != std::string::npos) {
             recompute_ln_node = consumer;
-            ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
             recompute_ln_node_parent_add_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(recompute_ln_node_parent_add_node);
             ASSERT_EQ(recompute_ln_node_parent_add_node->OpType(), "Add");
-            ASSERT_EQ(recompute_ln_node_parent_add_node->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
             ASSERT_TRUE(recompute_ln_node_parent_add_node->Name().find("_recompute") != std::string::npos);
           } else {
             original_ln_node = consumer;
-            ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             original_ln_node_parent_add_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
             ASSERT_TRUE(original_ln_node_parent_add_node);
           }
         } else if (consumer->OpType().compare("LayerNormalizationGrad") == 0) {
           ln_grad_node = consumer;
-          ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
         }
       }
 
@@ -293,7 +278,8 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
 
   std::vector<size_t> nodes_in_topological_order;
   nodes_in_topological_order.reserve(bw_nodes_in_expected_order.size());
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();  // ExecutionOrder::PRIORITY_BASED
+  const auto& node_topology_list =
+      graph_viewer.GetNodesInTopologicalOrder(optimizer::memory_optimizer::TOPOLOGICAL_SORT_ALGORITHM);
 
   size_t j = 0;
   for (auto node_index : node_topology_list) {
@@ -310,6 +296,47 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
   for (size_t i = 1; i < nodes_in_topological_order.size(); ++i) {
     ASSERT_TRUE(nodes_in_topological_order[i - 1] < nodes_in_topological_order[i]);
   }
+}
+
+TEST(MemoryOptimizerTests, TransformerLayerDetectionTest) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto model_uri = MODEL_FOLDER "3layer_bloom_optimized_training.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
+  Graph& graph = model->MainGraph();
+  GraphViewer graph_viewer(graph);
+
+  InlinedHashMap<NodeIndex, ptrdiff_t> node_index_to_its_order_in_topological_sort_map;
+  const auto& node_ids =
+      graph_viewer.GetNodesInTopologicalOrder(optimizer::memory_optimizer::TOPOLOGICAL_SORT_ALGORITHM);
+
+  // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
+  ptrdiff_t yield_op_order_in_topological_sort = -1;
+  for (size_t i = 0; i < node_ids.size(); ++i) {
+    const Node* p_node = graph_viewer.GetNode(node_ids[i]);
+    if (p_node == nullptr) { /* skip removed nodes*/
+      continue;
+    }
+
+    if (p_node->OpType() == "YieldOp") {
+      // There are multiple YieldOps in the graph。
+      ASSERT_EQ(yield_op_order_in_topological_sort, -1);
+      yield_op_order_in_topological_sort = static_cast<ptrdiff_t>(i);
+    }
+
+    node_index_to_its_order_in_topological_sort_map[p_node->Index()] = static_cast<ptrdiff_t>(i);
+  }
+
+  InlinedVector<const Node*> layer_boundary_ln_node;
+  optimizer::memory_optimizer::FindLayerBoundaryLayerNormNodes(graph_viewer, *logger,
+                                                               node_index_to_its_order_in_topological_sort_map,
+                                                               yield_op_order_in_topological_sort,
+                                                               layer_boundary_ln_node);
+
+  ASSERT_EQ(layer_boundary_ln_node.size(), 3);
+  ASSERT_EQ(layer_boundary_ln_node[0]->Name(), "LayerNormalization_token_0");
+  ASSERT_EQ(layer_boundary_ln_node[1]->Name(), "LayerNormalization_token_6");
+  ASSERT_EQ(layer_boundary_ln_node[2]->Name(), "LayerNormalization_token_12");
 }
 
 }  // namespace test
