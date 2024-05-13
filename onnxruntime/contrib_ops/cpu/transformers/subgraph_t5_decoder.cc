@@ -156,7 +156,8 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     int cur_len,
     transformers::Sequences& sequences,
     int past_present_share_buffer_max_seq_len,
-    bool need_cache_indir) {
+    bool need_cache_indir,
+    bool use_cuda) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // Allocate subgraph inputs from same device as inputs of encoder subgraph.
@@ -182,19 +183,34 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
         stream,
         DeviceCopyDirection::hostToDevice));
   } else {
-    for (int i = 0; i < batch_beam_size; i++) {
-      gsl::span<const int32_t> sequence = sequences.GetSequence(i);
-      const int32_t* sequence_data = sequence.data();
-      long long seq_index = (long long)i * cur_len;
-      memcpy(seq_copy_ptr + seq_index, sequence_data, total_size);
+    if (use_cuda) {
+      auto sequences_buffer = sequences.GetCurrentDeviceSequences();
+      for (int i = 0; i < batch_beam_size; i++) {
+        long long batch_beam_stride = (long long)i * sequences.GetMaxLength();
+        int seq_size = sequences.GetSequenceLength();
+        gsl::span<const int32_t> sequence = sequences_buffer.subspan(batch_beam_stride, seq_size);
+        gsl::span<int> temp_input(input_ids_data + i * seq_size, seq_size);
+        ORT_RETURN_IF_ERROR(device_copy_int32_func(
+            temp_input,
+            sequence,
+            stream,
+            DeviceCopyDirection::deviceToDevice));
+      }
+    } else {
+      for (int i = 0; i < batch_beam_size; i++) {
+        gsl::span<const int32_t> sequence = sequences.GetSequence(i);
+        const int32_t* sequence_data = sequence.data();
+        long long seq_index = (long long)i * cur_len;
+        memcpy(seq_copy_ptr + seq_index, sequence_data, total_size);
+      }
+      gsl::span<int> temp_input(input_ids_data, total_size);
+      gsl::span<int> temp_sequence(seq_copy_ptr, total_size);
+      ORT_RETURN_IF_ERROR(device_copy_int32_func(
+          temp_input,
+          temp_sequence,
+          stream,
+          DeviceCopyDirection::hostToDevice));
     }
-    gsl::span<int> temp_input(input_ids_data, total_size);
-    gsl::span<int> temp_sequence(seq_copy_ptr, total_size);
-    ORT_RETURN_IF_ERROR(device_copy_int32_func(
-        temp_input,
-        temp_sequence,
-        stream,
-        DeviceCopyDirection::hostToDevice));
   }
 
   // The ordering is the same as used in Setup.

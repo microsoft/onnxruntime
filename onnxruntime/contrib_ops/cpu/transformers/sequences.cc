@@ -36,6 +36,10 @@ int Sequences::GetSequenceLength() const {
   return current_length_;
 }
 
+int Sequences::GetMaxLength() const {
+  return max_length_;
+}
+
 #ifdef DEBUG_GENERATION
 void Sequences::PrintSequences(const IConsoleDumper* dumper) const {
   for (int i = 0; i < batch_beam_size_; i++) {
