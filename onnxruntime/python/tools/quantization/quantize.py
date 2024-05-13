@@ -186,6 +186,12 @@ class StaticQuantConfig(QuantConfig):
                                                        Invalid if also set `scale` or `zero_point`.
                             'rmin' = Float           : Override the minimum real tensor value in calibration data.
                                                        Invalid if also set `scale` or `zero_point`.
+                    QDQKeepRemovableActivations = True/False:
+                        Default is False. If true, "removable" activations (e.g., Clip or Relu) will not be removed, and
+                        will be explicitly represented in the QDQ model. If false, these activations are automatically
+                        removed if activations are asymmetrically quantized. Keeping these activations is necessary if
+                        optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
+                        operators from the model.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -423,6 +429,12 @@ def quantize_static(
                                                    Invalid if also set `scale` or `zero_point`.
                         'rmin' = Float           : Override the minimum real tensor value in calibration data.
                                                    Invalid if also set `scale` or `zero_point`.
+                QDQKeepRemovableActivations = True/False:
+                    Default is False. If true, "removable" activations (e.g., Clip or Relu) will not be removed, and
+                    will be explicitly represented in the QDQ model. If false, these activations are automatically
+                    removed if activations are asymmetrically quantized. Keeping these activations is necessary if
+                    optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
+                    operators from the model.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:

@@ -50,6 +50,7 @@ def get_qnn_qdq_config(
     add_qtype_converts: bool = True,
     activation_symmetric: bool = False,
     weight_symmetric: bool | None = None,
+    keep_removable_activations: bool = False,
 ) -> StaticQuantConfig:
     """
     Returns a static quantization configuration suitable for running QDQ models on QNN EP.
@@ -109,6 +110,11 @@ def get_qnn_qdq_config(
             the zero-point values are 128 and 32,768, respectively.
         weight_symmetric: True if weights should be quantized symmetrically (i.e., rmax == -rmin) by default.
             Defaults to None. If set to None, weight_symmetric is assumed true if the weight_type is a signed int.
+        keep_removable_activations: Defaults to false. If true, "removable" activations (e.g., Clip or Relu) will not
+                        be removed, and will be explicitly represented in the QDQ model. If false, these activations
+                        are automatically removed if activations are asymmetrically quantized. Keeping these activations
+                        is necessary if optimizations or EP transformations will later remove
+                        QuantizeLinear/DequantizeLinear operators from the model.
 
     Returns:
         A StaticQuantConfig object
@@ -160,6 +166,7 @@ def get_qnn_qdq_config(
     extra_options = {
         "MinimumRealRange": 0.0001,
         "DedicatedQDQPair": False,  # Let ORT optimizer duplicate DQ nodes
+        "QDQKeepRemovableActivations": keep_removable_activations,
         "TensorQuantOverrides": overrides_helper.get_dict(),
         "ActivationSymmetric": activation_symmetric,
         "WeightSymmetric": weight_symmetric,
