@@ -78,19 +78,19 @@ INCLUDE TransKernelCommon.inc
 
 ComputeTanhBy8Loop:
         vandps      ymm0,ymm10,YMMWORD PTR [rcx]
-	vmovaps	    ymm3, ymm5
-	vmovaps	    ymm13, ymm7
-	vxorps	    ymm1, ymm0, YMMWORD PTR [rcx]
-	vmulps	    ymm2, ymm0, ymm0
-	vcmpps	    ymm12, ymm0, ymm11, 29
-	vfmadd132ps ymm3, ymm6, ymm2
-	vfmadd132ps ymm13, ymm8, ymm2
-	vfmadd132ps ymm3, ymm4, ymm2
-	vfmadd132ps ymm2, ymm9, ymm13
-	vfmadd132ps ymm0, ymm0, ymm2
-	vdivps      ymm0, ymm0, ymm3
-	vblendvps   ymm0, ymm0, ymm4, ymm12
-	vxorps      ymm0, ymm0, ymm1
+        vmovaps     ymm3, ymm5
+        vmovaps     ymm13, ymm7
+        vxorps      ymm1, ymm0, YMMWORD PTR [rcx]
+        vmulps      ymm2, ymm0, ymm0
+        vcmpps      ymm12, ymm0, ymm11, 29
+        vfmadd132ps ymm3, ymm6, ymm2
+        vfmadd132ps ymm13, ymm8, ymm2
+        vfmadd132ps ymm3, ymm4, ymm2
+        vfmadd132ps ymm2, ymm9, ymm13
+        vfmadd132ps ymm0, ymm0, ymm2
+        vdivps      ymm0, ymm0, ymm3
+        vblendvps   ymm0, ymm0, ymm4, ymm12
+        vxorps      ymm0, ymm0, ymm1
         add     rcx,8*4                         ; advance input by 8 elements
         vmovups YMMWORD PTR [rdx],ymm0
         add     rdx,8*4                         ; advance output by 8 elements
@@ -105,19 +105,19 @@ ProcessRemainingCount:
         vmovups     ymm15,YMMWORD PTR [r10+r8*4]
         vmaskmovps  ymm0,ymm15,YMMWORD PTR [rcx]
         vandps      ymm0,ymm10,ymm0
-	vmovaps	    ymm3, ymm5
-	vmovaps	    ymm13, ymm7
-	vxorps	    ymm1, ymm0, YMMWORD PTR [rcx]
-	vmulps	    ymm2, ymm0, ymm0
-	vcmpps	    ymm12, ymm0, ymm11, 29
-	vfmadd132ps ymm3, ymm6, ymm2
-	vfmadd132ps ymm13, ymm8, ymm2
-	vfmadd132ps ymm3, ymm4, ymm2
-	vfmadd132ps ymm2, ymm9, ymm13
-	vfmadd132ps ymm0, ymm0, ymm2
-	vdivps      ymm0, ymm0, ymm3
-	vblendvps   ymm0, ymm0, ymm4, ymm12
-	vxorps      ymm0, ymm0, ymm1
+        vmovaps     ymm3, ymm5
+        vmovaps     ymm13, ymm7
+        vxorps      ymm1, ymm0, YMMWORD PTR [rcx]
+        vmulps      ymm2, ymm0, ymm0
+        vcmpps      ymm12, ymm0, ymm11, 29
+        vfmadd132ps ymm3, ymm6, ymm2
+        vfmadd132ps ymm13, ymm8, ymm2
+        vfmadd132ps ymm3, ymm4, ymm2
+        vfmadd132ps ymm2, ymm9, ymm13
+        vfmadd132ps ymm0, ymm0, ymm2
+        vdivps      ymm0, ymm0, ymm3
+        vblendvps   ymm0, ymm0, ymm4, ymm12
+        vxorps      ymm0, ymm0, ymm1
         vmaskmovps  YMMWORD PTR [rdx],ymm15,ymm0
 
 ExitKernel:

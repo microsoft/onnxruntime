@@ -62,19 +62,19 @@ Return Value:
 
 .LComputeTanhBy8Loop:
         vandps      ymm0,ymm10,YMMWORD PTR [rdi]
-	vmovaps	    ymm3, ymm5
-	vmovaps	    ymm13, ymm7
-	vxorps	    ymm1, ymm0, YMMWORD PTR [rdi]
-	vmulps	    ymm2, ymm0, ymm0
-	vcmpps	    ymm12, ymm0, ymm11, 29
-	vfmadd132ps ymm3, ymm6, ymm2
-	vfmadd132ps ymm13, ymm8, ymm2
-	vfmadd132ps ymm3, ymm4, ymm2
-	vfmadd132ps ymm2, ymm9, ymm13
-	vfmadd132ps ymm0, ymm0, ymm2
-	vdivps      ymm0, ymm0, ymm3
-	vblendvps   ymm0, ymm0, ymm4, ymm12
-	vxorps      ymm0, ymm0, ymm1
+        vmovaps     ymm3, ymm5
+        vmovaps     ymm13, ymm7
+        vxorps      ymm1, ymm0, YMMWORD PTR [rdi]
+        vmulps      ymm2, ymm0, ymm0
+        vcmpps      ymm12, ymm0, ymm11, 29
+        vfmadd132ps ymm3, ymm6, ymm2
+        vfmadd132ps ymm13, ymm8, ymm2
+        vfmadd132ps ymm3, ymm4, ymm2
+        vfmadd132ps ymm2, ymm9, ymm13
+        vfmadd132ps ymm0, ymm0, ymm2
+        vdivps      ymm0, ymm0, ymm3
+        vblendvps   ymm0, ymm0, ymm4, ymm12
+        vxorps      ymm0, ymm0, ymm1
         add         rdi,8*4                         # advance input by 8 elements
         vmovups     YMMWORD PTR [rsi],ymm0
         add         rsi,8*4                         # advance output by 8 elements
@@ -89,19 +89,19 @@ Return Value:
         vmovups     ymm15,YMMWORD PTR [r10+rdx*4]
         vmaskmovps  ymm0,ymm15,YMMWORD PTR [rdi]
         vandps      ymm0,ymm10,ymm0
-	vmovaps	    ymm3, ymm5
-	vmovaps	    ymm13, ymm7
-	vxorps	    ymm1, ymm0, YMMWORD PTR [rdi]
-	vmulps	    ymm2, ymm0, ymm0
-	vcmpps	    ymm12, ymm0, ymm11, 29
-	vfmadd132ps ymm3, ymm6, ymm2
-	vfmadd132ps ymm13, ymm8, ymm2
-	vfmadd132ps ymm3, ymm4, ymm2
-	vfmadd132ps ymm2, ymm9, ymm13
-	vfmadd132ps ymm0, ymm0, ymm2
-	vdivps      ymm0, ymm0, ymm3
-	vblendvps   ymm0, ymm0, ymm4, ymm12
-	vxorps      ymm0, ymm0, ymm1
+        vmovaps     ymm3, ymm5
+        vmovaps     ymm13, ymm7
+        vxorps      ymm1, ymm0, YMMWORD PTR [rdi]
+        vmulps      ymm2, ymm0, ymm0
+        vcmpps      ymm12, ymm0, ymm11, 29
+        vfmadd132ps ymm3, ymm6, ymm2
+        vfmadd132ps ymm13, ymm8, ymm2
+        vfmadd132ps ymm3, ymm4, ymm2
+        vfmadd132ps ymm2, ymm9, ymm13
+        vfmadd132ps ymm0, ymm0, ymm2
+        vdivps      ymm0, ymm0, ymm3
+        vblendvps   ymm0, ymm0, ymm4, ymm12
+        vxorps      ymm0, ymm0, ymm1
         vmaskmovps  YMMWORD PTR [rsi],ymm15,ymm0
 
 .LExitKernel:
