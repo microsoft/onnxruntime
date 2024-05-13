@@ -21,11 +21,10 @@ stages:
     pool: 'onnxruntime-Win-CPU-2022'
 
     steps:
+    # https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema/resources-pipelines-pipeline?view=azure-pipelines#pipeline-resource-metadata-as-predefined-variables
     - script: |
-        echo $(pipeline.repository.name)
-        echo $(Build.SourceBranchName)
         echo $(resources.pipeline.build.sourceBranch)
-      displayName: 'Print Repository Name'
+      displayName: 'Print triggering sourceBranch Name in resources'
 
     - checkout: self
       submodules: false
@@ -44,7 +43,7 @@ stages:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
     # Only report binary sizes to database if the build build was auto-triggered from the main branch
-    - ${{ if and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')) }}:
+    - ${{ if and(eq($(resources.pipeline.build.sourceBranch), 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')) }}:
       # TODO: the following step has no error checking
       - task: CmdLine@2
         displayName: 'Post binary sizes to the dashboard database using command line'
