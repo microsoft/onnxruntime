@@ -21,6 +21,10 @@ stages:
     pool: 'onnxruntime-Win-CPU-2022'
 
     steps:
+    - script: |
+        echo $(pipeline.repository.name)
+      displayName: 'Print Repository Name'
+
     - checkout: self
       submodules: false
     - template: templates/set-version-number-variables-step.yml
