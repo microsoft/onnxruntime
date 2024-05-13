@@ -107,16 +107,18 @@ stages:
         # Mobile build:
         # artifact: 'onnxruntime-ios-mobile-pod'
 
-- stage: Run_Tests
-  displayName: Run React Native CI Tests
+- stage: ReactNative_CI
+  displayName: React Native CI
   dependsOn:
   - Build_Packages
   jobs:
-  - job: Run_Tests
+  - job: ReactNative_CI
     pool:
       # We need macOS-12 to run the Android emulator for now.
       # https://github.com/actions/runner-images/issues/7671
       vmImage: 'macOS-12'
+    variables:
+      runCodesignValidationInjection: false
     timeoutInMinutes: 60
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
