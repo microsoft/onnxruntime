@@ -136,23 +136,23 @@ struct OpenVINO_Provider : Provider {
     if (provider_options_map.find("precision") != provider_options_map.end()) {
       precision = provider_options_map.at("precision").c_str();
     }
-    if (device_type == "CPU") {
-      if (precision == "" || precision == "ACCURACY" || precision == "FP32") {
-        precision = "FP32";
-      } else {
-        ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
+    if (device_type.find("GPU") != std::string::npos) {
+      if (precision == "") {
+        precision = "FP16";
+      } else if (precision != "ACCURACY" && precision != "FP16" && precision != "FP32") {
+        ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. GPU only supports FP32 / FP16. \n");
       }
-    } else if (device_type == "NPU") {
+    } else if (device_type.find("NPU") != std::string::npos) {
       if (precision == "" || precision == "ACCURACY" || precision == "FP16") {
         precision = "FP16";
       } else {
         ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
       }
-    } else if (device_type == "GPU") {
-      if (precision == "") {
-        precision = "FP16";
-      } else if (precision != "ACCURACY" && precision != "FP16" && precision != "FP32") {
-        ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. GPU only supports FP32 / FP16. \n");
+    } else if (device_type.find("CPU") != std::string::npos) {
+      if (precision == "" || precision == "ACCURACY" || precision == "FP32") {
+        precision = "FP32";
+      } else {
+        ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
       }
     }
 

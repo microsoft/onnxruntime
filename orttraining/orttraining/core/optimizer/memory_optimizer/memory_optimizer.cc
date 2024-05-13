@@ -146,9 +146,6 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
 Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger)
     const {
-  // Reset the backward pass attribute for all nodes.
-  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ResetNodeBackwardPassAttribute(graph, modified));
-
   LOGS(logger, VERBOSE) << "Memory optimization config: " << optimizer_config_ << ", probe level: "
                         << static_cast<int>(recompute_probe_config_.probe_level)
                         << ", enable_transformer_layer_as_boundary:"
@@ -189,44 +186,8 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
                   .IsOK());
 
   // The second pass - apply the transformation.
-  // Note 1: Iterate through the nodes in reversed topological order and find the subgraph that can be alleviated.
-  // The reason we do reversed topological order is that we want the later layers' recompute nodes can be appended
-  // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
-  // layers.
-  //
-  // Note 2: Here we use default typo order (which tries to BFS from the outputs,
-  // so the nearest node to graph output will be visited last). So in reversed default typo order,
-  // the neareast node to graph output will be visited first.
-  // Imagine there is a such subgraph
-  //         input1 input2 input3
-  //             \    |     /
-  //         multiple layers
-  //             |
-  //            node M
-  // labels-------|-----
-  //    \         |     |
-  //    node1     |     |
-  //      \       |     |
-  //      node2  /      |
-  //        \   /       |
-  //      node loss     /
-  //          |        /
-  //       YieldOp  node1_recompute
-  //         |      /
-  //         \   node2 recompute
-  //          \ /
-  //     node loss_grad
-  //           |
-  //     critical grad path
-  //
-  // In PriorityBased order, node1 will be visited first, so it's recompute node node1_recompute will be added
-  // at last because we do this following reversed topological order. Then node1_recompute node will have lowest
-  // priority to execute, as a result, if at this time, the queue to visit contains only recompute nodes, then
-  // node1_recompute will be run at last, affecting the backward critical path, which is not what we want.
-  // Current workaround is to use default order, which will execute node1_recompute earlier than other recompute nodes
-  // in this case.
-
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
+  const auto& node_ids =
+      graph_viewer.GetNodesInTopologicalOrder(optimizer::memory_optimizer::TOPOLOGICAL_SORT_ALGORITHM);
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     Node* p_node = graph.GetNode(node_ids[i]);
     if (p_node == nullptr) {
@@ -327,7 +288,6 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
                                          &node_to_duplicate->GetAttributes(),
                                          node_to_duplicate->Domain());
 
-    recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
     recompute_node.SetExecutionProviderType(node_to_duplicate->GetExecutionProviderType());
     ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(recompute_node),
                       "Failed to set op schema for added recompute node.");

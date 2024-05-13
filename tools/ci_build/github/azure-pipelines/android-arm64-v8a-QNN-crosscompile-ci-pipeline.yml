@@ -31,7 +31,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.19.2.240210
+  default: 2.21.0.240401
 
 jobs:
 - job: Build_QNN_EP
@@ -39,10 +39,6 @@ jobs:
   timeoutInMinutes: 30
   workspace:
     clean: all
-
-  variables:
-    - name: QNN_SDK_ROOT
-      value: /data/qnnsdk/${{parameters.QnnSdk}}
 
   steps:
   - task: UsePythonVersion@0
@@ -55,6 +51,10 @@ jobs:
 
   - script: sudo chmod go+rw /dev/kvm
     displayName: Update permissions to KVM
+
+  - template: templates/jobs/download_linux_qnn_sdk.yml
+    parameters:
+      QnnSDKVersion: ${{ parameters.QnnSdk }}
 
   - script: |
       export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
@@ -78,7 +78,7 @@ jobs:
         --android_api=31 \
         --parallel \
         --use_qnn \
-        --qnn_home $(QNN_SDK_ROOT) \
+        --qnn_home $(QnnSDKRootDir) \
         --cmake_generator=Ninja \
         --skip_tests --path_to_protoc_exe $(Build.BinariesDirectory)/installed/bin/protoc
     displayName: Build QNN EP

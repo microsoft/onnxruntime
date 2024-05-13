@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/float16.h"
 #include "core/util/qmath.h"
 
 #include "test/optimizer/qdq_test_utils.h"
@@ -266,6 +267,9 @@ struct TestInputDef {
   bool has_range_override_{false};
   std::pair<T, T> range_override_;
 };
+
+// Convert a float input definition to a float16 input definition.
+TestInputDef<MLFloat16> ConvertToFP16InputDef(const TestInputDef<float>& input_def);
 
 template <typename QType>
 inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& input_def, bool symmetric = false) {
@@ -722,8 +726,9 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
         const float cpu_f16_val = cpu_f16_vals[j].ToFloat();  // f16@CPU_EP val
 
         // Get errors of f16@CPU_EP and f16@QNN_EP against f32@CPU_EP.
-        const float cpu_relative_err = std::fabs(expected_val - cpu_f16_val) / expected_val;
-        const float qnn_relative_err = std::fabs(expected_val - qnn_f16_val) / expected_val;
+        constexpr float epsilon = 1e-16f;
+        const float cpu_relative_err = std::fabs(expected_val - cpu_f16_val) / (expected_val + epsilon);
+        const float qnn_relative_err = std::fabs(expected_val - qnn_f16_val) / (expected_val + epsilon);
 
         // Also compare the FP16 values against each other.
         // This is equivalent to abs(f16@QNN_EP - f16@CPU_EP) / output_range

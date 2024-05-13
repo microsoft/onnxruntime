@@ -255,14 +255,17 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.enable_mem_pattern = False
         session_options.enable_mem_reuse = False
         session_options.use_deterministic_compute = _are_deterministic_algorithms_enabled()
-        # DEFAULT order is reversed DFS order, while PRIORITY_BASED order is forward BFS order.
-        # DEFAULT order is likely to be better than PRIORITY_BASED order on memory. However, our recompute feature
-        # requires PRIORITY_BASED order to work properly. So we use PRIORITY_BASED order when recompute is enabled.
+        # Enable  memory efficient execution order for training if 1). memory efficient grad management is enabled
+        # or 2). memory optimizer is enabled.
+        use_memory_efficient_topo_sort = (self._export_mode == torch.onnx.TrainingMode.TRAINING) and (
+            self._mem_efficient_grad_management_is_enabled or self._runtime_options.memory_optimizer_is_enabled()
+        )
         session_options.execution_order = (
-            onnxruntime.ExecutionOrder.PRIORITY_BASED
-            if self._runtime_options.memory_optimizer_is_enabled()
+            onnxruntime.ExecutionOrder.MEMORY_EFFICIENT
+            if use_memory_efficient_topo_sort
             else onnxruntime.ExecutionOrder.DEFAULT
         )
+
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
 
@@ -305,6 +308,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         ):
             # All required models have already been exported previously
             return False
+
         self._set_device_from_module(inputs, kwargs)
         # TODO: move it into runtime_inspector
         embedding_hook_handles = self._add_check_embedding_sparsity_hook()
@@ -316,6 +320,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         for hook in embedding_hook_handles:
             hook.remove()
+
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(
                 self._debug_options.save_onnx_models.path,
@@ -571,10 +576,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
 
             # Override the options if model is not modified.
-            (
-                self._mem_efficient_grad_management_is_enabled,
-                exported_model,
-            ) = post_processing_enable_mem_efficient_training(exported_model, self._flattened_module.named_parameters())
+            (self._mem_efficient_grad_management_is_enabled, exported_model, self._param_trigger_grad) = (
+                post_processing_enable_mem_efficient_training(
+                    exported_model, self._flattened_module.named_parameters(), self._device
+                )
+            )
 
             if self._runtime_options.run_symbolic_shape_infer:
                 exported_model = SymbolicShapeInference.infer_shapes(
@@ -703,11 +709,12 @@ class GraphExecutionManager(GraphExecutionInterface):
             valid_token = torch.count_nonzero(ebd_input - module.padding_idx)
             total_token = ebd_input.numel()
             embed_density = float(valid_token) / float(total_token) * 100
+            if module not in self._runtime_inspector._embedding_module_to_padding_density_map:
+                self._logger.warning("Found Embedding module not in the map. %s", module)
+                return None
+
             if embed_density < 90:
                 self._logger.info("Embedding sparsity-based optimization is ON for density: %.0f%%", embed_density)
-                if module not in self._runtime_inspector._embedding_module_to_padding_density_map:
-                    self._logger.warning("Found Embedding module not in the map. %s", module)
-                    return None
                 if self._runtime_inspector._embedding_module_to_padding_density_map[module][1] != -1:
                     self._logger.warning(
                         "Found duplicate Embedding module. %s",
@@ -791,6 +798,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                         [
                             f"{v[0]}:{v[1]:.0f}%"
                             for v in self._runtime_inspector._embedding_module_to_padding_density_map.values()
+                            if v[1] != -1
                         ]
                     )
 

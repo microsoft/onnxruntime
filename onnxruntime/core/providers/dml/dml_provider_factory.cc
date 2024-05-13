@@ -543,6 +543,7 @@ static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_devi
       ));
 
   auto use_compute_command_list = (feature_levels.MaxSupportedFeatureLevel <= D3D_FEATURE_LEVEL_1_0_CORE);
+
   if (use_compute_command_list)
   {
     return D3D12_COMMAND_LIST_TYPE_COMPUTE;

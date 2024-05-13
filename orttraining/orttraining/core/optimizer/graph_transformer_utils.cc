@@ -52,6 +52,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#include "orttraining/core/optimizer/cast_sce_loss_fusion.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/gru_replacement.h"
@@ -188,6 +189,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
                                                                      config.propagate_cast_ops_config.allow,
                                                                      cuda_execution_provider));
       }
+      transformers.emplace_back(std::make_unique<CastSceLossFusion>(compatible_eps));
 
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));

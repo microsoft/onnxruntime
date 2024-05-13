@@ -46,16 +46,14 @@ stages:
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build and Test'
-# We only support Maven package for CUDA 11.8
-    - ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
-        parameters:
-          arch: 'linux-x64'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-x64-cuda'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
+    - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+        arch: 'linux-x64'
+        buildConfig: 'Release'
+        artifactName: 'onnxruntime-java-linux-x64-cuda'
+        version: '$(OnnxRuntimeVersion)'
+        libraryName: 'libonnxruntime.so'
+        nativeLibraryName: 'libonnxruntime4j_jni.so'
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
@@ -88,7 +86,12 @@ stages:
       workspace:
         clean: all
       pool: 'Onnxruntime-Linux-GPU'
-
+      variables:
+        - name: CUDA_VERSION_MAJOR
+          ${{ if eq(parameters.CudaVersion, '11.8') }}:
+            value: '11'
+          ${{ if eq(parameters.CudaVersion, '12.2') }}:
+            value: '12'
       steps:
         - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
           submodules: false
