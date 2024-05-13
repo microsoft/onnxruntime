@@ -24,7 +24,7 @@ stages:
     # https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema/resources-pipelines-pipeline?view=azure-pipelines#pipeline-resource-metadata-as-predefined-variables
     - script: |
         echo $(resources.pipeline.build.sourceBranch)
-        echo $(variables['Build.Reason'])
+        echo $(Build.Reason)
       displayName: 'Print triggering sourceBranch Name in resources'
 
     - checkout: self
