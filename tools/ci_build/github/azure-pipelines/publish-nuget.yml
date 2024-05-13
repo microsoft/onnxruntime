@@ -44,7 +44,7 @@ stages:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
     # Only report binary sizes to database if the build build was auto-triggered from the main branch
-    - ${{ if and(eq(variables[resources.pipeline.build.sourceBranch], 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')) }}:
+    - ${{ if and(eq(variables['resources.pipeline.build.sourceBranch'], 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')) }}:
       # TODO: the following step has no error checking
       - task: CmdLine@2
         displayName: 'Post binary sizes to the dashboard database using command line'
