@@ -403,7 +403,7 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
 
     // Case to handle standalone duplicate DQs. Just redirect this arg to the original DQ instead and change the
     // arg type to FLOAT as we're replacing it with Identity
-    if (duplicate_dq) {
+    if (duplicate_dq && GetQDQDataType(&node_unit.GetNode()) != ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
       std::string orig_dq_name = node_unit.Outputs()[0].node_arg.Name();  // ex: dql_output/duplicated
       std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = ONNX_NAMESPACE::TypeProto::Create();
       type_proto->copy_from(node_unit.Inputs()[0].node_arg.TypeAsProto());
