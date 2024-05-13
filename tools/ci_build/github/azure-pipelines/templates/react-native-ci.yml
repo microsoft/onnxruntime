@@ -355,7 +355,7 @@ stages:
         set -e
         DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
         if [[ -f "${DEVICE_ID_FILE}" ]]; then
-          xcrun simctl delete "$(< "${DEVICE_ID_FILE}")"
+          xcrun simctl delete "$(cat "${DEVICE_ID_FILE}")"
           rm "${DEVICE_ID_FILE}"
         fi
       displayName: Stop iOS Simulator
