@@ -23,6 +23,7 @@ stages:
     steps:
     - script: |
         echo $(pipeline.repository.name)
+        echo $(Build.SourceBranchName)
       displayName: 'Print Repository Name'
 
     - checkout: self
