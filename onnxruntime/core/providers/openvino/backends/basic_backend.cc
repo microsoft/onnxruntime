@@ -452,7 +452,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
     }
 
     if (!const_outputs_map_.empty()) {
-      for (auto item : const_outputs_map_) {
+      for (const auto& item : const_outputs_map_) {
         const auto& out_name = item.first;
         auto node = item.second;
         Ort::UnownedValue output_tensor = GetOutputTensor(context, std::move(out_name), subgraph_context_.output_names, node);
@@ -460,7 +460,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
           ORT_THROW(log_tag + "IO Buffering is not supported for constant subgraphs");
         } else {
-          FillOutputsWithConstantData(node, output_tensor);
+          FillOutputsWithConstantData(std::move(node), output_tensor);
         }
       }
     }
@@ -478,7 +478,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
 
   if (subgraph_context_.is_constant) {
-    for (auto item : const_outputs_map_) {
+    for (const auto& item : const_outputs_map_) {
       std::string out_name = item.first;
       std::shared_ptr<ov::Node> node = item.second;
       try {

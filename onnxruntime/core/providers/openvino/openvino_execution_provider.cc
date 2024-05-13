@@ -80,7 +80,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                      std::to_string(global_context_->OpenVINO_Version.at(1));
 
   // Check for valid ctx node and maintain state for validity
-  if (ep_ctx_handle_.CheckForOVEPCtxNode(graph_viewer, openvino_sdk_version))
+  if (ep_ctx_handle_.CheckForOVEPCtxNode(graph_viewer, std::move(openvino_sdk_version)))
     ORT_ENFORCE(graph_viewer.NumberOfNodes() == 1,
                 "[Invalid Graph] EPContext Model with OpenVINO compiled blob should not have more than one node.");
 
