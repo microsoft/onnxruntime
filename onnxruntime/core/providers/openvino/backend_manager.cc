@@ -242,7 +242,7 @@ static void DumpOpenVINOEPModel(std::string onnx_model_path_name,
                                 ONNX_NAMESPACE::ModelProto* model_proto,
                                 const onnxruntime::Node& fused_node) {
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    auto model_name = onnx_model_path_name;
+    auto model_name = onnx_model_path_name.empty()? "unknown.onnx" : onnx_model_path_name;
 #ifdef _WIN32
     size_t slash = model_name.find_last_of("\\");
 #else
