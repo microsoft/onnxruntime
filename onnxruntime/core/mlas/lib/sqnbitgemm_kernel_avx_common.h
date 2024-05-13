@@ -19,17 +19,21 @@ SQ4BitGemmPackQuantBDataSize(
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    return PackedQuantBDataSize;
+    const size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+    return PackedQuantBDataSize + BlkSumSize;
 }
 
 static void
-SQ4BitGemmPackQuantBData(
+SQ4BitGemmPackQuantBDataAndSumBlk(
     size_t N,
     size_t K,
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
+    const float* QuantBScaleBegin,
+    const std::byte* QuantBZPBegin,
+    float* BlockSumBegin,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -110,6 +114,29 @@ SQ4BitGemmPackQuantBData(
                 dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
                 dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
             }
+        }
+    );
+
+    MlasTrySimpleParallel(
+        ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
+            const size_t n = tid / BlockCountK;
+            const size_t k_blk = tid % BlockCountK;
+
+            const size_t src_blk_offset = n * BlockCountK + k_blk;
+            const float* QuantBScale = QuantBScaleBegin + src_blk_offset;
+            uint8_t zp = 8;
+            if (QuantBZPBegin) {
+                size_t ZPCountK = MlasDivRoundup(BlockCountK, 2);
+                size_t src_zp_offset = ZPCountK * n + k_blk / 2;
+                bool low_zp = k_blk % 2 == 0;
+                const std::byte* QuantBZP = QuantBZPBegin + src_zp_offset;
+                const std::byte low_mask{0X0F};
+                zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
+            }
+
+            // BlockSum is a width 16 row major matrix
+            const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+            *(BlockSumBegin + dst_offset) = *QuantBScale * zp;
         }
     );
 }

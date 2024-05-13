@@ -199,10 +199,18 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, qptr, packed_b_.get());
     if (prepacked_weights) {
+      // TODO: cannot use packed_b_ after
+      assert(false);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
     }
     is_packed = true;
+  } else if (input_idx == 2) {
+    // MlasSQNBitGemmPackQuantBData with scales
+    assert(false);
+  } else if (input_idx == 3) {
+    // MlasSQNBitGemmPackQuantBData with zp
+    assert(false);
   }
 #endif  // defined(ORT_NEURAL_SPEED)
 

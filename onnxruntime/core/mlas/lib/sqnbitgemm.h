@@ -126,6 +126,21 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
 
     SQ4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
 
+    typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const std::byte* QuantBDataBegin,
+        std::byte* PackedQuantBDataBegin,
+        const float* QuantBScaleBegin,
+        const std::byte* QuantBZPBegin,
+        float* BlockSumBegin,  // BlockCountK by N => (BlockCountK * N) / 16 by 16
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+    SQ4BitGemmPackQuantBDataAndSumBlk_Fn* SQ4BitGemmPackQuantBDataAndSumBlk = nullptr;
+
     //
     // CompFp32 kernel function prototypes.
     //
@@ -270,7 +285,8 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         const float* A,
         size_t CountK,
         std::byte* QuantA,
-        float* QuantAScale
+        float* QuantAScale,
+        float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
     );
     QuantizeARow_CompInt8_Fn2* QuantizeARow_CompInt8_2 = nullptr;
 };

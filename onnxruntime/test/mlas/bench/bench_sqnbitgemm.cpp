@@ -67,6 +67,7 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
     MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
+                                 QuantBScale.data(), QuantBZeroPoint.data(),
                                  tp.get());
   }
 
