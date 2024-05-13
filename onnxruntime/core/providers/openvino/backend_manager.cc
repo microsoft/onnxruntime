@@ -242,7 +242,7 @@ static void DumpOpenVINOEPModel(std::string onnx_model_path_name,
                                 ONNX_NAMESPACE::ModelProto* model_proto,
                                 const onnxruntime::Node& fused_node) {
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    auto model_name = onnx_model_path_name.empty()? "unknown.onnx" : onnx_model_path_name;
+    auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name;
 #ifdef _WIN32
     size_t slash = model_name.find_last_of("\\");
 #else
@@ -267,6 +267,25 @@ std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                            const onnxruntime::GraphViewer& subgraph,
                                            const logging::Logger& logger) const {
+  std::chrono::time_point<std::chrono::high_resolution_clock> model_proto_create_start_, model_proto_create_end_;
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    model_proto_create_start_ = std::chrono::high_resolution_clock::now();
+  }
+
+  auto print_model_proto_duration = [&]() {
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      model_proto_create_end_ = std::chrono::high_resolution_clock::now();
+      auto model_proto_create_duration =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              model_proto_create_end_ - model_proto_create_start_)
+              .count();
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model Proto creation took: " << model_proto_create_duration << " ms.";
+    }
+  };
+
+  LOGS_DEFAULT(INFO)
+      << "[OpenVINO-EP] QDQ optimization pass status: " << global_context_.enable_qdq_optimizer;
+
   // QDQ stripping enabled only for the NPU
   if (global_context_.device_type.find("NPU") != std::string::npos &&
       global_context_.enable_qdq_optimizer &&
@@ -275,6 +294,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, model);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    print_model_proto_duration();
     DumpOpenVINOEPModel(global_context_.onnx_model_path_name, model_proto.get(), fused_node);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
@@ -283,6 +303,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     subgraph.ToProto(*model_proto->mutable_graph(), true, true);
+    print_model_proto_duration();
     DumpOpenVINOEPModel(global_context_.onnx_model_path_name, model_proto.get(), fused_node);
     return model_proto;
   }
