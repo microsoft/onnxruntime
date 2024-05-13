@@ -53,7 +53,7 @@ bool SetSeedForDropoutNode(Node& node) {
 bool SetTrainingModeForForwardPythonOpNode(Node& node) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "PythonOp", {1}, kMSDomain)) {
     auto training_mode_attr = graph_utils::GetNodeAttribute(node, "training_mode");
-    if (training_mode_attr == nullptr) {
+    if (training_mode_attr != nullptr) {
       node.ClearAttribute("training_mode");
     }
 

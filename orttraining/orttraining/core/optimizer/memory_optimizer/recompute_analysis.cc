@@ -675,9 +675,10 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
             bool all_constant_dim = true;
             int64_t num_elem = 1;
             for (int k = 0, dim_size = output_shape->dim_size(); k < dim_size; ++k) {
-              if (!output_shape->dim(k).has_dim_value()) {
-                all_constant_dim = false;
+              if (output_shape->dim(k).has_dim_value()) {
                 num_elem *= output_shape->dim(k).dim_value();
+              } else {
+                all_constant_dim = false;
               }
             }
             if (all_constant_dim && num_elem < 1 * 1024 * 1024) {
