@@ -283,13 +283,11 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     }
   };
 
-  LOGS_DEFAULT(INFO)
-      << "[OpenVINO-EP] QDQ optimization pass status: " << global_context_.enable_qdq_optimizer;
-
   // QDQ stripping enabled only for the NPU
   if (global_context_.device_type.find("NPU") != std::string::npos &&
       global_context_.enable_qdq_optimizer &&
       IsQDQGraph(subgraph)) {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 1";
     std::unique_ptr<onnxruntime::Model> model;
     Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, model);
     auto model_proto = model->ToProto();
@@ -299,6 +297,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   } else {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 0";
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
