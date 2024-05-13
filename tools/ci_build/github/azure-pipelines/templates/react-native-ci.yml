@@ -107,12 +107,12 @@ stages:
         # Mobile build:
         # artifact: 'onnxruntime-ios-mobile-pod'
 
-- stage: ReactNative_CI
-  displayName: React Native CI
+- stage: Run_Tests
+  displayName: Run React Native CI Tests
   dependsOn:
   - Build_Packages
   jobs:
-  - job: ReactNative_CI
+  - job: Run_Tests
     pool:
       # We need macOS-12 to run the Android emulator for now.
       # https://github.com/actions/runner-images/issues/7671
@@ -156,10 +156,6 @@ stages:
     - script:
         brew install applesimutils
       displayName: Install applesimutils tools required by detox ios
-
-    - script: |
-        python -m pip install -q flatbuffers
-      displayName: Install python modules
 
     - task: DownloadPipelineArtifact@2
       inputs:
