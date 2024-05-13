@@ -30,10 +30,6 @@ stages:
     steps:
       - template: set-version-number-variables-step.yml
 
-      - task: NuGetAuthenticate@0
-        inputs:
-          forceReinstallCredentialProvider: true  
-
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.8'
@@ -103,14 +99,6 @@ stages:
           DisplayName: 'ESRP - Sign dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
           Pattern: 'onnxruntime.dll'
-
-      - task: PowerShell@2
-        displayName: Install mobile workloads
-        inputs:
-          targetType: 'inline'
-          script: |
-            dotnet workload install android ios maccatalyst
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
       - task: MSBuild@1
         displayName: 'Restore NuGet Packages and create project.assets.json'
