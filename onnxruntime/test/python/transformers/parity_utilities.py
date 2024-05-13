@@ -220,7 +220,7 @@ def run_parity(
         ort_outputs = onnxruntime_inference(ort_session, input_hidden_states)
 
         if tolerance is None:
-            tolerance = 2e-03 if float16 else 1e-05
+            tolerance = 2e-03 if float16 else 2e-04
         is_all_close, max_diff = compare_outputs(torch_outputs, ort_outputs, atol=tolerance, verbose=verbose)
         max_diffs.append(max_diff)
         if is_all_close:

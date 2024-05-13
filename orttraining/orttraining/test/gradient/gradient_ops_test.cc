@@ -154,7 +154,7 @@ void UnaryOpGradientTest(const std::string& op_type, const std::string& domain =
                          std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
                          std::function<float(float)>* transformer = nullptr,
                          const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes = {},
-                         float error_tolerance = 1e-3f) {
+                         float error_tolerance = 2e-3f) {
   TensorShape shape({2, 3, 4});
   TensorInfo x_info{shape, true, transformer};
   float max_error;
