@@ -29,11 +29,9 @@ constexpr std::string_view DuplicateDQ = "/duplicated";
 // Check output type of Q and input type of DQ to determine it as zero_point is an optional input and may not exist
 static ONNX_NAMESPACE::TensorProto_DataType GetQDQDataType(const Node* qdq_node) {
   if (qdq_node->OpType() == "QuantizeLinear") {
-    ORT_ENFORCE(qdq_node->GetOutputEdgesCount());
     return static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
         qdq_node->OutputDefs().at(0)->TypeAsProto()->tensor_type().elem_type());
   } else if (qdq_node->OpType() == "DequantizeLinear") {
-    ORT_ENFORCE(qdq_node->GetInputEdgesCount());
     return static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
         qdq_node->InputDefs().at(0)->TypeAsProto()->tensor_type().elem_type());
   } else {
@@ -176,6 +174,28 @@ static bool IsAnyDQAConstantInitializer(const Node* target_node, const onnxrunti
   return is_const_init;
 }
 
+// Check required because in some cases, when a NodeUnit cannot be formed with this standalone DQ
+// we still need to check if it feeds into a supported Op
+static bool DQFeedsASupportedOp(const Node* dq_node, const onnxruntime::GraphViewer& src_graph) {
+  if (!dq_node->GetOutputEdgesCount()) return false;  // Only feeds the graph output, and not any node
+
+  const auto& target_node = *dq_node->OutputNodesBegin();
+  const auto op_type = target_node.OpType();
+
+  if (op_type == "Conv" || op_type == "MatMul") {
+    // Conv and MatMul always keeps int8 DQs except if the DQ is sandwiched between Softmax and Conv/MatMul
+    if (IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(dq_node)) {
+      return false;
+    } else {
+      return true;
+    }
+  } else if (op_type == "Add") {
+    // Add keeps all DQs except if it has const inits
+    return !IsAnyDQAConstantInitializer(&target_node, src_graph);
+  }
+  return false;
+}
+
 // Previous Target -> Q -> DQ -> Current Target
 // Traverse back to the previous target node of DQ and check if it's an op listed in supported_ops
 // If the inputs of current target node are constant initializers, then the QDQ pair is invalid
@@ -250,7 +270,7 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
     return false;
   }
 
-  // #2 If it's a constant initializer feeding to even unsupported ops with an unsupported type, keep it
+  // #2 If input 0 is a constant initializer feeding to even unsupported ops with an unsupported type, keep it
   // TODO(sspintel): check if this needs to be done only for certain supported Ops
   if (src_graph.IsConstantInitializer(dq_node->InputDefs().at(0)->Name(), true)) {
     return true;
@@ -417,6 +437,8 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
     if (node_unit.GetNode().Name().find(DuplicateDQ) != std::string::npos)
       add_identity_op(true);
     else if (IsConnectedQPresent(src_graph, dst_graph.Nodes(), &node_unit.GetNode(), node_unit.GetNode().InputDefs()))
+      AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
+    else if (DQFeedsASupportedOp(&node_unit.GetNode(), src_graph))
       AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
     else
       add_identity_op(false);
