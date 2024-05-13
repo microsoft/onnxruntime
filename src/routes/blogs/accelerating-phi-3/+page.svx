@@ -1,0 +1,140 @@
+---
+title: ONNX Runtime supports Phi-3 mini models across platforms and devices
+date: '22nd April, 2024'
+description: 'Thanks to day one ONNX Runtime and DirectML support, developers can now deploy Phi-3 Mini at scale'
+keywords: 'GenAI , LLM, ONNXRuntime, ORT, Phi, DirectML, Windows, phi3, phi-3, ONNX, SLM, edge, gpu'
+authors:
+  [
+    ]
+authorsLink:
+  [
+   ]
+image: 'https://iili.io/JSQDdog.png'
+imageSquare: 'https://iili.io/JSDovQn.png'
+url: 'https://onnxruntime.ai/blogs/accelerating-phi-3'
+---
+
+You can now run Microsoft's latest home-grown [Phi-3 models](https://aka.ms/phi3blog-april) across a huge range of devices and platforms thanks to ONNX Runtime and DirectML. Today we're proud to announce day 1 support for both flavors of Phi-3, [phi3-mini-4k-instruct](https://aka.ms/phi3-mini-4k-instruct) and [phi3-mini-128k-instruct](https://aka.ms/phi3-mini-128k-instruct). The optimized ONNX models are available at [phi3-mini-4k-instruct-onnx](https://aka.ms/phi3-mini-4k-instruct-onnx) and [phi3-mini-128k-instruct-onnx](https://aka.ms/phi3-mini-128k-instruct-onnx).
+
+Many language models are too large to run locally on most devices, but Phi-3 represents a significant exception to this rule: this small but mighty suite of models achieves comparable performance to models 10 times larger! Phi-3 Mini is also the first model in its weight class to support long contexts of up to 128K tokens. To learn more about how Microsoft's strategic data curation and innovative scaling achieved these remarkable results, see [here](https://aka.ms/phi3-tech-report).
+
+You can easily get started with Phi-3 with our newly introduced ONNX runtime Generate() API, found [here](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi-3-tutorial.md)!
+
+## DirectML and ONNX Runtime scales Phi-3 Mini on Windows
+
+By itself, Phi-3 is already small enough to run on many Windows devices, but why stop there? Making Phi-3 even smaller with quantization would dramatically expand the model's reach on Windows, but not all quantization techniques are created equal. We wanted to ensure scalability while also maintaining model accuracy.
+
+Activation-Aware Quantization (AWQ) to quantize Phi-3 Mini lets us reap the memory savings from quantization with only a minimal impact on accuracy. AWQ achieves this by identifying the top 1% of salient weights that are necessary for maintaining model accuracy and quantizing the remaining 99% of weights. This leads to much less accuracy loss from quantization with AWQ compared to many other quantization techniques. For more on AWQ, see [here](https://arxiv.org/abs/2306.00978).
+
+Every GPU that supports DirectX 12 on Windows can run DirectML, regardless of whether it's an AMD, Intel, or NVIDIA GPU. DirectML and ONNX Runtime now support INT4 AWQ, which means developers can now run and deploy this quantized version of Phi-3 across hundreds of millions of Windows devices!
+
+We're working with our hardware vendor partners to provide driver updates that will further improve performance in the coming weeks. Attend our [Build Talk](https://build.microsoft.com/en-US/sessions/65c11f47-56d8-442b-ae52-48df62b7b542?source=sessions) in late May to learn more!
+
+See below for dedicated performance numbers.
+
+## ONNX Runtime for Mobile
+
+In addition to supporting both Phi-3 Mini models on Windows, ONNX Runtime can help run these models on other client devices including Mobile and Mac CPUs, making it a truly cross-platform framework. ONNX Runtime also supports quantization techniques like RTN to enable these models to run across many different types of hardware.
+
+ONNX Runtime Mobile empowers developers to perform on-device inference with AI models on mobile and edge devices. By removing client-server communications, ORT Mobile provides privacy protection and has zero cost. Using RTN INT4 quantization, we significantly reduce the size of the state-of-the-art Phi-3 Mini models and can run both on a Samsung Galaxy S21 at a moderate speed. When applying RTN INT4 quantization, there is a tuning parameter for the int4 accuracy level. This parameter specifies the minimum accuracy level required for the activation of MatMul in int4 quantization, balancing performance and accuracy trade-offs. Two versions of RTN quantized models have been released with int4_accuracy_level=1, optimized for accuracy, and int4_accuracy_level=4, optimized for performance. If you prefer better performance with a slight trade-off in accuracy, we recommend using the model with int4_accuracy_level=4.
+
+
+## ONNX Runtime for Server Scenarios
+
+For Linux developers and beyond, ONNX Runtime with CUDA is a great solution that supports a wide range of NVIDIA GPUs, including both consumer and data center GPUs. Phi-3 Mini-128K-Instruct performs better for ONNX Runtime with CUDA than PyTorch for all batch size, prompt length combinations.
+
+For FP16 CUDA and INT4 CUDA, Phi-3 Mini-128K-Instruct with ORT performs up to 5X faster and up to 9X faster than PyTorch, respectively. Phi-3 Mini-128K-Instruct is currently not supported by Llama.cpp.
+
+For FP16 and INT4 CUDA, Phi-3 Mini-4K-Instruct with ORT performs up to 5X faster and up to 10X faster than PyTorch, respectively. Phi-3 Mini-4K-Instruct is also up to 3X faster than Llama.cpp for large sequence lengths.
+
+Whether it's Windows, Linux, Android, or Mac, there's a path to infer models efficiently with ONNX Runtime!
+
+## Try the ONNX Runtime Generate() API
+
+We are pleased to announce our new Generate() API, which makes it easier to run the Phi-3 models across a range of devices, platforms, and EP backends by wrapping several aspects of generative AI inferencing. The Generate() API makes it easy to drag and drop LLMs straight into your app. To run the early version of these models with ONNX, follow the steps [here](http://aka.ms/generate-tutorial).
+
+
+Example:
+<pre>
+<code>
+python model-qa.py -m /<strong>YourModelPath</strong>/onnx/cpu_and_mobile/phi-3-mini-4k-instruct-int4-cpu -k 40 -p 0.95 -t 0.8 -r 1.0
+
+Input: &lt;user&gt; Tell me a joke &lt;end&gt;
+
+Output: &lt;assistant&gt; Why don't scientists trust atoms?
+
+Because they make up everything!
+
+This joke plays on the double meaning of "make up." In science, atoms are the fundamental building blocks of matter,
+literally making up everything. However, in a colloquial sense, "to make up" can mean to fabricate or lie, hence the humor. &lt;end&gt;
+</code>
+</pre>
+Please watch this space for more updates on AMD, and additional optimization with ORT 1.18. Also, check out our [Build Talk](https://build.microsoft.com/en-US/sessions/e6d21a49-2efb-4a39-8c26-f6eef1410c7a?source=sessions) in late May to learn more about this API!
+
+## Performance Metrics
+
+### DirectML:
+<div class="grid lg:grid-cols-2 gap-4 grid-cols-1">
+    <div class="col-span-1">
+We measured ONNX Runtime + DirectML performance of Phi-3 Mini (4k sequence length) quantized with AWQ and with a block size of 128 on Windows. Our test machine had an NVIDIA GeForce RTX 4090 GPU and an Intel Core i9-13900K CPU. As you can see in the table, DirectML offers high token throughput even at longer prompts and generation lengths.
+<br/><br/>
+DirectML lets developers not only achieve great performance but also deploy models across the entire Windows ecosystem with support from AMD, Intel and NVIDIA. Best of all, AWQ means that developers get this scale while also maintaining high model accuracy.
+<br/><br/>
+Stay tuned for additional performance improvements in the coming weeks thanks to optimized drivers from our hardware partners and additional updates to the ONNX Generate() API.
+
+    </div>
+    <div class="col-span-1">
+                
+<table>
+<tr><th>Prompt Length</th><th>Generation Length</th><th>Wall Clock tokens/s</th></tr>
+<tr><td>16</td><td>256</td><td>266.65</td></tr>
+<tr><td>16</td><td>512</td><td>251.63</td></tr>
+<tr><td>16</td><td>1024</td><td>238.87</td></tr>
+<tr><td>16</td><td>2048</td><td>217.5</td></tr>
+<tr><td>32</td><td>256</td><td>278.53</td></tr>
+<tr><td>32</td><td>512</td><td>259.73</td></tr>
+<tr><td>32</td><td>1024</td><td>241.72</td></tr>
+<tr><td>32</td><td>2048</td><td>219.3</td></tr>
+<tr><td>64</td><td>256</td><td>308.26</td></tr>
+<tr><td>64</td><td>512</td><td>272.47</td></tr>
+<tr><td>64</td><td>1024</td><td>245.67</td></tr>
+<tr><td>64</td><td>2048</td><td>220.55</td></tr>
+<i>Results computed with Batch size = 1</i>
+</table>
+
+    </div>
+</div>
+
+### CUDA:
+
+The table below shows improvement on the average throughput of the first 256 tokens generated (tps) for the Phi-3 Mini 128K Instruct ONNX model. The comparisons are for FP16 and INT4 precisions on CUDA, as measured on 1 A100 80GB GPU (SKU: [Standard_ND96amsr_A100_v4](https://learn.microsoft.com/en-us/azure/virtual-machines/ndm-a100-v4-series)).
+
+<div class="m-auto w50">
+<img src="./Phi3-Mini-128K-FP16CUDA.png" alt="Average throughput of Phi-3 Mini 128K Instruct ONNX model.">
+
+<i>Note: PyTorch Compile and Llama.cpp do not currently support the Phi-3 Mini 128K instruct model.</i>
+</div>
+<br/>
+
+
+The table below shows improvement on the average throughput of the first 256 tokens generated (tps) for Phi-3 Mini 4K Instruct ONNX model. The comparisons are for FP16 and INT4 precisions on CUDA, as measured on 1 A100 80GB GPU (SKU: [Standard_ND96amsr_A100_v4](https://learn.microsoft.com/en-us/azure/virtual-machines/ndm-a100-v4-series)).
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+<img class="m-auto" src="./Phi3-4k-Int4CUDA.png" alt="Average throughput of int4 Phi-3 Mini 4K Instruct ONNX model.">
+
+<img class="m-auto" src="./Phi3-4k-FP16CUDA.png" alt="Average throughput of fp16 Phi-3 Mini 4K Instruct ONNX model.">
+
+</div>
+<i>Pip packages: torch 2.2.0, triton 2.2.0, onnxruntime-gpu1.18.0, transformers 4.39.0, bitsandbytes 0.42.0</i>
+<br/>
+<br/>
+Performance is improved across CPU and other devices as well.
+
+## Safety
+
+Safety metrics and RAI align with the base Phi-3 models. See [here](https://aka.ms/phi3blog-april) for more details.
+
+## Try ONNX Runtime for Phi3 
+
+This blog post introduces how ONNX Runtime and DirectML optimize the Phi-3 model. We've included instructions for running Phi-3 across Windows and other platforms, as well as early benchmarking results. Further improvements and perf optimizations are under way, so stay tuned for the ONNX Runtime 1.18 [release](https://github.com/microsoft/onnxruntime/releases) in early May!   
+
+We encourage you to try out Phi-3 and share your feedback in the [ONNX Runtime](https://github.com/microsoft/onnxruntime) GitHub repository!

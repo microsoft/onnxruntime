@@ -20,14 +20,28 @@ Below is a quick guide to get the packages installed to use ONNX for model seria
 
 There are two Python packages for ONNX Runtime. Only one of these packages should be installed at a time in any one environment. The GPU package encompasses most of the CPU functionality.
 
-```bash
-pip install onnxruntime-gpu
-```
+### Install ONNX Runtime CPU
 
 Use the CPU package if you are running on Arm CPUs and/or macOS.
 
 ```bash
 pip install onnxruntime
+```
+
+### Install ONNX Runtime GPU (CUDA 11.x)
+
+The default CUDA version for ORT is 11.8.
+
+```bash
+pip install onnxruntime-gpu
+```
+
+### Install ONNX Runtime GPU (CUDA 12.x)
+
+For Cuda 12.x, please use the following instructions to install from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview)
+
+```bash
+pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 ```
 
 ## Install ONNX for model export
