@@ -224,6 +224,20 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
   return has_sym_dims;
 }
 
+// Check to see if the graph is QDQ
+static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
+  std::unordered_set<std::string> qdq_ops = {"QuantizeLinear", "DequantizeLinear"};
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
+    if (qdq_ops.find(node->OpType()) != qdq_ops.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static void DumpOpenVINOEPModel(std::string onnx_model_path_name,
                                 ONNX_NAMESPACE::ModelProto* model_proto,
                                 const onnxruntime::Node& fused_node) {
@@ -237,7 +251,6 @@ static void DumpOpenVINOEPModel(std::string onnx_model_path_name,
     model_name = model_name.substr(slash + 1, std::string::npos);
     size_t dot = model_name.find_last_of(".");
     model_name = model_name.substr(0, dot);
-
 
     std::string subgraph_name = fused_node.Name();
     size_t dash = subgraph_name.find_last_of("-");
@@ -256,7 +269,8 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                            const logging::Logger& logger) const {
   // QDQ stripping enabled only for the NPU
   if (global_context_.device_type.find("NPU") != std::string::npos &&
-      global_context_.enable_qdq_optimizer) {
+      global_context_.enable_qdq_optimizer &&
+      IsQDQGraph(subgraph)) {
     std::unique_ptr<onnxruntime::Model> model;
     Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, model);
     auto model_proto = model->ToProto();

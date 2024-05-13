@@ -25,10 +25,22 @@ enum class SkipReason {
 
 constexpr std::string_view DuplicateDQ = "/duplicated";
 
-static ONNX_NAMESPACE::TensorProto_DataType GetZeroPointDT(const Node* qdq_node) {
-  return static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
-      qdq_node->InputDefs().at(2)->TypeAsProto()->tensor_type().elem_type());
+// Return the data type of the qdq node.
+// Check output type of Q and input type of DQ to determine it as zero_point is an optional input and may not exist
+static ONNX_NAMESPACE::TensorProto_DataType GetQDQDataType(const Node* qdq_node) {
+  if (qdq_node->OpType() == "QuantizeLinear") {
+    ORT_ENFORCE(qdq_node->GetOutputEdgesCount());
+    return static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
+        qdq_node->OutputDefs().at(0)->TypeAsProto()->tensor_type().elem_type());
+  } else if (qdq_node->OpType() == "DequantizeLinear") {
+    ORT_ENFORCE(qdq_node->GetInputEdgesCount());
+    return static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
+        qdq_node->InputDefs().at(0)->TypeAsProto()->tensor_type().elem_type());
+  } else {
+    ORT_THROW("Invalid QDQ Op Type when fetching datatype of parameter");
+  }
 }
+
 // Creates a new NodeArg from an input (or output) of a QDQ node unit. If the input/output is quantized,
 // this function modifies the tensor type to the specified float type.
 static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph,
@@ -126,33 +138,6 @@ static bool IsFirstComputeOpBelowConvMatMul(const Node* qdq_node) {
   }
 }
 
-static bool IsAnyDQBias(const Node* target_node) {
-  bool is_bias = false;
-  for (Node::NodeConstIterator it_dq = target_node->InputNodesBegin(); it_dq != target_node->InputNodesEnd(); ++it_dq) {
-    const auto& DQ = &*it_dq;
-    if (DQ->OpType() != "DequantizeLinear") continue;
-    is_bias |= DQ->InputDefs().at(0)->Name().find("bias") != std::string::npos;
-  }
-
-  return is_bias;
-}
-
-static bool IsFirstComputeOpBelowConvMatMulNonBiasAdd(const Node* qdq_node) {
-  if (qdq_node->OpType() != "QuantizeLinear" && qdq_node->OpType() != "DequantizeLinear") {
-    if (qdq_node->OpType() == "Conv" || qdq_node->OpType() == "MatMul")
-      return true;
-    else if (qdq_node->OpType() == "Add")
-      return !IsAnyDQBias(qdq_node);
-    else
-      return false;
-  } else {
-    if (qdq_node->GetOutputEdgesCount())
-      return IsFirstComputeOpBelowConvMatMulNonBiasAdd(&*qdq_node->OutputNodesBegin());
-    else
-      return false;
-  }
-}
-
 static bool IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(const Node* qdq_node) {
   return IsFirstComputeOpAboveSoftMax(qdq_node) && IsFirstComputeOpBelowConvMatMul(qdq_node);
 }
@@ -179,7 +164,7 @@ static const Node* GetFirstComputeOpBelowThisQ(const Node* q_node) {
   }
 }
 
-// Used to find if inputs of the target node DQ's are constant initializers
+// Used to find if input 0 of the target node DQ is a constant initializer
 static bool IsAnyDQAConstantInitializer(const Node* target_node, const onnxruntime::GraphViewer& src_graph) {
   bool is_const_init = false;
   for (Node::NodeConstIterator it_dq = target_node->InputNodesBegin(); it_dq != target_node->InputNodesEnd(); ++it_dq) {
@@ -272,13 +257,13 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
   }
 
   // #3 If UInt16 DQ, don't keep it
-  if (GetZeroPointDT(dq_node) == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+  if (GetQDQDataType(dq_node) == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
     reason = SkipReason::Uint16QDQ;
     return false;
   }
 
-  // DQs in Double QDQ cases should be kept
-  if (dq_node->InputDefs().at(2)->Name().find("zero_point_convert") != std::string::npos &&
+  // DQs in Double QDQ cases should be kept; Use scale param's name to verify that it's converting DQ
+  if (dq_node->InputDefs().at(1)->Name().find("scale_convert") != std::string::npos &&
       !IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(dq_node))
     return true;
 
@@ -314,7 +299,7 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
   auto op_type = node_unit.OpType();
 
   // If UInt16 Q, don't keep it
-  if (GetZeroPointDT(q_node) == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+  if (GetQDQDataType(q_node) == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
     reason = SkipReason::Uint16QDQ;
     return false;
   }
@@ -351,7 +336,7 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
     const Node& o_dq_node = *q_node.OutputNodesBegin();
 
     if (i_dq_node.OpType() == "DequantizeLinear" && o_dq_node.OpType() == "DequantizeLinear") {
-      auto q_zero_point_dt = GetZeroPointDT(&q_node);
+      auto q_zero_point_dt = GetQDQDataType(&q_node);
 
       // Can ignore if this Q is uint16 as it won't be consumed by any supported node
       if (q_zero_point_dt != ONNX_NAMESPACE::TensorProto_DataType_UINT16 &&
@@ -372,7 +357,7 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
     const Node& o_q_node = *dq_node.OutputNodesBegin();
 
     if (i_q_node.OpType() == "QuantizeLinear" && o_q_node.OpType() == "QuantizeLinear") {
-      auto dq_zero_point_dt = GetZeroPointDT(&dq_node);
+      auto dq_zero_point_dt = GetQDQDataType(&dq_node);
 
       if (dq_zero_point_dt != ONNX_NAMESPACE::TensorProto_DataType_UINT16 &&
           IsConnectedQPresent(src_graph, dst_graph.Nodes(), &dq_node, dq_node.InputDefs()) &&
