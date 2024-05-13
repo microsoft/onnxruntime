@@ -1514,12 +1514,17 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
   }
 
-  // Hardware compatibility: pre-check on hardware environment
+  // Hardware compatibility: pre-check on environment
   if (engine_hw_compatible_ && engine_cache_enable_) {
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
     if (std::stoi(compute_capability_) < 80) {
-      LOGS_DEFAULT(ERROR) << "Engine Hardware Compatibility cannot be enabled as GPU arch < 80. ";
+      LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled as GPU arch < 80. ";
       engine_hw_compatible_ = false;
     }
+#else
+    LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled as TRT < 8.6. ";
+    engine_hw_compatible_ = false;
+#endif
   }
 
   if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
@@ -2804,12 +2809,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
   }
 
-  // Enable hardware compatility mode if assigned
-  if (trt_engine_hw_compatible) {
-    trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Ampere+ Engine hardware compatibility is enabled. Current GPU arch is " << compute_capability_;
-  }
-
   // Build TRT engine (if needed) and load TRT engine if:
   //   (1) Graph has no dynamic shape input
   //   (2) All the dynamic shape inputs have associated explicit profiles specified by user
@@ -2829,12 +2828,27 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
   }
 
+    std::string cache_hw_compat = "";
+  // Enable hardware compatility mode if assigned
+  if (engine_cache_enable_ && trt_engine_hw_compatible) {
+    trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
+    cache_hw_compat = "_sm80+";
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Hardware compatibility is enabled when loading and capturing engine cache.";
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] A hardware-compatible engine may have lower throughput and/or higher latency than its non-hardware-compatible counterpart.";
+  } else {
+    cache_hw_compat = "_sm" + compute_capability_;
+  }
+  
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-  const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
+  const std::string cache_path_prefix = cache_path + cache_hw_compat;
   const std::string engine_cache_path = cache_path_prefix + ".engine";
   const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
   const std::string profile_cache_path = cache_path_prefix + ".profile";
+  
+  // Hardware compatility: 
+  if (engine_cache_enable_ && trt_engine_hw_compatible) {
+  }
 
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {
