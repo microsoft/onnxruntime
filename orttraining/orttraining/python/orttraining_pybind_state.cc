@@ -232,10 +232,9 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
     py_tensor_state[layer1_item.first] = {};
     for (const auto& layer2_item : layer1_item.second) {
       assert(layer2_item.second.IsTensor());
-      py::object obj;
-      const Tensor& rtensor = layer2_item.second.Get<Tensor>();
-      GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
-      py_tensor_state[layer1_item.first].insert({layer2_item.first, obj});
+      py::array arr = PrimitiveTensorToNumpyFromDevice(layer2_item.second,
+                                                       &data_transfer_manager);
+      py_tensor_state[layer1_item.first].insert({layer2_item.first, py::cast<py::object>(arr)});
     }
   }
   return py_tensor_state;
@@ -488,7 +487,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
       .def_readwrite("enable_compute_optimizer", &TrainingGraphTransformerConfiguration::enable_compute_optimizer)
-      .def_readwrite("sparse_label_input_names", &TrainingGraphTransformerConfiguration::sparse_label_input_names)
+      .def_readwrite("print_input_density", &TrainingGraphTransformerConfiguration::print_input_density)
       .def_readwrite("optimized_pre_grad_filepath", &TrainingGraphTransformerConfiguration::optimized_pre_grad_filepath)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 

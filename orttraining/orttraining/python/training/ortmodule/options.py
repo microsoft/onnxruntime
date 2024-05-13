@@ -274,10 +274,10 @@ class _RuntimeOptions:
 
         # Configuration for compute optimization.
         self.enable_compute_optimizer = True
-        self.enable_sparse_optimizer = True
+        self.enable_embedding_sparse_optimizer = True
+        self.enable_label_sparse_optimizer = True
         self.label_sparsity_ratio = ""
         self.embed_sparsity_ratio = ""
-        self.enable_embedding_sparse_optimizer = True
 
         # Configuration for memory optimization.
         self.memory_optimization_level = (
@@ -335,15 +335,18 @@ class _RuntimeOptions:
             self.enable_compute_optimizer = int(os.getenv("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER")) == 1
             compute_optimizer_reset = True
 
-        if "ORTMODULE_ENABLE_SPARSE_OPTIMIZER" in os.environ or compute_optimizer_reset:
-            if "ORTMODULE_ENABLE_SPARSE_OPTIMIZER" in os.environ:
-                self.enable_sparse_optimizer = int(os.getenv("ORTMODULE_ENABLE_SPARSE_OPTIMIZER")) == 1
-            self.enable_sparse_optimizer = self.enable_compute_optimizer and self.enable_sparse_optimizer
+        if "ORTMODULE_ENABLE_LABEL_SPARSE_OPTIMIZER" in os.environ or compute_optimizer_reset:
+            if "ORTMODULE_ENABLE_LABEL_SPARSE_OPTIMIZER" in os.environ:
+                self.enable_label_sparse_optimizer = int(os.getenv("ORTMODULE_ENABLE_LABEL_SPARSE_OPTIMIZER")) == 1
+            self.enable_label_sparse_optimizer = self.enable_compute_optimizer and self.enable_label_sparse_optimizer
 
-        # TODO(pengwa): remove once validation on more models are done.
-        if "ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER" in os.environ:
+        if "ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER" in os.environ or compute_optimizer_reset:
+            if "ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER" in os.environ:
+                self.enable_embedding_sparse_optimizer = (
+                    int(os.getenv("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER")) == 1
+                )
             self.enable_embedding_sparse_optimizer = (
-                self.enable_sparse_optimizer and int(os.getenv("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER")) == 1
+                self.enable_compute_optimizer and self.enable_embedding_sparse_optimizer
             )
 
         # Configuration for memory optimization.
