@@ -90,8 +90,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                                                            device_config,
                                                            subgraph_context_.subgraph_name);
         ie_cnn_network_ = exe_network_.Get().get_runtime_model();
-      } else if (!subgraph_context_.has_dynamic_input_shape &&
-                 !global_context_.cache_dir.empty()) {
+      } else if (!subgraph_context_.has_dynamic_input_shape) {
         // Inputs with static dimenstions
         std::string prec_str = (global_context_.precision_str != "ACCURACY") ? global_context_.precision_str : global_context_.model_precision;
         const std::string model = model_proto.SerializeAsString();
