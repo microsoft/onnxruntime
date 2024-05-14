@@ -128,5 +128,5 @@ if __name__ == "__main__":
                 )
                 print(f"{identifier}: {csv_path} is synced to db")
 
-    except BaseException as e:
+    except Exception as e:
         print(str(e))
