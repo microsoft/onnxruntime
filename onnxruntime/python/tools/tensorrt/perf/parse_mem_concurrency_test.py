@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-import argparse
 import csv
 import datetime
 import os
@@ -10,8 +9,7 @@ import re
 
 import pandas as pd
 from azure.kusto.data import KustoConnectionStringBuilder
-from azure.kusto.data.data_format import DataFormat
-from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
+from azure.kusto.ingest import QueuedIngestClient
 from post import get_identifier, parse_arguments, write_table
 
 
@@ -28,9 +26,9 @@ def parse_valgrind_log(input_path, output_path, keywords):
         lines = file.readlines()
 
         for line in lines:
-            line = line.strip()
+            line = line.strip()  # noqa: PLW2901
             # Remove "==xxxxx==" pattern from the line
-            line = line.split("==")[-1].strip()
+            line = line.split("==")[-1].strip()  # noqa: PLW2901
 
             if "blocks are definitely lost in loss" in line:
                 is_definitely_lost = True
