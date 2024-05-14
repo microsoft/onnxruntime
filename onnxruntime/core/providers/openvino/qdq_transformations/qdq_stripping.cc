@@ -174,6 +174,18 @@ static bool IsAnyDQAConstantInitializer(const Node* target_node, const onnxrunti
   return is_const_init;
 }
 
+// Used to find if input 0 of the connected Q is a constant initializer
+static bool IsConnectedQAConstantInitializer(const Node* dq_node, const onnxruntime::GraphViewer& src_graph) {
+  bool is_const_init = false;
+  for (Node::NodeConstIterator it_q = dq_node->InputNodesBegin(); it_q != dq_node->InputNodesEnd(); ++it_q) {
+    const auto& Q = &*it_q;
+    if (Q->OpType() != "QuantizeLinear") continue;
+    is_const_init |= src_graph.IsConstantInitializer(Q->InputDefs().at(0)->Name(), true);
+  }
+
+  return is_const_init;
+}
+
 // Check required because in some cases, when a NodeUnit cannot be formed with this standalone DQ
 // we still need to check if it feeds into a supported Op
 static bool DQFeedsASupportedOp(const Node* dq_node, const onnxruntime::GraphViewer& src_graph) {
@@ -430,6 +442,9 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
     // keep if next target is supported
     if (CheckQRuleSet(node_unit, &node_unit.GetNode(), src_graph, reason))
       AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
+    // #2 If input 0 is a constant initializer, then don't keep the Q
+    else if (src_graph.IsConstantInitializer(node_unit.GetNode().InputDefs().at(0)->Name(), true))
+      return;
     else
       add_identity_op(false);
   } else if (node_unit.OpType() == "DequantizeLinear") {
@@ -493,6 +508,19 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
       } else if (reason == SkipReason::SandwichedDQ) {
         dq_node_args_to_keep.clear();
         break;
+      } else if (IsConnectedQAConstantInitializer(dq_node, src_graph)) {
+        // Q (const input arg 0) -> DQ -> Supported Op
+        // If the connected Q has a const init input, then the DQ should only have the Q as input
+        ORT_ENFORCE(dq_node->GetInputEdgesCount() == 1);
+        // Make the const init the input to the target node, as its Q, and DQ are not being kept
+        dq_node_args_to_keep.insert(
+            {input_defs.at(0)->Name(),
+             &dst_graph.GetOrCreateNodeArg(dq_node->InputNodesBegin()->InputDefs().at(0)->Name(),
+                                           dq_node->InputNodesBegin()->InputDefs().at(0)->TypeAsProto())});
+        // Also keep the initializer in the graph
+        if (src_graph.GetAllInitializedTensors().count(dq_node->InputNodesBegin()->InputDefs().at(0)->Name())) {
+          initializers_to_keep.insert({dq_node->InputNodesBegin()->InputDefs().at(0)->Name()});
+        }
       }
     }
   }
