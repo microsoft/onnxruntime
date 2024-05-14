@@ -3,6 +3,11 @@
 
 'use strict';
 
+//
+// This file contains the pre-run code for the ORT WebAssembly module. The code in this file will be injected into the
+// final module using Emscripten's `--pre-js` option.
+
+
 /**
  * Mount external data files of a model to an internal map, which will be used during session initialization.
  *

@@ -3,6 +3,13 @@
 
 'use strict';
 
+//
+// This file contains the pre-run code for the ORT WebAssembly module. The code in this file will be injected into the
+// final module using Emscripten's `--pre-js` option.
+//
+// This file will only be used in build with flag `--use_jsep`.
+
+
 /**
  * initialize JSEP for asyncify support.
  */

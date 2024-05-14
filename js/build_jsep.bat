@@ -3,7 +3,7 @@
 rem build_jsep.bat --- build onnxruntime-web with JSEP
 rem
 rem Usage:
-rem   build_jsep.bat  config  threaded  [clean]
+rem   build_jsep.bat  config  [clean]
 rem
 rem Options:
 rem   config      Build configuration, "d" or "r"
