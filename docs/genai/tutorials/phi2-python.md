@@ -3,7 +3,7 @@ title: Python phi-2 tutorial
 description: Learn how to write a language generation application with ONNX Runtime GenAI in Python using the phi-2 model
 has_children: false
 parent: Tutorials
-grand_parent: Generative AI (Preview)
+grand_parent: Generate API (Preview)
 nav_order: 2
 ---
 

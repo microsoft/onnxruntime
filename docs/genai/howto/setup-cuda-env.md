@@ -3,7 +3,7 @@ title: Setup CUDA env
 description: Instructions to setup the CUDA environtment to run onnxruntime-genai-cuda
 has_children: false
 parent: How to
-grand_parent: Generative AI (Preview)
+grand_parent: Generate API (Preview)
 nav_order: 4
 ---
 

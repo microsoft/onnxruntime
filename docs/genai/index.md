@@ -1,11 +1,11 @@
 ---
-title: Generative AI (Preview)
-description: Run generative models with ONNX Runtime GenAI
+title: Generate API (Preview)
+description: Run generative models with the ONNX Runtime generate() API
 has_children: true
 nav_order: 6
 ---
 
-# Generative AI with ONNX Runtime
+# ONNX Runtime generate() API
 
 _Note: this API is in preview and is subject to change._
 
