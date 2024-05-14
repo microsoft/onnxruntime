@@ -5,6 +5,7 @@ const path = require('node:path');
 const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
+  module : {parser : {javascript : {importMeta : false}}},
   experiments : {outputModule : true},
   target : ['web'],
   entry : path.resolve(__dirname, 'src/esm-js/main.js'),

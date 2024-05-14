@@ -4,17 +4,14 @@
 'use strict';
 
 it('Browser E2E testing - WebAssembly backend (path override prefix)', async function() {
-  // check base URL from karma args
-  if (typeof __ort_arg_base === 'undefined') {
-    throw new Error('karma flag --base-url=<BASE_URL> is required');
+  // check base URL port from test args
+  if (typeof __ort_arg_port === 'undefined') {
+    throw new Error('test flag --port=<PORT> is required');
   }
-
-  // disable SIMD and multi-thread
-  ort.env.wasm.numThreads = 1;
-  ort.env.wasm.simd = false;
+  const base = `http://localhost:${__ort_arg_port}/`;
 
   // override .wasm file path prefix
-  const prefix = new URL('./test-wasm-path-override/', __ort_arg_base).href;
+  const prefix = new URL('./test-wasm-path-override/', base).href;
   console.log(`ort.env.wasm.wasmPaths = ${JSON.stringify(prefix)};`);
   ort.env.wasm.wasmPaths = prefix;
 

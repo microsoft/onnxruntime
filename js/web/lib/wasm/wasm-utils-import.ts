@@ -87,39 +87,38 @@ const preload = async(absoluteUrl: string): Promise<string> => {
 const dynamicImportDefault = async<T>(url: string): Promise<T> => (await import(/* webpackIgnore: true */ url)).default;
 
 /**
- * The embedded proxy module.
+ * The proxy worker factory imported from the proxy worker module.
  *
- * This is only available in ESM and when embedding is not disabled.
+ * This is only available when the WebAssembly proxy is not disabled.
  */
-// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-const embeddedProxyModule: (() => Worker) = require('./proxy-worker/main').default;
+const createProxyWorker: ((urlOverride?: string) => Worker)|undefined =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    BUILD_DEFS.DISABLE_WASM_PROXY ? undefined : require('./proxy-worker/main').default;
 
 /**
- * Import the proxy module.
+ * Import the proxy worker.
  *
  * This function will perform the following steps:
- * 1. If the embedded proxy module is available and the script source is from the same origin, it will return the
- * embedded module.
- * 2. Otherwise, if a preload is needed, it will preload the module and return the object URL.
- * 3. Otherwise, it will perform a dynamic import of the module.
+ * 1. If a preload is needed, it will preload the module and return the object URL.
+ * 2. Use the proxy worker factory to create the proxy worker.
  *
  * @returns - A promise that resolves to a tuple of 2 elements:
  *            - The object URL of the preloaded module, or undefined if no preload is needed.
- *            - The default export of the module, which is a factory function to create the proxy worker.
+ *            - The proxy worker.
  */
-export const importProxyModule = async(): Promise<[undefined | string, () => Worker]> => {
+export const importProxyWorker = async(): Promise<[undefined | string, Worker]> => {
   if (!scriptSrc) {
     throw new Error('Failed to load proxy worker: cannot determine the script source URL.');
   }
 
   // If the script source is from the same origin, we can use the embedded proxy module directly.
   if (isSameOrigin(scriptSrc)) {
-    return [undefined, embeddedProxyModule];
+    return [undefined, createProxyWorker!()];
   }
 
   // Otherwise, need to preload
   const url = await preload(scriptSrc);
-  return [url, await dynamicImportDefault<() => Worker>(url)];
+  return [url, createProxyWorker!(url)];
 };
 
 /**

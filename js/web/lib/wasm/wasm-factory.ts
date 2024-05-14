@@ -104,8 +104,10 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   const wasmPaths = flags.wasmPaths;
   const wasmPrefixOverride = typeof wasmPaths === 'string' ? wasmPaths : undefined;
-  const mjsPathOverride = typeof wasmPaths === 'object' ? wasmPaths.mjs : undefined;
-  const wasmPathOverride = typeof wasmPaths === 'object' ? wasmPaths.wasm : undefined;
+  const mjsPathOverrideFlag = (wasmPaths as Env.WasmFilePaths)?.mjs;
+  const mjsPathOverride = (mjsPathOverrideFlag as URL)?.href ?? mjsPathOverrideFlag;
+  const wasmPathOverrideFlag = (wasmPaths as Env.WasmFilePaths)?.wasm;
+  const wasmPathOverride = (wasmPathOverrideFlag as URL)?.href ?? wasmPathOverrideFlag;
 
   const [objectUrl, ortWasmFactory] = (await importWasmModule(mjsPathOverride, wasmPrefixOverride, numThreads > 1));
 

@@ -16,7 +16,7 @@ export declare namespace Env {
      * - `ort-wasm-simd-threaded.jsep.wasm` for JSEP build (with WebGPU and WebNN)
      * - `ort-training-wasm-simd-threaded.wasm` for training build
      */
-    wasm?: string;
+    wasm?: URL|string;
     /**
      * Specify the override path for the main .mjs file.
      *
@@ -27,7 +27,7 @@ export declare namespace Env {
      * - `ort-wasm-simd-threaded.jsep.mjs` for JSEP build (with WebGPU and WebNN)
      * - `ort-training-wasm-simd-threaded.mjs` for training build
      */
-    mjs?: string;
+    mjs?: URL|string;
   }
   export type WasmPrefixOrFilePaths = WasmPathPrefix|WasmFilePaths;
   export interface WebAssemblyFlags {

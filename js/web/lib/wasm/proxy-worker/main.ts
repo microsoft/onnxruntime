@@ -179,4 +179,5 @@ if (isProxyWorker) {
 
 export default isProxyWorker ?
     null :
-    () => new Worker(scriptSrc!, {type: BUILD_DEFS.IS_ESM ? 'module' : 'classic', name: WORKER_NAME});
+    (urlOverride?: string) =>
+        new Worker(urlOverride ?? scriptSrc!, {type: BUILD_DEFS.IS_ESM ? 'module' : 'classic', name: WORKER_NAME});

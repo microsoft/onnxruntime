@@ -29,6 +29,7 @@ const files = [
   {pattern: './model.onnx', included: false},
   {pattern: './model_with_orig_ext_data.onnx', included: false},
   {pattern: './model_with_orig_ext_data.bin', included: false},
+  {pattern: './test-wasm-path-override/*', included: false, nocache: true, watched: false},
 ];
 if (ORT_MAIN) {
   if (ORT_MAIN.endsWith('.mjs')) {
@@ -63,11 +64,7 @@ module.exports = function(config) {
       '/model.onnx': '/base/model.onnx',
       '/model_with_orig_ext_data.onnx': '/base/model_with_orig_ext_data.onnx',
       '/model_with_orig_ext_data.bin': '/base/model_with_orig_ext_data.bin',
-      '/test-wasm-path-override/ort-wasm-simd-threaded.mjs':
-          '/base/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs',
-      '/test-wasm-path-override/ort-wasm-simd-threaded.wasm':
-          '/base/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm',
-      '/test-wasm-path-override/renamed.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm',
+      '/test-wasm-path-override/': '/base/test-wasm-path-override/',
     },
     client: {captureConsole: true, args: normalizedTestArgs, mocha: {expose: ['body'], timeout: 60000}},
     reporters: ['mocha'],
