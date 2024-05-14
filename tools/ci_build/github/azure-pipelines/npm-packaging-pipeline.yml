@@ -13,7 +13,7 @@ variables:
   # pipeline should define the following varaibles
   #   ExtraBuildArgs
   #   VersionSuffix
-
+  ComponentDetection.Timeout: 1800
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
     NpmPackagingMode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
