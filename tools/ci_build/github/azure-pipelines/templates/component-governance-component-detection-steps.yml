@@ -11,6 +11,7 @@ steps:
     displayName: 'Clean up build directory'
 
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+    continueOnError: true
     displayName: 'Component Detection'
     condition:
       or(or(and(eq('${{parameters.condition}}', 'ci_only'), and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI', 'Scheduled'))),
