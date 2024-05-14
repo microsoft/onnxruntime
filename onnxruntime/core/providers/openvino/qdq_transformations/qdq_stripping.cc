@@ -468,7 +468,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
     const auto& input_defs = dq_node->InputDefs();
     ORT_ENFORCE(input_defs.size() == 3);
 
-    SkipReason reason;
+    SkipReason reason = SkipReason::Other;
     bool keep_dq = CheckDQRuleSet(node_unit, dq_node, src_graph, reason);
 
     if (keep_dq) {
