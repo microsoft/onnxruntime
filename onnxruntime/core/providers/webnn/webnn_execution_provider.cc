@@ -37,7 +37,13 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
     }
   } else {
     preferred_layout_ = DataLayout::NCHW;
-    wnn_device_type_ = webnn::WebnnDeviceType::GPU;
+    if (webnn_device_flags.compare("gpu") == 0) {
+      wnn_device_type_ = webnn::WebnnDeviceType::GPU;
+    } else if (webnn_device_flags.compare("npu") == 0) {
+      wnn_device_type_ = webnn::WebnnDeviceType::NPU;
+    } else {
+      ORT_THROW("Unknown WebNN deviceType.");
+    }
   }
   if (webnn_power_flags.compare("default") != 0) {
     context_options.set("powerPreference", emscripten::val(webnn_power_flags));

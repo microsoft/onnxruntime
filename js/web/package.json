@@ -7,7 +7,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "flatbuffers": "^1.12.0",
@@ -64,7 +64,8 @@
     "numpy-parser": "^1.2.3",
     "strip-json-comments": "^5.0.0"
   },
-  "main": "dist/ort-web.node.js",
+  "main": "dist/ort.node.min.js",
+  "browser": "dist/ort.min.js",
   "exports": {
     ".": {
       "node": "./dist/ort.node.min.js",

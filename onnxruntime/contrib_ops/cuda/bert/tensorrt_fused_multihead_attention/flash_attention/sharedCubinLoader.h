@@ -29,6 +29,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+
 template <typename TKernelMeta, typename TKernelParam>
 class TSharedCubinKernel {
  public:
@@ -105,7 +106,7 @@ class TSharedCubinKernel {
 
   virtual void dumpHashId(TKernelParam const& param, std::ostringstream& message) const = 0;
 
-  virtual int32_t getSForUnroll(TKernelParam const& param) const = 0;
+  virtual dim3 getGridDim(const TKernelMeta& kernelMeta, const TKernelParam& params) const = 0;
 
   virtual void run(TKernelParam& params, cudaStream_t ss) const {
     ORT_ENFORCE(!params.interleaved);  // interleaved is for int8
@@ -126,16 +127,10 @@ class TSharedCubinKernel {
     CUfunction const func = findIter->second.mDeviceFunction;
 
     void* kernelParams[] = {&params, nullptr};
-    if (!params.force_unroll) {
-      cuErrCheck(mDriver.cuLaunchKernel(func, params.h, params.b, 1, kernelMeta.mThreadsPerCTA, 1, 1,
-                                        kernelMeta.mSharedMemBytes, ss, kernelParams, nullptr),
-                 mDriver);
-    } else {
-      int32_t unroll = (getSForUnroll(params) + kernelMeta.mUnrollStep - 1) / kernelMeta.mUnrollStep;
-      cuErrCheck(mDriver.cuLaunchKernel(func, params.h, params.b, unroll, kernelMeta.mThreadsPerCTA, 1, 1,
-                                        kernelMeta.mSharedMemBytes, ss, kernelParams, nullptr),
-                 mDriver);
-    }
+
+    dim3 gridDim = getGridDim(kernelMeta, params);
+    cuErrCheck(mDriver.cuLaunchKernel(func, gridDim.x, gridDim.y, gridDim.z, kernelMeta.mThreadsPerCTA, 1, 1,
+                                      kernelMeta.mSharedMemBytes, ss, kernelParams, nullptr), mDriver);
   }
 
   virtual ~TSharedCubinKernel() = default;

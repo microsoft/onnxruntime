@@ -184,7 +184,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
 
-#else  // defined(ORT_NEURAL_SPEED)
+#else   // defined(ORT_NEURAL_SPEED)
 
   if (input_idx == 1) {
     const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
@@ -204,7 +204,6 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     }
     is_packed = true;
   }
-
 #endif  // defined(ORT_NEURAL_SPEED)
 
   return Status::OK();
@@ -315,6 +314,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
+#ifndef ORT_NEURAL_SPEED
   const bool has_single_b_matrix =
       (!act_order_) && (!zero_point_is_not_quant_) &&
       std::all_of(helper.RightOffsets().begin(), helper.RightOffsets().end(), [](size_t offset) { return offset == 0; });
@@ -322,7 +322,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   if (has_single_b_matrix) {
     const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
 
-    if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
+    // mlas nbits implementation requires packed b. update this logic if it changes.
+    if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type) && packed_b_) {
       IAllocatorUniquePtr<std::byte> workspace{};
       if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
                                                                          nbits_, block_size_, compute_type);
@@ -332,20 +333,11 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
         workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
       }
 
-      const void* b_data = [&]() -> const void* {
-        if (packed_b_) {
-          return packed_b_.get();
-        }
-
-        const Tensor* b = ctx->Input<Tensor>(1);
-        return b->DataRaw();
-      }();
-
       InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
       for (size_t i = 0; i < batch_count; ++i) {
         data[i].A = a_data + helper.LeftOffsets()[i];
         data[i].lda = lda;
-        data[i].QuantBData = b_data;
+        data[i].QuantBData = packed_b_.get();
         data[i].QuantBScale = scales_data;
         data[i].QuantBZeroPoint = zero_points_data;
         data[i].C = y_data + helper.OutputOffsets()[i];
@@ -358,6 +350,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       return Status::OK();
     }
   }
+#endif  // not defined(ORT_NEURAL_SPEED)
 
   const Tensor* b = ctx->Input<Tensor>(1);
   const uint8_t* b_data = b->Data<uint8_t>();

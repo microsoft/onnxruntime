@@ -11,6 +11,7 @@ parameters:
   stage_name: ''
   SpecificArtifact: false
   BuildId: '0'
+  build_pool_name: ''
 
 stages:
   - stage: Build_${{ parameters.stage_name }}
@@ -30,12 +31,12 @@ stages:
       - name: PythonVersion
         value: ${{ parameters.python_version }}
       - name: Repository
-        value: onnxruntimetraininggpubuild_${{ parameters.python_version }}
+        value: onnxruntimetraininggpubuild_cu${{ replace(parameters.cuda_version, '.', '') }}_py${{ replace(parameters.python_version, '.', '') }}
     dependsOn: []
 
     jobs:
     - job: Build
-      pool: onnxruntime-Ubuntu2204-AMD-CPU
+      pool: ${{ parameters.build_pool_name }}
       timeoutInMinutes: 180
       steps:
         - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -84,7 +85,6 @@ stages:
                 --volume $(Build.BinariesDirectory):/build \
                 --volume /data/models:/build/models:ro \
                 --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-                -e NVIDIA_VISIBLE_DEVICES=all \
                 -e NIGHTLY_BUILD \
                 -e DEFAULT_TRAINING_PACKAGE_DEVICE \
                 -e BUILD_BUILDNUMBER \
@@ -137,7 +137,7 @@ stages:
       - name: PythonVersion
         value: ${{ parameters.python_version }}
       - name: Repository
-        value: onnxruntimetraininggpubuild_${{ parameters.python_version }}
+        value: onnxruntimetraininggpubuild_cu${{ replace(parameters.cuda_version, '.', '') }}_py${{ replace(parameters.python_version, '.', '') }}
       - name: UploadWheel
         value: ${{ parameters.upload_wheel }}
     dependsOn: Build_${{ parameters.stage_name }}
@@ -152,6 +152,8 @@ stages:
         - checkout: self
           clean: true
           submodules: none
+
+        - template: jobs/download_training_test_data.yml
 
         - template: set-python-manylinux-variables-step.yml
 
@@ -188,21 +190,6 @@ stages:
               --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
             Repository: $(Repository)
 
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-          displayName: 'Mount MNIST'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
-          displayName: 'Mount bert-data'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-          displayName: 'Mount hf-models-cache'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)
-
         - task: CmdLine@2
           displayName: 'test ortmodule'
           inputs:
@@ -215,9 +202,7 @@ stages:
                 --gpus all \
                 -e NVIDIA_VISIBLE_DEVICES=all \
                 --volume $(Build.ArtifactStagingDirectory):/build \
-                --volume /mnist:/mnist \
-                --volume /bert_data:/bert_data \
-                --volume /hf_models_cache:/hf_models_cache \
+                --volume $(Agent.TempDirectory)/MNIST:/mnist \
                 $(Repository) \
                   bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$basefilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
             workingDirectory: $(Build.SourcesDirectory)

@@ -204,9 +204,9 @@ if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
   endif()
 endif()
 
-# Mark symbols to be invisible, for macOS/iOS target only
+# Mark symbols to be invisible, for macOS/iOS/visionOS target only
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS")
   foreach(flags CMAKE_CXX_FLAGS CMAKE_OBJC_FLAGS CMAKE_OBJCXX_FLAGS)
     string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden")
   endforeach()
