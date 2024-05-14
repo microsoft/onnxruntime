@@ -157,8 +157,8 @@ jobs:
           }
         displayName: 'Check and Install Azure CLI'
       
-      - task: ParseMemTestRecords@1
-        displayName: 'Parse Memory & Concurrency Test Records'
+      - task: AzureCLI@2
+        displayName: 'Parse Memory & Concurrency Test Records and Sync'
         inputs:
           azureSubscription: AIInfraBuildOnnxRuntimeOSS
           scriptLocation: inlineScript
@@ -191,7 +191,7 @@ jobs:
             commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
             python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
 
-    - task: PublishBuildArtifacts@3
+    - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
         artifactName: 'result-$(Build.BuildNumber)'
