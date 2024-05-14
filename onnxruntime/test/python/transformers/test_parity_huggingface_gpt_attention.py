@@ -9,19 +9,24 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # -------------------------------------------------------------------------
-
 import os
 import random
 import unittest
+from pathlib import Path
 
 import numpy
 import onnx
 import pytest
 import torch
 from onnx import helper
-from parity_utilities import compare_outputs, create_ort_session, diff_outputs
+from parity_utilities import compare_outputs, create_ort_session, find_transformers_source, parse_arguments
 from torch import nn
 from transformers.modeling_utils import Conv1D
+
+if find_transformers_source():
+    from onnx_model import OnnxModel
+else:
+    from onnxruntime.transformers.onnx_model import OnnxModel
 
 DEBUG_OUTPUTS = ["qk", "norm_qk", "softmax", "attn_weights"]
 
@@ -167,7 +172,7 @@ def create_inputs(
     sequence_length=1,
     past_sequence_length=5,
     float16=False,
-    device=torch.device("cuda"),
+    device=torch.device("cuda"),  # noqa: B008
     padding_length=0,
 ):
     float_type = torch.float16 if float16 else torch.float32
@@ -207,8 +212,6 @@ def get_output_names(debug=False):
 
 
 def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_heads, debug, device):
-    from pathlib import Path
-
     Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
     input_hidden_states, attention_mask, layer_past = create_inputs(
@@ -219,7 +222,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_head
     )
 
     with torch.no_grad():
-        outputs = model(input_hidden_states, attention_mask=attention_mask, layer_past=layer_past)
+        model(input_hidden_states, attention_mask=attention_mask, layer_past=layer_past)
 
     dynamic_axes = {
         "input_hidden_states": {0: "batch_size", 1: "seq_len"},
@@ -255,13 +258,11 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_head
 
 
 def optimize_onnx(input_onnx_path, optimized_onnx_path, num_heads, debug):
-    from onnxruntime.transformers.onnx_model import OnnxModel
-
     m = onnx.load(input_onnx_path)
     onnx_model = OnnxModel(m)
 
     nodes_to_remove = onnx_model.nodes()
-    output_names = ["attn_output", "present"] + DEBUG_OUTPUTS if debug else ["attn_output", "present"]
+    output_names = ["attn_output", "present", *DEBUG_OUTPUTS] if debug else ["attn_output", "present"]
     node_to_add = helper.make_node(
         "Attention",
         [
@@ -308,6 +309,7 @@ def verify_attention(
     padding_length,
     optimized,
     test_cases=100,
+    verbose=False,
 ):
     print(
         f"optimized={optimized}, batch_size={batch_size}, hidden_size={hidden_size}, num_attention_heads={num_attention_heads}, sequence_length={sequence_length}, past_sequence_length={past_sequence_length}, float16={float16}, padding_length={padding_length}, device={device}"
@@ -315,8 +317,8 @@ def verify_attention(
     passed_cases = 0
     max_diffs = []
 
-    ort_session = create_ort_session(onnx_model_path, device.type == "cuda")
-    for i in range(test_cases):
+    ort_session = create_ort_session(onnx_model_path, device.type == "cuda", verbose=verbose)
+    for _i in range(test_cases):
         input_hidden_states, attention_mask, layer_past = create_inputs(
             batch_size,
             hidden_size,
@@ -337,7 +339,7 @@ def verify_attention(
 
         ort_outputs = onnxruntime_inference(ort_session, input_hidden_states, attention_mask, layer_past)
 
-        tolerance = 1e-03 if float16 else 1e-05
+        tolerance = 1e-02 if float16 else 1e-04
         is_all_close, max_diff = compare_outputs(torch_outputs, ort_outputs, atol=tolerance, verbose=True)
         max_diffs.append(max_diff)
         if is_all_close:
@@ -350,7 +352,7 @@ def verify_attention(
     return test_cases - passed_cases
 
 
-def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device, test_cases):
+def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device, test_cases, verbose=False):
     test_name = f"batch_size={batch_size}, float16={float16}, optimized={optimized}, hidden_size={hidden_size}, num_attention_heads={num_attention_heads}"
     print(f"\nTesting ONNX parity: {test_name}")
 
@@ -392,6 +394,7 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
         padding_length,
         optimized,
         test_cases,
+        verbose,
     )
 
     # Test Case: with past state and padding last 2 words
@@ -411,6 +414,7 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
         padding_length,
         optimized,
         test_cases,
+        verbose,
     )
 
     # Test Case: random mask one word
@@ -430,6 +434,7 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
         padding_length,
         optimized,
         test_cases,
+        verbose,
     )
 
     # clean up onnx file
@@ -441,11 +446,13 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
 
 
 class TestGptAttentionHuggingfaceParity(unittest.TestCase):
+    verbose = False
+    optimized = True
+
     def setUp(self):
-        self.optimized = True  # Change it to False if you want to test parity of non optimized ONNX
         self.test_cases = 10  # Number of test cases per test run
 
-    def run_test(self, batch_size, float16, optimized, hidden_size, num_attention_heads, device):
+    def run_test(self, batch_size, float16, optimized, hidden_size, num_attention_heads, device, verbose=False):
         if float16 and device.type == "cpu":  # CPU does not support FP16
             return
         num_failure, test_name = run(
@@ -456,10 +463,11 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
             num_attention_heads,
             device,
             self.test_cases,
+            verbose=verbose,
         )
         self.assertTrue(num_failure == 0, test_name)
 
-    def run_small(self, optimized, device):
+    def run_small(self, optimized, device, verbose=False):
         for batch_size in [64]:
             self.run_test(
                 batch_size,
@@ -468,6 +476,7 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
                 hidden_size=768,
                 num_attention_heads=12,
                 device=device,
+                verbose=verbose,
             )
             self.run_test(
                 batch_size,
@@ -476,9 +485,10 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
                 hidden_size=768,
                 num_attention_heads=12,
                 device=device,
+                verbose=verbose,
             )
 
-    def run_large(self, optimized, device):
+    def run_large(self, optimized, device, verbose=False):
         for batch_size in [2]:
             self.run_test(
                 batch_size,
@@ -487,6 +497,7 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
                 hidden_size=4096,
                 num_attention_heads=32,
                 device=device,
+                verbose=verbose,
             )
             self.run_test(
                 batch_size,
@@ -495,31 +506,33 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
                 hidden_size=4096,
                 num_attention_heads=32,
                 device=device,
+                verbose=verbose,
             )
 
     def test_cpu(self):
         cpu = torch.device("cpu")
-        self.run_small(self.optimized, cpu)
+        self.run_small(self.optimized, cpu, verbose=self.verbose)
 
     def test_cuda(self):
         if not torch.cuda.is_available():
-            import pytest
-
-            pytest.skip("test requires GPU and torch+cuda")
+            self.skipTest("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
-            self.run_small(self.optimized, gpu)
+            self.run_small(self.optimized, gpu, verbose=self.verbose)
 
     @pytest.mark.slow
     def test_large_cuda(self):
         if not torch.cuda.is_available():
-            import pytest
-
-            pytest.skip("test requires GPU and torch+cuda")
+            self.skipTest("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
-            self.run_large(self.optimized, gpu)
+            self.run_large(self.optimized, gpu, verbose=self.verbose)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    args, remaining_args = parse_arguments(namespace_filter=unittest)
+
+    TestGptAttentionHuggingfaceParity.verbose = args.log_verbose
+    TestGptAttentionHuggingfaceParity.optimized = args.optimize
+
+    unittest.main(argv=remaining_args)

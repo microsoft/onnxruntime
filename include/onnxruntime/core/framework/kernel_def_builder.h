@@ -43,11 +43,9 @@ class KernelDef {
     *end = op_since_version_end_;
   }
 
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   const std::pair<int, int> SinceVersion() const {
     return std::pair<int, int>(op_since_version_start_, op_since_version_end_);
   }
-#endif
 
   onnxruntime::ProviderType Provider() const {
     return provider_type_;
@@ -85,7 +83,7 @@ class KernelDef {
 
   bool HasExternalOutputs() const { return external_outputs_; }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   const std::vector<int>& MayStridedInput() const { return may_strided_inputs_; }
   const std::vector<std::pair<int, int>>& MayStridedOutput() const { return may_strided_output_map_; }
 #endif
@@ -143,7 +141,7 @@ class KernelDef {
   // Whether the outputs are from external.
   bool external_outputs_ = false;
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   // An element i means i-th input can be strided tensor.
   std::vector<int> may_strided_inputs_;
 
@@ -261,7 +259,7 @@ class KernelDefBuilder {
     return *this;
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   /**
      Specify that the input_index-th input can be strided tensor.
    */

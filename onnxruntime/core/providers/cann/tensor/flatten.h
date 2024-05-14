@@ -2,6 +2,8 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include "core/providers/cann/cann_kernel.h"
 
 namespace onnxruntime {
@@ -14,8 +16,7 @@ class Flatten final : public CannKernel {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK());
   }
 
-  Status ComputeInternal(OpKernelContext* context) const override;
-  Status Prepare(OpKernelContext* ctx, CannPreparation& prepare) const;
+  Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
   int64_t axis_;

@@ -13,6 +13,10 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 @implementation ORTEnvTest
+- (void)testGetOrtVersion {
+  NSString* ver = ORTVersion();
+  XCTAssertNotNil(ver);
+}
 
 - (void)testInitOk {
   NSError* err = nil;

@@ -78,5 +78,5 @@ class TestCaseDriver {
   mutable bool finished_ = false;
 };
 
-}
+}  // namespace test
 }  // namespace onnxruntime

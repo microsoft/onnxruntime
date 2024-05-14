@@ -6,14 +6,19 @@
 #include "onnx/defs/parser.h"
 
 #include "core/common/span_utils.h"
+#include "core/framework/customregistry.h"
+#include "core/framework/op_kernel.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
+#include "inference_session_wrapper.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/asserts.h"
+
+#include "test/providers/internal_testing/internal_testing_execution_provider.h"
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -21,20 +26,27 @@
 namespace onnxruntime {
 namespace test {
 
-static void Check(const char* source,
-                  const char* input_name, std::vector<float> input_values,
-                  const char* output_name, std::vector<float> output_values) {
-  // Convert source-representation of model to ModelProto:
+// Convert source-representation of model to ModelProto:
+static void ParseOnnxSource(const char* source, std::string& result) {
   ONNX_NAMESPACE::OnnxParser parser(source);
   ONNX_NAMESPACE::ModelProto model;
   auto parse_status = parser.Parse(model);
   ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
   ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
 
-  // Serialize and then load model:
+  // Serialize
   std::string serialized_model;
   const bool serialization_status = model.SerializeToString(&serialized_model);
   ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
+  result = std::move(serialized_model);
+}
+
+static void Check(const char* source,
+                  const char* input_name, std::vector<float> input_values,
+                  const char* output_name, std::vector<float> output_values) {
+  // Serialize and then load model:
+  std::string serialized_model;
+  ParseOnnxSource(source, serialized_model);
 
   SessionOptions session_options;
   InferenceSession session_object{session_options, GetEnvironment()};
@@ -52,7 +64,7 @@ static void Check(const char* source,
 
   std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   OrtValue ort_value;
-  CreateMLValue<float>(provider->GetAllocator(0, OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
+  CreateMLValue<float>(provider->CreatePreferredAllocators()[0], {int64_t(input_values.size())}, input_values, &ort_value);
 
   feeds.insert(std::make_pair(std::string(input_name), ort_value));
 
@@ -69,12 +81,14 @@ static void Check(const char* source,
   float threshold = 0.001f;
 
   for (size_t i = 0; i < size; ++i) {
-    ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
+    if (!std::isnan(data[i]) && !std::isnan(output_values[i])) {
+      ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
+    }
   }
 }
 
-TEST(FunctionTest, Basic) {
-  const char* code = R"(
+namespace {
+const char* basic_code = R"(
         <
         ir_version: 8,
         opset_import: [ "" : 16, "local" : 1 ]
@@ -93,8 +107,10 @@ TEST(FunctionTest, Basic) {
             ly = Mul (lx, two)
         }
         )";
+}
 
-  Check(code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
+TEST(FunctionTest, Basic) {
+  Check(basic_code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
 }
 
 // Check that variables are renamed to avoid conflicts when multiple
@@ -316,6 +332,90 @@ TEST(FunctionTest, AttrName) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {3.0, 6.0, 9.0});
 }
 
+// Test function with attribute that has default value.
+TEST(FunctionTest, AttrWithDefault) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y0 = local.myfun <a = 2.0> (x)
+            y1 = local.myfun (x)
+            y = Add (y0, y1)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        myfun <a: float=1.0> (x) => (y) {
+            x2 = Constant <value_float: float=@a>()
+            x3 = CastLike (x2, x)
+            y = Add (x, x3)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {5.0, 7.0, 9.0});
+}
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+// Attribute 'saturate' was introduced in opset 19, ir_version=9.
+// The test checks the parser gets it right and returns the expected results.
+TEST(FunctionTest, AttrSaturate) {
+  const char* code = R"(
+        <
+        ir_version: 9,
+        opset_import: [ "" : 19, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y0 = local.myfun <a = 2.0> (x)
+            y1 = local.myfun (x)
+            y = Add (y0, y1)
+        }
+
+        <
+        opset_import: [ "" : 19 ],
+        domain: "local"
+        >
+        myfun <a: float=1.0> (x) => (y) {
+            x2 = Constant <value_float: float=@a>()
+            x2_ = Cast<to=17>(x2)
+            x3 = CastLike<saturate=0>(x2, x2_)
+            x3_ = Cast<to=1>(x3)
+            y = Add (x, x3_)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {5.0, 7.0, 2000003.0});
+}
+
+// Attribute 'saturate' was introduced in opset 19, ir_version=9.
+// The test checks the model does not saturate a value out of float 8 boundary.
+// TODO: change the expected value when this PR is merged in onnx:
+// https://github.com/onnx/onnx/pull/5246
+TEST(FunctionTest, AttrSaturateNan) {
+  const char* code = R"(
+        <
+        ir_version: 9,
+        opset_import: [ "" : 19, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            x_E4M3FNUZ = Cast<to=18>(x)
+            x_E4M3FNUZ_2 = CastLike<saturate=0>(x, x_E4M3FNUZ)  # NaN when OOR
+            y = Cast<to=1>(x_E4M3FNUZ_2)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {1.0, 2.0, std::numeric_limits<float>::quiet_NaN()});
+}
+
+#endif
+
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
 TEST(FunctionTest, NestedConstant) {
   const char* code = R"(
@@ -351,6 +451,222 @@ TEST(FunctionTest, Variadics) {
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(model_uri));
   ASSERT_STATUS_OK(session_object.Initialize());
+}
+
+// A variation of the variadics issue above, where the first input/output of the
+// variadic list is NOT an input/output of the function.
+TEST(FunctionTest, VariadicsNonInputOutput) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: ["" : 17, "local" : 1]>
+    mymodel (float[2] x) => (float[3] y) {
+      y = local.func (x)
+    }
+
+    <opset_import: ["" : 17 ],  domain: "local">
+    func (a) => (y) {
+      b = Identity(a)
+      z = Concat <axis = 0> (b, a, b)
+      y, w = Split (z)
+    }
+  )";
+
+  Check(code, "x", {1.0, 2.0}, "y", {1.0, 2.0, 1.0});
+}
+
+// Test use of outer-scope names inside sub-graphs in functions that are inlined.
+TEST(FunctionTest, OuterScopeName) {
+  const char* code = R"(
+        <ir_version: 8, opset_import: [ "" : 17 ]>
+        agraph (float[N] x) => (float[N] y)
+        {
+            xseq = SequenceConstruct (x)
+            zeros = Constant <value = float[3] {0.0, 0.0, 0.0}> ()
+            yseq = SequenceMap (xseq) <body =
+              zeropad (float[3] lx) => (float[6] ly) {
+                ly = Concat <axis = 0> (lx, zeros)
+              }>
+            zero = Constant <value = int64{0}> ()
+            y = SequenceAt (yseq, zero)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 2.0, 3.0, 0.0, 0.0, 0.0});
+}
+
+// Test use of functions with unused inputs:
+TEST(FunctionTest, UnusedFunctionInputs) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: ["" : 17, "local" : 1]>
+    mymodel (float[3] x) => (float[3] y) {
+      y = local.func (x, x, x)
+    }
+
+    <opset_import: ["" : 17 ],  domain: "local">
+    func (a, b, c) => (y) {
+      y = Mul (a, b)
+    }
+  )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 4.0, 9.0});
+}
+
+// Test constant-folding inside a sub-graph is handled correctly
+// for functions that are inlined.
+TEST(FunctionTest, ConstantFoldingInSubGraph) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: [ "" : 17 ]>
+    agraph (float[N] X) => (float[M] Y)  {
+        seq1 = SequenceConstruct(X, X, X)
+        seq2 = SequenceMap (seq1) <body =
+            add1 (float[K] Z) => (float[K] W) {
+                C1 = Constant <value = float {1.0}> ()
+                C2 = Constant <value = float {1.0}> ()
+                # C is a constant, which will be constant-folded into an initializer out of the sub-graph.
+                C = Add (C1, C2)
+                # After optimization, only following Add will be left in this sub-graph.
+                W = Add (Z, C)
+            }
+        >
+        Y = ConcatFromSequence <axis=0> (seq2)
+    }
+  )";
+
+  Check(code, "X", {1.0, 2.0, 3.0}, "Y", {3.0, 4.0, 5.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0});
+}
+
+TEST(FunctionTest, TestInlinedLocalFunctionRemoved) {
+  std::string serialized_model;
+  ParseOnnxSource(basic_code, serialized_model);
+
+  // Default is to do AOT Function inlining
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+
+  auto model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(1, model_proto.functions_size());
+
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // All functions removed
+  model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(0, model_proto.functions_size());
+}
+
+TEST(FunctionTest, TestInlinedLocalFunctionNotRemoved) {
+  std::string serialized_model;
+  ParseOnnxSource(basic_code, serialized_model);
+
+  // Default is to do AOT Function inlining
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NCHW);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  std::stringstream sstr(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+
+  auto model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(1, model_proto.functions_size());
+
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // myfun is not removed because it was claimed by InternalTestingEP
+  model_proto = session_object.GetModel().ToProto();
+#ifdef USE_TVM
+  // TVM EP takes the whole graph and optimizes it within its own framework.
+  // It does not retain the original graph.
+  ASSERT_EQ(0, model_proto.functions_size());
+#else
+  ASSERT_EQ(1, model_proto.functions_size());
+#endif
+}
+
+TEST(FunctionTest, TestInlinedFunctionDoesNotReserrectNonExistingArgs) {
+  // Verify this runs
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/transform/gh_issue_18338.onnx");
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Scalar shape for input_0 and output
+  const std::string input_names[] = {"input_0"};
+  const std::string output_names[] = {"_val_3"};
+  TensorShape input_shape;
+  MLFloat16 input_0_data{684.f};
+
+  OrtValue input_0;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), input_shape, &input_0_data, OrtMemoryInfo(), input_0);
+
+  std::vector<OrtValue> fetches(1);
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.Run(run_options, AsSpan(input_names), AsSpan({input_0}),
+                                      AsSpan(output_names), &fetches, 0));
+}
+
+/// <summary>
+/// This test covers the issues:
+/// https://github.com/microsoft/onnxruntime/issues/16438
+/// https://github.com/microsoft/onnxruntime/issues/18781
+/// </summary>
+TEST(FunctionTest, Test_GH_issue_16438) {
+  const char* code = R"(
+    <
+       ir_version: 8,
+       opset_import: ["pkg.onnxscript.torch_lib" : 1, "" : 18],
+       producer_name: "pytorch",
+       producer_version: "2.1.0"
+    >
+    torch_jit (float16[5,10,5] input_0) => (double[5,10,5] _val_1) {
+       _val_1 = pkg.onnxscript.torch_lib.aten_special_log_softmax <dim: int = 2, dtype: int = 11> (input_0)
+    }
+    <
+      domain: "pkg.onnxscript.torch_lib",
+      opset_import: ["" : 18]
+    >
+    aten_special_log_softmax <dim, dtype>(self) => (result_8)
+    {
+      tmp = Shape(self)
+      tmp_0 = Size(tmp)
+      int64_0 = Constant<value : tensor = int64 int64_0{0}> ()
+      int64_0_cast = CastLike(int64_0, tmp_0)
+      self_is_scalar = Equal(tmp_0, int64_0_cast)
+      self_4 = If(self_is_scalar) <then_branch : graph = thenGraph_8() => (self_2) {
+        tmp_1 = Constant<value_ints : ints = [0]> ()
+        self_2 = Unsqueeze(self, tmp_1)
+      }, else_branch : graph = elseGraph_8() => (self_3) {
+        self_3 = Identity(self)
+      }>
+      result = LogSoftmax<axis : int = @dim>(self_4)
+      result_5 = Cast<to : int = @dtype>(result)
+      result_8 = If(self_is_scalar) <then_branch : graph = thenGraph_12() => (result_6) {
+       result_6 = Squeeze(result_5)
+      }, else_branch : graph = elseGraph_12() => (result_7) {
+        result_7 = Identity(result_5)
+      }>
+    }
+  )";
+
+  std::string serialized_model;
+  ParseOnnxSource(code, serialized_model);
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  auto status = session_object.Load(sstr);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 }  // namespace test
 }  // namespace onnxruntime

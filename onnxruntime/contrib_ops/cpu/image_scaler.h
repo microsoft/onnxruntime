@@ -4,18 +4,20 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-namespace contrib{
+namespace contrib {
 
 template <typename T>
 class ImageScaler final : public OpKernel {
  public:
   ImageScaler(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
-    ORT_ENFORCE(info.GetAttrs<float>("bias", bias_).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttr<float>("scale", &scale_));
+    ORT_THROW_IF_ERROR(info.GetAttrs<float>("bias", bias_));
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -39,11 +41,11 @@ class ImageScaler final : public OpKernel {
     }
 
     Tensor* Y = context->Output(0, TensorShape({N, C, H, W}));
-    ConstEigenArrayMap<T> X_arr(X->Data<T>(), H * W, N * C);
-    EigenArrayMap<T> Y_arr(Y->MutableData<T>(), H * W, N * C);
+    ConstEigenArrayMap<T> X_arr(X->Data<T>(), SafeInt<size_t>(H) * W, SafeInt<size_t>(N) * C);
+    EigenArrayMap<T> Y_arr(Y->MutableData<T>(), SafeInt<size_t>(H) * W, SafeInt<size_t>(N) * C);
 
     for (int64_t nc = 0; nc < N * C; ++nc) {
-      Y_arr.col(nc) = scale_ * X_arr.col(nc) + bias_[nc % C];
+      Y_arr.col(narrow<size_t>(nc)) = scale_ * X_arr.col(narrow<size_t>(nc)) + bias_[narrow<size_t>(nc % C)];
     }
     return Status::OK();
   }
@@ -52,5 +54,5 @@ class ImageScaler final : public OpKernel {
   float scale_;
   std::vector<float> bias_;
 };
-}
-}  //namespace onnxruntime
+}  // namespace contrib
+}  // namespace onnxruntime

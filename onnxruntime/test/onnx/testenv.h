@@ -25,7 +25,8 @@ class ThreadPool;
 }
 }  // namespace onnxruntime
 
-using PThreadPool = onnxruntime::concurrency::ThreadPool*;
+using OrtThreadPool = onnxruntime::concurrency::ThreadPool;
+using PThreadPool = OrtThreadPool*;
 
 /// <summary>
 /// Facilitates running tests
@@ -37,7 +38,7 @@ class TestEnv {
 
   ~TestEnv();
 
-  static PThreadPool GetDefaultThreadPool(onnxruntime::Env& env);
+  static std::unique_ptr<OrtThreadPool> CreateThreadPool(onnxruntime::Env& env);
 
   /// <summary>
   /// Runs all tests cases either concurrently or sequentially

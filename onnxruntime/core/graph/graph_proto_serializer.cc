@@ -5,10 +5,11 @@
 
 namespace onnxruntime {
 
-void GraphViewerToProto(const GraphViewer& graph_view, 
-                        ONNX_NAMESPACE::GraphProto& graph_proto, 
+void GraphViewerToProto(const GraphViewer& graph_view,
+                        ONNX_NAMESPACE::GraphProto& graph_proto,
                         bool include_initializer,
-                        bool include_outer_scope_args) {
+                        bool include_outer_scope_args,
+                        ExecutionOrder order) {
   graph_proto.set_name(graph_view.Name());
   graph_proto.set_doc_string(graph_view.Description());
 
@@ -24,7 +25,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
-  if (include_outer_scope_args){
+  if (include_outer_scope_args) {
     // add the NodeArg info for outer scope NodeArgs so we capture the type information
     for (const auto& name : graph_view.GetOuterScopeNodeArgNames()) {
       auto* node_arg = graph_view.GetNodeArg(name);
@@ -32,9 +33,9 @@ void GraphViewerToProto(const GraphViewer& graph_view,
       *(graph_proto.mutable_value_info()->Add()) = node_arg->ToProto();
     }
   }
-  
+
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
-  for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+  for (auto& node_idx : graph_view.GetNodesInTopologicalOrder(order)) {
     const gsl::not_null<ONNX_NAMESPACE::NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Node*> p_node{graph_view.GetNode(node_idx)};
     // we need to update any GraphProto attributes for subgraphs so that any changes made by things
@@ -46,16 +47,23 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     std::unordered_set<std::string> current_scope_initializer_set;
 
     auto& initializers = graph_view.GetAllInitializedTensors();
-    for (auto& it : initializers) {
-      auto* p_initializer = graph_proto.add_initializer();
-      *p_initializer = *(it.second);
-      current_scope_initializer_set.insert(it.first);
-    }
 
+    // Sort initializers to maintain consistency in model proto created across inference requests
+    std::vector<std::string> const_inits;
+    for (auto& it : initializers) {
+      const_inits.push_back(it.first);
+    }
+    std::sort(const_inits.begin(), const_inits.end());
+
+    for (auto& it : const_inits) {
+      auto* p_initializer = graph_proto.add_initializer();
+      *p_initializer = *(initializers.at(it));
+      current_scope_initializer_set.insert(it);
+    }
 
     // handle outer scope value which is a constant initializer
     if (include_outer_scope_args) {
-      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder(order)) {
         const auto& node = graph_view.GetNode(node_idx);
         for (const auto& input : node->InputDefs()) {
           if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
@@ -72,4 +80,4 @@ void GraphViewerToProto(const GraphViewer& graph_view,
   }
 }
 
-}
+}  // namespace onnxruntime

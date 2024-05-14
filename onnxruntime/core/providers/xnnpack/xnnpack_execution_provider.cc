@@ -6,14 +6,17 @@
 #include <unordered_set>
 #include <utility>
 
-#include "core/graph/function_utils.h"
-#include "xnnpack_execution_provider.h"
-#include "detail/utils.h"
-#include "detail/node_support_checker.h"
-
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
-#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/framework/node_unit.h"
+#include "core/graph/function_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/providers/xnnpack/xnnpack_execution_provider.h"
+#include "core/providers/xnnpack/detail/utils.h"
+#include "core/providers/xnnpack/detail/node_support_checker.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 namespace onnxruntime {
 
@@ -24,52 +27,117 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
-#define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op) \
-  BuildKernelCreateInfo<                             \
-      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, End, Op)>
+#define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op, Domain) \
+  BuildKernelCreateInfo<                                     \
+      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, Op)>
 
-#define KERNEL_CREATE_INFO(Start, Op) \
-  BuildKernelCreateInfo<              \
-      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, Op)>
+#define KERNEL_CREATE_INFO(Start, Op, Domain) \
+  BuildKernelCreateInfo<                      \
+      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, Op)>
 
-#define KERNEL_CREATE_INFO_TYPED(Start, type, Op) \
-  BuildKernelCreateInfo<                          \
-      ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, type, Op)>
+#define KERNEL_CREATE_INFO_TYPED(Start, Type, Op, Domain) \
+  BuildKernelCreateInfo<                                  \
+      ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, Type, Op)>
 
+// Layout sensitive operators in NHWC domain
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 7, 9, AveragePool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, AveragePool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 18, AveragePool);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 19, AveragePool);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, AveragePool);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, ConvTranspose);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, ConvTranspose);
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, uint8_t, QLinearConv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, int8_t, QLinearConv);
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearConvTranspose);
+
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
-                                      kDynamicDomainByCreate, 1, QLinearSoftmax);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 12, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 13, 17, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 18, 18, Resize);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 19, Resize);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 8, 9, MaxPool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, MaxPool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
+
+// ONNX operators
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 8, Gemm);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 9, 10, Gemm);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Gemm);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 8, MatMul);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 9, 12, MatMul);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 10, Softmax);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Softmax);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
+
+// Internal domain
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax);
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
-      KERNEL_CREATE_INFO(11, Conv),
-      KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
-      KERNEL_CREATE_INFO(12, MaxPool),
-      KERNEL_CREATE_INFO(11, AveragePool),
+
+      // layout sensitive. nodes will be moved to kMSInternalNHWCDomain by layout transformation
+      KERNEL_CREATE_INFO_VERSIONED(7, 9, AveragePool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(10, 10, AveragePool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 18, AveragePool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(19, AveragePool, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, Conv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(11, Conv, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(11, ConvTranspose, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(8, 9, MaxPool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(10, 10, MaxPool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(12, MaxPool, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO(1, QLinearConvTranspose, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(10, 10, Resize, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 12, Resize, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(13, 17, Resize, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(18, 18, Resize, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(19, Resize, kMSInternalNHWCDomain),
+
       // layout insensitive, use ONNX-domain directly
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, Softmax, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 12, Softmax, kOnnxDomain),
+      KERNEL_CREATE_INFO(13, Softmax, kOnnxDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(7, 8, Gemm, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED(9, 10, Gemm, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 12, Gemm, kOnnxDomain),
+      KERNEL_CREATE_INFO(13, Gemm, kOnnxDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(1, 8, MatMul, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED(9, 12, MatMul, kOnnxDomain),
+      KERNEL_CREATE_INFO(13, MatMul, kOnnxDomain),
 
       //  quantization op
-      KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv),
-      KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv),
-      KERNEL_CREATE_INFO(1, QLinearAveragePool),
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax)>,
+      KERNEL_CREATE_INFO(1, QLinearAveragePool, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO(1, QLinearSoftmax, kDynamicDomainByCreate),
   };
 
   for (auto& function_table_entry : function_table) {
@@ -87,46 +155,49 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
-    : IExecutionProvider{kXnnpackExecutionProvider, true} {
-  if (info.xnn_thread_pool_size > 1) {
-    // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
-    // otherwise, the pthreadpool will be starved and harm performance a lot.
-    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
+    : IExecutionProvider{kXnnpackExecutionProvider} {
+  int xnn_thread_pool_size = info.xnn_thread_pool_size;
+  int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 1;
+  bool allow_intra_op_spinning = (info.session_options == nullptr) ||
+                                 (info.session_options &&
+                                  info.session_options->config_options.GetConfigOrDefault(
+                                      kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1");
+  if (xnn_thread_pool_size > 1 && allow_intra_op_spinning && ort_thread_pool_size > 1) {
+    LOGS_DEFAULT(WARNING)
+        << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
+           "If ORT's thread pool size is > 1 and spinning is enabled, "
+           "there will be contention between the two thread pools, and performance will suffer."
+           "Please set either intra_op_param.allow_spinning to 0 in the SessionOption config params,"
+           "or the ORT intra-op threadpool size to 1.";
+  }
+
+  if (xnn_thread_pool_size == 0) {
+    xnn_thread_pool_size = ort_thread_pool_size;
+  }
+
+  if (xnn_thread_pool_size > 1) {
+    // pthreadpool is independent of ort-threadpoool, so we had better disable cpu spinning for ort-threadpool.
+    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(xnn_thread_pool_size));
   }
 }
 
-// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
-void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
-  if (!cpu_alloc) {
-    // use shared allocator if available
-    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-
-    if (!cpu_alloc) {
-      // create our allocator
-      AllocatorCreationInfo allocator_info(
-          [](int) {
-            return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
-                                                                OrtAllocatorType::OrtDeviceAllocator));
-          });
-
-      cpu_alloc = CreateAllocator(allocator_info);
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(cpu_alloc);
-    }
-
-    InsertAllocator(cpu_alloc);
+std::vector<AllocatorPtr> XnnpackExecutionProvider::CreatePreferredAllocators() {
+  const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
+  if (!stored_allocator) {
+    const AllocatorCreationInfo allocator_info(
+        [](int) {
+          // lazy create the allocator
+          return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
+                                                              OrtAllocatorType::OrtDeviceAllocator));
+        });
+    stored_allocator = CreateAllocator(allocator_info);
   }
-
-  // TODO: Create `struct xnn_allocator` that wraps cpu_allocator, and provide in the call to xnn_initialize so that
-  //       xnnpack is using the ORT allocator.
-  xnn_status st = xnn_initialize(nullptr);
+  xnn_allocator->context = stored_allocator.get();
+  const xnn_status st = xnn_initialize(xnn_allocator);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
+  return std::vector<AllocatorPtr>{stored_allocator};
 }
 
 // For ops are not lay-out sensitive and does not defined in
@@ -136,7 +207,7 @@ static bool RequestDynamicSchema(const NodeUnit& node_unit) {
   std::string key = node_unit.UnitType() == NodeUnit::Type::QDQGroup
                         ? "QLinear" + node_unit.OpType()
                         : node_unit.OpType();
-  return dynamic_schema_set.contains(key);
+  return dynamic_schema_set.count(key) > 0;
 }
 
 // Add Compute Capability for the second call. All target nodes have the tag of "XnnpackExecutionProvider"
@@ -197,7 +268,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
   // Get all the NodeUnits in the GraphViewer so we can check if something is in a QDQ node group
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph);
 
   // This holds the result of whether a NodeUnit is supported or not,
   // to prevent nodes in a NodeUnit being checked for multiple times
@@ -214,7 +285,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
 
     bool request_node = false;
     // any node in NodeUnit will trigger IsNodeSupported, so we just check once.
-    if (node_unit_supported_result.count(&node_unit)) {
+    if (node_unit_supported_result.count(&node_unit) > 0) {
       continue;
     } else if (node_unit.GetNode().GetExecutionProviderType() == "") {
       // unassigned node.

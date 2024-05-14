@@ -10,8 +10,8 @@ namespace onnxruntime {
 namespace cuda {
 
 class WaitEvent final : public CudaKernel {
-public:
-  WaitEvent(const OpKernelInfo& info) : CudaKernel(info) { }
+ public:
+  WaitEvent(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

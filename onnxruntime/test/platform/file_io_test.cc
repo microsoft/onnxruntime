@@ -14,10 +14,11 @@
 #include <Windows.h>
 #endif
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "gtest/gtest.h"
 
+#include "core/common/span_utils.h"
 #include "test/util/include/file_util.h"
 
 namespace onnxruntime {
@@ -39,7 +40,8 @@ struct TempFilePath {
               close(fd);
 #endif
               return path_template;
-            }()} {}
+            }()} {
+  }
 
   ~TempFilePath() {
     DeleteFileFromDisk(path.c_str());
@@ -102,7 +104,7 @@ TEST(FileIoTest, ReadFileIntoBuffer) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(buffer_span, expected_data_span);
+    ASSERT_TRUE(SpanEq(buffer_span, expected_data_span));
   }
 
   // invalid - negative offset
@@ -140,7 +142,7 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(mapped_span, expected_data_span);
+    ASSERT_TRUE(SpanEq(mapped_span, expected_data_span));
   }
 
   {
@@ -185,7 +187,7 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(mapped_span, expected_data_span);
+    ASSERT_TRUE(SpanEq(mapped_span, expected_data_span));
   }
 
   {
@@ -193,7 +195,8 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     // invalid - offset is not a multiple of the allocation granularity
     ASSERT_FALSE(Env::Default().MapFileIntoMemory(
-        tmp.path.c_str(), allocation_granularity * 3 / 2, page_size / 10, mapped_memory).IsOK());
+                                   tmp.path.c_str(), allocation_granularity * 3 / 2, page_size / 10, mapped_memory)
+                     .IsOK());
   }
 
   {

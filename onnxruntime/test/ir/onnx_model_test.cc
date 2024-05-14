@@ -157,12 +157,12 @@ TEST_P(ONNXModelsTest1, LoadFromProtobuf) {
 
 #ifndef DISABLE_CONTRIB_OPS
 INSTANTIATE_TEST_SUITE_P(ONNXModelsTests,
-                        ONNXModelsTest1,
-                        ::testing::Values(ORT_TSTR("bvlc_alexnet"), ORT_TSTR("bvlc_googlenet"), ORT_TSTR("bvlc_reference_caffenet"), ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"), ORT_TSTR("densenet121"), ORT_TSTR("emotion_ferplus"), ORT_TSTR("inception_v1"), ORT_TSTR("inception_v2"), ORT_TSTR("mnist"), ORT_TSTR("resnet50"), ORT_TSTR("shufflenet"), ORT_TSTR("squeezenet"), ORT_TSTR("tiny_yolov2"), ORT_TSTR("vgg19"), ORT_TSTR("zfnet512")));
+                         ONNXModelsTest1,
+                         ::testing::Values(ORT_TSTR("bvlc_alexnet"), ORT_TSTR("bvlc_googlenet"), ORT_TSTR("bvlc_reference_caffenet"), ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"), ORT_TSTR("densenet121"), ORT_TSTR("emotion_ferplus"), ORT_TSTR("inception_v1"), ORT_TSTR("inception_v2"), ORT_TSTR("mnist"), ORT_TSTR("resnet50"), ORT_TSTR("shufflenet"), ORT_TSTR("squeezenet"), ORT_TSTR("tiny_yolov2"), ORT_TSTR("vgg19"), ORT_TSTR("zfnet512")));
 #else
 INSTANTIATE_TEST_SUITE_P(ONNXModelsTests,
-                        ONNXModelsTest1,
-                        ::testing::Values(ORT_TSTR("bvlc_alexnet"), ORT_TSTR("bvlc_googlenet"), ORT_TSTR("bvlc_reference_caffenet"), ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"), ORT_TSTR("densenet121"), ORT_TSTR("emotion_ferplus"), ORT_TSTR("inception_v1"), ORT_TSTR("inception_v2"), ORT_TSTR("mnist"), ORT_TSTR("resnet50"), ORT_TSTR("shufflenet"), ORT_TSTR("squeezenet"), ORT_TSTR("vgg19"), ORT_TSTR("zfnet512")));
+                         ONNXModelsTest1,
+                         ::testing::Values(ORT_TSTR("bvlc_alexnet"), ORT_TSTR("bvlc_googlenet"), ORT_TSTR("bvlc_reference_caffenet"), ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"), ORT_TSTR("densenet121"), ORT_TSTR("emotion_ferplus"), ORT_TSTR("inception_v1"), ORT_TSTR("inception_v2"), ORT_TSTR("mnist"), ORT_TSTR("resnet50"), ORT_TSTR("shufflenet"), ORT_TSTR("squeezenet"), ORT_TSTR("vgg19"), ORT_TSTR("zfnet512")));
 #endif
 
 #endif
@@ -192,12 +192,12 @@ TEST_F(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
 // The following tests verify ORT can successfully load models which reference functions
 // present in the ModelProto aka model local functions. This feature was added to ONNX standard starting IRv8
 
-void BuildFunction(FunctionProto& function_proto, 
-    const std::string& name, const std::string& domain, 
-    const std::vector<NodeProto>& nodes, 
-    const std::vector<std::string>& inputs, 
-    const std::vector<std::string>& outputs, 
-    const std::unordered_map<std::string, int>& opset_imports) {
+void BuildFunction(FunctionProto& function_proto,
+                   const std::string& name, const std::string& domain,
+                   const std::vector<NodeProto>& nodes,
+                   const std::vector<std::string>& inputs,
+                   const std::vector<std::string>& outputs,
+                   const std::unordered_map<std::string, int>& opset_imports) {
   for (const auto& node : nodes) {
     auto new_node = function_proto.add_node();
     new_node->CopyFrom(node);
@@ -361,7 +361,7 @@ agraph (float[N] x) => (uint8[N] zp)
   BuildFunctionFoo(*function_proto, "custom_domainA");
 
   // Build second function proto
-  // intentionally using same function name to test 
+  // intentionally using same function name to test
   // that domainA:name and domainB:name are allowed.
   function_proto = model_proto.mutable_functions()->Add();
   auto func_body_nodes = FunctionBodyHelper::BuildNodes(
@@ -377,7 +377,7 @@ agraph (float[N] x) => (uint8[N] zp)
 // Tests:
 // 1. Function initialization and inlining when there are multiple references to the same function
 // from within a function body and directly from a graph
-// 2. Input\output and node names are handled correctly (.i.e unique names are generated where necessary) when inlining the 
+// 2. Input\output and node names are handled correctly (.i.e unique names are generated where necessary) when inlining the
 // same function multiple times in the graph.
 // 3. Unique names are generated for intermediate node input\outputs when they match the names of node input\outputs
 TEST(FunctionVerification, TestNestedModelLocalFunctionsWithMultipleReferences) {

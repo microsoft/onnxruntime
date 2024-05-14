@@ -1,13 +1,19 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
 
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-#include "contexts.h"
 #include <iomanip>
-#include "ov_interface.h"
+#include <unordered_map>
+#include <map>
+#include <memory>
+#include <vector>
+#include <string>
+
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/ov_interface.h"
 #ifdef _WIN32
 #include <direct.h>
 #define GetCurrentDir _getcwd
@@ -27,41 +33,21 @@ const std::string log_tag = "[OpenVINO-EP] ";
 bool IsDebugEnabled();
 #endif
 
-//Internal diagnostic function. 
+// Internal diagnostic function.
 bool IsCILogEnabled();
-
-bool UseCompiledNetwork();
-
-std::string GetCurrentWorkingDir();
-
-bool IsDirExists(const std::string& pathname);
-
-void CreateDirectory(const std::string& ov_compiled_blobs_dir);
-
-void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
-               std::shared_ptr<InferenceEngine::CNNNetwork> network,
-               std::unordered_map<std::string, int> output_names,
-               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
-               std::string device);
-
-std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
-void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor);
+void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedValue& out_tensor);
 
 template <typename T>
-void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ngraph::Node> node);
+void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ov::Node> node);
 
 Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names,
-                std::shared_ptr<ngraph::Node> node);
-
-InferenceEngine::Precision
-ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device);
+                std::shared_ptr<ov::Node> node);
 
 Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
@@ -69,7 +55,6 @@ GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names);
 
-#if defined (OV_API_20)
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::KernelContext& context,
                    const SubGraphContext& subgraph_context);
@@ -78,24 +63,12 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
                     size_t batch_slice_idx);
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto,
+              const GlobalContext& global_context,
+              std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);
-#endif
-
-void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName);
-
-std::vector<std::pair<std::string, InferenceEngine::InferenceEngineProfileInfo>>
-perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> perfMap);
-
-void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx,
-                   std::string input_name, Ort::KernelContext& context,
-                   InferenceEngine::Precision precision, const SubGraphContext& subgraph_context);
-
-void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, Ort::UnownedValue& output_tensor,
-                    InferenceEngine::Precision precision, size_t batch_slice_idx);
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
 

@@ -52,7 +52,7 @@ class OnnxRuntimeException : public std::exception {
     if (!location.stacktrace.empty()) {
       ss << "Stacktrace:\n";
       // skip the first entry in the stacktrace as we have that information from location.ToString()
-      std::copy(++location.stacktrace.begin(), location.stacktrace.end(), std::ostream_iterator<std::string>(ss, "\n"));
+      std::copy(std::next(location.stacktrace.begin()), location.stacktrace.end(), std::ostream_iterator<std::string>(ss, "\n"));
     }
 
     what_ = ss.str();

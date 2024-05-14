@@ -7,9 +7,6 @@
 
 import argparse
 import os
-import random
-import sys
-import timeit
 from pathlib import Path
 
 import numpy as np
@@ -47,7 +44,7 @@ new_parameters = {
 
 class TinyGpt2Model(OnnxModel):
     def __init__(self, model):
-        super(TinyGpt2Model, self).__init__(model)
+        super().__init__(model)
         self.resize_model()
 
     def resize_weight(self, initializer_name, target_shape):
@@ -105,7 +102,7 @@ class TinyGpt2Model(OnnxModel):
             if len(tensor.shape) == 1 and tensor.shape[0] == 1:
                 if tensor == old_parameters["num_heads"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["num_heads"],
                         "=>[",
@@ -120,7 +117,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == old_parameters["seq_len"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["seq_len"],
                         "=>[",
@@ -135,7 +132,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == old_parameters["size_per_head"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["size_per_head"],
                         "=>[",
@@ -150,7 +147,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["hidden_size"],
                         "=>[",
@@ -165,7 +162,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == 4 * old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         4 * old_parameters["hidden_size"],
                         "=>[",
@@ -180,7 +177,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == 3 * old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         3 * old_parameters["hidden_size"],
                         "=>[",
@@ -196,7 +193,7 @@ class TinyGpt2Model(OnnxModel):
             elif len(tensor.shape) == 0:
                 if tensor == old_parameters["num_heads"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["num_heads"],
                         "=>",
@@ -210,7 +207,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == old_parameters["seq_len"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["seq_len"],
                         "=>",
@@ -224,7 +221,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == old_parameters["size_per_head"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["size_per_head"],
                         "=>",
@@ -238,7 +235,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["hidden_size"],
                         "=>",
@@ -252,7 +249,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == 4 * old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         4 * old_parameters["hidden_size"],
                         "=>",
@@ -266,7 +263,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == 3 * old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         3 * old_parameters["hidden_size"],
                         "=>",
@@ -280,7 +277,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == 1.0 / np.sqrt(old_parameters["size_per_head"]):
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         1.0 / np.sqrt(old_parameters["size_per_head"]),
                         "=>",
@@ -297,7 +294,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                 elif tensor == np.sqrt(old_parameters["size_per_head"]):
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         np.sqrt(old_parameters["size_per_head"]),
                         "=>",
@@ -349,7 +346,7 @@ class TinyGpt2Model(OnnxModel):
                         "Split",
                         node.input,
                         node.output,
-                        name="Split_{}".format(i),
+                        name=f"Split_{i}",
                         axis=2,
                         split=[
                             new_parameters["hidden_size"],
@@ -446,7 +443,6 @@ def generate_test_data(
     test_cases=1,
     output_optimized_model=False,
 ):
-
     for test_case in range(test_cases):
         sequence_length = 3
         input_1 = np.random.randint(dictionary_size, size=(batch_size, 1), dtype=np.int64)
@@ -468,7 +464,7 @@ def generate_test_data(
         output_names = [output.name for output in sess.get_outputs()]
         inputs = {input1_name: input_1}
 
-        with open(os.path.join(path, "input_{}.pb".format(0)), "wb") as f:
+        with open(os.path.join(path, f"input_{0}.pb"), "wb") as f:
             f.write(tensor_1.SerializeToString())
 
         for i in range(12):
@@ -483,7 +479,7 @@ def generate_test_data(
             tensor = numpy_helper.from_array(input, input_name)
             inputs.update({input_name: input})
 
-            with open(os.path.join(path, "input_{}.pb".format(1 + i)), "wb") as f:
+            with open(os.path.join(path, f"input_{1 + i}.pb"), "wb") as f:
                 f.write(tensor.SerializeToString())
 
         if input_tensor_only:

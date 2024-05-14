@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <memory.h>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <random>
@@ -22,12 +23,11 @@
 #include "core/platform/threadpool.h"
 #endif
 
-
 #if !defined(UNUSED_VARIABLE)
 #if defined(__GNUC__)
-# define UNUSED_VARIABLE __attribute__((unused))
+#define UNUSED_VARIABLE __attribute__((unused))
 #else
-# define UNUSED_VARIABLE
+#define UNUSED_VARIABLE
 #endif
 #endif
 
@@ -50,7 +50,7 @@ class MatrixGuardBuffer {
     ReleaseBuffer();
   }
 
-  T* GetBuffer(size_t Elements, bool ZeroFill = false) {
+  T* GetFilledBuffer(size_t Elements, std::function<void(T*, size_t)> const& fillFunc) {
     //
     // Check if the internal buffer needs to be reallocated.
     //
@@ -105,29 +105,36 @@ class MatrixGuardBuffer {
 
     T* GuardAddress = _GuardAddress;
     T* buffer = GuardAddress - Elements;
-
-    if (ZeroFill) {
-      std::fill_n(buffer, Elements, T(0));
-
-    } else {
-      constexpr int MinimumFillValue = -23;
-      constexpr int MaximumFillValue = 23;
-
-      int FillValue = MinimumFillValue;
-      T* FillAddress = buffer;
-
-      while (FillAddress < GuardAddress) {
-        *FillAddress++ = (T)FillValue;
-
-        FillValue++;
-
-        if (FillValue > MaximumFillValue) {
-          FillValue = MinimumFillValue;
-        }
-      }
-    }
+    fillFunc(buffer, Elements);
 
     return buffer;
+  }
+
+  T* GetBuffer(size_t Elements, bool ZeroFill = false) {
+    if (ZeroFill) {
+      return GetFilledBuffer(
+          Elements,
+          [](T* start, size_t size) {
+            std::fill_n(start, size, T(0));
+          });
+    }
+
+    return GetFilledBuffer(
+        Elements,
+        [](T* start, size_t size) {
+          constexpr int offset = -21;
+          constexpr int range = 43;
+
+          int FillValue = 11;
+          T* FillAddress = start;
+          for (size_t i = 0; i < size; i++) {
+            auto itemv = FillValue - offset;
+            *FillAddress++ = (T)(itemv);
+
+            FillValue += 7;
+            FillValue %= range;
+          }
+        });
   }
 
   void ReleaseBuffer(void) {
@@ -182,8 +189,7 @@ class MlasTestFixture : public testing::Test {
     mlas_tester = nullptr;
   };
 
-  // Do not forgot to define this static member element when upon usage.
-  static TMlasTester* mlas_tester;
+  static inline TMlasTester* mlas_tester = nullptr;
 };
 
 // Long Execute test. It is too heavy to register each single test, treat long execute big groups.
@@ -236,8 +242,7 @@ class MlasDirectShortExecuteTests : public MlasTestFixture<TMlasTester> {
   }
 };
 
-inline
-void ReorderInputNchw(const int64_t* input_shape, const float* S, float* D) {
+inline void ReorderInputNchw(const int64_t* input_shape, const float* S, float* D) {
   const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
   int64_t batch_count = input_shape[0];
   int64_t channel_count = input_shape[1];
@@ -248,4 +253,17 @@ void ReorderInputNchw(const int64_t* input_shape, const float* S, float* D) {
     S += spatial_count * channel_count;
     D += spatial_count * nchwc_channel_count;
   }
+}
+
+inline bool CloseEnough(float actual, float expected) {
+  if (std::isnan(actual)) {
+    return std::isnan(expected);
+  }
+  float diff = std::abs(actual - expected);
+  float top = std::max(std::abs(actual), std::abs(expected));
+  float ratio = 0;
+  if (top > 0.0001) {
+    ratio = diff / top;
+  }
+  return ratio < 0.005;
 }

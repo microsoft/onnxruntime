@@ -56,7 +56,7 @@ void RunQLinearGlobalAveragePool(
   });
 
   CalculateGlobalAvgPool(x_data.data(), batch, h * w, channel, channels_last, y_data.data(),
-                           x_zero_point, x_scale, y_zero_point, y_scale);
+                         x_zero_point, x_scale, y_zero_point, y_scale);
 
   OpTester test("QLinearGlobalAveragePool", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("channels_last", channels_last ? 1LL : 0LL);
@@ -66,13 +66,12 @@ void RunQLinearGlobalAveragePool(
   test.AddInput<float>("y_scale", {}, {y_scale});
   test.AddInput<T8Bits>("y_zero_point", {}, {y_zero_point});
   test.AddOutput<T8Bits>("Y", y_dims, y_data);
+  if (channels_last) {
+    test.AddAttribute("channels_last", (int64_t)1LL);
+  }
 
   auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     const OrtValue& ort_value = fetches[0];
-    if (ort_value.Fence()) {
-      ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
-    }
-
     auto y_shape = TensorShape(y_dims);
     const Tensor& output_tensor = ort_value.Get<Tensor>();
     ORT_ENFORCE(y_shape == output_tensor.Shape(),

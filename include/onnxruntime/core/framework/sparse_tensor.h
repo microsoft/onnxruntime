@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(DISABLE_SPARSE_TENSORS)
-
 #pragma once
+
+#if !defined(DISABLE_SPARSE_TENSORS)
 
 #include "core/framework/data_types.h"
 #include "core/framework/tensor_shape.h"
@@ -18,8 +18,8 @@ class DataTransferManager;
 
 /**
  * @brief This is a Sparse Format enumeration
- * 
- * 
+ *
+ *
  */
 enum class SparseFormat : uint32_t {
   kUndefined = 0x0U,        // For completeness
@@ -31,7 +31,7 @@ enum class SparseFormat : uint32_t {
 std::ostream& operator<<(std::ostream&, SparseFormat);
 
 /**
- * @brief This class implements SparseTensor. 
+ * @brief This class implements SparseTensor.
  * This class holds sparse non-zero data (values) and sparse format
  * specific indices. There are two main uses for the class (similar to that of Tensor)
  * - one is to re-present model sparse inputs. Such inputs typically reside
@@ -43,7 +43,7 @@ std::ostream& operator<<(std::ostream&, SparseFormat);
  *   be used to supply pointers to format specific indices. These buffers are used as is
  *   and will not be modified or deallocated by the instance. However, the lifespan of the buffers
  *   must eclipse the lifespan of the SparseTensor instance.
- * 
+ *
  * - Represent sparse data that is a result of format conversion or a computation result. Use second constructor
  *   to supply a desired allocator. Use Make*() format specific interfaces to supply values and format
  *   specific indices. The specified data will be copied into an internally allocated buffer.
@@ -446,7 +446,6 @@ class SparseTensor final {
                              const TensorShape& values_shape, const void* values_data,
                              const TensorShape& indices_shape, const int32_t* indices_data);
 
-
   /// <summary>
   /// The method allocates a single contiguous buffer and creates instances of std::strings in it, with
   /// copies of the supplied zero-terminated strings followed by COO indices.
@@ -492,14 +491,14 @@ class SparseTensor final {
   /// <param name="exec_q_id"></param>
   /// <param name="dst_tensor"></param>
   /// <returns></returns>
-  Status Copy(const DataTransferManager& data_transfer_manager, int exec_q_id, SparseTensor& dst_tensor) const;
+  Status Copy(const DataTransferManager& data_transfer_manager, SparseTensor& dst_tensor) const;
 
   /// <summary>
   /// X-device copy. Destination tensor must have allocator set.
   /// </summary>
   /// <param name="dst_tensor"></param>
   /// <returns></returns>
-  Status Copy(const IDataTransfer& data_transfer, SparseTensor& dst_tensor, int exec_q_id) const;
+  Status Copy(const IDataTransfer& data_transfer, SparseTensor& dst_tensor) const;
 
  private:
   Status AllocateBuffer(int64_t buffer_size, size_t num_values);

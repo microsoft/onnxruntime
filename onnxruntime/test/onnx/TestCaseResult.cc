@@ -18,4 +18,3 @@ void TestCaseResult::SetResult(size_t task_id, EXECUTE_RESULT r) {
 std::ostream& operator<<(std::ostream& os, EXECUTE_RESULT result) {
   return os << "EXECUTION_RESULT: " << static_cast<int>(result);
 }
-

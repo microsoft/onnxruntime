@@ -11,7 +11,8 @@ namespace cuda {
 
 class SplitTraining final : public CudaKernel, public SplitBase {
  public:
-  SplitTraining(const OpKernelInfo& info) : CudaKernel(info), SplitBase(info) {}
+  // ONNX Split from opset 13. no support for uneven splits that was added in opset 18.
+  SplitTraining(const OpKernelInfo& info) : CudaKernel(info), SplitBase(info, 13) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

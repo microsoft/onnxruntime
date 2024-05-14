@@ -11,13 +11,12 @@
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/vm/vm.h>
 
-
 namespace onnxruntime {
 namespace tvm {
 
 using TvmModule = ::tvm::runtime::Module;
 
-}   // namespace tvm
-}   // namespace onnxruntime
+}  // namespace tvm
+}  // namespace onnxruntime
 
-#endif // TVM_COMMON_H
+#endif  // TVM_COMMON_H

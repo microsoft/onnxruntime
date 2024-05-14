@@ -1,0 +1,57 @@
+parameters:
+- name: DoEsrp
+  type: boolean
+  default: true
+
+- name: FolderPath
+  type: string
+  default: ''
+
+- name: DisplayName
+  type: string
+  default: ''
+
+- name: Pattern
+  type: string
+  default: '*.zip'
+
+steps:
+- task: EsrpCodeSigning@3
+  displayName: ${{ parameters.DisplayName }}
+  condition: and(succeeded(), eq('${{ parameters.DoEsrp }}', true))
+  inputs:
+    ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
+    FolderPath: ${{ parameters.FolderPath }}
+    Pattern: ${{ parameters.Pattern }}
+    signConfigType: inlineSignParams
+    inlineOperation: |
+      [
+        {
+          "keyCode": "CP-401337-Apple",
+          "operationSetCode": "MacAppDeveloperSign",
+          "parameters": [
+            {
+              "parameterName": "OpusName",
+              "parameterValue": "Microsoft"
+            },
+            {
+              "parameterName": "OpusInfo",
+              "parameterValue": "http://www.microsoft.com"
+            },
+            {
+              "parameterName": "PageHash",
+              "parameterValue": "/NPH"
+            },
+            {
+              "parameterName": "FileDigest",
+              "parameterValue": "/fd sha256"
+            },
+            {
+              "parameterName": "TimeStamp",
+              "parameterValue": "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
+            }
+          ],
+          "toolName": "sign",
+          "toolVersion": "1.0"
+        }
+      ]

@@ -13,14 +13,7 @@
 namespace onnxruntime {
 
 /**
-  Eliminate no op node - handling Add op for now
-  Add example: 
-
-      X     0
-       \   /   
-        Add
-         |
-         Y    
+  Eliminate no op node - supporting x+0, 0+x, x-0, x*1, 1*x and x/1 for now.
  */
 Status NoopElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   if (graph_utils::RemoveNode(graph, node)) {
@@ -31,7 +24,6 @@ Status NoopElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
 }
 
 bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-
   bool input0_is_initializer = graph_utils::IsConstantInitializer(graph, node.InputDefs()[0]->Name());
   bool input1_is_initializer = graph_utils::IsConstantInitializer(graph, node.InputDefs()[1]->Name());
 
@@ -40,61 +32,76 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
     return false;
   }
 
-  const auto* initializer = graph_utils::GetConstantInitializer(graph, node.InputDefs()[input0_is_initializer ? 0 : 1]->Name());
+  const auto& op_type = node.OpType();
+  if ((op_type == "Sub" || op_type == "Div") && !input1_is_initializer) {
+    return false;
+  }
+
+  const auto* initializer =
+      graph_utils::GetConstantInitializer(graph, node.InputDefs()[input0_is_initializer ? 0 : 1]->Name());
 
   // if initializer_rank is bigger, the output is expected to be initializer_rank per broadcasting rule,
   // but it won't happen if the case is accepted, thus reject it
-  auto initializer_rank = initializer->dims().size();
+  const auto& dims = initializer->dims();
+  auto initializer_rank = dims.size();
   const auto* other_input_shape = node.InputDefs()[input0_is_initializer ? 1 : 0]->Shape();
   if (other_input_shape == nullptr || initializer_rank > other_input_shape->dim_size()) {
     return false;
   }
 
-  int32_t data_type = initializer->data_type();
-  Initializer add_init(*initializer, graph.ModelPath());
-  if (add_init.size() > 1) {
+  int64_t tensor_size = 1;
+  for (auto i : dims) {
+    tensor_size *= i;
+  }
+
+  if (tensor_size > 1) {
     return false;
   }
+
   // handle edge case where the total size of the initializer is 0
-  if (add_init.size() == 0) {
+  if (tensor_size == 0) {
     return true;
   }
-  switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      if (*add_init.data<float>() != 0.f) {
+
+  if (op_type == "Add" ||
+      op_type == "Sub" ||
+      op_type == "Mul" ||
+      op_type == "Div") {
+    int32_t data_type = initializer->data_type();
+    Initializer add_init(*initializer, graph.ModelPath());
+
+    float value = 0.0f;
+    switch (data_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        value = *add_init.data<float>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        value = math::halfToFloat(add_init.data<MLFloat16>()->val);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+        value = static_cast<float>(*add_init.data<double>());
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        value = static_cast<float>(*add_init.data<int32_t>());
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        value = static_cast<float>(*add_init.data<int64_t>());
+        break;
+      default:
         return false;
-      }
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      if (math::halfToFloat(add_init.data<MLFloat16>()->val) != 0.f) {
-        return false;
-      }
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      if (*add_init.data<double>() != static_cast<double>(0.f)) {
-        return false;
-      }
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      if (*add_init.data<int32_t>() != static_cast<int32_t>(0)) {
-        return false;
-      }
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      if (*add_init.data<int64_t>() != static_cast<int64_t>(0)) {
-        return false;
-      }
-      break;
-    default:
+    }
+
+    if (value != 0.0f && (op_type == "Add" || op_type == "Sub")) {
       return false;
+    }
+
+    if (value != 1.0f && (op_type == "Mul" || op_type == "Div")) {
+      return false;
+    }
   }
 
   // reject node output is graph output for now
-  if (!graph_utils::CanRemoveNode(graph, node, logger)) {
-    return false;
-  }
-
-  return true;
+  return graph_utils::CanRemoveNode(graph, node, logger);
 }
 
 }  // namespace onnxruntime

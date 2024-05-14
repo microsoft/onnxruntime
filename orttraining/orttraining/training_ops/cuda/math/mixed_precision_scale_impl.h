@@ -16,4 +16,3 @@ void Impl_MixedPrecisionScale(
     size_t count);
 }
 }  // namespace onnxruntime
-

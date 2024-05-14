@@ -6,7 +6,6 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "gsl/gsl"
 #include "reshape_helper.h"
 #include "utils.h"
 
@@ -68,4 +67,4 @@ class Reshape_1 final : public OpKernel {
   TensorShapeVector shape_;
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

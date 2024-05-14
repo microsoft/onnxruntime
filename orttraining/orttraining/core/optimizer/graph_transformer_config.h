@@ -21,6 +21,14 @@ struct TrainingGraphTransformerConfiguration : public GraphTransformerConfigurat
   bool transformer_layer_recompute{false};
   // Number of layers to apply recompute
   int number_recompute_layers{0};
+
+  // Enable compute optimizer.
+  bool enable_compute_optimizer{false};
+
+  bool print_input_density{false};
+
+  // Path for serialization of the transformed optimized model. If empty, serialization is disabled.
+  std::string optimized_pre_grad_filepath;
 };
 
 }  // namespace training

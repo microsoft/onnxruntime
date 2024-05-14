@@ -4,7 +4,6 @@
 #include "core/providers/cpu/ml/normalizer.h"
 
 #include <algorithm>
-#include "gsl/gsl"
 
 /*
 ONNX_OPERATOR_SCHEMA(Normalizer)

@@ -3,10 +3,14 @@
 
 #pragma once
 interface IMLOperatorRegistry;
+interface IDMLDevice;
+interface ID3D12CommandQueue;
+interface ID3D12Resource;
 
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 #include "IWinmlExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ExecutionContext.h"
 
 namespace onnxruntime
 {
@@ -27,16 +31,17 @@ namespace Dml
 {
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
-        ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands = true);
+        Dml::ExecutionContext* execution_context,
+        bool enableMetacommands,
+        bool enableGraphCapture,
+        bool enableCpuSyncSpinning);
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
-    void FlushContext(onnxruntime::IExecutionProvider* provider);    
-    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
+    void FlushContext(onnxruntime::IExecutionProvider* provider);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
-    
+
     onnxruntime::common::Status CopyTensor(
-        onnxruntime::IExecutionProvider* provider, 
+        onnxruntime::IExecutionProvider* provider,
         const onnxruntime::Tensor& src, onnxruntime::Tensor& dst
     );
 
@@ -44,5 +49,6 @@ namespace Dml
     void FreeGPUAllocation(void* ptr);
 
     void RegisterDmlOperators(IMLOperatorRegistry* registry);
+    void RegisterCpuOperatorsAsDml(onnxruntime::KernelRegistry* registry);
 
 } // namespace Dml

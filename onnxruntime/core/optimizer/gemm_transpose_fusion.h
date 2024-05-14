@@ -18,7 +18,7 @@ This fusion can be applied in the following scenarios:
     (AB)' = B' A'; provided that C input is missing.
     This is supported for Opset >= 11 as Gemm input C becomes optional from then
 3) Transpose at Input(s) and Output: The fusion is applied by the rules in 1 and 2
- 
+
 It is attempted to be triggered only on nodes with op type "Gemm".
 */
 class GemmTransposeFusion : public RewriteRule {

@@ -85,10 +85,10 @@ Status NotWhereFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_e
     Node& replacement = *graph.GetNode(not_input_node->Index());
     int replacement_output_idx = graph_utils::GetNodeOutputIndexFromOutputName(replacement, not_input->Name());
     // Replace inputs of all downstream where nodes with input of not_node by
-    // removing not's output edges, updating input names of not's consumers, 
+    // removing not's output edges, updating input names of not's consumers,
     // and adding the edges from not's input to not's consumers.
     graph_utils::ReplaceDownstreamNodeInput(graph, not_node, 0, replacement, replacement_output_idx);
-  } else { // not's input is graph input/initializer. Remove the output egdes for not_node
+  } else {  // not's input is graph input/initializer. Remove the output egdes for not_node
     graph_utils::RemoveNodeOutputEdges(graph, not_node);
   }
 
@@ -97,7 +97,7 @@ Status NotWhereFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_e
 
     std::vector<NodeArg*> where_inputs = where_node.MutableInputDefs();
 
-    if (!not_input_node) { // not's input is graph input/initializer.
+    if (!not_input_node) {  // not's input is graph input/initializer.
       graph_utils::ReplaceNodeInput(where_node, 0, *not_input);
     }
 
@@ -124,7 +124,7 @@ Status NotWhereFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_e
 
     if (where_input2_node) {
       graph.AddEdge(where_input2_node->Index(), where_node.Index(), output2_idx, 1);
-    } 
+    }
   }
 
   // remove not_node

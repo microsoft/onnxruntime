@@ -9,6 +9,7 @@
 #include "onnx/defs/data_type_utils.h"
 
 #include "core/framework/op_kernel.h"
+#include "core/framework/utils.h"
 
 using namespace ONNX_NAMESPACE::Utils;
 
@@ -77,7 +78,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     ORT_THROW_IF_ERROR(node->ForEachWithIndex(
         node->OutputDefs(),
         [&](const NodeArg& node_arg, size_t out_index) {
-          if (kernel_info->kernel_def->IsOutputOnCpu(out_index)) {
+          if (utils::IsOutputOnCpu(*node, kernel_info, out_index)) {
             cpu_output_args.insert(&node_arg);
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
@@ -107,17 +108,32 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     if (!p.second)
       continue;
 
-    if (provider_nodes.find(cur) == provider_nodes.end())
-      continue;
-
     auto* node = graph.GetNode(cur);
+    if (provider_nodes.find(cur) == provider_nodes.end()) {
+      // Nodes not in provider_nodes are either have EP assigned or no kernel found on target EP.
+      // we assume these nodes will fallback to CPU, so add all direct consumers of all outputs to candidates.
+      if (node->GetExecutionProviderType().empty() || node->GetExecutionProviderType() == kCpuExecutionProvider) {
+        for (auto* output : node->OutputDefs()) {
+          cpu_output_args.insert(output);
+        }
+        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          candidates.push((*it).Index());
+        }
+      }
+      continue;
+    }
+
     bool place_in_cpu = true;
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
 
-      // skip placing on CPU if the data typs is float16 or bfloat16
+      // skip placing on CPU if the data typs is float16 or bfloat16 or float8e4m3fn, float8e4m3fnuz, floate5m2, floate5m2fnuz
       if (input->Type() == DataTypeUtils::ToType("float16") ||
-          input->Type() == DataTypeUtils::ToType("bfloat16")) {
+          input->Type() == DataTypeUtils::ToType("bfloat16") ||
+          input->Type() == DataTypeUtils::ToType("float8e4m3fn") ||
+          input->Type() == DataTypeUtils::ToType("float8e4m3fnuz") ||
+          input->Type() == DataTypeUtils::ToType("float8e5m2") ||
+          input->Type() == DataTypeUtils::ToType("float8e5m2fnuz")) {
         place_in_cpu = false;
         break;
       }

@@ -4,9 +4,10 @@
 import assert from 'assert';
 import * as fs from 'fs-extra';
 import {jsonc} from 'jsonc';
-import * as onnx_proto from 'onnx-proto';
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
+
+import * as onnx_proto from './ort-schema/protobuf/onnx';
 
 export const TEST_ROOT = __dirname;
 export const TEST_DATA_ROOT = path.join(TEST_ROOT, 'testdata');
@@ -264,7 +265,7 @@ function loadFiltersRegex(): Array<{opset?: RegExp | undefined; name: RegExp}> {
   const filters: Array<string|[string, string]> = ['(FLOAT16)'];
   filters.push(...BACKEND_TEST_SERIES_FILTERS.current_failing_tests);
 
-  if (process.arch === 'x32') {
+  if (process.arch === 'ia32') {
     filters.push(...BACKEND_TEST_SERIES_FILTERS.current_failing_tests_x86);
   }
 

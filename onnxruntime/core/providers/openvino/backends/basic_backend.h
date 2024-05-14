@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -6,15 +6,16 @@
 #include <memory>
 
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/openvino/contexts.h"
-#include "core/providers/openvino/ibackend.h"
-#include "core/providers/openvino/ov_interface.h"
 #include <vector>
 #include <iostream>
 #include <string>
 #include <condition_variable>
 #include <mutex>
+
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/ibackend.h"
+#include "core/providers/openvino/ov_interface.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -24,19 +25,22 @@ class BasicBackend : public IBackend {
  public:
   BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                GlobalContext& global_context,
-               const SubGraphContext& subgraph_context);
+               const SubGraphContext& subgraph_context,
+               EPCtxHandler& ep_ctx_handle);
 
   void Infer(OrtKernelContext* context) override;
+  ov::CompiledModel& GetOVCompiledModel() override {
+    return exe_network_.Get();
+  }
 
  private:
-  bool ImportBlob(std::string hw_target, bool vpu_status);
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
-  bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
-  void PopulateConfigValue(OVConfig& config);
+  bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
+  void PopulateConfigValue(ov::AnyMap& device_config);
   void EnableCaching();
-  #if defined(OV_API_20)
-  void EnableGPUThrottling(OVConfig& config);
-  #endif 
+  void EnableGPUThrottling(ov::AnyMap& device_config);
+  void EnableStreams();
+  void SetNumThreads(ov::AnyMap& device_config);
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
 #ifdef IO_BUFFER_ENABLED
@@ -48,13 +52,14 @@ class BasicBackend : public IBackend {
   GlobalContext& global_context_;
   SubGraphContext subgraph_context_;
   mutable std::mutex compute_lock_;
-  std::shared_ptr<OVNetwork> ie_cnn_network_;
+  std::shared_ptr<const OVNetwork> ie_cnn_network_;
   OVExeNetwork exe_network_;
-  std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
+  std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
-  #if defined IO_BUFFER_ENABLED
+  bool is_ep_ctx_graph_{false};
+#if defined IO_BUFFER_ENABLED
   OVRemoteContextPtr remote_context_;
-  #endif
+#endif
 };
 
 class InferRequestsQueue {
@@ -78,11 +83,7 @@ class InferRequestsQueue {
   void printstatus() {
     std::cout << "printing elements of the vector (infer_requests_): " << std::endl;
     for (auto i = infer_requests_.begin(); i != infer_requests_.end(); ++i) {
-      #if defined (OV_API_20)
       i->get()->QueryStatus();
-      #else 
-      std::cout << *i << "\n";
-      #endif 
     }
     std::cout << '\n';
   }

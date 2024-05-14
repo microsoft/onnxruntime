@@ -25,7 +25,7 @@ enum class DeviceCopyCheck {
 };
 
 struct DeviceCopyChecks {
-  DeviceCopyCheck status = DeviceCopyCheck::Unknown;  ///< Overall status. If NoCopy no input or output copies are needed
+  DeviceCopyCheck status = DeviceCopyCheck::Unknown;  ///< Overall status. NoCopy means input_copy_needed and output_copy_needed are both NoCopy
   DeviceCopyCheck input_copy_needed = DeviceCopyCheck::Unknown;
   DeviceCopyCheck output_copy_needed = DeviceCopyCheck::Unknown;
 };
@@ -35,7 +35,7 @@ struct FeedsFetchesInfo {
   FeedsFetchesInfo(gsl::span<const std::string> feed_names_in,
                    gsl::span<const std::string> output_names_in,
                    const OrtValueNameIdxMap& ort_value_name_idx_map)
-      : feed_names(), 
+      : feed_names(),
         output_names() {
     feed_names.reserve(feed_names_in.size());
     feed_names.assign(feed_names_in.begin(), feed_names_in.end());
@@ -56,7 +56,6 @@ struct FeedsFetchesInfo {
     ORT_THROW_IF_ERROR(SetMLValueIdxs(ort_value_name_idx_map));
   }
 
-
   static Status MapNamesToMLValueIdxs(gsl::span<const std::string> names,
                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
                                       InlinedVector<int>& ort_value_idxs);
@@ -74,6 +73,9 @@ struct FeedsFetchesInfo {
 struct MLValueCopyInfo {
   OrtDevice source_device{};
   OrtDevice target_device{};  // default is CPU
+
+  // if all the consume ops are from the same stream, this variable is the stream index; otherwise -1
+  int unique_stream_index_consumes_it = -1;
 };
 
 class FeedsFetchesManager {

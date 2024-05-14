@@ -60,5 +60,7 @@ void ClipGradNormFunctor<T>::operator()(
 
 SPECIALIZE_CLIPGRADNORM_FUNCTOR(float);
 
+#undef SPECIALIZE_CLIPGRADNORM_FUNCTOR
+
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -77,6 +77,7 @@ gen_gemm_2inputs_transposed("gemm_transpose_2inputs_transposed.onnx")
 gen_gemm_output_transposed("gemm_transpose_output_transposed.onnx")
 gen_gemm_inputs_output_transposed("gemm_transpose_inputs_output_transposed.onnx")
 
+
 # (A'(B')) = BA
 def gen_gemm_inputs_output_transposed_2(model_path):
     nodes = [

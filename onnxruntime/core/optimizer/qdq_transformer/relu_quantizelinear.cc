@@ -3,6 +3,7 @@
 
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 
@@ -18,7 +19,7 @@ bool ReluQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, con
 
   // if Relu is followed by QuantizeLinear, it can be fused into QuantizeLinear potentially
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "QuantizeLinear", {10, 13})) {
+  if (!QDQ::MatchQNode(next_node)) {
     return false;
   }
 
@@ -45,8 +46,14 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   using ONNX_TENSOR_ELEM_TYPE = ONNX_NAMESPACE::TensorProto::DataType;
   Initializer zero_point(*zp_tensor_proto, graph.ModelPath());
   if (zero_point.size() != 1 ||
-      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 && zero_point.data<int8_t>()[0] != -128) ||
-      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_UINT8 && zero_point.data<uint8_t>()[0] != 0)) {
+      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 &&
+       zero_point.data<int8_t>()[0] != -128) ||
+      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_UINT8 &&
+       zero_point.data<uint8_t>()[0] != 0) ||
+      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT16 &&
+       zero_point.data<int16_t>()[0] != -32768) ||
+      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_UINT16 &&
+       zero_point.data<uint16_t>()[0] != 0)) {
     return Status::OK();
   }
 

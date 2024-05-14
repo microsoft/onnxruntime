@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <map>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -18,11 +20,14 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tuning_results.h"
+#include "core/framework/framework_provider_common.h"
+#include "core/framework/session_options.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
-#include "core/framework/session_options.h"
+#include "core/platform/ort_mutex.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -31,28 +36,23 @@
 #include <TraceLoggingActivity.h>
 #endif
 
-#ifdef ENABLE_TRAINING
-#include "core/framework/partial_graph_execution_state.h"
-#endif
-namespace onnxruntime {  // forward declarations
-class GraphTransformer;
-class Environment;
-}  // namespace onnxruntime
-
 namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
-struct OrtCustomOpDomain {
-  std::string domain_;
-  std::vector<const OrtCustomOp*> custom_ops_;
-};
-
-namespace onnxruntime {
-class IExecutionProvider;  // forward decl
-class IOBinding;
+namespace onnxruntime {  // forward declarations
 class CustomRegistry;
+class Environment;
+class GraphTransformer;
+class IExecutionProvider;
+class IOBinding;
 struct Notification;
+
+#ifdef ENABLE_TRAINING
+struct PartialGraphExecutionState;
+using OrtValueCache = InlinedHashMap<std::string, OrtValue>;
+using OrtValueCachePtr = std::shared_ptr<OrtValueCache>;
+#endif
 
 namespace logging {
 class LoggingManager;
@@ -106,6 +106,26 @@ struct ModelMetadata {
  */
 
 class InferenceSession {
+  struct InputOutputDefMetaData {
+    InputOutputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, TensorShape&& tensor_shape0)
+        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(std::move(tensor_shape0)) {
+    }
+
+    InputOutputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0)
+        : node_arg(node_arg0), ml_data_type(ml_data_type0) {
+    }
+
+    gsl::not_null<const NodeArg*> node_arg;
+    MLDataType ml_data_type;
+    std::optional<TensorShape> tensor_shape;  // not applicable if the input is non-tensor type
+  };
+
+  using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
+  static std::map<uint32_t, InferenceSession*> active_sessions_;
+#ifdef _WIN32
+  static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+#endif
+
  public:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -199,7 +219,7 @@ class InferenceSession {
    * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
    * @return OK if success.
    */
-  common::Status RegisterExecutionProvider(const std::shared_ptr<IExecutionProvider>& p_exec_provider) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status RegisterExecutionProvider(const std::shared_ptr<IExecutionProvider>& p_exec_provider);
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -210,8 +230,8 @@ class InferenceSession {
     * @param[in] - level Optional. Level to which this transformer should be registered. Default is set to 2.
     * @return OK if success.
     */
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                          TransformerLevel level = TransformerLevel::Level2) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
+                                                        TransformerLevel level = TransformerLevel::Level2);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -233,7 +253,7 @@ class InferenceSession {
   /**
    * Add custom ops. This API is not thread safe.
    */
-  common::Status AddCustomOpDomains(gsl::span<OrtCustomOpDomain* const> ops) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status AddCustomOpDomains(gsl::span<OrtCustomOpDomain* const> ops);
 
   /**
    * Register a custom registry for operator schema and kernels.  If you've one to register,
@@ -244,7 +264,7 @@ class InferenceSession {
    * This API is not thread safe.
    * @return OK if success.
    */
-  common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
   /**
@@ -259,9 +279,9 @@ class InferenceSession {
    * @param model_uri absolute path of the model file.
    * @return OK if success.
    */
-  common::Status Load(const PathString& model_uri) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status Load(const PathString& model_uri);
 #ifdef _WIN32
-  common::Status Load(const std::string& model_uri) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status Load(const std::string& model_uri);
 #endif
   /**
    * Load an ONNX or ORT format model.
@@ -275,7 +295,7 @@ class InferenceSession {
    * @param model_data_len Model data buffer size
    * @return OK if success.
    */
-  common::Status Load(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status Load(const void* model_data, int model_data_len);
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -284,14 +304,14 @@ class InferenceSession {
    * @allow_released_opsets_only Set true if you would like to only allow released ONNX opsets only, set false otherwise.
    * @return OK if success.
    */
-  common::Status Load(std::istream& model_istream, bool allow_released_opsets_only = true) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status Load(std::istream& model_istream, bool allow_released_opsets_only = true);
 
   /**
    * Load an ONNX model from the member model_proto_.
    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array
    * @return OK if success.
    */
-  common::Status Load() ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status Load();
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
@@ -301,12 +321,26 @@ class InferenceSession {
    * This API is thread-safe.
    * @return OK if success
    */
-  common::Status Initialize() ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status Initialize();
 
-  common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
-                     gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
-                     std::vector<OrtValue>* p_fetches,
-                     const std::vector<OrtDevice>* p_fetches_device_info = nullptr) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
+                                   gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
+                                   std::vector<OrtValue>* p_fetches,
+                                   const std::vector<OrtDevice>* p_fetches_device_info = nullptr);
+
+  [[nodiscard]] common::Status Run(const RunOptions& run_options,
+                                   gsl::span<const char* const> feed_names,
+                                   gsl::span<const OrtValue* const> feeds,
+                                   gsl::span<const char* const> fetch_names,
+                                   gsl::span<OrtValue*> fetches);
+
+  [[nodiscard]] common::Status RunAsync(const RunOptions* run_options,
+                                        gsl::span<const char* const> feed_names,
+                                        gsl::span<const OrtValue* const> feeds,
+                                        gsl::span<const char* const> fetch_names,
+                                        gsl::span<OrtValue*> fetches,
+                                        RunAsyncCallbackFn callback,
+                                        void* user_data = nullptr);
 
   /**
    * Run a pre-loaded and pre-intialized model.
@@ -318,27 +352,27 @@ class InferenceSession {
    *        This should not be changed during execution of this function.
    * @return OK if success.
    */
-  common::Status Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
-                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
+                                   std::vector<OrtValue>* p_fetches);
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
    * for details.
    * @param run_options use this to tune the Run call to your needs.
    */
-  common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
-                     gsl::span<const std::string> output_names,
-                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
+                                   gsl::span<const std::string> output_names,
+                                   std::vector<OrtValue>* p_fetches);
 
   /**
    * Creates a new binding object for binding inputs and outputs.
    * @param provider_type specifies the location where the inputs need to be potentially copied.
    * See IOBinding class for more info.
    */
-  common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding);
 
-  virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
-  common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  [[nodiscard]] virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding);
+  [[nodiscard]] common::Status Run(IOBinding& io_binding);
 
 #ifdef ENABLE_TRAINING
   /**
@@ -446,6 +480,25 @@ class InferenceSession {
     */
   const profiling::Profiler& GetProfiling() const;
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /**
+   * Get the TuningResults of TunableOp for every execution providers.
+   * @return The TuningResults of each execution provider.
+   */
+  std::vector<TuningResults> GetTuningResults() const;
+
+  /**
+   * Set the TuningResults back to each execution provider. Mainly for offline tuning.
+   * @param trs is the list of TuningResults to be loaded.
+   * @param error_on_invalid otherwise, validation faliure is not an error, only a warning log will be produced.
+   * @param auto_enable if true, automatically enable tunable op usage (but not tuning) if the TuningResults is
+                        correctly loaded
+   * @return OK if success.
+   */
+  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false,
+                          bool auto_enable = false);
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryProfiler& GetMemoryProfiler() {
     return memory_profiler_;
@@ -485,19 +538,19 @@ class InferenceSession {
    * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
    * @return OK if success.
    */
-  common::Status LoadOnnxModel(ONNX_NAMESPACE::ModelProto model_proto) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status LoadOnnxModel(ONNX_NAMESPACE::ModelProto model_proto);
 
   /**
    * Load an ONNX model.
    * @param protobuf object corresponding to the model file. This is primarily to support large models.
    * @return OK if success.
    */
-  common::Status LoadOnnxModel(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status LoadOnnxModel(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto);
 
-  common::Status LoadWithLoader(std::function<common::Status(std::shared_ptr<Model>&)> loader,
-                                const std::string& event_name) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status LoadWithLoader(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                                              const std::string& event_name);
 
-  common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status DoPostLoadProcessing(onnxruntime::Model& model);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -540,9 +593,6 @@ class InferenceSession {
   // if they need.
   std::shared_ptr<onnxruntime::Model> model_;
 
-  // names of model outputs used for quick validation.
-  std::unordered_set<std::string> model_output_names_;
-
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
 
@@ -551,15 +601,16 @@ class InferenceSession {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
-
+  void SetLoggingManager(const SessionOptions& session_options,
+                         const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
 
-  common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status SaveModelMetadata(const onnxruntime::Model& model);
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-  common::Status LoadOnnxModel(const PathString& model_uri) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status LoadOnnxModel(const PathString& model_uri);
 
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
@@ -573,7 +624,7 @@ class InferenceSession {
    * @param model_uri absolute path of the model file.
    * @return OK if success.
    */
-  common::Status LoadOrtModel(const PathString& model_uri) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status LoadOrtModel(const PathString& model_uri);
 
   /**
    * Load an ORT format model.
@@ -583,9 +634,9 @@ class InferenceSession {
    * @remarks TODO: Provide way to load from in-memory bytes without copying. InferenceSession would need to
    *                take ownership of the buffer passed in.
    */
-  common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status LoadOrtModel(const void* model_data, int model_data_len);
 
-  common::Status LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes);
 
   // Create a Logger for a single execution if possible. Otherwise use the default logger.
   // If a new logger is created, it will also be stored in new_run_logger,
@@ -597,22 +648,26 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
-                             const TensorShape& expected_shape) const ORT_MUST_USE_RESULT;
+  void TraceSessionOptions(const SessionOptions& session_options, bool captureState);
 
-  common::Status ValidateInputs(gsl::span<const std::string> feed_names,
-                                gsl::span<const OrtValue> feeds) const ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
+                                           const TensorShape& expected_shape, const char* input_output_moniker) const;
 
-  common::Status ValidateOutputs(gsl::span<const std::string> output_names,
-                                 const std::vector<OrtValue>* p_fetches) const ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status ValidateInputs(gsl::span<const std::string> feed_names,
+                                              gsl::span<const OrtValue> feeds) const;
 
-  common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status ValidateOutputs(gsl::span<const std::string> output_names,
+                                               const std::vector<OrtValue>* p_fetches) const;
+
+  [[nodiscard]] common::Status ValidateInputsOutputs(gsl::span<const std::string> feed_fetches_names,
+                                                     gsl::span<const OrtValue> feeds_fetches,
+                                                     const InputOutputDefMetaMap& input_output_meta_map,
+                                                     ArgType arg_type) const;
+
+  [[nodiscard]] common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
-
-  // Updates all providers with the allocators from the env based on OrtMemoryInfo
-  void UpdateProvidersWithSharedAllocators();
 
   /*
    * Validate and parses the shrink arena request string from the user
@@ -620,15 +675,18 @@ class InferenceSession {
    * If we encounter an invalid request, we return an error
    * back to the user.
    */
-
-  common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
-                                                   /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
+  [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
+                                                                 /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
 
   /*
    * Performs the shrinkage of arenas requested to be shrunk by the user
    * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
    */
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
+
+#ifdef _WIN32
+  void LogAllSessions();
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(
@@ -637,27 +695,25 @@ class InferenceSession {
       MinimalBuildOptimizationHandling minimal_build_optimization_handling,
       RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const;
 
-  common::Status TransformGraph(onnxruntime::Graph& graph,
-                                const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
-                                const InsertCastTransformer& insert_cast_transformer,
-                                SessionState& session_state,
-                                bool saving_model_in_ort_format) ORT_MUST_USE_RESULT;
+  common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+  onnxruntime::GraphTransformerManager graph_transformer_mgr_;
 
-  InsertCastTransformer insert_cast_transformer_;
-
-  // assuming that OpSchema* elements are not null. our version of gsl::not_null doesn't specialize std::hash.
-  InlinedHashSet<const ONNX_NAMESPACE::OpSchema*> saved_runtime_optimization_produced_node_op_schemas_;
+  InlinedHashSet<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> saved_runtime_optimization_produced_node_op_schemas_;
 #endif
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
   InlinedHashSet<std::string> optimizers_to_disable_;
 
+  // session_options_ must be declared *before* session_state_ in order to guarantee that session_options_ is destroyed
+  // *after* the session_state_. This destruction order ensures that the custom operator library handles stored within
+  // the session options are released after the individual operators are destroyed.
   SessionOptions session_options_;
 
   /// Logging manager if provided.
-  logging::LoggingManager* const logging_manager_;
+  logging::LoggingManager* logging_manager_;
+
+  /// User specified logging mgr; logging_manager_ is simply the ptr in this unique_ptr when available
+  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
@@ -715,19 +771,9 @@ class InferenceSession {
 #endif
 
   ModelMetadata model_metadata_;
-  std::unordered_set<std::string> required_inputs_;
 
-  struct InputDefMetaData {
-    InputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, TensorShape&& tensor_shape0)
-        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(std::move(tensor_shape0)) {
-    }
-    const NodeArg* node_arg;
-    MLDataType ml_data_type;
-    TensorShape tensor_shape;  // not applicable if the input is non-tensor type
-  };
-
-  std::unordered_map<std::string, InputDefMetaData> input_def_map_;
-  OutputDefList output_def_list_;
+  InputOutputDefMetaMap input_def_map_;
+  InputOutputDefMetaMap output_def_map_;
 
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;
@@ -820,14 +866,17 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptureEnabled();
     }
 
-    bool IsGraphCaptured() const {
-      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured();
+    bool IsGraphCaptured(int graph_annotation_id) const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured(graph_annotation_id);
     }
 
-    Status ReplayGraph() {
-      ORT_ENFORCE(IsGraphCaptured());
+    bool AllowGraphCaptureOnRun(int graph_annotation_id) const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != kGraphAnnotationSkip;
+    }
+
+    Status ReplayGraph(int graph_annotation_id) {
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph();
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }
@@ -837,6 +886,8 @@ class InferenceSession {
     }
 
     IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
+    // TODO(wy): Same as kCudaGraphAnnotationSkip in cuda_graph.h. Move to a common place.
+    constexpr static int kGraphAnnotationSkip = -1;
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;

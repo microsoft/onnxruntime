@@ -3,7 +3,9 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "core/util/math.h"
+#include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -20,7 +22,7 @@ struct make_type {
 template <class A>
 struct make_type<MLFloat16, A> {
   static MLFloat16 make(A v) {
-    return MLFloat16(math::floatToHalf(float(v)));
+    return MLFloat16(float(v));
   }
 };
 
@@ -32,7 +34,9 @@ struct make_type<BFloat16, A> {
 };
 
 template <class T, class OutputIter>
-typename std::enable_if<!std::numeric_limits<T>::is_signed>::type
+typename std::enable_if<!std::numeric_limits<T>::is_signed &&
+                        !std::is_same<T, MLFloat16>::value &&
+                        !std::is_same<T, BFloat16>::value>::type
 GenerateSequence(OutputIter out) {
   for (int i = 0; i < 7; ++i) {
     *out = make_type<T, int>::make(i);
@@ -41,7 +45,9 @@ GenerateSequence(OutputIter out) {
 }
 
 template <class T, class OutputIter>
-typename std::enable_if<std::numeric_limits<T>::is_signed>::type
+typename std::enable_if<std::numeric_limits<T>::is_signed ||
+                        std::is_same<T, MLFloat16>::value ||
+                        std::is_same<T, BFloat16>::value>::type
 GenerateSequence(OutputIter out) {
   for (int i = -5; i < 2; ++i) {
     *out = make_type<T, int>::make(i);
@@ -59,7 +65,7 @@ struct ToTestableType {
 template <>
 struct ToTestableType<MLFloat16> {
   static float to_type(MLFloat16 v) {
-    return math::halfToFloat(v.val);
+    return v.ToFloat();
   }
 };
 
@@ -107,7 +113,7 @@ TestImpl(ForwardIter first, ForwardIter last, OutputIter out) {
 
 TEST(MathOpTest, Sign_uint64) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<uint64_t> input;
@@ -120,10 +126,10 @@ TEST(MathOpTest, Sign_uint64) {
   test.AddOutput<uint64_t>("output", input_dims, output);
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
-//we disable this test for openvino as openvino ep supports only FP32 Precision
+// we disable this test for openvino as openvino ep supports only FP32 Precision
 TEST(MathOpTest, Sign_int64) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<int64_t> input;
@@ -139,7 +145,7 @@ TEST(MathOpTest, Sign_int64) {
 
 TEST(MathOpTest, Sign_float) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<float> input;
@@ -155,7 +161,7 @@ TEST(MathOpTest, Sign_float) {
 
 TEST(MathOpTest, Sign_double) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<double> input;
@@ -170,7 +176,7 @@ TEST(MathOpTest, Sign_double) {
 }
 TEST(MathOpTest, Sign_MLFloat16) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<MLFloat16> input;
@@ -184,7 +190,31 @@ TEST(MathOpTest, Sign_MLFloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(MathOpTest, Sign_BFloat16) {
+// Currently BFloat16 is not enabled for Sign kernel
+// TEST(MathOpTest, Sign_BFloat16) {
+//  using namespace test_sign_internal;
+//  OpTester test("Sign", 9);
+//
+//  std::vector<int64_t> input_dims{7};
+//  std::vector<BFloat16> input;
+//  GenerateSequence<BFloat16>(std::back_inserter(input));
+//  ASSERT_EQ(input.size(), 7U);
+//  test.AddInput<BFloat16>("input", input_dims, input);
+//
+//  std::vector<BFloat16> output;
+//  TestImpl<BFloat16>(input.cbegin(), input.cend(), std::back_inserter(output));
+//  test.AddOutput<BFloat16>("output", input_dims, output);
+//  test.Run(OpTester::ExpectResult::kExpectSuccess);
+//}
+
+#if defined(USE_DNNL)
+TEST(MathOpTest, Sign_bfloat16) {
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   using namespace test_sign_internal;
   OpTester test("Sign", 13);
 
@@ -197,8 +227,13 @@ TEST(MathOpTest, Sign_BFloat16) {
   std::vector<BFloat16> output;
   TestImpl<BFloat16>(input.cbegin(), input.cend(), std::back_inserter(output));
   test.AddOutput<BFloat16>("output", input_dims, output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -15,7 +15,7 @@ namespace cuda {
       T,                                                                 \
       kCudaExecutionProvider,                                            \
       (*KernelDefBuilder::Create())                                      \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())         \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
       RoiAlign<T>);
 
@@ -45,7 +45,7 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (output_size > 0) {
     RoiAlignImpl(
-        Stream(),
+        Stream(context),
         output_size,  // num threads
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(X_ptr->Data<T>()),
         ToCudaType<T>::FromFloat(this->spatial_scale_),
@@ -72,7 +72,7 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
 
 SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
-//SPECIALIZED_COMPUTE(MLFloat16)
+// SPECIALIZED_COMPUTE(MLFloat16)
 
 }  // namespace cuda
 };  // namespace onnxruntime

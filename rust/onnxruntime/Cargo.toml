@@ -1,0 +1,43 @@
+[package]
+authors = ["Nicolas Bigaouette <nbigaouette@gmail.com>"]
+edition = "2018"
+name = "onnxruntime"
+version = "0.0.14"
+
+description = "Wrapper around Microsoft's ONNX Runtime"
+documentation = "https://docs.rs/onnxruntime"
+homepage = "https://onnxruntime.ai/"
+license = "MIT OR Apache-2.0"
+readme = "../README.md"
+repository = "https://github.com/microsoft/onnxruntime"
+
+categories = ["science"]
+keywords = ["neuralnetworks", "onnx", "bindings"]
+
+[[test]]
+name = "integration_tests"
+required-features = ["model-fetching"]
+
+[dependencies]
+libloading = "0.7"
+ndarray = "0.15"
+once_cell = "1.17"
+onnxruntime-sys = { version = "0.0.14", path = "../onnxruntime-sys" }
+thiserror = "1.0"
+tracing = "0.1"
+
+# Enabled with 'model-fetching' feature
+ureq = { version = "2.1", optional = true }
+
+[dev-dependencies]
+image = "0.24"
+test-log = { version = "0.2", default-features = false, features = ["trace"] }
+tracing-subscriber = "0.2"
+ureq = "2.1"
+
+[features]
+# Fetch model from ONNX Model Zoo (https://github.com/onnx/models)
+model-fetching = ["ureq"]
+
+[package.metadata.docs.rs]
+features = ["model-fetching"]

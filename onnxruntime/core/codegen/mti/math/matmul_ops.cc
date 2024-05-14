@@ -18,12 +18,12 @@ tvm::Tensor MatMul2D(const tvm::Tensor& A, const tvm::Tensor& B, bool trans_a, b
  * Generic Matrix Multiplication
  *
  * If both arguments are 2-D, they are multiplied like conventional matrices.
- * 
+ *
  * If either argument is N-D and N > 2, it is treated as a stack of matrices residing in the last two indexes and broadcast accordingly.
- * 
+ *
  * If the first argument is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions.
  * After matrix multiplication the prepended 1 is removed.
- * 
+ *
  * If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
  * After matrix multiplication the appended 1 is removed.
  */

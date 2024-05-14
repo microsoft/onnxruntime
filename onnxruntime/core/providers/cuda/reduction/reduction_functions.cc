@@ -151,7 +151,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
   // the axis index right after the last flattened into matrix rows
   const int64_t m_end_axis = axes_from_beginning ? max_axis + 1 : min_axis;
 
-  const auto shape=TensorShape::FromExistingBuffer(new_dims);
+  const auto shape = TensorShape::FromExistingBuffer(new_dims);
 
   const auto m = shape.SizeToDimension(m_end_axis);
   const auto n = shape.SizeFromDimension(m_end_axis);

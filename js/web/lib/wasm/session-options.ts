@@ -3,9 +3,8 @@
 
 import {InferenceSession} from 'onnxruntime-common';
 
-import {iterateExtraOptions} from './options-utils';
-import {allocWasmString} from './string-utils';
 import {getInstance} from './wasm-factory';
+import {allocWasmString, checkLastError, iterateExtraOptions} from './wasm-utils';
 
 const getGraphOptimzationLevel = (graphOptimizationLevel: string|unknown): number => {
   switch (graphOptimizationLevel) {
@@ -45,6 +44,12 @@ const appendDefaultOptions = (options: InferenceSession.SessionOptions): void =>
     // eslint-disable-next-line camelcase
     session.use_ort_model_bytes_directly = '1';
   }
+
+  // if using JSEP with WebGPU, always disable memory pattern
+  if (options.executionProviders &&
+      options.executionProviders.some(ep => (typeof ep === 'string' ? ep : ep.name) === 'webgpu')) {
+    options.enableMemPattern = false;
+  }
 };
 
 const setExecutionProviders =
@@ -55,19 +60,70 @@ const setExecutionProviders =
 
         // check EP name
         switch (epName) {
-          case 'xnnpack':
-            epName = 'XNNPACK';
+          case 'webnn':
+            epName = 'WEBNN';
+            if (typeof ep !== 'string') {
+              const webnnOptions = ep as InferenceSession.WebNNExecutionProviderOption;
+              if (webnnOptions?.deviceType) {
+                const keyDataOffset = allocWasmString('deviceType', allocs);
+                const valueDataOffset = allocWasmString(webnnOptions.deviceType, allocs);
+                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
+                    0) {
+                  checkLastError(`Can't set a session config entry: 'deviceType' - ${webnnOptions.deviceType}.`);
+                }
+              }
+              if (webnnOptions?.numThreads) {
+                let numThreads = webnnOptions.numThreads;
+                // Just ignore invalid webnnOptions.numThreads.
+                if (typeof numThreads != 'number' || !Number.isInteger(numThreads) || numThreads < 0) {
+                  numThreads = 0;
+                }
+                const keyDataOffset = allocWasmString('numThreads', allocs);
+                const valueDataOffset = allocWasmString(numThreads.toString(), allocs);
+                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
+                    0) {
+                  checkLastError(`Can't set a session config entry: 'numThreads' - ${webnnOptions.numThreads}.`);
+                }
+              }
+              if (webnnOptions?.powerPreference) {
+                const keyDataOffset = allocWasmString('powerPreference', allocs);
+                const valueDataOffset = allocWasmString(webnnOptions.powerPreference, allocs);
+                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
+                    0) {
+                  checkLastError(
+                      `Can't set a session config entry: 'powerPreference' - ${webnnOptions.powerPreference}.`);
+                }
+              }
+            }
+            break;
+          case 'webgpu':
+            epName = 'JS';
+            if (typeof ep !== 'string') {
+              const webgpuOptions = ep as InferenceSession.WebGpuExecutionProviderOption;
+              if (webgpuOptions?.preferredLayout) {
+                if (webgpuOptions.preferredLayout !== 'NCHW' && webgpuOptions.preferredLayout !== 'NHWC') {
+                  throw new Error(`preferredLayout must be either 'NCHW' or 'NHWC': ${webgpuOptions.preferredLayout}`);
+                }
+                const keyDataOffset = allocWasmString('preferredLayout', allocs);
+                const valueDataOffset = allocWasmString(webgpuOptions.preferredLayout, allocs);
+                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
+                    0) {
+                  checkLastError(
+                      `Can't set a session config entry: 'preferredLayout' - ${webgpuOptions.preferredLayout}.`);
+                }
+              }
+            }
             break;
           case 'wasm':
           case 'cpu':
             continue;
           default:
-            throw new Error(`not supported EP: ${epName}`);
+            throw new Error(`not supported execution provider: ${epName}`);
         }
 
         const epNameDataOffset = allocWasmString(epName, allocs);
         if (getInstance()._OrtAppendExecutionProvider(sessionOptionsHandle, epNameDataOffset) !== 0) {
-          throw new Error(`Can't append execution provider: ${epName}`);
+          checkLastError(`Can't append execution provider: ${epName}.`);
         }
       }
     };
@@ -81,66 +137,71 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
   appendDefaultOptions(sessionOptions);
 
   try {
-    if (options?.graphOptimizationLevel === undefined) {
-      sessionOptions.graphOptimizationLevel = 'all';
-    }
-    const graphOptimizationLevel = getGraphOptimzationLevel(sessionOptions.graphOptimizationLevel!);
+    const graphOptimizationLevel = getGraphOptimzationLevel(sessionOptions.graphOptimizationLevel ?? 'all');
+    const executionMode = getExecutionMode(sessionOptions.executionMode ?? 'sequential');
+    const logIdDataOffset =
+        typeof sessionOptions.logId === 'string' ? allocWasmString(sessionOptions.logId, allocs) : 0;
 
-    if (options?.enableCpuMemArena === undefined) {
-      sessionOptions.enableCpuMemArena = true;
-    }
-
-    if (options?.enableMemPattern === undefined) {
-      sessionOptions.enableMemPattern = true;
+    const logSeverityLevel = sessionOptions.logSeverityLevel ?? 2;  // Default to 2 - warning
+    if (!Number.isInteger(logSeverityLevel) || logSeverityLevel < 0 || logSeverityLevel > 4) {
+      throw new Error(`log serverity level is not valid: ${logSeverityLevel}`);
     }
 
-    if (options?.executionMode === undefined) {
-      sessionOptions.executionMode = 'sequential';
-    }
-    const executionMode = getExecutionMode(sessionOptions.executionMode!);
-
-    let logIdDataOffset = 0;
-    if (options?.logId !== undefined) {
-      logIdDataOffset = allocWasmString(options.logId, allocs);
+    const logVerbosityLevel = sessionOptions.logVerbosityLevel ?? 0;  // Default to 0 - verbose
+    if (!Number.isInteger(logVerbosityLevel) || logVerbosityLevel < 0 || logVerbosityLevel > 4) {
+      throw new Error(`log verbosity level is not valid: ${logVerbosityLevel}`);
     }
 
-    if (options?.logSeverityLevel === undefined) {
-      sessionOptions.logSeverityLevel = 2;  // Default to warning
-    } else if (
-        typeof options.logSeverityLevel !== 'number' || !Number.isInteger(options.logSeverityLevel) ||
-        options.logSeverityLevel < 0 || options.logSeverityLevel > 4) {
-      throw new Error(`log serverity level is not valid: ${options.logSeverityLevel}`);
-    }
-
-    if (options?.logVerbosityLevel === undefined) {
-      sessionOptions.logVerbosityLevel = 0;  // Default to 0
-    } else if (typeof options.logVerbosityLevel !== 'number' || !Number.isInteger(options.logVerbosityLevel)) {
-      throw new Error(`log verbosity level is not valid: ${options.logVerbosityLevel}`);
-    }
-
-    if (options?.enableProfiling === undefined) {
-      sessionOptions.enableProfiling = false;
-    }
+    const optimizedModelFilePathOffset = typeof sessionOptions.optimizedModelFilePath === 'string' ?
+        allocWasmString(sessionOptions.optimizedModelFilePath, allocs) :
+        0;
 
     sessionOptionsHandle = wasm._OrtCreateSessionOptions(
-        graphOptimizationLevel, !!sessionOptions.enableCpuMemArena!, !!sessionOptions.enableMemPattern!, executionMode,
-        !!sessionOptions.enableProfiling!, 0, logIdDataOffset, sessionOptions.logSeverityLevel!,
-        sessionOptions.logVerbosityLevel!);
+        graphOptimizationLevel, !!sessionOptions.enableCpuMemArena, !!sessionOptions.enableMemPattern, executionMode,
+        !!sessionOptions.enableProfiling, 0, logIdDataOffset, logSeverityLevel, logVerbosityLevel,
+        optimizedModelFilePathOffset);
     if (sessionOptionsHandle === 0) {
-      throw new Error('Can\'t create session options');
+      checkLastError('Can\'t create session options.');
     }
 
-    if (options?.executionProviders) {
-      setExecutionProviders(sessionOptionsHandle, options.executionProviders, allocs);
+    if (sessionOptions.executionProviders) {
+      setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
     }
 
-    if (options?.extra !== undefined) {
-      iterateExtraOptions(options.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
+    if (sessionOptions.enableGraphCapture !== undefined) {
+      if (typeof sessionOptions.enableGraphCapture !== 'boolean') {
+        throw new Error(`enableGraphCapture must be a boolean value: ${sessionOptions.enableGraphCapture}`);
+      }
+      const keyDataOffset = allocWasmString('enableGraphCapture', allocs);
+      const valueDataOffset = allocWasmString(sessionOptions.enableGraphCapture.toString(), allocs);
+      if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+        checkLastError(
+            `Can't set a session config entry: 'enableGraphCapture' - ${sessionOptions.enableGraphCapture}.`);
+      }
+    }
+
+    if (sessionOptions.freeDimensionOverrides) {
+      for (const [name, value] of Object.entries(sessionOptions.freeDimensionOverrides)) {
+        if (typeof name !== 'string') {
+          throw new Error(`free dimension override name must be a string: ${name}`);
+        }
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+          throw new Error(`free dimension override value must be a non-negative integer: ${value}`);
+        }
+        const nameOffset = allocWasmString(name, allocs);
+        if (wasm._OrtAddFreeDimensionOverride(sessionOptionsHandle, nameOffset, value) !== 0) {
+          checkLastError(`Can't set a free dimension override: ${name} - ${value}.`);
+        }
+      }
+    }
+
+    if (sessionOptions.extra !== undefined) {
+      iterateExtraOptions(sessionOptions.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
         const keyDataOffset = allocWasmString(key, allocs);
         const valueDataOffset = allocWasmString(value, allocs);
 
         if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
-          throw new Error(`Can't set a session config entry: ${key} - ${value}`);
+          checkLastError(`Can't set a session config entry: ${key} - ${value}.`);
         }
       });
     }
@@ -150,7 +211,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
     if (sessionOptionsHandle !== 0) {
       wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
     }
-    allocs.forEach(wasm._free);
+    allocs.forEach(alloc => wasm._free(alloc));
     throw e;
   }
 };

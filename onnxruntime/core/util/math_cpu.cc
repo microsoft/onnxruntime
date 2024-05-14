@@ -1,25 +1,27 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 // Modifications Copyright (c) Microsoft.
 
 #include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
+#include "core/framework/float16.h"
 
 #include <algorithm>
-#include <gsl/gsl>
+#include <type_traits>
+#include "core/common/narrow.h"
 #include "core/mlas/inc/mlas.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -77,6 +79,50 @@ void Gemm<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptr
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
+}
+
+template <>
+void Gemm<Eigen::half, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
+                                   ptrdiff_t N, ptrdiff_t K, Eigen::half alpha, const Eigen::half* A, const Eigen::half* B, Eigen::half beta,
+                                   Eigen::half* C, ThreadPool*) {
+  auto C_mat = EigenMatrixMap<Eigen::half>(C, N, M);
+  if (beta == static_cast<Eigen::half>(0)) {
+    C_mat.setZero();
+  } else {
+    C_mat *= beta;
+  }
+  switch (TransA) {
+    case CblasNoTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMap<Eigen::half>(B, N, K) *
+                                      ConstEigenMatrixMap<Eigen::half>(A, K, M));
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMap<Eigen::half>(B, K, N).transpose() *
+                                      ConstEigenMatrixMap<Eigen::half>(A, K, M));
+          return;
+        default:
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    case CblasTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMap<Eigen::half>(B, N, K) *
+                                      ConstEigenMatrixMap<Eigen::half>(A, M, K).transpose());
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMap<Eigen::half>(B, K, N).transpose() *
+                                      ConstEigenMatrixMap<Eigen::half>(A, M, K).transpose());
+          return;
+        default:
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    default:
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+  }
 }
 
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
@@ -205,10 +251,10 @@ template void Gemv<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int
 SPECIALIZED_AXPY(float)
 #undef SPECIALIZED_AXPY
 
-#define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
-  template <>                                                              \
-  void Funcname<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil*) {   \
-    EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(x, N).array().expr(); \
+#define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                      \
+  template <>                                                                  \
+  void Funcname<T, CPUMathUtil>(ptrdiff_t N, const T* x, T* y, CPUMathUtil*) { \
+    EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(x, N).array().expr();     \
   }
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Exp, exp)
 DELEGATE_SIMPLE_UNARY_FUNCTION(double, Exp, exp)
@@ -218,7 +264,7 @@ DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqr, square)
 
 #define EIGEN_SIMPLE_BINARY_FUNCTION(T, Funcname, expr)                                                       \
   template <>                                                                                                 \
-  void Funcname<T, CPUMathUtil>(int N, const T* a, const T* b, T* y, CPUMathUtil*) {                          \
+  void Funcname<T, CPUMathUtil>(ptrdiff_t N, const T* a, const T* b, T* y, CPUMathUtil*) {                    \
     EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(a, N).array() expr ConstEigenVectorMap<T>(b, N).array(); \
   }
 
@@ -433,7 +479,6 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
     int64_t output_count,
     T* data_col,
     T padding_value) {
-
   int64_t mh = output_start / output_w;
   int64_t mw = output_start % output_w;
   for (int64_t mz = output_start; mz < output_start + output_count; mz++) {
@@ -451,7 +496,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
             if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
               // Increase the copy count size to reduce the number of copy calls.
               int64_t batch_w = std::min(kw, input_w - iw);
-              std::memcpy(data_col, data_im + (ih * input_w + iw) * group_channels, gsl::narrow<size_t>(sizeof(T) * batch_w * group_channels));
+              std::memcpy(data_col, data_im + (ih * input_w + iw) * group_channels, narrow<size_t>(sizeof(T) * batch_w * group_channels));
               data_col += batch_w * group_channels;
               iw += batch_w;
               kw -= batch_w;
@@ -466,7 +511,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
             if (is_a_ge_zero_and_a_lt_b(iw, input_w)) {
               // N.B. Using std::memcpy helped here over std::copy_n when doing a
               // transform for an image with a small number of group channels.
-              std::memcpy(data_col, data_im + (ih * input_w + iw) * input_channels, gsl::narrow<size_t>(sizeof(T) * group_channels));
+              std::memcpy(data_col, data_im + (ih * input_w + iw) * input_channels, narrow<size_t>(sizeof(T) * group_channels));
               data_col += group_channels;
             } else {
               data_col = std::fill_n(data_col, group_channels, padding_value);
@@ -654,6 +699,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
 
 template struct Im2col<int8_t, StorageOrder::NHWC>;
 template struct Im2col<uint8_t, StorageOrder::NHWC>;
+template struct Im2col<MLFloat16, StorageOrder::NHWC>;
 
 template <>
 void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height,
@@ -668,7 +714,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   const int64_t output_hw = output_h * output_w;
   const int64_t hw = height * width;
   const int64_t hwc = hw * channels;
-  Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(hwc), 0, data_im, context);
+  Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Fast path for zero padding and no dilation
   // From Torch, modified THNN_(unfolded_acc)
@@ -756,7 +802,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
   const int64_t hwc = height * width * channels;
-  Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(hwc), 0, data_im, context);
+  Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
   int64_t height_col = (height + pad_t + pad_b - dkernel_h) / stride_h + 1;
   int64_t width_col = (width + pad_l + pad_r - dkernel_w) / stride_w + 1;
   int64_t h_pad = -pad_t;
@@ -785,7 +831,7 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
                                                       const int64_t* kernel_shape, const int64_t* stride,
                                                       const int64_t* dilation, const int64_t* pad, ptrdiff_t N,
                                                       float* data_img, CPUMathUtil* context) {
-  Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(img_size), 0, data_img, context);
+  Set<float, CPUMathUtil>(narrow<ptrdiff_t>(img_size), 0, data_img, context);
   Im2col<float, StorageOrder::NCHW>()(
       data_col,
       img_shape,
@@ -810,12 +856,28 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
 SPECIALIZED_COPYVECTOR(float)
 #undef SPECIALIZED_COPYVECTOR
 
+// like C++20's std::bit_cast
+// adapted from the example implementation here: https://en.cppreference.com/w/cpp/numeric/bit_cast
+// TODO replace this with std::bit_cast when we move to C++20
+template <typename Dst, typename Src>
+static std::enable_if_t<
+    sizeof(Src) == sizeof(Dst) &&
+        std::is_trivially_copyable_v<Src> &&
+        std::is_trivially_copyable_v<Dst> &&
+        std::is_trivially_constructible_v<Dst>,
+    Dst>
+BitCast(const Src& src) {
+  Dst dst;
+  std::memcpy(&dst, &src, sizeof(dst));
+  return dst;
+}
+
 uint16_t floatToHalf(float f) {
-  return Eigen::half_impl::float_to_half_rtne(f).x;
+  return BitCast<uint16_t>(Eigen::half_impl::float_to_half_rtne(f).x);
 }
 
 uint16_t doubleToHalf(double f) {
-  return Eigen::half_impl::float_to_half_rtne(static_cast<float>(f)).x;
+  return BitCast<uint16_t>(Eigen::half_impl::float_to_half_rtne(static_cast<float>(f)).x);
 }
 
 float halfToFloat(uint16_t h) {
@@ -861,10 +923,10 @@ SPECIALIZED_ROWWISESUM(int64_t)
 SPECIALIZED_ROWWISESUM(double)
 #undef SPECIALIZED_ROWWISESUM
 
-#define SPECIALIZED_SUM(T)                                                       \
-  template <>                                                                    \
-  void Sum<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil* /* unused */) { \
-    *y = ConstEigenVectorMap<T>(x, N).sum();                                     \
+#define SPECIALIZED_SUM(T)                                                             \
+  template <>                                                                          \
+  void Sum<T, CPUMathUtil>(ptrdiff_t N, const T* x, T* y, CPUMathUtil* /* unused */) { \
+    *y = ConstEigenVectorMap<T>(x, N).sum();                                           \
   }
 
 SPECIALIZED_SUM(float);
@@ -873,14 +935,14 @@ SPECIALIZED_SUM(int64_t);
 
 #undef SPECIALIZED_SUM
 
-#define SPECIALIZED_SCALE(T)                                                                           \
-  template <>                                                                                          \
-  void Scale<T, CPUMathUtil>(int n, float alpha, const T* x, T* y, CPUMathUtil* /*provider*/) {        \
-    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * alpha;                                    \
-  }                                                                                                    \
-  template <>                                                                                          \
-  void Scale<T, CPUMathUtil>(int n, const float* alpha, const T* x, T* y, CPUMathUtil* /*provider*/) { \
-    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * (*alpha);                                 \
+#define SPECIALIZED_SCALE(T)                                                                                 \
+  template <>                                                                                                \
+  void Scale<T, CPUMathUtil>(ptrdiff_t n, float alpha, const T* x, T* y, CPUMathUtil* /*provider*/) {        \
+    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * alpha;                                          \
+  }                                                                                                          \
+  template <>                                                                                                \
+  void Scale<T, CPUMathUtil>(ptrdiff_t n, const float* alpha, const T* x, T* y, CPUMathUtil* /*provider*/) { \
+    EigenVectorMap<T>(y, n) = ConstEigenVectorMap<T>(x, n) * (*alpha);                                       \
   }
 SPECIALIZED_SCALE(float)
 #undef SPECIALIZED_SCALE

@@ -39,8 +39,9 @@ bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX
   return true;
 }
 
+// match the kernel using type info from the Node's args
 bool MatchKernelDefTypes(const Node& node,
-                         const KernelDef& kernel_def,
+                         const std::unordered_map<std::string, std::vector<MLDataType>>& kernel_type_constraints,
                          const IKernelTypeStrResolver& kernel_type_str_resolver,
                          std::string& mismatch_reason) {
   const auto actual_inputs = node.InputDefs();
@@ -63,11 +64,9 @@ bool MatchKernelDefTypes(const Node& node,
   // for each type constraint
   //   map type constraint to arg
   //   check arg type against type constraint enabled types
-  const auto& kernel_type_constraints = kernel_def.TypeConstraints();
   for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
     gsl::span<const ArgTypeAndIndex> constraint_args{};
-    ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str,
-                                                                     constraint_args));
+    ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str, constraint_args));
 
     for (const auto& [arg_type, formal_arg_idx] : constraint_args) {
       const NodeArg* arg;
@@ -100,58 +99,78 @@ bool MatchKernelDefTypes(const Node& node,
 
   return true;
 }
+
+bool MatchKernelDefTypes(const std::unordered_map<std::string, std::vector<MLDataType>>& kernel_type_constraints,
+                         const KernelRegistry::TypeConstraintMap& type_constraints) {
+  bool match = true;
+  for (auto& constraint : type_constraints) {
+    auto iter = kernel_type_constraints.find(constraint.first);
+    if (iter == kernel_type_constraints.end() ||
+        find(iter->second.begin(), iter->second.end(), constraint.second) == iter->second.end()) {
+      match = false;
+      break;
+    }
+  }
+
+  return match;
+}
 }  // namespace
 
-bool KernelRegistry::VerifyKernelDef(const Node& node,
-                                     const KernelDef& kernel_def,
-                                     const IKernelTypeStrResolver& kernel_type_str_resolver,
-                                     std::string& error_str) {
+static bool VerifyVersion(int since_ver, const KernelDef& kernel_def, std::string& error_str) {
   // check if version matches
   int kernel_start_version;
   int kernel_end_version;
   kernel_def.SinceVersion(&kernel_start_version, &kernel_end_version);
 
-  int node_since_version = node.SinceVersion();
-  // Ideal case is, if schema is Since(5), current opset version is opset 7,
-  // kernel_def Since(8)     Invalid
-  // kernel_def Since(6)     Valid
-  // kernel_def Since(5)     Valid
-  // kernel_def Since(4)     Invalid
-  // kernel_def Since(4, 6)  Valid
+  bool valid_version =
+      // exact match. typical usage.
+      kernel_start_version == since_ver ||
+      // allow match if the kernel def has an end version. if it does not, all we know is that the kernel supported
+      // the start version when it was created, and not whether a new version of the operator was added since then
+      // that the kernel doesn't support.
+      (kernel_end_version != INT_MAX &&
+       kernel_start_version <= since_ver && kernel_end_version >= since_ver);
 
-  // Right now there is no "until version" on schema, it is difficult to get opset version here.(require a lot of interface change.)
-  // As a trade off, we will temporary require kernel definition to have the same since version as schema definition.
-  // so kernel_def Since(6) will become invalid now.
-  // After ONNX add "until version" on the schema object, we will update this place
-  bool valid_version = kernel_start_version == node_since_version  // the idea case this branch should be kernel_start_version >= node_version && kernel_start_version <= until_version
-                       || (kernel_start_version < node_since_version && kernel_end_version != INT_MAX && kernel_end_version >= node_since_version);
   if (!valid_version) {
     std::ostringstream ostr;
-    ostr << "Op with name (" << node.Name() << ")"
-         << " and type (" << node.OpType() << ")"
-         << " Version mismatch."
-         << " node_version: " << node_since_version
+    ostr << " Version mismatch."
+         << " node_version: " << since_ver
          << " kernel start version: " << kernel_start_version
          << " kernel_end_version: " << kernel_end_version;
     error_str = ostr.str();
+  }
+  return valid_version;
+}
+
+bool KernelRegistry::VerifyKernelDef(const Node& node,
+                                     const KernelDef& kernel_def,
+                                     const IKernelTypeStrResolver* kernel_type_str_resolver,
+                                     const TypeConstraintMap* type_constraint_values,
+                                     std::string& error_str) {
+  // check if version matches
+  bool valid_version = VerifyVersion(node.SinceVersion(), kernel_def, error_str);
+
+  if (!valid_version) {
     return false;
   }
 
-  if (std::string mismatch_reason;
-      !MatchKernelDefTypes(node, kernel_def, kernel_type_str_resolver, mismatch_reason)) {
+  std::string mismatch_reason;
+  const auto& kernel_type_constraints = kernel_def.TypeConstraints();
+
+  bool matched = type_constraint_values ? MatchKernelDefTypes(kernel_type_constraints, *type_constraint_values)
+                                        : MatchKernelDefTypes(node, kernel_type_constraints, *kernel_type_str_resolver,
+                                                              mismatch_reason);
+
+  if (!matched) {
     std::ostringstream ostr;
-    ostr << "Found kernel for Op with name (" << node.Name() << ")"
-         << " and type (" << node.OpType() << ")"
+    ostr << "Kernel found kernel"
          << " in the supported version range"
-         << " (node_version: " << node_since_version
-         << " kernel start version: " << kernel_start_version
-         << " kernel_end_version: " << kernel_end_version << ")."
+         << " (node_version: " << node.SinceVersion() << ")."
          << " However the types are incompatible. " << mismatch_reason;
     error_str = ostr.str();
-    return false;
   }
 
-  return true;
+  return matched;
 }
 
 // It's often this function returns a failed status, but it is totally expected.
@@ -159,10 +178,11 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
 // if this function is called before graph partition, then node.provider is not set.
 // In this case, the kernel's provider must equal to exec_provider
 // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
-Status KernelRegistry::TryFindKernel(const Node& node,
-                                     ProviderType exec_provider,
-                                     const IKernelTypeStrResolver& kernel_type_str_resolver,
-                                     const KernelCreateInfo** out) const {
+Status KernelRegistry::TryFindKernelImpl(const Node& node,
+                                         ProviderType exec_provider,
+                                         const IKernelTypeStrResolver* kernel_type_str_resolver,
+                                         const TypeConstraintMap* type_constraints,
+                                         const KernelCreateInfo** out) const {
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
@@ -173,16 +193,20 @@ Status KernelRegistry::TryFindKernel(const Node& node,
 
   for (auto i = range.first; i != range.second; ++i) {
     std::string error_str;
-    if (VerifyKernelDef(node, *i->second.kernel_def, kernel_type_str_resolver, error_str)) {
-      if (out) *out = &i->second;
+    if (VerifyKernelDef(node, *i->second.kernel_def, kernel_type_str_resolver, type_constraints, error_str)) {
+      if (out) {
+        *out = &i->second;
+      }
       return Status::OK();
     }
+
     verify_kernel_def_error_strs.push_back(error_str);
   }
 
   if (!verify_kernel_def_error_strs.empty()) {
     std::ostringstream oss;
     oss << "Op with name (" << node.Name() << ")"
+        << " domain (" << node.Domain() << ")"
         << " and type (" << node.OpType() << ")"
         << " kernel is not supported in " << expected_provider << "."
         << " Encountered following errors: (";
@@ -197,37 +221,79 @@ Status KernelRegistry::TryFindKernel(const Node& node,
   return Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found");
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
-Status KernelRegistry::TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
-                                     const std::unordered_map<std::string, MLDataType>& type_constraints,
-                                     ProviderType exec_provider, const KernelCreateInfo** kernel_out) const {
-  const KernelCreateInfo* kernel = nullptr;
-  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(op_name, domain, exec_provider));
-  for (auto i = range.first; i != range.second; ++i) {  // loop through all kernels
-    const KernelCreateInfo& kci = i->second;
-    int start_ver{};
-    int end_ver{};
-    kci.kernel_def->SinceVersion(&start_ver, &end_ver);
-    if (start_ver <= version && end_ver >= version) {  // try match the version
-      auto& kci_constraints = kci.kernel_def->TypeConstraints();
-      bool match = true;
-      for (auto& constraint : type_constraints) {  // try match type constraints
-        auto iter = kci_constraints.find(constraint.first);
-        if (iter == kci_constraints.end() || find(iter->second.begin(), iter->second.end(), constraint.second) == iter->second.end()) {
-          match = false;
-          break;
-        }
-      }  // for
-      if (match) {
-        kernel = &kci;  // found match, exit loop
-        break;
-      }
-    }  // if
-  }    // for
-  if (kernel_out) *kernel_out = kernel;
-  return kernel == nullptr ? Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found") : Status::OK();
+Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provider,
+                                     const IKernelTypeStrResolver& kernel_type_str_resolver,
+                                     const KernelCreateInfo** out) const {
+  return TryFindKernelImpl(node, exec_provider, &kernel_type_str_resolver, nullptr, out);
 }
-#endif  // !defined(ORT_MINIMAL_BUILD)
+
+Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provider,
+                                     const TypeConstraintMap& type_constraints,
+                                     const KernelCreateInfo** out) const {
+  return TryFindKernelImpl(node, exec_provider, nullptr, &type_constraints, out);
+}
+
+static bool KernelDefCompatible(int version, const KernelDef& kernel_def,
+                                const KernelRegistry::TypeConstraintMap& type_constraint_values,
+                                std::string& error_str) {
+  if (!VerifyVersion(version, kernel_def, error_str)) {
+    return false;
+  }
+
+  const auto& kernel_type_constraints = kernel_def.TypeConstraints();
+  bool matched = MatchKernelDefTypes(kernel_type_constraints, type_constraint_values);
+
+  if (!matched) {
+    std::ostringstream ostr;
+    ostr << "Kernel found kernel"
+         << " in the supported version range"
+         << " (node_version: " << version << ")."
+         << " However the types are incompatible.";
+    error_str = ostr.str();
+  }
+
+  return matched;
+}
+
+Status KernelRegistry::TryFindKernel(ProviderType exec_provider,
+                                     std::string_view op_type,
+                                     std::string_view domain,
+                                     int version,
+                                     const KernelRegistry::TypeConstraintMap& type_constraints,
+                                     const KernelCreateInfo** out) const {
+  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(op_type, domain, exec_provider));
+  if (out) *out = nullptr;
+
+  std::vector<std::string> verify_kernel_def_error_strs;
+
+  for (auto i = range.first; i != range.second; ++i) {
+    std::string error_str;
+    if (KernelDefCompatible(version, *i->second.kernel_def, type_constraints, error_str)) {
+      if (out) {
+        *out = &i->second;
+      }
+      return Status::OK();
+    }
+
+    verify_kernel_def_error_strs.push_back(error_str);
+  }
+
+  if (!verify_kernel_def_error_strs.empty()) {
+    std::ostringstream oss;
+    oss << "Op type (" << op_type << ")"
+        << " domain (" << domain << ")"
+        << " kernel is not supported in " << exec_provider << "."
+        << " Encountered following errors: (";
+    std::copy(verify_kernel_def_error_strs.begin(), verify_kernel_def_error_strs.end(),
+              std::ostream_iterator<std::string>(oss, "\n"));
+    oss << ")";
+
+    VLOGS_DEFAULT(2) << "TryFindKernel failed, Reason: " << oss.str();
+    return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
+  }
+
+  return Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found");
+}
 
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
                                 const KernelCreateFn& kernel_creator) {

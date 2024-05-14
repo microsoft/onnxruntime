@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include "core/providers/rocm/backward_guard.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_fwd.h"
+#include "core/providers/rocm/rocm_stream_handle.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -22,26 +24,32 @@ class RocmKernel : public OpKernel {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
-    auto s = ComputeInternal(p_op_kernel_context);
+    Status s;
+    auto is_backward_pass = Info().GetAttrOrDefault<int64_t>("__backwardpass", 0);
+    if (is_backward_pass) {
+      BackwardPassGuard guard;
+      s = ComputeInternal(p_op_kernel_context);
+    } else {
+      s = ComputeInternal(p_op_kernel_context);
+    }
     // use this to precisely locate the node where ROCM failure comes from
     //  if (hipSuccess != hipDeviceSynchronize())
     //    __debugbreak();
-
     if (s.IsOK()) {
       auto err = hipGetLastError();
       if (err != hipSuccess) {
-        s = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIP error ", hipGetErrorName(err), ":", hipGetErrorString(err));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIP error ", hipGetErrorName(err), ":", hipGetErrorString(err));
       }
     }
-
     return s;
   }
 
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
-    return provider_->GetScratchBuffer<T>(count_or_bytes);
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
+    if (count_or_bytes == 0) return nullptr;
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), count_or_bytes, false, stream, WaitRocmNotificationOnDevice);
   }
 
   // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
@@ -50,23 +58,52 @@ class RocmKernel : public OpKernel {
   // logic (or similar for different allocator) that may be housed in the Alloc() implementation.
   template <typename T>
   inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
-    return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
+    if (count_or_bytes == 0) return nullptr;
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeDefault), count_or_bytes, true);
+  }
+
+  inline void AddDeferredReleaseCPUPtr(void* p, onnxruntime::Stream* ort_stream) const {
+    ORT_ENFORCE(ort_stream->GetDevice().Type() == OrtDevice::GPU);
+    auto* rocm_ep_stream = static_cast<RocmStream*>(ort_stream);
+    rocm_ep_stream->EnqueDeferredCPUBuffer(p);
   }
 
   template <typename T>
   inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    return provider_->AllocateBufferOnCPUPinned<T>(count_or_bytes);
-  }
-
-  inline void AddDeferredReleaseCPUPtr(void* p) const {
-    provider_->AddDeferredReleaseCPUPtr(p);
+    if (count_or_bytes == 0) return nullptr;
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeCPU), count_or_bytes);
   }
 
   const hipDeviceProp_t& GetDeviceProp() const { return provider_->GetDeviceProp(); }
 
-  inline hipStream_t Stream() const { return static_cast<hipStream_t>(provider_->GetComputeStream()); }
+  inline hipStream_t Stream(OpKernelContext* ctx) const {
+    auto* stream = ctx->GetComputeStream();
+    return stream ? static_cast<hipStream_t>(stream->GetHandle()) : nullptr;
+  }
 
-  bool IsTunableOpEnabled() const { return provider_->IsTunableOpEnabled(); }
+  inline miopenHandle_t GetMiopenHandle(OpKernelContext* ctx) const {
+    return GetMiopenHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
+  }
+
+  static inline miopenHandle_t GetMiopenHandle(onnxruntime::RocmStream* stream) {
+    return stream->miopen_handle_;
+  }
+
+  inline rocblas_handle GetRocblasHandle(OpKernelContext* ctx) const {
+    return GetRocblasHandle(static_cast<RocmStream*>(ctx->GetComputeStream()));
+  }
+
+  static inline rocblas_handle GetRocblasHandle(onnxruntime::RocmStream* stream) {
+    return stream->rocblas_handle_;
+  }
+
+  tunable::RocmTuningContext* GetTuningContext() const {
+    return static_cast<tunable::RocmTuningContext*>(provider_->GetTuningContext());
+  }
+
+  bool UseTF32() const {
+    return false;
+  }
 
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
@@ -87,7 +124,7 @@ class RocmKernel : public OpKernel {
       }
     }
 
-    RocmAsyncBuffer(const RocmKernel* op_kernel, gsl::span<const T> vec) : RocmAsyncBuffer(op_kernel, vec.size()) {
+    RocmAsyncBuffer(const RocmKernel* op_kernel, gsl::span<T const> vec) : RocmAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
@@ -98,11 +135,13 @@ class RocmKernel : public OpKernel {
       count_ = count;
     }
 
-    Status CopyToGpu() {
+    Status CopyToGpu(onnxruntime::Stream* stream) {
       if (cpu_pinned_copy_) {
-        gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
-        HIP_RETURN_IF_ERROR(hipMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), hipMemcpyHostToDevice, op_kernel_->Stream()));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release());
+        gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_, stream);
+        hipStream_t rocm_stream = stream ? static_cast<hipStream_t>(stream->GetHandle()) : nullptr;
+        HIP_RETURN_IF_ERROR(hipMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), hipMemcpyHostToDevice,
+                                           rocm_stream));
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
       }
       return Status::OK();
     }
@@ -130,22 +169,23 @@ class RocmKernel : public OpKernel {
     const RocmKernel* op_kernel_;
   };
 
-  inline rocblas_handle RocblasHandle() const {
-    return provider_->PerThreadRocblasHandle();
+  inline rocblas_handle DefaultRocblasHandle() const {
+    return provider_->PerThreadDefaultRocblasHandle();
   }
 
-  inline miopenHandle_t MiopenHandle() const {
-    return provider_->PerThreadMiopenHandle();
+  inline miopenHandle_t DefaultMiopenHandle() const {
+    return provider_->PerThreadDefaultMiopenHandle();
+  }
+
+  inline Status CopyTensor(const Tensor& src, Tensor& dst, onnxruntime::Stream& stream) const {
+    auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(src.Location().device, dst.Location().device);
+    return gpu_data_transfer->CopyTensorAsync(src, dst, stream);
   }
 
  protected:
   template <typename T>
-  inline const T* GetConstOnes(size_t count) const {
-    return provider_->template GetConstOnes<T>(count);
-  }
-
-  inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
-    return Info().GetDataTransferManager().CopyTensor(src, dst);
+  inline const T* GetConstOnes(size_t count, hipStream_t stream) const {
+    return provider_->template GetConstOnes<T>(count, stream);
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }

@@ -9,8 +9,8 @@
 
 namespace {
 
-void operator << (std::ostringstream& oss, const std::pair<std::string, std::string>& p) {
-    oss << p.first << " of " << p.second;
+void operator<<(std::ostringstream& oss, const std::pair<std::string, std::string>& p) {
+  oss << p.first << " of " << p.second;
 }
 
 template <typename T1>

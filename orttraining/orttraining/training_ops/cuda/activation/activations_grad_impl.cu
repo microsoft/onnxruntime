@@ -47,9 +47,27 @@ struct OP_SigmoidGrad : public CtxSigmoidGrad {
 };
 
 template <typename T>
+struct OP_QuickGeluGrad : public CtxQuickGeluGrad {
+  __device__ __inline__ T operator()(const T& dy, const T& x) const {
+    T v = x * static_cast<T>(alpha);
+    T one = static_cast<T>(1.f);
+    T zero = static_cast<T>(0.f);
+    T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+    return dy * sigmoid * (one + v * (one - sigmoid));
+  }
+};
+
+template <typename T>
 struct OP_TanhGrad : public CtxTanhGrad {
   __device__ __inline__ T operator()(const T& dy, const T& y) const {
     return dy * ((T)1 - y * y);
+  }
+};
+
+template <typename T>
+struct OP_LeakyReluGrad : public CtxLeakyReluGrad {
+  __device__ __inline__ T operator()(const T& dy, const T& y) const {
+    return dy * (y > T{0} ? T{1} : static_cast<T>(alpha));
   }
 };
 
@@ -65,14 +83,15 @@ struct OP_TanhGrad : public CtxTanhGrad {
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(name, T) \
   template void Impl_##name<T>(cudaStream_t stream, const T* lhs_data, const T* rhs_data, T* output_data, const Ctx##name* func_ctx, size_t count);
 
-#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(x) \
+#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFDX(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, half)     \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, float)    \
-  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, double)
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, double)  \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, BFloat16)
 
 #define ACTIVATION_GRAD_OP_NAME(name) \
   BINARY_ELEMENTWISE_IMPL(name);      \
-  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(name)
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFDX(name)
 
 ACTIVATION_GRAD_OPS()
 #undef ACTIVATION_GRAD_OP_NAME

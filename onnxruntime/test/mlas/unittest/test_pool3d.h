@@ -80,7 +80,7 @@ class MlasPool3DTest : public MlasTestBase {
     float* OutputReference = BufferOutputReference.GetBuffer(OutputBufferElements);
 
     MlasPool(PoolingKind, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool_);
-    if constexpr(PoolingKind == MlasMaximumPooling) {
+    if constexpr (PoolingKind == MlasMaximumPooling) {
       ReferenceMaximumPool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference);
     } else if constexpr (PoolingKind == MlasAveragePoolingExcludePad) {
       ReferenceAveragePool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, false);

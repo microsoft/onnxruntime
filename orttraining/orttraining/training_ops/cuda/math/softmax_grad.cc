@@ -85,12 +85,12 @@ Status SoftmaxGrad::ComputeInternal(OpKernelContext* ctx) const {
     // Allocate a temporary tensor to hold transposed input
     auto temp_input0 = Tensor::Create(Y->DataType(), transposed_input_shape, alloc);
     ORT_RETURN_IF_ERROR(
-        Transpose::DoTranspose(GetDeviceProp(), Stream(), CublasHandle(), permutation, *Y, *temp_input0));
+        Transpose::DoTranspose(GetDeviceProp(), Stream(ctx), GetCublasHandle(ctx), permutation, *Y, *temp_input0));
     transposed_Y = std::move(temp_input0);
 
     auto temp_input1 = Tensor::Create(dY->DataType(), transposed_input_shape, alloc);
     ORT_RETURN_IF_ERROR(
-        Transpose::DoTranspose(GetDeviceProp(), Stream(), CublasHandle(), permutation, *dY, *temp_input1));
+        Transpose::DoTranspose(GetDeviceProp(), Stream(ctx), GetCublasHandle(ctx), permutation, *dY, *temp_input1));
     transposed_dY = std::move(temp_input1);
 
     // Allocate memory for the intermediate output
@@ -103,7 +103,7 @@ Status SoftmaxGrad::ComputeInternal(OpKernelContext* ctx) const {
 
   utils::MLTypeCallDispatcher<SOFTMAX_GRAD_TYPES> t_disp(dY->GetElementType());
   Status status = t_disp.InvokeRet<Status, DispatchSoftmaxGradImpl>(
-      Stream(), CudnnHandle(), is_transpose_required ? transposed_dX.get() : dX,
+      Stream(ctx), GetCudnnHandle(ctx), is_transpose_required ? transposed_dX.get() : dX,
       is_transpose_required ? transposed_dY.get() : dY, is_transpose_required ? transposed_Y.get() : Y, element_count,
       batch_count, is_log_softmax_);
   ORT_RETURN_IF_ERROR(status);
@@ -111,7 +111,7 @@ Status SoftmaxGrad::ComputeInternal(OpKernelContext* ctx) const {
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
     ORT_RETURN_IF_ERROR(
-        Transpose::DoTranspose(GetDeviceProp(), Stream(), CublasHandle(), permutation, *transposed_dX, *dX));
+        Transpose::DoTranspose(GetDeviceProp(), Stream(ctx), GetCublasHandle(ctx), permutation, *transposed_dX, *dX));
   }
 
   return Status::OK();

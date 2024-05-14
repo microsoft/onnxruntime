@@ -67,7 +67,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
   switch (prepare.output_rank_or_simple_broadcast) {
     case static_cast<int32_t>(SimpleBroadcast::NoBroadcast):
       ImplDivGradSimple<CudaT>(
-          Stream(),
+          Stream(context),
           SimpleBroadcast::NoBroadcast,
           prepare_a_data,
           prepare_b_data,
@@ -80,12 +80,12 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       T* temp_da_data = nullptr;
       IAllocatorUniquePtr<T> temp_da_allocator;
       if (da_output_tensor) {
-        temp_da_allocator = GetScratchBuffer<T>(dy_shape.Size());
+        temp_da_allocator = GetScratchBuffer<T>(dy_shape.Size(), context->GetComputeStream());
         temp_da_data = temp_da_allocator.get();
       }
 
       ImplDivGradSimple<CudaT>(
-          Stream(),
+          Stream(context),
           SimpleBroadcast::LeftScalar,
           prepare_a_data,
           prepare_b_data,
@@ -102,6 +102,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             da_data,
             TensorShape({}),
             CUDNN_REDUCE_TENSOR_ADD,
+            GetCudnnHandle(context),
+            context->GetComputeStream(),
             a_output_dims)));
       }
       break;
@@ -110,11 +112,11 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       T* temp_db_data = nullptr;
       IAllocatorUniquePtr<T> temp_db_allocator;
       if (db_output_tensor) {
-        temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size());
+        temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size(), context->GetComputeStream());
         temp_db_data = temp_db_allocator.get();
       }
       ImplDivGradSimple<CudaT>(
-          Stream(),
+          Stream(context),
           SimpleBroadcast::RightScalar,
           prepare_a_data,
           prepare_b_data,
@@ -131,6 +133,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             db_data,
             TensorShape({}),
             CUDNN_REDUCE_TENSOR_ADD,
+            GetCudnnHandle(context),
+            context->GetComputeStream(),
             b_output_dims)));
       }
       break;
@@ -140,13 +144,13 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       T* temp_db_data = nullptr;
       IAllocatorUniquePtr<T> temp_db_allocator;
       if (db_output_tensor) {
-        temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size());
+        temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size(), context->GetComputeStream());
         temp_db_data = temp_db_allocator.get();
       }
       if (prepare.output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatch1)) {
         // lhs(1,C,H) and rhs (C,1)
         ImplDivGradRhsPerChannelBatch1<CudaT>(
-            Stream(),
+            Stream(context),
             prepare_a_data,
             prepare_b_data,
             prepare_dy_data,
@@ -157,7 +161,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       } else {
         // lhs(N,C,H) and rhs (C,1)
         ImplDivGradRhsPerChannelBatchN<CudaT>(
-            Stream(),
+            Stream(context),
             prepare_a_data,
             prepare_b_data,
             prepare_dy_data,
@@ -176,6 +180,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             db_data,
             b_shape,
             CUDNN_REDUCE_TENSOR_ADD,
+            GetCudnnHandle(context),
+            context->GetComputeStream(),
             b_output_dims)));
       }
       break;
@@ -187,7 +193,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       T* da_data_ref = nullptr;
       if (da_output_tensor) {
         if (need_reduce_da) {
-          temp_da_allocator = GetScratchBuffer<T>(dy_shape.Size());
+          temp_da_allocator = GetScratchBuffer<T>(dy_shape.Size(), context->GetComputeStream());
           da_data_ref = temp_da_allocator.get();
         } else {
           da_data_ref = da_data;
@@ -196,14 +202,14 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       T* db_data_ref = nullptr;
       if (db_output_tensor) {
         if (need_reduce_db) {
-          temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size());
+          temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size(), context->GetComputeStream());
           db_data_ref = temp_db_allocator.get();
         } else {
           db_data_ref = db_data;
         }
       }
       ImplDivGrad<CudaT>(
-          Stream(),
+          Stream(context),
           prepare.output_rank_or_simple_broadcast,
           prepare.lhs_padded_strides,
           prepare_a_data,
@@ -223,6 +229,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             da_data,
             a_shape,
             CUDNN_REDUCE_TENSOR_ADD,
+            GetCudnnHandle(context),
+            context->GetComputeStream(),
             a_output_dims)));
       }
 
@@ -234,6 +242,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             db_data,
             b_shape,
             CUDNN_REDUCE_TENSOR_ADD,
+            GetCudnnHandle(context),
+            context->GetComputeStream(),
             b_output_dims)));
       }
     }

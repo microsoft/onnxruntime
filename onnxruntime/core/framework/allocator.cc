@@ -3,7 +3,6 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
-#include "core/framework/allocatormgr.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
 #include "core/session/ort_apis.h"
@@ -13,6 +12,8 @@
 #if defined(USE_MIMALLOC)
 #include <mimalloc.h>
 #endif
+
+#include "core/framework/bfc_arena.h"
 
 namespace onnxruntime {
 
@@ -32,7 +33,7 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   ORT_CATCH(const OnnxRuntimeException& ex) {
     // overflow in calculating the size thrown by SafeInt.
     ORT_HANDLE_EXCEPTION([&]() {
-      LOGS_DEFAULT(ERROR) << ex.what();
+      LOGS_DEFAULT(ERROR) << ex.what() << " nmemb=" << nmemb << " size=" << size << " alignment=" << alignment;
       ok = false;
     });
   }
@@ -109,6 +110,22 @@ void* CPUAllocator::Alloc(size_t size) {
 void CPUAllocator::Free(void* p) {
   AllocatorDefaultFree(p);
 }
+
+void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
+  if (use_reserve)
+    return alloc.Reserve(size);
+  if (stream && alloc.Info().alloc_type == OrtArenaAllocator) {
+#ifdef ORT_ENABLE_STREAM
+    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(static_cast<BFCArena&>(alloc));
+    if (stream_aware_alloc) {
+      return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
+    }
+#else
+    ORT_UNUSED_PARAMETER(wait_fn);
+#endif  // ORT_ENABLE_STREAM
+  }
+  return alloc.Alloc(size);
+}
 }  // namespace onnxruntime
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }
@@ -120,21 +137,21 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
                     enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out) {
   if (strcmp(name1, onnxruntime::CPU) == 0) {
     *out = new OrtMemoryInfo(onnxruntime::CPU, type, OrtDevice(), id1, mem_type1);
-  } else if (strcmp(name1, onnxruntime::CUDA) == 0) {
+  } else if (strcmp(name1, onnxruntime::CUDA) == 0 ||
+             strcmp(name1, onnxruntime::OpenVINO_GPU) == 0 ||
+             strcmp(name1, onnxruntime::DML) == 0 ||
+             strcmp(name1, onnxruntime::HIP) == 0 ||
+             strcmp(name1, onnxruntime::WEBGPU_BUFFER) == 0) {
     *out = new OrtMemoryInfo(
-        onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,
+        name1, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,
         mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
     *out = new OrtMemoryInfo(
         onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
         id1, mem_type1);
-  } else if (strcmp(name1, onnxruntime::OpenVINO_GPU) == 0) {
+  } else if (strcmp(name1, onnxruntime::HIP_PINNED) == 0) {
     *out = new OrtMemoryInfo(
-        onnxruntime::OpenVINO_GPU, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)),
-        id1, mem_type1);
-  } else if (strcmp(name1, onnxruntime::DML) == 0) {
-    *out = new OrtMemoryInfo(
-        onnxruntime::DML, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)),
+        onnxruntime::HIP_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
         id1, mem_type1);
   } else {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");

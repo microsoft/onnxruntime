@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include <gsl/gsl>
-
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/execution_provider.h"  // for IExecutionProvider::IKernelLookup
 #include "core/graph/graph_viewer.h"
@@ -18,8 +17,8 @@ namespace onnxruntime {
   @param kernel_lookup The kernel lookup for the target execution provider
   @param tentative_nodes Nodes that are tentative to be placed on on target EP
   */
-  std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
-                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                    gsl::span<const NodeIndex> tentative_nodes);
+std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
+                                                   gsl::span<const NodeIndex> tentative_nodes);
 
 }  // namespace onnxruntime

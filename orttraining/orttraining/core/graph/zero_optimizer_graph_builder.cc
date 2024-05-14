@@ -4,6 +4,7 @@
 #include "orttraining/core/graph/zero_optimizer_graph_builder.h"
 
 #include "core/common/common.h"
+#include "core/common/span_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
@@ -134,19 +135,19 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         initializer_partition.add_dims(partition_size);
         initializer_partition.set_raw_data(initializer_data + partition_offset, partition_size * sizeof(float));
 
-        //Replace the old initializer with the new one
+        // Replace the old initializer with the new one
         graph.RemoveInitializedTensor(initializer_name);
         graph.AddInitializedTensor(initializer_partition);
 
-        //add the modified weight name to get state
+        // add the modified weight name to get state
         updated_weight_names_map[initializer_name] = partition_name;
 
-        auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({partition_size}, dtype));
+        auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto(AsSpan({partition_size}), dtype));
 
         view_outputs.push_back(partition_argdef);
       } else {
         auto dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-        auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto(std::array<const int64_t, 1>{shapes[i].Size()}, dtype));
+        auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto(AsSpan({shapes[i].Size()}), dtype));
         view_outputs.push_back(partition_argdef);
       }
       view_num++;
@@ -167,8 +168,8 @@ static std::vector<ArgDef> AddViewForParameter(
       const int64_t dims = shape.NumDimensions();
 
       ArgDef shape_argdef(argdef.name + "_view_shape_" + std::to_string(view_num),
-                          graph_defs.CreateTypeProto({dims}, ONNX_NAMESPACE::TensorProto_DataType_INT64));
-      graph_defs.AddInitializers({CreateTensorProto<int64_t>(shape_argdef.name, shape.AsShapeVector(), {dims})});
+                          graph_defs.CreateTypeProto(AsSpan({dims}), ONNX_NAMESPACE::TensorProto_DataType_INT64));
+      graph_defs.AddInitializers({CreateTensorProto<int64_t>(shape_argdef.name, shape.AsShapeVector(), AsSpan({dims}))});
 
       auto dtype = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
       ArgDef view_argdef(GetViewName(argdef.name, view_num),
@@ -247,7 +248,7 @@ static Status AddParameterPartition(
     ORT_ENFORCE(weight_arg != nullptr, "Could not find nodearg in graph: " + weight_argdef.name);
     ORT_ENFORCE(!graph_utils::IsGraphInput(graph, weight_arg), "Cannot partition weight that is a part of graph inputs for " + weight_argdef.name);
 
-    //Partition the FP32 weight
+    // Partition the FP32 weight
     weight_views = AddPartitionsForParameter(graph, graph_defs, weight_argdef.name, view_shapes, updated_weight_names_map);
     ORT_ENFORCE(weight_views.size() == enabled.size());
     weight_partition_info[weight_argdef.name].weight_partitioned = true;

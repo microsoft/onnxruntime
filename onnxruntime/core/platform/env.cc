@@ -15,22 +15,48 @@ limitations under the License.
 // Portions Copyright (c) Microsoft Corporation
 
 #include "core/platform/env.h"
-#include "gsl/gsl"
 
 namespace onnxruntime {
 
+std::ostream& operator<<(std::ostream& os, const LogicalProcessors& aff) {
+  os << "{";
+  std::copy(aff.cbegin(), aff.cend(), std::ostream_iterator<int>(os, ", "));
+  return os << "}";
+}
+
+std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors> affs) {
+  os << "{";
+  for (const auto& aff : affs) {
+    os << aff;
+  }
+  return os << "}";
+}
+
 Env::Env() = default;
 
-}  // namespace onnxruntime
+std::pair<int, std::string> GetErrnoInfo() {
+  auto err = errno;
+  std::string msg;
 
-// This definition is provided to handle GSL failures in CUDA as
-// not throwing exception but calling a user-defined handler.
-// Otherwise gsl condition checks code does not compile even though
-// gsl may not be used in CUDA specific code.
-namespace gsl {
-gsl_api void fail_fast_assert_handler(
-    char const* const expression, char const* const message,
-    char const* const file, int line) {
-  ORT_ENFORCE(false, expression, file, line, message);
+  if (err != 0) {
+    char buf[512];
+
+#if defined(_WIN32)
+    auto ret = strerror_s(buf, sizeof(buf), err);
+    msg = ret == 0 ? buf : "Failed to get error message";  // buf is guaranteed to be null terminated by strerror_s
+#else
+    // strerror_r return type differs by platform.
+    auto ret = strerror_r(err, buf, sizeof(buf));
+    if constexpr (std::is_same_v<decltype(ret), int>) {  // POSIX returns int
+      msg = ret == 0 ? buf : "Failed to get error message";
+    } else {
+      // GNU returns char*
+      msg = ret;
+    }
+#endif
+  }
+
+  return {err, msg};
 }
-} // namespace gsl
+
+}  // namespace onnxruntime

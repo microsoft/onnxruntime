@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/linearclassifier.h"
+#include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm.h"
 
 namespace onnxruntime {
@@ -34,7 +35,7 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
     ORT_ENFORCE(!coefficients_.empty());
 
   using_strings_ = !classlabels_strings_.empty();
-  class_count_ = static_cast<int64_t>(intercepts_.size());
+  class_count_ = static_cast<ptrdiff_t>(intercepts_.size());
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts
@@ -45,7 +46,7 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
 // intercepts_: [num_targets]
 // scores: X * coefficients_^T + intercepts_: [num_batches, num_targets]
 void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
-                                   int64_t num_batches, int64_t num_features, int64_t num_targets,
+                                   ptrdiff_t num_batches, ptrdiff_t num_features, ptrdiff_t num_targets,
                                    const std::vector<float>& coefficients,
                                    const std::vector<float>& intercepts,
                                    Tensor& labels_output, Tensor& scores_output,
@@ -54,10 +55,10 @@ void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
                                    concurrency::ThreadPool* threadpool) const {
   const float* input_data = input.data();
   auto scores_output_data = scores_output.MutableDataAsSpan<float>();
-  size_t scores_output_size = num_batches * num_targets * (add_second_class ? 2 : 1);
-  ORT_ENFORCE(scores_output_data.length() >= scores_output_size,
+  size_t scores_output_size = SafeInt<size_t>(num_batches) * num_targets * (add_second_class ? 2 : 1);
+  ORT_ENFORCE(scores_output_data.size() >= scores_output_size,
               "Scores output is incorrect size. Expected:", scores_output_size,
-              " Found:", scores_output_data.length());
+              " Found:", scores_output_data.size());
 
   TensorShape intercepts_shape({num_targets});
   onnxruntime::Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
@@ -122,7 +123,7 @@ void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
 template <typename SrcType>
 static void CastInputToFloat(const Tensor& in, gsl::span<float>& out) {
   size_t shape_size = static_cast<size_t>(in.Shape().Size());
-  ORT_ENFORCE(shape_size == out.length());
+  ORT_ENFORCE(shape_size == out.size());
 
   const SrcType* in_data = in.Data<SrcType>();
   float* out_data = out.data();
@@ -139,8 +140,10 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
                   "Input shape needs to be at least a single dimension.");
   }
 
-  int64_t num_batches = input_shape.NumDimensions() == 1 ? 1 : input_shape[0];
-  int64_t num_features = input_shape.NumDimensions() == 1 ? input_shape[0] : input_shape[1];
+  ptrdiff_t num_batches = input_shape.NumDimensions() == 1 ? 1 : narrow<ptrdiff_t>(input_shape[0]);
+  ptrdiff_t num_features = input_shape.NumDimensions() == 1 ? narrow<ptrdiff_t>(
+                                                                  input_shape[0])
+                                                            : narrow<ptrdiff_t>(input_shape[1]);
 
   Tensor* Y = ctx->Output(0, {num_batches});
 
@@ -169,7 +172,7 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
     // at some point we need to convert to float as output Z has type 'tensor(float)'.
     // we have a fast GEMM implementation for float, so convert the input to float so we can use that.
     auto status = ctx->GetTempSpaceAllocator(&alloc);
-    auto num_elements = input_shape.Size();
+    size_t num_elements = onnxruntime::narrow<size_t>(input_shape.Size());
     cast_buffer = reinterpret_cast<float*>(alloc->AllocArray(num_elements, sizeof(float)));
     auto cast_span = gsl::make_span<float>(cast_buffer, num_elements);
 

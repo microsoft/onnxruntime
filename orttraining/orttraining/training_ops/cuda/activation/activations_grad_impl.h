@@ -11,14 +11,18 @@ typedef onnxruntime::cuda::CtxNull CtxGeluGrad;
 typedef onnxruntime::cuda::CtxNull CtxFastGeluGrad;
 typedef onnxruntime::cuda::CtxNull CtxReluGrad;
 typedef onnxruntime::cuda::CtxNull CtxSigmoidGrad;
+typedef onnxruntime::cuda::CtxAlpha CtxQuickGeluGrad;
 typedef onnxruntime::cuda::CtxNull CtxTanhGrad;
+typedef onnxruntime::cuda::CtxAlpha CtxLeakyReluGrad;
 
-#define ACTIVATION_GRAD_OPS()           \
-  ACTIVATION_GRAD_OP_NAME(GeluGrad)     \
-  ACTIVATION_GRAD_OP_NAME(FastGeluGrad) \
-  ACTIVATION_GRAD_OP_NAME(ReluGrad)     \
-  ACTIVATION_GRAD_OP_NAME(SigmoidGrad)  \
-  ACTIVATION_GRAD_OP_NAME(TanhGrad)
+#define ACTIVATION_GRAD_OPS()            \
+  ACTIVATION_GRAD_OP_NAME(GeluGrad)      \
+  ACTIVATION_GRAD_OP_NAME(FastGeluGrad)  \
+  ACTIVATION_GRAD_OP_NAME(ReluGrad)      \
+  ACTIVATION_GRAD_OP_NAME(SigmoidGrad)   \
+  ACTIVATION_GRAD_OP_NAME(QuickGeluGrad) \
+  ACTIVATION_GRAD_OP_NAME(TanhGrad)      \
+  ACTIVATION_GRAD_OP_NAME(LeakyReluGrad)
 
 #define BINARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                           \

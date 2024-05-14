@@ -29,7 +29,7 @@ void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::span<co
   actual_data.resize(expected_data.size());
   ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, Path{}, actual_data.data(), actual_data.size()));
 
-  ASSERT_EQ(gsl::make_span(actual_data), expected_data);
+  ASSERT_EQ(gsl::span<const T>(actual_data), expected_data);
 }
 }  // namespace
 
@@ -60,13 +60,11 @@ TEST(DebugNodeInputsOutputs, BasicFileOutput) {
           const std::vector<OrtValue>& fetches,
           const std::string& /*provider_type*/) {
         ASSERT_EQ(fetches.size(), 1u);
-        FetchTensor(fetches[0]);
-        VerifyTensorProtoFileData(
-            temp_dir.Path() + ORT_TSTR("/x.tensorproto"),
-            gsl::make_span(input));
-        VerifyTensorProtoFileData(
-            temp_dir.Path() + ORT_TSTR("/y.tensorproto"),
-            gsl::make_span(output));
+        // check it contains a tensor
+        fetches[0].Get<Tensor>();
+        VerifyTensorProtoFileData(temp_dir.Path() + ORT_TSTR("/x.tensorproto"), gsl::make_span(input));
+        VerifyTensorProtoFileData(temp_dir.Path() + ORT_TSTR("/y.tensorproto"),
+                                  gsl::make_span(output));
       };
 
   tester.SetCustomOutputVerifier(verify_file_data);

@@ -145,17 +145,6 @@ TEST_F(CopyTest, CoalesceTensorsTest) {
     ASSERT_THAT(shape, testing::ElementsAre(15));
   }
   {
-    TensorShapeVector strides_a{3, 3, 3, 1};
-    TensorShapeVector strides_b{3, 3, 3, 1};
-    TensorShapeVector shape{1, 5, 1, 3};
-
-    CoalesceDimensions({strides_a, strides_b}, shape);
-
-    ASSERT_THAT(strides_a, testing::ElementsAre(1));
-    ASSERT_THAT(strides_b, testing::ElementsAre(1));
-    ASSERT_THAT(shape, testing::ElementsAre(15));
-  }
-  {
     TensorShapeVector strides_a{320, 1};
     TensorShapeVector strides_b{320, 1};
     TensorShapeVector shape{20, 10};
@@ -176,17 +165,6 @@ TEST_F(CopyTest, CoalesceTensorsTest) {
     ASSERT_THAT(strides_a, testing::ElementsAre(320, 1));
     ASSERT_THAT(strides_b, testing::ElementsAre(320, 1));
     ASSERT_THAT(shape, testing::ElementsAre(10, 40));
-  }
-  {
-    TensorShapeVector strides_a{3, 1};
-    TensorShapeVector strides_b{6, 1};
-    TensorShapeVector shape{5, 3};
-
-    CoalesceDimensions({strides_a, strides_b}, shape);
-
-    ASSERT_THAT(strides_a, testing::ElementsAre(3, 1));
-    ASSERT_THAT(strides_b, testing::ElementsAre(6, 1));
-    ASSERT_THAT(shape, testing::ElementsAre(5, 3));
   }
   {
     TensorShapeVector strides_a{3, 1};

@@ -11,7 +11,7 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -77,39 +77,39 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
 }
 
 constexpr static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
-                                    const int64_t batch_size,
-                                    const int64_t input_size,
-                                    const int64_t batch_num,
-                                    const int64_t seq_num) {
+                                              const int64_t batch_size,
+                                              const int64_t input_size,
+                                              const int64_t batch_num,
+                                              const int64_t seq_num) {
   ORT_UNUSED_PARAMETER(max_seq_len);
   return seq_num * batch_size * input_size + batch_num * input_size;
 }
 
 constexpr static int64_t BatchMajorInputOffset(const int64_t max_seq_len,
-                                     const int64_t batch_size,
-                                     const int64_t input_size,
-                                     const int64_t batch_num,
-                                     const int64_t seq_num) {
+                                               const int64_t batch_size,
+                                               const int64_t input_size,
+                                               const int64_t batch_num,
+                                               const int64_t seq_num) {
   ORT_UNUSED_PARAMETER(batch_size);
   return batch_num * max_seq_len * input_size + seq_num * input_size;
 }
 
 constexpr static int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
-                                     const int64_t batch_size,
-                                     const int64_t input_size,
-                                     const int64_t batch_num,
-                                     const int64_t seq_num,
-                                     const int64_t seq_len) {
+                                               const int64_t batch_size,
+                                               const int64_t input_size,
+                                               const int64_t batch_num,
+                                               const int64_t seq_num,
+                                               const int64_t seq_len) {
   ORT_UNUSED_PARAMETER(max_seq_len);
   return (seq_len - seq_num - 1) * batch_size * input_size + batch_num * input_size;
 }
 
 constexpr static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
-                                      const int64_t batch_size,
-                                      const int64_t input_size,
-                                      const int64_t batch_num,
-                                      const int64_t seq_num,
-                                      const int64_t seq_len) {
+                                                const int64_t batch_size,
+                                                const int64_t input_size,
+                                                const int64_t batch_num,
+                                                const int64_t seq_num,
+                                                const int64_t seq_len) {
   ORT_UNUSED_PARAMETER(batch_size);
   return batch_num * max_seq_len * input_size + (seq_len - seq_num - 1) * input_size;
 }
@@ -146,9 +146,9 @@ static Status ReverseSequenceImpl(const Tensor& X,
     }
 
     for (int64_t j = 0; j < seq_len; j++) {
-      gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);
+      gsl::span<const T> src = inputs.subspan(onnxruntime::narrow<size_t>(input_offset(max_seq_len, batch_size, input_size, i, j)), onnxruntime::narrow<size_t>(input_size));
       gsl::span<T> dest = inputs_reverse.subspan(
-          reversed_output_offset(max_seq_len, batch_size, input_size, i, j, seq_len), input_size);
+          onnxruntime::narrow<size_t>(reversed_output_offset(max_seq_len, batch_size, input_size, i, j, seq_len)), onnxruntime::narrow<size_t>(input_size));
 
       // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
       gsl::copy(src, dest);
@@ -156,8 +156,8 @@ static Status ReverseSequenceImpl(const Tensor& X,
 
     for (int64_t j = seq_len; j < max_seq_len; j++) {
       const auto offset = input_offset(max_seq_len, batch_size, input_size, i, j);
-      gsl::span<const T> src = inputs.subspan(offset, input_size);
-      gsl::span<T> dest = inputs_reverse.subspan(offset, input_size);
+      gsl::span<const T> src = inputs.subspan(onnxruntime::narrow<size_t>(offset), onnxruntime::narrow<size_t>(input_size));
+      gsl::span<T> dest = inputs_reverse.subspan(onnxruntime::narrow<size_t>(offset), onnxruntime::narrow<size_t>(input_size));
 
       // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
       gsl::copy(src, dest);

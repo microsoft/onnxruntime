@@ -4,7 +4,7 @@
 #include "core/codegen/mti/tensor/concat_ops.h"
 
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <topi/transform.h>
 
 namespace onnxruntime {
@@ -50,7 +50,7 @@ tvm::Tensor ConcatSafe(const tvm::Array<tvm::Tensor>& inputs,
         tvm::Expr offset = 0;
         tvm::Expr ret;
 
-        //input i = 0
+        // input i = 0
         for (size_t j = 0; j < ovars.size(); ++j) {
           if (j == gsl::narrow<size_t>(axis)) {
             tvm::Expr ivar = ovars[j];

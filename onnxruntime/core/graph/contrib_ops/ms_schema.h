@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -11,5 +11,5 @@ namespace contrib {
 // for it in onnxruntime::contrib namespace. Otherwise we will need to put a lot of our code in ONNX namespace.
 template <typename T>
 ::ONNX_NAMESPACE::OpSchema GetOpSchema();
-}
+}  // namespace contrib
 }  // namespace onnxruntime

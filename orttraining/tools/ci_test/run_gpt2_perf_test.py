@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 
 import argparse
+import os
 import subprocess
 import sys
-import os
 from collections import namedtuple
 
 SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
@@ -62,7 +62,7 @@ def main():
         if c.use_mixed_precision:
             cmds.append("--use_mixed_precision"),
 
-        subprocess.run(cmds).check_returncode()
+        subprocess.run(cmds).check_returncode()  # noqa: PLW1510
 
     return 0
 

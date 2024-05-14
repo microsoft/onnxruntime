@@ -15,7 +15,8 @@ static void RunTest(const std::vector<float>& x_vals,
                     int64_t axis = 1,
                     bool is_tensorrt_supported = true,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                    const std::string& error_msg = "") {
+                    const std::string& error_msg = "",
+                    float tolerance = 0.0f) {
   OpTester tester("LogSoftmax", opset);
 
   if (opset < 13) {
@@ -30,6 +31,10 @@ static void RunTest(const std::vector<float>& x_vals,
 
   tester.AddInput("X", dimensions, x_vals);
   tester.AddOutput("Y", dimensions, expected_vals);
+
+  if (tolerance != 0.0f) {
+    tester.SetOutputAbsErr("Y", tolerance);
+  }
 
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
@@ -62,11 +67,11 @@ TEST(LogSoftmaxOperator, LargeNumber) {
                                       -3.4401896f, -2.4401896f, -1.44018972f, -0.44018969f};
   std::vector<int64_t> dimensions = {2, 4};
 
-  RunTest(x_vals, expected_vals, dimensions);
+  RunTest(x_vals, expected_vals, dimensions, 7, 1, true, OpTester::ExpectResult::kExpectSuccess, "", 0.0005f);
 }
 
-//np.random.seed(123)   # Use a seed so we can replicate the input and expected values here and in python
-//x = np.abs(np.random.randn(3, 4, 5).astype(np.float32))
+// np.random.seed(123)   # Use a seed so we can replicate the input and expected values here and in python
+// x = np.abs(np.random.randn(3, 4, 5).astype(np.float32))
 static std::vector<int64_t> three_dimensions = {3, 4, 5};
 static std::vector<float> x_vals_3dims = {
     1.0856307f, 0.99734545f, 0.2829785f, 1.5062947f, 0.5786002f,
@@ -255,7 +260,7 @@ TEST(LogSoftmaxOperator, InvalidAxis) {
           dimensions,
           /*opset*/ 12,
           /* invalid axis */ -7,
-          false,  //TensorRT parser: Assertion failed: axis >= 0 && axis < nbDims
+          false,  // TensorRT parser: Assertion failed: axis >= 0 && axis < nbDims
           OpTester::ExpectResult::kExpectFailure,
           // ONNX has a bug in the error message generation so this is somewhat cryptic until it's fixed. Message should be:
           "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -7");

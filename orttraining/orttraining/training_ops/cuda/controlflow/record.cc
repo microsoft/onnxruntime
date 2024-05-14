@@ -38,13 +38,13 @@ Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
 
   // Reuse CPU helper to record event because event tensor is a CPU tensor.
   onnxruntime::contrib::record_event_in_tensor(*ctx->Input<Tensor>(0));
-
+  ORT_ENFORCE(ctx->GetComputeStream());
   for (int i_out = 0; i_out < ctx->OutputCount(); ++i_out) {
     // This iteration copies (i-1)-th input to i-th output.
     const Tensor* X = ctx->Input<Tensor>(i_out + 1);
     const TensorShape& data_shape = X->Shape();
     Tensor* Y = ctx->Output(i_out, data_shape);
-    ORT_RETURN_IF_ERROR(CopyTensor(*X, *Y));
+    ORT_RETURN_IF_ERROR(CopyTensor(*X, *Y, *ctx->GetComputeStream()));
   }
 
 #ifdef ENABLE_NVTX_PROFILE

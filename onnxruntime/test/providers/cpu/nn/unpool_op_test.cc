@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -59,6 +60,11 @@ TEST(UnpoolTest, MaxUnPool2D) {
 }
 
 TEST(UnpoolTest, MaxUnPool3D) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1876): The parameter is incorrect.";
+  }
+
   OpTester test("MaxUnpool", 9);
 
   test.AddAttribute("strides", std::vector<int64_t>{2, 2, 2});
@@ -76,7 +82,7 @@ TEST(UnpoolTest, MaxUnPool3D) {
 
   std::vector<float> expected_vals =
       {
-          //slice 1
+          // slice 1
           0, 1, 0, 2,
           0, 0, 0, 0,
           0, 0, 0, 0,
@@ -88,7 +94,7 @@ TEST(UnpoolTest, MaxUnPool3D) {
           3, 0, 0, 0,
           0, 0, 4, 0,
 
-          //slice 3
+          // slice 3
           5, 0, 0, 0,
           0, 0, 6, 0,
           0, 0, 0, 0,
@@ -153,6 +159,11 @@ TEST(UnpoolTest, MaxUnPool2D_Without_OutputShape) {
 }
 
 TEST(UnpoolTest, MaxUnPool3D_Without_OutputShape) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   OpTester test("MaxUnpool", 9);
 
   test.AddAttribute("strides", std::vector<int64_t>{2, 2, 2});
@@ -168,7 +179,7 @@ TEST(UnpoolTest, MaxUnPool3D_Without_OutputShape) {
 
   std::vector<float> expected_vals =
       {
-          //slice 1
+          // slice 1
           0, 1, 0, 2,
           0, 0, 0, 0,
           0, 0, 0, 0,
@@ -180,7 +191,7 @@ TEST(UnpoolTest, MaxUnPool3D_Without_OutputShape) {
           3, 0, 0, 0,
           0, 0, 4, 0,
 
-          //slice 3
+          // slice 3
           5, 0, 0, 0,
           0, 0, 6, 0,
           0, 0, 0, 0,
@@ -246,6 +257,11 @@ TEST(UnpoolTest, MaxUnPool2D_Padding) {
 }
 
 TEST(UnpoolTest, MaxUnPool3D_Padding) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   OpTester test("MaxUnpool", 9);
 
   test.AddAttribute("strides", std::vector<int64_t>{2, 2, 2});
@@ -331,6 +347,11 @@ TEST(UnpoolTest, MaxUnPool2D_WithOutputShape) {
 }
 
 TEST(UnpoolTest, MaxUnPool3D_WithOutputShape) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1876): The parameter is incorrect.";
+  }
+
   OpTester test("MaxUnpool", 9);
   // original input 1, 1, 3, 3, 3
   // with these strides and kernel shape there should only be one value
@@ -358,7 +379,7 @@ print(X)
 (Y, indices) = sess.run(None, {"X" : X})
 print(Y)
 print(indices)
-  
+
   */
 
   test.AddAttribute("strides", std::vector<int64_t>{2, 2, 2});

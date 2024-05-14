@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/activation/activations.h"
-#include "activations.h"
+#include "contrib_ops/cpu/activations.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,12 +27,12 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ThresholdedRelu<float>);
 
 ONNX_OPERATOR_KERNEL_EX(
-    Gelu,
+    QuickGelu,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Gelu<float>);
+    QuickGelu<float>);
 
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -83,6 +83,16 @@ constexpr float SigmoidGrad(float dy, float y) {
 constexpr float TanhGrad(float dy, float y) {
   return dy * (1 - y * y);
 }
+
+float QuickGeluGrad(float dy, float x, float alpha) {
+  float v = x * alpha;
+  float sigmoid = v >= 0 ? 1.f / (1.f + std::exp(-v)) : 1.f - 1.f / (1 + std::exp(v));
+  return dy * sigmoid * (1 + v * (1 - sigmoid));
+}
+
+constexpr float LeakyReluGrad(float dy, float y, float alpha) {
+  return dy * (y > 0.0f ? 1.0f : alpha);
+}
 }  // namespace
 
 TEST(GeluGradTest, Basic) {
@@ -199,6 +209,81 @@ TEST(TanhGradTest, Basic) {
       {}, 1, kMSDomain);
 }
 
+TEST(QuickGeluGradTest, Basic) {
+  const std::vector<float> x_vals = {-10.0f, -1.0f, 0.0f, 1.0f, 10.0f};
+  const std::vector<float> dY(5, 1.0f);
+
+  // Positive alpha.
+  {
+    constexpr float alpha = 1.702f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+    // The ifdef is to suppress a warning: "lambda capture 'alpha' is not required to be captured for this use."
+    // But on Windows it is required.
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
+        [alpha](const std::vector<float>& params) {
+#endif
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
+
+  // Silu = x*sigmoid(x), i.e., alpha = 1.0f.
+  {
+    constexpr float alpha = 1.0f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
+        [alpha](const std::vector<float>& params) {
+#endif
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
+
+  // Negative alpha.
+  {
+    constexpr float alpha = -1.702f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+#ifdef __clang__
+        [](const std::vector<float>& params) {
+#else
+        [alpha](const std::vector<float>& params) {
+#endif
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
+}
+
+TEST(LeakyReluGradTest, Basic) {
+  const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+  float alpha = 0.5f;
+
+  TestElementwiseGradientOp(
+      "LeakyReluGrad",
+      {{"dY", dY}, {"Y", y_vals}},
+      [alpha](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], y = params[1];
+
+        return LeakyReluGrad(dy, y, alpha);
+      },
+      {{"alpha", alpha}}, 1, kMSDomain);
+}
+
 namespace {
 template <typename TComputeGeluGradScalarFn>
 void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, const std::string& domain,
@@ -234,12 +319,14 @@ TEST(BiasGeluGradDxTest, BroadcastBias) {
   TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, {2, 3, 4, 5}, GeluGrad);
   TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, {2, 4, 3072}, GeluGrad);
   TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, {2, 16384}, GeluGrad);
+  TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, {2, 2333}, GeluGrad);
 }
 
 TEST(BiasFastGeluGradDxTest, BroadcastBias) {
   TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, {2, 3, 4, 5}, GeluApproximationGrad);
   TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, {2, 4, 3072}, GeluApproximationGrad);
   TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, {2, 16384}, GeluApproximationGrad);
+  TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, {2, 2333}, GeluApproximationGrad);
 }
 
 }  // namespace test

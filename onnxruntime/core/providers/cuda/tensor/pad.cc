@@ -29,15 +29,27 @@ namespace cuda {
           .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);                                                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      13,                                                         \
+      13, 17,                                                     \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
           .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      18,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);
 
@@ -94,28 +106,15 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (is_dynamic_) {
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
     const auto pads_tensor_dims = pads_tensor.Shape().GetDims();
-    ORT_ENFORCE(utils::IsPrimitiveDataType<int64_t>(pads_tensor.DataType()),
-                "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
-                "Pads tensor should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]");
+                "Pads tensor should be a 1D tensor of shape [2 * num_axes] or a 2D tensor of shape [1, 2 * num_axes]");
 
-    const int64_t* pads_tensor_raw_data = pads_tensor.Data<int64_t>();
-    size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
-    ORT_ENFORCE(pads_size == 2 * static_cast<size_t>(dimension_count),
-                "Pads tensor size should be equal to twice the input dimension count ");
+    const auto pads_data = pads_tensor.DataAsSpan<int64_t>();
 
-    pads.reserve(2LL * dimension_count);
-    for (size_t i = 0; i < pads_size; ++i) {
-      pads.push_back(pads_tensor_raw_data[i]);
-    }
+    PadBase::ComputePads(*ctx, input_shape.NumDimensions(), pads_data, pads);
+
     // Separate out any negative pads into the slices array
-    slices.resize(pads.size(), 0);
-    for (size_t index = 0; index < pads.size(); index++) {
-      if (pads[index] < 0) {
-        slices[index] = pads[index];
-        pads[index] = 0;
-      }
-    }
+    PadBase::SeparateNegativeToSlices(pads, slices);
 
     T raw_value{};
     const Tensor* value_tensor = ctx->Input<Tensor>(2);
@@ -135,14 +134,14 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> input_strides(input_pitches);
 
   auto output_dims(input_shape.AsShapeVector());
-  ORT_ENFORCE(static_cast<size_t>(dimension_count * 2) == p_pads->size(), "'pads' attribute has wrong number of values");
+  ORT_ENFORCE(static_cast<size_t>(dimension_count) * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding
   TArray<int64_t> lower_pads(dimension_count);
   TArray<int64_t> upper_pads(dimension_count);
   for (auto i = 0; i < dimension_count; i++) {
     lower_pads[i] = (*p_pads)[i] + (*p_slices)[i];
-    upper_pads[i] = (*p_pads)[i + dimension_count] + (*p_slices)[i + dimension_count];
+    upper_pads[i] = (*p_pads)[static_cast<int64_t>(i) + dimension_count] + (*p_slices)[static_cast<int64_t>(i) + dimension_count];
     output_dims[i] += lower_pads[i] + upper_pads[i];
   }
 
@@ -161,7 +160,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
         output_tensor.MutableData<T>(), input_tensor.Data<T>(),
         sizeof(typename ToCudaType<T>::MappedType) * output_shape.Size(),
-        cudaMemcpyDeviceToDevice, Stream()));
+        cudaMemcpyDeviceToDevice, Stream(ctx)));
     return Status::OK();
   }
 
@@ -181,7 +180,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
 
     PadNCHWInputWithPaddingAlongHAndWImpl(
-        Stream(),
+        Stream(ctx),
         dimension_count == 4 ? input_dims[0] : 1,
         dimension_count == 4 ? input_dims[1] : (dimension_count == 3 ? input_dims[0] : 1),
         input_dims[height_dim],
@@ -206,7 +205,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   PadImpl(
-      Stream(),
+      Stream(ctx),
       dimension_count,
       input_dims,
       input_strides,

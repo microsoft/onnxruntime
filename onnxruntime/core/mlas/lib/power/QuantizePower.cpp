@@ -1,3 +1,4 @@
+#include <type_traits>
 #include "mlasi.h"
 #include <altivec.h>
 
@@ -82,8 +83,15 @@ Return Value:
 
         auto ShortVector0 = vec_pack(IntegerVector0, IntegerVector1);
         auto ShortVector1 = vec_pack(IntegerVector2, IntegerVector3);
-        auto CharVector = vec_pack(ShortVector0, ShortVector1);
-        vec_xst(CharVector, 0, (int8_t *) Output);
+
+        if constexpr (std::is_same_v<OutputType, uint8_t> || std::is_same_v<OutputType, int8_t>) {
+            auto CharVector = vec_pack(ShortVector0, ShortVector1);
+            vec_xst(CharVector, 0, (int8_t *)Output);
+        } else {
+            static_assert(std::is_same_v<OutputType, uint16_t> || std::is_same_v<OutputType, int16_t>);
+            vec_xst(ShortVector0, 0, (int16_t *)Output);
+            vec_xst(ShortVector1, 0, (int16_t *)&Output[8]);
+        }
 
         Output += 16;
         Input += 16;
@@ -124,3 +132,30 @@ MlasQuantizeLinearS8Kernel(
 {
     MlasQuantizeLinearKernel<int8_t>(Input, Output, N, Scale, ZeroPoint);
 }
+
+void
+MLASCALL
+MlasQuantizeLinearU16Kernel(
+    const float* Input,
+    uint16_t* Output,
+    size_t N,
+    float Scale,
+    uint16_t ZeroPoint
+    )
+{
+    MlasQuantizeLinearKernel<uint16_t>(Input, Output, N, Scale, ZeroPoint);
+}
+
+void
+MLASCALL
+MlasQuantizeLinearS16Kernel(
+    const float* Input,
+    int16_t* Output,
+    size_t N,
+    float Scale,
+    int16_t ZeroPoint
+    )
+{
+    MlasQuantizeLinearKernel<int16_t>(Input, Output, N, Scale, ZeroPoint);
+}
+

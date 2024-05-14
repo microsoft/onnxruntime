@@ -749,8 +749,10 @@ struct CD3DX12_RESOURCE_BARRIER : public D3D12_RESOURCE_BARRIER
         barrier.Aliasing.pResourceAfter = pResourceAfter;
         return result;
     }
+    // NOTE: local edit to original header to fix SAL annotation.
+    // See https://github.com/microsoft/DirectX-Headers/pull/89
     static inline CD3DX12_RESOURCE_BARRIER UAV(
-        _In_ ID3D12Resource* pResource) noexcept
+        _In_opt_ ID3D12Resource* pResource) noexcept
     {
         CD3DX12_RESOURCE_BARRIER result = {};
         D3D12_RESOURCE_BARRIER &barrier = result;

@@ -26,15 +26,44 @@
 
 namespace onnxruntime {
 
-namespace python {
-Environment& GetTrainingORTEnv();
-}
-
 namespace lazytensor {
 
 namespace py = pybind11;
 namespace aten = torch::jit::aten;
 namespace prim = torch::jit::prim;
+
+bool IsFusable(const torch::jit::Node* node) {
+  // This function checks the fusion restriction inside
+  // mergeNodeIntoGroup(...). When selecting onnx-supported aten ops,
+  // we need to call this function to make sure they are fusable
+  // in mergeNodeIntoGroup(...).
+
+  // Not all inputs are fusable. For example, the fuser
+  // expects all inputs are tensors with a few exceptions.
+  // This flag denotes if we find an unsupported input.
+  bool found_not_fusable = false;
+  for (auto input : node->inputs()) {
+    if (input->type()->isSubtypeOf(*c10::TensorType::get())) {
+      continue;
+    } else if (
+        (input->type()->isSubtypeOf(*c10::FloatType::get()) &&
+         input->node()->kind() != torch::jit::prim::Constant) ||
+        (node->kind() == torch::jit::aten::_grad_sum_to_size &&
+         input->type()->isSubtypeOf(*c10::ListType::ofInts()))) {
+      continue;
+    } else if (
+        input->type()->isSubtypeOf(*c10::IntType::get()) &&
+        input->node()->kind() != torch::jit::prim::Constant) {
+      continue;
+    } else {
+      if (input->node()->kind() == torch::jit::prim::Constant) {
+        continue;
+      }
+      found_not_fusable = true;
+    }
+  }
+  return !found_not_fusable;
+}
 
 bool Accelerator::Supported(const torch::jit::Node* node) {
   if (!node) {
@@ -74,7 +103,7 @@ bool Accelerator::Supported(const torch::jit::Node* node) {
         std::cout << "Supported op: "
                   << ToString(*node) << std::endl;
       }
-      return true;
+      return IsFusable(node);
     }
     default: {
       if (DumpAtenOpHistory()) {
@@ -271,11 +300,11 @@ static std::unique_ptr<onnxruntime::InferenceSession> CreateSession() {
 #ifdef USE_CUDA
   NvtxRange range(__func__);
 #endif
-  // Environment shared by all sessions.
-  static onnxruntime::Environment& pybind_default_env = onnxruntime::python::GetTrainingORTEnv();
   // All sessions use the same config.
   static onnxruntime::SessionOptions sess_opts;
-  return std::make_unique<onnxruntime::InferenceSession>(sess_opts, pybind_default_env);
+  // Query the singleton always, to make sure we detect shutdown
+  auto ort_env = onnxruntime::python::GetEnv();
+  return std::make_unique<onnxruntime::InferenceSession>(sess_opts, *ort_env);
 }
 
 static OrtDevice CheckAndGetTensorDevice(const at::ArrayRef<c10::IValue>& values) {

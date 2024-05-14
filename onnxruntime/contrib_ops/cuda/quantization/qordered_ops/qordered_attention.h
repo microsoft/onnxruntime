@@ -18,8 +18,6 @@ class QOrderedAttention final : public CudaKernel, public AttentionBase {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
  public:
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
@@ -40,11 +38,9 @@ class QOrderedAttention final : public CudaKernel, public AttentionBase {
   int qkv_weight_const_count_, scale_qkv_weight_const_count_, qkv_bias_const_cout_;
 
  private:
-  Status PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index);
+  Status PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index, cudaStream_t cuda_stream);
   Status PutIntoMergedWeightScale(const Tensor& tensor, AllocatorPtr alloc, int qkv_index);
   Status PutIntoMergedBias(const Tensor& tensor, AllocatorPtr alloc, int qkv_index);
-
-#endif
 };
 
 }  // namespace cuda

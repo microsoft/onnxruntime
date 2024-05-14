@@ -7,6 +7,7 @@
 
 #include "attention_wrapper.h"
 
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
@@ -30,7 +31,7 @@ class DeepCpuAttnLstmOp final : public OpKernel {
 
     int64_t int64_value;
     ORT_ENFORCE(info.GetAttr("hidden_size", &int64_value).IsOK() && int64_value > 0);
-    hidden_size_ = gsl::narrow<int>(int64_value);
+    hidden_size_ = narrow<int>(int64_value);
 
     // optional attributes
     std::vector<std::string> activation_func_names = info.GetAttrsOrDefault<std::string>("activations");

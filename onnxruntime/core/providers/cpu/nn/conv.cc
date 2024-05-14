@@ -17,6 +17,7 @@
 
 #include "core/providers/cpu/nn/conv.h"
 
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 
@@ -79,7 +80,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
+    auto* col_data = alloc->Alloc(sizeof(T) * SafeInt<size_t>(col_buffer_size));
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(std::move(alloc)));
   }
 
@@ -194,18 +195,18 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const auto* Xdata = X->Data<float>();
+  auto Xdata = X->DataAsSpan<float>();
   const auto* Bdata = B != nullptr ? B->Data<float>() : nullptr;
-  auto* Ydata = Y->MutableData<float>();
+  auto Ydata = Y->MutableDataAsSpan<float>();
   // Check for the optional Conv/Sum fusion.
   float Beta = 0.0f;
   if (Sum != nullptr) {
     const auto& sum_shape = Sum->Shape();
     ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
     // If the output was not allocated inplace with the sum tensor, then copy here.
-    const auto* sum_data = Sum->Data<float>();
-    if (Ydata != sum_data) {
-      memcpy(Ydata, sum_data, sum_shape.Size() * sizeof(float));
+    auto sum_data = Sum->DataAsSpan<float>();
+    if (Ydata.data() != sum_data.data()) {
+      gsl::copy(sum_data, Ydata);
     }
     Beta = 1.0f;
   }
@@ -217,50 +218,48 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,
                     kernel_rank,
-                    static_cast<size_t>(N),
-                    static_cast<size_t>(conv_attrs_.group),
-                    static_cast<size_t>(C / conv_attrs_.group),
+                    narrow<size_t>(N),
+                    narrow<size_t>(conv_attrs_.group),
+                    narrow<size_t>(C / conv_attrs_.group),
                     input_shape.GetDims().data(),
                     kernel_shape.data(),
                     dilations.data(),
                     pads.data(),
                     strides.data(),
                     output_shape.GetDims().data(),
-                    static_cast<size_t>(M / conv_attrs_.group),
+                    narrow<size_t>(M / conv_attrs_.group),
                     &activation_,
                     &WorkingBufferSize,
                     Beta,
                     thread_pool);
 
-    auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
+    auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * SafeInt<size_t>(WorkingBufferSize))
                                                : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(std::move(alloc)));
 
     MlasConv(&Parameters,
-             Xdata,
+             Xdata.data(),
              W->Data<float>(),
              Bdata,
              static_cast<float*>(working_buffer.get()),
-             Ydata,
+             Ydata.data(),
              thread_pool);
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
     const int64_t kernel_size = TensorShape(kernel_shape).Size();
-    const int64_t X_offset = C / conv_attrs_.group * input_image_size;
-    const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / conv_attrs_.group;
-    const int64_t W_offset = W->Shape().Size() / conv_attrs_.group;
-    const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
+    const SafeInt<int64_t> X_offset = SafeInt<int64_t>(C) / conv_attrs_.group * input_image_size;
+    const SafeInt<int64_t> Y_offset = SafeInt<int64_t>(Y->Shape().Size()) / Y->Shape()[0] / conv_attrs_.group;
+    const SafeInt<int64_t> W_offset = SafeInt<int64_t>(W->Shape().Size()) / conv_attrs_.group;
+    const SafeInt<int64_t> kernel_dim = SafeInt<int64_t>(C) / conv_attrs_.group * kernel_size;
     const int64_t col_buffer_size = kernel_dim * output_image_size;
 
-    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
-    BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
-    auto* col_buffer_data = static_cast<float*>(col_buffer.get());
-
+    auto col_data = IAllocator::MakeUniquePtr<float>(alloc, narrow<size_t>(col_buffer_size));
+    auto w_data = W->DataAsSpan<float>();
     for (int image_id = 0; image_id < N; ++image_id) {
       for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
         math::Im2col<float, StorageOrder::NCHW>()(
-            Xdata + group_id * X_offset,
+            &Xdata[group_id * X_offset],
             input_shape.GetDims().data(),
             output_shape.GetDims().data(),
             kernel_dim,
@@ -268,27 +267,27 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             strides.data(),
             dilations.data(),
             pads.data(),
-            static_cast<int>(kernel_shape.size()),
-            col_buffer_data);
+            narrow<int>(kernel_shape.size()),
+            col_data.get());
 
         math::Gemm<float>(
             CblasNoTrans,
             CblasNoTrans,
-            M / conv_attrs_.group,
-            output_image_size,
-            kernel_dim,
+            narrow<ptrdiff_t>(M / conv_attrs_.group),
+            narrow<ptrdiff_t>(output_image_size),
+            narrow<ptrdiff_t>(kernel_dim),
             1,
-            W->Data<float>() + group_id * W_offset,
-            col_buffer_data,
+            &w_data[group_id * W_offset],
+            col_data.get(),
             Beta,
-            Ydata + group_id * Y_offset,
+            &Ydata[group_id * Y_offset],
             thread_pool);
       }
 
-      MlasActivation(&activation_, Ydata, Bdata, M, output_image_size, output_image_size);
+      MlasActivation(&activation_, Ydata.data(), Bdata, narrow<size_t>(M), narrow<size_t>(output_image_size), narrow<size_t>(output_image_size));
 
-      Xdata += X_offset * conv_attrs_.group;
-      Ydata += Y_offset * conv_attrs_.group;
+      Xdata = Xdata.subspan(X_offset * conv_attrs_.group);
+      Ydata = Ydata.subspan(Y_offset * conv_attrs_.group);
     }
   }
 

@@ -25,6 +25,7 @@ void CreateEluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_r
 void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateIdentityOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateLeakyReluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateQuantizeLinearOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -32,6 +33,7 @@ void CreateReluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSoftMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -43,6 +45,7 @@ void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateMinMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace nnapi
 }  // namespace onnxruntime

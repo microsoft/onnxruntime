@@ -7,7 +7,7 @@
 
 set -e
 set -x
-export PATH=/opt/python/cp37-cp37m/bin:$PATH
+export PATH=/opt/python/cp38-cp38/bin:$PATH
 USAGE_TEXT="Usage:
   -b|--build-directory <build directory>
     Specifies the build directory. Required.
@@ -72,7 +72,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --config Debug \
     --skip_submodule_sync \
     --build_shared_lib \
-    --parallel \
+    --parallel --use_binskim_compliant_compile_flags \
     --minimal_build ${MINIMAL_BUILD_ARGS} \
     --disable_ml_ops \
     --include_ops_by_config ${REDUCED_OPS_CONFIG_FILE} \

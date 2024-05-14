@@ -20,7 +20,20 @@ public:
         PoolingHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), useGlobalPooling),
         m_function(function)
     {
-        DmlOperator::Initialize(kernelInfo);
+        const bool hasDilations =
+            std::any_of(
+                m_kernel.dilations,
+                m_kernel.dilations + m_kernel.spatialDimensionCount,
+                [](auto d) {return d != 1; }
+            );
+        const bool hasOutputIndices = (kernelInfo.GetOutputCount() > 1 && kernelInfo.IsOutputValid(1));
+        std::vector<std::optional<uint32_t>> kernelOutputIndices = {0};
+
+        if (function == DML_OPERATOR_MAX_POOLING2 && (hasOutputIndices || hasDilations))
+        {
+            kernelOutputIndices.emplace_back(1);
+        }
+        DmlOperator::Initialize(kernelInfo, std::nullopt, kernelOutputIndices);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -32,13 +45,6 @@ public:
         // The below attributes are temporarily not supported:
         int storageOrder = kernelInfo.GetOptionalAttribute<int>(AttrName::StorageOrder, 0);
         ORT_THROW_HR_IF(E_NOTIMPL, storageOrder != 0);
-
-        const bool hasDilations =
-            std::any_of(
-                m_kernel.dilations,
-                m_kernel.dilations + m_kernel.spatialDimensionCount,
-                [](auto d) {return d != 1; }
-            );
 
         // DML requires that DimensionCount be equal to Input.DimCount - 2 for Pooling
         uint32_t expectedSpatialDimCount = m_inputTensorDescs[0].GetDimensionCount() - 2;
@@ -78,7 +84,7 @@ public:
             poolingDesc.EndPadding = m_kernel.endPadding;
 
             DML_OPERATOR_DESC opDesc = {};
-            opDesc.Type = ApiTraits::OperatorDescTraits<std::remove_reference<decltype(poolingDesc)>::type>::Type;
+            opDesc.Type = ApiTraits::OperatorDescTraits<typename std::remove_reference<decltype(poolingDesc)>::type>::Type;
             opDesc.Desc = &poolingDesc;
             SetDmlOperatorDesc(opDesc, kernelInfo);
         };
@@ -92,6 +98,21 @@ public:
                 SetOpDesc(desc);
                 break;
             }
+            case DML_OPERATOR_AVERAGE_POOLING1:
+            {
+                if (hasDilations) {
+                    DML_AVERAGE_POOLING1_OPERATOR_DESC desc = {};
+                    desc.IncludePadding = kernelInfo.GetOptionalAttribute<bool>(AttrName::CountIncludePad, false);
+                    desc.Dilations = m_kernel.dilations;
+                    SetOpDesc(desc);
+                }
+                else {
+                    DML_AVERAGE_POOLING_OPERATOR_DESC desc = {};
+                    desc.IncludePadding = kernelInfo.GetOptionalAttribute<bool>(AttrName::CountIncludePad, false);
+                    SetOpDesc(desc);
+                }
+                break;
+            }
             case DML_OPERATOR_LP_POOLING:
             {
                 DML_LP_POOLING_OPERATOR_DESC desc = {};
@@ -100,11 +121,27 @@ public:
                 SetOpDesc(desc);
                 break;
             }
+            case DML_OPERATOR_LP_POOLING1:
+            {
+                if (hasDilations) {
+                    DML_LP_POOLING1_OPERATOR_DESC desc = {};
+                    desc.P = kernelInfo.GetOptionalAttribute<int>(AttrName::P, 2);
+                    ML_CHECK_VALID_ARGUMENT(desc.P > 0);
+                    desc.Dilations = m_kernel.dilations;
+                    SetOpDesc(desc);
+                }
+                else {
+                    DML_LP_POOLING_OPERATOR_DESC desc = {};
+                    desc.P = kernelInfo.GetOptionalAttribute<int>(AttrName::P, 2);
+                    ML_CHECK_VALID_ARGUMENT(desc.P > 0);
+                    SetOpDesc(desc);
+                }
+                break;
+            }
             case DML_OPERATOR_MAX_POOLING:
             case DML_OPERATOR_MAX_POOLING1:
             case DML_OPERATOR_MAX_POOLING2:
             {
-                bool hasOutputIndices = (outputDescs.size() > 1 && outputDescs[1].Desc != nullptr);
                 if (hasOutputIndices || hasDilations)
                 {
                     DML_MAX_POOLING2_OPERATOR_DESC desc = {};
@@ -147,7 +184,7 @@ public:
 void CALLBACK QueryMaxPool(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
 {
     *isSupported = false;
-    
+
     MLOperatorAttributes attributes(context);
 
     int storageOrder = attributes.GetOptionalAttribute<int>(AttrName::StorageOrder, 0);
@@ -159,11 +196,11 @@ void CALLBACK QueryMaxPool(IMLOperatorSupportQueryContextPrivate* context, bool*
     *isSupported = true;
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(AveragePool,           DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING, false>);
+DML_OP_DEFINE_CREATION_FUNCTION(AveragePool,           DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING1, false>);
 DML_OP_DEFINE_CREATION_FUNCTION(GlobalAveragePool,     DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING, true>);
 DML_OP_DEFINE_CREATION_FUNCTION(MaxPool,               DmlOperatorPoolingTemplate<DML_OPERATOR_MAX_POOLING2, false>);
 DML_OP_DEFINE_CREATION_FUNCTION(GlobalMaxPool,         DmlOperatorPoolingTemplate<DML_OPERATOR_MAX_POOLING, true>);
-DML_OP_DEFINE_CREATION_FUNCTION(LpPool,                DmlOperatorPoolingTemplate<DML_OPERATOR_LP_POOLING, false>);
+DML_OP_DEFINE_CREATION_FUNCTION(LpPool,                DmlOperatorPoolingTemplate<DML_OPERATOR_LP_POOLING1, false>);
 DML_OP_DEFINE_CREATION_FUNCTION(GlobalLpPool,          DmlOperatorPoolingTemplate<DML_OPERATOR_LP_POOLING, true>);
 
 } // namespace Dml

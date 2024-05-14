@@ -29,11 +29,11 @@ Status InstanceNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const 
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
   for (auto i = 0; i < N * C; ++i) {
-    ConstEigenVectorArrayMap<float> Xi(input->Data<float>() + W * i, W);
+    ConstEigenVectorArrayMap<float> Xi(input->Data<float>() + W * i, onnxruntime::narrow<size_t>(W));
     const float Xi_mean = Xi.mean();
     const float squared_norm = (Xi - Xi_mean).matrix().squaredNorm();
     const float inv_stdev = 1.0f / std::sqrt(squared_norm / W + epsilon_);
-    EigenVectorArrayMap<float> Yi(Y->MutableData<float>() + W * i, W);
+    EigenVectorArrayMap<float> Yi(Y->MutableData<float>() + W * i, onnxruntime::narrow<size_t>(W));
     const float channel_scale = inv_stdev * scale->Data<float>()[i % C];
     const float channel_shift = B->Data<float>()[i % C] - Xi_mean * channel_scale;
     Yi = Xi * channel_scale + channel_shift;

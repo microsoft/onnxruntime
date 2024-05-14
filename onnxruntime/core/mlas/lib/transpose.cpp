@@ -50,6 +50,32 @@ MlasTranspose4x4Block(
 
 MLAS_FORCEINLINE
 void
+MlasTranspose4x4Block(
+    const uint16_t* Input,
+    size_t InputStride,
+    uint16_t* Output,
+    size_t OutputStride
+    )
+{
+    __m128i a0 = _mm_loadl_epi64((const __m128i*)&Input[InputStride * 0]);
+    __m128i a1 = _mm_loadl_epi64((const __m128i*)&Input[InputStride * 1]);
+    __m128i a2 = _mm_loadl_epi64((const __m128i*)&Input[InputStride * 2]);
+    __m128i a3 = _mm_loadl_epi64((const __m128i*)&Input[InputStride * 3]);
+
+    __m128i b0 = _mm_unpacklo_epi16(a0, a2);
+    __m128i b1 = _mm_unpacklo_epi16(a1, a3);
+
+    __m128i c0 = _mm_unpacklo_epi16(b0, b1);
+    __m128i c1 = _mm_unpackhi_epi16(b0, b1);
+
+    _mm_storel_pi((__m64*)&Output[OutputStride * 0], _mm_castsi128_ps(c0));
+    _mm_storeh_pi((__m64*)&Output[OutputStride * 1], _mm_castsi128_ps(c0));
+    _mm_storel_pi((__m64*)&Output[OutputStride * 2], _mm_castsi128_ps(c1));
+    _mm_storeh_pi((__m64*)&Output[OutputStride * 3], _mm_castsi128_ps(c1));
+}
+
+MLAS_FORCEINLINE
+void
 MlasTranspose8x8Block(
     const uint8_t* Input,
     size_t InputStride,
@@ -121,6 +147,32 @@ MlasTranspose4x4Block(
     vst1q_u32(&Output[OutputStride * 1], c0.val[1]);
     vst1q_u32(&Output[OutputStride * 2], c1.val[0]);
     vst1q_u32(&Output[OutputStride * 3], c1.val[1]);
+}
+
+MLAS_FORCEINLINE
+void
+MlasTranspose4x4Block(
+    const uint16_t* Input,
+    size_t InputStride,
+    uint16_t* Output,
+    size_t OutputStride
+    )
+{
+    uint16x4_t a0 = vld1_u16(&Input[InputStride * 0]);
+    uint16x4_t a1 = vld1_u16(&Input[InputStride * 1]);
+    uint16x4_t a2 = vld1_u16(&Input[InputStride * 2]);
+    uint16x4_t a3 = vld1_u16(&Input[InputStride * 3]);
+
+    uint16x4x2_t b0 = vzip_u16(a0, a2);
+    uint16x4x2_t b1 = vzip_u16(a1, a3);
+
+    uint16x4x2_t c0 = vzip_u16(b0.val[0], b1.val[0]);
+    uint16x4x2_t c1 = vzip_u16(b0.val[1], b1.val[1]);
+
+    vst1_u16(&Output[OutputStride * 0], c0.val[0]);
+    vst1_u16(&Output[OutputStride * 1], c0.val[1]);
+    vst1_u16(&Output[OutputStride * 2], c1.val[0]);
+    vst1_u16(&Output[OutputStride * 3], c1.val[1]);
 }
 
 MLAS_FORCEINLINE
@@ -319,6 +371,121 @@ MlasTranspose16x16Block(
     vec_vsx_st(e0, 0, &Output[OutputStride * 14]);
     vec_vsx_st(e1, 0, &Output[OutputStride * 15]);
 }
+
+#elif defined(MLAS_LSX_INTRINSICS)
+
+MLAS_FORCEINLINE
+void
+MlasTranspose4x4Block(
+    const uint32_t* Input,
+    size_t InputStride,
+    uint32_t* Output,
+    size_t OutputStride
+    )
+{
+    __m128i a0 = __lsx_vld((const __m128i*)&Input[InputStride * 0], 0);
+    __m128i a1 = __lsx_vld((const __m128i*)&Input[InputStride * 1], 0);
+    __m128i a2 = __lsx_vld((const __m128i*)&Input[InputStride * 2], 0);
+    __m128i a3 = __lsx_vld((const __m128i*)&Input[InputStride * 3], 0);
+
+    __m128i b0 = __lsx_vilvl_w(a2, a0);
+    __m128i b1 = __lsx_vilvh_w(a2, a0);
+    __m128i b2 = __lsx_vilvl_w(a3, a1);
+    __m128i b3 = __lsx_vilvh_w(a3, a1);
+    __m128i c0 = __lsx_vilvl_w(b2, b0);
+    __m128i c1 = __lsx_vilvh_w(b2, b0);
+    __m128i c2 = __lsx_vilvl_w(b3, b1);
+    __m128i c3 = __lsx_vilvh_w(b3, b1);
+
+    __lsx_vst(c0, (__m128i*)&Output[OutputStride * 0], 0);
+    __lsx_vst(c1, (__m128i*)&Output[OutputStride * 1], 0);
+    __lsx_vst(c2, (__m128i*)&Output[OutputStride * 2], 0);
+    __lsx_vst(c3, (__m128i*)&Output[OutputStride * 3], 0);
+}
+
+MLAS_FORCEINLINE
+void
+MlasTranspose4x4Block(
+    const uint16_t* Input,
+    size_t InputStride,
+    uint16_t* Output,
+    size_t OutputStride
+    )
+{
+    __m128i a0 = __lsx_vld((const __m128i*)&Input[InputStride * 0], 0);
+    __lsx_vinsgr2vr_d(a0, 0 , 1);
+    __m128i a1 = __lsx_vld((const __m128i*)&Input[InputStride * 1], 0);
+    __lsx_vinsgr2vr_d(a1, 0 , 1);
+    __m128i a2 = __lsx_vld((const __m128i*)&Input[InputStride * 2], 0);
+    __lsx_vinsgr2vr_d(a2, 0 , 1);
+    __m128i a3 = __lsx_vld((const __m128i*)&Input[InputStride * 3], 0);
+    __lsx_vinsgr2vr_d(a3, 0 , 1);
+
+    __m128i b0 = __lsx_vilvl_h(a2, a0);
+    __m128i b1 = __lsx_vilvl_h(a3, a1);
+    __m128i c0 = __lsx_vilvl_h(b1, b0);
+    __m128i c1 = __lsx_vilvh_h(b1, b0);
+
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 0], 0), __lsx_vpickve2gr_d(c0, 0), 0), (__m128i *)&Output[OutputStride * 0], 0);
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 1], 0), __lsx_vpickve2gr_d(c0, 1), 0), (__m128i *)&Output[OutputStride * 1], 0);
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 2], 0), __lsx_vpickve2gr_d(c1, 0), 0), (__m128i *)&Output[OutputStride * 2], 0);
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 3], 0), __lsx_vpickve2gr_d(c1, 1), 0), (__m128i *)&Output[OutputStride * 3], 0);
+}
+
+MLAS_FORCEINLINE
+void
+MlasTranspose8x8Block(
+    const uint8_t* Input,
+    size_t InputStride,
+    uint8_t* Output,
+    size_t OutputStride
+    )
+{
+    __m128i a0 = __lsx_vld((const __m128i*)&Input[InputStride * 0], 0);
+    __lsx_vinsgr2vr_d(a0, 0, 1);
+    __m128i a1 = __lsx_vld((const __m128i*)&Input[InputStride * 1], 0);
+    __lsx_vinsgr2vr_d(a1, 0, 1);
+    __m128i b0 = __lsx_vilvl_b(a1, a0);
+
+    __m128i a2 = __lsx_vld((const __m128i*)&Input[InputStride * 2], 0);
+    __lsx_vinsgr2vr_d(a2, 0, 1);
+    __m128i a3 = __lsx_vld((const __m128i*)&Input[InputStride * 3], 0);
+    __lsx_vinsgr2vr_d(a3, 0, 1);
+    __m128i b1 = __lsx_vilvl_b(a3, a2);
+
+    __m128i a4 = __lsx_vld((const __m128i*)&Input[InputStride * 4], 0);
+    __lsx_vinsgr2vr_d(a4, 0, 1);
+    __m128i a5 = __lsx_vld((const __m128i*)&Input[InputStride * 5], 0);
+    __lsx_vinsgr2vr_d(a5, 0, 1);
+    __m128i b2 = __lsx_vilvl_b(a5, a4);
+
+    __m128i a6 = __lsx_vld((const __m128i*)&Input[InputStride * 6], 0);
+    __lsx_vinsgr2vr_d(a6, 0, 1);
+    __m128i a7 = __lsx_vld((const __m128i*)&Input[InputStride * 7], 0);
+    __lsx_vinsgr2vr_d(a7, 0, 1);
+    __m128i b3 = __lsx_vilvl_b(a7, a6);
+    __m128i c0 = __lsx_vilvl_h(b1, b0);
+    __m128i c1 = __lsx_vilvh_h(b1, b0);
+    __m128i c2 = __lsx_vilvl_h(b3, b2);
+    __m128i c3 = __lsx_vilvh_h(b3, b2);
+
+    __m128 d0 = (__m128)(__lsx_vilvl_w(c2, c0));
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 0], 0), __lsx_vpickve2gr_d(d0, 0), 0), (__m128i *)&Output[OutputStride * 0], 0);
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 1], 0), __lsx_vpickve2gr_d(d0, 1), 0), (__m128i *)&Output[OutputStride * 1], 0);
+
+    __m128 d1 = (__m128)(__lsx_vilvh_w(c2, c0));
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 2], 0), __lsx_vpickve2gr_d(d1, 0), 0), (__m128i *)&Output[OutputStride * 2], 0);
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 3], 0), __lsx_vpickve2gr_d(d1, 1), 0), (__m128i *)&Output[OutputStride * 3], 0);
+
+    __m128 d2 = (__m128)(__lsx_vilvl_w(c3, c1));
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 4], 0), __lsx_vpickve2gr_d(d2, 0), 0), (__m128i *)&Output[OutputStride * 4], 0);
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 5], 0), __lsx_vpickve2gr_d(d2, 1), 0), (__m128i *)&Output[OutputStride * 5], 0);
+
+    __m128 d3 = (__m128)(__lsx_vilvh_w(c3, c1));
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 6], 0), __lsx_vpickve2gr_d(d3, 0), 0), (__m128i *)&Output[OutputStride * 6], 0);
+    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 7], 0), __lsx_vpickve2gr_d(d3, 1), 0), (__m128i *)&Output[OutputStride * 7], 0);
+}
+
 #endif
 
 template<typename ElementType>
@@ -420,7 +587,8 @@ Return Value:
         uint32_t* d = Output;
         size_t m = M;
 
-#if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS) || defined(MLAS_TARGET_POWER)
+#if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS) || defined(MLAS_TARGET_POWER) || \
+    defined(MLAS_LSX_INTRINSICS)
 
         while (m >= 4) {
 
@@ -498,6 +666,116 @@ MlasTranspose(
         N);
 }
 
+
+void
+MLASCALL
+MlasTranspose(
+    const uint16_t* Input,
+    uint16_t* Output,
+    size_t M,
+    size_t N
+    )
+/*++
+
+Routine Description:
+
+    This routine transposes the input matrix (M rows by N columns) to the
+    output matrix (N rows by M columns).
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    M - Supplies the number of rows for the input matrix and the number of
+        columns for the output matrix.
+
+    N - Supplies the number of columns for the input matrix and the number of
+        rows for the output matrix.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    size_t n = N;
+
+    //
+    // Transpose elements from the input matrix to the output matrix 4 columns
+    // at a time.
+    //
+
+    while (n >= 4) {
+
+        const uint16_t* s = Input;
+        uint16_t* d = Output;
+        size_t m = M;
+
+#if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)  || defined(MLAS_LSX_INTRINSICS)
+
+        while (m >= 4) {
+
+            MlasTranspose4x4Block(s, N, d, M);
+
+            s += N * 4;
+            d += 4;
+            m -= 4;
+        }
+
+#endif
+
+        while (m > 0) {
+
+            MlasTranspose4xNVector(s, 1, d, M);
+
+            s += N;
+            d += 1;
+            m -= 1;
+        }
+
+        Input += 4;
+        Output += M * 4;
+        n -= 4;
+    }
+
+    //
+    // Transpose elements from the input matrix to the output matrix for the
+    // remaining columns.
+    //
+
+    while (n > 0) {
+
+        const uint16_t* s = Input;
+        uint16_t* d = Output;
+        size_t m = M;
+
+        while (m >= 4) {
+
+            MlasTranspose4xNVector(s, N, d, 1);
+
+            s += N * 4;
+            d += 4;
+            m -= 4;
+        }
+
+        while (m > 0) {
+
+            d[0] = s[0];
+
+            s += N;
+            d += 1;
+            m -= 1;
+        }
+
+        Input += 1;
+        Output += M;
+        n -= 1;
+    }
+}
+
+
 void
 MLASCALL
 MlasTranspose(
@@ -572,7 +850,7 @@ Return Value:
         uint8_t* d = Output;
         size_t m = M;
 
-#if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)  || defined(MLAS_LSX_INTRINSICS)
 
         while (m >= 8) {
 

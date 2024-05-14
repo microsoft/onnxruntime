@@ -21,13 +21,13 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto conv_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = conv_src_mem.get_desc();
-  src_md.data.format_kind = dnnl_format_kind_t::dnnl_format_kind_any;
-  auto src_dims = conv_src_mem.get_desc().dims();
+  src_md = dnnl::memory::desc(src_md.get_dims(), src_md.get_data_type(), dnnl::memory::format_tag::any);
+  auto src_dims = conv_src_mem.get_desc().get_dims();
 
   auto conv_weights_mem = sp.GetMemory(node.Input(IN_W));
   auto weight_md = conv_weights_mem.get_desc();
-  weight_md.data.format_kind = dnnl_format_kind_t::dnnl_format_kind_any;
-  auto weight_dims_original = conv_weights_mem.get_desc().dims();
+  weight_md = dnnl::memory::desc(weight_md.get_dims(), weight_md.get_data_type(), dnnl::memory::format_tag::any);
+  auto weight_dims_original = conv_weights_mem.get_desc().get_dims();
   dnnl::memory::dims weight_dims = weight_dims_original;
 
   bool bias_exists = node.Input(IN_B).Exists();
@@ -39,12 +39,12 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
   /*
-  * Get any inputs required for the dnnl::convolution_forward::desc
-  * beyond the dnnl:memory::desc:
-  *  -dilations
-  *  - strides
-  *  - padding_left and padding_right
-  */
+   * Get any inputs required for the dnnl::convolution_forward::desc
+   * beyond the dnnl:memory::desc:
+   *  -dilations
+   *  - strides
+   *  - padding_left and padding_right
+   */
   auto kernel_shape = GetKernelShape(node);
   ConvShape shape = static_cast<ConvShape>(kernel_shape.size());
   assert(shape != SHAPE_UNKNOWN);
@@ -97,27 +97,20 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   dnnl::primitive_attr attr;
   if (has_relu) {
-    const float ops_scale = 1.f;
-    const float ops_alpha = 0.f;
-    const float ops_beta = 0.f;
     dnnl::post_ops ops;
-    ops.append_eltwise(ops_scale, dnnl::algorithm::eltwise_relu, ops_alpha, ops_beta);
+    ops.append_eltwise(dnnl::algorithm::eltwise_relu, 0.f, 0.f);
     attr.set_post_ops(ops);
   }
 
   dnnl::convolution_forward::primitive_desc conv_pd;
   if (bias_exists) {
-    auto conv_desc = dnnl::convolution_forward::desc(
-        prop_kind, dnnl::algorithm::convolution_direct,
-        src_md, weight_md, bias_md, dst_md,
-        strides, dilations, padding_left, padding_right);
-    conv_pd = dnnl::convolution_forward::primitive_desc(conv_desc, attr, dnnl_engine);
+    conv_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::convolution_direct,
+                                                        src_md, weight_md, bias_md, dst_md, strides, dilations,
+                                                        padding_left, padding_right, attr);
   } else {
-    auto conv_desc = dnnl::convolution_forward::desc(
-        prop_kind, dnnl::algorithm::convolution_direct,
-        src_md, weight_md, dst_md,
-        strides, dilations, padding_left, padding_right);
-    conv_pd = dnnl::convolution_forward::primitive_desc(conv_desc, attr, dnnl_engine);
+    conv_pd = dnnl::convolution_forward::primitive_desc(dnnl_engine, prop_kind, dnnl::algorithm::convolution_direct,
+                                                        src_md, weight_md, dst_md, strides, dilations, padding_left,
+                                                        padding_right, attr);
   }
 
   // If using GPU this will move the memory from the CPU to the GPU.

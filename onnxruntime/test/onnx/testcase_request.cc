@@ -36,7 +36,7 @@ bool TestCaseRequestContext::SetupSession() {
   ORT_TRY {
     const auto* test_case_name = test_case_.GetTestCaseName().c_str();
     session_opts_.SetLogId(test_case_name);
-    Ort::Session session{env_, test_case_.GetModelUrl(), session_opts_};
+    Ort::Session session{env_, test_case_.GetModelUrl().native().c_str(), session_opts_};
     session_ = std::move(session);
     LOGF_DEFAULT(INFO, "Testing %s\n", test_case_name);
     return true;
@@ -54,7 +54,7 @@ std::shared_ptr<TestCaseResult> TestCaseRequestContext::Run(PThreadPool tpool,
                                                             const ITestCase& c, Ort::Env& env,
                                                             const Ort::SessionOptions& session_opts,
                                                             size_t concurrent_runs, size_t repeat_count) {
-  //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
+  // temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
   if (c.GetTestCaseName() == "coreml_FNS-Candy_ImageNet") {
     concurrent_runs = 1;
   }
@@ -80,7 +80,7 @@ void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool,
                                      const Ort::SessionOptions& session_opts,
                                      size_t test_case_id,
                                      size_t concurrent_runs) {
-  //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
+  // temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
   if (c.GetTestCaseName() == "coreml_FNS-Candy_ImageNet") {
     concurrent_runs = 1;
   }
@@ -206,7 +206,7 @@ void TestCaseRequestContext::CalculateAndLogStats() const {
         LOGF_DEFAULT(ERROR, "%s: type in model file mismatch. Dataset:%s\n", test_case_name.c_str(), s.c_str());
         break;
       default:
-        //nothing to do
+        // nothing to do
         break;
     }
     break;

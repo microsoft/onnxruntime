@@ -368,7 +368,7 @@ Status LaunchLongformerSoftmaxKernel(
     const void* q,                // transposed Q with shape (B, N, S, H)
     const void* k,                // transposed K with shape (B, N, S, H)
     const void* v,                // transposed V with shape (B, N, S, H)
-    const void* attention_mask,   // attention mask with shape (B, S), with value 0 not masked and -10000 masked.
+    const void* attention_mask,   // attention mask with shape (B, S), with value 0 not masked and value of mask_filter_value.
     int max_num_global,           // maximum number of global tokens (G)
     const bool compact_global_q,  // whether global_q has shape (B, N, G, H) instead of (B, N, S, H)
     const void* global_q,         // Q for global tokens with shape (B, N, S, H).
@@ -842,7 +842,7 @@ Status LongformerQkvToContext(
     const size_t element_size,
     const T* input,               // input for transpose
     const T* bias,                // bias to add to transposed input
-    const T* attention_mask,      // attention mask with shape (B, S), with value 0.0 not masked, and -10000.0 masked.
+    const T* attention_mask,      // attention mask with shape (B, S), with value 0.0 not masked, and -10000.0 or torch.finfo(dtype).min masked.
     const T* global_input,        // global input for transpose
     const T* global_bias,         // bias to add to transposed global input
     const int* global_attention,  // global attention flags with shape (B, S), with value 0 for local and 1 for global.
@@ -924,55 +924,55 @@ Status LongformerQkvToContext(
 
   if (disable_compact_memory) {
     ORT_RETURN_IF_ERROR(LaunchLongformerSoftmaxSimpleKernel(
-            stream,
-            cublas,
-            workspace,
-            q,
-            k,
-            v,
-            attention_mask,
-            global_q,
-            global_k,
-            global_v,
-            global_attention,
-            global_index,
-            batch_global_num,
-            pinned_buffer,
-            temp_output,
-            rsqrt_head_size,
-            batch_size,
-            sequence_length,
-            num_heads,
-            head_size,
-            window,
-            element_size));
+        stream,
+        cublas,
+        workspace,
+        q,
+        k,
+        v,
+        attention_mask,
+        global_q,
+        global_k,
+        global_v,
+        global_attention,
+        global_index,
+        batch_global_num,
+        pinned_buffer,
+        temp_output,
+        rsqrt_head_size,
+        batch_size,
+        sequence_length,
+        num_heads,
+        head_size,
+        window,
+        element_size));
   } else {
     ORT_ENFORCE(max_num_global <= window);
     ORT_RETURN_IF_ERROR(LaunchLongformerSoftmaxKernel(
-            stream,
-            cublas,
-            workspace,
-            q,
-            k,
-            v,
-            attention_mask,
-            max_num_global,
-            compact_global_q,
-            global_q,
-            global_k,
-            global_v,
-            global_attention,
-            global_index,
-            batch_global_num,
-            pinned_buffer,
-            temp_output,
-            rsqrt_head_size,
-            batch_size,
-            sequence_length,
-            num_heads,
-            head_size,
-            window,
-            element_size));
+        stream,
+        cublas,
+        workspace,
+        q,
+        k,
+        v,
+        attention_mask,
+        max_num_global,
+        compact_global_q,
+        global_q,
+        global_k,
+        global_v,
+        global_attention,
+        global_index,
+        batch_global_num,
+        pinned_buffer,
+        temp_output,
+        rsqrt_head_size,
+        batch_size,
+        sequence_length,
+        num_heads,
+        head_size,
+        window,
+        element_size));
   }
 
   // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
@@ -1005,7 +1005,6 @@ Status LaunchLongformerAttentionKernel(
     bool disable_compact_memory,
     bool use_merged_qkv_weights,
     bool use_half4) {
-  CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size,
                                                                     batch_size,
                                                                     num_heads,

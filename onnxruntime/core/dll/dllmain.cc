@@ -24,7 +24,7 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
     case DLL_THREAD_DETACH:
       break;
     case DLL_PROCESS_DETACH:
-      //TODO: Don't do it when Protobuf_USE_STATIC_LIBS is OFF
+      // TODO: Don't do it when Protobuf_USE_STATIC_LIBS is OFF
       ::google::protobuf::ShutdownProtobufLibrary();
       break;
   }

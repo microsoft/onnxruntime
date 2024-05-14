@@ -105,7 +105,11 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   TensorShapeVector Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
+#ifdef ACL_2308
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+#else
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+#endif
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   LOGS_DEFAULT(VERBOSE) << "Y " << Y->Shape().ToString().c_str();
 
@@ -133,7 +137,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   }
 
   if (it == Conv::convLayers.end()) {
-
     auto mm_layer = ACLCreateMemoryManager();
 
     ACLNEConv tconv;
@@ -189,7 +192,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     LOGS_DEFAULT(VERBOSE) << "padding: {" << aclPads[0] << "," << aclPads[1] << "," << aclPads[2] << "," << aclPads[3] << "}";
     LOGS_DEFAULT(VERBOSE) << "strides: {" << aclStrides[0] << "," << aclStrides[1] << "}";
 
-
     if (isDepthwise) {
       LOGS_DEFAULT(VERBOSE) << "Depthwise convolution";
 #ifdef DEPTHWISE_CPU
@@ -217,15 +219,22 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                                                                                       arm_compute::Size2D(aclDilation0, dilations[0]));
 #elif defined(ACL_2002)
       bool optimizable = bool(arm_compute::NEDepthwiseConvolutionLayerOptimized::validate(tconv.in->info(),
-                                                                           tconv.k->info(),
-                                                                           (B != nullptr) ? tconv.b->info() : nullptr,
-                                                                           tconv.out->info(),
-                                                                           aclPadStride,
-                                                                           1 /* depth multiplier */,
-                                                                           acl_activ_enabled ?
-                                                                              arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) :
-                                                                              arm_compute::ActivationLayerInfo(),
-                                                                           arm_compute::Size2D(aclDilation0, dilations[0])));
+                                                                                          tconv.k->info(),
+                                                                                          (B != nullptr) ? tconv.b->info() : nullptr,
+                                                                                          tconv.out->info(),
+                                                                                          aclPadStride,
+                                                                                          1 /* depth multiplier */,
+                                                                                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
+                                                                                          arm_compute::Size2D(aclDilation0, dilations[0])));
+#elif defined(ACL_2308)
+      bool optimizable = bool(arm_compute::NEDepthwiseConvolutionLayer::validate(tconv.in->info(),
+                                                                                 tconv.k->info(),
+                                                                                 (B != nullptr) ? tconv.b->info() : nullptr,
+                                                                                 tconv.out->info(),
+                                                                                 aclPadStride,
+                                                                                 1 /* depth multiplier */,
+                                                                                 acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
+                                                                                 arm_compute::Size2D(aclDilation0, dilations[0])));
 #endif
 
       if (optimizable) {
@@ -234,7 +243,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer3x3>();
 #elif defined(ACL_1908)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayerOptimized>();
-#elif defined(ACL_2002)
+#elif defined(ACL_2002) || defined(ACL_2308)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer>();
 #endif
 
@@ -242,7 +251,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo());
-#elif defined(ACL_1905) || defined(ACL_1908) || defined(ACL_2002)
+#elif defined(ACL_1905) || defined(ACL_1908) || defined(ACL_2002) || defined(ACL_2308)
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
@@ -257,14 +266,14 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         ret = Conv::convLayers.insert(std::pair<OpKernel*, ACLNEConv>((OpKernel*)this, tconv));
         return s;
       }
-#endif  //DEPTHWISE_CPU
+#endif  // DEPTHWISE_CPU
     } else {
-      if(tconv.k->info()->tensor_shape()[0] == 1 && tconv.k->info()->tensor_shape()[1] == 1) {
+      if (tconv.k->info()->tensor_shape()[0] == 1 && tconv.k->info()->tensor_shape()[1] == 1) {
         LOGS_DEFAULT(VERBOSE) << "CPU pointwise convolution";
         Status s = onnxruntime::Conv<T>::Compute(context);
         return s;
       } else {
-        if(tconv.k->info()->tensor_shape()[0] == 9 && tconv.k->info()->tensor_shape()[1] == 9) {
+        if (tconv.k->info()->tensor_shape()[0] == 9 && tconv.k->info()->tensor_shape()[1] == 9) {
           LOGS_DEFAULT(WARNING) << "9x9 DirectConvolution does not have an implementation in NCHW layout; defaulting to cpu implementation";
           Status s = onnxruntime::Conv<T>::Compute(context);
           return s;
@@ -290,15 +299,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     ACLPrintTensorShape("Y", *tconv.out.get());
 
   } else {
-    //TODO: valildate shapes
+    // TODO: valildate shapes
     pConv = &it->second;
   }
 
   const T* x_data = X->Data<T>();
-  if(X->Shape().Size() != 0 && pConv->in->info()->has_padding() ){
+  if (X->Shape().Size() != 0 && pConv->in->info()->has_padding()) {
     pConv->in->allocator()->allocate();
     importDataToTensor<T>(pConv->in.get(), x_data);
-  }else{
+  } else {
     ACLImportMemory(pConv->in->allocator(), (void*)x_data, X->Shape().Size() * 4);
   }
 
@@ -311,7 +320,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   }
 
   T* y_data = Y->MutableData<T>();
-  if(Y->Shape().Size() != 0 && pConv->out->info()->has_padding() ){
+  if (Y->Shape().Size() != 0 && pConv->out->info()->has_padding()) {
     pConv->out->allocator()->allocate();
   } else {
     ACLImportMemory(pConv->out->allocator(), (void*)y_data, Y->Shape().Size() * 4);
@@ -322,7 +331,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   pConv->layer->run();
   pConv->mm_layer->clear();
 
-  if(Y->Shape().Size() != 0 && pConv->out->info()->has_padding() ){
+  if (Y->Shape().Size() != 0 && pConv->out->info()->has_padding()) {
     importDataFromTensor<T>(pConv->out.get(), y_data);
   }
 

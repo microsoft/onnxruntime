@@ -5,7 +5,11 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/nhwc_inference_context.h"
 #include "core/graph/contrib_ops/quantization_defs.h"
-
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(InferenceContext& ctx, bool use_dilation, bool require_kernel_shape, int input1Idx,
                             int input2Idx);
@@ -207,10 +211,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
 
           // validate scale and zero points
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), true);
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), true);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          onnxruntime::contrib::ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
 
           if (getAttribute(ctx, "channels_last", 0) == 0) {
             ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);
@@ -379,5 +383,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     NhwcConv,
     1,
     OpSchema().FillUsing(ConvOpSchemaGenerator()));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(NhwcFusedConv, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(
+NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
+Only has fp16 implementation as of 2023/04/15.
+)DOC")
+                                .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+                                .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+                                .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+                                .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+                                .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
+                                .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("activation", "", AttributeProto::STRING, OPTIONAL_VALUE)
+                                .Attr("activation_params", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
+                                .Input(0, "X", "", "T")
+                                .Input(1, "W", "", "T")
+                                .Input(2, "B", "", "T", OpSchema::Optional)
+                                .Input(3, "Z", "Tensor to be added to the output, must be the same shape and format as the output tensor.", "T", OpSchema::Optional)
+                                .Output(0, "Y", "", "T")
+                                .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float tensors")
+                                .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  convPoolShapeInferenceNhwc(ctx, true, false, 0, 1);
+                                }));
+
 }  // namespace contrib
 }  // namespace onnxruntime

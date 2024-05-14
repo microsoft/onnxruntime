@@ -23,7 +23,7 @@ def lookup_submodule(repo, submodule_path):
         # be opened by path.
         # If accessing the URL throws a RuntimeError, we get the submodule name manually from
         # .gitmodules.
-        submodule.url
+        _ = submodule.url
         return submodule
     except RuntimeError:
         pass

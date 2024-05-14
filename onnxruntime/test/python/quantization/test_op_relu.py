@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -19,7 +18,7 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 class TestOpRelu(unittest.TestCase):
     def input_feeds(self, n, name2shape):
         input_data_list = []
-        for i in range(n):
+        for _i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
@@ -104,12 +103,12 @@ class TestOpRelu(unittest.TestCase):
         data_reader,
         activation_type,
         weight_type,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "relu_fp32.quant_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = f"relu_fp32.quant_{activation_type_str}{weight_type_str}.onnx"
 
         data_reader.rewind()
         quantize_static(
@@ -143,12 +142,12 @@ class TestOpRelu(unittest.TestCase):
         data_reader,
         activation_type,
         weight_type,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "relu_fp32.quant_dqd_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = f"relu_fp32.quant_dqd_{activation_type_str}{weight_type_str}.onnx"
 
         data_reader.rewind()
         quantize_static(
@@ -195,7 +194,8 @@ class TestOpRelu(unittest.TestCase):
             weight_type=QuantType.QUInt8,
         )
 
-    def test_quantize_relu_s8s8(self):
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
+    def test_quantize_qop_relu_s8s8(self):
         np.random.seed(1)
         model_fp32_path = "relu_fp32.onnx"
         self.construct_model_gemm(model_fp32_path)
@@ -208,6 +208,13 @@ class TestOpRelu(unittest.TestCase):
             weight_type=QuantType.QInt8,
             extra_options={"ActivationSymmetric": True},
         )
+
+    def test_quantize_qdq_relu_s8s8(self):
+        np.random.seed(1)
+        model_fp32_path = "relu_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
         self.static_quant_test_qdq(
             model_fp32_path,
             data_reader,

@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template<typename TIndex>
+template <typename TIndex>
 void ComputeSliceOffsetsImpl(
     cudaStream_t stream,
     const int64_t batch_dims,
@@ -29,7 +29,7 @@ void GatherNDImpl(
     const size_t slice_size,
     const int64_t* input_slice_offsets_data);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 template <typename T>
 void GatherNDGradImpl(
     cudaStream_t stream,

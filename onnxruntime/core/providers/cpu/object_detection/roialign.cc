@@ -18,6 +18,7 @@
 #include "roialign.h"
 
 #include <cmath>
+#include <core/common/safeint.h>
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
@@ -26,25 +27,25 @@
 using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {
-#define ADD_VERSIONED_TYPED_ROIALIGN_OP(data_type)                  \
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
-    RoiAlign,                                                       \
-    10,                                                             \
-    15,                                                             \
-    data_type,                                                      \
-    KernelDefBuilder()                                              \
-    .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
-    .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),  \
-    RoiAlign<data_type>);
+#define ADD_VERSIONED_TYPED_ROIALIGN_OP(data_type)                        \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                               \
+      RoiAlign,                                                           \
+      10,                                                                 \
+      15,                                                                 \
+      data_type,                                                          \
+      KernelDefBuilder()                                                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),  \
+      RoiAlign<data_type>);
 
 ADD_VERSIONED_TYPED_ROIALIGN_OP(float);
 ADD_VERSIONED_TYPED_ROIALIGN_OP(double);
 
-#define ADD_TYPED_ROIALIGN_OP(data_type)                                                                \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 16, data_type,                                               \
-                                 KernelDefBuilder()                                                     \
-                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>())    \
-                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),     \
+#define ADD_TYPED_ROIALIGN_OP(data_type)                                                             \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 16, data_type,                                            \
+                                 KernelDefBuilder()                                                  \
+                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
+                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),  \
                                  RoiAlign<data_type>);
 
 ADD_TYPED_ROIALIGN_OP(float);
@@ -62,7 +63,7 @@ struct PreCalc {
   T w3;
   T w4;
 };
-//TODO: fix the warnings
+// TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 // Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
@@ -86,7 +87,7 @@ static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t wi
           T y = yy;
           // deal with: inverse elements are out of feature map boundary
           if (y < -1.0 || y > height || x < -1.0 || x > width) {
-            auto& pc = pre_calc[pre_calc_index];
+            auto& pc = pre_calc[onnxruntime::narrow<size_t>(pre_calc_index)];
             pc.pos1 = 0;
             pc.pos2 = 0;
             pc.pos3 = 0;
@@ -144,7 +145,7 @@ static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t wi
           pc.w2 = w2;
           pc.w3 = w3;
           pc.w4 = w4;
-          pre_calc[pre_calc_index] = pc;
+          pre_calc[onnxruntime::narrow<size_t>(pre_calc_index)] = pc;
 
           pre_calc_index += 1;
         }
@@ -162,7 +163,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
   int64_t pooled_height = output_shape[2];
   int64_t pooled_width = output_shape[3];
 
-  //100 is a random chosed value, need be tuned
+  // 100 is a random chosed value, need be tuned
   double cost = static_cast<double>(channels * pooled_width * pooled_height * 100);
 
   ThreadPool::TryParallelFor(ttp, static_cast<ptrdiff_t>(n_rois), cost, [&](ptrdiff_t n, ptrdiff_t end) {
@@ -196,11 +197,11 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
           (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
 
       // We do average (integral) pooling inside a bin
-      const int64_t count = std::max(roi_bin_grid_h * roi_bin_grid_w, static_cast<int64_t>(1)); // e.g. = 4
+      const int64_t count = std::max(roi_bin_grid_h * roi_bin_grid_w, static_cast<int64_t>(1));  // e.g. = 4
 
       // we want to precalculate indices and weights shared by all channels,
       // this is the key point of optimization
-      std::vector<PreCalc<T>> pre_calc(roi_bin_grid_h * roi_bin_grid_w * pooled_width * pooled_height);
+      std::vector<PreCalc<T>> pre_calc(roi_bin_grid_h * roi_bin_grid_w * pooled_width * SafeInt<size_t>(pooled_height));
       PreCalcForBilinearInterpolate(height, width, pooled_height, pooled_width, roi_bin_grid_h, roi_bin_grid_w,
                                     roi_start_h, roi_start_w, bin_size_h, bin_size_w, roi_bin_grid_h,
                                     roi_bin_grid_w, pre_calc);
@@ -219,7 +220,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
             if (mode == RoiAlignMode::avg) {  // avg pooling
               for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
                 for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
-                  const auto& pc = pre_calc[pre_calc_index];
+                  const auto& pc = pre_calc[onnxruntime::narrow<size_t>(pre_calc_index)];
                   output_val += pc.w1 * offset_bottom_data[pc.pos1] + pc.w2 * offset_bottom_data[pc.pos2] +
                                 pc.w3 * offset_bottom_data[pc.pos3] + pc.w4 * offset_bottom_data[pc.pos4];
 
@@ -231,7 +232,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
               bool max_flag = false;
               for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
                 for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
-                  const auto& pc = pre_calc[pre_calc_index];
+                  const auto& pc = pre_calc[onnxruntime::narrow<size_t>(pre_calc_index)];
                   T val = std::max(
                       std::max(std::max(pc.w1 * offset_bottom_data[pc.pos1], pc.w2 * offset_bottom_data[pc.pos2]),
                                pc.w3 * offset_bottom_data[pc.pos3]),

@@ -79,7 +79,7 @@ TensorDesc::TensorDesc(
             dimension0 *= dimensions[i];
         }
 
-        for (size_t i = coerceAxis + 1, ci = dimensions.size(); i < ci; ++i)
+        for (size_t i = static_cast<int64_t>(coerceAxis) + 1, ci = dimensions.size(); i < ci; ++i)
         {
             dimension1 *= dimensions[i];
         }
@@ -212,12 +212,20 @@ gsl::span<const uint32_t> TensorDesc::GetStrides() const
 
 void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
 {
+    m_bufferTensorDesc.Strides = strides.empty() ? nullptr : strides.data();
+
     if (!strides.empty())
     {
         ML_CHECK_VALID_ARGUMENT(strides.size() <= std::size(m_strides));
-        m_bufferTensorDesc.Strides = strides.data();
+        ML_CHECK_VALID_ARGUMENT(strides.size() == m_bufferTensorDesc.DimensionCount);
         std::copy(strides.begin(), strides.end(), m_strides);
     }
+
+    m_bufferTensorDesc.TotalTensorSizeInBytes = DMLCalcBufferTensorSize(
+        m_bufferTensorDesc.DataType,
+        m_bufferTensorDesc.DimensionCount,
+        m_sizes,
+        strides.empty() ? nullptr : m_strides);
 }
 
 DML_TENSOR_DESC TensorDesc::GetDmlDesc()
@@ -244,7 +252,7 @@ DML_TENSOR_DESC TensorDesc::GetDmlDesc()
 // requires coercion by the caller.
 void TensorDesc::ForceUnsignedDataType()
 {
-    static_assert(ApiTraits::EnumValueCount<DML_TENSOR_DATA_TYPE> == 12, "New tensor data type.  Update cases.");
+    static_assert(ApiTraits::EnumValueCount<DML_TENSOR_DATA_TYPE> == 14, "New tensor data type.  Update cases.");
 
     switch (m_bufferTensorDesc.DataType)
     {
@@ -264,11 +272,16 @@ void TensorDesc::ForceUnsignedDataType()
         m_bufferTensorDesc.DataType = DML_TENSOR_DATA_TYPE_UINT8;
         break;
 
+    case DML_TENSOR_DATA_TYPE_INT4:
+        m_bufferTensorDesc.DataType = DML_TENSOR_DATA_TYPE_UINT4;
+        break;
+
     // Nothing to do if already unsigned.
     case DML_TENSOR_DATA_TYPE_UINT64:
     case DML_TENSOR_DATA_TYPE_UINT32:
     case DML_TENSOR_DATA_TYPE_UINT16:
     case DML_TENSOR_DATA_TYPE_UINT8:
+    case DML_TENSOR_DATA_TYPE_UINT4:
         break;
 
     default:
@@ -306,4 +319,40 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
         std::fill(&m_strides[fillOffset], &m_strides[fillOffset] + fillCount, 0u);
     }
     m_bufferTensorDesc.DimensionCount = newDimensionCount;
+}
+
+// Uses dimensionMapping to reorder m_sizes and m_strides to match specific Tensor layout
+void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, const TensorAxis alignment)
+{
+    EnsureStridesExist();
+    SetDimensionCount(static_cast<uint32_t>(dimensionMapping.size()), alignment);
+
+    // Shuffle m_sizes and m_strides according to the indexes pointed by dimensionMapping
+    std::vector<uint32_t> tempSizes{m_sizes, m_sizes + MaximumDimensionCount};
+    std::vector<uint32_t> tempStrides{m_strides, m_strides + MaximumDimensionCount};
+
+    for (size_t i = 0; i < dimensionMapping.size(); i++)
+    {
+        m_sizes[i] = tempSizes[dimensionMapping[i]];
+        m_strides[i] = tempStrides[dimensionMapping[i]];
+    }
+
+    m_bufferTensorDesc.Sizes = m_sizes;
+    m_bufferTensorDesc.Strides = m_strides;
+}
+
+void TensorDesc::EnsureStridesExist()
+{
+    if (m_bufferTensorDesc.Strides != nullptr)
+    {
+        // Strides are populated
+        return;
+    }
+
+    uint32_t stride = 1;
+    for (uint32_t i = m_bufferTensorDesc.DimensionCount; i-- > 0;)
+    {
+        m_strides[i] = stride;
+        stride *= m_sizes[i];
+    }
 }

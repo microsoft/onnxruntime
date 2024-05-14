@@ -6,6 +6,7 @@
 #include "test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "core/framework/model_metadef_id_generator.h"
 
 #include "gtest/gtest.h"
 
@@ -18,11 +19,14 @@ class TestEP : public IExecutionProvider {
   static constexpr const char* kEPType = "TestEP";
 
  public:
-  TestEP() : IExecutionProvider{kEPType, true} {}
+  TestEP() : IExecutionProvider{kEPType} {}
 
   int GetId(const GraphViewer& viewer, HashValue& model_hash) {
-    return GenerateMetaDefId(viewer, model_hash);
+    return metadef_id_generator_.GenerateId(viewer, model_hash);
   }
+
+ private:
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 
 TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelPath) {
@@ -39,7 +43,7 @@ TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelPath) {
     HashValue model_hash;
     int id = ep.GetId(viewer, model_hash);
     ASSERT_EQ(id, 0);
-    ASSERT_NE(model_hash, 0);
+    ASSERT_NE(model_hash, 0u);
 
     for (int i = 1; i < 4; ++i) {
       HashValue cur_model_hash;
@@ -70,7 +74,7 @@ TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelHashing) {
   HashValue model_hash;
   int id = ep.GetId(viewer, model_hash);
   ASSERT_EQ(id, 0);
-  ASSERT_NE(model_hash, 0);
+  ASSERT_NE(model_hash, 0u);
 
   // now load the model from bytes and check the hash differs
   std::ifstream model_file_stream(model_path, std::ios::in | std::ios::binary);

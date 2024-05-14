@@ -44,7 +44,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   // Allocate output tensor.
   Tensor* output = ctx->Output(0, {});
   HipTOut* p_output = reinterpret_cast<HipTOut*>(output->template MutableData<TOut>());
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(p_output, 0, sizeof(HipTOut), Stream()));
+  HIP_RETURN_IF_ERROR(hipMemsetAsync(p_output, 0, sizeof(HipTOut), Stream(ctx)));
 
   // const bool deterministic = ctx->GetUseDeterministicCompute();
   bool deterministic = true;
@@ -55,12 +55,12 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
 
     // Check if all values are finite and write true to deviceOutput.
     // Otherwise, false will be written.
-    launch_multi_tensor_functor<1, TFunctor>(Stream(),
+    launch_multi_tensor_functor<1, TFunctor>(Stream(ctx),
                                              2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, p_output);
 
     // *p_output is the squared sum of all elements.
     // Let's take a sqrt to get the actual L2-norm.
-    ScalarSqrt(Stream(), p_output, p_output);
+    ScalarSqrt(Stream(ctx), p_output, p_output);
   } else {
     // alternate path only for deterministic compute ..
     typedef AccumulationType_t<HipTOut> HipTAcc;
@@ -77,12 +77,12 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
         std::max(reduction_buffer_size, compute_reduction_buffer_size<HipTAcc>(total_tensor_count));
 
     // create GPU scratch space and zero target for each tensor square norm
-    auto reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size);
+    auto reduction_buffer = GetScratchBuffer<void>(reduction_buffer_size, ctx->GetComputeStream());
 
     // buffer for final output and square norms of each tensor
-    auto results_buffer = GetScratchBuffer<HipTAcc>(1 + total_tensor_count);
+    auto results_buffer = GetScratchBuffer<HipTAcc>(1 + total_tensor_count, ctx->GetComputeStream());
 
-    HIP_RETURN_IF_ERROR(hipMemsetAsync(results_buffer.get(), 0, sizeof(HipTAcc) * (1 + total_tensor_count), Stream()));
+    HIP_RETURN_IF_ERROR(hipMemsetAsync(results_buffer.get(), 0, sizeof(HipTAcc) * (1 + total_tensor_count), Stream(ctx)));
 
     HipTAcc* p_global_sqnorm = results_buffer.get();
     HipTAcc* p_tensor_sqnorm = p_global_sqnorm + 1;
@@ -91,11 +91,11 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     for (int i = 0; i < total_tensor_count; ++i) {
       HipTIn* p_tensor_i = reinterpret_cast<HipTIn*>(grouped_tensor_pointers[i][0]);
       ORT_RETURN_IF_ERROR(reduce_square_sum(
-          Stream(), p_tensor_i, p_tensor_sqnorm + i, tensor_sizes[i], reduction_buffer.get(), reduction_buffer_size));
+          Stream(ctx), p_tensor_i, p_tensor_sqnorm + i, tensor_sizes[i], reduction_buffer.get(), reduction_buffer_size));
     }
     ORT_RETURN_IF_ERROR(reduce_sum(
-        Stream(), p_tensor_sqnorm, p_global_sqnorm, total_tensor_count, reduction_buffer.get(), reduction_buffer_size));
-    ScalarSqrt(Stream(), p_global_sqnorm, p_output);
+        Stream(ctx), p_tensor_sqnorm, p_global_sqnorm, total_tensor_count, reduction_buffer.get(), reduction_buffer_size));
+    ScalarSqrt(Stream(ctx), p_global_sqnorm, p_output);
   }
 
   return Status::OK();

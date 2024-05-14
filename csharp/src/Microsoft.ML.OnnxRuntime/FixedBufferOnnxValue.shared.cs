@@ -3,25 +3,26 @@
 
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.Buffers;
 
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
+    /// This is a legacy class that is kept for backward compatibility.
+    /// Use OrtValue based API.
+    /// 
     /// Represents an OrtValue with its underlying buffer pinned
     /// </summary>
     public class FixedBufferOnnxValue : IDisposable
     {
         private bool _disposed = false;
-        internal MemoryHandle PinnedMemory { get; private set; }
         internal OrtValue Value { get; private set; }
         internal OnnxValueType OnnxValueType { get; private set; }
         internal TensorElementType ElementType { get; private set; }
 
-        private FixedBufferOnnxValue(MemoryHandle pinnedMemory, OrtValue ortValue, OnnxValueType onnxValueType, TensorElementType elementType)
+        private FixedBufferOnnxValue(ref OrtValue ortValue, OnnxValueType onnxValueType, TensorElementType elementType)
         {
-            PinnedMemory = pinnedMemory;
             Value = ortValue;
+            ortValue = null;
             OnnxValueType = onnxValueType;
             ElementType = elementType;
         }
@@ -34,19 +35,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>a disposable instance of FixedBufferOnnxValue</returns>
         public static FixedBufferOnnxValue CreateFromTensor<T>(Tensor<T> value)
         {
-            MemoryHandle? memHandle;
-            var ortValue = OrtValue.CreateFromTensorObject(value, out memHandle, out TensorElementType elementType);
-            // memHandle will have a value when CreateFromTensorObject() pins managed memory and that will have to be
-            /// disposed (unpinned) when all is said is done. This is the case for blittable types but does not
-            /// happen for string type where each element has its own allocation.
-            if (memHandle.HasValue)
-            {
-                return new FixedBufferOnnxValue((MemoryHandle)memHandle, ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
-            }
-            else
-            {
-                return new FixedBufferOnnxValue(default(MemoryHandle), ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
-            }
+            var ortValue = OrtValue.CreateFromTensorObject(value, out TensorElementType elementType);
+            return new FixedBufferOnnxValue(ref ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
         }
 
         /// <summary>
@@ -99,30 +89,21 @@ namespace Microsoft.ML.OnnxRuntime
         /// \endcode
         /// </example>
         public static FixedBufferOnnxValue CreateFromMemory<T>(OrtMemoryInfo memoryInfo, Memory<T> memory,
-            TensorElementType elementType, long[] shape, long bytesSize)
+            TensorElementType elementType, long[] shape, long bytesSize) where T : unmanaged
         {
             if(elementType == TensorElementType.String)
             {
                 throw new ArgumentException("String data type is not supported");
             }
 
-            var memHandle = memory.Pin();
+            var ortValue = OrtValue.CreateTensorValueFromMemory(memoryInfo, memory, shape);
             try
             {
-                IntPtr memPtr;
-                unsafe
-                {
-                    memPtr = (IntPtr)memHandle.Pointer;
-                }
-                var ortValue = OrtValue.CreateTensorValueWithData(memoryInfo,
-                                                        elementType,
-                                                        shape,
-                                                        memPtr, bytesSize);
-                return new FixedBufferOnnxValue(memHandle, ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
+                return new FixedBufferOnnxValue(ref ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
             }
             catch (Exception)
             {
-                memHandle.Dispose();
+                ortValue?.Dispose();
                 throw;
             }
         }
@@ -143,7 +124,6 @@ namespace Microsoft.ML.OnnxRuntime
             if (disposing)
             {
                 Value.Dispose();
-                PinnedMemory.Dispose();
             }
             _disposed = true;
         }

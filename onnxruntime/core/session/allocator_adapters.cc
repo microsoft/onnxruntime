@@ -17,10 +17,18 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
       [](OrtAllocator* this_, void* p) { static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Free(p); };
   OrtAllocator::Info =
       [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Info(); };
+  if (OrtAllocator::version >= 18) {
+    OrtAllocator::Reserve =
+        [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size); };
+  }
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Alloc(size_t size) {
   return i_allocator_->Alloc(size);
+}
+
+void* OrtAllocatorImplWrappingIAllocator::Reserve(size_t size) {
+  return i_allocator_->Reserve(size);
 }
 
 void OrtAllocatorImplWrappingIAllocator::Free(void* p) {
@@ -39,6 +47,14 @@ IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAlloca
     : IAllocator(*ort_allocator->Info(ort_allocator)), ort_allocator_(ort_allocator) {}
 
 void* IAllocatorImplWrappingOrtAllocator::Alloc(size_t size) {
+  return ort_allocator_->Alloc(ort_allocator_, size);
+}
+
+void* IAllocatorImplWrappingOrtAllocator::Reserve(size_t size) {
+  if (ort_allocator_->version >= 18 && ort_allocator_->Reserve) {
+    return ort_allocator_->Reserve(ort_allocator_, size);
+  }
+
   return ort_allocator_->Alloc(ort_allocator_, size);
 }
 
@@ -134,4 +150,38 @@ ORT_API_STATUS_IMPL(OrtApis::UnregisterAllocator, _Inout_ OrtEnv* env,
 
 ORT_API(void, OrtApis::ReleaseAllocator, _Frees_ptr_opt_ OrtAllocator* allocator) {
   delete static_cast<onnxruntime::OrtAllocatorImpl*>(allocator);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+                    _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
+  using namespace onnxruntime;
+  std::unordered_map<std::string, std::string> options;
+  for (size_t i = 0; i != num_keys; i++) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
+    }
+
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Maximum string length for a provider options key/value is 1024.");
+    }
+
+    options[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  if (!env) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
+  }
+
+  if (!mem_info) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtMemoryInfo is null");
+  }
+
+  auto st = env->CreateAndRegisterAllocatorV2(provider_type, *mem_info, options, arena_cfg);
+
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+  }
+  return nullptr;
 }

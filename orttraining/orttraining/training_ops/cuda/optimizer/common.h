@@ -3,7 +3,6 @@
 
 #pragma once
 #include "core/providers/cuda/cuda_common.h"
-#include "orttraining/training_ops/cpu/optimizer/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -18,6 +17,9 @@ Status CopyIfNotSameBuffer(cudaStream_t stream, const Tensor& source_tensor, Ten
   }
   return Status::OK();
 }
+
+Status CopyIfNotSameCUDABuffer(OpKernelContext* ctx, size_t number_of_values, const TensorSeq* values,
+                               TensorSeq* updated_values);
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -4,21 +4,36 @@
 #include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "core/providers/get_execution_providers.h"
+#include "onnxruntime_config.h"
 
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
 
-void CreateInferencePybindStateModule(py::module& m);
+#if defined(USE_MPI) && defined(ORT_USE_NCCL)
+static constexpr bool HAS_COLLECTIVE_OPS = true;
+#else
+static constexpr bool HAS_COLLECTIVE_OPS = false;
+#endif
+
+bool CreateInferencePybindStateModule(py::module& m);
+void CreateQuantPybindModule(py::module& m);
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
-  CreateInferencePybindStateModule(m);
+  if (!CreateInferencePybindStateModule(m)) {
+    throw pybind11::import_error();
+  }
   // move it out of shared method since training build has a little different behavior.
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableExecutionProviderNames(); },
       "Return list of available Execution Providers in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
+
+  m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
+  m.def("get_build_info", []() -> std::string { return ORT_BUILD_INFO; });
+  m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
+  CreateQuantPybindModule(m);
 }
 }  // namespace python
 }  // namespace onnxruntime

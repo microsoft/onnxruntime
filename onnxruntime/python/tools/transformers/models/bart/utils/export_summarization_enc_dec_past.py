@@ -154,9 +154,9 @@ def _decoder_forward_wrapper(model: BartForConditionalGeneration, decoder_config
         else:
             decoder_config.is_decoder_exported = True
 
-        input_names = ["input_ids", "encoder_attention_mask", "encoder_hidden_states"] + input_past_names
+        input_names = ["input_ids", "encoder_attention_mask", "encoder_hidden_states", *input_past_names]
         output_past_names = export_helper.get_output_names(past_outputs)
-        output_names = ["logits"] + output_past_names
+        output_names = ["logits", *output_past_names]
 
         sequence_length = "1"
         num_heads = str(decoder_config.encoder_attention_heads)
@@ -216,7 +216,7 @@ def _decoder_forward_wrapper(model: BartForConditionalGeneration, decoder_config
             sess = InferenceSession(onnx_model_path, sess_options, providers=["CPUExecutionProvider"])
             out = sess.run(None, ort_inputs)
 
-            for ort_out, torch_out in zip(out, [logits] + present):
+            for ort_out, torch_out in zip(out, [logits, *present]):
                 torch.testing.assert_close(ort_out, torch_out.cpu().numpy(), check_dtype=True, atol=1e-4, rtol=1e-2)
 
             print("========== [SUCCESS] ORT inference test on Decoder ==========")
@@ -249,7 +249,6 @@ def export_decoder(args):
     config = decoder_config_update(config)
 
     with torch.no_grad():
-
         model, input_data = export_helper.initialize_model(config, tokenizer, args)
         start_time = time.time()
 

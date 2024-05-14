@@ -12,7 +12,6 @@ typedef const wchar_t* PATH_TYPE;
 typedef const char* PATH_TYPE;
 #endif
 
-//empty
+// empty
 static inline void ORT_API_CALL MyLoggingFunction(void*, OrtLoggingLevel, const char*, const char*, const char*, const char*) {
 }
-

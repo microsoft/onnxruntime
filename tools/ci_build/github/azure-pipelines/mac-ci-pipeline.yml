@@ -1,19 +1,36 @@
-jobs:
-- template: templates/mac-ci.yml
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
+stages:
+- template: templates/mac-cpu-packaging-pipeline.yml
   parameters:
-    DoNugetPack: 'false'
-    BuildCommand: >-
-      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py
-      --config Debug
-      --build_dir $(Build.BinariesDirectory)
-      --build_wheel
-      --skip_submodule_sync
-      --parallel
-      --build_shared_lib
-      --build_java
-      --build_nodejs
-      --build_objc
-      --enable_language_interop_ops
-    # Enable unreleased onnx opsets in CI builds
-    # This facilitates testing the implementation for the new opsets
-    AllowReleasedOpsetOnly: '0'
+    AllowReleasedOpsetOnly: 0
+    BuildForAllArchs: false
+    AdditionalBuildFlags: --build_objc --enable_language_interop_ops --build_wheel --use_xnnpack
+    WithCache: true

@@ -12,10 +12,11 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/logging/sinks/cerr_sink.h"
-#include "core/framework/allocatormgr.h"
 #include "core/session/environment.h"
 #include "core/framework/ort_value.h"
 #include "core/session/inference_session.h"
+
+#include <variant>
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
 
@@ -40,6 +41,8 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type);
 
 using MemCpyFunc = void (*)(void*, const void*, size_t);
+
+using DataTransferAlternative = std::variant<const DataTransferManager*, MemCpyFunc>;
 
 void CpuToCpuMemCpy(void*, const void*, size_t);
 
@@ -74,6 +77,32 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer();
 
 #endif
 
+#ifdef USE_DML
+
+AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id);
+
+void CpuToDmlMemCpy(void* dst, const void* src, size_t num_bytes);
+
+void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction();
+
+#endif
+
+#ifdef USE_CANN
+
+void CpuToCannMemCpy(void* dst, const void* src, size_t num_bytes);
+
+void CannToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCannToHostMemCpyFunction();
+
+bool IsCannDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
+
+AllocatorPtr GetCannAllocator(OrtDevice::DeviceId id);
+
+#endif
+
 #ifdef USE_ROCM
 
 bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
@@ -92,9 +121,42 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
                           const std::string& name_input, const pybind11::object& value, OrtValue* p_mlvalue,
                           bool accept_only_numpy_array = false, bool use_numpy_data_memory = true, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy);
 
-void GetPyObjFromTensor(const Tensor& rtensor, pybind11::object& obj,
-                        const DataTransferManager* data_transfer_manager = nullptr,
-                        const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
+pybind11::object GetPyObjFromTensor(const OrtValue& rtensor,
+                                    const DataTransferManager* data_transfer_manager = nullptr,
+                                    const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
+
+// The below two functions are used to convert OrtValue to numpy arrays
+
+/// <summary>
+/// This function operates on string tensors. Strings are always
+/// copied to python and converted to UTF-16/UCS-4/32 depending on the platform.
+/// This is accomplished using py::cast()
+///
+/// It is an error to pass a non-tensor or a non-string tensor to this function.
+/// </summary>
+/// <param name="tensor">Tensor that contains strings</param>
+/// <returns>py::array object</returns>
+pybind11::array StringTensorToNumpyArray(const Tensor& tensor);
+
+/// <summary>
+/// Creates a numpy array with shape over OrtValue memory. Numpy array
+/// does not own the memory, but it holds a copy or OrtValue in a py::capsule.
+/// OrtValue is destroyed when the numpy array is garbage collected.
+/// This is used when the OrtValue memory is on CPU.
+/// </summary>
+/// <param name="ort_value">OrtValue with data</param>
+/// <returns>numpy array</returns>
+pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value);
+
+/// <summary>
+/// Creates a numpy array with shape with a copy of OrtValue data.
+/// This function is used when the OrtValue memory is not on CPU.
+/// </summary>
+/// <param name="ort_value">Source memory that is not on CPU.</param>
+/// <param name="data_transfer">a variant encapsulating alternatives for copying data</param>
+/// <returns></returns>
+pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
+                                                 const DataTransferAlternative& data_transfer);
 
 template <class T>
 struct DecRefFn {

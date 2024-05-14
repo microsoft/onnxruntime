@@ -8,10 +8,6 @@ set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/winml/lib/Common/inc
   ${REPO_ROOT}/onnxruntime
   ${REPO_ROOT}/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/D3DX12
-  ${REPO_ROOT}/cmake/external/googletest/googletest/include
-  ${REPO_ROOT}/cmake/external/protobuf/src
-  ${REPO_ROOT}/cmake/external/wil/include
-  ${REPO_ROOT}/cmake/external/SafeInt
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
@@ -53,7 +49,10 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
+  #Abseil has a lot of C4127/C4324 warnings.
+  target_compile_options(${_UT_TARGET} PRIVATE "/wd4127")
+  target_compile_options(${_UT_TARGET} PRIVATE "/wd4324")
   target_compile_options(${_UT_TARGET} PRIVATE /wd5205)  # workaround cppwinrt SDK bug https://github.com/microsoft/cppwinrt/issues/584
 
   # if building inbox
@@ -178,13 +177,18 @@ target_compile_options(winml_test_common PRIVATE /wd5205)  # workaround cppwinrt
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
   target_compile_definitions(winml_test_common PRIVATE "BUILD_INBOX=1")
 endif()
+#Abseil has a lot of C4127/C4324 warnings.
+target_compile_options(winml_test_common PRIVATE "/wd4127")
+target_compile_options(winml_test_common PRIVATE "/wd4324")
 add_dependencies(winml_test_common
   onnx
   winml_api
   winml_dll
 )
-onnxruntime_add_include_to_target(winml_test_common onnx_proto)
+
+onnxruntime_add_include_to_target(winml_test_common onnx_proto GTest::gtest ${PROTOBUF_LIB} ${WIL_TARGET} safeint_interface ${GSL_TARGET})
 onnxruntime_add_static_library(winml_google_test_lib ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
+onnxruntime_add_include_to_target(winml_google_test_lib GTest::gtest)
 set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
@@ -269,7 +273,7 @@ target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/in
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT})
 
-onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(winml_test_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(winml_test_adapter PRIVATE ${winml_adapter_dir})

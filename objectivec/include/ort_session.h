@@ -3,6 +3,7 @@
 
 #import <Foundation/Foundation.h>
 
+#import "ort_custom_op_registration.h"
 #import "ort_enums.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -106,6 +107,23 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable instancetype)initWithError:(NSError**)error NS_SWIFT_NAME(init());
 
 /**
+ * Appends an execution provider to the session options to enable the execution provider to be used when running
+ * the model.
+ *
+ * Available since 1.14.
+ *
+ * The execution provider list is ordered by decreasing priority.
+ * i.e. the first provider registered has the highest priority.
+ *
+ * @param providerName Provider name. For example, "xnnpack".
+ * @param providerOptions Provider-specific options. For example, for provider "xnnpack", {"intra_op_num_threads": "2"}.
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the execution provider was appended successfully
+ */
+- (BOOL)appendExecutionProvider:(NSString*)providerName
+                providerOptions:(NSDictionary<NSString*, NSString*>*)providerOptions
+                          error:(NSError**)error;
+/**
  * Sets the number of threads used to parallelize the execution within nodes.
  * A value of 0 means ORT will pick a default value.
  *
@@ -170,6 +188,74 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)addConfigEntryWithKey:(NSString*)key
                         value:(NSString*)value
                         error:(NSError**)error;
+
+/**
+ * Registers custom ops for use with `ORTSession`s using this SessionOptions by calling the specified
+ * native function name. The custom ops library must either be linked against, or have previously been loaded
+ * by the user.
+ *
+ * Available since 1.14.
+ *
+ * The registration function must have the signature:
+ *    `OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);`
+ *
+ * The signature is defined in the ONNX Runtime C API:
+ * https://github.com/microsoft/onnxruntime/blob/67f4cd54fab321d83e4a75a40efeee95a6a17079/include/onnxruntime/core/session/onnxruntime_c_api.h#L697
+ *
+ * See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for more information on custom ops.
+ * See https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
+ * for an example of a custom op library registration function.
+ *
+ * @note The caller must ensure that `registrationFuncName` names a valid function that is visible to the native ONNX
+ * Runtime code and has the correct signature.
+ * They must ensure that the function does what they expect it to do because this method will just call it.
+ *
+ * @param registrationFuncName The name of the registration function to call.
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the registration function was successfully called.
+ */
+- (BOOL)registerCustomOpsUsingFunction:(NSString*)registrationFuncName
+                                 error:(NSError**)error;
+
+/**
+ * Registers custom ops for use with `ORTSession`s using this SessionOptions by calling the specified function
+ * pointed to by `registerCustomOpsFn`.
+ *
+ * Available since 1.16.
+ *
+ * The registration function must have the signature:
+ *    `OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);`
+ *
+ * The signature is defined in the ONNX Runtime C API:
+ * https://github.com/microsoft/onnxruntime/blob/67f4cd54fab321d83e4a75a40efeee95a6a17079/include/onnxruntime/core/session/onnxruntime_c_api.h#L697
+ *
+ * See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for more information on custom ops.
+ * See https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
+ * for an example of a custom op library registration function.
+ *
+ * @note The caller must ensure that `registerCustomOpsFn` is a valid function pointer and has the correct signature.
+ * They must ensure that the function does what they expect it to do because this method will just call it.
+ *
+ * @param registerCustomOpsFn A pointer to the registration function to call.
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the registration function was successfully called.
+ */
+- (BOOL)registerCustomOpsUsingFunctionPointer:(ORTCAPIRegisterCustomOpsFnPtr)registerCustomOpsFn
+                                        error:(NSError**)error;
+
+/**
+ * Registers ONNX Runtime Extensions custom ops that have been built in to ONNX Runtime.
+ *
+ * Available since 1.16.
+ *
+ * @note ONNX Runtime must have been built with the `--use_extensions` flag for the ONNX Runtime Extensions custom ops
+ * to be able to be registered with this method. When using a separate ONNX Runtime Extensions library, use
+ * `registerCustomOpsUsingFunctionPointer:error:` instead.
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the ONNX Runtime Extensions custom ops were successfully registered.
+ */
+- (BOOL)enableOrtExtensionsCustomOpsWithError:(NSError**)error;
 
 @end
 

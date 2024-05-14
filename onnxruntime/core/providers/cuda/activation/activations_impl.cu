@@ -47,7 +47,18 @@ struct OP_Selu : public CtxSelu {
 template <typename T>
 struct OP_Sigmoid : public CtxSigmoid {
   __device__ __inline__ T operator()(const T& a) const {
-    return a > T(0) ? (T)1 / ((T)1. + _Exp(-_Abs(a))) : (T)1 - (T)1 / ((T)1 + _Exp(-_Abs(a)));
+    return a > T(0) ? (T)1 / ((T)1. + _Exp(-a)) : (T)1 - (T)1 / ((T)1 + _Exp(a));
+  }
+};
+
+template <>
+struct OP_Sigmoid<half> : public CtxSigmoid {
+  __device__ __inline__ half operator()(const half& a) const {
+    // For some small negative values, it will loss precision if using half for compute.
+    // The cast between half and float below won't cause perf issue since there is cast inside _Exp if input is half.
+    float af = static_cast<float>(a);
+    float res = af > 0.0f ? 1.0f / (1.0f + _Exp(-af)) : 1.0f - 1.0f / (1.0f + _Exp(af));
+    return static_cast<half>(res);
   }
 };
 

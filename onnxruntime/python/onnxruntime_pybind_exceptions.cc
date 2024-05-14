@@ -67,5 +67,5 @@ void OrtPybindThrowIfError(onnxruntime::common::Status status) {
   }
 }
 
-}
-}
+}  // namespace python
+}  // namespace onnxruntime

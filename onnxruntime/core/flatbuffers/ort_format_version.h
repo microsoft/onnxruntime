@@ -11,7 +11,6 @@ namespace onnxruntime {
 
 // The current model versions for saving the ort format models
 // This version is NOT onnxruntime version
-// Only update this version when there is a file format change which will break the compatibilites
 // Once this model version is updated, the kSupportedOrtModelVersions in IsOrtModelVersionSupported
 // below will also need to be updated.
 // See onnxruntime/core/flatbuffers/schema/README.md for more details on versioning.
@@ -20,13 +19,15 @@ namespace onnxruntime {
 // Version 3 - add `graph_doc_string` to Model
 // Version 4 - update kernel def hashing to not depend on ordering of type constraint types (NOT BACKWARDS COMPATIBLE)
 // Version 5 - deprecate kernel def hashes and add KernelTypeStrResolver info to replace them (NOT BACKWARDS COMPATIBLE)
-constexpr const int kOrtModelVersion = 5;
+// Version 6 - add float 8 types
+constexpr const int kOrtModelVersion = 6;
 
 // Check if the given ort model version is supported in this build
 inline bool IsOrtModelVersionSupported(const int ort_model_version) {
   // The ort model versions we will support in this build
   // This may contain more versions than the kOrtModelVersion, based on the compatibilities
   constexpr std::array kSupportedOrtModelVersions{
+      kOrtModelVersion - 1,
       kOrtModelVersion,
   };
 

@@ -8,6 +8,9 @@
 #include "core/providers/acl/acl_execution_provider.h"
 
 // ACL
+#ifdef ACL_2308
+#include "arm_compute/runtime/Tensor.h"
+#endif
 #include "arm_compute/core/TensorInfo.h"
 #include "arm_compute/runtime/TensorAllocator.h"
 #include "arm_compute/runtime/Allocator.h"
@@ -57,5 +60,5 @@ class Conv : public onnxruntime::Conv<T> {
 
   arm_compute::TensorShape ACLReshapeWeightsDepthwise(arm_compute::Tensor* kernel) const;
 };
-}  // namespace mkl_dnn
+}  // namespace acl
 }  // namespace onnxruntime

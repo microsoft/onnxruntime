@@ -113,8 +113,8 @@ template <typename T>
 Status Softmax<T>::ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
                                concurrency::ThreadPool* thread_pool) const {
   const auto& X_shape = input.Shape();
-  const size_t N = X_shape.SizeToDimension(axis);
-  const size_t D = X_shape.SizeFromDimension(axis);
+  const size_t N = onnxruntime::narrow<size_t>(X_shape.SizeToDimension(axis));
+  const size_t D = onnxruntime::narrow<size_t>(X_shape.SizeFromDimension(axis));
 
   return SoftmaxCPU<T>(N, D, input.Data<T>(), output.MutableData<T>(), log_softmax_, thread_pool);
 }
@@ -171,8 +171,8 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_
     intermediate_output = std::move(temp_output);
   }
 
-  const size_t N = is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(rank - 1);
-  const size_t D = is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(rank - 1);
+  const size_t N = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeToDimension(rank - 1) : X_shape.SizeToDimension(rank - 1));
+  const size_t D = onnxruntime::narrow<size_t>(is_transpose_required ? TensorShape(transposed_input_dims).SizeFromDimension(rank - 1) : X_shape.SizeFromDimension(rank - 1));
 
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(N, D,
                                     is_transpose_required ? transposed_input.Data<T>() : input.Data<T>(),

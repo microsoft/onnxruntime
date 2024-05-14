@@ -3,15 +3,9 @@
 
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
-
 #include "core/common/inlined_containers.h"
+#include "core/common/span_utils.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
@@ -23,6 +17,10 @@ namespace graph_utils {
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
+                                       std::string_view domain = kOnnxDomain);
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       std::string_view op_type,
+                                       gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain = kOnnxDomain);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -61,6 +59,11 @@ const std::string& GetNodeOutputName(const Node& node, int index);
 */
 const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
 
+/** Move the input edges that src_node has to target_node.
+After the move is complete src_node will have no input edges.
+*/
+void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node);
+
 /** Removes all output edges from the given Node of the Graph.
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
@@ -91,6 +94,9 @@ struct GraphEdge {
   /** Returns a vector of the input GraphEdges of a node. */
   static std::vector<GraphEdge> GetNodeInputEdges(const Node& node);
 
+  /** Returns a vector of the input GraphEdges of a node for the provided input index. */
+  static std::vector<GraphEdge> GetNodeInputEdges(const Node& node, size_t index);
+
   /** Returns a vector of the output GraphEdges of a node. */
   static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node);
 
@@ -103,7 +109,6 @@ struct GraphEdge {
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD)
 /** Checks if the node has the same operator since version as the given one. */
 bool MatchesOpSinceVersion(const Node& node, std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions);
 bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions);
@@ -111,6 +116,7 @@ bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::Ope
 /** Checks if the node has the same op set domain as the given one. */
 bool MatchesOpSetDomain(const Node& node, std::string_view domain);
 
+#if !defined(ORT_MINIMAL_BUILD)
 /** Returns true if the execution provider assigned to current node is present in the compatible providers list
     or if the compatible_providers list is empty. */
 bool IsSupportedProvider(const Node& node,
@@ -282,7 +288,7 @@ inline void FinalizeNodeFusion(Graph& graph,
                                std::initializer_list<std::reference_wrapper<Node>> nodes,
                                Node& replacement_node_start,
                                Node& replacement_node_end) {
-  FinalizeNodeFusion(graph, gsl::make_span(nodes), replacement_node_start, replacement_node_end);
+  FinalizeNodeFusion(graph, AsSpan(nodes), replacement_node_start, replacement_node_end);
 }
 
 /** Finalize the fusion of two or more nodes which are being replaced with a single node.
@@ -300,7 +306,7 @@ inline void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrap
 }
 
 inline void FinalizeNodeFusion(Graph& graph, std::initializer_list<std::reference_wrapper<Node>> nodes, Node& replacement_node) {
-  FinalizeNodeFusion(graph, gsl::make_span(nodes.begin(), nodes.end()), replacement_node, replacement_node);
+  FinalizeNodeFusion(graph, AsSpan(nodes), replacement_node, replacement_node);
 }
 
 /** Find the source node of an input edge for a specified input index.
@@ -353,7 +359,7 @@ struct EdgeEndToMatch {
 bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
 
 inline bool FindPath(const Node& node, bool is_input_edge, std::initializer_list<EdgeEndToMatch> edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
-  return FindPath(node, is_input_edge, gsl::make_span(edges_to_match), result, logger);
+  return FindPath(node, is_input_edge, AsSpan(edges_to_match), result, logger);
 }
 
 /** Same as FindPath above, but return the references of matched Node
@@ -361,7 +367,7 @@ inline bool FindPath(const Node& node, bool is_input_edge, std::initializer_list
 bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger);
 
 inline bool FindPath(Graph& graph, const Node& node, bool is_input_edge, std::initializer_list<EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
-  return FindPath(graph, node, is_input_edge, gsl::make_span(edges_to_match), result, logger);
+  return FindPath(graph, node, is_input_edge, AsSpan(edges_to_match), result, logger);
 }
 
 /**

@@ -10,7 +10,7 @@
 #include "core/providers/rocm/shared_inc/rocm_call.h"
 #include "core/providers/rocm/shared_inc/fast_divmod.h"
 #include "core/util/math.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -22,6 +22,10 @@ namespace rocm {
 #define MIOPEN_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(MIOPEN_CALL(expr))
 #define MIOPEN2_RETURN_IF_ERROR(expr, m) ORT_RETURN_IF_ERROR(MIOPEN_CALL2(expr, m))
 #define HIPFFT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIPFFT_CALL(expr))
+
+#ifdef USE_HIPBLASLT
+#define HIPBLASLT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIPBLASLT_CALL(expr))
+#endif
 
 // Type mapping for MLFloat16 to half
 template <typename T>

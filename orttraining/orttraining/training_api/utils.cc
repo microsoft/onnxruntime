@@ -6,8 +6,9 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/allocator.h"
+#include "core/framework/tensorprotoutils.h"
 
-#include "orttraining/training_api/include/utils.h"
+#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -18,9 +19,9 @@ namespace utils {
 const std::vector<std::string> GRAD_SUFFIX{"_grad.accumulation.buffer", "_grad", "_grad.accumulation.out"};
 
 void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
-                              std::vector<std::string>& input_names,
-                              std::vector<std::string>& output_names) {
-  auto get_names = [](const std::vector<const NodeArg*>* node_args, std::vector<std::string>& names) {
+                              InlinedVector<std::string>& input_names,
+                              InlinedVector<std::string>& output_names) {
+  auto get_names = [](const std::vector<const NodeArg*>* node_args, InlinedVector<std::string>& names) {
     ORT_ENFORCE(nullptr != node_args);
     for (const auto* arg : *node_args) {
       names.push_back(arg->Name());
@@ -56,7 +57,7 @@ bool GetParamNameFromGradient(const std::string& grad_name, std::string& param_n
   return false;
 }
 
-Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val) {
+Status CreateZeroValuedOrtValueLike(const SessionState& sess_state, const OrtValue& input_val, OrtValue& output_val) {
   const auto& param_tensor = input_val.template Get<Tensor>();
   const TensorShape& shape = param_tensor.Shape();
   auto& tensor_location = param_tensor.Location();
@@ -85,6 +86,31 @@ Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, O
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   return Status::OK();
+}
+
+ONNX_NAMESPACE::TensorProto CopyTensorToTensorProto(const Tensor& src_tensor, const std::string& tensor_proto_name,
+                                                    const DataTransferManager& data_transfer_manager) {
+  auto& tensor_location = src_tensor.Location();
+  if (tensor_location.device.Type() != OrtDevice::CPU &&
+      tensor_location.mem_type != OrtMemTypeCPUInput &&
+      tensor_location.mem_type != OrtMemTypeCPUOutput &&
+      tensor_location.device.Type() != OrtDevice::GPU) {
+    ORT_THROW("Unsupported device type for saving tensors");
+  }
+
+  // Copy the tensor data and create TensorProto storing the data.
+  InlinedVector<char> tensor_data_buffer{};
+  tensor_data_buffer.resize(src_tensor.SizeInBytes());
+  static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+
+  gsl::span<char> dst_span = gsl::make_span(tensor_data_buffer);
+  ORT_ENFORCE(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()), "src size != dst size");
+  Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), cpu_alloc_info};
+  ORT_THROW_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
+
+  // Convert Tensor to TensorProto.
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  return onnxruntime::utils::TensorToTensorProto(dst_tensor, tensor_proto_name);
 }
 
 }  // namespace utils

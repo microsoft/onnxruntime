@@ -37,8 +37,11 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
         super().__init__(backend, parent_module=__name__)
 
     @classmethod
-    def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
-        """Asserts ref_outputs and outputs match to within the given tolerances."""
+    def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol, model_dir=None):
+        """
+        Asserts ref_outputs and outputs match to within the given tolerances.
+        The `model_dir` parameter is currently unused (added to base Runner class in onnx 1.16.0).
+        """
 
         def assert_similar_array(ref_output, output):
             np.testing.assert_equal(ref_output.dtype, output.dtype)
@@ -73,7 +76,7 @@ def apply_filters(filters, category):
     opset_version = f"opset{onnx.defs.onnx_opset_version()}"
     validated_filters = []
     for f in filters[category]:
-        if type(f) is list:
+        if type(f) is list:  # noqa: E721
             opset_regex = f[0]
             filter_regex = f[1]
             opset_match = re.match(opset_regex, opset_version)
@@ -86,14 +89,17 @@ def apply_filters(filters, category):
 
 def load_jsonc(basename: str):
     """Returns a deserialized object from the JSONC file in testdata/<basename>."""
-    with open(
-        os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            "testdata",
-            basename,
-        ),
-        encoding="utf-8",
-    ) as f:  # pylint: disable=invalid-name
+    filenames = [
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "testdata", basename),
+        os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "test", "testdata", basename)),
+    ]
+
+    filtered = [f for f in filenames if os.path.exists(f)]
+    if not filtered:
+        raise FileNotFoundError(f"No file found in {filenames!r}.")
+
+    filename = filtered[0]
+    with open(filename, encoding="utf-8") as f:  # pylint: disable=invalid-name
         lines = f.readlines()
     lines = [x.split("//")[0] for x in lines]
     return json.loads("\n".join(lines))
@@ -130,15 +136,18 @@ def create_backend_test(test_name=None):
         if backend.supports_device("NNAPI"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_NNAPI")
 
-        if backend.supports_device("OPENVINO_GPU_FP32") or backend.supports_device("OPENVINO_GPU_FP16"):
+        if backend.supports_device("OPENVINO_GPU"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_GPU")
 
-        if backend.supports_device("OPENVINO_MYRIAD"):
-            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_GPU")
-            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_MYRIAD")
-
-        if backend.supports_device("OPENVINO_CPU_FP32"):
+        if backend.supports_device("OPENVINO_CPU"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP32")
+            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP16")
+
+        if backend.supports_device("OPENVINO_NPU"):
+            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_NPU")
+
+        if backend.supports_device("OPENVINO"):
+            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_opset18")
 
         if backend.supports_device("MIGRAPHX"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_MIGRAPHX")

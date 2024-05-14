@@ -8,7 +8,7 @@
 #include <numeric>
 #include <type_traits>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "gtest/gtest.h"
 
@@ -19,6 +19,7 @@
 
 namespace onnxruntime {
 namespace test {
+#if !defined(__wasm__)
 namespace {
 template <typename T>
 Status WriteExternalDataFile(gsl::span<const T> data, const PathString& path, ScopedFileDeleter& file_deleter) {
@@ -80,7 +81,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
 
         if (offset + length <= tensor_data_span.size()) {
           Initializer i(tensor_proto, tensor_data_dir_path);
-          EXPECT_EQ(gsl::make_span(i.data<int32_t>(), i.size()), tensor_data_span.subspan(offset, length));
+          EXPECT_EQ(i.DataAsSpan<int32_t>(), tensor_data_span.subspan(offset, length));
         } else {
           EXPECT_THROW(Initializer i(tensor_proto, tensor_data_dir_path), OnnxRuntimeException);
         }
@@ -106,6 +107,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
     EXPECT_THROW(Initializer i(tensor_proto, tensor_data_dir_path), OnnxRuntimeException);
   }
 }
+#endif
 
 template <typename T>
 constexpr ONNX_NAMESPACE::TensorProto_DataType GetTensorProtoDataType();
@@ -152,7 +154,6 @@ std::vector<BFloat16> GetInitializerData<BFloat16>() {
   return data;
 }
 
-
 template <typename T>
 void TestInitializerRawData() {
   std::vector<T> data = GetInitializerData<T>();
@@ -196,7 +197,6 @@ template <>
 void AddData<BFloat16>(const std::vector<BFloat16>& data, size_t idx, ONNX_NAMESPACE::TensorProto& tensor_proto) {
   tensor_proto.add_int32_data(data[idx].val);
 }
-
 
 template <typename T>
 void TestInitializerDataField() {

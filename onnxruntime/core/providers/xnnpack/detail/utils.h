@@ -10,10 +10,10 @@
 #include <string>
 #include <utility>
 
+#include "core/framework/node_unit.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/providers/common.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 
 #include "xnnpack.h"
 
@@ -47,13 +47,16 @@ using OpQuantParam = std::vector<std::pair<std::vector<float>, uint8_t>>;
 
 enum class QuantizedOpType : uint8_t {
   QLinearConv,
+  QLinearConvTranspose,
   QLinearMaxPool,
   QlinearAvgPool,
   // QDQ operator
   QDQConv,
+  QDQConvTranspose,
   QDQMaxPool,
   QDQAvgPool,
   QDQSoftmax,
+  QDQResize,
   Unknown,
 };
 

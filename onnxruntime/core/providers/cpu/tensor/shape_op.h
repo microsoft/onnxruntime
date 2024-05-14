@@ -5,10 +5,11 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #endif
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <limits>
 
 namespace onnxruntime {
@@ -54,7 +55,7 @@ class Shape final : public OpKernel {
       Tensor* output = context->Output(0, {slice_length < 0 ? 0 : slice_length});
 
       if (slice_length > 0) {
-        input_shape.CopyDims(output->MutableData<int64_t>(), true_start, slice_length);
+        input_shape.CopyDims(output->MutableData<int64_t>(), onnxruntime::narrow<size_t>(true_start), onnxruntime::narrow<size_t>(slice_length));
       }
     }
 
@@ -67,4 +68,4 @@ class Shape final : public OpKernel {
   int64_t end_index_ = std::numeric_limits<int64_t>::max();
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

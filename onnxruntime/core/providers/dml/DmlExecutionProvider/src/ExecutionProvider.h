@@ -5,6 +5,8 @@
 
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/IExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlReusedCommandListState.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -33,8 +35,10 @@ namespace Dml
         ExecutionProviderImpl(
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
-            ID3D12CommandQueue* queue,
-            bool enableMetacommands = true);
+            Dml::ExecutionContext* executionContext,
+            bool enableMetacommands,
+            bool enableGraphCapture,
+            bool enableCpuSyncSpinning);
 
         void ReleaseCompletedReferences();
 
@@ -72,6 +76,7 @@ namespace Dml
             ) const noexcept final;
 
         STDMETHOD(CopyTensor)(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept final;
+        STDMETHOD(CopyTensors)(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept final;
 
         STDMETHOD(FillTensorWithPattern)(
             IMLOperatorTensor* dst,
@@ -125,8 +130,6 @@ namespace Dml
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const override;
         STDMETHOD_(void, Flush)() const override;
 
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
-
         // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
         void Close() override;
@@ -149,11 +152,19 @@ namespace Dml
         }
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept final;
+        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
+        bool GraphCaptureEnabled() const noexcept;
+        bool GraphCaptured(int graph_annotation_id) const;
+        Status ReplayGraph(int graph_annotation_id);
+        Status OnRunStart(const onnxruntime::RunOptions& run_options);
+        Status OnRunEnd();
+        int GetCurrentGraphAnnotationId() const { return m_currentGraphAnnotationId; }
+        void AppendCapturedGraph(int annotationId, std::unique_ptr<DmlReusedCommandListState> capturedGraph);
+        bool CpuSyncSpinningEnabled() const noexcept;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
-        std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
 
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
         GetInternalRegistrationInfoMap() const;
@@ -169,6 +180,7 @@ namespace Dml
         }
 
         onnxruntime::common::Status OnSessionInitializationEnd();
+        std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators();
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
@@ -179,20 +191,33 @@ namespace Dml
             uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         ) const;
 
+        void FlushUploadsIfReady() const;
+
         ComPtr<ID3D12Device> m_d3d12Device;
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
+        bool m_areCustomHeapsSupported = false;
         bool m_areMetacommandsEnabled = true;
-        std::shared_ptr<ExecutionContext> m_context;
+        int m_currentGraphAnnotationId = 0;
+        bool m_native16BitShaderOpsSupported = false;
+        bool m_graphCaptured = false;
+        bool m_graphCaptureEnabled = false;
+
+        std::unordered_map<int, std::vector<std::unique_ptr<DmlReusedCommandListState>>> m_capturedGraphs;
+        std::unordered_set<int> m_graphCapturingDone;
+        bool m_sessionInitialized = false;
+        bool m_cpuSyncSpinningEnabled = false;
+        ComPtr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
         std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
-        std::shared_ptr<CPUAllocator> m_cpuOutputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
         bool m_closed = false;
+        mutable std::chrono::time_point<std::chrono::steady_clock> m_lastUploadFlushTime;
+        static constexpr std::chrono::milliseconds m_batchFlushInterval = std::chrono::milliseconds(10);
     };
 
     class DataTransfer : public onnxruntime::IDataTransfer
@@ -206,12 +231,6 @@ namespace Dml
 
         onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final
         {
-            return CopyTensor(src, dst, 0);
-        }
-
-        onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst, int exec_queue_id) const final
-        {
-            assert(exec_queue_id == 0);
             return m_impl->CopyTensor(src, dst);
         }
 
@@ -238,8 +257,10 @@ namespace Dml
 
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
-            ID3D12CommandQueue* commandQueue,
-            bool enableMetacommands = true
+            Dml::ExecutionContext* executionContext,
+            bool enableMetacommands,
+            bool enableGraphCapture,
+            bool enableSyncSpinning
         );
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
@@ -266,7 +287,7 @@ namespace Dml
             return m_impl->OnSessionInitializationEnd();
         }
 
-        virtual onnxruntime::Status Sync() const final override
+        onnxruntime::Status Sync() const final override
         {
             // Completely wait until the device has completed all preceding tasks.
             // The application could have called SynchronizeBoundOutputs().
@@ -274,22 +295,19 @@ namespace Dml
             return Status::OK();
         }
 
-        virtual onnxruntime::Status OnRunEnd(bool /*sync_stream*/) final override
+        Status OnRunStart(const onnxruntime::RunOptions& run_options) final
         {
-            // Flush any pending work to the GPU, but don't block for completion, permitting it
-            // to overlap other work.
-            m_impl->Flush();
-            return Status::OK();
+            return m_impl->OnRunStart(run_options);
+        }
+
+        Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) final
+        {
+            return m_impl->OnRunEnd();
         }
 
         void Flush()
         {
             return m_impl->Flush();
-        }
-
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-        {
-            return m_impl->SetDefaultRoundingMode(roundingMode);
         }
 
         void ReleaseCompletedReferences()
@@ -307,9 +325,24 @@ namespace Dml
             return m_impl.Get();
         }
 
-        void MetacommandsEnabled()
+        virtual std::vector<onnxruntime::AllocatorPtr> CreatePreferredAllocators() override
         {
-            m_impl->MetacommandsEnabled();
+            return m_impl->CreatePreferredAllocators();
+        }
+
+        bool IsGraphCaptureEnabled() const override
+        {
+            return m_impl->GraphCaptureEnabled();
+        }
+
+        bool IsGraphCaptured(int graph_annotation_id) const override
+        {
+            return m_impl->GraphCaptured(graph_annotation_id);
+        }
+
+        Status ReplayGraph(int graph_annotation_id) override
+        {
+            return m_impl->ReplayGraph(graph_annotation_id);
         }
 
     private:

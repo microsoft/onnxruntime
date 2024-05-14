@@ -1,6 +1,7 @@
-import unittest
-import onnxruntime_pybind11_state as C
 import os
+import unittest
+
+import onnxruntime_pybind11_state as C
 
 
 class EPRegistrationTests(unittest.TestCase):
@@ -17,7 +18,7 @@ class EPRegistrationTests(unittest.TestCase):
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
         if not os.path.exists(custom_op_model):
-            raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
+            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
 
         session_options = C.get_default_session_options()
         sess = C.InferenceSession(session_options, custom_op_model, True, True)

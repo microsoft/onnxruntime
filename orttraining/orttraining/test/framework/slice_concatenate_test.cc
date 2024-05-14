@@ -23,10 +23,10 @@ typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 // Create ML value.
 OrtValue CreateTensorValue(const std::vector<int64_t>& shape, const std::vector<float>& initializer, const bool allocate_on_gpu) {
 #ifdef USE_CUDA
-  auto cpu_allocator = allocate_on_gpu ? DefaultCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault) : TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = allocate_on_gpu ? DefaultCudaExecutionProvider()->CreatePreferredAllocators()[0] : TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 #else
   ORT_ENFORCE(allocate_on_gpu != true);
-  auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 #endif
   auto element_type = onnxruntime::DataTypeImpl::GetType<float>();
 

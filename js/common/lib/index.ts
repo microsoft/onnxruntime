@@ -11,14 +11,19 @@
  * - [onnxruntime-react-native](https://www.npmjs.com/package/onnxruntime-react-native)
  *
  * See also:
- * - [Get Started](https://onnxruntime.ai/docs/get-started/with-javascript.html)
+ * - [Get Started](https://onnxruntime.ai/docs/get-started/with-javascript/)
  * - [Inference examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js)
  *
  * @packageDocumentation
  */
 
-export * from './backend';
-export * from './env';
-export * from './inference-session';
-export * from './tensor';
-export * from './onnx-value';
+export * from './backend.js';
+export * from './env.js';
+export * from './inference-session.js';
+export * from './tensor.js';
+export * from './tensor-conversion.js';
+export * from './tensor-factory.js';
+export * from './trace.js';
+export * from './onnx-model.js';
+export * from './onnx-value.js';
+export * from './training-session.js';

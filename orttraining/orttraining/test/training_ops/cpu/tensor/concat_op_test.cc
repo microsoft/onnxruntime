@@ -68,21 +68,19 @@ TEST(ConcatTrainingOpTest, Concat3D_same_len) {
 }
 
 void Setup_Concat3D_same_len_N_inputs(OpTester& test, const int num_inputs) {
-
   test.AddAttribute("axis", int64_t{1});
 
   std::vector<int64_t> dims{2, 2, 2};
 
   std::vector<float> idata(8);
-  std::vector<float> odata(8*num_inputs);
-  auto odata_at = [&odata, num_inputs] (int i, int j, int k) -> std::vector<float>::iterator {
-    return std::next(odata.begin(), 4*num_inputs*i + 2*j + k);
+  std::vector<float> odata(8 * num_inputs);
+  auto odata_at = [&odata, num_inputs](int i, int j, int k) -> std::vector<float>::iterator {
+    return std::next(odata.begin(), 4 * num_inputs * i + 2 * j + k);
   };
 
   float counter = 1.0f;
   std::stringstream ss;
   for (int i = 0; i < num_inputs; i++) {
-
     std::iota(idata.begin(), idata.end(), counter);
     counter += (float)idata.size();
 
@@ -90,12 +88,12 @@ void Setup_Concat3D_same_len_N_inputs(OpTester& test, const int num_inputs) {
     ss << "input" << i;
     test.AddInput<float>(ss.str().c_str(), dims, idata);
 
-    std::copy(idata.begin(), idata.begin() + 4, odata_at(0,2*i,0));
-    std::copy(idata.begin() + 4, idata.end(), odata_at(1,2*i,0));
+    std::copy(idata.begin(), idata.begin() + 4, odata_at(0, 2 * i, 0));
+    std::copy(idata.begin() + 4, idata.end(), odata_at(1, 2 * i, 0));
   }
 
   std::vector<int64_t> per_input_length(num_inputs, 2);
-  test.AddOutput<float>("concat_result", {2, 2*num_inputs, 2}, odata);
+  test.AddOutput<float>("concat_result", {2, 2 * num_inputs, 2}, odata);
   test.AddOutput<int64_t>("per_input_length", {num_inputs}, per_input_length);
 }
 

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/common/common.h"
@@ -233,6 +233,7 @@ void NcclService::Initialize() {
   //   CPUs
   //   Other devices
 
+#ifdef USE_MPI
   const int mpi_rank = onnxruntime::training::MPIContext::GetInstance().GetWorldRank();
   const int mpi_local_rank = onnxruntime::training::MPIContext::GetInstance().GetLocalRank();
   const int mpi_size = onnxruntime::training::MPIContext::GetInstance().GetWorldSize();
@@ -248,6 +249,7 @@ void NcclService::Initialize() {
   if (mpi_rank == 0) NCCL_CALL_THROW(ncclGetUniqueId(&id));
   MPI_CHECK(MPI_Bcast((void*)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
   NCCL_CALL_THROW(ncclCommInitRank(&comm_, mpi_size, id, mpi_rank));
+#endif  // USE_MPI
 }
 
 void NcclService::Launch() {

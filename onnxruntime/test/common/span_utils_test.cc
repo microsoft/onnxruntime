@@ -15,21 +15,21 @@ void f(gsl::span<const int64_t> s) {
   std::copy(s.begin(), s.end(), std::ostream_iterator<int64_t>(std::cout, ", "));
   std::cout << std::endl;
 }
-}
+}  // namespace
 
 TEST(Common, SpanUtilsTests) {
   {
     // list by var
     auto list = {1, 2, 3};
     auto span = AsSpan(list);
-    ASSERT_EQ(gsl::make_span(list), span);
+    ASSERT_TRUE(SpanEq(gsl::make_span(list.begin(), list.size()), span));
     // no type conversion int -> int64_t
     // use std::array
   }
 
   {
-    AsSpan({1, 2, 3}); // -> gsl::span<const int>
-    f(AsSpan<int64_t>({1, 2, 3})); //  -> gsl::span<const int64_t>
+    AsSpan({1, 2, 3});              // -> gsl::span<const int>
+    f(AsSpan<int64_t>({1, 2, 3}));  //  -> gsl::span<const int64_t>
   }
 
   {
@@ -43,7 +43,7 @@ TEST(Common, SpanUtilsTests) {
     std::vector<int64_t> vec = {1, 2, 3};
     auto span = AsSpan(vec);
     ASSERT_EQ(vec.size(), span.size());
-    ASSERT_EQ(gsl::make_span(vec), span);
+    ASSERT_TRUE(SpanEq(gsl::make_span(vec), span));
     f(span);
   }
 
@@ -51,7 +51,7 @@ TEST(Common, SpanUtilsTests) {
     InlinedVector<int64_t> vec = {1, 2, 3};
     auto span = AsSpan(vec);
     ASSERT_EQ(vec.size(), span.size());
-    ASSERT_EQ(gsl::make_span(vec), span);
+    ASSERT_TRUE(SpanEq(gsl::make_span(vec), span));
     f(span);
   }
 
@@ -60,7 +60,7 @@ TEST(Common, SpanUtilsTests) {
     int64_t arr[] = {1, 2, 3};
     auto span = AsSpan(arr);
     ASSERT_EQ(std::size(arr), span.size());
-    ASSERT_EQ(gsl::make_span(arr), span);
+    ASSERT_TRUE(SpanEq(gsl::make_span(arr), span));
     f(span);
   }
 }

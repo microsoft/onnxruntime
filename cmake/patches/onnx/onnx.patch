@@ -1,0 +1,176 @@
+﻿diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6d7ca846..69aa622f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -499,6 +499,7 @@ if (MSVC)
+   endif()
+ else()
+   # On non-Windows, hide all symbols we don't need
++  set(EXTRA_FLAGS "-Wno-unused-parameter")
+   set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
+   set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
+   set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
+@@ -653,20 +654,9 @@ endif()
+ if(MSVC)
+   target_compile_options(onnx_proto
+                          PRIVATE /MP
+-                                 /wd4244 #'argument': conversion from 'google::
+-                                         #protobuf::uint64' to 'int', possible
+-                                         # loss of data
+-                                 /wd4267 # Conversion from 'size_t' to 'int',
+-                                         # possible loss of data
+                                  ${EXTRA_FLAGS})
+   target_compile_options(onnx
+                          PRIVATE /MP
+-                                 /wd4244 # 'argument': conversion from 'google::
+-                                         # protobuf::uint64' to 'int', possible
+-                                         # loss of data
+-                                 /wd4267 # Conversion from 'size_t' to 'int',
+-                                         # possible loss of data
+-                                 /wd4996 # The second parameter is ignored.
+                                  ${EXTRA_FLAGS})
+   if(ONNX_USE_PROTOBUF_SHARED_LIBS)
+       target_compile_options(onnx_proto
+diff --git a/onnx/common/file_utils.h b/onnx/common/file_utils.h
+index b847798e..a6c31904 100644
+--- a/onnx/common/file_utils.h
++++ b/onnx/common/file_utils.h
+@@ -6,7 +6,6 @@
+ 
+ #pragma once
+ 
+-#include <filesystem>
+ #include <fstream>
+ #include <string>
+ 
+@@ -17,8 +16,7 @@ namespace ONNX_NAMESPACE {
+ 
+ template <typename T>
+ void LoadProtoFromPath(const std::string proto_path, T& proto) {
+-  std::filesystem::path proto_u8_path = std::filesystem::u8path(proto_path);
+-  std::fstream proto_stream(proto_u8_path, std::ios::in | std::ios::binary);
++  std::fstream proto_stream(proto_path, std::ios::in | std::ios::binary);
+   if (!proto_stream.good()) {
+     fail_check("Unable to open proto file: ", proto_path, ". Please check if it is a valid proto. ");
+   }
+diff --git a/onnx/defs/quantization/defs.cc b/onnx/defs/quantization/defs.cc
+index 70b4a4db..98c11545 100644
+--- a/onnx/defs/quantization/defs.cc
++++ b/onnx/defs/quantization/defs.cc
+@@ -200,6 +200,9 @@ ONNX_OPERATOR_SET_SCHEMA(
+         .SetDoc(DequantizeLinear_ver21_doc)
+         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+           propagateElemTypeFromInputToOutput(ctx, 1, 0);
++          if (!hasInputShape(ctx, 0)) {
++            return;
++          }
+           auto& input_shape = getInputShape(ctx, 0);
+           updateOutputShape(ctx, 0, input_shape);
+         }));
+diff --git a/onnx/defs/quantization/old.cc b/onnx/defs/quantization/old.cc
+index 3f2d6384..d2f7cfd8 100644
+--- a/onnx/defs/quantization/old.cc
++++ b/onnx/defs/quantization/old.cc
+@@ -130,6 +130,9 @@ ONNX_OPERATOR_SET_SCHEMA(
+         .SetDoc(DequantizeLinear_ver19_doc)
+         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+           propagateElemTypeFromInputToOutput(ctx, 1, 0);
++          if (!hasInputShape(ctx, 0)) {
++            return;
++          }
+           auto& input_shape = getInputShape(ctx, 0);
+           updateOutputShape(ctx, 0, input_shape);
+         }));
+@@ -181,7 +184,6 @@ ONNX_OPERATOR_SET_SCHEMA(
+           if (!hasInputShape(ctx, 0)) {
+             return;
+           }
+-
+           auto& input_shape = getInputShape(ctx, 0);
+           updateOutputShape(ctx, 0, input_shape);
+         }));
+diff --git a/onnx/onnx_pb.h b/onnx/onnx_pb.h
+index 0aab3e26..398ac2d6 100644
+--- a/onnx/onnx_pb.h
++++ b/onnx/onnx_pb.h
+@@ -47,10 +47,28 @@
+ #define ONNX_API ONNX_IMPORT
+ #endif
+ 
++#if defined(__GNUC__)
++#pragma GCC diagnostic push
++
++// In file included from onnx/onnx-ml.pb.h:30:
++// In file included from google/protobuf/extension_set.h:53:
++// google/protobuf/parse_context.h:328:47: error: implicit conversion loses integer precision: 'long' to 'int' [-Werror,-Wshorten-64-to-32]
++#if defined(__has_warning)
++#if __has_warning("-Wshorten-64-to-32")
++#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
++#endif
++#endif  // defined(__has_warning)
++
++#endif  // defined(__GNUC__)
++
+ #ifdef ONNX_ML
+ #include "onnx/onnx-ml.pb.h"
+ #else
+ #include "onnx/onnx.pb.h"
+ #endif
+ 
++#if defined(__GNUC__)
++#pragma GCC diagnostic pop
++#endif
++
+ #endif // ! ONNX_ONNX_PB_H
+diff --git a/onnx/shape_inference/implementation.cc b/onnx/shape_inference/implementation.cc
+index fab1faf2..8723dcd4 100644
+--- a/onnx/shape_inference/implementation.cc
++++ b/onnx/shape_inference/implementation.cc
+@@ -488,29 +488,29 @@ class ShapeInferenceImplBase {
+           ProcessCall(n, *(iter->second), ctx);
+         } else {
+           has_unsupported_op = true;
++          return;
+         }
+       } else {
+         has_unsupported_op = true;
++        return;
+       }
+-      if (!has_unsupported_op) {
+-        for (int i = 0; i < n.output_size(); ++i) {
+-          // skip type and shape propagation for missing optional outputs.
+-          if (!n.output(i).empty())
+-            UpdateType(n.output(i), ctx.getOutputType(i));
+-        }
+-        // Constant values are tracked to improve inference/checking for subsequent nodes.
+-        ProcessConstant(n);
+-        // If data-propagation is enabled, partial-evaluation (aka data-propagation) is performed
+-        // to improve inference/checking for subsequent nodes.
+-        if (options.enable_data_propagation && schema && schema->has_data_propagation_function()) {
+-          if (generated_shape_data_by_name == nullptr) {
+-            fail_shape_inference(
+-                "Container for generated shape data cannot be nullptr when enable_data_propagation option is set.");
+-          }
+-          DataPropagationContextImpl data_propagation_ctx(
+-              n, value_types_by_name, input_data_by_name, *generated_shape_data_by_name);
+-          schema->GetDataPropagationFunction()(data_propagation_ctx);
++      for (int i = 0; i < n.output_size(); ++i) {
++        // skip type and shape propagation for missing optional outputs.
++        if (!n.output(i).empty())
++          UpdateType(n.output(i), ctx.getOutputType(i));
++      }
++      // Constant values are tracked to improve inference/checking for subsequent nodes.
++      ProcessConstant(n);
++      // If data-propagation is enabled, partial-evaluation (aka data-propagation) is performed
++      // to improve inference/checking for subsequent nodes.
++      if (options.enable_data_propagation && schema && schema->has_data_propagation_function()) {
++        if (generated_shape_data_by_name == nullptr) {
++          fail_shape_inference(
++              "Container for generated shape data cannot be nullptr when enable_data_propagation option is set.");
+         }
++        DataPropagationContextImpl data_propagation_ctx(
++            n, value_types_by_name, input_data_by_name, *generated_shape_data_by_name);
++        schema->GetDataPropagationFunction()(data_propagation_ctx);
+       }
+     }
+     ONNX_CATCH(const ONNX_NAMESPACE::InferenceError& ex) {

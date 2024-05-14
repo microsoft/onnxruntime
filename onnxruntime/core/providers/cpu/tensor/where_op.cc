@@ -42,19 +42,19 @@ WHERE_VERSIONED_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
 
 // start with a subset of types, enable more as needed...
 WHERE_TYPED_KERNEL(uint8_t)
-//WHERE_TYPED_KERNEL(uint16_t)
-//WHERE_TYPED_KERNEL(uint32_t)
-//WHERE_TYPED_KERNEL(uint64_t)
-//WHERE_TYPED_KERNEL(int8_t)
-//WHERE_TYPED_KERNEL(int16_t)
+// WHERE_TYPED_KERNEL(uint16_t)
+// WHERE_TYPED_KERNEL(uint32_t)
+// WHERE_TYPED_KERNEL(uint64_t)
+// WHERE_TYPED_KERNEL(int8_t)
+// WHERE_TYPED_KERNEL(int16_t)
 WHERE_TYPED_KERNEL(int32_t)
 WHERE_TYPED_KERNEL(int64_t)
-//WHERE_TYPED_KERNEL(MLFloat16)
-//WHERE_TYPED_KERNEL(BFloat16)
+// WHERE_TYPED_KERNEL(MLFloat16)
+// WHERE_TYPED_KERNEL(BFloat16)
 WHERE_TYPED_KERNEL(float)
 WHERE_TYPED_KERNEL(double)
 WHERE_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
-//WHERE_TYPED_KERNEL(bool)
+// WHERE_TYPED_KERNEL(bool)
 
 #undef WHERE_TYPED_KERNEL_WITH_TYPE_NAME
 #undef WHERE_TYPED_KERNEL
@@ -108,7 +108,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         if (condition == target) {
-          std::copy(value.cbegin(), value.cend(), output.begin());
+          std::copy(value.begin(), value.end(), output.begin());
         } else {
           std::fill(output.begin(), output.end(), T{});
         }
@@ -118,7 +118,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         auto condition = per_iter_bh.SpanInput0<bool>();
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
-        std::transform(condition.cbegin(), condition.cend(), output.begin(),
+        std::transform(condition.begin(), condition.end(), output.begin(),
                        [target, &value](bool condition_element) {
                          return condition_element == target ? value : T{};
                        });
@@ -128,7 +128,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         auto condition = per_iter_bh.SpanInput0<bool>();
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
-        std::transform(condition.cbegin(), condition.cend(), value.cbegin(), output.begin(),
+        std::transform(condition.begin(), condition.end(), value.begin(), output.begin(),
                        [target](bool condition_element, const T& value_element) {
                          return condition_element == target ? value_element : T{};
                        });
@@ -185,7 +185,7 @@ void MergeScalarAndVector(gsl::span<T> output, const T& scalar_value, gsl::span<
   if (!scalar_value.empty()) {
     std::fill(output.begin(), output.end(), scalar_value);
   } else {
-    std::copy(vector_value.cbegin(), vector_value.cend(), output.begin());
+    std::copy(vector_value.begin(), vector_value.end(), output.begin());
   }
 };
 
@@ -206,7 +206,7 @@ EnableIfEigenNotScalar<T, ProcessBroadcastSpanFuncs> MergeBroadcastFuncs() {
         auto X_selection = per_iter_bh.SpanInput0<T>();
         auto Y_selection = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
-        std::transform(X_selection.cbegin(), X_selection.cend(), Y_selection.cbegin(), output.begin(),
+        std::transform(X_selection.begin(), X_selection.end(), Y_selection.begin(), output.begin(),
                        [](const T& x, const T& y) { return !x.empty() ? x : y; });
       }};
 }

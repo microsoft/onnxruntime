@@ -3,12 +3,12 @@
 # Licensed under the MIT License.
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
-import os
 
-from compare_results import compare_results_files, Comparisons
+from compare_results import Comparisons, compare_results_files
 
 SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
 
@@ -35,7 +35,7 @@ def main():
         convergence_test_output_path = os.path.join(output_dir, "convergence_test_out.csv")
 
         # run BERT training
-        subprocess.run(
+        subprocess.run(  # noqa: PLW1510
             [
                 os.path.join(args.binary_dir, "onnxruntime_training_bert"),
                 "--model_name",
@@ -86,7 +86,7 @@ def main():
         elif args.gpu_sku == "V100_16G":
             reference_csv = "bert_base.convergence.baseline.csv"
         else:
-            raise ValueError("Unrecognized gpu_sku {}".format(args.gpu_sku))
+            raise ValueError(f"Unrecognized gpu_sku {args.gpu_sku}")
 
         # verify output
         comparison_result = compare_results_files(

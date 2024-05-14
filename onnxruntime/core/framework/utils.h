@@ -10,9 +10,6 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/session_options.h"
-#ifdef ENABLE_TRAINING
-#include "core/framework/partial_graph_execution_state.h"
-#endif
 
 namespace onnxruntime {
 class ExecutionProviders;
@@ -26,6 +23,11 @@ class IExecutionProvider;
 class Node;
 class Tensor;
 struct KernelCreateInfo;
+#ifdef ENABLE_TRAINING
+struct PartialGraphExecutionState;
+typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
+typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
+#endif
 
 namespace logging {
 class Logger;
@@ -64,8 +66,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
 
 // Searches the allocation plan from the session_state to find the OrtMemoryInfo for the value 'name'.
-const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
-                                            std::string_view name);
+const OrtDevice& FindDeviceForValue(const SessionState& session_state, std::string_view name);
 
 // Initialize the feed and fetch copy info using session_state.
 // Determines the device that each graph input that will be fed will be consumed on,
@@ -77,20 +78,34 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 // and fetches that will be used in graph execution.
 void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtDevice> feed_locations,
-                               gsl::span<const OrtMemoryInfo* const> fetch_alloc_info);
+                               gsl::span<const OrtDevice* const> fetch_alloc_info);
 
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
-                            bool only_execute_path_to_fetches = false);
+#ifdef ORT_ENABLE_STREAM
+                            DeviceStreamCollectionHolder& device_stream_collection_holder,
+#endif
+                            bool only_execute_path_to_fetches = false,
+                            Stream* parent_stream = nullptr);
+
+common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
+                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                            ExecutionMode execution_mode, const RunOptions& run_options,
+#ifdef ORT_ENABLE_STREAM
+                            DeviceStreamCollectionHolder& device_stream_collection_holder,
+#endif
+                            const logging::Logger& logger);
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache,
-                                   int32_t partial_graph_index);
+                                   const bool& terminate_flag,
+                                   int32_t partial_graph_index,
+                                   Stream* parent_stream);
 #endif
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
@@ -98,9 +113,15 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                               Stream* parent_stream,
+                               /*when this is enabled, we will sync the parent stream to make sure the subgraph fetches
+                               is complete. this is mainly used when the parent kernel depends on the CPU value of the
+                               subgraph fetches, i.e. the loop condition*/
+                               bool sync_subgraph_fetches = false);
 
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
+bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 
 template <typename T>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {
@@ -176,6 +197,30 @@ template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FN>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FNUZ>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
+}
+
+#endif
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 

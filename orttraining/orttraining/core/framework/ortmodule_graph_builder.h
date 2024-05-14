@@ -29,9 +29,6 @@ struct OrtModuleGraphBuilderConfiguration {
   bool build_gradient_graph = true;
   bool enable_caching = false;
 
-  // Graph transformer configuration
-  TrainingGraphTransformerConfiguration graph_transformer_config{};
-
   // Log severity
   logging::Severity loglevel{logging::Severity::kWARNING};
 };
@@ -81,10 +78,13 @@ class OrtModuleGraphBuilder {
 
   /**
    * Optimize the inference graph and build the gradient graph.
+   * @param pre_grad_graph_transformer_config The configuration to control the graph transformers before gradient
+   *  graph is built.
    * @param input_shapes_ptr The pointer to vector of concrete shapes of the user inputs.
    * @return The status of the optimizing and building the gradient graph.
    */
-  Status Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
+  Status Build(const TrainingGraphTransformerConfiguration& pre_grad_graph_transformer_config,
+               const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
 
   /**
    * Get gradient model.
@@ -109,7 +109,8 @@ class OrtModuleGraphBuilder {
   Status SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes);
 
   // Apply graph transformers
-  Status OptimizeForwardGraph(std::unordered_set<std::string>& x_node_arg_names);
+  Status OptimizeForwardGraph(const TrainingGraphTransformerConfiguration& config,
+                              std::unordered_set<std::string>& x_node_arg_names);
 
   // Build gradient graph.
   Status BuildGradientGraph(const std::unordered_set<std::string>& x_node_arg_names);

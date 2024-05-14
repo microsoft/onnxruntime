@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "qlinear_global_average_pool.h"
+#include "core/common/narrow.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/platform/threadpool.h"
@@ -32,7 +33,7 @@ Status ComputeQLinearGlobalAvgPool(
       const T8Bits* input = (const T8Bits*)(x + (first * image_size));
       T8Bits* output = (T8Bits*)(y + first);
       std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), last - first));
-      MlasQLinearGlobalAveragePoolNchw(input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, image_size, acc_buffer.data());
+      MlasQLinearGlobalAveragePoolNchw(input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, narrow<size_t>(image_size), acc_buffer.data());
     };
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(N * C), {1.0 * image_size, 1.0, 8.0 * image_size}, worker);
@@ -40,11 +41,11 @@ Status ComputeQLinearGlobalAvgPool(
     auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
       const T8Bits* input = x + first * C * image_size;
       T8Bits* output = y + first * C;
-      std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), C));
-      std::vector<T8Bits> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(T8Bits), C), 0);
+      std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), narrow<size_t>(C)));
+      std::vector<T8Bits> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(T8Bits), narrow<size_t>(C)), 0);
       MlasQLinearGlobalAveragePoolNhwc(
           input, x_scale, x_zero_point, output, y_scale, y_zero_point,
-          last - first, image_size, C, C, acc_buffer.data(), zero_buffer.data());
+          last - first, narrow<size_t>(image_size), narrow<size_t>(C), narrow<size_t>(C), acc_buffer.data(), zero_buffer.data());
     };
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(N),
@@ -53,6 +54,38 @@ Status ComputeQLinearGlobalAvgPool(
   }
   return Status::OK();
 }
+
+// GCC's unexplained behavior:
+// GCC wouldn't generate corresponding symbols versus function instances below when "--disable-exceptions"
+// and "--minimal-build" are combined on linux build.
+// But this two symbols are required by qlinear_pool.cc.
+// The other compilers wouldn't hit it and works fine, and we also didn't see it in the other platforms, such as Android.
+// So we are doing explicit instantiation here for every compilers/platforms happy.
+template Status ComputeQLinearGlobalAvgPool<int8_t>(
+    const int8_t* x,
+    float x_scale,
+    int8_t x_zero_point,
+    int8_t* y,
+    float y_scale,
+    int8_t y_zero_point,
+    int64_t N,
+    int64_t C,
+    int64_t image_size,
+    bool channels_last,
+    concurrency::ThreadPool* tp);
+
+template Status ComputeQLinearGlobalAvgPool<uint8_t>(
+    const uint8_t* x,
+    float x_scale,
+    uint8_t x_zero_point,
+    uint8_t* y,
+    float y_scale,
+    uint8_t y_zero_point,
+    int64_t N,
+    int64_t C,
+    int64_t image_size,
+    bool channels_last,
+    concurrency::ThreadPool* tp);
 
 Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
   const auto tensor_x_scale = context->Input<Tensor>(1);
@@ -79,11 +112,11 @@ Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
 
   int64_t N = x_shape[0];
   int64_t C = (channels_last_ ? x_shape.back() : x_shape[1]);
-  int64_t image_size = std::accumulate(x_shape.cbegin() + spatial_dim_start, x_shape.cbegin() + spatial_dim_end,
+  int64_t image_size = std::accumulate(x_shape.begin() + spatial_dim_start, x_shape.begin() + spatial_dim_end,
                                        1LL, std::multiplies<int64_t>());
 
   std::vector<int64_t> output_dims(x_shape.begin(), x_shape.end());
-  std::transform(x_shape.cbegin() + spatial_dim_start, x_shape.cbegin() + spatial_dim_end,
+  std::transform(x_shape.begin() + spatial_dim_start, x_shape.begin() + spatial_dim_end,
                  output_dims.begin() + spatial_dim_start, [](const int64_t&) { return int64_t{1}; });
   Tensor& Y = *context->Output(0, output_dims);
 

@@ -9,5 +9,5 @@
 namespace onnxruntime {
 namespace contrib {
 Status RegisterCpuContribKernels(KernelRegistry& kernel_registry);
-} // namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime

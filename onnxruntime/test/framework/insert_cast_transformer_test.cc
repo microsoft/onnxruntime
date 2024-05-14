@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/allocator.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/graph/model.h"
+#include "core/graph/node_attr_utils.h"
 #include "gtest/gtest.h"
 #include "test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/asserts.h"
 
@@ -38,7 +39,7 @@ TEST(TransformerTest, InsertCastGPUTest) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = true;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -86,7 +87,7 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = true;
   EXPECT_TRUE(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()).IsOK());
@@ -110,6 +111,70 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   }
 }
 
+TEST(TransformerTest, CastRemovalDoesNotLowerPrecisionTest) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+  TypeProto tensor_float_32;
+  tensor_float_32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_float_64;
+  tensor_float_64.mutable_tensor_type()->set_elem_type(TensorProto_DataType_DOUBLE);
+  onnxruntime::NodeArg n1_def("N1", &tensor_float_64),
+      n2_def("N2", &tensor_float_32),
+      n3_def("N3", &tensor_float_64);
+
+  NodeAttributes n1_attrs = {{"to", utils::MakeAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))}};
+  NodeAttributes n2_attrs = {{"to", utils::MakeAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE))}};
+
+  graph.AddNode("node1", "Cast", "F64 to F32 cast", ArgMap{&n1_def}, ArgMap{&n2_def}, &n1_attrs);
+  graph.AddNode("node2", "Cast", "F32 to F64 cast", ArgMap{&n2_def}, ArgMap{&n3_def}, &n2_attrs);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer cast_inserter("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = true;
+  status = cast_inserter.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // When casting f64 -> f32 -> f64 we should not be optimising away the cast since there is a loss of precision.
+  EXPECT_EQ(graph.NumberOfNodes(), 2);
+}
+
+TEST(TransformerTest, CastRemovalDoesNotRemoveSignednessTest) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+  TypeProto tensor_uint32;
+  tensor_uint32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_UINT32);
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  onnxruntime::NodeArg n1_def("N1", &tensor_int32),
+      n2_def("N2", &tensor_uint32),
+      n3_def("N3", &tensor_int32);
+
+  NodeAttributes n1_attrs = {{"to", utils::MakeAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT32))}};
+  NodeAttributes n2_attrs = {{"to", utils::MakeAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32))}};
+
+  graph.AddNode("node1", "Cast", "I32 to UI32 cast", ArgMap{&n1_def}, ArgMap{&n2_def}, &n1_attrs);
+  graph.AddNode("node2", "Cast", "UI32 to I32 cast", ArgMap{&n2_def}, ArgMap{&n3_def}, &n2_attrs);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer cast_inserter("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = true;
+  status = cast_inserter.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // When casting i32 -> ui32 -> i32 we should not be optimising away the cast since applying the casts produces a very different result.
+  EXPECT_EQ(graph.NumberOfNodes(), 2);
+}
+
 // test that when there are 3 Cast ops in a row we remove the correct ones
 TEST(TransformerTest, ThreeInARowRemoval) {
   auto model_uri = MODEL_FOLDER ORT_TSTR("triple-cast.onnx");
@@ -123,7 +188,7 @@ TEST(TransformerTest, ThreeInARowRemoval) {
   // we want to remove 2 of the first 3
   ASSERT_TRUE(op_to_count["Cast"] == 4);
 
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = false;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -146,7 +211,7 @@ TEST(TransformerTest, RandomNormalLikeWithFloat16Inputs) {
   ASSERT_TRUE(status.IsOK()) << status;
 
   Graph& graph = model->MainGraph();
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = false;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -166,7 +231,7 @@ TEST(TransformerTest, MultinomialWithFloat16Input) {
   ASSERT_TRUE(status.IsOK()) << status;
 
   Graph& graph = model->MainGraph();
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = false;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -186,7 +251,7 @@ TEST(TransformerTest, InsertCastNodeTwice) {
   ASSERT_TRUE(status.IsOK()) << status;
 
   Graph& graph = model->MainGraph();
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   // First insert
   bool modified = false;
@@ -279,7 +344,7 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  InsertCastTransformer transformer("Test");
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
 
   bool modified = true;
   EXPECT_TRUE(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()).IsOK());

@@ -1,12 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
-#include "cudnn_common.h"
+#include <utility>
+
+#include "core/providers/cuda/cudnn_common.h"
 #include "core/common/inlined_containers.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
-
+#ifndef USE_CUDA_MINIMAL
 namespace onnxruntime {
 namespace cuda {
 
@@ -27,18 +30,43 @@ Status CudnnTensor::CreateTensorIfNeeded() {
   return Status::OK();
 }
 
-Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType) {
+Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType, bool is_nhwc) {
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
   int rank = gsl::narrow_cast<int>(input_dims.size());
   TensorPitches pitches(input_dims);
   InlinedVector<int, kTensorShapeSmallBufferElementsSize> dims(rank);
   InlinedVector<int, kTensorShapeSmallBufferElementsSize> strides(rank);
-  for (int i = 0; i < rank; i++) {
-    dims[i] = gsl::narrow_cast<int>(input_dims[i]);
-    strides[i] = gsl::narrow_cast<int>(pitches[i]);
+
+  if (!is_nhwc) {
+    for (int i = 0; i < rank; i++) {
+      dims[i] = gsl::narrow_cast<int>(input_dims[i]);
+      strides[i] = gsl::narrow_cast<int>(pitches[i]);
+    }
+  } else {
+    // NHWDC <-> NCHWD
+
+    // N
+    dims[0] = gsl::narrow_cast<int>(input_dims[0]);
+    strides[0] = gsl::narrow_cast<int>(pitches[0]);
+
+    // HWD
+    for (int i = 1; i < rank - 1; i++) {
+      dims[i + 1] = gsl::narrow_cast<int>(input_dims[i]);
+      strides[i + 1] = gsl::narrow_cast<int>(pitches[i]);
+    }
+
+    // C
+    dims[1] = gsl::narrow_cast<int>(input_dims[rank - 1]);
+    strides[1] = gsl::narrow_cast<int>(pitches[rank - 1]);
   }
   CUDNN_RETURN_IF_ERROR(cudnnSetTensorNdDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
+  return Status::OK();
+}
+
+Status CudnnTensor::Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w) {
+  ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
+  CUDNN_RETURN_IF_ERROR(cudnnSetTensor4dDescriptor(tensor_, format, dataType, n, c, h, w));
   return Status::OK();
 }
 
@@ -113,15 +141,23 @@ Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDat
   return Status::OK();
 }
 
+Status CudnnFilterDescriptor::Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int k, int c, int h, int w) {
+  if (!desc_)
+    CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
+
+  CUDNN_RETURN_IF_ERROR(cudnnSetFilter4dDescriptor(desc_, dataType, format, k, c, h, w));
+  return Status::OK();
+}
+
 template <typename ElemType>
 cudnnDataType_t CudnnTensor::GetDataType() {
   ORT_THROW("cuDNN engine currently supports only single/double/half/int8/uint8 precision data types. Got:",
-    typeid(ElemType).name());
+            typeid(ElemType).name());
   // Not reachable but GCC complains
   return CUDNN_DATA_FLOAT;
 }
 
-template<>
+template <>
 cudnnDataType_t CudnnTensor::GetDataType<float>() {
   return CUDNN_DATA_FLOAT;
 }
@@ -139,7 +175,6 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
 template <>
 cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
   ORT_THROW("cuDNN doesn't support BFloat16.");
-  return CUDNN_DATA_FLOAT;
 }
 
 template <>
@@ -183,5 +218,22 @@ const uint8_t Consts<uint8_t>::Zero = 0;
 template <>
 const uint8_t Consts<uint8_t>::One = 1;
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <>
+const Float8E4M3FN Consts<Float8E4M3FN>::Zero = Float8E4M3FN(0.0f, true);
+
+template <>
+const Float8E4M3FN Consts<Float8E4M3FN>::One = Float8E4M3FN(1.0f, true);
+
+template <>
+const Float8E5M2 Consts<Float8E5M2>::Zero = Float8E5M2(0.0f, true);
+
+template <>
+const Float8E5M2 Consts<Float8E5M2>::One = Float8E5M2(1.0f, true);
+
+#endif
+
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

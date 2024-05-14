@@ -124,7 +124,8 @@ namespace OperatorHelper
         static const int sc_sinceVer_Upsample = 7;
         static const int sc_sinceVer_Xor = 7;
         static const int sc_sinceVer_LayerNormalization = 1;
-    
+        static const int sc_sinceVer_SimplifiedLayerNormalization = 1;
+
         // Special operators
         static const int sc_sinceVer_MemcpyToHost = 1;
         static const int sc_sinceVer_MemcpyFromHost = 1;
@@ -157,7 +158,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Compress = 9;
         static const int sc_sinceVer_EyeLike = 9;
         static const int sc_sinceVer_Scatter = 9;
-        static const int sc_sinceVer_Nonzero = 9;
+        static const int sc_sinceVer_NonZero = 9;
         static const int sc_sinceVer_Shrink = 9;
         static const int sc_sinceVer_Greater = 9;
         static const int sc_sinceVer_Less = 9;
@@ -245,6 +246,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Squeeze = 11;
         static const int sc_sinceVer_TopK = 11;
         static const int sc_sinceVer_Unsqueeze = 11;
+        static const int sc_sinceVer_ConcatFromSequence = 11;
     } // namespace OnnxOperatorSet11
 
     namespace OnnxOperatorSet12
@@ -303,6 +305,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Mod = 13;
         static const int sc_sinceVer_Mul = 13;
         static const int sc_sinceVer_Neg = 13;
+        static const int sc_sinceVer_NonZero = 13;
         static const int sc_sinceVer_Pad = 13;
         static const int sc_sinceVer_Pow = 13;
         static const int sc_sinceVer_QuantizeLinear = 13;
@@ -340,6 +343,8 @@ namespace OperatorHelper
         static const int sc_sinceVer_Softmax = 13;
         static const int sc_sinceVer_LogSoftmax = 13;
         static const int sc_sinceVer_Hardmax = 13;
+        static const int sc_sinceVer_Shape = 13;
+        static const int sc_sinceVer_Size = 13;
     } // namespace OnnxOperatorSet13
 
     namespace OnnxOperatorSet14
@@ -364,12 +369,72 @@ namespace OperatorHelper
         static const int sc_sinceVer_CastLike = 15;
         static const int sc_sinceVer_BatchNormalization = 15;
         static const int sc_sinceVer_Pow = 15;
+        static const int sc_sinceVer_Shape = 15;
     } // namespace OnnxOperatorSet15
+
+    namespace OnnxOperatorSet16
+    {
+        static const int sc_sinceVer_Identity = 16;
+        static const int sc_sinceVer_LeakyRelu = 16;
+        static const int sc_sinceVer_PRelu = 16;
+        static const int sc_sinceVer_Where = 16;
+        static const int sc_sinceVer_GreaterOrEqual = 16;
+        static const int sc_sinceVer_LessOrEqual = 16;
+        static const int sc_sinceVer_ScatterND = 16;
+        static const int sc_sinceVer_ScatterElements = 16;
+        static const int sc_sinceVer_RoiAlign = 16;
+    } // namespace OnnxOperatorSet16
 
     namespace OnnxOperatorSet17
     {
         static const int sc_sinceVer_LayerNormalization = 17;
     } // namespace OnnxOperatorSet17
+
+    namespace OnnxOperatorSet18
+    {
+        static const int sc_sinceVer_ReduceL1 = 18;
+        static const int sc_sinceVer_ReduceL2 = 18;
+        static const int sc_sinceVer_ReduceLogSum = 18;
+        static const int sc_sinceVer_ReduceLogSumExp = 18;
+        static const int sc_sinceVer_ReduceMax = 18;
+        static const int sc_sinceVer_ReduceMean = 18;
+        static const int sc_sinceVer_ReduceMin = 18;
+        static const int sc_sinceVer_ReduceProd = 18;
+        static const int sc_sinceVer_ReduceSumSquare = 18;
+        static const int sc_sinceVer_BitwiseAnd = 18;
+        static const int sc_sinceVer_BitwiseOr = 18;
+        static const int sc_sinceVer_BitwiseXor = 18;
+        static const int sc_sinceVer_BitwiseNot = 18;
+        static const int sc_sinceVer_Pad = 18;
+        static const int sc_sinceVer_Split = 18;
+        static const int sc_sinceVer_LpPool = 18;
+        static const int sc_sinceVer_Col2Im = 18;
+        static const int sc_sinceVer_Resize = 18;
+    }
+
+    namespace OnnxOperatorSet19
+    {
+        static const int sc_sinceVer_AveragePool = 19;
+        static const int sc_sinceVer_Resize = 19;
+        static const int sc_sinceVer_Pad = 19;
+        static const int sc_sinceVer_Cast = 19;
+        static const int sc_sinceVer_CastLike = 19;
+        static const int sc_sinceVer_Constant = 19;
+        static const int sc_sinceVer_Equal = 19;
+        static const int sc_sinceVer_Identity = 19;
+        static const int sc_sinceVer_QuantizeLinear = 19;
+        static const int sc_sinceVer_DequantizeLinear = 19;
+        static const int sc_sinceVer_Reshape = 19;
+        static const int sc_sinceVer_Shape = 19;
+        static const int sc_sinceVer_Size = 19;
+    }
+
+    namespace OnnxOperatorSet20
+    {
+        static const int sc_sinceVer_IsNaN = 20;
+        static const int sc_sinceVer_IsInf = 20;
+        static const int sc_sinceVer_ReduceMax = 20;
+    }
 
     namespace MsftOperatorSet1
     {
@@ -387,9 +452,30 @@ namespace OperatorHelper
         static const int sc_sinceVer_ConvTransposeWithDynamicPads = 1;
         static const int sc_sinceVer_QLinearAdd = 1;
         static const int sc_sinceVer_Gelu = 1;
+        static const int sc_sinceVer_BiasGelu = 1;
+        static const int sc_sinceVer_FastGelu = 1;
         static const int sc_sinceVer_FusedMatMul = 1;
+        static const int sc_sinceVer_FusedMatMulActivation = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
+        static const int sc_sinceVer_QAttention = 1;
         static const int sc_sinceVer_Attention = 1;
+        static const int sc_sinceVer_MatMulIntegerToFloat = 1;
+        static const int sc_sinceVer_MultiHeadAttention = 1;
+        static const int sc_sinceVer_GroupQueryAttention = 1;
+        static const int sc_sinceVer_SkipLayerNormalization = 1;
+        static const int sc_sinceVer_SkipSimplifiedLayerNormalization = 1;
+        static const int sc_sinceVer_EmbedLayerNormalization = 1;
+        static const int sc_sinceVer_BiasSplitGelu = 1;
+        static const int sc_sinceVer_NhwcConv = 1;
+        static const int sc_sinceVer_BiasAdd = 1;
+        static const int sc_sinceVer_QuickGelu = 1;
+        static const int sc_sinceVer_GroupNorm = 1;
+        static const int sc_sinceVer_QLinearConcat = 1;
+        static const int sc_sinceVer_RotaryEmbedding = 1;
+        static const int sc_sinceVer_QLinearAveragePool = 1;
+        static const int sc_sinceVer_QLinearGlobalAveragePool = 1;
+        static const int sc_sinceVer_MatMulNBits = 1;
+        static const int sc_sinceVer_DynamicQuantizeMatMul = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

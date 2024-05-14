@@ -13,7 +13,7 @@ namespace ort_dnnl {
 DnnlTranspose::DnnlTranspose() {}
 
 /*
-Transpose: 
+Transpose:
   Inputs:
     0) DATA - Input Tensor
   Outputs:
@@ -27,11 +27,10 @@ Attributes (perm) - A list of integers. By default, reverse the dimensions,
                     otherwise permute the axes according to the values given.
 */
 void DnnlTranspose::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
-
   auto dnnl_engine = sp.GetEngine();
 
   auto data_mem = sp.GetMemory(node.Input(IN_DATA));
-  auto data_dims = data_mem.get_desc().dims();
+  auto data_dims = data_mem.get_desc().get_dims();
   auto ndata_dims = data_dims.size();
 
   auto perm = GetPerm(node);
@@ -45,7 +44,7 @@ void DnnlTranspose::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   dnnl::memory::dims transposed_dims(ndata_dims, 0);
   dnnl::memory::dims strides(ndata_dims, 0);
   dnnl::memory::dim total_stride = 1;
-  for (int i = (int)ndata_dims - 1 ; i >= 0; i--) {
+  for (int i = (int)ndata_dims - 1; i >= 0; i--) {
     transposed_dims[i] = data_dims[perm[i]];
     strides[perm[i]] = total_stride;
     total_stride *= data_dims[perm[i]];

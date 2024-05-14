@@ -11,7 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -69,7 +69,7 @@ class UniDirectionalAttnLstm {
   }
 
  private:
-  using span_T_const_iter = typename gsl::span<T>::const_iterator;
+  using span_T_const_iter = typename gsl::span<const T>::iterator;
   using span_T_iter = typename gsl::span<T>::iterator;
 
   void SetNumThreads();

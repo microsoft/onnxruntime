@@ -5,6 +5,7 @@ steps:
 - task: PythonScript@0
   displayName: 'Set Python manylinux variables'
   inputs:
+    pythonInterpreter: /usr/bin/python3
     scriptSource: inline
     script: |
       version = "$(PythonVersion)"
@@ -25,6 +26,14 @@ steps:
       elif version == "3.10":
         variables = {
           "PythonManylinuxDir": "/opt/python/cp310-cp310"
+        }
+      elif version == "3.11":
+        variables = {
+          "PythonManylinuxDir": "/opt/python/cp311-cp311"
+        }
+      elif version == "3.12":
+        variables = {
+          "PythonManylinuxDir": "/opt/python/cp312-cp312"
         }
       else:
         raise ValueError("Unsupported Python version: '{}'".format(version))

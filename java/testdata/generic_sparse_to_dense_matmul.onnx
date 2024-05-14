@@ -1,0 +1,16 @@
+dmitrism:Î
+F
+sparse_A
+dense_Bdense_YSpMM"SparseToDenseMatMul:com.microsoftSpMMZ*
+sparse_AB
+	A_dim_1
+	inner_dimZ)
+dense_B
+
+	inner_dim
+	B_dim_2b'
+dense_Y
+
+	A_dim_1
+	B_dim_2B
+com.microsoft

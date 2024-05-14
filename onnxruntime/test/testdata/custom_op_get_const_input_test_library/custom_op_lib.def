@@ -1,0 +1,4 @@
+LIBRARY "custom_op_openvino_wrapper_library.dll"
+EXPORTS
+ RegisterCustomOps @1
+

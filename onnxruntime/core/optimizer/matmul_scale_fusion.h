@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
@@ -8,7 +10,7 @@ namespace onnxruntime {
 /**
  * Fuses MatMul with surrounding scales (multiplies or divides) by a constant
  * scalar into FusedMatMul (which supports scaling the product).
- * 
+ *
  * For example, given matrices A and B and constant scalars t, u, and v:
  *   Mul(v, MatMul(Mul(t, A), Mul(u, B))
  *     -> FusedMatMul(A, B, alpha=t*u*v)

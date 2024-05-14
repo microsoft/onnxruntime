@@ -55,6 +55,20 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             );
 
+        void InitializeInputsWithShapes(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            );
+
+        void InitializeOutputsWithShapes(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            );
+
         bool AllowHalfPrecisionComputation() const;
         DML_EXECUTION_FLAGS GetExecutionFlags() const;
 
@@ -64,8 +78,8 @@ namespace Dml
             );
 
         // This method only works with DML_GRAPH.
-        // To make it work without DML_GRAPH, we need to add new functionality 
-        // in DMLX i.e. DMLX should also give access to DML_OPERATOR_DESC 
+        // To make it work without DML_GRAPH, we need to add new functionality
+        // in DMLX i.e. DMLX should also give access to DML_OPERATOR_DESC
         // rather than IDMLOperator.
         void SetDmlOperatorGraphDesc(
             const MLOperatorGraphDesc&& operatorGraphDesc,
@@ -103,10 +117,19 @@ namespace Dml
         // It returns nullptr if there is no work to do (0 bytes).
         //
         ComPtr<IDMLCompiledOperator> InitializeZeroInt64Tensor(uint64_t tensorSizeInBytes);
-
         void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
 
         TensorDesc CreateTensorDescFromInput(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            uint32_t index,
+            int32_t coerceAxis = TensorAxis::DoNotCoerce,
+            int32_t placement = TensorAxis::W,
+            int32_t leftAlignedDimensionCount = TensorAxis::RightAligned,
+            std::optional<gsl::span<const uint32_t>> tensorShape = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            ) const;
+
+        TensorSequenceDesc CreateTensorSequenceDescFromInput(
             const MLOperatorKernelCreationContext& kernelInfo,
             uint32_t index,
             int32_t coerceAxis = TensorAxis::DoNotCoerce,
@@ -126,6 +149,11 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             ) const;
 
+        static void TryConvertTensorToBroadcastScalar(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const DML_TENSOR_DESC* tensor,
+            uint32_t kernelInputIndex);
+
     private:
         // For each input or output of the DML kernel, the corresponding input or output of the original
         // kernel.  Entries for unused DML inputs are nullopt.
@@ -140,7 +168,8 @@ namespace Dml
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
-        
+
+        static const uint32_t zeroArray[8];
     };
 
 } // namespace Dml

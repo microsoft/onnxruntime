@@ -5,6 +5,8 @@ namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
     /// Log severity levels
+    /// 
+    /// Must in sync with OrtLoggingLevel in onnxruntime_c_api.h
     /// </summary>
     public enum OrtLoggingLevel
     {

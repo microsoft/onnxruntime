@@ -44,8 +44,21 @@ public:
             std::nullopt,
             std::nullopt,
             std::nullopt,
-            /*minimumDimensionCount*/ 1
-        );
+            /*minimumDimensionCount*/ 1);
+
+        const uint32_t dmlDimensionCount = std::max<uint32_t>(4u, m_inputTensorDescs[0].GetDimensionCount());
+
+        // Shift IN_SCALE and IN_BIAS input tensor descs {1, C, 1, 1} out of 1D tensors.
+        Shift1DInputsTensorDesc(kernelCreationContext, IN_SCALE, 2, dmlDimensionCount);
+
+        // Pad the input and the output with trailing 1's until they are at least 4D
+        auto sizes = m_inputTensorDescs[0].GetSizes();
+        std::vector<uint32_t> tensorShape(sizes.begin(), sizes.end());
+        tensorShape.resize(static_cast<size_t>(dmlDimensionCount), 1);
+        m_inputTensorDescs[0] = TensorDesc(
+            m_inputTensorDescs[0].GetDmlDataType(),
+            tensorShape);
+        m_outputTensorDescs[0] = m_inputTensorDescs[0];
 
         // "Instance" normalization is really spatial normalization,
         // where the spatial channels are reduced and normalized, while
@@ -59,9 +72,6 @@ public:
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
         const std::optional<ActivationOperatorDesc> fusedActivation = FusionHelpers::TryGetFusedActivationDesc(kernelCreationContext);
         DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->GetDmlDesc() : DML_OPERATOR_DESC();
-
-        // Shift IN_SCALE and IN_BIAS input tensor descs {1, C, 1, 1} out of 1D tensors.
-        Shift1DInputsTensorDesc(kernelCreationContext, IN_SCALE, 2, inputDimensionCount);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

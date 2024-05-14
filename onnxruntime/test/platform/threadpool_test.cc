@@ -4,6 +4,11 @@
 #include "core/platform/threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
+#include "core/util/thread_utils.h"
+#ifdef _WIN32
+#include "test/platform/windows/env.h"
+#include <Windows.h>
+#endif
 
 #include "gtest/gtest.h"
 #include <algorithm>
@@ -37,7 +42,7 @@ void IncrementElement(TestData& test_data, ptrdiff_t i) {
   test_data.data[i]++;
 }
 
-void ValidateTestData(TestData& test_data, int expected=1) {
+void ValidateTestData(TestData& test_data, int expected = 1) {
   ASSERT_TRUE(std::count_if(test_data.data.cbegin(), test_data.data.cend(), [&](int i) { return i != expected; }) == 0);
 }
 
@@ -55,8 +60,8 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
       test_body(tp_dynamic_block_size.get());  // test thread pool with dynamic block size
     } else {
       auto tp_constant_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, true, mock_hybrid);
-      test_body(tp_constant_block_size.get()); // test thread pool with constant block size
-    } 
+      test_body(tp_constant_block_size.get());  // test thread pool with constant block size
+    }
   } else {
     test_body(nullptr);
   }
@@ -65,7 +70,7 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
   auto test_data = CreateTestData(num_tasks);
   CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
+    ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
   });
   ValidateTestData(*test_data);
 }
@@ -148,7 +153,7 @@ void TestBurstScheduling(const std::string& name, int num_tasks) {
         }
       });
     });
-    ASSERT_TRUE(ctr == num_tasks*2);
+    ASSERT_TRUE(ctr == num_tasks * 2);
   }
 }
 
@@ -164,14 +169,14 @@ void TestPoolCreation(const std::string&, int iter) {
   constexpr int num_threads = 4;
   for (auto i = 0; i < iter; i++) {
     auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
-                                                   onnxruntime::ThreadOptions(),
-                                                   nullptr,
-                                                   num_threads,
-                                                   true);
+                                           onnxruntime::ThreadOptions(),
+                                           nullptr,
+                                           num_threads,
+                                           true);
     ThreadPool::TryParallelFor(tp.get(), per_iter, 0.0,
-                    [&](std::ptrdiff_t s, std::ptrdiff_t e) {
-                      ctr += e - s;
-                    });
+                               [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                                 ctr += e - s;
+                               });
   }
   ASSERT_EQ(ctr, iter * per_iter);
 }
@@ -182,15 +187,15 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
     constexpr int num_tasks = 1024;
     auto test_data = CreateTestData(num_tasks);
     CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-	ThreadPool::ParallelSection ps(tp);
-	for (int l = 0; l < num_loops; l++) {
-          ThreadPool::TrySimpleParallelFor(tp,
-                                           num_tasks,
-                                           [&](std::ptrdiff_t i) {
-                                             IncrementElement(*test_data, i);
-                                           });
-	}
-      });
+      ThreadPool::ParallelSection ps(tp);
+      for (int l = 0; l < num_loops; l++) {
+        ThreadPool::TrySimpleParallelFor(tp,
+                                         num_tasks,
+                                         [&](std::ptrdiff_t i) {
+                                           IncrementElement(*test_data, i);
+                                         });
+      }
+    });
     ValidateTestData(*test_data, num_loops);
   }
 }
@@ -200,25 +205,25 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
 // differing numbers of threads over time.
 void TestStagedMultiLoopSections(const std::string& name, int num_threads, int num_loops) {
   for (int rep = 0; rep < 5; rep++) {
-    auto test_data1 = CreateTestData(num_threads/2);
+    auto test_data1 = CreateTestData(num_threads / 2);
     auto test_data2 = CreateTestData(num_threads);
     CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-	ThreadPool::ParallelSection ps(tp);
-	for (int l = 0; l < num_loops; l++) {
-          // Loop needing few threads
-          ThreadPool::TrySimpleParallelFor(tp,
-                                           num_threads / 2,
-                                           [&](std::ptrdiff_t i) {
-                                             IncrementElement(*test_data1, i);
-                                           });
-          // Loop needing more threads, forcing growth of set of threads in use
-          ThreadPool::TrySimpleParallelFor(tp,
-                                           num_threads,
-                                           [&](std::ptrdiff_t i) {
-                                             IncrementElement(*test_data2, i);
-                                           });
-	}
-      });
+      ThreadPool::ParallelSection ps(tp);
+      for (int l = 0; l < num_loops; l++) {
+        // Loop needing few threads
+        ThreadPool::TrySimpleParallelFor(tp,
+                                         num_threads / 2,
+                                         [&](std::ptrdiff_t i) {
+                                           IncrementElement(*test_data1, i);
+                                         });
+        // Loop needing more threads, forcing growth of set of threads in use
+        ThreadPool::TrySimpleParallelFor(tp,
+                                         num_threads,
+                                         [&](std::ptrdiff_t i) {
+                                           IncrementElement(*test_data2, i);
+                                         });
+      }
+    });
     ValidateTestData(*test_data1, num_loops);
     ValidateTestData(*test_data2, num_loops);
   }
@@ -536,6 +541,134 @@ TEST(ThreadPoolTest, TestStackSize) {
     ASSERT_EQ(high_limit - low_limit, to.stack_size);
 }
 #pragma warning(pop)
+#endif
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(ThreadPoolTest, TestAffinityStringMisshaped) {
+  OrtThreadPoolParams tp_params;
+  tp_params.thread_pool_size = 3;
+  const char* wrong_formats[] = {
+      ",",      // 1st and 2nd processor id are empty strings
+      "1,",     // 2nd processor id is an empty string
+      ";",      // affinity settings for both threads are empty
+      ";1",     // missing the affinity setting for the 1st thread
+      "a",      // invalid char, must be digit
+      "a;b",    // invalid char, must be digit
+      "1;a",    // invalid char, must be digit
+      "0;1",    // processor string must start from 1
+      "-;2",    // invalid char, must be digit
+      "--",     // invalid char, must be digit
+      "2-1;3",  // invalid interval, "from" must be equal to or smaller than "to"
+      "5;3a"    // invalid processor id containing non-digit as suffix
+  };
+  for (const auto* wrong_format : wrong_formats) {
+    tp_params.affinity_str = wrong_format;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+  const char* less_than_expected_vec[] = {"1", "1,2", "1-2"};
+  for (const auto* less_than_expected : less_than_expected_vec) {
+    tp_params.affinity_str = less_than_expected;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+  const char* more_than_expected_vec[] = {"1;2;3", "1-2;2-2;3-4", "1;2;3;4;5"};
+  for (const auto* more_than_expected : more_than_expected_vec) {
+    tp_params.affinity_str = more_than_expected;
+    ASSERT_THROW(concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                               tp_params,
+                                               concurrency::ThreadPoolType::INTRA_OP),
+                 std::exception);
+  }
+}
+#endif
+
+TEST(ThreadPoolTest, TestAffinityStringWellShaped) {
+  OrtThreadPoolParams tp_params;
+  auto default_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                  tp_params,
+                                                  concurrency::ThreadPoolType::INTRA_OP);
+  if (concurrency::ThreadPool::DegreeOfParallelism(default_tp.get()) < 3) {
+    return;
+  }
+  tp_params.thread_pool_size = 3;
+  const char* good_formats[] = {"1;1",
+                                "2;2",
+                                "1-1;2-2",
+                                "1-2;1-2"};
+  for (const auto* good_format : good_formats) {
+    tp_params.affinity_str = good_format;
+    auto non_default_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                        tp_params,
+                                                        concurrency::ThreadPoolType::INTRA_OP);
+    auto DOP = concurrency::ThreadPool::DegreeOfParallelism(non_default_tp.get());
+    ASSERT_TRUE(DOP >= 3 && DOP % 3 == 0);  // for hybrid cpu, dop is a multiple of 3
+  }
+}
+
+#ifdef _WIN32
+TEST(ThreadPoolTest, TestDefaultAffinity) {
+  test::CpuGroup cpu_group = {{0, 1},
+                              {2, 3},
+                              {4, 5},
+                              {6, 7}};
+  // 2 logical processors per core, single group
+  test::CpuInfo cpu_info_single = {cpu_group};
+  test::WindowsEnvTester win_env;
+  win_env.SetCpuInfo(cpu_info_single);
+  auto default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 4);
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 2);
+    for (int j = 0; j < 2; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
+    }
+  }
+  // 2 logical processors per core, two groups
+  test::CpuInfo cpu_info_double = {cpu_group, cpu_group};
+  win_env.SetCpuInfo(cpu_info_double);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 8);
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 2);
+    for (int j = 0; j < 2; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 2 + j);
+    }
+  }
+  // 4 logical processors per core, single group
+  cpu_group = {{0, 1, 2, 3},
+               {4, 5, 6, 7},
+               {8, 9, 10, 11},
+               {12, 13, 14, 15}};
+  cpu_info_single = {cpu_group};
+  win_env.SetCpuInfo(cpu_info_single);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 4);
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 4);
+    for (int j = 0; j < 4; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 4 + j);
+    }
+  }
+  // 4 logical processors per core, two groups
+  cpu_info_double = {cpu_group, cpu_group};
+  win_env.SetCpuInfo(cpu_info_double);
+  default_affinities = win_env.GetDefaultThreadAffinities();
+  ASSERT_TRUE(default_affinities.size() == 8);
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_TRUE(default_affinities[i].size() == 4);
+    for (int j = 0; j < 4; ++j) {
+      ASSERT_TRUE(default_affinities[i][j] == i * 4 + j);
+    }
+  }
+}
 #endif
 #endif
 

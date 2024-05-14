@@ -7,6 +7,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -136,27 +137,104 @@ void RunTestWrapper() {
 
 }  // namespace
 
-TEST(Scatter, int8_t) { RunTestWrapper<int8_t>(); }
+TEST(Scatter, int8_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, int16_t) { RunTestWrapper<int16_t>(); }
+  RunTestWrapper<int8_t>();
+}
 
-TEST(Scatter, int32_t) { RunTestWrapper<int32_t>(); }
+TEST(Scatter, int16_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, int64_t) { RunTestWrapper<int64_t>(); }
+  RunTestWrapper<int16_t>();
+}
 
-TEST(Scatter, uint8_t) { RunTestWrapper<uint8_t>(); }
+TEST(Scatter, int32_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, uint16_t) { RunTestWrapper<uint16_t>(); }
+  RunTestWrapper<int32_t>();
+}
 
-TEST(Scatter, uint32_t) { RunTestWrapper<uint32_t>(); }
+TEST(Scatter, int64_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, uint64_t) { RunTestWrapper<uint64_t>(); }
+  RunTestWrapper<int64_t>();
+}
 
-TEST(Scatter, float) { RunTestWrapper<float>(); }
+TEST(Scatter, uint8_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, double) { RunTestWrapper<double>(); }
+  RunTestWrapper<uint8_t>();
+}
 
-TEST(Scatter, MLFloat16) { RunTestWrapper<MLFloat16>(); }
+TEST(Scatter, uint16_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint16_t>();
+}
+
+TEST(Scatter, uint32_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint32_t>();
+}
+
+TEST(Scatter, uint64_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint64_t>();
+}
+
+TEST(Scatter, float) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<float>();
+}
+
+TEST(Scatter, double) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<double>();
+}
+
+TEST(Scatter, MLFloat16) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<MLFloat16>();
+}
 
 static void scatter_indices_updates_dont_match(const char* op_name, int op_version) {
   OpTester test(op_name, op_version);
@@ -171,6 +249,11 @@ static void scatter_indices_updates_dont_match(const char* op_name, int op_versi
 }
 
 TEST(Scatter, IndicesUpdatesDontMatch) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   scatter_indices_updates_dont_match("Scatter", 9);
   scatter_indices_updates_dont_match("ScatterElements", 11);
 }
@@ -185,10 +268,15 @@ static void scatter_invalid_index(const char* op_name, int op_version) {
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "indices element out of data bounds, idx=4 must be within the inclusive range [-4,3]",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Scatter, InvalidIndex) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   scatter_invalid_index("Scatter", 9);
   scatter_invalid_index("ScatterElements", 11);
 }
@@ -201,17 +289,167 @@ static void scatter_bool_with_axis_tests(const char* op_name, int op_version) {
   test.AddInput<int64_t>("indices", {1, 2}, {1, 3});
   test.AddInput<bool>("updates", {1, 2}, {true, false});
   test.AddOutput<bool>("y", {1, 5}, {false, true, false, false, false});
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-          {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+           {kCudaNHWCExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaNHWCExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
 #endif
 }
 
 TEST(Scatter, BoolInputWithAxis) {
   scatter_bool_with_axis_tests("Scatter", 9);
   scatter_bool_with_axis_tests("ScatterElements", 11);
+}
+
+TEST(ScatterElements, AddReduction) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  test.AddInput<float>("data", {3, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 0, 2, 0, 2, 1});
+  test.AddInput<float>("updates", {2, 3}, {1.0f, 1.1f, 1.2f, 2.0f, 2.1f, 2.2f});
+  test.AddOutput<float>("y", {3, 3}, {3.0f, 1.1f, 0.0f, 1.0f, 0.0f, 2.2f, 0.0f, 2.1f, 1.2f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+#if defined(CUDA_VERSION)
+// Operation on float16 (MLFloat16) is not implemented on CPU.
+TEST(ScatterElements, AddReduction_MLFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  test.AddInput<MLFloat16>("data", {2, 3}, ToFloat16(std::vector<float>({-9.f, -4.f, -1.f, -7.f, -3.f, -6.f})));
+  test.AddInput<int64_t>("indices", {4, 3}, {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<MLFloat16>("updates", {4, 3}, ToFloat16(std::vector<float>({1.f, 1.f, 1.f, 2.f, 2.f, 2.f, 3.f, 3.f, 3.f, 4.f, 4.f, 4.f})));
+  test.AddOutput<MLFloat16>("y", {2, 3}, ToFloat16(std::vector<float>({-9.f, -4.f, -1.f, -7.f + (1.f + 2.f + 3.f + 4.f), -3.f + (1.f + 2.f + 3.f + 4.f), -6.f + (1.f + 2.f + 3.f + 4.f)})));
+
+  // exclude CPU Execution Provider as MLFloat16 is not supported in CPU
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+#endif
+
+TEST(ScatterElements, AddReductionAxis1) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<std::string>("reduction", "add");
+
+  // update's slice shape is {2, 1}
+  test.AddInput<float>("data", {2, 3}, {9.f, 4.f, 1.f, 7.f, 3.f, 6.f});
+  test.AddInput<int64_t>("indices", {2, 4}, {1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 4}, {2.f, 5.f, 3.f, 6.f, 7.f, 9.f, 8.f, 10.f});
+  test.AddOutput<float>("y", {2, 3}, {9.f, 4.f + (2.f + 5.f + 3.f + 6.f), 1.f, 7.f, 3.f + (7.f + 9.f + 8.f + 10.f), 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MulReduction) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "mul");
+
+  test.AddInput<float>("data", {2, 3}, {-9.f, -4.f, -1.f, -7.f, -3.f, -6.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 3}, {7.f, 3.f, 6.f, 7.f, 3.f, 6.f});
+  test.AddOutput<float>("y", {2, 3}, {-9.f, -4.f, -1.f, -7.f * 7.f * 7.f, -3.f * 3.f * 3.f, -6.f * 6.f * 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MulReductionAxis1) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<std::string>("reduction", "mul");
+
+  // update's slice shape is {2, 1}
+  test.AddInput<float>("data", {2, 3}, {9.f, 4.f, 1.f, 7.f, 3.f, 6.f});
+  test.AddInput<int64_t>("indices", {2, 4}, {1, 1, 1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 4}, {2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f});
+  test.AddOutput<float>("y", {2, 3}, {9.f, 4.f * (2.f * 3.f * 4.f * 5.f), 1.f, 7.f, 3.f * (6.f * 7.f * 8.f * 9.f), 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MaxReduction_MLFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "max");
+
+  test.AddInput<MLFloat16>("data", {2, 3}, ToFloat16({-9.f, -4.f, -1.f, -7.f, -3.f, -6.f}));
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<MLFloat16>("updates", {2, 3}, ToFloat16({1.f, 5.f, 3.f, 7.f, 3.f, 6.f}));
+  test.AddOutput<MLFloat16>("y", {2, 3}, ToFloat16({-9.f, -4.f, -1.f, 7.f, 5.f, 6.f}));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MaxReduction_Float) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "max");
+
+  test.AddInput<float>("data", {2, 3}, {-9.f, -4.f, -1.f, -7.f, -3.f, -6.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 3}, {1.f, 5.f, 3.f, 7.f, 3.f, 6.f});
+  test.AddOutput<float>("y", {2, 3}, {-9.f, -4.f, -1.f, 7.f, 5.f, 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MaxReduction_Double) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "max");
+
+  test.AddInput<double>("data", {2, 3}, {-9.f, -4.f, -1.f, -7.f, -3.f, -6.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<double>("updates", {2, 3}, {1.f, 5.f, 3.f, 7.f, 3.f, 6.f});
+  test.AddOutput<double>("y", {2, 3}, {-9.f, -4.f, -1.f, 7.f, 5.f, 6.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MinReduction_MLFloat16) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "min");
+
+  test.AddInput<MLFloat16>("data", {2, 3}, ToFloat16({-9.f, -4.f, -1.f, 8.f, -3.f, 5.f}));
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<MLFloat16>("updates", {2, 3}, ToFloat16({1.f, 5.f, 3.f, 7.f, 3.f, 6.f}));
+  test.AddOutput<MLFloat16>("y", {2, 3}, ToFloat16({-9.f, -4.f, -1.f, 1.f, -3.f, 3.f}));
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MinReduction_Float) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "min");
+
+  test.AddInput<float>("data", {2, 3}, {-9.f, -4.f, -1.f, 8.f, -3.f, 5.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<float>("updates", {2, 3}, {1.f, 5.f, 3.f, 7.f, 3.f, 6.f});
+  test.AddOutput<float>("y", {2, 3}, {-9.f, -4.f, -1.f, 1.f, -3.f, 3.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(ScatterElements, MinReduction_Double) {
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddAttribute<std::string>("reduction", "min");
+
+  test.AddInput<double>("data", {2, 3}, {-9.f, -4.f, -1.f, 8.f, -3.f, 5.f});
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 1, 1, 1, 1, 1});
+  test.AddInput<double>("updates", {2, 3}, {1.f, 5.f, 3.f, 7.f, 3.f, 6.f});
+  test.AddOutput<double>("y", {2, 3}, {-9.f, -4.f, -1.f, 1.f, -3.f, 3.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 }  // namespace test

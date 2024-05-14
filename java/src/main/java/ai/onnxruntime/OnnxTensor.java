@@ -1,10 +1,10 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
-import java.io.IOException;
+import ai.onnxruntime.platform.Fp16Conversions;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -13,41 +13,71 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
+import java.util.Optional;
+import java.util.logging.Logger;
 
 /**
  * A Java object wrapping an OnnxTensor. Tensors are the main input to the library, and can also be
  * returned as outputs.
  */
-public class OnnxTensor implements OnnxValue {
-  static {
-    try {
-      OnnxRuntime.init();
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to load onnx-runtime library", e);
-    }
-  }
-
-  private final long nativeHandle;
-
-  private final long allocatorHandle;
-
-  private final TensorInfo info;
+public class OnnxTensor extends OnnxTensorLike {
+  private static final Logger logger = Logger.getLogger(OnnxTensor.class.getName());
 
   /**
-   * This reference is held for OnnxTensors backed by a Java nio buffer to ensure the buffer does
+   * This reference is held for OnnxTensors backed by a java.nio.Buffer to ensure the buffer does
    * not go out of scope while the OnnxTensor exists.
    */
   private final Buffer buffer;
 
+  /**
+   * Denotes if the OnnxTensor made a copy of the buffer on construction (i.e. it may have the only
+   * reference).
+   */
+  private final boolean ownsBuffer;
+
   OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info) {
-    this(nativeHandle, allocatorHandle, info, null);
+    this(nativeHandle, allocatorHandle, info, null, false);
   }
 
-  OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer) {
-    this.nativeHandle = nativeHandle;
-    this.allocatorHandle = allocatorHandle;
-    this.info = info;
+  OnnxTensor(
+      long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer, boolean ownsBuffer) {
+    super(nativeHandle, allocatorHandle, info);
     this.buffer = buffer;
+    this.ownsBuffer = ownsBuffer;
+  }
+
+  /**
+   * Returns true if the buffer in this OnnxTensor was created on construction of this tensor, i.e.,
+   * it is a copy of a user supplied buffer or array and may hold the only reference to that buffer.
+   *
+   * <p>When this is true the backing buffer was copied from the user input, so users cannot mutate
+   * the state of this buffer without first getting the reference via {@link #getBufferRef()}.
+   *
+   * @return True if the buffer in this OnnxTensor was allocated by it on construction (i.e., it is
+   *     a copy of a user buffer.)
+   */
+  public boolean ownsBuffer() {
+    return this.ownsBuffer;
+  }
+
+  /**
+   * Returns a reference to the buffer which backs this {@code OnnxTensor}. If the tensor is not
+   * backed by a buffer (i.e., it was created from a Java array, or is backed by memory allocated by
+   * ORT) this method returns an empty {@link Optional}.
+   *
+   * <p>Changes to the buffer elements will be reflected in the native {@code OrtValue}, this can be
+   * used to repeatedly update a single tensor for multiple different inferences without allocating
+   * new tensors, though the inputs <b>must</b> remain the same size and shape.
+   *
+   * <p>Note: the tensor could refer to a contiguous range of elements in this buffer, not the whole
+   * buffer. It is up to the user to manage this information by respecting the position and limit.
+   * As a consequence, accessing this reference should be considered problematic when multiple
+   * threads hold references to the buffer.
+   *
+   * @return A reference to the buffer.
+   */
+  public Optional<Buffer> getBufferRef() {
+    return Optional.ofNullable(buffer);
   }
 
   @Override
@@ -55,16 +85,13 @@ public class OnnxTensor implements OnnxValue {
     return OnnxValueType.ONNX_TYPE_TENSOR;
   }
 
-  long getNativeHandle() {
-    return nativeHandle;
-  }
-
   /**
    * Either returns a boxed primitive if the Tensor is a scalar, or a multidimensional array of
    * primitives if it has multiple dimensions.
    *
    * <p>Java multidimensional arrays are quite slow for more than 2 dimensions, in that case it is
-   * recommended you use the java.nio.Buffer extractors below (e.g. {@link #getFloatBuffer}).
+   * recommended you use the {@link java.nio.Buffer} extractors below (e.g., {@link
+   * #getFloatBuffer}).
    *
    * @return A Java value.
    * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the
@@ -72,6 +99,7 @@ public class OnnxTensor implements OnnxValue {
    */
   @Override
   public Object getValue() throws OrtException {
+    checkClosed();
     if (info.isScalar()) {
       switch (info.type) {
         case FLOAT:
@@ -91,13 +119,22 @@ public class OnnxTensor implements OnnxValue {
           return getBool(OnnxRuntime.ortApiHandle, nativeHandle);
         case STRING:
           return getString(OnnxRuntime.ortApiHandle, nativeHandle);
+        case FLOAT16:
+          return Fp16Conversions.fp16ToFloat(
+              getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
+        case BFLOAT16:
+          return Fp16Conversions.bf16ToFloat(
+              getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
         case UNKNOWN:
         default:
           throw new OrtException("Extracting the value of an invalid Tensor.");
       }
     } else {
       Object carrier = info.makeCarrier();
-      getArray(OnnxRuntime.ortApiHandle, nativeHandle, carrier);
+      if (info.getNumElements() > 0) {
+        // If the tensor has values copy them out
+        getArray(OnnxRuntime.ortApiHandle, nativeHandle, carrier);
+      }
       if ((info.type == OnnxJavaType.STRING) && (info.shape.length != 1)) {
         // We read the strings out from native code in a flat array and then reshape
         // to the desired output shape.
@@ -109,22 +146,22 @@ public class OnnxTensor implements OnnxValue {
   }
 
   @Override
-  public TensorInfo getInfo() {
-    return info;
-  }
-
-  @Override
   public String toString() {
-    return "OnnxTensor(info=" + info.toString() + ")";
+    return "OnnxTensor(info=" + info.toString() + ",closed=" + closed + ")";
   }
 
   /**
-   * Closes the tensor, releasing it's underlying memory (if it's not backed by an NIO buffer). If
-   * it is backed by a buffer then the memory is released when the buffer is GC'd.
+   * Closes the tensor, releasing its underlying memory (if it's not backed by an NIO buffer). If it
+   * is backed by a buffer then the memory is released when the buffer is GC'd.
    */
   @Override
-  public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+  public synchronized void close() {
+    if (!closed) {
+      close(OnnxRuntime.ortApiHandle, nativeHandle);
+      closed = true;
+    } else {
+      logger.warning("Closing an already closed tensor.");
+    }
   }
 
   /**
@@ -136,6 +173,7 @@ public class OnnxTensor implements OnnxValue {
    * @return A ByteBuffer copy of the OnnxTensor.
    */
   public ByteBuffer getByteBuffer() {
+    checkClosed();
     if (info.type != OnnxJavaType.STRING) {
       ByteBuffer buffer = getBuffer(OnnxRuntime.ortApiHandle, nativeHandle);
       ByteBuffer output = ByteBuffer.allocate(buffer.capacity());
@@ -149,30 +187,29 @@ public class OnnxTensor implements OnnxValue {
 
   /**
    * Returns a copy of the underlying OnnxTensor as a FloatBuffer if it can be losslessly converted
-   * into a float (i.e. it's a float or fp16), otherwise it returns null.
+   * into a float (i.e. it's a float, fp16 or bf16), otherwise it returns null.
    *
    * @return A FloatBuffer copy of the OnnxTensor.
    */
   public FloatBuffer getFloatBuffer() {
+    checkClosed();
     if (info.type == OnnxJavaType.FLOAT) {
-      if (info.onnxType == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-        // if it's fp16 we need to copy it out by hand.
-        ShortBuffer buffer = getBuffer().asShortBuffer();
-        int bufferCap = buffer.capacity();
-        FloatBuffer output = FloatBuffer.allocate(bufferCap);
-        for (int i = 0; i < bufferCap; i++) {
-          output.put(fp16ToFloat(buffer.get(i)));
-        }
-        output.rewind();
-        return output;
-      } else {
-        // if it's fp32 use the efficient copy.
-        FloatBuffer buffer = getBuffer().asFloatBuffer();
-        FloatBuffer output = FloatBuffer.allocate(buffer.capacity());
-        output.put(buffer);
-        output.rewind();
-        return output;
-      }
+      // if it's fp32 use the efficient copy.
+      FloatBuffer buffer = getBuffer().asFloatBuffer();
+      FloatBuffer output = FloatBuffer.allocate(buffer.capacity());
+      output.put(buffer);
+      output.rewind();
+      return output;
+    } else if (info.type == OnnxJavaType.FLOAT16) {
+      // if it's fp16 we need to copy it out by hand.
+      ByteBuffer buf = getBuffer();
+      ShortBuffer buffer = buf.asShortBuffer();
+      return Fp16Conversions.convertFp16BufferToFloatBuffer(buffer);
+    } else if (info.type == OnnxJavaType.BFLOAT16) {
+      // if it's bf16 we need to copy it out by hand.
+      ByteBuffer buf = getBuffer();
+      ShortBuffer buffer = buf.asShortBuffer();
+      return Fp16Conversions.convertBf16BufferToFloatBuffer(buffer);
     } else {
       return null;
     }
@@ -185,6 +222,7 @@ public class OnnxTensor implements OnnxValue {
    * @return A DoubleBuffer copy of the OnnxTensor.
    */
   public DoubleBuffer getDoubleBuffer() {
+    checkClosed();
     if (info.type == OnnxJavaType.DOUBLE) {
       DoubleBuffer buffer = getBuffer().asDoubleBuffer();
       DoubleBuffer output = DoubleBuffer.allocate(buffer.capacity());
@@ -197,13 +235,16 @@ public class OnnxTensor implements OnnxValue {
   }
 
   /**
-   * Returns a copy of the underlying OnnxTensor as a ShortBuffer if the underlying type is int16 or
-   * uint16, otherwise it returns null.
+   * Returns a copy of the underlying OnnxTensor as a ShortBuffer if the underlying type is int16,
+   * uint16, fp16 or bf16, otherwise it returns null.
    *
    * @return A ShortBuffer copy of the OnnxTensor.
    */
   public ShortBuffer getShortBuffer() {
-    if (info.type == OnnxJavaType.INT16) {
+    checkClosed();
+    if ((info.type == OnnxJavaType.INT16)
+        || (info.type == OnnxJavaType.FLOAT16)
+        || (info.type == OnnxJavaType.BFLOAT16)) {
       ShortBuffer buffer = getBuffer().asShortBuffer();
       ShortBuffer output = ShortBuffer.allocate(buffer.capacity());
       output.put(buffer);
@@ -221,6 +262,7 @@ public class OnnxTensor implements OnnxValue {
    * @return An IntBuffer copy of the OnnxTensor.
    */
   public IntBuffer getIntBuffer() {
+    checkClosed();
     if (info.type == OnnxJavaType.INT32) {
       IntBuffer buffer = getBuffer().asIntBuffer();
       IntBuffer output = IntBuffer.allocate(buffer.capacity());
@@ -239,6 +281,7 @@ public class OnnxTensor implements OnnxValue {
    * @return A LongBuffer copy of the OnnxTensor.
    */
   public LongBuffer getLongBuffer() {
+    checkClosed();
     if (info.type == OnnxJavaType.INT64) {
       LongBuffer buffer = getBuffer().asLongBuffer();
       LongBuffer output = LongBuffer.allocate(buffer.capacity());
@@ -294,22 +337,15 @@ public class OnnxTensor implements OnnxValue {
   private native void close(long apiHandle, long nativeHandle);
 
   /**
-   * Mirrors the conversion in the C code. It's not precise if there are subnormal values, nor does
-   * it preserve all the different kinds of NaNs (which aren't representable in Java anyway).
-   *
-   * @param input A uint16_t representing an IEEE half precision float.
-   * @return A float.
-   */
-  private static float fp16ToFloat(short input) {
-    int output =
-        ((input & 0x8000) << 16) | (((input & 0x7c00) + 0x1C000) << 13) | ((input & 0x03FF) << 13);
-    return Float.intBitsToFloat(output);
-  }
-
-  /**
    * Create a Tensor from a Java primitive, primitive multidimensional array or String
    * multidimensional array. The shape is inferred from the object using reflection. The default
    * allocator is used.
+   *
+   * <p>Note: Java multidimensional arrays are not dense and this method requires traversing a large
+   * number of pointers for high dimensional arrays. For types other than Strings it is recommended
+   * to use one of the {@code createTensor} methods which accepts a {@link java.nio.Buffer}, e.g.
+   * {@link #createTensor(OrtEnvironment, FloatBuffer, long[])} as those methods are zero copy to
+   * transfer data into ORT when using direct buffers.
    *
    * @param env The current OrtEnvironment.
    * @param data The data to store in a tensor.
@@ -715,73 +751,21 @@ public class OnnxTensor implements OnnxValue {
    */
   private static OnnxTensor createTensor(
       OnnxJavaType type, OrtAllocator allocator, Buffer data, long[] shape) throws OrtException {
-    int bufferPos;
-    long bufferSizeLong = data.remaining() * (long) type.size;
-    if (bufferSizeLong > (Integer.MAX_VALUE - (8 * type.size))) {
-      // The maximum direct byte buffer size is a little below Integer.MAX_VALUE depending
-      // on the JVM, so we check for something 8 elements below the maximum size which
-      // should be allocatable (assuming there is enough memory) on all 64-bit JVMs.
-      throw new IllegalStateException(
-          "Cannot allocate a direct buffer of the requested size and type, size "
-              + data.remaining()
-              + ", type = "
-              + type);
-    }
-    // Now we know we're in range
-    int bufferSize = data.remaining() * type.size;
-    Buffer tmp;
-    if (data.isDirect()) {
-      tmp = data;
-      bufferPos = data.position() * type.size;
-    } else {
-      // Copy the data to a new direct buffer, then restore the state of the input.
-      int origPosition = data.position();
-      ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-      switch (type) {
-        case FLOAT:
-          tmp = buffer.asFloatBuffer().put((FloatBuffer) data);
-          break;
-        case DOUBLE:
-          tmp = buffer.asDoubleBuffer().put((DoubleBuffer) data);
-          break;
-        case UINT8:
-        case INT8:
-          // buffer is already a ByteBuffer, no cast needed.
-          tmp = buffer.put((ByteBuffer) data);
-          break;
-        case INT16:
-          tmp = buffer.asShortBuffer().put((ShortBuffer) data);
-          break;
-        case INT32:
-          tmp = buffer.asIntBuffer().put((IntBuffer) data);
-          break;
-        case INT64:
-          tmp = buffer.asLongBuffer().put((LongBuffer) data);
-          break;
-        case BOOL:
-        case STRING:
-        case UNKNOWN:
-        default:
-          throw new IllegalStateException(
-              "Impossible to reach here, managed to cast a buffer as an incorrect type");
-      }
-      data.position(origPosition);
-      tmp.rewind();
-      bufferPos = 0;
-    }
-    TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
+    OrtUtil.BufferTuple tuple = OrtUtil.prepareBuffer(data, type);
+    TensorInfo info = TensorInfo.constructFromBuffer(tuple.data, shape, type);
     return new OnnxTensor(
         createTensorFromBuffer(
             OnnxRuntime.ortApiHandle,
             allocator.handle,
-            tmp,
-            bufferPos,
-            bufferSize,
+            tuple.data,
+            tuple.pos,
+            tuple.byteSize,
             shape,
             info.onnxType.value),
         allocator.handle,
         info,
-        tmp);
+        tuple.data,
+        tuple.isCopy);
   }
 
   private static native long createTensor(

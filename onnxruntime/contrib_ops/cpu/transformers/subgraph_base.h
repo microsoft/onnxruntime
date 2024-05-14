@@ -5,7 +5,7 @@
 
 #include <vector>
 #include <string>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
@@ -43,12 +43,15 @@ class Subgraph {
   int head_size;
   int vocab_size;
   int num_layers;
+  bool past_present_share_buffer_;
+  bool has_decoder_masked_attention_;
+  bool output_cross_qk_ = false;
 
   // Setup execution
   Status Setup(const SessionState& session_state,
                const SessionState& subgraph_session_state);
 
-  FeedsFetchesManager* GetFeedsFetchesManager() { 
+  FeedsFetchesManager* GetFeedsFetchesManager() {
     return (feeds_fetches_manager_.has_value()) ? &*feeds_fetches_manager_ : nullptr;
   }
 
@@ -63,6 +66,17 @@ class Subgraph {
   Status GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shape,
                        const ONNX_NAMESPACE::TensorShapeProto* logits_shape,
                        bool merged_past);
+
+  Status AppendPastSequenceLength(std::vector<OrtValue>& feeds,
+                                  AllocatorPtr cpu_allocator,
+                                  const int32_t init_value);
+
+  Status AppendBeamWidthAndCacheIndir(std::vector<OrtValue>& feeds,
+                                      AllocatorPtr cpu_allocator,
+                                      AllocatorPtr default_allocator,
+                                      const int64_t batch_size,
+                                      const int64_t num_beams,
+                                      const int64_t max_seq_len);
 
   AllocatorPtr allocator_;
   const SessionState* session_state_;

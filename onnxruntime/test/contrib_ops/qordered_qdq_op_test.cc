@@ -7,7 +7,7 @@
 
 #include <cuda.h>
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 namespace onnxruntime {
 namespace test {
@@ -73,13 +73,6 @@ static void RunQOrdered_Quantize_Test(
     std::vector<int64_t> const& shape,
     OrderCublasLt order_q,
     float scale) {
-
-  int cuda_runtime_version = 0;
-  // Need 11.4 or higher cuda runtime
-  if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
-    return;
-  }
-
   auto qvec = QuantizeTransform(shape, scale, fvec, order_q);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -154,12 +147,6 @@ static void RunQOrdered_Dequantize_Test(
     std::vector<int64_t> const& shape,
     OrderCublasLt order_q,
     float scale) {
-  int cuda_runtime_version = 0;
-  // Need 11.4 or higher cuda runtime
-  if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
-    return;
-  }
-
   auto fvec = DequantizeTransform<T>(shape, scale, qvec, order_q);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -207,7 +194,6 @@ TEST(QOrderedTest, FP16_Dequantize_ROW) {
 }  // namespace test
 }  // namespace onnxruntime
 
-
-#endif // CUDA_VERSION
+#endif  // CUDA_VERSION
 
 #endif  // USE_CUDA

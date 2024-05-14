@@ -16,7 +16,7 @@ TEST(WebAssemblyTest, test) {
                                                             input_data.data(), input_data.size(),
                                                             input_shape.data(), input_shape.size());
 
-  std::array<float, 6> output_data{}; 
+  std::array<float, 6> output_data{};
   std::array<int64_t, 2> output_shape{3, 2};
   Ort::Value output_tensor = Ort::Value::CreateTensor<float>(memory_info,
                                                              output_data.data(), output_data.size(),

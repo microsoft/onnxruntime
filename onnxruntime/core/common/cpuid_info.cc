@@ -22,13 +22,25 @@
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 
-#endif // ARM
+#ifndef HWCAP2_I8MM
+#define HWCAP2_I8MM (1 << 13)
+#endif
 
-#endif // Linux
+#ifndef HWCAP2_SVEI8MM
+#define HWCAP2_SVEI8MM (1 << 9)
+#endif
+
+#ifndef HWCAP2_BF16
+#define HWCAP2_BF16 (1 << 14)
+#endif
+
+#endif  // ARM
+
+#endif  // Linux
 
 #if _WIN32
 
-#include "Windows.h"
+#include <Windows.h>
 
 #define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 
@@ -36,31 +48,46 @@
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
 
-#endif // _WIN32
+#endif  // _WIN32
 
 #if defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
+#if defined(CPUIDINFO_ARCH_ARM)
+namespace onnxruntime {
+// The following function is declared in "core/common/cpuid_uarch.h" but we cannot include the whole header file because
+//  some of its symbols are conflict with <cpuinfo.h>
+void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
+}  // namespace onnxruntime
+#endif
 #else
 #include "core/common/cpuid_uarch.h"
 #endif  // CPUINFO_SUPPORTED
 
-
-namespace onnxruntime {
-
-#ifdef CPUIDINFO_ARCH_X86
-
-#include <memory>
+#if defined(CPUIDINFO_ARCH_X86)
 #if defined(_MSC_VER)
 #include <intrin.h>
 #elif defined(__GNUC__)
 #include <cpuid.h>
 #endif
+#endif  // defined(CPUIDINFO_ARCH_X86)
+
+namespace onnxruntime {
+
+#ifdef CPUIDINFO_ARCH_X86
 
 static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 #if defined(_MSC_VER)
   __cpuid(reinterpret_cast<int*>(data), function_id);
 #elif defined(__GNUC__)
   __cpuid(function_id, data[0], data[1], data[2], data[3]);
+#endif
+}
+
+static inline void GetCPUID(int function_id, int sub_leaf, int data[4]) {  // NOLINT
+#if defined(_MSC_VER)
+  __cpuidex(reinterpret_cast<int*>(data), function_id, sub_leaf);
+#elif defined(__GNUC__)
+  __cpuid_count(function_id, sub_leaf, data[0], data[1], data[2], data[3]);
 #endif
 }
 
@@ -97,12 +124,18 @@ void CPUIDInfo::X86Init() {
 
       if (num_IDs >= 7) {
         GetCPUID(7, data);
+        const uint32_t max_SubLeaves = data[0];
+        has_amx_bf16_ = (data[3] & (1 << 22));
         has_avx2_ = has_avx_ && (data[1] & (1 << 5));
         has_avx512f_ = has_avx512 && (data[1] & (1 << 16));
         // Add check for AVX512 Skylake since tensorization GEMM need intrinsics from avx512bw/avx512dq.
         // avx512_skylake = avx512f | avx512vl | avx512cd | avx512bw | avx512dq
         has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
         is_hybrid_ = (data[3] & (1 << 15));
+        if (max_SubLeaves >= 1) {
+          GetCPUID(7, 1, data);
+          has_avx512_bf16_ = has_avx512 && (data[0] & (1 << 5));
+        }
       }
     }
   }
@@ -114,21 +147,16 @@ void CPUIDInfo::X86Init() {
 #ifdef __linux__
 
 void CPUIDInfo::ArmLinuxInit() {
-  // Pytorch CPUINFO only works on ARM linux or android
   // Assuming no hyper-threading, no NUMA groups
-#ifdef CPUINFO_SUPPORTED
-  pytorch_cpuinfo_init_ = cpuinfo_initialize();
-  if (!pytorch_cpuinfo_init_) {
-    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
-    return;
-  }
-#else
-  pytorch_cpuinfo_init_ = false;
-#endif
-
+#if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
     is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
     has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+    has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
+    has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
+    has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+
     const uint32_t core_cnt = cpuinfo_get_cores_count();
     core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
     is_armv8_narrow_ld_.resize(core_cnt, false);
@@ -149,15 +177,24 @@ void CPUIDInfo::ArmLinuxInit() {
         is_armv8_narrow_ld_[coreid] = true;
       }
     }
-  } else {
+  } else
+#endif  // defined(CPUINFO_SUPPORTED)
+  {
     has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+    has_fp16_ |= has_arm_neon_dot_;
+
+    has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
+    has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
+
+    has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
   }
 }
 
 #elif defined(_WIN32)
 
 void CPUIDInfo::ArmWindowsInit() {
-
+// ARM32 certainly doesn't have fp16, so we will skip the logic to avoid using RegGetValueA Windows API
+#ifndef _M_ARM
 #pragma region Application Family or OneCore Family
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
   // Read MIDR from windows registry
@@ -173,9 +210,9 @@ void CPUIDInfo::ArmWindowsInit() {
     unsigned long midrSize = sizeof(uint64_t);
 
     /*
-     * ARM lists for each coprocessor register 5 fields: op0/op1/CRn/CRm/op2. 
+     * ARM lists for each coprocessor register 5 fields: op0/op1/CRn/CRm/op2.
      * You need to put those numbers through the ARM64_SYSREG macro:
-     * 
+     *
      * #define ARM64_SYSREG(op0, op1, crn, crm, op2) \
      *    (((op0 & 1) << 14) |                       \
      *     ((op1 & 7) << 11) |                       \
@@ -209,6 +246,24 @@ void CPUIDInfo::ArmWindowsInit() {
 #endif /* Application Family or OneCore Family */
 
   has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+#else
+  has_arm_neon_dot_ = false;
+#endif
+
+#if defined(CPUINFO_SUPPORTED)
+  if (pytorch_cpuinfo_init_) {
+    has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
+    has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
+    has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+  } else
+#endif  // defined(CPUINFO_SUPPORTED)
+  {
+    has_fp16_ = false;
+    has_arm_neon_i8mm_ = false;
+    has_arm_sve_i8mm_ = false;
+    has_arm_neon_bf16_ = false;
+  }
 }
 
 #endif /* (arm or arm64) and windows */
@@ -229,4 +284,22 @@ uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
 #endif
 }
 
+CPUIDInfo::CPUIDInfo() {
+#ifdef CPUIDINFO_ARCH_X86
+  X86Init();
+#elif defined(CPUIDINFO_ARCH_ARM)
+#if defined(CPUINFO_SUPPORTED)
+  pytorch_cpuinfo_init_ = cpuinfo_initialize();
+  if (!pytorch_cpuinfo_init_) {
+    LOGS_DEFAULT(WARNING) << "Failed to initialize PyTorch cpuinfo library. May cause CPU EP performance degradation "
+                             "due to undetected CPU features.";
+  }
+#endif  // defined(CPUINFO_SUPPORTED)
+#ifdef __linux__
+  ArmLinuxInit();
+#elif defined(_WIN32)
+  ArmWindowsInit();
+#endif  /* (arm or arm64) and windows */
+#endif  // defined(CPUIDINFO_ARCH_ARM)
+}
 }  // namespace onnxruntime

@@ -16,7 +16,7 @@ def parse_arguments():
 
 args = parse_arguments()
 print("Generating symbol file for %s" % str(args.config))
-with open(args.version_file, "r") as f:
+with open(args.version_file) as f:
     VERSION_STRING = f.read().strip()
 
 print("VERSION:%s" % VERSION_STRING)
@@ -24,9 +24,9 @@ print("VERSION:%s" % VERSION_STRING)
 symbols = set()
 for c in args.config:
     file_name = os.path.join(args.src_root, "core", "providers", c, "symbols.txt")
-    with open(file_name, "r") as file:
+    with open(file_name) as file:
         for line in file:
-            line = line.strip()
+            line = line.strip()  # noqa: PLW2901
             if line in symbols:
                 print("dup symbol: %s", line)
                 exit(-1)
@@ -67,11 +67,23 @@ with open(args.output_source, "w") as file:
 
         # external symbols are removed, xnnpack ep will be created via the standard ORT API.
         # https://github.com/microsoft/onnxruntime/pull/11798
-        if c not in ("winml", "cuda", "migraphx", "snpe", "xnnpack", "cann"):
-            file.write("#include <core/providers/%s/%s_provider_factory.h>\n" % (c, c))
+        if c not in (
+            "vitisai",
+            "winml",
+            "cuda",
+            "rocm",
+            "migraphx",
+            "qnn",
+            "snpe",
+            "xnnpack",
+            "cann",
+            "dnnl",
+            "tensorrt",
+        ):
+            file.write(f"#include <core/providers/{c}/{c}_provider_factory.h>\n")
     file.write("void* GetFunctionEntryByName(const char* name){\n")
     for symbol in symbols:
         if symbol != "OrtGetWinMLAdapter":
-            file.write('if(strcmp(name,"%s") ==0) return (void*)&%s;\n' % (symbol, symbol))
+            file.write(f'if(strcmp(name,"{symbol}") ==0) return (void*)&{symbol};\n')
     file.write("return NULL;\n")
     file.write("}\n")

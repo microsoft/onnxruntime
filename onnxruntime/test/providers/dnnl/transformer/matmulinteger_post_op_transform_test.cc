@@ -11,60 +11,60 @@
 #include "test/util/include/default_providers.h"
 
 /*
-* The tests validate that if a fusion occures the expected output matches
-* the output of each graph if they had not be done separatly.
-*
-* Unfortantly there is no hook to actually check that the fussion occurred
-* other than inspecting debug logs.
-*
-* The tests use patterns that we have seen in actual models during testing.
-*
-* A few tests are there simply to validate the limits of the MatMulInteger +
-* post op fusion. The max number of ops fusable are 32 post ops so we exced
-* that number and make sure the generated fusion is not a broken graph.
-*
-* A current implementation limitation is that we can only support a single instance
-* ops that use the 'alpha' attribute. We purposly test models that have more than
-* one instance of LeakRelu or Elu to make sure the graph generated is not broken.
-*
-* Most numbers for the tests were randomly generated and calculated using
-* python numpy library.
-*
-*  // fusions seen in most bert models (bert_base_int8, DistilBert_int8, MobileBert_int8)
-*  MatMulInteger_Cast
-*  MatMulInteger_Cast_Mul
-*  MatMulInteger_Cast_Mul_Add
-*  MatMulInteger_Cast_Mul_Add_Add
-*  MatMulInteger_Cast_Mul_Add_Mul_Add
-*  MatMulInteger_Cast_Mul_Add_Add_Mul_Add
-*  MatMulInteger_Cast_Mul_Add_Relu
-*
-*  // testing other possible combinations that are not seen in models
-*  // Non-associative ops
-*  // not all layouts can be fused
-*  matmul_div_add_0
-*  matmul_div_add_1
-*  matmul_div_sub_0
-*  matmul_div_sub_1
-*
-*  // Max number of post ops supported by OneDNN is 32.
-*  // Test that the post-op fusion does not fail when that value is exceded
-*  matmul_36_post_ops
-*
-*  // test fusion of remaining eltwise ops
-*  matmul_add_abs_mul
-*  matmul_add_exp_mul
-*  matmul_add_abs_log_mul
-*  matmul_add_round_mul
-*  matmul_add_softplus_mul
-*  matmul_add_abs_sqrt_mul
-*  matmul_add_tanh_mul
-*
-*  //element wise functions that take alpha attribute
-*  matmul_add_leakyrelu_mul
-*  matmul_add_leakyrelu_mul_leakyrelu
-*  matmul_add_elu_mul_leakyrelu
-*/
+ * The tests validate that if a fusion occures the expected output matches
+ * the output of each graph if they had not be done separatly.
+ *
+ * Unfortantly there is no hook to actually check that the fussion occurred
+ * other than inspecting debug logs.
+ *
+ * The tests use patterns that we have seen in actual models during testing.
+ *
+ * A few tests are there simply to validate the limits of the MatMulInteger +
+ * post op fusion. The max number of ops fusable are 32 post ops so we exced
+ * that number and make sure the generated fusion is not a broken graph.
+ *
+ * A current implementation limitation is that we can only support a single instance
+ * ops that use the 'alpha' attribute. We purposly test models that have more than
+ * one instance of LeakRelu or Elu to make sure the graph generated is not broken.
+ *
+ * Most numbers for the tests were randomly generated and calculated using
+ * python numpy library.
+ *
+ *  // fusions seen in most bert models (bert_base_int8, DistilBert_int8, MobileBert_int8)
+ *  MatMulInteger_Cast
+ *  MatMulInteger_Cast_Mul
+ *  MatMulInteger_Cast_Mul_Add
+ *  MatMulInteger_Cast_Mul_Add_Add
+ *  MatMulInteger_Cast_Mul_Add_Mul_Add
+ *  MatMulInteger_Cast_Mul_Add_Add_Mul_Add
+ *  MatMulInteger_Cast_Mul_Add_Relu
+ *
+ *  // testing other possible combinations that are not seen in models
+ *  // Non-associative ops
+ *  // not all layouts can be fused
+ *  matmul_div_add_0
+ *  matmul_div_add_1
+ *  matmul_div_sub_0
+ *  matmul_div_sub_1
+ *
+ *  // Max number of post ops supported by OneDNN is 32.
+ *  // Test that the post-op fusion does not fail when that value is exceded
+ *  matmul_36_post_ops
+ *
+ *  // test fusion of remaining eltwise ops
+ *  matmul_add_abs_mul
+ *  matmul_add_exp_mul
+ *  matmul_add_abs_log_mul
+ *  matmul_add_round_mul
+ *  matmul_add_softplus_mul
+ *  matmul_add_abs_sqrt_mul
+ *  matmul_add_tanh_mul
+ *
+ *  //element wise functions that take alpha attribute
+ *  matmul_add_leakyrelu_mul
+ *  matmul_add_leakyrelu_mul_leakyrelu
+ *  matmul_add_elu_mul_leakyrelu
+ */
 namespace onnxruntime {
 namespace test {
 // Although these tests should not fail when run on other EPs there
@@ -165,7 +165,6 @@ class Dnnl_MatMulInteger_Mul_PostOpTester : public OpTester {
     auto& matmul_out = graph.GetOrCreateNodeArg("matmul_out", &output_int32);
     auto& cast_out = graph.GetOrCreateNodeArg("cast_out", y->TypeAsProto());
 
-
     graph.AddNode("matmul1", "MatMulInteger", "", {a, b, a_zp, b_zp}, {&matmul_out});
     auto& cast_node = graph.AddNode("cast1", "Cast", "", {&matmul_out}, {&cast_out});
     cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
@@ -187,7 +186,7 @@ TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Mul) {
   test.AddInput<int8_t>("b_zp", {}, {5});
   test.AddInput<float>("c1", {2, 4},
                        {0.5f, 1.5f, 2.0f, 2.5f,
-                       -0.5f, -1.5f, -2.0f, -2.5f});
+                        -0.5f, -1.5f, -2.0f, -2.5f});
   test.AddOutput<float>("Y", {2, 4},
                         {-27.5f, 24.0f, 178.0f, -110.0f,
                          -61.0f, -231.0f, -136.0f, 97.5f});
@@ -935,11 +934,11 @@ TEST(DnnlMatMulIntegerFusion, MatMulInteger_Cast_Add_Round) {
   test.AddInput<int8_t>("a_zp", {}, {5});
   test.AddInput<int8_t>("b_zp", {}, {5});
   test.AddInput<float>("c1", {2, 4},
-                        {0.4f, 0.6f, 0.4f, 0.6f,
-                         0.4f, 0.6f, 0.5f, 0.5f});
+                       {0.4f, 0.6f, 0.4f, 0.6f,
+                        0.4f, 0.6f, 0.5f, 0.5f});
   test.AddOutput<float>("Y", {2, 4},
                         {-55.0f, 17.0f, 89.0f, -43.0f,
-                          122.0f, 155.0f, 68.0f, -38.0f});
+                         122.0f, 155.0f, 68.0f, -38.0f});
 
   test.Run();
 }

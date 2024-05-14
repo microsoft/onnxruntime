@@ -32,7 +32,7 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
                                   int64_t to_type,
                                   onnxruntime::ProviderType providerType) {
   // insert cast op to cast input
-  std::string node_name = graph.GenerateNodeName("InsertedCast_" + old_arg->Name());
+  std::string node_name = graph.GenerateNodeName("InsertedPrecisionFreeCast_" + old_arg->Name());
 
   auto* new_arg = &graph.GetOrCreateNodeArg(node_name, new_type);
 
@@ -84,9 +84,7 @@ static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
 // going to a node that will need a Cast.
 //
 // Return true if all the fp16 inputs and outputs are connected to nodes that will be cast to fp32.
-static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::Graph& graph) {
-  bool isolated_fp16_node = false;
-
+static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry) {
   // we can check if it's an isolated fp16 node
   // if node has input coming from other nodes (only consuming graph inputs or initializers if it doesn't),
   //    does not have a subgraph (would have to alter subgraph inputs if we cast the input to this node),
@@ -96,70 +94,135 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
       !node.ContainsSubgraph() &&
       !graph.NodeProducesGraphOutput(node) &&
       node.GetExecutionProviderType() == kCpuExecutionProvider) {
-    do {
-      // find the number of fp16 inputs as we need to make sure they're all coming from nodes that will be cast
-      const auto& input_defs = node.InputDefs();
-      size_t num_fp16_inputs = std::count_if(input_defs.cbegin(), input_defs.cend(),
-                                             [](const NodeArg* input_def) {
-                                               return IsMLFloat16Tensor(*input_def);
-                                             });
+    //
+    // Three tasks here:
+    // 1. make sure all tensor(float16) inputs and first output coming from or
+    //    going to nodes that will be cast to fp32
+    // 2. check the current node is float16 node.
+    // 3. check the current node has a float32 implementation
+    // Only return true when all three are satisfied
+    //
+    const auto* schema = node.Op();
+    if (!schema) {
+      // no way to know whether it is safe to convert this to fp32, give up
+      return false;
+    }
 
-      if (num_fp16_inputs == 0) {
-        break;
+    const TypeConstraintMap& type_schema = schema->typeConstraintMap();
+    InlinedHashMap<std::string, MLDataType> type_constraint_map;
+    type_constraint_map.reserve(type_schema.size());
+
+    // For each formal parameters, there might be 0-n
+    // actual inputs, this makes it very tricky to find out which
+    // actual input should map to which formal parameter
+
+    const auto& input_arg_counts = node.InputArgCount();
+    const auto& input_defs = node.InputDefs();
+    const auto& formal_inputs = schema->inputs();
+    const size_t num_inputs = std::min(formal_inputs.size(), input_arg_counts.size());
+
+    InlinedHashSet<int> fp16_args;
+    int input_idx_start = 0;
+    for (size_t formal_idx = 0;
+         formal_idx < num_inputs;
+         input_idx_start += input_arg_counts[formal_idx], formal_idx++) {
+      const auto& type_str = formal_inputs[formal_idx].GetTypeStr();
+      TypeConstraintMap::const_iterator it = type_schema.find(type_str);
+      if (it == type_schema.end()) {
+        // Don't care about parameter that does not have a type constraint.
+        continue;
       }
 
-      size_t num_fp16_input_edges = 0;
+      // type_str is like T, T1 or T2 ...
+      for (int input_idx = 0; input_idx < input_arg_counts[formal_idx]; input_idx++) {
+        const size_t idx = static_cast<size_t>(input_idx_start) + static_cast<size_t>(input_idx);
+        ORT_ENFORCE(idx < input_defs.size());
+        const NodeArg* input_def = input_defs[idx];
+        if (!input_def || !input_def->Exists()) {
+          continue;
+        }
+        if (IsMLFloat16Tensor(*input_def)) {
+          fp16_args.emplace(static_cast<int>(idx));
+          type_constraint_map[type_str] = DataTypeImpl::GetTensorType<float>();
+          break;  // we don't have multiple tensors feeding into one input
+        }
+        type_constraint_map[type_str] = DataTypeImpl::TypeFromProto(*(input_def->TypeAsProto()));
+        break;  // we don't have multiple tensors feeding into one input
+      }
+    }
 
-      // check if all nodes providing our fp16 input need to be cast to fp32
-      for (auto input_edge = node.InputEdgesBegin(), end = node.InputEdgesEnd(); input_edge != end; ++input_edge) {
-        const NodeArg& input_def = *input_defs[input_edge->GetDstArgIndex()];
+    if (fp16_args.empty()) {
+      return false;
+    }
 
-        if (IsMLFloat16Tensor(input_def)) {
-          // if the node producing our fp16 input does not need its input cast to fp32 we should run in fp16
-          if (!NodeNeedsInputCastToFp32(input_edge->GetNode())) {
-            break;
-          }
-
-          ++num_fp16_input_edges;
+    // check if all nodes providing our fp16 input need to be cast to fp32
+    for (auto input_edge = node.InputEdgesBegin(), end = node.InputEdgesEnd(); input_edge != end; ++input_edge) {
+      const int arg_idx = input_edge->GetDstArgIndex();
+      if (fp16_args.find(arg_idx) != fp16_args.end()) {
+        // if the node producing our fp16 input does not need its input cast to fp32 we should run in fp16
+        if (!NodeNeedsInputCastToFp32(input_edge->GetNode())) {
+          return false;
         }
       }
+    }
 
-      // one or more fp16 inputs are coming from a graph input or initializer
-      if (num_fp16_inputs != num_fp16_input_edges) {
-        break;
+    // if we got here all nodes providing our fp16 input/s will be cast to fp32.
+    // check if the same applies to the nodes consuming our fp16 output.
+    fp16_args.clear();
+    const auto& output_defs = node.OutputDefs();
+    const auto& formal_outputs = schema->outputs();
+    const size_t num_outputs = std::min(formal_outputs.size(), output_defs.size());
+    for (size_t idx = 0; idx < num_outputs; idx++) {
+      const auto& type_str = formal_outputs[idx].GetTypeStr();
+      TypeConstraintMap::const_iterator it = type_schema.find(type_str);
+      if (it == type_schema.end()) {
+        // Don't care about parameter that does not have a type constraint.
+        continue;
       }
 
-      // if we got here all nodes providing our fp16 input/s will be cast to fp32.
-      // check if the same applies to all nodes consuming our fp16 output.
+      const NodeArg* output_def = output_defs[idx];
+      if (!output_def || !output_def->Exists()) {
+        continue;
+      }
+      if (IsMLFloat16Tensor(*output_def)) {
+        fp16_args.emplace((int)idx);
+        type_constraint_map[type_str] = DataTypeImpl::GetTensorType<float>();
+      } else {
+        type_constraint_map[type_str] = DataTypeImpl::TypeFromProto(*(output_def->TypeAsProto()));
+      }
+    }
 
-      bool node_has_fp16_output = false;
+    if (fp16_args.empty()) {
+      return false;  // no fp16 output
+    }
 
-      for (auto output_edge = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); output_edge != end; ++output_edge) {
-        const NodeArg& output_def = *node.OutputDefs()[output_edge->GetSrcArgIndex()];
-        if (IsMLFloat16Tensor(output_def)) {
-          node_has_fp16_output = true;
-
-          // if the node consuming our fp16 output does not need a cast, we should run in fp16
-          if (!NodeNeedsInputCastToFp32(output_edge->GetNode())) {
-            break;
-          }
+    for (auto output_edge = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); output_edge != end; ++output_edge) {
+      const int arg_idx = output_edge->GetSrcArgIndex();
+      if (fp16_args.find(arg_idx) != fp16_args.end()) {
+        // if the node producing our fp16 input does not need its input cast to fp32 we should run in fp16
+        if (!NodeNeedsInputCastToFp32(output_edge->GetNode())) {
+          return false;
         }
       }
+    }
 
-      if (node_has_fp16_output) {
-        // all nodes providing our fp16 input/s will be cast to fp32, and
-        // we produce one or more fp16 outputs, and all nodes consuming those outputs will be cast to fp32
-        isolated_fp16_node = true;
-      }
-    } while (false);
+    // now all fp16 inputs and outputs would have a cast
+    // make sure fp32 version of the kernel is available.
+    const KernelCreateInfo* kernel_create_info{};
+    const auto lookup_status = cpu_kernel_registry.TryFindKernel(
+        kCpuExecutionProvider, node.OpType(), node.Domain(),
+        node.SinceVersion(), type_constraint_map, &kernel_create_info);
+    if (lookup_status.IsOK() && kernel_create_info != nullptr) {
+      return true;
+    }
   }
 
-  return isolated_fp16_node;
+  return false;
 }
 
-Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
+static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry) {
   for (auto& node : graph.Nodes()) {
-    if (IsIsolatedFp16NodeOnCpu(node, graph)) {
+    if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registry)) {
       // unassign the node so that NeedInsertCast will return true for it, forcing it to fp32
       node.SetExecutionProviderType("");
     }
@@ -172,7 +235,8 @@ enum TypeGroup {
   Unknown = -1,
   Bool = 0,
   Integer = 1,
-  Float = 2,
+  Unsigned = 2,
+  Float = 3,
 };
 
 TypeGroup GetTypeGroup(DataType type) {
@@ -180,9 +244,12 @@ TypeGroup GetTypeGroup(DataType type) {
     return Bool;
   }
 
-  if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)" ||
-      *type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
+  if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)") {
     return Integer;
+  }
+
+  if (*type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
+    return Unsigned;
   }
 
   if (*type == "tensor(bfloat16)" || *type == "tensor(double)" || *type == "tensor(float)" || *type == "tensor(float16)") {
@@ -192,6 +259,22 @@ TypeGroup GetTypeGroup(DataType type) {
   return Unknown;
 }
 
+int BitLength(DataType type) {
+  if (*type == "tensor(bool)") {
+    return 1;
+  } else if (*type == "tensor(uint8)" || *type == "tensor(int8)") {
+    return 8;
+  } else if (*type == "tensor(int16)" || *type == "tensor(uint16)" || *type == "tensor(bfloat16)" || *type == "tensor(float16)") {
+    return 16;
+  } else if (*type == "tensor(int32)" || *type == "tensor(uint32)" || *type == "tensor(float)") {
+    return 32;
+  } else if (*type == "tensor(int64)" || *type == "tensor(uint64)" || *type == "tensor(double)") {
+    return 64;
+  } else {
+    return -1;
+  }
+}
+
 /** Transformer to remove duplicate Cast nodes. */
 class RemoveDuplicateCastTransformer : public GraphTransformer {
  public:
@@ -199,6 +282,48 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 
  private:
+  static bool UnsafeCast(DataType src_type, DataType dst_type, const Node& node) {
+    // This is not a complete cast optimisation pass, and is more conservative than it could be.
+    // For instance, certain integral -> floating point casts could be optimised but this is left to an explicit cast optimisation pass.
+
+    // The comparison with "InsertedPrecisionFreeCast_" reflects cast nodes that are inserted by InsertCastTransformer.
+    // Such casts should not be considered as loss of precision - the inserted upcasts (f16 -> f32) and downcasts (f32 -> f16) are inserted to support kernels when on a CPU EP without F16 support.
+    auto src_type_group = GetTypeGroup(src_type);
+    auto dst_type_group = GetTypeGroup(dst_type);
+    if (Unknown == src_type_group || Unknown == dst_type_group) {
+      return true;
+    }
+
+    // Do not remove any signed -> unsigned cast.
+    if ((src_type_group != Bool && src_type_group != Unsigned) && Unsigned == dst_type_group) {
+      return true;
+    }
+
+    // Do not remove any floating point -> non floating point cast.
+    if (Float == src_type_group && Float != dst_type_group) {
+      return true;
+    }
+
+    auto src_bit_length = BitLength(src_type);
+    auto dst_bit_length = BitLength(dst_type);
+
+    // unsigned integer -> integer cast may overflow if the destination integer is smaller or equal to the source integer.
+    if (Unsigned == src_type_group && Integer == dst_type_group) {
+      return dst_bit_length <= src_bit_length;
+    }
+
+    // integral -> floating cast may overflow if integer cannot be encoded in the mantissa. This check could be more precise.
+    if ((Integer == src_type_group || Unsigned == src_type_group) && Float == dst_type_group) {
+      return dst_bit_length <= src_bit_length;
+    }
+
+    if ((*src_type == "tensor(float16)" && *dst_type == "tensor(bfloat16)") || (*src_type == "tensor(bfloat16)" && *dst_type == "tensor(float16)")) {
+      return true;
+    }
+
+    return src_bit_length > dst_bit_length && (node.Name().compare(0, 26, "InsertedPrecisionFreeCast_"));
+  }
+
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override {
     auto output_args = graph.GetOutputs();
     InlinedHashSet<const onnxruntime::NodeArg*> graph_outputs;
@@ -230,17 +355,8 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         //     - for each consumer cast node, it meets above condition for this optimization.
         auto src_type = node.InputDefs()[0]->Type();
         auto dst_type = node.OutputDefs()[0]->Type();
-        TypeGroup src_type_group = GetTypeGroup(src_type);
-        TypeGroup dst_type_group = GetTypeGroup(dst_type);
-        if (src_type_group == Unknown || dst_type_group == Unknown) {
-          continue;
-        }
 
-        bool loss_precision_cast = false;
-        if (src_type_group > dst_type_group) {
-          loss_precision_cast = true;
-        }
-
+        bool loss_precision_cast = UnsafeCast(src_type, dst_type, node);
         size_t num_children = node.GetOutputEdgesCount();
 
         bool inconsistent_casts = false;
@@ -249,10 +365,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           if (output_node.OpType() == "Cast") {
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
-            TypeGroup src_type_group1 = GetTypeGroup(src_type1);
-            TypeGroup dst_type_group1 = GetTypeGroup(dst_type1);
-            if (src_type_group1 == Unknown || dst_type_group1 == Unknown ||
-                (loss_precision_cast && dst_type_group1 > src_type_group1)) {
+            if (loss_precision_cast && UnsafeCast(dst_type1, src_type1, output_node)) {
               inconsistent_casts = true;
               break;
             }
@@ -338,7 +451,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level,
                                         const logging::Logger& logger) const {
   if (force_cpu_fp32_)
-    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
+    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, *cpu_kernel_registries_));
 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();

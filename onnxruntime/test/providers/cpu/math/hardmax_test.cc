@@ -53,8 +53,8 @@ TEST(HardmaxOperator, LargeNumber) {
   RunTest(x_vals, expected_vals, dimensions);
 }
 
-//np.random.seed(123) # Use a seed so we can replicate the input and expected values here and in python
-//x = np.abs(np.random.randn(3, 4, 5).astype(np.float32))
+// np.random.seed(123) # Use a seed so we can replicate the input and expected values here and in python
+// x = np.abs(np.random.randn(3, 4, 5).astype(np.float32))
 static std::vector<int64_t> three_dimensions = {3, 4, 5};
 static std::vector<float> x_vals_3dims = {
     1.0856307f, 0.99734545f, 0.2829785f, 1.5062947f, 0.5786002f,

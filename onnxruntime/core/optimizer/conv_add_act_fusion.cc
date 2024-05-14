@@ -40,20 +40,28 @@ const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& nod
   return &*node.OutputNodesBegin();
 }
 
-class ConvAddActivation : public NodeSelector {
+class ConvAddActivationSelector : public NodeSelector {
  public:
-  ConvAddActivation() = default;
-
+  ConvAddActivationSelector() = default;
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
-    if (node_ep != kCpuExecutionProvider || !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+    if (node_ep != kCpuExecutionProvider ||
+        (!HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
+         !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16))) {
       return std::nullopt;
     }
+#else
+    if (node_ep != kCpuExecutionProvider ||
+        !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+      return std::nullopt;
+    }
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
     // we can't assign `conv_node` as the producer-node, even it is, because we have to make sure
     // 1. Its type is 'conv', 2. it has to satisfy the other requirements,like shape, please refer to SelectConvProducer for more info
     const Node* conv_node = nullptr;
     const auto* add_node = GetLoneConsumerNode(graph_viewer, node);
-    if (!add_node) {
+    if (add_node == nullptr) {
       return std::nullopt;
     }
     // Let's support addition first, leave any-element-wise-op fusion in the future.
@@ -64,13 +72,13 @@ class ConvAddActivation : public NodeSelector {
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {7, 13, 14})) {
       conv_node = SelectProducerConv(*add_node);
     }
-    if (!conv_node) {
+    if (conv_node == nullptr) {
       return std::nullopt;
     }
     // GetLoneConsumerNode will ensure outputedge_count is 1
     const auto* act_node = GetLoneConsumerNode(graph_viewer, *add_node);
     // even the next node is not a activation node, it's also fine.
-    if (!act_node) {
+    if (act_node == nullptr) {
       // we can't fuse add-activation when add_node has multiple consumer nodes
       act_node = nullptr;
     } else if (SelectActivation(graph_viewer, *act_node)) {
@@ -82,7 +90,7 @@ class ConvAddActivation : public NodeSelector {
     NodesToOptimizeIndicesBuilder builder{};
     builder.target_node = conv_node->Index();
     builder.output_nodes = {add_node->Index()};
-    if (act_node) {
+    if (act_node != nullptr) {
       builder.output_nodes.push_back(act_node->Index());
     }
     return builder.Build();
@@ -93,7 +101,7 @@ class ConvAddActivation : public NodeSelector {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "LeakyRelu", {6})) {
+          graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "LeakyRelu", {6, 16})) {
         return true;
       }
 
@@ -167,17 +175,27 @@ class ConvAddActivation : public NodeSelector {
       // Check if this is a single use convolution that hasn't already
       // been fused with another Add/Sum node. The Add/Sum can also only be
       // fused if the convolution isn't itself fused with an activation.
-      if ((inputs_node[n]->OpType() == "Conv") && (pre_input_defs_count < 4) && (producer_input_args_count.size() < 4) &&
-          (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) && (inputs_node[n]->GetOutputEdgesCount() == 1)) {
-        if (pre_input_defs_count < 3) {
-          // The optional bias parameter is empty so set to an empty string.
+      if ((inputs_node[n]->OpType() == "Conv") && (pre_input_defs_count < 4) &&
+          (producer_input_args_count.size() < 4) &&
+          (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) &&
+          (inputs_node[n]->GetOutputEdgesCount() == 1)) {
+        if (pre_input_defs_count < 3) {  // The optional bias parameter is empty so set to an empty string.
+          // TODO, add a new null arguments for bias
+          continue;
+        }
+        return inputs_node[n];
+      }
+      if (inputs_node[n]->OpType() == "NhwcFusedConv" && (pre_input_defs_count < 4) &&
+          (producer_input_args_count.size() < 5) &&
+          (graph_utils::GetNodeAttribute(*inputs_node[n], "activation") == nullptr) &&
+          (inputs_node[n]->GetOutputEdgesCount() == 1)) {
+        if (pre_input_defs_count < 3) {  // The optional bias parameter is empty so set to an empty string.
           // TODO, add a new null arguments for bias
           continue;
         }
         return inputs_node[n];
       }
     }
-
     return nullptr;
   }
 };
@@ -187,19 +205,24 @@ class ConvAddActivation : public NodeSelector {
 namespace actions {
 using NTO = NodesToOptimize;
 
-class FuseConvAddActivation : public ReplaceWithNew {
+class FuseConvAddActivationAction : public ReplaceWithNew {
+ public:
+  FuseConvAddActivationAction() = default;
+
  private:
-  std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
+  std::string OpType(const RuntimeState& runtimeState) const override {
+    return (runtimeState.selected_nodes.Target().OpType() == "Conv") ? "FusedConv" : "NhwcFusedConv";
+  }
 
   std::string Domain(const RuntimeState&) const override { return kMSDomain; }
 
   NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
     NodeAttributes extra_fused_conv_attributes;
 
-    const auto* activation = state.selected_nodes.Output(state.selected_nodes.num_outputs-1);
+    const auto* activation = state.selected_nodes.Output(state.selected_nodes.num_outputs - 1);
     if (state.selected_nodes.num_outputs == 1 || activation->OpType() == "Add") {
-        //activation node is the last node in conv+add+activation fusion pattern, while conv+add is also possible
-        return extra_fused_conv_attributes;
+      // activation node is the last node in conv+add+activation fusion pattern, while conv+add is also possible
+      return extra_fused_conv_attributes;
     }
     ORT_ENFORCE(activation != nullptr, "Expected activation node.");
 
@@ -242,7 +265,7 @@ class FuseConvAddActivation : public ReplaceWithNew {
     const auto conv_location = NTO::NodeLocation{NTO::NodeType::kTarget, 0};
     const auto add_location = NTO::NodeLocation{NTO::NodeType::kOutput, 0};
     const auto activation_location = NTO::NodeLocation{NTO::NodeType::kOutput, 1};
-    //Conv+add+activation
+    // Conv+add+activation
     if (state.selected_nodes.num_outputs == 2) {
       return {
           MoveAll(conv_location, ArgType::kInput),                                       // move all inputs from conv
@@ -250,7 +273,7 @@ class FuseConvAddActivation : public ReplaceWithNew {
           MoveAll(activation_location, ArgType::kOutput),                                // move all outputs from relu
       };
     } else {
-      //Conv+Add only
+      // Conv+Add only
       return {
           MoveAll(conv_location, ArgType::kInput),                                       // move all inputs from conv
           MoveAndAppend(add_location, ArgType::kInput, add_input_idx, ArgType::kInput),  // append add input
@@ -262,13 +285,12 @@ class FuseConvAddActivation : public ReplaceWithNew {
 }  // namespace actions
 
 void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
-  const auto name = "ConvAddAct";
-  auto action = std::make_unique<actions::FuseConvAddActivation>();
-  auto selector = std::make_unique<selectors::ConvAddActivation>();
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
+  auto action = std::make_unique<actions::FuseConvAddActivationAction>();
+  auto selector = std::make_unique<selectors::ConvAddActivationSelector>();
+  std::string msDomainNhwcFusedConv = SelectorActionRegistry::OpVersionsMapKey("NhwcFusedConv", kMSDomain);
+  registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11}}, {msDomainNhwcFusedConv, {1, 11}}},
                                      std::move(selector), std::move(action));
 }
-
 
 SelectorActionRegistry CreateSelectorActionRegistry() {
   SelectorActionRegistry registry{};

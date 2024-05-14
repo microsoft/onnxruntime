@@ -1,9 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
+
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 
 // Register removed experimental ops for backward compatibility.
 // Experimental operators do not have version history. However, Windows 10 1809(RS5) takes bunch of experimental operators

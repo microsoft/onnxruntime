@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 
 #pragma once
 
@@ -75,7 +75,12 @@ class KernelComputeTester {
     OrtValue value;
     TensorShape shape(dims);
     auto allocator = AllocatorManager::Instance().GetAllocator(CPU);
-    Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value, strides);
+    Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value);
+
+    if (!strides.empty()) {
+      value.GetMutable<Tensor>()->SetShapeAndStrides(shape, strides);
+    }
+
     if (values) {
       Tensor* tensor = value.GetMutable<Tensor>();
       auto* p_data = tensor->MutableData<T>();
@@ -88,7 +93,7 @@ class KernelComputeTester {
   }
 
   const char* op_;
-  const char* provider_;
+  std::string provider_;
   int opset_version_;
   const char* domain_;
 

@@ -67,14 +67,17 @@ class ScaledTanh final : public UnaryElementwise {
 };
 
 template <typename T>
-class Gelu final : public UnaryElementwise {
+class QuickGelu final : public UnaryElementwise {
  public:
-  Gelu(const OpKernelInfo& info) : UnaryElementwise(info) {}
+  QuickGelu(const OpKernelInfo& info) : UnaryElementwise(info) {
+    alpha_ = info.GetAttrOrDefault<float>("alpha", 1.702f);
+  }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  MAKE_FUNC_CTX_NULL()
+  MAKE_FUNC_CTX_ALPHA()
+  float alpha_;
 };
 
 }  // namespace cuda

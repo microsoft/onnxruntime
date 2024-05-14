@@ -6,19 +6,23 @@
 #include <unordered_map>
 
 #include "core/common/common.h"
+#include "core/framework/node_unit.h"
 #include "core/framework/op_node_proto_helper.h"
-#include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
+#include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 
 // each operator provides a helper to check if supported
-#include "core/providers/xnnpack/nn/conv.h"
-#include "core/providers/xnnpack/nn/max_pool.h"
+#include "core/providers/xnnpack/math/gemm.h"
+#include "core/providers/xnnpack/math/matmul.h"
+#include "core/providers/xnnpack/math/softmax.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
-#include "core/providers/xnnpack/nn/softmax.h"
+#include "core/providers/xnnpack/nn/conv.h"
+#include "core/providers/xnnpack/nn/conv_transpose.h"
+#include "core/providers/xnnpack/nn/max_pool.h"
+#include "core/providers/xnnpack/tensor/resize.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -87,11 +91,15 @@ const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
 
 bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
   static std::unordered_map<std::string, CheckerFn> checkers{
-      {"Conv", Conv::IsConvOnnxNodeSupported},
-      {"QLinearConv", Conv::IsConvOnnxNodeSupported},
-      {"MaxPool", MaxPool::IsMaxPoolOnnxNodeSupported},
-      {"AveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
-      {"Softmax", Softmax::IsSoftmaxOnnxNodeSupported},
+      {"Conv", Conv::IsOnnxNodeSupported},
+      {"ConvTranspose", ConvTranspose::IsOnnxNodeSupported},
+      {"QLinearConv", Conv::IsOnnxNodeSupported},
+      {"MaxPool", MaxPool::IsOnnxNodeSupported},
+      {"AveragePool", AveragePool::IsOnnxNodeSupported},
+      {"Softmax", Softmax::IsOnnxNodeSupported},
+      {"Resize", Resize::IsOnnxNodeSupported},
+      {"Gemm", Gemm::IsOnnxNodeSupported},
+      {"MatMul", MatMul::IsOnnxNodeSupported},
   };
 
   bool supported = false;

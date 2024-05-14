@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/run_options_config_keys.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -37,14 +38,14 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
   std::vector<MatMulTestData<T>> test_cases;
 
   test_cases.push_back(
-      {"test padding and broadcast",
+      {"test padding and broadcast A > B",
        {3, 1, 1, 2},
        {2, 2, 2},
        {3, 2, 1, 2},
        {2, 3, 6, 7, 6, 11, 26, 31, 10, 19, 46, 55}});
 
   test_cases.push_back(
-      {"test padding and broadcast",
+      {"test padding and broadcast B > A",
        {2, 3, 2},
        {3, 2, 2, 1},
        {3, 2, 3, 1},
@@ -167,6 +168,17 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
       // NNAPI: currently fails for the "test 2D empty input" case
       excluded_providers.insert(kNnapiExecutionProvider);
     }
+
+    if ("test padding and broadcast A > B" == t.name || "test 2D empty input" == t.name) {
+      // QNN can't handle 0 shap
+      excluded_providers.insert(kQnnExecutionProvider);
+    }
+#if defined(__linux__)
+    if (t.name == "test padding and broadcast B > A") {
+      // Accuracy error with QNN SDK 2.17.0 on CPU backend.
+      excluded_providers.insert(kQnnExecutionProvider);
+    }
+#endif
     test.ConfigExcludeEps(excluded_providers)
         .Config(run_with_tunable_op)
         .RunWithConfig();
@@ -179,6 +191,10 @@ void RunMatMulTest(int32_t opset_version) {
 }
 
 TEST(MathOpTest, MatMulFloatType) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
   RunMatMulTest<float>(7, false, false);
 }
 
@@ -187,6 +203,10 @@ TEST(MathOpTest, MatMulDoubleType) {
 }
 
 TEST(MathOpTest, MatMulFloatTypeInitializer) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
+  }
   RunMatMulTest<float>(7, false, true);
 }
 
@@ -239,12 +259,18 @@ TEST(MathOpTest, MatMul_Float16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-TEST(MathOpTest, MatMul_BFloat16) {
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+TEST(MathOpTest, MatMul_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+  if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
@@ -264,13 +290,16 @@ TEST(MathOpTest, MatMul_BFloat16) {
 
   execution_providers.clear();
   execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
+#elif USE_DNNL
+  execution_providers.emplace_back(DefaultDnnlExecutionProvider());
 #endif
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
 #endif
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(MathOpTest, MatMulSharedPrepackedWeights) {
   OpTester test("MatMul");
 

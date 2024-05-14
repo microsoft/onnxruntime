@@ -10,10 +10,11 @@ class DmlOperatorEinSum : public DmlOperator, public EinSumHelper
 {
 public:
     DmlOperatorEinSum(const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t opsetVersion)
-    :   DmlOperator(kernelCreationContext), 
+    :   DmlOperator(kernelCreationContext),
         EinSumHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription(), opsetVersion)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() + 1 == m_components.size(), "EinSum input tensor count is inconsistent with the equation component count.");
+        ML_CHECK_VALID_ARGUMENT(static_cast<uint64_t>(kernelCreationContext.GetInputCount()) + 1 == m_components.size(),
+            "EinSum input tensor count is inconsistent with the equation component count.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "EinSum expects one output tensor.");
 
         std::vector<std::optional<uint32_t>> inputIndices = {0,1,2};
@@ -25,12 +26,13 @@ public:
         }
         inputIndices.resize(bindableInputCount);
 
-        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
+        constexpr uint32_t dimCount = 2;
+        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices, std::nullopt, std::nullopt, dimCount);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        static_assert(RecognizedOperatorType::Total == static_cast<RecognizedOperatorType>(8), "Update this switch.");
+        static_assert(RecognizedOperatorType::Total == static_cast<RecognizedOperatorType>(12), "Update this switch.");
         switch (m_recognizedOperatorType)
         {
         case RecognizedOperatorType::Multiply:
@@ -41,6 +43,28 @@ public:
                 operatorDesc.OutputTensor = outputDescs.data();
 
                 SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_MULTIPLY, &operatorDesc}, kernelCreationContext);
+            }
+            break;
+
+        case RecognizedOperatorType::OuterProduct:
+            {
+                std::array<uint32_t, 2> aSizes = {m_inputTensorDescs[0].GetSizes().back(), 1};
+                TensorDesc aTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), aSizes);
+                auto aDmlTensorDesc = aTensorDesc.GetDmlDesc();
+
+                std::array<uint32_t, 2> bSizes = {1, m_inputTensorDescs[1].GetSizes().back()};
+                TensorDesc bTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), bSizes);
+                auto bDmlTensorDesc = bTensorDesc.GetDmlDesc();
+
+                DML_GEMM_OPERATOR_DESC operatorDesc = {};
+                operatorDesc.ATensor = &aDmlTensorDesc;
+                operatorDesc.BTensor = &bDmlTensorDesc;
+                operatorDesc.OutputTensor = &outputDescs[0];
+                operatorDesc.Alpha = 1.0;
+                operatorDesc.Beta = 0.0;
+                operatorDesc.FusedActivation = nullptr;
+
+                SetDmlOperatorDesc({ DML_OPERATOR_GEMM, &operatorDesc }, kernelCreationContext);
             }
             break;
 
@@ -55,6 +79,82 @@ public:
                 operatorDesc.OutputTensor = &outputDescs[0];
                 operatorDesc.TransA = (m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA) ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE;
                 operatorDesc.TransB = (m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB) ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE;
+                operatorDesc.Alpha = 1.0;
+                operatorDesc.Beta = 0.0;
+                operatorDesc.FusedActivation = nullptr;
+
+                SetDmlOperatorDesc({ DML_OPERATOR_GEMM, &operatorDesc }, kernelCreationContext);
+            }
+            break;
+        case RecognizedOperatorType::MatMulNhcw:
+        case RecognizedOperatorType::MatMulNhcwTransposeA:
+        case RecognizedOperatorType::MatMulNhcwTransposeB:
+            {
+                // Transpose via input strides. The output tensor is not strided. Support only 4D for now.
+                assert(m_components.size() == 3);
+                assert(m_components[0].GetDimensionCount() == m_components[2].GetDimensionCount());
+                assert(m_components[1].GetDimensionCount() == m_components[2].GetDimensionCount());
+                assert(m_components[2].GetDimensionCount() == 4);
+
+                // Remap transposed strides from NCHW to NHCW
+                constexpr std::array<uint32_t, 4> labelIndices = {0, 2, 1, 3};
+
+                assert(m_inputTensorDescs.size() >= 2);
+                for (uint32_t inputIndex = 0; inputIndex < 2; ++inputIndex)
+                {
+                    TensorDesc& tensorDesc = m_inputTensorDescs[inputIndex];
+                    auto originalStrides = tensorDesc.GetStrides();
+                    std::vector<uint32_t> inputSizes = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(inputIndex);
+                    std::vector<uint32_t> inputStrides(inputSizes.size());
+
+                    // If there were no strides, compute them based in descending packed order
+                    // based on the input sizes.
+                    if (originalStrides.empty())
+                    {
+                        Dml::GetDescendingPackedStrides(inputSizes, /*out*/ inputStrides);
+                    }
+                    else // Copy the original strides.
+                    {
+                        assert(originalStrides.size() >= inputStrides.size());
+                        size_t offset = originalStrides.size() - inputStrides.size();
+                        inputStrides.assign(originalStrides.begin() + offset, originalStrides.end());
+                    }
+
+                    std::vector<uint32_t> newStrides(inputStrides.size());
+                    std::vector<uint32_t> newSizes(inputStrides.size());
+                    for (size_t dim = 0, dimensionCount = inputStrides.size(); dim < dimensionCount; ++dim)
+                    {
+                        uint32_t labelIndex = labelIndices[dim];
+                        assert(labelIndex < inputStrides.size());
+                        newSizes[dim] = inputSizes[labelIndex];
+                        newStrides[dim] = inputStrides[labelIndex];
+                    }
+
+                    // Override the initial input tensor with the new strides.
+                    tensorDesc = TensorDesc(tensorDesc.GetDmlDataType(), newSizes, newStrides, 0);
+                    tensorDesc.GetDmlDesc(); // Discard value, but keep side effect of refreshing the DML view.
+                }
+
+                std::vector<uint32_t> outputSizes = kernelCreationContext.GetTensorShapeDescription().GetOutputTensorShape(0);
+                std::vector<uint32_t> newOutputSizes(outputSizes.size());
+                assert(outputSizes.size() == labelIndices.size());
+
+                for (size_t dim = 0; dim < outputSizes.size(); ++dim)
+                {
+                    uint32_t labelIndex = labelIndices[dim];
+                    newOutputSizes[dim] = outputSizes[labelIndex];
+                }
+
+                m_outputTensorDescs.front() = TensorDesc(m_outputTensorDescs.front().GetDmlDataType(), newOutputSizes, std::nullopt, 0);
+                m_outputTensorDescs.front().GetDmlDesc(); // Discard value, but keep side effect of refreshing the DML view.
+
+                DML_GEMM_OPERATOR_DESC operatorDesc = {};
+                operatorDesc.ATensor = &inputDescs[0];
+                operatorDesc.BTensor = &inputDescs[1];
+                // No operatorDesc.CTensor
+                operatorDesc.OutputTensor = &outputDescs[0];
+                operatorDesc.TransA = (m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeA) ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE;
+                operatorDesc.TransB = (m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeB) ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE;
                 operatorDesc.Alpha = 1.0;
                 operatorDesc.Beta = 0.0;
                 operatorDesc.FusedActivation = nullptr;
@@ -176,7 +276,7 @@ void CALLBACK QueryEinSum(IMLOperatorSupportQueryContextPrivate* context, bool* 
     EinSumHelper helper(attributes);
     auto recognizedOperatorType = helper.GetRecognizedOperatorType();
 
-    static_assert(EinSumHelper::RecognizedOperatorType::Total == static_cast<EinSumHelper::RecognizedOperatorType>(8), "Verify this test still matches the switch above.");
+    static_assert(EinSumHelper::RecognizedOperatorType::Total == static_cast<EinSumHelper::RecognizedOperatorType>(12), "Update this function.");
     *isSupported = (recognizedOperatorType != EinSumHelper::RecognizedOperatorType::None);
 }
 

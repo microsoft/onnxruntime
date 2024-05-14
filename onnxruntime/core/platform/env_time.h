@@ -27,15 +27,15 @@ using TIME_SPEC = int64_t;
 using TIME_SPEC = timespec;
 #endif
 
-//Get a time stamp counter
-//If the function succeeds, return true. If the function fails, return false
+// Get a time stamp counter
+// If the function succeeds, return true. If the function fails, return false
 bool GetMonotonicTimeCounter(TIME_SPEC* value);
 
 void SetTimeSpecToZero(TIME_SPEC* value);
 void AccumulateTimeSpec(TIME_SPEC* base, const TIME_SPEC* start, const TIME_SPEC* end);
 
-//Return the interval in seconds.
-//If the function fails, the return value is zero
+// Return the interval in seconds.
+// If the function fails, the return value is zero
 double TimeSpecToSeconds(const TIME_SPEC* value);
 
 /// \brief An interface used by the onnxruntime implementation to

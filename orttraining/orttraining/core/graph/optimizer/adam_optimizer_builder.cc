@@ -90,14 +90,14 @@ Status AdamOptimizerBuilder::Build(
         // Update moment initializer with init value
         const auto moment_state_it = initial_states.find(moments_prefix);
         if (moment_state_it != initial_states.end()) {
-          //update moment_tensor_proto
+          // update moment_tensor_proto
           const auto& init_tensor = moment_state_it->second.Get<Tensor>();
 
-          //TODO: need to support float -> float16 and float16-> float conversion
+          // TODO: need to support float -> float16 and float16-> float conversion
           ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims));
           moment_tensor_proto = utils::TensorToTensorProto(init_tensor, gradient_moment_name);
         } else if (opt_configs[i].use_mixed_precision_moments) {
-          moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
+          moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(0.f), weight_dims);
         } else {
           moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, weight_dims);
         }

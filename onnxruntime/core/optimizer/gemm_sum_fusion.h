@@ -18,7 +18,7 @@ This fusion can be applied in the following scenario:
     This is supported for opset >= 11, as this is when Gemm input C became optional.
 
 TODO: Support the Add use case: Sum(x, y) ~= Add.
- 
+
 This patterm is attempted to be triggered only on nodes with op type "Gemm".
 
 A --> Gemm --> D --> Sum --> E

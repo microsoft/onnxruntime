@@ -11,6 +11,7 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
+#include "core/common/span_utils.h"
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
@@ -173,15 +174,15 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
     OrtValue ml_value;
 
     for (const auto& key : MOMENTS_PREFIXES) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, values, &ml_value);
+      CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, values, &ml_value);
       per_weight_states.insert(std::make_pair(key, std::move(ml_value)));
     }
     if (optimizer_op_name == k_adam_optimizer_op_name) {
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, uc_value, &ml_value);
       per_weight_states.insert(std::make_pair(ADAM_UC_PREFIX, std::move(ml_value)));
     } else if (optimizer_op_name == k_lamb_optimizer_op_name) {
       // add "Step" for lamb
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, uc_value, &ml_value);
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, uc_value, &ml_value);
       shared_states.insert(std::make_pair(LAMB_STEP_TENSOR_NAME, std::move(ml_value)));
       config.shared_optimizer_states = std::move(shared_states);
     }
@@ -248,7 +249,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   for (const auto& state : initial_states) {
     const auto& init_tensor = state.second.Get<Tensor>();
     const auto& shape = init_tensor.Shape().GetDims();
-    ASSERT_EQ(shape, gsl::make_span(expected_shape));
+    ASSERT_TRUE(SpanEq(shape, gsl::make_span(expected_shape)));
     const std::vector<float> found(init_tensor.Data<float>(),
                                    init_tensor.Data<float>() + partition_size);
     ASSERT_EQ(expected_vec, found);
@@ -436,7 +437,7 @@ TEST_F(OptimizerGraphBuilderTest, Adasum_WithGradientAccumulation_WithMixedPreci
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAdasumOptimizerGraphBuilder(config, graph_);
 }
-#endif //ORT_USE_NCCL && USE_MPI
+#endif  // ORT_USE_NCCL && USE_MPI
 
 #ifdef ORT_USE_NCCL
 TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_NoMixedPrecision) {

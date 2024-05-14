@@ -14,7 +14,7 @@ from ..pytorch_export_helpers import infer_input_info
 
 class TestModel(torch.nn.Module):
     def __init__(self, D_in, H, D_out):
-        super(TestModel, self).__init__()
+        super().__init__()
         self.linear1 = torch.nn.Linear(D_in, H)
         self.linear2 = torch.nn.Linear(H, D_out)
 

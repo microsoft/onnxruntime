@@ -6,27 +6,31 @@ include(FetchContent)
 # Pass to build
 set(ABSL_PROPAGATE_CXX_STD 1)
 set(BUILD_TESTING 0)
-
-if(Patch_FOUND)
-  set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/Fix_Nvidia_Build_Break.patch)
+set(ABSL_BUILD_TESTING OFF)
+set(ABSL_BUILD_TEST_HELPERS OFF)
+set(ABSL_USE_EXTERNAL_GOOGLETEST ON)
+if(Patch_FOUND AND WIN32)
+  set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch)
 else()
-  set(ABSL_PATCH_COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/abseil/Fix_Nvidia_Build_Break.patch)
+  set(ABSL_PATCH_COMMAND "")
 endif()
-
+if(WIN32 AND NOT Patch_FOUND)
+  #see https://github.com/google/re2/issues/425 and https://github.com/google/re2/issues/436
+  set(ABSL_ENABLE_INSTALL ON)
+endif()
 # NB! Advancing Abseil version changes its internal namespace,
-# currently absl::lts_20211102 which affects abseil-cpp.natvis debugger
+# currently absl::lts_20240116 which affects abseil-cpp.natvis debugger
 # visualization file, that must be adjusted accordingly, unless we eliminate
 # that namespace at build time.
 FetchContent_Declare(
     abseil_cpp
-    PREFIX "${CMAKE_CURRENT_BINARY_DIR}/abseil-cpp"
-    BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/external/abseil-cpp"
-    URL https://github.com/abseil/abseil-cpp/archive/refs/tags/20211102.0.zip
-    URL_HASH SHA1=ce61532df974d00025b1220408ce1c900d81baf2
+    URL ${DEP_URL_abseil_cpp}
+    URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
+    FIND_PACKAGE_ARGS NAMES absl
 )
 
-FetchContent_MakeAvailable(abseil_cpp)
+onnxruntime_fetchcontent_makeavailable(abseil_cpp)
 FetchContent_GetProperties(abseil_cpp)
 set(ABSEIL_SOURCE_DIR ${abseil_cpp_SOURCE_DIR})
 message(STATUS "Abseil source dir:" ${ABSEIL_SOURCE_DIR})
@@ -38,3 +42,27 @@ if (GDK_PLATFORM)
   # tell Abseil to pretend we're building an APP.
   target_compile_definitions(absl_symbolize PRIVATE WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP)
 endif()
+
+# TODO: since multiple ORT's dependencies depend on Abseil, the list below would vary from version to version.
+# We'd better to not manually manage the list.
+set(ABSEIL_LIBS absl::base
+absl::city
+absl::core_headers
+absl::fixed_array
+absl::flags
+absl::flat_hash_map
+absl::flat_hash_set
+absl::hash
+absl::inlined_vector
+absl::low_level_hash
+absl::node_hash_map
+absl::node_hash_set
+absl::optional
+absl::raw_hash_set
+absl::raw_logging_internal
+absl::span
+absl::str_format
+absl::strings
+absl::synchronization
+absl::throw_delegate
+absl::time)

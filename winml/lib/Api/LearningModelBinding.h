@@ -21,7 +21,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   using KeyValuePair = wfc::IKeyValuePair<hstring, wf::IInspectable>;
 
   ~LearningModelBinding();
-  
+
   LearningModelBinding() = delete;
   LearningModelBinding(winml::LearningModelSession const& session);
 
@@ -34,14 +34,11 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   wf::IInspectable Lookup(hstring const& key);
   uint32_t Size();
   bool HasKey(hstring const& key);
-  void Split(
-      wfc::IMapView<hstring, wf::IInspectable>& first,
-      wfc::IMapView<hstring, wf::IInspectable>& second);
+  void Split(wfc::IMapView<hstring, wf::IInspectable>& first, wfc::IMapView<hstring, wf::IInspectable>& second);
 
   std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> CreateBinding(
-      const std::string& name,
-      const wf::IInspectable& value,
-      wfc::IPropertySet const& properties);
+    const std::string& name, const wf::IInspectable& value, wfc::IPropertySet const& properties
+  );
 
   std::unordered_map<std::string, wf::IInspectable> UpdateProviders();
 
@@ -49,10 +46,10 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
 
   const std::vector<std::string>& GetInputNames() const;
   const std::vector<std::string>& GetOutputNames() const;
-  
+
   const std::vector<winrt::com_ptr<_winml::IValue>>& GetInputs() const;
   std::vector<winrt::com_ptr<_winml::IValue>>& GetOutputs();
-    
+
   HRESULT BindOutput(const std::string& name, winrt::com_ptr<_winml::IValue> value);
   void BindUnboundOutputs();
 
@@ -60,8 +57,8 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   void CacheProvider(std::string name, ProviderInfo& spProvider);
   wf::IInspectable CreateUnboundOutput(const std::string& name, winrt::com_ptr<_winml::IValue> value);
   ILearningModelFeatureValue CreateUnboundOuputFeatureValue(
-      const winrt::com_ptr<_winml::IValue> value,
-      ILearningModelFeatureDescriptor& descriptor);
+    const winrt::com_ptr<_winml::IValue> value, ILearningModelFeatureDescriptor& descriptor
+  );
   HRESULT BindInput(const std::string& name, winrt::com_ptr<_winml::IValue> value);
 
  private:
@@ -77,6 +74,5 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
 }  // namespace WINMLP
 
 namespace WINML::factory_implementation {
-struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, implementation::LearningModelBinding> {
-};
+struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, implementation::LearningModelBinding> {};
 }  // namespace WINML::factory_implementation

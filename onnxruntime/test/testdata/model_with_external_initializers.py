@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import os
+
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
@@ -11,7 +13,7 @@ from onnx.numpy_helper import from_array
 def create_external_data_tensor(value, tensor_name):  # type: (List[Any], Text) -> TensorProto
     tensor = from_array(np.array(value))
     tensor.name = tensor_name
-    tensor_filename = "{}.bin".format(tensor_name)
+    tensor_filename = f"{tensor_name}.bin"
     set_external_data(tensor, location=tensor_filename)
 
     with open(os.path.join(tensor_filename), "wb") as data_file:
@@ -21,20 +23,20 @@ def create_external_data_tensor(value, tensor_name):  # type: (List[Any], Text) 
     return tensor
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name, external_data_name):  # noqa: N802
     # Create one input (ValueInfoProto)
-    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2])
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2])  # noqa: N806
 
     # Create second input (ValueInfoProto)
-    Pads = helper.make_tensor_value_info("Pads", TensorProto.INT64, [4])
+    Pads = helper.make_tensor_value_info(external_data_name, TensorProto.INT64, [4])  # noqa: N806
 
     # Create one output (ValueInfoProto)
-    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 4])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 4])  # noqa: N806
 
     # Create a node (NodeProto)
     node_def = helper.make_node(
         "Pad",  # node name
-        ["X", "Pads"],  # inputs
+        ["X", external_data_name],  # inputs
         ["Y"],  # outputs
         mode="constant",  # Attributes
     )
@@ -53,7 +55,7 @@ def GenerateModel(model_name):
                     1,
                     1,
                 ],
-                "Pads",
+                external_data_name,
             )
         ],
     )
@@ -61,9 +63,9 @@ def GenerateModel(model_name):
     # Create the model (ModelProto)
     model_def = helper.make_model(graph_def, producer_name="onnx-example")
 
-    print("The ir_version in model: {}\n".format(model_def.ir_version))
-    print("The producer_name in model: {}\n".format(model_def.producer_name))
-    print("The graph in model:\n{}".format(model_def.graph))
+    print(f"The ir_version in model: {model_def.ir_version}\n")
+    print(f"The producer_name in model: {model_def.producer_name}\n")
+    print(f"The graph in model:\n{model_def.graph}")
     onnx.checker.check_model(model_def)
     print("The model is checked!")
     with open(model_name, "wb") as model_file:
@@ -71,4 +73,5 @@ def GenerateModel(model_name):
 
 
 if __name__ == "__main__":
-    GenerateModel("model_with_external_initializers.onnx")
+    GenerateModel("model_with_external_initializers.onnx", "Pads")
+    GenerateModel("model_with_orig_ext_data.onnx", "model_with_orig_ext_data")

@@ -7,7 +7,7 @@ from typing import Union
 
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_utils import NumpyHelper
-from onnx import NodeProto, TensorProto, helper, numpy_helper
+from onnx import NodeProto, helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 
@@ -40,7 +40,6 @@ class FusionTnlrAttention(FusionAttention):
         output: str,
         add_qk_str: str,
     ) -> Union[NodeProto, None]:
-
         assert num_heads > 0
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
             logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
@@ -57,26 +56,24 @@ class FusionTnlrAttention(FusionAttention):
 
         attention_node_name = self.model.create_node_name("Attention")
 
+        tensor_dtype = weight.data_type
+        np_type = helper.tensor_dtype_to_np_dtype(tensor_dtype)
         weight = helper.make_tensor(
             name=attention_node_name + "_qkv_weight",
-            data_type=TensorProto.FLOAT,
+            data_type=tensor_dtype,
             dims=[hidden_size, 3 * hidden_size],
-            vals=qkv_weight.flatten().tolist(),
+            vals=qkv_weight.astype(np_type).tobytes(),
+            raw=True,
         )
-
-        # Sometimes weights and bias are stored in fp16
-        if weight.data_type == 10:
-            weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
         self.model.add_initializer(weight, self.this_graph_name)
 
         bias = helper.make_tensor(
             name=attention_node_name + "_qkv_bias",
-            data_type=TensorProto.FLOAT,
+            data_type=tensor_dtype,
             dims=[3 * hidden_size],
-            vals=qkv_bias.flatten().tolist(),
+            vals=qkv_bias.astype(np_type).tobytes(),
+            raw=True,
         )
-        if bias.data_type == 10:
-            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias, self.this_graph_name)
 
         attention_inputs = [
@@ -123,7 +120,7 @@ class FusionTnlrAttention(FusionAttention):
             return
 
         other_inputs = []
-        for i, input in enumerate(start_node.input):
+        for _i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
                 continue
 
@@ -172,8 +169,8 @@ class FusionTnlrAttention(FusionAttention):
         add = k_nodes[-2]
         matmul = k_nodes[-1]
 
-        extra_add_qk_nodes = self.model.match_parent_path(add_qk, ["Reshape", "Where"], [1, 0])
-        if extra_add_qk_nodes is None:
+        relative_position_bias_nodes = self.model.match_parent_path(add_qk, ["Reshape", "Where"], [1, 0])
+        if relative_position_bias_nodes is None:
             return
 
         if matmul.input[0] == root_input:
@@ -189,7 +186,7 @@ class FusionTnlrAttention(FusionAttention):
                 self.hidden_size,
                 root_input,
                 attention_last_node.output[0],
-                extra_add_qk_nodes[0].input[0],
+                relative_position_bias_nodes[0].input[0],
             )
             if new_node is None:
                 return

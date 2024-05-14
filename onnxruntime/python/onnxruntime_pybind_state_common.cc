@@ -24,6 +24,8 @@ size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
+// TODO remove deprecated global config
+onnxruntime::cuda::TunableOpInfo tunable_op{};
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;

@@ -46,7 +46,7 @@ export const parseReduceAttributes: OperatorInitialization<ReduceAttributes> = (
 };
 
 const createReduceProgramInfo =
-    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ReduceAttributes, name: string, reduceOp: ReduceOp,
+    (_handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ReduceAttributes, _name: string, reduceOp: ReduceOp,
      reduceProgramMetadata: ProgramMetadata): ProgramInfo => {
       const outputShape: number[] = [];
       const iRank = inputs[0].dims.length || 1;
@@ -98,6 +98,7 @@ const createReduceProgramInfo =
     };
 
 const validateInputs = (inputs: Tensor[]): void => {
+  // TODO: support Reduce* operators with 2 inputs.
   if (!inputs || inputs.length !== 1) {
     throw new Error('Reduce op requires 1 input.');
   }

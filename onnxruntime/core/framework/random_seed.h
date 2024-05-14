@@ -26,5 +26,5 @@ int64_t GetRandomSeed();
  */
 void SetRandomSeed(int64_t seed);
 
-}  // namespace test
+}  // namespace utils
 }  // namespace onnxruntime

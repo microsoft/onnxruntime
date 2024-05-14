@@ -3,17 +3,9 @@
 
 #include "rocm_allocator.h"
 #include "rocm_common.h"
-#include "core/framework/allocatormgr.h"
-#include "core/providers/rocm/rocm_fence.h"
 #include "gpu_data_transfer.h"
 
 namespace onnxruntime {
-
-static const GPUDataTransfer* GetGPUDataTransfer(const SessionState* session_state) {
-  OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
-  OrtDevice cpu_device;
-  return static_cast<const GPUDataTransfer*>(session_state->GetDataTransferMgr().GetDataTransfer(gpu_device, cpu_device));
-}
 
 void ROCMAllocator::CheckDevice(bool throw_when_fail) const {
 #ifndef NDEBUG
@@ -51,7 +43,7 @@ void* ROCMAllocator::Alloc(size_t size) {
   CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
-    //BFCArena was updated recently to handle the exception and adjust the request size
+    // BFCArena was updated recently to handle the exception and adjust the request size
     HIP_CALL_THROW(hipMalloc((void**)&p, size));
   }
   return p;
@@ -59,9 +51,8 @@ void* ROCMAllocator::Alloc(size_t size) {
 
 void ROCMAllocator::Free(void* p) {
   SetDevice(false);
-  CheckDevice(false);  // ignore ROCM failure when free
-  // do not throw error since it's OK for hipFree to fail during shutdown; void to silence nodiscard
-  (void)hipFree(p);
+  CheckDevice(false);                   // ignore ROCM failure when free
+  ORT_IGNORE_RETURN_VALUE(hipFree(p));  // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
 void* ROCMExternalAllocator::Alloc(size_t size) {
@@ -95,10 +86,6 @@ void* ROCMExternalAllocator::Reserve(size_t size) {
   return p;
 }
 
-FencePtr ROCMAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<ROCMFence>(GetGPUDataTransfer(session_state));
-}
-
 void* ROCMPinnedAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
@@ -109,10 +96,6 @@ void* ROCMPinnedAllocator::Alloc(size_t size) {
 
 void ROCMPinnedAllocator::Free(void* p) {
   HIP_CALL_THROW(hipHostFree(p));
-}
-
-FencePtr ROCMPinnedAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<ROCMFence>(GetGPUDataTransfer(session_state));
 }
 
 }  // namespace onnxruntime

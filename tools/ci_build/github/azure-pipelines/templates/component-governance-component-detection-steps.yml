@@ -5,7 +5,11 @@ parameters:
   default: 'succeeded' # could be 'ci_only', 'always', 'succeeded'
 
 steps:
-- ${{ if eq(variables['System.TeamProject'], 'Lotus') }}: 
+- ${{ if eq(variables['System.TeamProject'], 'Lotus') }}:
+  - powershell: |
+      Remove-Item $(Build.BinariesDirectory)/* -Recurse -Force
+    displayName: 'Clean up build directory'
+
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'
     condition:
@@ -15,4 +19,6 @@ steps:
     inputs:
       # ignore dmlc-core tracker for its CI, which is not used in onnxruntime build
       # ignore unit tests in emscripten. emscripten unit tests are not used in onnxruntime build
-      ignoreDirectories: '$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests'
+      ignoreDirectories:
+        '$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,
+        $(Build.SourcesDirectory)/cmake/external/onnx/third_party'

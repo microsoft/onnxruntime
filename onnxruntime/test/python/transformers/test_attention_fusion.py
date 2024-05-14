@@ -14,29 +14,56 @@ from model_loader import get_test_data_path
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
+    from fusion_options import FusionOptions
     from onnx_model import OnnxModel
     from optimizer import optimize_by_fusion, optimize_model
 else:
+    from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.optimizer import optimize_by_fusion, optimize_model
 
 
 class TestFusion(unittest.TestCase):
     def verify_fusion(self, optimized_model, expected_model_filename):
-        optimized_model.topological_sort()
+        optimized_model.topological_sort(is_deterministic=True)
 
         expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", expected_model_filename)
         expected_model = OnnxModel(onnx.load(expected_model_path))
-        expected_model.topological_sort()
+        expected_model.topological_sort(is_deterministic=True)
 
-        self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
+        nodes = optimized_model.model.graph.node
+        self.assertEqual(len(nodes), len(expected_model.model.graph.node))
+
+        for i in range(len(nodes)):
+            self.assertEqual(nodes[i], expected_model.model.graph.node[i])
+
+        for expected_initializer in expected_model.model.graph.initializer:
+            self.assertTrue(
+                OnnxModel.has_same_value(
+                    optimized_model.get_initializer(expected_initializer.name), expected_initializer
+                )
+            )
+
+    def test_multi_head_attention_fusion(self):
+        model = create_bert_attention()
+        dir = "."
+        model_path = os.path.join(dir, "attention.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_multi_head_attention = True
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
+        os.remove(model_path)
+        self.verify_fusion(optimized_model, "attention_mha.onnx")
 
     def test_attention_fusion(self):
         model = create_bert_attention()
         dir = "."
         model_path = os.path.join(dir, "attention.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "attention_opt.onnx")
@@ -51,7 +78,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "pruned_attention.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "pruned_attention_opt.onnx")
@@ -67,7 +96,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "bert_attention_reverse_add_order.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         # reverse add input order will get same optimized model
@@ -83,7 +114,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "attention_with_varied_qkv_opt.onnx")
@@ -100,7 +133,9 @@ class TestFusion(unittest.TestCase):
         onnx.save(model, model_path)
 
         # wrong num_heads and hidden_size
-        optimized_model = optimize_model(model_path, "bert", num_heads=8, hidden_size=8)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, "bert", num_heads=8, hidden_size=8, optimization_options=options)
 
         os.remove(model_path)
 
@@ -120,32 +155,67 @@ class TestFusion(unittest.TestCase):
         hidden_size = 64
         num_heads = 4
         for add_order in [False, True]:
-            model = create_gpt2_attention(
-                hidden_size=hidden_size,
-                num_heads=num_heads,
-                switch_add_inputs=add_order,
-            )
-            dir = "."
-            model_path = os.path.join(dir, "gpt2_attention.onnx")
-            onnx.save(model, model_path)
-            optimized_model = optimize_model(
-                model_path,
-                model_type="gpt2",
-                num_heads=num_heads,
-                hidden_size=hidden_size,
-            )
-            optimized_model.topological_sort()
-            os.remove(model_path)
+            for enable_skip_layer_norm_fusion in [False, True]:
+                model = create_gpt2_attention(
+                    hidden_size=hidden_size,
+                    num_heads=num_heads,
+                    switch_add_inputs=add_order,
+                )
+                dir = "."
+                model_path = os.path.join(dir, "gpt2_attention.onnx")
+                onnx.save(model, model_path)
 
-            model_name = "gpt2_attention_{}.onnx".format("add_opt" if add_order else "opt")
-            self.verify_fusion(optimized_model, model_name)
+                options = FusionOptions("gpt2")
+                options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
+
+                optimized_model = optimize_model(
+                    model_path,
+                    model_type="gpt2",
+                    num_heads=num_heads,
+                    hidden_size=hidden_size,
+                    optimization_options=options,
+                )
+
+                optimized_model.topological_sort()
+                os.remove(model_path)
+
+                model_suffix = ""
+                if add_order and enable_skip_layer_norm_fusion:
+                    model_suffix = "add_opt_skiplayernorm"
+                elif add_order and not enable_skip_layer_norm_fusion:
+                    model_suffix = "add_opt_no_skiplayernorm"
+                elif not add_order and enable_skip_layer_norm_fusion:
+                    model_suffix = "opt_skiplayernorm"
+                else:
+                    model_suffix = "opt_no_skiplayernorm"
+
+                model_name = f"gpt2_attention_{model_suffix}.onnx"
+                self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):
-        path = get_test_data_path("models", "gpt2_megatron.onnx")
-        model = onnx.load(path)
-        optimized_model = optimize_by_fusion(model, model_type="gpt2")
+        for enable_skip_layer_norm_fusion in [False, True]:
+            path = get_test_data_path("models", "gpt2_megatron.onnx")
+            model = onnx.load(path)
 
-        self.verify_fusion(optimized_model, "gpt2_megatron_opt.onnx")
+            options = FusionOptions("gpt2")
+            options.enable_skip_layer_norm = enable_skip_layer_norm_fusion
+
+            optimized_model = optimize_by_fusion(
+                model,
+                model_type="gpt2",
+                num_heads=0,
+                hidden_size=0,
+                optimization_options=options,
+            )
+
+            model_suffix = ""
+            if enable_skip_layer_norm_fusion:
+                model_suffix = "opt_skiplayernorm"
+            else:
+                model_suffix = "opt_no_skiplayernorm"
+
+            model_name = f"gpt2_megatron_{model_suffix}.onnx"
+            self.verify_fusion(optimized_model, model_name)
 
 
 if __name__ == "__main__":

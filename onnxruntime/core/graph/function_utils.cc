@@ -47,8 +47,8 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     // Due to this, a user of this style of schema must manually check whether any applicable type constraints
     // for each input or output are satisfied prior to creating a node that uses this schema
     //
-    op_schema->TypeConstraint("TAggregatedTypes", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
-                              "all_tensor_types_with_bfloat");
+    op_schema->TypeConstraint("TAggregatedTypes", ONNX_NAMESPACE::OpSchema::all_tensor_types_ir4(),
+                              "all_tensor_types_ir4");
   }
 
   int i = 0;
@@ -99,10 +99,10 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
   // Create an all permissive list of data types. This will be used in case of model local functions
   // when we cannot infer the type constraints from function proto body
   InlinedHashSet<std::string_view> all_types;
-  all_types.reserve(ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().size() +
+  all_types.reserve(ONNX_NAMESPACE::OpSchema::all_tensor_types_ir4().size() +
                     ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().size());
-  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cbegin(),
-                   ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cend());
+  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_types_ir4().cbegin(),
+                   ONNX_NAMESPACE::OpSchema::all_tensor_types_ir4().cend());
   all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cbegin(),
                    ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cend());
 
@@ -123,7 +123,13 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
     const auto* node_op_schema = schema_registry->GetSchema(node.op_type(), domain_version, node.domain());
     int variadic_arg_idx = -1;
     for (int i = 0; i < node.input_size(); ++i) {
-      auto& in_name = node.input().Get(i);
+      if (node_op_schema && variadic_arg_idx == -1) {
+        // The check is applied only if we have not seen a variadic parameter so far:
+        ORT_ENFORCE(static_cast<size_t>(i) < node_op_schema->inputs().size(),
+                    "Too many inputs for op " + node.op_type());
+      }
+
+      const auto& in_name = node.input().Get(i);
       auto iter = input_name_idx_map.find(in_name);
       if (iter != input_name_idx_map.end()) {
         int idx = iter->second;
@@ -157,12 +163,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
             }
           }
         }
+      }
 
-        // if this is a variadic input there are no more inputs in the schema
-        if (node_op_schema && variadic_arg_idx == -1 &&
-            node_op_schema->inputs().at(schema_idx).GetOption() == OpSchema::FormalParameterOption::Variadic) {
-          variadic_arg_idx = i;
-        }
+      // if this is a variadic input there are no more inputs in the schema
+      if (node_op_schema && variadic_arg_idx == -1 &&
+          node_op_schema->inputs().at(i).GetOption() == OpSchema::FormalParameterOption::Variadic) {
+        variadic_arg_idx = i;
       }
     }
 
@@ -202,12 +208,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
             }
           }
         }
+      }
 
-        // if this is a variadic output there are no more outputs in the schema
-        if (node_op_schema && variadic_arg_idx == -1 &&
-            node_op_schema->outputs().at(schema_idx).GetOption() == OpSchema::FormalParameterOption::Variadic) {
-          variadic_arg_idx = i;
-        }
+      // if this is a variadic output there are no more outputs in the schema
+      if (node_op_schema && variadic_arg_idx == -1 &&
+          node_op_schema->outputs().at(i).GetOption() == OpSchema::FormalParameterOption::Variadic) {
+        variadic_arg_idx = i;
       }
     }
 
@@ -229,7 +235,18 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
   int i = 0;
   for (auto& input : input_types_list) {
-    op_schema->Input(i, input.first, "", input.second);
+    if (!input.first.empty()) {
+      op_schema->Input(i, input.first, "", input.second);
+    } else {
+      // Handle unused input: its type can be anything.
+      std::string type_str = "Tin" + std::to_string(i);
+      op_schema->Input(i, onnx_func_proto.input(i), "", type_str);
+      auto& dest_types = type_constraint_map[type_str];
+      dest_types.reserve(dest_types.size() + all_types.size());
+      for (const auto& data_type : all_types) {
+        dest_types.emplace_back(data_type);
+      }
+    }
     ++i;
   }
   i = 0;
@@ -242,15 +259,17 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
     op_schema->TypeConstraint(tc.first, tc.second, "");
   }
 
+  const auto attr_end = attribute_type_map.end();
   for (auto& attribute_name : onnx_func_proto.attribute()) {
-    if (attribute_type_map.count(attribute_name))
-      op_schema->Attr(attribute_name, "", attribute_type_map[attribute_name], false);
+    auto hit = attribute_type_map.find(attribute_name);
+    if (hit != attr_end)
+      op_schema->Attr(attribute_name, "", hit->second, false);
   }
 }
 
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
                                                        const std::string& function_name,
-                                                       const InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+                                                       const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                                                        const std::unordered_map<std::string, int>& domain_version_map,
                                                        const SchemaRegistryManager& schema_registry,
                                                        const logging::Logger& logger,
@@ -274,13 +293,16 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
   op_schema->SetDomain(function_domain);
   op_schema->SetDoc(onnx_func_proto->doc_string());
   op_schema->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(since_version));
-  InlinedHashMap<std::string, int> input_name_idx_map;
-  InlinedHashMap<std::string, int> output_name_idx_map;
 
-  for (int i = 0; i < onnx_func_proto->input_size(); ++i) {
+  InlinedHashMap<std::string, int> input_name_idx_map;
+  input_name_idx_map.reserve(onnx_func_proto->input_size());
+  for (int i = 0, input_size = onnx_func_proto->input_size(); i < input_size; ++i) {
     input_name_idx_map[onnx_func_proto->input().Get(i)] = i;
   }
-  for (int i = 0; i < onnx_func_proto->output_size(); ++i) {
+
+  InlinedHashMap<std::string, int> output_name_idx_map;
+  output_name_idx_map.reserve(onnx_func_proto->output_size());
+  for (int i = 0, output_size = onnx_func_proto->output_size(); i < output_size; ++i) {
     output_name_idx_map[onnx_func_proto->output().Get(i)] = i;
   }
 
@@ -293,6 +315,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
       schema_registry.GetLastReleasedOpsetVersions(false);
 
   std::unordered_map<std::string, int> func_domain_to_version;
+  func_domain_to_version.reserve(onnx_func_proto->opset_import().size());
   for (auto& opSet : onnx_func_proto->opset_import()) {
     const auto& domain = opSet.domain();
     const auto version = gsl::narrow_cast<int>(opSet.version());
@@ -310,17 +333,25 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
     }
   }
 
+  // Instantiate once and reuse for all shape inference calls.
+  constexpr bool check_type_true = true;
+  constexpr int error_mode_throw = 1;
+  constexpr bool enable_data_propagation_false = false;
+  static const ONNX_NAMESPACE::ShapeInferenceOptions inference_options{check_type_true, error_mode_throw, enable_data_propagation_false};
+
+  // model_local_functions is a member of Model instance and will be alive at the time this is invoked.
   op_schema->TypeAndShapeInferenceFunction(
-      [onnx_func_proto, func_domain_to_version, &model_local_functions](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-        ONNX_NAMESPACE::ShapeInferenceOptions options{true, 1, false};
-        std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> map_copy(model_local_functions.begin(),
-                                                                                       model_local_functions.end());
-        std::unordered_map<std::string, TensorShapeProto> empty_map;
-        ONNX_NAMESPACE::shape_inference::SymbolTableImpl symbolTable;
+      [onnx_func_proto, func_domain_to_version = std::move(func_domain_to_version), &model_local_functions](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto* schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+
+        // https://github.com/microsoft/onnxruntime/issues/17061
+        // We are passing a nullptr for the symbol table, because symbol table must be global
+        // for all the shape inferencing to work correctly. Otherwise, unrelated shapes get
+        // the same symbolic shapes and are marked for memory re-use. This is a Temp fix.
+        constexpr ONNX_NAMESPACE::shape_inference::SymbolTableImpl* symbolTable = nullptr;
         ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version,
-                                                                   schema_registry, ctx, options, map_copy,
-                                                                   &symbolTable, &empty_map);
+                                                                   schema_registry, ctx, inference_options, model_local_functions,
+                                                                   symbolTable, nullptr);
       });
 
   op_schema->Finalize();
@@ -329,36 +360,40 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
 
 class Inliner {
  private:
-  std::string prefix;
-  const onnxruntime::NodeAttributes& attr_map;
-  std::vector<InlinedHashMap<std::string, std::string>> rename_scopes;
+  std::string prefix_;
+  const onnxruntime::NodeAttributes& attr_map_;
+  std::vector<InlinedHashMap<std::string, std::string>> rename_scopes_;
 
-  Inliner(std::string prefix_, const onnxruntime::NodeAttributes& attr_map_) : prefix(prefix_),
-                                                                               attr_map(attr_map_) {
+  Inliner(const std::string& prefix, const onnxruntime::NodeAttributes& attr_map) : prefix_(prefix),
+                                                                                    attr_map_(attr_map) {
     // Create an empty mapping for the top-level scope.
-    rename_scopes.emplace_back();
+    rename_scopes_.emplace_back();
   }
 
   // Replace given name with a unique version of the name, and cache the
   // renaming-binding in current scope.
   void make_unique(std::string& name) {
-    auto new_name = prefix + name;
-    auto& current_scope = rename_scopes.back();
+    auto new_name{prefix_};
+    new_name.append("_").append(name);
+    auto& current_scope = rename_scopes_.back();
     current_scope[name] = new_name;
-    name = new_name;
+    name = std::move(new_name);
   }
 
-  void rename(std::string& name) {
+  void rename(std::string& name, bool is_new_def) {
     if (name.empty()) return;
-    for (auto i = rename_scopes.size(); i > 0; --i) {
-      const auto& map = rename_scopes[i - 1];
+    for (auto i = rename_scopes_.size(); i > 0; --i) {
+      const auto& map = rename_scopes_[i - 1];
       auto iter = map.find(name);
       if (iter != map.end()) {
         name = iter->second;
         return;
       }
     }
-    make_unique(name);
+    if (is_new_def) {
+      make_unique(name);
+    }
+    // Otherwise, it is a reference to an outer-scope variable that should not be renamed.
   }
 
   template <bool isOutput>
@@ -369,46 +404,51 @@ class Inliner {
     // is used in an output-context where it is not optional.
     ORT_ENFORCE(actuals.size() <= formals.size(),
                 "Number of actual parameters cannot exceed number of formal parameters");
-    auto& current_scope = rename_scopes.back();
+    auto& current_scope = rename_scopes_.back();
     int i = 0;
     for (; i < actuals.size(); ++i) {
       std::string& formal = *formals.Mutable(i);
       std::string rename_as = actuals.Get(i);
-      if constexpr (isOutput)
+      if constexpr (isOutput) {
         if (rename_as.empty())
-          rename_as = prefix + formal;
+          rename_as.assign(prefix_).append("_").append(formal);
+      }
       current_scope[formal] = rename_as;
       if (!rename_as.empty())
-        formal = rename_as;
+        formal = std::move(rename_as);
     }
     for (; i < formals.size(); ++i) {
       std::string& formal = *formals.Mutable(i);
-      std::string rename_as = isOutput ? prefix + formal : std::string("");
+      std::string rename_as;
+      if constexpr (isOutput) {
+        rename_as.assign(prefix_).append("_").append(formal);
+      }
       current_scope[formal] = rename_as;
       if (!rename_as.empty())
-        formal = rename_as;
+        formal = std::move(rename_as);
     }
   }
 
   // Process a node:
   void transform(NodeProto& n) {
     if (!n.name().empty())
-      n.set_name(prefix + n.name());
+      n.set_name(prefix_ + "_" + n.name());
 
     for (auto& x : *n.mutable_input()) {
-      rename(x);
+      rename(x, false);
     }
     for (auto& y : *n.mutable_output()) {
-      rename(y);
+      rename(y, true);
     }
     auto& attributes = *n.mutable_attribute();
+    const auto attr_map_end = attr_map_.cend();
     for (auto attr_iter = attributes.begin(); attr_iter != attributes.end();) {
       auto& attr = *attr_iter;
       if (!attr.ref_attr_name().empty()) {
         // Attribute-references must be replaced by the corresponding attribute-value in the call-node
         // if the call-node contains the attribute. Otherwise, this attribute must be removed.
-        auto entry = attr_map.find(attr.ref_attr_name());
-        if (entry != attr_map.cend()) {
+        auto entry = attr_map_.find(attr.ref_attr_name());
+        if (entry != attr_map_end) {
           // Copy value of attribute, but retain original name:
           std::string name = attr.name();
           attr = entry->second;
@@ -430,7 +470,7 @@ class Inliner {
 
   // Process a sub-graph, contained as an attribute in a control-flow op node.
   void transform(GraphProto& graph) {
-    rename_scopes.emplace_back();
+    rename_scopes_.emplace_back();
     for (auto& x : *graph.mutable_input())
       make_unique(*x.mutable_name());
     for (auto& init : *graph.mutable_initializer())
@@ -439,12 +479,13 @@ class Inliner {
       make_unique(*y.mutable_name());
     for (auto& n : *graph.mutable_node())
       transform(n);
-    rename_scopes.pop_back();
+    rename_scopes_.pop_back();
   }
 
  public:
   // The main specialization method: specialize a FunctionProto for a particular call-site.
-  static void specialize(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
+  static void specialize(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map,
+                         const std::string& unique_prefix) {
     Inliner inliner(unique_prefix, attr_map);
 
     inliner.bind<false>(*callee.mutable_input(), callnode.input());
@@ -455,15 +496,20 @@ class Inliner {
   }
 };
 
-void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
-                const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto& calling_node,
+                const onnxruntime::NodeAttributes& attr_map, const std::string& unique_prefix) {
   Inliner::specialize(calling_node, called_function, attr_map, unique_prefix);
 }
 
-void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, Node& calling_node, std::string unique_prefix) {
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const Node& calling_node, const std::string& unique_prefix) {
   ONNX_NAMESPACE::NodeProto calling_node_proto;
   calling_node.ToProto(calling_node_proto);
-  Specialize(called_function, calling_node_proto, calling_node.GetAttributes(), unique_prefix);
+
+  onnxruntime::NodeAttributes attr_map = calling_node.GetAttributes();
+  for (auto& attribute_proto : called_function.attribute_proto()) {
+    ORT_IGNORE_RETURN_VALUE(attr_map.emplace(attribute_proto.name(), attribute_proto));
+  }
+  Specialize(called_function, calling_node_proto, attr_map, unique_prefix);
 }
 
 }  // namespace function_utils

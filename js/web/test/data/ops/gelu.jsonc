@@ -1,0 +1,44 @@
+[
+  {
+    "name": "gelu",
+    "operator": "Gelu",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [1.0, -2.0, 0, 2.0],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.8413447141647339, -0.04550027847290039, 0, 1.9544997215270996],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar",
+        "inputs": [
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.8413447141647339],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

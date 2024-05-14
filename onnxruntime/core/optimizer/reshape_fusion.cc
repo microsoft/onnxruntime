@@ -10,6 +10,17 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+bool GetAxesFromUnsqueezeNode(const Graph& graph, const Node& unsqueeze, InlinedVector<int64_t>& axes) {
+  if (graph_utils::MatchesOpSinceVersion(unsqueeze, {1, 11})) {
+    return graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes);
+  } else if (graph_utils::MatchesOpSinceVersion(unsqueeze, {13})) {
+    const NodeArg* axes_node_arg = unsqueeze.InputDefs()[1];
+    return optimizer_utils::AppendTensorFromInitializer(graph, *axes_node_arg, axes, true);
+  }
+
+  return false;
+}
+
 Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -39,11 +50,13 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
       modified = true;
     }
   }
-  LOGS(logger, INFO) << "Total fused reshape node count: " << fused_count;
+
+  if (fused_count > 0) {
+    LOGS(logger, INFO) << "Total fused reshape node count: " << fused_count;
+  }
 
   return Status::OK();
 }
-
 
 /**
 Provide check for Reshape Fusion for DistilBert. The following are subgraphs that
@@ -77,8 +90,8 @@ static bool Match_Linear_Subgraph_1(Graph& graph, const Node& concat, const Node
   const Node& reshape = *reshape_itr;
 
   std::vector<graph_utils::EdgeEndToMatch> linear_path{
-    {0, 0, "Add", {7}, kOnnxDomain},
-    {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
+      {0, 0, "Add", {7}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(reshape, true, linear_path, edges, logger)) {
     return false;
@@ -145,15 +158,23 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
     const Node& unsqueeze = edges[0]->GetNode();
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
 
+    if (graph_utils::MatchesOpSinceVersion(shape, {15})) {
+      const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape, "start");
+      const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape, "end");
+      if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
+        return false;
+      }
+    }
+
     InlinedVector<int64_t> axes;
-    if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
+    if (!(GetAxesFromUnsqueezeNode(graph, unsqueeze, axes) && axes.size() == 1 && axes[0] == 0)) {
       return false;
     }
 
@@ -200,7 +221,7 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const Node
     if (slice.GetInputEdgesCount() >= 3) {
       optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[1]), starts_values, true);
       optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[2]), ends_values, true);
-    } else { // Support older version of Slice node
+    } else {  // Support older version of Slice node
       graph_utils::GetRepeatedNodeAttributeValues<int64_t>(slice, "starts", starts_values);
       graph_utils::GetRepeatedNodeAttributeValues<int64_t>(slice, "ends", ends_values);
     }
@@ -275,7 +296,7 @@ bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& 
       graph_utils::FindPath(concat, true, unsqueeze_path, edges, logger)) {
     const Node& unsqueeze = edges[0]->GetNode();
     InlinedVector<int64_t> axes;
-    if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
+    if (!(GetAxesFromUnsqueezeNode(graph, unsqueeze, axes) && axes.size() == 1 && axes[0] == 0)) {
       return false;
     }
     // Unsqueeze_path is found, check for "one-element subgraph -> concat" or "shape -> slice -> squeeze ->
@@ -344,7 +365,8 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
   }
   const Node& concat = *p_concat;
 
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11, 13})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11, 13}) &&
+      !graph_utils::IsSupportedOptypeVersionAndDomain(concat, "ConcatTraining", {1}, kMSDomain)) {
     return false;
   }
 

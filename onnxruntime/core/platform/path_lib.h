@@ -29,6 +29,9 @@ using PATH_CHAR_TYPE = ORTCHAR_T;
 template <typename T>
 long OrtStrtol(const T* nptr, T** endptr);
 
+template <typename T>
+double OrtStrtod(const T* nptr, T** endptr);
+
 /**
  * Convert a C string to ssize_t(or ptrdiff_t)
  * @return the converted integer value.
@@ -83,6 +86,16 @@ inline long OrtStrtol<char>(const char* nptr, char** endptr) {
 template <>
 inline long OrtStrtol<wchar_t>(const wchar_t* nptr, wchar_t** endptr) {
   return wcstol(nptr, endptr, 10);
+}
+
+template <>
+inline double OrtStrtod<char>(const char* nptr, char** endptr) {
+  return strtod(nptr, endptr);
+}
+
+template <>
+inline double OrtStrtod<wchar_t>(const wchar_t* nptr, wchar_t** endptr) {
+  return wcstod(nptr, endptr);
 }
 
 namespace onnxruntime {
@@ -165,9 +178,8 @@ inline wchar_t GetPathSep<wchar_t>() {
 }
 #endif
 
-template <typename PATH_CHAR_TYPE>
-std::basic_string<PATH_CHAR_TYPE> ConcatPathComponent(const std::basic_string<PATH_CHAR_TYPE>& left,
-                                                      const std::basic_string<PATH_CHAR_TYPE>& right) {
+inline std::basic_string<PATH_CHAR_TYPE> ConcatPathComponent(std::basic_string_view<PATH_CHAR_TYPE> left,
+                                                             std::basic_string_view<PATH_CHAR_TYPE> right) {
   std::basic_string<PATH_CHAR_TYPE> ret(left);
   ret.append(1, GetPathSep<PATH_CHAR_TYPE>()).append(right);
   return ret;
@@ -209,7 +221,7 @@ void LoopDir(const std::wstring& dir_name, T func) {
   }
 }
 
-//TODO: rewrite it with PathFindNextComponentW
+// TODO: rewrite it with PathFindNextComponentW
 inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_string<PATH_CHAR_TYPE>& s) {
   if (s.empty()) return std::basic_string<PATH_CHAR_TYPE>(1, GetDot<PATH_CHAR_TYPE>());
   std::basic_string<PATH_CHAR_TYPE> input = s;
@@ -226,34 +238,34 @@ inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_strin
 
 #elif defined(_AIX)
 inline OrtFileType DTToFileTypeAIX(struct stat st) {
-    switch (st.st_mode & _S_IFMT) {
+  switch (st.st_mode & _S_IFMT) {
     case S_IFBLK:
-        return OrtFileType::TYPE_BLK;
+      return OrtFileType::TYPE_BLK;
     case S_IFCHR:
-        return OrtFileType::TYPE_CHR;
+      return OrtFileType::TYPE_CHR;
     case S_IFDIR:
-        return OrtFileType::TYPE_DIR;
+      return OrtFileType::TYPE_DIR;
     case S_IFIFO:
-        return OrtFileType::TYPE_FIFO;
+      return OrtFileType::TYPE_FIFO;
     case S_IFLNK:
-        return OrtFileType::TYPE_LNK;
+      return OrtFileType::TYPE_LNK;
     case S_IFREG:
-        return OrtFileType::TYPE_REG;
+      return OrtFileType::TYPE_REG;
     /* No Socket type */
     default:
-        return OrtFileType::TYPE_UNKNOWN;
-    }
+      return OrtFileType::TYPE_UNKNOWN;
+  }
 }
 
 template <typename T>
 void LoopDir(const std::string& dir_name, T func) {
   DIR* dir = opendir(dir_name.c_str());
-  struct stat stats; 
+  struct stat stats;
   if (dir == nullptr) {
     auto e = errno;
     char buf[1024];
     char* msg;
-#if defined(__GLIBC__) && defined(_GNU_SOURCE) 
+#if defined(__GLIBC__) && defined(_GNU_SOURCE)
     msg = strerror_r(e, buf, sizeof(buf));
 #else
     if (strerror_r(e, buf, sizeof(buf)) != 0) {
@@ -269,10 +281,10 @@ void LoopDir(const std::string& dir_name, T func) {
   ORT_TRY {
     struct dirent* dp;
     while ((dp = readdir(dir)) != nullptr) {
-    std::basic_string<PATH_CHAR_TYPE> filename  = ConcatPathComponent<PATH_CHAR_TYPE>(dir_name, dp->d_name);
-	if (stat(filename.c_str(), &stats) != 0) {
-		continue;
-	}	
+      std::basic_string<PATH_CHAR_TYPE> filename = ConcatPathComponent<PATH_CHAR_TYPE>(dir_name, dp->d_name);
+      if (stat(filename.c_str(), &stats) != 0) {
+        continue;
+      }
       if (!func(dp->d_name, DTToFileTypeAIX(stats))) {
         break;
       }

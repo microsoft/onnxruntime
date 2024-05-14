@@ -5,6 +5,8 @@
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
+#include "core/common/gsl.h"
+#include <optional>
 
 #ifdef ORT_NO_EXCEPTIONS
 #define ML_CHECK_BOOL(x) ORT_THROW_HR_IF(E_INVALIDARG, !(x))
@@ -98,7 +100,7 @@ struct MLTypeTraits<uint64_t>
 };
 
 template <>
-struct MLTypeTraits<onnxruntime::MLFloat16> 
+struct MLTypeTraits<onnxruntime::MLFloat16>
 {
   static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
 };
@@ -110,25 +112,27 @@ inline uint32_t ComputeElementCountFromDimensions(gsl::span<const uint32_t> dime
 
 #pragma warning(push)
 #pragma warning(disable:4702)
-inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
+inline size_t GetBitSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
 {
     switch (tensorDataType)
     {
-    case MLOperatorTensorDataType::Float: return 4;
-    case MLOperatorTensorDataType::UInt8: return 1;
-    case MLOperatorTensorDataType::Int8: return 1;
-    case MLOperatorTensorDataType::UInt16: return 2;
-    case MLOperatorTensorDataType::Int16: return 2;
-    case MLOperatorTensorDataType::Int32: return 4;
-    case MLOperatorTensorDataType::Int64: return 8;
+    case MLOperatorTensorDataType::Float: return 32;
+    case MLOperatorTensorDataType::UInt4: return 4;
+    case MLOperatorTensorDataType::Int4: return 4;
+    case MLOperatorTensorDataType::UInt8: return 8;
+    case MLOperatorTensorDataType::Int8: return 8;
+    case MLOperatorTensorDataType::UInt16: return 16;
+    case MLOperatorTensorDataType::Int16: return 16;
+    case MLOperatorTensorDataType::Int32: return 32;
+    case MLOperatorTensorDataType::Int64: return 64;
     case MLOperatorTensorDataType::String: ORT_THROW_HR(E_INVALIDARG);
-    case MLOperatorTensorDataType::Bool: return 1;
-    case MLOperatorTensorDataType::Float16: return 2;
-    case MLOperatorTensorDataType::Double: return 8;
-    case MLOperatorTensorDataType::UInt32: return 4;
-    case MLOperatorTensorDataType::UInt64: return 8;
-    case MLOperatorTensorDataType::Complex64: return 8;
-    case MLOperatorTensorDataType::Complex128: return 16;
+    case MLOperatorTensorDataType::Bool: return 8;
+    case MLOperatorTensorDataType::Float16: return 16;
+    case MLOperatorTensorDataType::Double: return 64;
+    case MLOperatorTensorDataType::UInt32: return 32;
+    case MLOperatorTensorDataType::UInt64: return 64;
+    case MLOperatorTensorDataType::Complex64: return 64;
+    case MLOperatorTensorDataType::Complex128: return 128;
     case MLOperatorTensorDataType::Undefined:
     default:
         ORT_THROW_HR(E_INVALIDARG);
@@ -165,6 +169,49 @@ class MLOperatorTensorShapeDescription
         ret.resize(dimensionCount);
 
         ORT_THROW_IF_FAILED(m_impl->GetInputTensorShape(inputIndex, dimensionCount, ret.data()));
+        return ret;
+    }
+
+    uint32_t GetSequenceInputCount(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescriptionPrivate> private_impl;
+        m_impl.As(&private_impl);
+        uint32_t inputCount = 0;
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
+        return inputCount;
+    }
+
+    MLOperatorTensorDataType GetSequenceInputDataType(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescriptionPrivate> private_impl;
+        m_impl.As(&private_impl);
+        uint32_t inputCount = 0;
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
+        return dataType;
+    }
+
+    uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescriptionPrivate> private_impl;
+        m_impl.As(&private_impl);
+
+        uint32_t ret;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex, &ret));
+        return ret;
+    }
+
+    std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescriptionPrivate> private_impl;
+        m_impl.As(&private_impl);
+
+        std::vector<uint32_t> ret;
+        uint32_t dimensionCount = GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex);
+        ret.resize(dimensionCount);
+
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputTensorShape(inputIndex, sequenceIndex, dimensionCount, ret.data()));
         return ret;
     }
 
@@ -210,7 +257,7 @@ class MLOperatorAttributes
     }
 
     uint32_t GetAttributeElementCount(
-        _In_z_ MLConstStringParam name, 
+        _In_z_ MLConstStringParam name,
         MLOperatorAttributeType type) const
     {
         uint32_t elementCount;
@@ -296,7 +343,7 @@ class MLOperatorAttributes
         {
             auto vector64Bit = GetAttributeVector<int64_t>(attributeName);
             vector32Bit.resize(vector64Bit.size());
-            std::transform(vector64Bit.begin(), vector64Bit.end(), /*out*/vector32Bit.begin(), [](auto i) 
+            std::transform(vector64Bit.begin(), vector64Bit.end(), /*out*/vector32Bit.begin(), [](auto i)
                                     {return gsl::narrow_cast<int32_t>(std::clamp<int64_t>(i, INT32_MIN, INT32_MAX)); });
         }
         return vector32Bit;
@@ -308,7 +355,7 @@ class MLOperatorAttributes
             ?  GetAttributeVector(attributeName)
             :  std::vector<std::string>{}; // Empty vector if attribute absent.
     }
-    
+
     // Not implemented
     template <typename T> T GetOptionalAttribute(MLConstStringParam attributeName, T defaultValue) const;
 
@@ -413,7 +460,7 @@ public:
 
     size_t GetUnalignedTensorByteSize() const
     {
-        return GetTotalElementCount() * GetByteSizeFromMlDataType(GetTensorDataType());
+        return (GetTotalElementCount() * GetBitSizeFromMlDataType(GetTensorDataType()) + CHAR_BIT - 1) / CHAR_BIT;
     }
 
     MLOperatorTensorDataType GetTensorDataType() const noexcept
@@ -486,12 +533,18 @@ public:
     MLOperatorKernelCreationContext(IMLOperatorKernelCreationContext* impl) : MLOperatorAttributes(impl), m_impl(impl)
     {
         m_impl.As(&m_implPrivate);
+        m_impl.As(&m_nodeWrapperImpl);
     }
 
     // For cases of interop where the caller needs to pass the unwrapped class across a boundary.
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContext> GetInterface() const noexcept
     {
         return m_impl;
+    }
+
+    IMLOperatorKernelCreationContextNodeWrapperPrivate* GetNodeWrapperInterface() const noexcept
+    {
+        return m_nodeWrapperImpl.Get();
     }
 
     Microsoft::WRL::ComPtr<IUnknown> GetExecutionInterface() const noexcept
@@ -510,7 +563,7 @@ public:
     {
         return m_impl->GetOutputCount();
     }
-    
+
     bool IsInputValid(uint32_t index) const {
         return m_impl->IsInputValid(index);
     }
@@ -554,15 +607,64 @@ public:
         return MLOperatorTensor(tensor.Get());
     }
 
+    std::optional<MLOperatorTensor> TryGetConstantCpuInputTensor(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
+        ORT_THROW_IF_FAILED(m_implPrivate->TryGetConstantInputTensor(inputIndex, &tensor));
+        if (tensor && tensor->IsCpuData())
+        {
+            return MLOperatorTensor(tensor.Get());
+        }
+
+        return std::nullopt;
+    }
+
+    uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetInputTensorDimensionCount(inputIndex);
+    }
+
+    std::vector<uint32_t> GetInputTensorShape(uint32_t inputIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetInputTensorShape(inputIndex);
+    }
+
+    uint32_t GetSequenceInputCount(uint32_t inputIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetSequenceInputCount(inputIndex);
+    }
+
+    MLOperatorTensorDataType GetSequenceInputDataType(uint32_t inputIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetSequenceInputDataType(inputIndex);
+    }
+
+    uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex);
+    }
+
+    std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetSequenceInputTensorShape(inputIndex, sequenceIndex);
+    }
+
  private:
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContext> m_impl;
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextPrivate> m_implPrivate;
+    Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextNodeWrapperPrivate> m_nodeWrapperImpl;
 };
 
 class MLShapeInferenceContext : public MLOperatorAttributes
 {
 public:
-    MLShapeInferenceContext(IMLOperatorShapeInferenceContext* impl) : MLOperatorAttributes(impl) 
+    MLShapeInferenceContext(IMLOperatorShapeInferenceContext* impl) : MLOperatorAttributes(impl)
     {
         ORT_THROW_IF_FAILED(impl->QueryInterface(m_impl.GetAddressOf()));
     }
@@ -621,6 +723,50 @@ public:
         ORT_THROW_IF_FAILED(m_impl->GetInputTensorShape(inputIndex, dimensionCount, ret.data()));
         return ret;
     }
+
+    uint32_t GetSequenceInputCount(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorShapeInferenceContextPrivate> private_impl;
+        m_impl.As(&private_impl);
+        uint32_t inputCount = 0;
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
+        return inputCount;
+    }
+
+    MLOperatorTensorDataType GetSequenceInputDataType(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorShapeInferenceContextPrivate> private_impl;
+        m_impl.As(&private_impl);
+        uint32_t inputCount = 0;
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
+        return dataType;
+    }
+
+    uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorShapeInferenceContextPrivate> private_impl;
+        m_impl.As(&private_impl);
+
+        uint32_t ret;
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex, &ret));
+        return ret;
+    }
+
+    std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorShapeInferenceContextPrivate> private_impl;
+        m_impl.As(&private_impl);
+
+        std::vector<uint32_t> ret;
+        uint32_t dimensionCount = GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex);
+        ret.resize(dimensionCount);
+
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputTensorShape(inputIndex, sequenceIndex, dimensionCount, ret.data()));
+        return ret;
+    }
+
 
     void SetOutputTensorShape(uint32_t outputIndex, const std::vector<uint32_t>& outputDimensions)
     {
@@ -691,6 +837,74 @@ public:
         return m_impl;
     }
 
+    bool IsSequenceInputTensor(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        return operatorKernelContext->IsSequenceInputTensor(inputIndex);
+    }
+
+    uint32_t GetSequenceInputCount(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        uint32_t inputCount = 0;
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
+        return inputCount;
+    }
+
+    MLOperatorTensorDataType GetSequenceInputDataType(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        uint32_t inputCount = 0;
+        MLOperatorTensorDataType dataType;
+        ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputInfo(inputIndex, &inputCount, &dataType));
+        return dataType;
+    }
+
+    MLOperatorTensor GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+
+        Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
+        ORT_THROW_HR_IF(E_INVALIDARG, !operatorKernelContext->IsSequenceInputTensor(inputIndex));
+        ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputTensor(inputIndex, sequenceIndex, &tensor));
+        return tensor.Get();
+    }
+
+    void PrepareSequenceOutput(uint32_t outputIndex, MLOperatorTensorDataType dataType) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        ORT_THROW_IF_FAILED(operatorKernelContext->PrepareSequenceOutput(outputIndex, dataType));
+    }
+
+    MLOperatorTensor GetSequenceOutputTensor(
+        uint32_t outputIndex,
+        uint32_t sequenceIndex,
+        MLOperatorTensorDataType dataType,
+        uint32_t dimensions,
+        const uint32_t* dimensionSizes,
+        bool gpuOutput) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+
+        Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
+        ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceOutputTensor(
+            outputIndex,
+            sequenceIndex,
+            dataType,
+            dimensions,
+            dimensionSizes,
+            gpuOutput,
+            &tensor));
+        return tensor.Get();
+    }
+
     MLOperatorTensor GetInputTensor(uint32_t inputIndex) const
     {
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
@@ -735,7 +949,7 @@ public:
 // supports STL types, and converts exceptions to return values.
 template <class T>
 class MLOperatorKernel : public Microsoft::WRL::RuntimeClass<
-    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IMLOperatorKernel>, 
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IMLOperatorKernel>,
     public T
 {
 public:

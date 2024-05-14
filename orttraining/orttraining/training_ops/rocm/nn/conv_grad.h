@@ -55,13 +55,13 @@ class ConvGrad final : public RocmKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW) const;
+  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW, miopenHandle_t miopen_handle) const;
   mutable ConvArgs args_;
   ConvAttributes conv_attrs_;
 
  private:
-  Status ComputeWeightGradient() const;
-  Status ComputeInputGradient() const;
+  Status ComputeWeightGradient(onnxruntime::Stream* stream) const;
+  Status ComputeInputGradient(onnxruntime::Stream* stream) const;
   Status ComputeBiasGradient() const;
 };
 

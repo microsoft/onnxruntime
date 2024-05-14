@@ -31,7 +31,6 @@ struct ScaleInputOutput {
   std::vector<double> output_up_double = {2.0, 4.0, 6.0};
   std::vector<double> output_down_double = {0.5, 1.0, 1.5};
 
-
   // Fp16 Inputs/Outputs
   std::vector<MLFloat16> input_half;
   std::vector<MLFloat16> output_up_half;

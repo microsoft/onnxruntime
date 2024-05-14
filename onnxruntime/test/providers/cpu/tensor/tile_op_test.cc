@@ -17,6 +17,15 @@ std::vector<T> InputData(size_t size) {
 }
 
 template <>
+std::vector<std::string> InputData<std::string>(size_t size) {
+  std::vector<std::string> result(size);
+  for (size_t i = 0; i < size; i++) {
+    result[i] = std::to_string(i);
+  }
+  return result;
+}
+
+template <>
 std::vector<MLFloat16> InputData<MLFloat16>(size_t size) {
   std::vector<MLFloat16> result(size);
   for (size_t i = 0; i < size; i++) {
@@ -26,7 +35,9 @@ std::vector<MLFloat16> InputData<MLFloat16>(size_t size) {
 }
 
 template <typename T>
-void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& repeats) {
+void RunTest(const std::vector<int64_t>& input_dims,
+             const std::vector<int64_t>& repeats,
+             bool is_repeats_initializer = false) {
   size_t input_size =
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
   std::vector<T> input_data = InputData<T>(input_size);
@@ -61,7 +72,7 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   }
   OpTester test("Tile");
   test.AddInput<T>("input", input_dims, input_data);
-  test.AddInput<int64_t>("repeats", repeats_dims, repeats);
+  test.AddInput<int64_t>("repeats", repeats_dims, repeats, is_repeats_initializer);
   test.AddOutput<T>("output", output_dims, output_data);
   if (std::is_same<T, int8_t>::value) {
     // TensorRT reports error: Assertion Error in makePaddedScale: 0 (regionRanges != nullptr)
@@ -81,42 +92,55 @@ void RunTestWrapper() {
 
   // Tile1D
   RunTest<T>({3}, {3});
+  RunTest<T>({3}, {3}, true);
 
   // Tile2D_1Axis
   RunTest<T>({2, 2}, {2, 1});
   RunTest<T>({2, 3}, {2, 1});
+  RunTest<T>({2, 2}, {2, 1}, true);
+  RunTest<T>({2, 3}, {2, 1}, true);
 
   // Tile2D_2Axes
   RunTest<T>({2, 2}, {2, 2});
   RunTest<T>({2, 4}, {2, 2});
+  RunTest<T>({2, 2}, {2, 2}, true);
+  RunTest<T>({2, 4}, {2, 2}, true);
 
   // Tile3D
   RunTest<T>({2, 1, 3}, {1, 2, 1});
+  RunTest<T>({2, 1, 3}, {1, 2, 1}, true);
 
   // Tile4D
   RunTest<T>({1, 2, 3, 4}, {2, 1, 2, 1});
+  RunTest<T>({1, 2, 3, 4}, {2, 1, 2, 1}, true);
 
   // Tile5D
   RunTest<T>({2, 3, 2, 3, 2}, {2, 1, 2, 1, 2});
+  RunTest<T>({2, 3, 2, 3, 2}, {2, 1, 2, 1, 2}, true);
 
   // Tile1DWithOneRepeats
   RunTest<T>({2, 1, 3}, {1, 1, 1});
+  RunTest<T>({2, 1, 3}, {1, 1, 1}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 1
   // This will trigger the MemCpy optimization path
   RunTest<T>({1, 1, 3}, {2, 2, 1});
+  RunTest<T>({1, 1, 3}, {2, 2, 1}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 2
   // This will trigger the MemCpy optimization path
   RunTest<T>({1, 1, 3}, {3, 1, 1});
+  RunTest<T>({1, 1, 3}, {3, 1, 1}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat == 1)
   // This will trigger the (Batched) MemCpy optimization path
   RunTest<T>({2, 1, 3}, {1, 2, 1});
+  RunTest<T>({2, 1, 3}, {1, 2, 1}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat > 1)
   // This will trigger the (Batched) MemCpy optimization path
   RunTest<T>({2, 1, 3}, {2, 2, 1});
+  RunTest<T>({2, 1, 3}, {2, 2, 1}, true);
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
   // _TileMemcpyKernelFromInput, vectorized 4
@@ -142,62 +166,67 @@ void RunTestWrapper() {
 // OpTester's AddInput and AddOutput do not support std::vector<bool>.
 void RunTestForBool(std::initializer_list<bool> input_data, std::initializer_list<int64_t> input_dims,
                     std::initializer_list<int64_t> repeats, std::initializer_list<int64_t> repeats_dims,
-                    std::initializer_list<bool> output_data, std::initializer_list<int64_t> output_dims) {
+                    std::initializer_list<bool> output_data, std::initializer_list<int64_t> output_dims,
+                    bool skip_trt = false) {
   OpTester test("Tile");
   test.AddInput<bool>("input", input_dims, input_data);
   test.AddInput<int64_t>("repeats", repeats_dims, repeats);
   test.AddOutput<bool>("output", output_dims, output_data);
-  test.Run();
+  if (skip_trt) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test.Run();
+  }
 }
 
 void RunTestWrapperForBool() {
   // Tile1DWithZeroRepeats
-  RunTestForBool({true, false, true}, {3}, {0}, {1}, {}, {0});
+  RunTestForBool({true, false, true}, {3}, {0}, {1}, {}, {0}, true);
 
   // Tile2DWithZeroRepeats
-  RunTestForBool({true, false, true, false}, {2, 2}, {2, 0}, {2}, {}, {4, 0});
+  RunTestForBool({true, false, true, false}, {2, 2}, {2, 0}, {2}, {}, {4, 0}, true);
 
   // Tile1D
-  RunTestForBool({true, false, true}, {3}, {3}, {1}, {true, false, true, true, false, true, true, false, true}, {9});
+  RunTestForBool({true, false, true}, {3}, {3}, {1}, {true, false, true, true, false, true, true, false, true}, {9}, true);
 
   // Tile2D_1Axis
   RunTestForBool({true, false, true, false}, {2, 2}, {2, 1}, {2}, {true, false, true, false, true, false, true, false},
-                 {4, 2});
+                 {4, 2}, true);
 
   // Tile2D_2Axes
   RunTestForBool(
       {true, false, true, false}, {2, 2}, {2, 2}, {2},
-      {true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false}, {4, 4});
+      {true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false}, {4, 4}, true);
 
   // Tile3D
   RunTestForBool({true, false, true, false, true, false}, {2, 1, 3}, {1, 2, 1}, {3},
-                 {true, false, true, true, false, true, false, true, false, false, true, false}, {2, 2, 3});
+                 {true, false, true, true, false, true, false, true, false, false, true, false}, {2, 2, 3}, true);
 
   // Tile1DWithOneRepeats
   RunTestForBool({true, false, true, false, true, true}, {2, 1, 3}, {1, 1, 1}, {3},
-                 {true, false, true, false, true, true}, {2, 1, 3});
+                 {true, false, true, false, true, true}, {2, 1, 3}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 1
   // This will trigger the MemCpy optimization path
   RunTestForBool({true, false, true}, {1, 1, 3}, {2, 2, 1}, {3},
-                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
+                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 2
   // This will trigger the MemCpy optimization path
   RunTestForBool({true, false, true}, {1, 1, 3}, {3, 1, 1}, {3},
-                 {true, false, true, true, false, true, true, false, true}, {3, 1, 3});
+                 {true, false, true, true, false, true, true, false, true}, {3, 1, 3}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat == 1)
   // This will trigger the (Batched) MemCpy optimization path
   RunTestForBool({true, false, true, true, false, true}, {2, 1, 3}, {1, 2, 1}, {3},
-                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
+                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat > 1)
   // This will trigger the (Batched) MemCpy optimization path
   RunTestForBool({true, false, true, true, false, true}, {2, 1, 3}, {2, 2, 1}, {3},
                  {true, false, true, true, false, true, true, false, true, true, false, true,
                   true, false, true, true, false, true, true, false, true, true, false, true},
-                 {4, 2, 3});
+                 {4, 2, 3}, true);
 }
 
 TEST(TensorOpTest, TileFloatType) { RunTestWrapper<float>(); }
@@ -219,6 +248,8 @@ TEST(TensorOpTest, TileUint32Type) { RunTestWrapper<uint32_t>(); }
 TEST(TensorOpTest, TileInt64Type) { RunTestWrapper<int64_t>(); }
 
 TEST(TensorOpTest, TileUint64Type) { RunTestWrapper<uint64_t>(); }
+
+TEST(TensorOpTest, TileStringType) { RunTestWrapper<std::string>(); }
 
 TEST(TensorOpTest, TileBoolType) { RunTestWrapperForBool(); }
 

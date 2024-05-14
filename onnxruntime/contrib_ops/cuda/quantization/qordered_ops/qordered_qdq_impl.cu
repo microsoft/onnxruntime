@@ -14,8 +14,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
 template <typename FloatT>
 struct DequantizeVec {
 };
@@ -391,7 +389,7 @@ QOrderDequantizeKernel_Strict(const int8_t* __restrict__ src, const __half* __re
   }
 }
 
-Status QOrderDequantize_Strict(cudaStream_t stream, const cudaDeviceProp& device_prop,
+Status QOrderDequantize_Strict(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/,
                                const int8_t* src, __half* dst, float scale, size_t N) {
   ORT_RETURN_IF(N & 0x3LL, "N can not divide by 4!");
 
@@ -509,8 +507,6 @@ int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order
       return 0;
   }
 }
-
-#endif
 
 }  // namespace cuda
 }  // namespace contrib

@@ -74,7 +74,7 @@ __global__ void _BinaryElementWiseSimple(
     const T1* lhs_data,
     const T2* rhs_data,
     T* output_data,
-    const FuncT& func,
+    const FuncT func,
     CUDA_LONG N) {
   CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T1 lvalue[NumElementsPerThread];

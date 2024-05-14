@@ -15,16 +15,16 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 #ifdef ENABLE_TRAINING
   // When using training the memory needs to be in a format known to pool_forward and the
   // pool_backward primitives. Since we don't currently have a way to pass the memory format
- // from pool_forward to pool_backward; we are choosing to use Onnxruntime's memory format
- // as the common memory format to be used by both forward and the backward primitives.
- auto pool_src_mem = sp.GetMemoryInOrtFormat(node.Input(IN_X), dnnl_engine);
+  // from pool_forward to pool_backward; we are choosing to use Onnxruntime's memory format
+  // as the common memory format to be used by both forward and the backward primitives.
+  auto pool_src_mem = sp.GetMemoryInOrtFormat(node.Input(IN_X), dnnl_engine);
 #else
   auto pool_src_mem = sp.GetMemory(node.Input(IN_X));
 #endif  // ENABLE_TRAINING
   auto src_md = pool_src_mem.get_desc();
-  auto src_dims = pool_src_mem.get_desc().dims();
+  auto src_dims = pool_src_mem.get_desc().get_dims();
 
-  #ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING
   auto prop_kind = dnnl::prop_kind::forward;
 #else
   auto prop_kind = dnnl::prop_kind::forward_inference;
@@ -43,20 +43,16 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto strides = GetStrides(node, shape);
 
   auto dst_mem_dims = InferOutputDims(node, src_dims, kernel_shape, strides);
-  dnnl::memory::desc dst_md = dnnl::memory::desc(dst_mem_dims, node.Input(IN_X).Type(), dnnl::memory::format_tag::any);
+  dnnl::memory::desc dst_md = dnnl::memory::desc(dst_mem_dims, node.Input(OUT_Y).Type(), dnnl::memory::format_tag::any);
 
   auto padding = InferPadding(node, src_dims, kernel_shape, strides);
   auto padding_left = GetPaddingLeft(padding);
   auto padding_right = GetPaddingRight(padding);
 
+  auto dilation = dnnl::memory::dims(kernel_shape.size(), 0);
 
-
-  auto pool_desc = dnnl::pooling_forward::desc(prop_kind, algo,
-                                               src_md, dst_md,
-                                               strides, kernel_shape,
-                                               padding_left, padding_right);
-
-  auto pool_pd = dnnl::pooling_forward::primitive_desc(pool_desc, dnnl_engine);
+  auto pool_pd = dnnl::pooling_forward::primitive_desc(dnnl_engine, prop_kind, algo, src_md, dst_md, strides,
+                                                       kernel_shape, dilation, padding_left, padding_right);
 
 #ifndef ENABLE_TRAINING
   // If using GPU this will move the memory from the CPU to the GPU.
@@ -74,8 +70,7 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 #else
   sp.AddPrimitive(pool_op, {{DNNL_ARG_SRC, pool_src_mem},
                             {DNNL_ARG_DST, pool_dst_mem}});
-#endif  //ENABLE_TRAINING
-
+#endif  // ENABLE_TRAINING
 
   sp.SetMemory(node.Output(OUT_Y), pool_dst_mem);
 #ifdef ENABLE_TRAINING
@@ -84,7 +79,6 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 #endif  // ENABLE_TRAINING
 }
-
 
 AutoPadType DnnlPool::GetAutoPad(DnnlNode& node) {
   std::string auto_pad;
@@ -147,7 +141,7 @@ std::vector<int64_t> DnnlPool::InferPadding(DnnlNode& node, const dnnl::memory::
   PoolShape shape = static_cast<PoolShape>(kernel_shape.size());
   std::vector<int64_t> padding;
   switch (auto_pad) {
-    case onnxruntime::AutoPadType::NOTSET:{
+    case onnxruntime::AutoPadType::NOTSET: {
       padding = GetPadding(node, shape);
       return padding;
       break;
@@ -254,7 +248,7 @@ dnnl::memory::dims DnnlPool::InferOutputDims(DnnlNode& node, const dnnl::memory:
       PoolShape shape = static_cast<PoolShape>(kernel_shape.size());
       std::vector<int64_t> padding = GetPadding(node, shape);
       for (size_t dim = 0; dim < src_dims.size() - 2; ++dim) {
-        output_dims.push_back(static_cast<int64_t>( static_cast<float>(src_dims[dim + 2] + padding[dim] + padding[dim + shape] - kernel_shape[dim]) / strides[dim] + 1));
+        output_dims.push_back(static_cast<int64_t>(static_cast<float>(src_dims[dim + 2] + padding[dim] + padding[dim + shape] - kernel_shape[dim]) / strides[dim] + 1));
       }
       return output_dims;
       break;

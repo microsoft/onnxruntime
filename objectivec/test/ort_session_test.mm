@@ -4,6 +4,7 @@
 #import <XCTest/XCTest.h>
 
 #import "ort_coreml_execution_provider.h"
+#import "ort_xnnpack_execution_provider.h"
 #import "ort_env.h"
 #import "ort_session.h"
 #import "ort_value.h"
@@ -45,6 +46,13 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSString*)getAddModelPath {
   NSBundle* bundle = [NSBundle bundleForClass:[ORTSessionTest class]];
   NSString* path = [bundle pathForResource:@"single_add.basic"
+                                    ofType:@"ort"];
+  return path;
+}
+
++ (NSString*)getStringModelPath {
+  NSBundle* bundle = [NSBundle bundleForClass:[ORTSessionTest class]];
+  NSString* path = [bundle pathForResource:@"identity_string"
                                     ofType:@"ort"];
   return path;
 }
@@ -213,6 +221,104 @@ NS_ASSUME_NONNULL_BEGIN
                                          sessionOptions:sessionOptions
                                                   error:&err];
   ORTAssertNullableResultSuccessful(session, err);
+}
+
+- (void)testAppendXnnpackEP {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  ORTXnnpackExecutionProviderOptions* XnnpackOptions = [[ORTXnnpackExecutionProviderOptions alloc] init];
+  XnnpackOptions.intra_op_num_threads = 2;
+
+  BOOL appendResult = [sessionOptions appendXnnpackExecutionProviderWithOptions:XnnpackOptions
+                                                                          error:&err];
+  // Without xnnpack EP in building also can pass the test
+  NSString* err_msg = [err localizedDescription];
+  if (!appendResult && [err_msg containsString:@"XNNPACK execution provider is not supported in this build. "]) {
+    return;
+  }
+
+  ORTAssertBoolResultSuccessful(appendResult, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:sessionOptions
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+}
+
+static bool gDummyRegisterCustomOpsFnCalled = false;
+
+static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*session_options*/,
+                                                     const OrtApiBase* /*api*/) {
+  gDummyRegisterCustomOpsFnCalled = true;
+  return nullptr;
+}
+
+- (void)testRegisterCustomOpsUsingFunctionPointer {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+
+  gDummyRegisterCustomOpsFnCalled = false;
+  BOOL registerResult = [sessionOptions registerCustomOpsUsingFunctionPointer:&DummyRegisterCustomOpsFn
+                                                                        error:&err];
+  ORTAssertBoolResultSuccessful(registerResult, err);
+
+  XCTAssertEqual(gDummyRegisterCustomOpsFnCalled, true);
+}
+
+- (void)testStringInputs {
+  NSError* err = nil;
+  NSArray<NSString*>* stringData = @[ @"ONNX Runtime", @"is the", @"best", @"AI Framework" ];
+  ORTValue* stringValue = [[ORTValue alloc] initWithTensorStringData:stringData shape:@[ @2, @2 ] error:&err];
+  ORTAssertNullableResultSuccessful(stringValue, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getStringModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  NSDictionary<NSString*, ORTValue*>* outputs =
+      [session runWithInputs:@{@"input:0" : stringValue}
+                 outputNames:[NSSet setWithArray:@[ @"output:0" ]]
+                  runOptions:[ORTSessionTest makeRunOptions]
+                       error:&err];
+  ORTAssertNullableResultSuccessful(outputs, err);
+
+  ORTValue* outputStringValue = outputs[@"output:0"];
+  XCTAssertNotNil(outputStringValue);
+
+  NSArray<NSString*>* outputStringData = [outputStringValue tensorStringDataWithError:&err];
+  ORTAssertNullableResultSuccessful(outputStringData, err);
+
+  XCTAssertEqual([stringData count], [outputStringData count]);
+  XCTAssertTrue([stringData isEqualToArray:outputStringData]);
+}
+
+- (void)testKeepORTEnvReference {
+  ORTEnv* __weak envWeak = _ortEnv;
+  // Remove sole strong reference to the ORTEnv created in setUp.
+  _ortEnv = nil;
+  // There should be no more strong references to it.
+  XCTAssertNil(envWeak);
+
+  // Create a new ORTEnv.
+  NSError* err = nil;
+  ORTEnv* env = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning
+                                               error:&err];
+  ORTAssertNullableResultSuccessful(env, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:env
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  envWeak = env;
+  // Remove strong reference to the ORTEnv passed to the ORTSession initializer.
+  env = nil;
+  // ORTSession should keep a strong reference to it.
+  XCTAssertNotNil(envWeak);
 }
 
 @end

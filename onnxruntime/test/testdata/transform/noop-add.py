@@ -16,7 +16,7 @@ kwargs = {}
 kwargs["opset_imports"] = opsets
 
 
-def GenerateModel(model_name):
+def GenerateModel(model_name):  # noqa: N802
     nodes = [  # subgraph
         # float
         helper.make_node("Identity", ["X1"], ["id_1"], "id_1"),

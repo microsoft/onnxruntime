@@ -14,10 +14,10 @@ class TopK final : public OpKernel {
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
  private:
-  int axis_; // used by all opset versions
-  unsigned k_; // opset-9 only
-  bool largest_; // opset-11 only
-  bool sorted_; // opset-11 only
+  int axis_;      // used by all opset versions
+  unsigned k_;    // opset-9 only
+  bool largest_;  // opset-11 only
+  bool sorted_;   // opset-11 only
 };
 
 template <typename T>

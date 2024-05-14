@@ -4,6 +4,7 @@
 #pragma once
 #include <set>
 #include "core/framework/execution_provider.h"
+#include "core/framework/model_metadef_id_generator.h"
 
 namespace onnxruntime {
 namespace internal_testing_ep {
@@ -12,7 +13,8 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
  public:
   InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops,
                                    const std::unordered_set<std::string>& stop_ops = {},
-                                   DataLayout preferred_layout = static_cast<DataLayout>(0));
+                                   DataLayout preferred_layout = DataLayout::NCHW);
+
   virtual ~InternalTestingExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -25,23 +27,41 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   DataLayout GetPreferredLayout() const override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-  AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const override;
-  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
-
   InternalTestingExecutionProvider& SetDebugOutput(bool debug_output) {
     debug_output_ = debug_output;
     return *this;
   }
 
   InternalTestingExecutionProvider& EnableStaticKernels() {
+#if defined(ORT_MINIMAL_BUILD)
+    ORT_THROW("Static kernels are not currently supported in a minimal build");
+#else
     enable_static_kernels_ = true;
     return *this;
+
+#endif
   }
+
+  /// <summary>
+  /// Request all nodes in GetCapability.
+  /// If EnableStaticKernels has been called, use static kernels for all nodes.
+  /// Otherwise compile the requested nodes.
+  ///
+  /// NOTE: If using static kernels the graph will not be executable as we don't have the kernel implementations
+  /// so this is for testing model initialization components such as optimizers and layout transformation.
+  /// </summary>
+  InternalTestingExecutionProvider& TakeAllNodes() {
+    take_all_nodes_ = true;
+    return *this;
+  }
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   const std::string ep_name_;
 
-  // List of operators that the EP will claim nodes for
+  // List of operators that the EP will claim nodes for.
+  // If take_all_nodes_ is true this is ignored.
   const std::unordered_set<std::string> ops_;
 
   // operators that we stop processing at.
@@ -53,11 +73,17 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
 
   bool debug_output_{false};
   bool enable_static_kernels_{false};
-  DataLayout preferred_layout_;
 
-  // used for testing allocator sharing as a few EPs (e.g. CUDA, TRT, TVM) override GetAllocator and have a local
-  // AllocatorPtr that can get out of sync with the allocator lists in the base IExecutionProvider
-  AllocatorPtr local_allocator_;
+  // request all nodes ignoring ops_ and stop_ops_.
+  // if enabled_static_kernels_ use static kernels for them, otherwise compile.
+  bool take_all_nodes_{false};
+
+  DataLayout preferred_layout_;  // request all nodes
+
+  // per-instance kernel registry so tests using static kernels don't clash.
+  // shared_ptr as required by IExecutionProvider::GetKernelRegistry
+  std::shared_ptr<KernelRegistry> kernel_registry_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 
 }  // namespace internal_testing_ep

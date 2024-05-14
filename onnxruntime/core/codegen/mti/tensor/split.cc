@@ -4,7 +4,7 @@
 #include "core/codegen/mti/tensor/split.h"
 
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include <topi/transform.h>
 
 namespace onnxruntime {

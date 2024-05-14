@@ -41,8 +41,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& info)
     : CudaKernel(info), LongformerAttentionBase(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, false);
   const cublasLtOrder_t InputOrders[2] = {CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_COL32};
   const cublasLtOrder_t weight_tiles_for_input_col32[2] = {CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4};
@@ -68,18 +66,10 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
   order_output_ = GetCublasLtOrderAttr(
       info, "order_output", 1, (const cublasLtOrder_t*)&order_input_,
       "QOrderedLongformerAttention: oder_output must be same as order_input");
-
-#else
-
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
 }
 
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(4);
@@ -109,9 +99,9 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   size_t output_elements = (size_t)shape.Size();
   Tensor* output = context->Output(0, shape);
 
-  cublasHandle_t cublas = CublasHandle();
+  cublasHandle_t cublas = GetCublasHandle(context);
   cublasLtHandle_t cublasLt = CublasLtHandle();
-  cudaStream_t stream = Stream();
+  cudaStream_t stream = Stream(context);
   CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas, stream));
 
   typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
@@ -119,11 +109,11 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   // TODO: only calculate once per model.
   // Build Global Index
-  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * static_cast<size_t>(sequence_length));
-  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
+  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * static_cast<size_t>(sequence_length), context->GetComputeStream());
+  auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size, context->GetComputeStream());
 
   size_t global_scratch_bytes = GetGlobalScratchSize(sequence_length);
-  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes);
+  auto global_scratch_buffer = GetScratchBuffer<void>(global_scratch_bytes, context->GetComputeStream());
 
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(BuildGlobalIndex(device_prop,
@@ -158,11 +148,11 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   int k = hidden_size;
 
   size_t qkv_count = (size_t)m * (size_t)n;
-  size_t qkv_size = batch_size * sequence_length * 3 * hidden_size * element_size;
+  size_t qkv_size = (size_t)batch_size * sequence_length * 3 * hidden_size * element_size;
   // Buffer for GEMM outputs of q, k, v, global_q, global_k and global_v
   // TODO(tianleiwu): compact global_q only need batch_size * window * hidden_size * element_size buffer size.
   size_t qkv_3 = qkv_size + qkv_size + 2 * qkv_count * sizeof(int8_t);
-  auto gemm_buffer = GetScratchBuffer<int8_t>(qkv_3);
+  auto gemm_buffer = GetScratchBuffer<int8_t>(qkv_3, context->GetComputeStream());
 
   const float* scale_input = context->Input<Tensor>(1)->Data<float>();
   const float* scale_weight = context->Input<Tensor>(3)->Data<float>();
@@ -230,7 +220,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                                                              window_,
                                                              disable_compact_memory);
 
-  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize + output_elements * element_size);
+  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize + output_elements * element_size, context->GetComputeStream());
   MLFloat16* out_fp16 = (MLFloat16*)(((int8_t*)workspace_buffer.get()) + workSpaceSize);
   ORT_RETURN_IF_ERROR(LaunchLongformerAttentionKernel(device_prop,
                                                       cublas,
@@ -262,14 +252,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                                           *scale_output, batch_size, sequence_length, hidden_size));
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
-  this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
-
-#else
-
-  ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
-
-#endif
+  this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), context->GetComputeStream());
 
   return Status::OK();
 }

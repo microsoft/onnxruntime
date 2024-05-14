@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template<bool inputk>
+template <bool inputk>
 class TopK final : public CudaKernel {
  public:
   TopK(const OpKernelInfo&);
@@ -17,7 +17,7 @@ class TopK final : public CudaKernel {
   int64_t axis_;
   int64_t largest_;
   int64_t sorted_;
-  mutable int64_t K_;
+  int64_t attr_k_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

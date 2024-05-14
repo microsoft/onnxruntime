@@ -4,7 +4,11 @@ import torch.onnx.utils
 
 
 def _export_jit_graph_to_onnx_model_proto(graph: torch._C.Graph, operator_export_type: int):
-    from torch.onnx.symbolic_helper import _set_onnx_shape_inference, _set_operator_export_type, _set_opset_version
+    from torch.onnx.symbolic_helper import (  # noqa: F401
+        _set_onnx_shape_inference,
+        _set_operator_export_type,
+        _set_opset_version,
+    )
 
     _set_onnx_shape_inference(True)
     _set_operator_export_type(operator_export_type)

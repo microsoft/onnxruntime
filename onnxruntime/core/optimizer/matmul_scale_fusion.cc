@@ -131,7 +131,7 @@ std::vector<ScaleMergeInfo> GetInputNodeMerges(
     ORT_ENFORCE(input_node.InputDefs().size() == 2 && scale_and_index->second < 2);
     const int to_scale_index = 1 - scale_and_index->second;
 
-    // check if the non-scale input is scalar 
+    // check if the non-scale input is scalar
     const auto non_scale_node_arg = input_node.InputDefs()[to_scale_index];
     const auto* shape = non_scale_node_arg->Shape();
     if (shape == nullptr || shape->dim_size() == 0) continue;
@@ -245,7 +245,7 @@ Status ProcessNode(
   }
 
   Node& matmul_scale_node = graph.AddNode(
-      graph.GenerateNodeName(node.Name() + "_FusedMatMulAndScale"),
+      graph.GenerateNodeName(node.Name() + "/MatMulScaleFusion/"),
       "FusedMatMul",
       "Fused MatMul and Scale",
       fused_node_inputs,
@@ -254,6 +254,13 @@ Status ProcessNode(
       kMSDomain);
 
   matmul_scale_node.SetExecutionProviderType(node.GetExecutionProviderType());
+#ifdef USE_ROCM
+  // forward the __backwardpass, if present
+  auto& attrs = node.GetAttributes();
+  if (attrs.count("__backwardpass")) {
+    matmul_scale_node.AddAttribute("__backwardpass", static_cast<int64_t>(attrs.at("__backwardpass").i()));
+  }
+#endif
 
   {
     InlinedVector<std::reference_wrapper<Node>> nodes_to_remove{node};

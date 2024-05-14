@@ -132,7 +132,7 @@ static void CreateNodeRemovalGraph(Model& model, bool removal_allowed, bool test
   Main Graph.
   Graph input -> id_0 -> node_to_remove -> if
   The If node uses the output of node_to_remove as an implicit input. If removal is allowed, the subgraph should
-  get updated to use id_0 output as an implicit input. If removal is not allowed because updating to a different 
+  get updated to use id_0 output as an implicit input. If removal is not allowed because updating to a different
   implicit input would clash with a local name in the subgraph, the node should not be removed.
 
   Optionally a second level of subgraph can be created inside the 'If' node to test recursion into that.

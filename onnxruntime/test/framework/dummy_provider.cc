@@ -11,5 +11,9 @@ std::shared_ptr<KernelRegistry> DummyExecutionProvider::GetKernelRegistry() cons
   return kernel_registry;
 }
 
+std::vector<AllocatorPtr> DummyExecutionProvider::CreatePreferredAllocators() {
+  return std::vector<AllocatorPtr>{std::make_shared<DummyAllocator>()};
+}
+
 }  // namespace test
 }  // namespace onnxruntime

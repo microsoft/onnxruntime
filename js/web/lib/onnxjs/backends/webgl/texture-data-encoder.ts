@@ -11,14 +11,15 @@ export declare namespace Encoder {
   }
   export type DataType = keyof DataTypeMap;
   type DataArrayType = DataTypeMap[DataType];
-
-  /* eslint-disable @typescript-eslint/naming-convention */
-  export const enum Usage {
-    Default = 0,
-    UploadOnly,
-    Download4BytesAsFloat32,
-  }
 }
+
+/* eslint-disable @typescript-eslint/naming-convention */
+export const enum EncoderUsage {
+  Default = 0,
+  UploadOnly,
+  Download4BytesAsFloat32,
+}
+/* eslint-enable @typescript-eslint/naming-convention */
 
 /**
  * Abstraction for mapping data types to texture texlets
@@ -81,7 +82,7 @@ export class RedFloat32DataEncoder implements DataEncoder {
   }
   decode(buffer: Encoder.DataArrayType, dataSize: number): Float32Array {
     if (this.channelSize === 1) {
-      const filteredData = (buffer as Float32Array).filter((value, index) => index % 4 === 0).subarray(0, dataSize);
+      const filteredData = (buffer as Float32Array).filter((_value, index) => index % 4 === 0).subarray(0, dataSize);
       return filteredData;
     }
     return buffer.subarray(0, dataSize) as Float32Array;
@@ -118,7 +119,7 @@ export class RGBAFloatDataEncoder implements DataEncoder {
   }
   decode(buffer: Encoder.DataArrayType, dataSize: number): Float32Array {
     if (this.channelSize === 1) {
-      const filteredData = (buffer as Float32Array).filter((value, index) => index % 4 === 0).subarray(0, dataSize);
+      const filteredData = (buffer as Float32Array).filter((_value, index) => index % 4 === 0).subarray(0, dataSize);
       return filteredData;
     }
     return buffer.subarray(0, dataSize) as Float32Array;

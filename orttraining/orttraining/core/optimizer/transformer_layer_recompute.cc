@@ -179,7 +179,7 @@ Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*
   // otherwise, take user specified 'number_recompute_layers_'
 
   int n_layers;
-  const int n_layers_limit = static_cast<int>(start_end_edges.size() - 1); 
+  const int n_layers_limit = static_cast<int>(start_end_edges.size() - 1);
   if (number_recompute_layers_ > n_layers_limit) {
     LOGS(logger, WARNING) << "User specified number_recompute_layers " << number_recompute_layers_
                           << " is larger than limit " << n_layers_limit << "."

@@ -28,6 +28,8 @@ struct OrtRunOptions {
   bool only_execute_path_to_fetches = false;
 
 #ifdef ENABLE_TRAINING
+  // Used by onnxruntime::training::TrainingSession. This class is now deprecated.
+  // Delete training_mode when TrainingSession is deleted.
   // Set to 'true' to run in training mode.
   bool training_mode = true;
 #endif
@@ -43,5 +45,5 @@ struct OrtRunOptions {
 };
 
 namespace onnxruntime {
-using RunOptions = OrtRunOptions;
+using RunOptions = ::OrtRunOptions;
 }  // namespace onnxruntime

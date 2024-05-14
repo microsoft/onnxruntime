@@ -143,6 +143,8 @@ struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
         return MlasBlendFloat32x4(ValueTimesAlpha, Value, _mm_cmple_ps(ZeroFloat32x4, Value));
 #elif defined(MLAS_VSX_INTRINSICS)
         return vec_sel(ValueTimesAlpha, Value, vec_cmple(ZeroFloat32x4, Value));
+#elif defined(MLAS_LSX_INTRINSICS)
+        return MlasBlendFloat32x4(ValueTimesAlpha, Value, (__m128)__lsx_vfcmp_cle_s(ZeroFloat32x4, Value));
 #else
         return MlasBlendFloat32x4(ValueTimesAlpha, Value, ZeroFloat32x4 < Value);
 #endif
@@ -507,6 +509,12 @@ Return Value:
         case MlasHardSigmoidActivation:
         {
             MlasActivationKernel<MlasHardSigmoidActivation>(Activation, Buffer, Bias, M, N, ldc);
+            break;
+        }
+
+        case MlasActivationKindCount:
+        {
+            MLAS_THROW_EX(std::runtime_error, "bad mlas activation kind");
             break;
         }
     }

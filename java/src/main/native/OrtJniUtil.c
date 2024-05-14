@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -69,6 +69,45 @@ ExecutionMode convertExecutionMode(jint mode) {
 }
 
 /**
+ * Must be kept in sync with OrtSparseFormat and OnnxSparseTensor.SparseTensorType
+ * @param format The Java int.
+ * @return The enum.
+ */
+OrtSparseFormat convertToOrtSparseFormat(jint format) {
+    switch (format) {
+      case 0:
+        return ORT_SPARSE_UNDEFINED;
+      case 1:
+        return ORT_SPARSE_COO;
+      case 2:
+        return ORT_SPARSE_CSRC;
+      case 4:
+        return ORT_SPARSE_BLOCK_SPARSE;
+      default:
+        return ORT_SPARSE_UNDEFINED;
+    }
+}
+
+/**
+ * Must be kept in sync with OrtSparseFormat and OnnxSparseTensor.SparseTensorType
+ * @param format The enum.
+ * @return The Java int.
+ */
+jint convertFromOrtSparseFormat(OrtSparseFormat format) {
+    switch (format) {
+      case ORT_SPARSE_COO:
+        return 1;
+      case ORT_SPARSE_CSRC:
+        return 2;
+      case ORT_SPARSE_BLOCK_SPARSE:
+        return 4;
+      case ORT_SPARSE_UNDEFINED:
+      default:
+        return 0;
+    }
+}
+
+/**
  * Must be kept in sync with convertToONNXDataFormat
  */
 jint convertFromONNXDataFormat(ONNXTensorElementDataType type) {
@@ -107,6 +146,14 @@ jint convertFromONNXDataFormat(ONNXTensorElementDataType type) {
             return 15;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
             return 16;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+            return 17;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+            return 18;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+            return 19;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+            return 20;
         default:
             return -1;
     }
@@ -151,6 +198,14 @@ ONNXTensorElementDataType convertToONNXDataFormat(jint type) {
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;  // complex with float64 real and imaginary components
         case 16:
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;    // Non-IEEE floating-point format based on IEEE754 single-precision
+        case 17:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+        case 18:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+        case 19:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+        case 20:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
         default:
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
     }
@@ -161,10 +216,15 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:   // maps to c type uint8_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:    // maps to c type int8_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
             return 1;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  // maps to c type uint16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:   // maps to c type int16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
             return 2;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   // maps to c type int32_t
@@ -176,7 +236,6 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
             return 8;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:  // maps to c++ type std::string
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:   // complex with float32 real and imaginary components
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:  // complex with float64 real and imaginary components
         default:
@@ -220,6 +279,12 @@ jfloat convertHalfToFloat(const uint16_t half) {
     return output.floatVal;
 }
 
+jfloat convertBF16ToFloat(const uint16_t bf16) {
+    FP32 output;
+    output.intVal = bf16 << 16;
+    return output.floatVal;
+}
+
 jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo * info) {
   ONNXType type = ONNX_TYPE_UNKNOWN;
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetOnnxTypeFromTypeInfo(info, &type));
@@ -228,7 +293,8 @@ jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo
   }
 
   switch (type) {
-    case ONNX_TYPE_TENSOR: {
+    case ONNX_TYPE_TENSOR:
+    case ONNX_TYPE_SPARSETENSOR: {
       const OrtTensorTypeAndShapeInfo* tensorInfo = NULL;
       code = checkOrtStatus(jniEnv, api, api->CastTypeInfoToTensorInfo(info, &tensorInfo));
       if (code == ORT_OK) {
@@ -257,7 +323,6 @@ jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo
     }
     case ONNX_TYPE_UNKNOWN:
     case ONNX_TYPE_OPAQUE:
-    case ONNX_TYPE_SPARSETENSOR:
     default: {
       throwOrtException(jniEnv,convertErrorCode(ORT_NOT_IMPLEMENTED),"Invalid ONNXType found.");
       return NULL;
@@ -277,7 +342,6 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   if (code != ORT_OK) {
     return NULL;
   }
-  //printf("numDim %d\n",numDim);
   int64_t* dimensions = (int64_t*) malloc(sizeof(int64_t)*numDim);
   code = checkOrtStatus(jniEnv, api, api->GetDimensions(info, dimensions, numDim));
   if (code != ORT_OK) {
@@ -293,12 +357,31 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   free(dimensions);
   dimensions = NULL;
 
+  // Create the string array for the names.
+  const char** dimensionNames = (const char**) malloc(sizeof(char*)*numDim);
+  if (dimensionNames == NULL) {
+    throwOrtException(jniEnv, 1, "Not enough memory");
+    return NULL;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetSymbolicDimensions(info, dimensionNames, numDim));
+  if (code != ORT_OK) {
+    // extraction failed, exception has been thrown, return to Java.
+    free(dimensionNames);
+    return NULL;
+  }
+  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
+  jobjectArray names = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numDim), stringClazz, NULL);
+  for (size_t i = 0; i < numDim; i++) {
+    jobject javaName = (*jniEnv)->NewStringUTF(jniEnv, dimensionNames[i]);
+    (*jniEnv)->SetObjectArrayElement(jniEnv, names, safecast_size_t_to_jsize(i), javaName);
+  }
+  free(dimensionNames);
+
   // Create the TensorInfo object
   static const char *tensorInfoClassName = "ai/onnxruntime/TensorInfo";
   jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorInfoClassName);
-  jmethodID tensorInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "([JI)V");
-  //printf("TensorInfo class %p, methodID %p\n",clazz,tensorInfoConstructor);
-  jobject tensorInfo = (*jniEnv)->NewObject(jniEnv, clazz, tensorInfoConstructor, shape, onnxTypeInt);
+  jmethodID tensorInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "([J[Ljava/lang/String;I)V");
+  jobject tensorInfo = (*jniEnv)->NewObject(jniEnv, clazz, tensorInfoConstructor, shape, names, onnxTypeInt);
   return tensorInfo;
 }
 
@@ -447,6 +530,7 @@ int64_t copyJavaToPrimitiveArray(JNIEnv* jniEnv, ONNXTensorElementDataType onnxT
             (*jniEnv)->GetLongArrayRegion(jniEnv, typedArr, 0, inputLength, (jlong * )outputTensor);
             return consumedSize;
         }
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "16-bit float not supported.");
             return -1;
@@ -483,7 +567,6 @@ int64_t copyJavaToPrimitiveArray(JNIEnv* jniEnv, ONNXTensorElementDataType onnxT
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:   // complex with float32 real and imaginary components
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:  // complex with float64 real and imaginary components
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
         default: {
             throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Invalid outputTensor element type.");
@@ -561,6 +644,21 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
             free(floatArr);
             return consumedSize;
         }
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: { // stored as a uint16_t
+            jfloat *floatArr = malloc(sizeof(jfloat) * outputLength);
+            if (floatArr == NULL) {
+                throwOrtException(jniEnv, 1, "Not enough memory");
+                return -1;
+            }
+            uint16_t *bf16Arr = (uint16_t *)inputTensor;
+            for (int32_t i = 0; i < outputLength; i++) {
+                floatArr[i] = convertBF16ToFloat(bf16Arr[i]);
+            }
+            jfloatArray typedArr = (jfloatArray)outputArray;
+            (*jniEnv)->SetFloatArrayRegion(jniEnv, typedArr, 0, outputLength, floatArr);
+            free(floatArr);
+            return consumedSize;
+        }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: { // maps to c type float
             jfloatArray typedArr = (jfloatArray)outputArray;
             (*jniEnv)->SetFloatArrayRegion(jniEnv, typedArr, 0, outputLength, (jfloat * )inputTensor);
@@ -589,11 +687,6 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128: {
           // complex with float64 real and imaginary components
           throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128.");
-          return -1;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: {
-          // Non-IEEE floating-point format based on IEEE754 single-precision
-          throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16.");
           return -1;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
@@ -664,7 +757,12 @@ jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValu
 }
 
 OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor, size_t length, jobjectArray outputArray) {
-  char * tempBuffer = NULL;
+  size_t bufferSize = 16;
+  char * tempBuffer = malloc(bufferSize);
+  if (tempBuffer == NULL) {
+    throwOrtException(jniEnv, 1, "Not enough memory");
+    return ORT_FAIL;
+  }
   // Get the buffer size needed
   size_t totalStringLength = 0;
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, &totalStringLength));
@@ -679,7 +777,7 @@ OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValu
     return ORT_FAIL;
   }
   // length + 1 as we need to write out the final offset
-  size_t * offsets = malloc(sizeof(size_t)*(length+1));
+  size_t * offsets = allocarray(sizeof(size_t), length+1);
   if (offsets == NULL) {
     free((void*)characterBuffer);
     throwOrtException(jniEnv, 1, "Not enough memory");
@@ -692,15 +790,13 @@ OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValu
     // Get the final offset, write to the end of the array.
     code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, offsets+length));
     if (code == ORT_OK) {
-      size_t bufferSize = 0;
       for (size_t i = 0; i < length; i++) {
         size_t curSize = (offsets[i+1] - offsets[i]) + 1;
         if (curSize > bufferSize) {
-          if (tempBuffer != NULL) {
-            free((void*)tempBuffer);
-          }
-          tempBuffer = malloc(sizeof(char) * curSize);
+          char* oldTempBuffer = tempBuffer;
+          tempBuffer = realloc(oldTempBuffer, sizeof(char) * curSize);
           if (tempBuffer == NULL) {
+            free(oldTempBuffer);
             throwOrtException(jniEnv, 1, "Not enough memory");
             goto string_tensor_cleanup;
           }
@@ -869,6 +965,40 @@ jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocato
   return javaTensor;
 }
 
+jobject createJavaSparseTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
+  // Extract the type information
+  OrtTensorTypeAndShapeInfo* info;
+  OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &info));
+  if (code != ORT_OK) {
+    return NULL;
+  }
+
+  // Construct the TensorInfo object
+  jobject tensorInfo = convertToTensorInfo(jniEnv, api, info);
+
+  // Release the info object
+  api->ReleaseTensorTypeAndShapeInfo(info);
+  if (tensorInfo == NULL) {
+    return NULL;
+  }
+
+  // Lookup the sparse tensor type enum
+  OrtSparseFormat format;
+  code = checkOrtStatus(jniEnv,api,api->GetSparseTensorFormat(tensor, &format));
+  if (code != ORT_OK) {
+    return NULL;
+  }
+  jint sparseTensorInt = convertFromOrtSparseFormat(format);
+
+  // Construct the ONNXTensor object
+  char *tensorClassName = "ai/onnxruntime/OnnxSparseTensor";
+  jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
+  jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv, clazz, "<init>", "(JJILai/onnxruntime/TensorInfo;)V");
+  jobject javaSparseTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, sparseTensorInt, tensorInfo);
+
+  return javaSparseTensor;
+}
+
 jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence) {
   // Get the sequence info class
   static const char *sequenceInfoClassName = "ai/onnxruntime/SequenceInfo";
@@ -1026,12 +1156,14 @@ jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
     case ONNX_TYPE_MAP: {
       return createJavaMapFromONNX(jniEnv, api, allocator, onnxValue);
     }
+    case ONNX_TYPE_SPARSETENSOR: {
+      return createJavaSparseTensorFromONNX(jniEnv, api, allocator, onnxValue);
+    }
     case ONNX_TYPE_UNKNOWN:
     case ONNX_TYPE_OPAQUE:
     case ONNX_TYPE_OPTIONAL:
-    case ONNX_TYPE_SPARSETENSOR:
     default: {
-      throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "These types are unsupported - ONNX_TYPE_UNKNOWN, ONNX_TYPE_OPAQUE, ONNX_TYPE_SPARSETENSOR.");
+      throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "These types are unsupported - ONNX_TYPE_UNKNOWN, ONNX_TYPE_OPAQUE, ONNX_TYPE_OPTIONAL.");
       return NULL;
     }
   }

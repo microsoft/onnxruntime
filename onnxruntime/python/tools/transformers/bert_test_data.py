@@ -74,11 +74,23 @@ def fake_segment_ids_data(segment_ids: TensorProto, batch_size: int, sequence_le
     return data
 
 
+def get_random_length(max_sequence_length: int, average_sequence_length: int):
+    assert average_sequence_length >= 1 and average_sequence_length <= max_sequence_length
+
+    # For uniform distribution, we find proper lower and upper bounds so that the average is in the middle.
+    if 2 * average_sequence_length > max_sequence_length:
+        return random.randint(2 * average_sequence_length - max_sequence_length, max_sequence_length)
+    else:
+        return random.randint(1, 2 * average_sequence_length - 1)
+
+
 def fake_input_mask_data(
     input_mask: TensorProto,
     batch_size: int,
     sequence_length: int,
-    random_mask_length: bool,
+    average_sequence_length: int,
+    random_sequence_length: bool,
+    mask_type: int = 2,
 ) -> np.ndarray:
     """Create input tensor based on the graph input of segment_ids.
 
@@ -86,7 +98,11 @@ def fake_input_mask_data(
         input_mask (TensorProto): graph input of the attention mask input tensor
         batch_size (int): batch size
         sequence_length (int): sequence length
-        random_mask_length (bool): whether mask according to random padding length
+        average_sequence_length (int): average sequence length excluding paddings
+        random_sequence_length (bool): whether use uniform random number for sequence length
+        mask_type (int): mask type - 1: mask index (sequence length excluding paddings). Shape is (batch_size).
+                                     2: 2D attention mask. Shape is (batch_size, sequence_length).
+                                     3: key len, cumulated lengths of query and key. Shape is (3 * batch_size + 2).
 
     Returns:
         np.ndarray: the input tensor created
@@ -98,13 +114,40 @@ def fake_input_mask_data(
         TensorProto.INT64,
     ]
 
-    if random_mask_length:
-        actual_seq_len = random.randint(int(sequence_length * 2 / 3), sequence_length)
+    if mask_type == 1:  # sequence length excluding paddings
+        data = np.ones((batch_size), dtype=np.int32)
+        if random_sequence_length:
+            for i in range(batch_size):
+                data[i] = get_random_length(sequence_length, average_sequence_length)
+        else:
+            for i in range(batch_size):
+                data[i] = average_sequence_length
+    elif mask_type == 2:  # 2D attention mask
         data = np.zeros((batch_size, sequence_length), dtype=np.int32)
-        temp = np.ones((batch_size, actual_seq_len), dtype=np.int32)
-        data[: temp.shape[0], : temp.shape[1]] = temp
+        if random_sequence_length:
+            for i in range(batch_size):
+                actual_seq_len = get_random_length(sequence_length, average_sequence_length)
+                for j in range(actual_seq_len):
+                    data[i, j] = 1
+        else:
+            temp = np.ones((batch_size, average_sequence_length), dtype=np.int32)
+            data[: temp.shape[0], : temp.shape[1]] = temp
     else:
-        data = np.ones((batch_size, sequence_length), dtype=np.int32)
+        assert mask_type == 3
+        data = np.zeros((batch_size * 3 + 2), dtype=np.int32)
+        if random_sequence_length:
+            for i in range(batch_size):
+                data[i] = get_random_length(sequence_length, average_sequence_length)
+
+            for i in range(batch_size + 1):
+                data[batch_size + i] = data[batch_size + i - 1] + data[i - 1] if i > 0 else 0
+                data[2 * batch_size + 1 + i] = data[batch_size + i - 1] + data[i - 1] if i > 0 else 0
+        else:
+            for i in range(batch_size):
+                data[i] = average_sequence_length
+            for i in range(batch_size + 1):
+                data[batch_size + i] = i * average_sequence_length
+                data[2 * batch_size + 1 + i] = i * average_sequence_length
 
     if input_mask.type.tensor_type.elem_type == TensorProto.FLOAT:
         data = np.float32(data)
@@ -131,12 +174,10 @@ def output_test_data(directory: str, inputs: Dict[str, np.ndarray]):
     else:
         print("Warning: directory %s existed. Files will be overwritten." % directory)
 
-    index = 0
-    for name, data in inputs.items():
+    for index, (name, data) in enumerate(inputs.items()):
         tensor = numpy_helper.from_array(data, name)
-        with open(os.path.join(directory, "input_{}.pb".format(index)), "wb") as file:
+        with open(os.path.join(directory, f"input_{index}.pb"), "wb") as file:
             file.write(tensor.SerializeToString())
-        index += 1
 
 
 def fake_test_data(
@@ -149,7 +190,9 @@ def fake_test_data(
     input_ids: TensorProto,
     segment_ids: TensorProto,
     input_mask: TensorProto,
-    random_mask_length: bool,
+    average_sequence_length: int,
+    random_sequence_length: bool,
+    mask_type: int,
 ):
     """Create given number of input data for testing
 
@@ -163,7 +206,9 @@ def fake_test_data(
         input_ids (TensorProto): graph input of input IDs
         segment_ids (TensorProto): graph input of token type IDs
         input_mask (TensorProto): graph input of attention mask
-        random_mask_length (bool): whether mask random number of words at the end
+        average_sequence_length (int): average sequence length excluding paddings
+        random_sequence_length (bool): whether use uniform random number for sequence length
+        mask_type (int): mask type 1 is mask index; 2 is 2D mask; 3 is key len, cumulated lengths of query and key
 
     Returns:
         List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictionary
@@ -175,7 +220,7 @@ def fake_test_data(
     random.seed(random_seed)
 
     all_inputs = []
-    for test_case in range(test_cases):
+    for _test_case in range(test_cases):
         input_1 = fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
         inputs = {input_ids.name: input_1}
 
@@ -183,7 +228,9 @@ def fake_test_data(
             inputs[segment_ids.name] = fake_segment_ids_data(segment_ids, batch_size, sequence_length)
 
         if input_mask:
-            inputs[input_mask.name] = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
+            inputs[input_mask.name] = fake_input_mask_data(
+                input_mask, batch_size, sequence_length, average_sequence_length, random_sequence_length, mask_type
+            )
 
         if verbose and len(all_inputs) == 0:
             print("Example inputs", inputs)
@@ -200,7 +247,9 @@ def generate_test_data(
     input_ids: TensorProto,
     segment_ids: TensorProto,
     input_mask: TensorProto,
-    random_mask_length: bool,
+    average_sequence_length: int,
+    random_sequence_length: bool,
+    mask_type: int,
 ):
     """Create given number of input data for testing
 
@@ -213,7 +262,9 @@ def generate_test_data(
         input_ids (TensorProto): graph input of input IDs
         segment_ids (TensorProto): graph input of token type IDs
         input_mask (TensorProto): graph input of attention mask
-        random_mask_length (bool): whether mask random number of words at the end
+        average_sequence_length (int): average sequence length excluding paddings
+        random_sequence_length (bool): whether use uniform random number for sequence length
+        mask_type (int): mask type 1 is mask index; 2 is 2D mask; 3 is key len, cumulated lengths of query and key
 
     Returns:
         List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictionary
@@ -230,7 +281,9 @@ def generate_test_data(
         input_ids,
         segment_ids,
         input_mask,
-        random_mask_length,
+        average_sequence_length,
+        random_sequence_length,
+        mask_type,
     )
     if len(all_inputs) != test_cases:
         print("Failed to create test data for test.")
@@ -302,7 +355,7 @@ def find_bert_inputs(
         return input_ids, segment_ids, input_mask
 
     if len(graph_inputs) != 3:
-        raise ValueError("Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs)))
+        raise ValueError(f"Expect the graph to have 3 inputs. Got {len(graph_inputs)}")
 
     embed_nodes = onnx_model.get_nodes_by_op_type("EmbedLayerNormalization")
     if len(embed_nodes) == 1:
@@ -317,7 +370,7 @@ def find_bert_inputs(
                 if "mask" in input_name_lower:
                     input_mask = input
         if input_mask is None:
-            raise ValueError(f"Failed to find attention mask input")
+            raise ValueError("Failed to find attention mask input")
 
         return input_ids, segment_ids, input_mask
 
@@ -441,6 +494,31 @@ def parse_arguments():
     )
     parser.set_defaults(only_input_tensors=False)
 
+    parser.add_argument(
+        "-a",
+        "--average_sequence_length",
+        default=-1,
+        type=int,
+        help="average sequence length excluding padding",
+    )
+
+    parser.add_argument(
+        "-r",
+        "--random_sequence_length",
+        required=False,
+        action="store_true",
+        help="use uniform random instead of fixed sequence length",
+    )
+    parser.set_defaults(random_sequence_length=False)
+
+    parser.add_argument(
+        "--mask_type",
+        required=False,
+        type=int,
+        default=2,
+        help="mask type: (1: mask index, 2: raw 2D mask, 3: key lengths, cumulated lengths of query and key)",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -457,6 +535,9 @@ def create_and_save_test_data(
     segment_ids_name: Optional[str],
     input_mask_name: Optional[str],
     only_input_tensors: bool,
+    average_sequence_length: int,
+    random_sequence_length: bool,
+    mask_type: int,
 ):
     """Create test data for a model, and save test data to a directory.
 
@@ -471,7 +552,10 @@ def create_and_save_test_data(
         input_ids_name (str): graph input name of input_ids
         segment_ids_name (str): graph input name of segment_ids
         input_mask_name (str): graph input name of input_mask
-        only_input_tensors (bool): only save input tensors
+        only_input_tensors (bool): only save input tensors,
+        average_sequence_length (int): average sequence length excluding paddings
+        random_sequence_length (bool): whether use uniform random number for sequence length
+        mask_type(int): mask type
     """
     input_ids, segment_ids, input_mask = get_bert_inputs(model, input_ids_name, segment_ids_name, input_mask_name)
 
@@ -484,7 +568,9 @@ def create_and_save_test_data(
         input_ids,
         segment_ids,
         input_mask,
-        random_mask_length=False,
+        average_sequence_length,
+        random_sequence_length,
+        mask_type,
     )
 
     for i, inputs in enumerate(all_inputs):
@@ -496,26 +582,34 @@ def create_and_save_test_data(
 
     import onnxruntime
 
-    session = onnxruntime.InferenceSession(model)
+    providers = (
+        ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        if "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+        else ["CPUExecutionProvider"]
+    )
+    session = onnxruntime.InferenceSession(model, providers=providers)
     output_names = [output.name for output in session.get_outputs()]
 
     for i, inputs in enumerate(all_inputs):
         directory = os.path.join(output_dir, "test_data_set_" + str(i))
         result = session.run(output_names, inputs)
-        for i, output_name in enumerate(output_names):
+        for i, output_name in enumerate(output_names):  # noqa: PLW2901
             tensor_result = numpy_helper.from_array(np.asarray(result[i]), output_name)
-            with open(os.path.join(directory, "output_{}.pb".format(i)), "wb") as file:
+            with open(os.path.join(directory, f"output_{i}.pb"), "wb") as file:
                 file.write(tensor_result.SerializeToString())
 
 
 def main():
     args = parse_arguments()
 
+    if args.average_sequence_length <= 0:
+        args.average_sequence_length = args.sequence_length
+
     output_dir = args.output_dir
     if output_dir is None:
         # Default output directory is a sub-directory under the directory of model.
         p = Path(args.model)
-        output_dir = os.path.join(p.parent, "batch_{}_seq_{}".format(args.batch_size, args.sequence_length))
+        output_dir = os.path.join(p.parent, f"batch_{args.batch_size}_seq_{args.sequence_length}")
 
     if output_dir is not None:
         # create the output directory if not existed
@@ -536,6 +630,9 @@ def main():
         args.segment_ids_name,
         args.input_mask_name,
         args.only_input_tensors,
+        args.average_sequence_length,
+        args.random_sequence_length,
+        args.mask_type,
     )
 
     print("Test data is saved to directory:", output_dir)

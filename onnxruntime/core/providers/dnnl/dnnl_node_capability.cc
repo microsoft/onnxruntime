@@ -3,6 +3,7 @@
 
 #include "dnnl_node_capability.h"
 #include "dnnl.hpp"
+#include "subgraph/dnnl_util.h"
 
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
@@ -33,6 +34,9 @@ bool DnnlDefaultNodeCapability::IsTypeSupported(const Node* node) const {
     auto node_datatype = node_inputs[0]->TypeAsProto()->tensor_type().elem_type();
     for (auto inputType : inputTypes_) {
       if (inputType == node_datatype) {
+        if (inputType == type_bfloat16) {
+          return ort_dnnl::dnnl_util::IsBF16Supported();
+        }
         return true;
       }
     }
@@ -61,12 +65,15 @@ bool DnnlDefaultMultiInputNodeCapability::Supported(const Node* node, const Grap
 bool DnnlDefaultMultiInputNodeCapability::IsTypeSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
   bool all_inputs_supported = true;
-  if (!node_inputs.empty() ) {
+  if (!node_inputs.empty()) {
     std::vector<bool> input_supported(node_inputs.size(), false);
     for (size_t i = 0; i < node_inputs.size(); ++i) {
       if (node_inputs[i]->TypeAsProto() != nullptr) {
         ORT_DataType node_datatype = static_cast<ORT_DataType>(node_inputs[i]->TypeAsProto()->tensor_type().elem_type());
-        input_supported[i] = (inputTypes_[i].find(node_datatype) != inputTypes_[i].end()); 
+        input_supported[i] = (inputTypes_[i].find(node_datatype) != inputTypes_[i].end());
+        if (node_datatype == type_bfloat16 && !ort_dnnl::dnnl_util::IsBF16Supported()) {
+          input_supported[i] = false;
+        }
       }
     }
     // Walk the input_supported make sure they are all supported
@@ -190,7 +197,7 @@ bool DnnlPoolNodeCapability::IsMaxPoolIndicesSupported(const Node* node) const {
       bool edge_to_maxpoolgrad_found = false;
       for (auto it = node->OutputEdgesBegin(); it != node->OutputEdgesEnd(); ++it) {
         // if the MaxPool indice output `GetSrcArgIndex() == 1` goes to an OpType other than
-        // "MaxPoolGrad" the DNNL Execution providers implementaiton of MaxPool should not be used.
+        // "MaxPoolGrad" the DNNL Execution providers implementation of MaxPool should not be used.
         if (it->GetSrcArgIndex() == 1 && it->GetNode().OpType() != "MaxPoolGrad") {
           return false;
         }
@@ -252,10 +259,10 @@ bool DnnlBatchNormalizationNodeCapability::IsDimensionSupported(const Node* node
 //-------------------------------------
 bool DnnlReduceNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
   // These reduction operators use elementwise ops so elementwise operators must also be supported.
-  if(node->OpType() == "ReduceLogSum" ||
-     node->OpType() == "ReduceLogSumExp" ||
-     node->OpType() == "ReduceSumSquare") {
-      if(!_eltwise.Supported(node, graph_viewer)) return false;
+  if (node->OpType() == "ReduceLogSum" ||
+      node->OpType() == "ReduceLogSumExp" ||
+      node->OpType() == "ReduceSumSquare") {
+    if (!_eltwise.Supported(node, graph_viewer)) return false;
   }
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
@@ -280,7 +287,7 @@ bool DnnlSoftmaxNodeCapability::Supported(const Node* node, const GraphViewer& g
   return true;
 }
 
-//DNNL Softmax supports opset version of 13 and above, or only axis value of 2 for opset version < 13
+// DNNL Softmax supports opset version of 13 and above, or only axis value of 2 for opset version < 13
 bool DnnlSoftmaxNodeCapability::IsAttributeSupported(const Node* node) const {
   const NodeAttributes& attributes = node->GetAttributes();
   auto opset = node->SinceVersion();
@@ -294,13 +301,20 @@ bool DnnlSoftmaxNodeCapability::IsAttributeSupported(const Node* node) const {
   return true;
 }
 
-
 // DnnlMatMulNodeCapability class
 //-------------------------------------
 bool DnnlMatMulNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
+  return true;
+}
+
+// DnnlLRNNodeCapability class
+//-------------------------------------
+bool DnnlLRNNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
   return true;
 }
 
@@ -336,7 +350,7 @@ bool DnnlMatMulNodeCapability::IsDimensionSupported(const Node* node) const {
 bool DnnlMatMulIntegerNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
-  if (!IsDimensionSupported(node,graph_viewer)) return false;
+  if (!IsDimensionSupported(node, graph_viewer)) return false;
 
   // if weight is u8, onednn doesn't support
   auto node_inputs = node->InputDefs();
@@ -351,7 +365,7 @@ bool DnnlMatMulIntegerNodeCapability::Supported(const Node* node, const GraphVie
   return true;
 }
 
-//assume weight zp is s8 since u8 will get rejected and weight zp matches weight data type
+// assume weight zp is s8 since u8 will get rejected and weight zp matches weight data type
 bool DnnlMatMulIntegerNodeCapability::IsWeightZeroPointConstantZero(const NodeArg* node_arg, const GraphViewer& graph_viewer) const {
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   // if node_arg is not initializer
@@ -370,14 +384,14 @@ bool DnnlMatMulIntegerNodeCapability::IsWeightZeroPointConstantZero(const NodeAr
     num_elements *= int(dims[i]);
   }
 
-  //check if weight zp is all zeros
+  // check if weight zp is all zeros
   bool all_zero = true;
   std::vector<int8_t> unpacked_tensor;
-  //delibrately make a vector of 1s instead of 0s
+  // delibrately make a vector of 1s instead of 0s
   unpacked_tensor.resize(num_elements, 1);
   ORT_THROW_IF_ERROR(onnxruntime::utils::UnpackTensor(*tensor_proto, tensor_proto->has_raw_data() ? tensor_proto->raw_data().data() : nullptr, tensor_proto->has_raw_data() ? tensor_proto->raw_data().size() : 0, reinterpret_cast<int8_t*>(unpacked_tensor.data()), num_elements));
 
-  //check if the initializer zero point contains all zeros
+  // check if the initializer zero point contains all zeros
   for (const auto& val : unpacked_tensor) {
     if (val != 0) {
       all_zero = false;
@@ -385,8 +399,8 @@ bool DnnlMatMulIntegerNodeCapability::IsWeightZeroPointConstantZero(const NodeAr
     }
   }
 
-  //if initializer zero point is not all zeros, reject it
-  //TODO: if initializer zero point is a vector of a unique value, we can still compute it
+  // if initializer zero point is not all zeros, reject it
+  // TODO: if initializer zero point is a vector of a unique value, we can still compute it
   if (!all_zero) {
     return false;
   }
@@ -396,7 +410,7 @@ bool DnnlMatMulIntegerNodeCapability::IsWeightZeroPointConstantZero(const NodeAr
 bool DnnlMatMulIntegerNodeCapability::IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const {
   auto node_inputs = node->InputDefs();
 
-  //do not support other than single zero point (not per column)
+  // do not support other than single zero point (not per column)
   if (node_inputs.size() > 2) {
     if (node_inputs.size() >= 3 && node_inputs[2] && node_inputs[2]->Exists()) {
       if (node_inputs[2]->Shape() != nullptr && node_inputs[2]->Shape()->dim_size() >= 1) {
@@ -417,7 +431,7 @@ bool DnnlMatMulIntegerNodeCapability::IsDimensionSupported(const Node* node, con
     }
   }
 
-  //if shape nullptr, not enough information to reject it. attempt to run it (no gaurantee)
+  // if shape nullptr, not enough information to reject it. attempt to run it (no gaurantee)
   if (node_inputs[0]->Shape() == nullptr || node_inputs[1]->Shape() == nullptr) {
     return true;
   }
@@ -489,7 +503,27 @@ bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
 bool DnnlBinaryNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
+  if (!IsBF16Supported(node)) return false;
+  return true;
+}
 
+bool DnnlBinaryNodeCapability::IsBF16Supported(const Node* node) const {
+  // This is special caseing the Binary operators Less, LessOrEqual, Greator, GreatorOrEqual, and Equal
+  // The listed operators are known to not work on GPU and we should indicate lack of GPU support.
+  auto node_inputs = node->InputDefs();
+  if (!node_inputs.empty() && node_inputs[0]->TypeAsProto() != nullptr) {
+    auto node_datatype = node_inputs[0]->TypeAsProto()->tensor_type().elem_type();
+    if (type_bfloat16 == node_datatype) {
+      if (node->OpType() == "Less" ||
+          node->OpType() == "Greator" ||
+          std::string::npos != node->OpType().find("Equal")) {
+        if (ort_dnnl::dnnl_util::IsGPURuntimeAvalible()) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
   return true;
 }
 
@@ -508,11 +542,11 @@ bool DnnlElementwiseCapability::IsDimensionSupported(const Node* node) const {
     return true;
   }
 
-  //reject gpu elmentwise op with 5 dims or more
+  // reject gpu elmentwise op with 5 dims or more
   if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
-    if(node_inputs[0]->Shape()->dim_size() > 5 ){
+    if (node_inputs[0]->Shape()->dim_size() > 5) {
       return false;
-    } 
+    }
   }
 
   return true;
@@ -560,7 +594,6 @@ bool DnnlPowNodeCapability::IsDimensionSupported(const Node* node, const GraphVi
     }
   }
 
-
   return true;
 }
 
@@ -586,7 +619,7 @@ bool DnnlReshapeNodeCapability::IsDimensionSupported(const Node* node) const {
   if (node_inputs[1]->Shape() != nullptr &&
       node_inputs[1]->Shape()->dim_size() == 1 &&
       node_inputs[1]->Shape()->dim(0).dim_value() == 0) {
-      return false;
+    return false;
   }
 
   return true;
@@ -600,7 +633,6 @@ bool DnnlDynamicQuantizeLinearNodeCapability::Supported(const Node* node, const 
   if (!IsTypeSupported(node)) return false;
   return true;
 }
-
 
 // DnnlSqueezeCapability class
 //-------------------------------------
@@ -633,7 +665,6 @@ bool DnnlSqueezeNodeCapability::IsDimensionSupported(const Node* node, const Gra
   return true;
 }
 
-
 bool DnnlErfNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
@@ -642,7 +673,7 @@ bool DnnlErfNodeCapability::Supported(const Node* node, const GraphViewer& graph
 }
 
 bool DnnlErfNodeCapability::IsInitilizedWithExpectedValue(const GraphViewer& graph_viewer, const NodeArg* node_arg, float expected_value) const {
-  //TypeAsProto()->tensor_type().elem_type()
+  // TypeAsProto()->tensor_type().elem_type()
   if ((ORT_DataType)node_arg->TypeAsProto()->tensor_type().elem_type() == type_float32) {
     const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
     graph_viewer.GetInitializedTensor(node_arg->Name(), tensor_proto);
@@ -676,7 +707,6 @@ const Node* DnnlErfNodeCapability::FirstParentByType(const Node& node, const std
   return nullptr;
 }
 
-
 bool DnnlErfNodeCapability::IsNodeFusable(const Node* node, const GraphViewer& graph_viewer) const {
   if (nullptr == node) {
     return false;
@@ -693,30 +723,30 @@ bool DnnlErfNodeCapability::IsNodeFusable(const Node* node, const GraphViewer& g
   return true;
 }
 
-    /*
-  OneDNN only suports Erf if it is part of Gelu.  Gelu is only possible thanks to fusion.
+/*
+OneDNN only suports Erf if it is part of Gelu.  Gelu is only possible thanks to fusion.
 
-  This code only runs when and Erf node is detected. So we check to see if the Erf is is part
-  a Gelu starting from the Erf.  This means checking the inputs befor and after Erf.  The
-  following pattern and some code were directly referenced from code\optimizer\gelu_fusion.cc
+This code only runs when and Erf node is detected. So we check to see if the Erf is is part
+a Gelu starting from the Erf.  This means checking the inputs befor and after Erf.  The
+following pattern and some code were directly referenced from code\optimizer\gelu_fusion.cc
 
-     Subgraphs like the following fuse into Gelu.
-     Subgraph pattern 1:
-                   +-------Mul(0.5)---------------------+
-                   |                                    |
-                   |                                    v
-                [root] --> Div -----> Erf  --> Add --> Mul ==>
-                          (B=1.4142...)        (1)
+ Subgraphs like the following fuse into Gelu.
+ Subgraph pattern 1:
+               +-------Mul(0.5)---------------------+
+               |                                    |
+               |                                    v
+            [root] --> Div -----> Erf  --> Add --> Mul ==>
+                      (B=1.4142...)        (1)
 
-      Subgraph pattern 2:
-                   +------------------------------------+
-                   |                                    |
-                   |                                    v
-                [root] --> Div -----> Erf  --> Add --> Mul -->Mul ==>
-                          (B=1.4142...)        (1)            (0.5)
+  Subgraph pattern 2:
+               +------------------------------------+
+               |                                    |
+               |                                    v
+            [root] --> Div -----> Erf  --> Add --> Mul -->Mul ==>
+                      (B=1.4142...)        (1)            (0.5)
 
-       After Fusion:
-                [root]--> Gelu ==>
+   After Fusion:
+            [root]--> Gelu ==>
 */
 bool DnnlErfNodeCapability::IsErfPartOfGelu(const Node* node, const GraphViewer& graph_viewer) const {
   // if DNNL fusion is not enabled then Erf is not supported.
@@ -828,7 +858,7 @@ bool DnnlErfNodeCapability::IsErfPartOfGelu(const Node* node, const GraphViewer&
       return false;
     }
 
-    //Check that Mul Op node_arg is 0.5f
+    // Check that Mul Op node_arg is 0.5f
     bool is_mul2_input0 = mul1_nodes[0]->OutputDefs()[0]->Name() == mul2_nodes[0]->InputDefs()[0]->Name();
     auto mul2_val = mul2_nodes[0]->InputDefs()[is_mul2_input0 ? 1 : 0];
     if (mul2_val->Shape() != nullptr) {
@@ -844,7 +874,6 @@ bool DnnlErfNodeCapability::IsErfPartOfGelu(const Node* node, const GraphViewer&
     }
   }
   return true;
-
 }
 
 // DnnlQAttentionNodeCapability class
@@ -855,15 +884,15 @@ bool DnnlQAttentionNodeCapability::Supported(const Node* node, const GraphViewer
   if (!IsDimensionSupported(node)) return false;
   auto node_inputs = node->InputDefs();
   auto node_outputs = node->OutputDefs();
-  //if have 9th input (past state) and 9th input Exists
+  // if have 9th input (past state) and 9th input Exists
   if (node_inputs.size() == 9 && node_inputs[8]->Exists()) {
     return false;
   }
-  //if have 2nd output (present state) and 2nd output Exists, return false
+  // if have 2nd output (present state) and 2nd output Exists, return false
   if (node_outputs.size() == 2 && node_outputs[1]->Exists()) {
     return false;
   }
-  //qattention doesn't support unidriectional
+  // qattention doesn't support unidriectional
   const NodeAttributes& attributes = node->GetAttributes();
   auto attr = attributes.find("unidirectional");
   if (attr != attributes.end()) {
@@ -871,30 +900,23 @@ bool DnnlQAttentionNodeCapability::Supported(const Node* node, const GraphViewer
       return false;
     }
   }
-  //only support scalar input scale and weight scale
-  if(!IsScalar(node_inputs[3]) || !IsScalar(node_inputs[4])){
+  // only support scalar input scale and weight scale
+  if (!IsScalar(node_inputs[3]) || !IsScalar(node_inputs[4])) {
     return false;
   }
-  //only support 2D raw mask
-  if(node_inputs.size() >= 6 && node_inputs[5]->Exists() && node_inputs[5]->Shape() != nullptr && node_inputs[5]->Shape()->dim_size() != 2){
+  // only support 2D raw mask
+  if (node_inputs.size() >= 6 && node_inputs[5]->Exists() && node_inputs[5]->Shape() != nullptr && node_inputs[5]->Shape()->dim_size() != 2) {
     return false;
   }
-  //only support scalar input zero point
-  if(node_inputs.size() >= 7 && node_inputs[6]->Exists() && !IsScalar(node_inputs[6])){
+  // only support scalar input zero point
+  if (node_inputs.size() >= 7 && node_inputs[6]->Exists() && !IsScalar(node_inputs[6])) {
     return false;
   }
-  //only support scalar weight zero point
-  if(node_inputs.size() >= 8 && node_inputs[7]->Exists() && !IsScalar(node_inputs[7])){
+  // only support scalar weight zero point
+  if (node_inputs.size() >= 8 && node_inputs[7]->Exists() && !IsScalar(node_inputs[7])) {
     return false;
   }
 
-  //qattention is disabled on gpu due to the following onednn bugs
-  //1. flipped zero points in int8 matmul
-  //2. unsupported runtime input source0 scaling in binary
-  //3. f32 matmul on submemory gives wrong result
-  if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
-    return false;
-  }
   return true;
 }
 
@@ -905,8 +927,8 @@ bool DnnlQAttentionNodeCapability::IsDimensionSupported(const Node* node) const 
 
 // DnnlCastNodeCapability class
 //-------------------------------------
-DnnlCastNodeCapability::DnnlCastNodeCapability(std::vector<ORT_DataType> validTypes) 
-                        : DnnlDefaultNodeCapability(validTypes) {
+DnnlCastNodeCapability::DnnlCastNodeCapability(std::vector<ORT_DataType> validTypes)
+    : DnnlDefaultNodeCapability(validTypes) {
   for (ORT_DataType datatype : validTypes)
     validTypes_.push_back(datatype);
 }
@@ -924,10 +946,9 @@ bool DnnlCastNodeCapability::IsCastSupported(const Node* node) const {
   auto attr_to = node_attr.find("to");
 
   // If we have valid results
-  if (!node_input.empty() && 
-      node_input[0]->TypeAsProto() != nullptr && 
+  if (!node_input.empty() &&
+      node_input[0]->TypeAsProto() != nullptr &&
       attr_to != node_attr.end()) {
-    
     // Get the input and cast target type
     auto input_type = node_input[0]->TypeAsProto()->tensor_type().elem_type();
     auto cast_type = attr_to->second().i();
@@ -937,26 +958,26 @@ bool DnnlCastNodeCapability::IsCastSupported(const Node* node) const {
     // From uint8 and int8 => To Float16
     if ((input_type == type_uint8 ||
          input_type == type_int8) &&
-         cast_type == type_float16) {
+        cast_type == type_float16) {
       return false;
     }
     // From uint32 => To Float16 and BFloat16
-    if (input_type == type_int32    &&
-       (cast_type == type_float16   ||
-        cast_type == type_bfloat16)) {
+    if (input_type == type_int32 &&
+        (cast_type == type_float16 ||
+         cast_type == type_bfloat16)) {
       return false;
     }
     // From Float16 => To int(uint8, int8 and int32) and BFloat16
-    if (input_type == type_float16  &&
-        (cast_type == type_uint8    ||
-         cast_type == type_int8     ||
-         cast_type == type_int32    ||
+    if (input_type == type_float16 &&
+        (cast_type == type_uint8 ||
+         cast_type == type_int8 ||
+         cast_type == type_int32 ||
          cast_type == type_bfloat16)) {
       return false;
     }
     // From BFloat16 => To int32 and BFloat16
     if (input_type == type_bfloat16 &&
-        (cast_type == type_int32    ||
+        (cast_type == type_int32 ||
          cast_type == type_float16)) {
       return false;
     }
@@ -968,7 +989,6 @@ bool DnnlCastNodeCapability::IsCastSupported(const Node* node) const {
         return true;
       }
     }
- 
   }
 
   return false;
@@ -989,8 +1009,8 @@ bool DnnlLayerNormalizationNodeCapability::Supported(const Node* node, const Gra
 }
 
 bool DnnlLayerNormalizationNodeCapability::IsAxisSupported(const Node* node) const {
-  // At the moment of implementation OneDNN does not support broadcasting 
-  // on LayerNorm so we can only accept the op when the normalization 
+  // At the moment of implementation OneDNN does not support broadcasting
+  // on LayerNorm so we can only accept the op when the normalization
   // is done on the last dim
   const NodeAttributes& attr = node->GetAttributes();
   auto axis = attr.find("axis");
@@ -1006,7 +1026,7 @@ bool DnnlLayerNormalizationNodeCapability::IsAxisSupported(const Node* node) con
       return false;
     }
   }
-  // If no axis is provided or the conditions above were not met, 
+  // If no axis is provided or the conditions above were not met,
   // we normalize on the last dim
   return true;
 }
@@ -1031,13 +1051,111 @@ bool DnnlLayerNormalizationNodeCapability::IsDimensionSupported(const Node* node
     if ((input_dims <= 5) && (input_dims >= 2)) {
       return true;
 
-    // If the tensor is 1D or >6D then we dont support it
+      // If the tensor is 1D or >6D then we dont support it
     } else {
       return false;
-    }   
+    }
   }
   // If we dont have shape info, accept the data and catch the error on the implementation
-  return true;  
+  return true;
+}
+
+// DnnlConcatNodeCapability class
+//-------------------------------------
+
+bool DnnlConcatNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) {
+    return false;
+  }
+  if (!AreAllInputsOfSameType(node)) {
+    return false;
+  }
+  if (!AreAxisAndDimensionsSupported(node)) {
+    return false;
+  }
+  return true;
+}
+
+bool DnnlConcatNodeCapability::AreAllInputsOfSameType(const Node* node) const {
+  // All inputs must be of the same type
+  const auto node_inputs = node->InputDefs();
+  if (!node_inputs.empty() && node_inputs[0]->TypeAsProto() != nullptr) {
+    const auto ref_datatype = node_inputs[0]->TypeAsProto()->tensor_type().elem_type();
+    // Ensure that other inputs have the same datatype as the first
+    for (size_t i = 1; i < node_inputs.size(); ++i) {
+      if (node_inputs[i]->TypeAsProto() != nullptr &&
+          node_inputs[i]->TypeAsProto()->tensor_type().elem_type() != ref_datatype) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool DnnlConcatNodeCapability::AreAxisAndDimensionsSupported(const Node* node) const {
+  auto& attributes = node->GetAttributes();
+  auto axis_attr = attributes.find("axis");
+  if (axis_attr != attributes.end()) {
+    if (axis_attr->second().type() != ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
+      // Axis must be an integer
+      return false;
+    }
+  } else {
+    // Axis is required
+    return false;
+  }
+
+  int64_t signed_axis = axis_attr->second().i();
+
+  // Veriy input dimensions
+  const auto& node_inputs = node->InputDefs();
+  auto ref_input_it = std::find_if(node_inputs.begin(), node_inputs.end(),
+                                   [](const auto input) {
+                                     return input->Shape() != nullptr;
+                                   });
+  if (ref_input_it != node_inputs.end()) {
+    const auto ref_input = *ref_input_it;
+    const auto ref_input_shape = ref_input->Shape();
+    const auto ref_input_rank = ref_input_shape->dim_size();
+
+    // DNNL only supports tensors of 6 or fewer dimensions on GPU
+    if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
+      if (ref_input_rank > 6) {
+        return false;
+      }
+    }
+
+    // Verify that input tensors match shapes except on the axis dimension.
+    const auto adjusted_axis = (signed_axis >= 0) ? signed_axis : signed_axis + ref_input_rank;
+    for (auto input : node_inputs) {
+      if (input == ref_input) {
+        continue;
+      }
+
+      const auto input_shape = input->Shape();
+      if (input_shape == nullptr) {
+        continue;
+      }
+      if (input_shape->dim_size() != ref_input_rank) {
+        // Rank doesn't match reference input.
+        return false;
+      }
+      for (int d = 0; d < ref_input_rank; ++d) {
+        if (d == adjusted_axis) {
+          continue;
+        }
+        const auto& ref_input_dim = ref_input_shape->dim(d);
+        const auto& input_dim = input_shape->dim(d);
+        if (ref_input_dim.has_dim_value() && input_dim.has_dim_value()) {
+          if (ref_input_dim.dim_value() != input_dim.dim_value()) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+  return true;
 }
 
 }  // namespace onnxruntime

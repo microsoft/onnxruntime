@@ -84,7 +84,7 @@ class ONNXReferenceImplementationTest(unittest.TestCase):
         x = np.random.randn(3, 4).astype(np.int64)
         w = np.random.randn(10, 3).astype(np.float32)
         padding_idx = np.random.randint(3, size=1).astype(np.int64)
-        scale = np.array([1]).astype(np.bool)
+        scale = np.array([1]).astype(bool)
         y = torch_embedding_reference_implementation(w, x, padding_idx, scale)
         expect(
             node,
