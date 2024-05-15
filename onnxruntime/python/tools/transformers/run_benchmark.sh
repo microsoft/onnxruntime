@@ -34,6 +34,9 @@ run_gpu_fp16=true
 run_cpu_fp32=false
 run_cpu_int8=false
 
+# Set this to true to enable bfloat16 fastmath gemm kernels on aarch64 platforms with bfloat16 support
+arm64_bfloat16_fastmath_mode=false
+
 average_over=1000
 # CPU takes longer time to run, only run 100 inferences to get average latency.
 if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
@@ -63,7 +66,7 @@ models_to_test="bert-base-cased roberta-base distilbert-base-uncased"
 # export CUDA_VISIBLE_DEVICES=1
 
 # This script will generate a logs file with a list of commands used in tests.
-echo echo "ort=$run_ort torch=$run_torch torch2=$run_torch2 torchscript=$run_torchscript tensorflow=$run_tensorflow gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" >> benchmark.log
+echo echo "ort=$run_ort torch=$run_torch torch2=$run_torch2 torchscript=$run_torchscript tensorflow=$run_tensorflow gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" arm64_bfloat16_fastmath_mode=$arm64_bfloat16_fastmath_mode >> benchmark.log
 
 # Set it to false to skip testing. You can use it to dry run this script with the log file.
 run_tests=true
@@ -125,6 +128,10 @@ fi
 if [ "$force_layer_number" = true ] ; then
   onnx_export_options="$onnx_export_options --force_num_layers $layer_number"
   benchmark_options="$benchmark_options --force_num_layers $layer_number"
+fi
+
+if [ "$arm64_bfloat16_fastmath_mode" = true ] ; then
+  benchmark_options="$benchmark_options --enable_arm64_bfloat16_fastmath_mlas_gemm"
 fi
 
 # -------------------------------------------

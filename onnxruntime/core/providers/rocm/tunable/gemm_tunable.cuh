@@ -33,14 +33,14 @@ bool IsZero(half v) {
   return __half2float(v) == 0.0f;
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class GemmTunableOp : public TunableOp<GemmParams<T>> {
  public:
   GemmTunableOp() {
     this->RegisterOp(RocBlasGemmOp<T>);
 
 #ifdef USE_HIPBLASLT
-    for (auto&& [_, op] : GetHipBlasLtGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetHipBlasLtGemmTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
@@ -54,16 +54,16 @@ class GemmTunableOp : public TunableOp<GemmParams<T>> {
 #endif
 
 #ifdef USE_COMPOSABLE_KERNEL
-    for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
 
-    for (auto&& [_, op] : GetCKStreamKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKStreamKGemmTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
-    for (auto&& [_, op] : GetCKSplitKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKSplitKGemmTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
@@ -96,7 +96,7 @@ class GemmTunableOp : public TunableOp<GemmParams<T>> {
   }
 };
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class BatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
  public:
   BatchedGemmTunableOp() {
@@ -146,14 +146,14 @@ class BatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
   }
 };
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>> {
  public:
   StridedBatchedGemmTunableOp() {
     this->RegisterOp(RocBlasStridedBatchedGemmOp<T>);
 
 #ifdef USE_HIPBLASLT
-    for (auto&& [_, op] : GetHipBlasLtStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetHipBlasLtStridedBatchedGemmTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
@@ -167,7 +167,7 @@ class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>
 #endif
 
 #ifdef USE_COMPOSABLE_KERNEL
-    for (auto&& [_, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }

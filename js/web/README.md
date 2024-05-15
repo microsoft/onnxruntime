@@ -12,17 +12,21 @@ The [Open Neural Network Exchange](http://onnx.ai/) (ONNX) is an open standard f
 
 With ONNX Runtime Web, web developers can score models directly on browsers with various benefits including reducing server-client communication and protecting user privacy, as well as offering install-free and cross-platform in-browser ML experience.
 
-ONNX Runtime Web can run on both CPU and GPU. On CPU side, [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly) is adopted to execute the model at near-native speed. ONNX Runtime Web complies the native ONNX Runtime CPU engine into WebAssembly backend by using Emscripten, so it supports most functionalities native ONNX Runtime offers, including full ONNX operator coverage, multi-threading, [ONNX Runtime Quantization](https://www.onnxruntime.ai/docs/how-to/quantization.html) as well as [ONNX Runtime Mobile](https://onnxruntime.ai/docs/tutorials/mobile/). For performance acceleration with GPUs, ONNX Runtime Web leverages WebGL, a popular standard for accessing GPU capabilities. We are keeping improving op coverage and optimizing performance in WebGL backend.
+ONNX Runtime Web can run on both CPU and GPU. On CPU side, [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly) is adopted to execute the model at near-native speed. ONNX Runtime Web compiles the native ONNX Runtime CPU engine into WebAssembly backend by using Emscripten, so it supports most functionalities native ONNX Runtime offers, including full ONNX operator coverage, multi-threading, [ONNX Runtime Quantization](https://www.onnxruntime.ai/docs/how-to/quantization.html) as well as [ONNX Runtime Mobile](https://onnxruntime.ai/docs/tutorials/mobile/). For performance acceleration with GPUs, ONNX Runtime Web leverages WebGL, a popular standard for accessing GPU capabilities. We are keeping improving op coverage and optimizing performance in WebGL backend.
 
 See [Compatibility](#Compatibility) and [Operators Supported](#Operators) for a list of platforms and operators ONNX Runtime Web currently supports.
 
 ## Usage
 
-Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js) for samples and tutorials.
+- See [Get started](https://onnxruntime.ai/docs/get-started/with-javascript/web.html) as a landing page for ONNX Runtime Web documentation.
+
+- Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js) for samples and tutorials.
+
+- See also [ONNX Runtime Web API reference](https://onnxruntime.ai/docs/api/js/index.html) for detailed API documentation.
 
 ## Documents
 
-### Developement
+### Development
 
 Refer to the following links for development information:
 
@@ -34,13 +38,18 @@ Refer to the following links for development information:
 
 ### Compatibility
 
-|    OS/Browser    |   Chrome    |    Edge     |   Safari    |  Electron   | Node.js |
-| :--------------: | :---------: | :---------: | :---------: | :---------: | :-----: |
-|    Windows 10    | wasm, webgl | wasm, webgl |      -      | wasm, webgl |  wasm   |
-|      macOS       | wasm, webgl | wasm, webgl | wasm, webgl | wasm, webgl |  wasm   |
-| Ubuntu LTS 18.04 | wasm, webgl | wasm, webgl |      -      | wasm, webgl |  wasm   |
-|       iOS        | wasm, webgl | wasm, webgl | wasm, webgl |      -      |    -    |
-|     Android      | wasm, webgl | wasm, webgl |      -      |      -      |    -    |
+| EPs/Browsers      | Chrome/Edge (Windows) | Chrome/Edge (Android) | Chrome/Edge (MacOS) | Chrome/Edge (iOS) | Safari (MacOS)    | Safari (iOS)      | Firefox (Windows) | Node.js           |
+| ----------------- | --------------------- | --------------------- | ------------------- | ----------------- | ----------------- | ----------------- | ----------------- | ----------------- |
+| WebAssembly (CPU) | ✔️                    | ✔️                    | ✔️                  | ✔️                | ✔️                | ✔️                | ✔️                | ✔️<sup>\[1]</sup> |
+| WebGPU            | ✔️<sup>\[2]</sup>     | ✔️<sup>\[3]</sup>     | ✔️                  | ❌                | ❌                | ❌                | ❌                | ❌                |
+| WebGL             | ✔️<sup>\[4]</sup>     | ✔️<sup>\[4]</sup>     | ✔️<sup>\[4]</sup>   | ✔️<sup>\[4]</sup> | ✔️<sup>\[4]</sup> | ✔️<sup>\[4]</sup> | ✔️<sup>\[4]</sup> | ❌                |
+| WebNN             | ✔️<sup>\[5]</sup>     | ❌                    | ❌                  | ❌                | ❌                | ❌                | ❌                | ❌                |
+
+- \[1]: Node.js only support single-threaded `wasm` EP.
+- \[2]: WebGPU requires Chromium v113 or later on Windows. Float16 support requires Chrome v121 or later, and Edge v122 or later.
+- \[3]: WebGPU requires Chromium v121 or later on Windows.
+- \[4]: WebGL support is in maintenance mode. It is recommended to use WebGPU for better performance.
+- \[5]: Requires to launch browser with commandline flag `--enable-experimental-web-platform-features`.
 
 ### Operators
 

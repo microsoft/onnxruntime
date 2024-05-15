@@ -32,6 +32,10 @@ steps:
   workingDirectory: '$(Build.SourcesDirectory)/js'
   displayName: 'Check unformatted files'
 - script: |
+    npx typedoc --emit none --treatWarningsAsErrors
+  workingDirectory: '$(Build.SourcesDirectory)/js/common'
+  displayName: 'TypeDoc Validation'
+- script: |
     npm run build:doc
   workingDirectory: '$(Build.SourcesDirectory)/js/web'
   displayName: 'Generating documents'

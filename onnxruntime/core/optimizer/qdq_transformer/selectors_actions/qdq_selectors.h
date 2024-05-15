@@ -5,6 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#include "core/framework/node_unit.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
 namespace onnxruntime {
@@ -12,13 +13,6 @@ class Graph;
 class Node;
 
 namespace QDQ {
-
-// Struct to represent a DQ->Op->Q node group
-struct NodeGroup {
-  std::vector<NodeIndex> dq_nodes;
-  std::vector<NodeIndex> q_nodes;
-  NodeIndex target_node;
-};
 
 class NodeGroupSelector {
  public:
@@ -113,6 +107,24 @@ class VariadicNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 
   bool allow_16bit_;
+};
+
+// DQ node -> Split -> multiple Q nodes with equal quantization types.
+// Optionally, the selector can require all input and output quantization parameters to be
+// equal and constant.
+class SplitNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit SplitNodeGroupSelector(bool req_equal_quant_params = false)
+      : req_equal_quant_params_(req_equal_quant_params) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+  bool req_equal_quant_params_;  // If true, only selects a node group if the input and output
+                                 // quantization parameters are all equal/constant, which enables the
+                                 // optimizer to drop the Q/DQ ops if the group is assigned to the CPU EP.
 };
 
 // DQ nodes for X, W and optionally B -> node -> Q
@@ -239,12 +251,15 @@ class BaseSelector : public NodeSelector {
 
   // We std::move SelectorActionRegistry into the SelectorActionTransformer so this class needs to have a move ctor
   BaseSelector(BaseSelector&& rhs) noexcept
-      : node_group_selector_{std::move(rhs.node_group_selector_)} {
+      : node_group_selector_{std::move(rhs.node_group_selector_)},
+        compatible_providers_{std::move(rhs.compatible_providers_)} {
   }
 
  protected:
-  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector)
-      : node_group_selector_{std::move(node_group_selector)} {}
+  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector, gsl::span<const char*> compatible_providers = {})
+      : node_group_selector_{std::move(node_group_selector)},
+        compatible_providers_(compatible_providers.begin(), compatible_providers.end()) {
+  }
 
   // override if you need to adjust the values in NodesToOptimize.
   // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs
@@ -253,6 +268,7 @@ class BaseSelector : public NodeSelector {
 
  private:
   std::unique_ptr<NodeGroupSelector> node_group_selector_;
+  std::vector<std::string> compatible_providers_;
 };
 
 class DropQDQNodesSelector : public BaseSelector {
@@ -269,14 +285,14 @@ class DropDQNodesSelector : public BaseSelector {
 
 class UnarySelector : public BaseSelector {
  public:
-  explicit UnarySelector(bool allow_16bit = false)
-      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit)) {}
+  explicit UnarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false)
+      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit), compatible_providers) {}
 };
 
 class BinarySelector : public BaseSelector {
  public:
-  explicit BinarySelector(bool allow_16bit = false)
-      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit)) {}
+  explicit BinarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false)
+      : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit), compatible_providers) {}
 };
 
 // Variadic DQ nodes -> node -> Q
@@ -288,10 +304,11 @@ class InputVariadicSelector : public BaseSelector {
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
 
-//  DQ -> node -> Variadic Q nodes
-class OutputVariadicSelector : public BaseSelector {
+//  DQ -> Split -> variadic Q nodes
+class SplitSelector : public BaseSelector {
  public:
-  OutputVariadicSelector() : BaseSelector(std::make_unique<VariadicNodeGroupSelector>()) {}
+  SplitSelector(bool req_equal_quant_params = false)
+      : BaseSelector(std::make_unique<SplitNodeGroupSelector>(req_equal_quant_params)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -307,8 +324,8 @@ class ConvSelector : public BaseSelector {
 
 class WhereSelector : public BaseSelector {
  public:
-  explicit WhereSelector(bool allow_16bit = false)
-      : BaseSelector(std::make_unique<WhereNodeGroupSelector>(allow_16bit)) {}
+  explicit WhereSelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false)
+      : BaseSelector(std::make_unique<WhereNodeGroupSelector>(allow_16bit), compatible_providers) {}
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
@@ -323,8 +340,8 @@ class MatMulSelector : public BaseSelector {
 // Output: optional Q node for Y
 class GemmSelector : public BaseSelector {
  public:
-  explicit GemmSelector(bool allow_16bit = false)
-      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(allow_16bit)) {}
+  explicit GemmSelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false)
+      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(allow_16bit), compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };

@@ -3,6 +3,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
@@ -37,7 +38,7 @@ class SplitOpBuilder : public BaseOpBuilder {
                                   const std::vector<std::string>& input_names,
                                   size_t output_index,
                                   Qnn_DataType_t qnn_data_type,
-                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
+                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
 Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -53,6 +54,19 @@ Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
   return Status::OK();
+}
+
+// Converts an ONNX list of split lengths to a QNN list of split indices.
+// Note that the first split index at 0 is implicit (QNN SDK >= 2.19 will raise a validation error if included).
+static void ConvertSplitLengthsToSplitIndices(gsl::span<const int64_t> split_lengths,
+                                              std::vector<uint32_t>& split_indices) {
+  uint32_t split_it = 0;
+  for (size_t i = 0; i < split_lengths.size(); ++i) {
+    if (i > 0) {  // Do not include the 0th split index.
+      split_indices.push_back(split_it);
+    }
+    split_it += SafeInt<uint32_t>(split_lengths[i]);
+  }
 }
 
 Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -79,22 +93,15 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
       const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       size_t tensor_byte_size = unpacked_tensor.size();
       size_t size = tensor_byte_size / sizeof(int64_t);
-      split_index.push_back(0);  // QNN need the start index of each range and starts from 0
-      std::transform(tensor_data, tensor_data + size, std::back_inserter(split_index),
-                     [](int64_t item) { return SafeInt<uint32_t>(item); });
-      split_index.pop_back();
+      ConvertSplitLengthsToSplitIndices({tensor_data, size}, split_index);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic split");
     }
   } else {
     NodeAttrHelper node_helper(node_unit);
     if (node_helper.HasAttr("split")) {
-      auto split = node_helper.Get("split", std::vector<int32_t>{0});
-      uint32_t split_it = 0;
-      for (size_t i = 0; i < split.size(); ++i) {
-        split_index.push_back(split_it);
-        split_it += split[i];
-      }
+      auto split_lengths = node_helper.Get("split", std::vector<int64_t>{0});
+      ConvertSplitLengthsToSplitIndices(split_lengths, split_index);
     }
   }
 
@@ -105,11 +112,19 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                       "Cannot get shape");
     ORT_ENFORCE(static_cast<int32_t>(input_shape.size()) > axis_value, "axis not valid!");
     ORT_RETURN_IF_NOT(input_shape.at(axis_value) > 0, "Shape value not valid!");
-    auto num_outputs = node_unit.Outputs().size();
-    auto step = SafeInt<uint32_t>(input_shape.at(axis_value) / num_outputs);
+
+    // ONNX spec states that if not evenly divisible by `num_outputs`, the last chunk is smaller.
+    // Therefore, we have to use ceil() when computing shape[axis] / num_outputs.
+    // See: core/providers/cpu/tensor/split.cc::PrepareForCompute()
+    const float num_outputs = static_cast<float>(node_unit.Outputs().size());
+    const float split_dim_size = static_cast<float>(input_shape[axis_value]);
+    const uint32_t step = SafeInt<uint32_t>(std::ceil(split_dim_size / num_outputs));
     uint32_t split_it = 0;
+
     for (size_t i = 0; i < num_outputs; ++i) {
-      split_index.push_back(split_it);
+      if (i > 0) {  // 0th split index is implicit (QNN >= 2.19 raises validation error if included)
+        split_index.push_back(split_it);
+      }
       split_it += step;
     }
   }
@@ -135,7 +150,11 @@ Status SplitOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapp
                                                 const std::vector<std::string>& input_names,
                                                 size_t output_index,
                                                 Qnn_DataType_t qnn_data_type,
-                                                Qnn_QuantizeParams_t& quant_param) const {
+                                                QnnQuantParamsWrapper& quant_param) const {
+  if (!quant_param.IsPerTensor()) {
+    return Status::OK();
+  }
+
   // Force Split outputs to use the same quantization parameters as the input if nearly equal.
   // This helps the HTP backend employ certain optimizations.
   //

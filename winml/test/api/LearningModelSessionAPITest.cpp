@@ -2195,12 +2195,6 @@ static void SetIntraOpNumThreads() {
   auto binding = LearningModelBinding(session);
   binding.Bind(L"input", tensor_input);
   WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
-
-  // Check to verify that the default number of threads in LearningModelSession is equal to the number of logical cores.
-  session = LearningModelSession(model, device);
-  nativeSession = session.as<ILearningModelSessionNative>();
-  WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
-  WINML_EXPECT_EQUAL(std::thread::hardware_concurrency(), numIntraOpThreads);
 }
 
 static void SetIntraOpThreadSpinning() {

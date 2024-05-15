@@ -26,6 +26,10 @@ using onnxruntime::contrib::rocm::blas::GemmFastGeluParams;
 
 #ifdef USE_HIPBLASLT
 
+// For large K and small M/N, K dim will be split to multiple workgroups and buffers,
+// which will require additional workspace. Here we set the max workspace size to 32MB.
+constexpr const size_t kHipBlasLtMaxWorkSpaceSizeInBytes = 32 * 1024 * 1024;
+
 enum ActivationType {
   NONE = 0,
   RELU = 1,
@@ -55,9 +59,9 @@ constexpr hipblasltDatatype_t HipBlasDataTypeFor<double>() {
   return HIPBLASLT_R_64F;
 }
 
-template <typename Layout>
-constexpr hipblasOperation_t MapCKLayoutToHipBlasLt() {
-  if constexpr (std::is_same_v<Layout, Row>) {
+template <BlasOp Op>
+constexpr hipblasOperation_t MapBlasOpToHipBlasLt() {
+  if constexpr (Op == BlasOp::NonTrans) {
     return HIPBLAS_OP_N;
   }
   return HIPBLAS_OP_T;
@@ -97,13 +101,13 @@ std::string TypeStringFor() {
   return "UnknownType";
 }
 
-template <typename T, typename ALayout, typename BLayout, typename ParamsT>
+template <typename T, BlasOp OpA, BlasOp OpB, typename ParamsT>
 auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationType::NONE) {
   hipblasLtHandle_t handle;
   HIPBLASLT_CALL_THROW(hipblasLtCreate(&handle));
 
-  hipblasOperation_t trans_a = MapCKLayoutToHipBlasLt<BLayout>();
-  hipblasOperation_t trans_b = MapCKLayoutToHipBlasLt<ALayout>();
+  hipblasOperation_t trans_a = MapBlasOpToHipBlasLt<OpB>();
+  hipblasOperation_t trans_b = MapBlasOpToHipBlasLt<OpA>();
   hipblasltDatatype_t in_out_datatype = HipBlasDataTypeFor<T>();
   std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
 
@@ -225,6 +229,9 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
 
       IAllocatorUniquePtr<void> workspace_buffer;
       if (workspace_size > 0) {
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(workspace_size > kHipBlasLtMaxWorkSpaceSizeInBytes,
+                                                  "Workspace size exceeds limit (32M): ", workspace_size);
+        workspace_size = kHipBlasLtMaxWorkSpaceSizeInBytes;
         workspace_buffer = params->tuning_ctx->GetScratchBuffer(workspace_size, params->stream);
       }
 
@@ -259,19 +266,19 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
   return ret;
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetHipBlasLtGemmTypeStringAndOps() {
-  return GetHipBlasLtTypeStringAndOps<T, ALayout, BLayout, GemmParams<T>>();
+  return GetHipBlasLtTypeStringAndOps<T, OpA, OpB, GemmParams<T>>();
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetHipBlasLtStridedBatchedGemmTypeStringAndOps() {
-  return GetHipBlasLtTypeStringAndOps<T, ALayout, BLayout, StridedBatchedGemmParams<T>>();
+  return GetHipBlasLtTypeStringAndOps<T, OpA, OpB, StridedBatchedGemmParams<T>>();
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetHipBlasLtGemmFastGeluTypeStringAndOps() {
-  return GetHipBlasLtTypeStringAndOps<T, ALayout, BLayout, GemmFastGeluParams<T>>(ActivationType::GELU);
+  return GetHipBlasLtTypeStringAndOps<T, OpA, OpB, GemmFastGeluParams<T>>(ActivationType::GELU);
 }
 
 #endif  // USE_HIPBLASLT

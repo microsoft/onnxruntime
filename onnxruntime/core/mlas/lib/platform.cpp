@@ -60,6 +60,10 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #define HWCAP2_SVEI8MM (1 << 9)
 #endif
 
+#ifndef HWCAP2_BF16
+#define HWCAP2_BF16 (1 << 14)
+#endif
+
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
@@ -70,6 +74,8 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 
     has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
     has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
+
+    has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
 }
 #endif
 
@@ -185,6 +191,28 @@ MlasInitAMX()
 
 #endif // MLAS_TARGET_AMD64_IX86
 
+#ifdef MLAS_TARGET_LARCH64
+
+#if defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+#endif
+//
+// Stores a vector to build a conditional load/store mask for vmaskmovps.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveLasx[8], 32) = { 0, 1, 2, 3, 4, 5, 6, 7 };
+
+//
+// Stores a table of AVX vmaskmovps/vmaskmovpd load/store masks.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableLasx[16], 32) = {
+    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+};
+
+#endif
 MLAS_PLATFORM::MLAS_PLATFORM(
     void
     )
@@ -345,6 +373,7 @@ Return Value:
                 this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, int8_t>;
                 this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
+                this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -393,6 +422,7 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
+                    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
                     this->NchwcBlockSize = 16;
@@ -410,6 +440,7 @@ Return Value:
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
                         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
                         this->FpQ4GemmDispatch = &MlasFpQ4GemmDispatchAvx512;
+                        this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -422,6 +453,7 @@ Return Value:
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
+                            this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                         }
                     }
                 }
@@ -460,7 +492,6 @@ Return Value:
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
-    this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -490,6 +521,9 @@ Return Value:
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
+
+        // MlasSQNBitGemmDispatchNeon has a dependency on dot product instructions
+        this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
     }
 
 #if defined(__linux__)
@@ -535,6 +569,63 @@ Return Value:
 
 #endif // __linux__
 #endif // MLAS_TARGET_POWER
+
+#if defined(MLAS_TARGET_LARCH64)
+
+    //
+    // Default to the baseline LSX support.
+    //
+
+    int hwcap = getauxval(AT_HWCAP);
+    bool cap_lasx = hwcap & HWCAP_LOONGARCH_LASX;
+    bool cap_lsx = hwcap & HWCAP_LOONGARCH_LSX;
+
+    if( cap_lasx ){
+        this->GemmFloatKernel = MlasGemmFloatKernelLasx;
+        this->GemmDoubleKernel = MlasGemmDoubleKernelLasx;
+        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelLasx;
+        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelLasx;
+        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelLasx;
+        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelLasx;
+        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelLasx;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelLasx;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelLasx;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelLasx;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelLasx;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelLasx;
+        this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Lasx;
+
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
+    }else if( cap_lsx ){
+        this->GemmFloatKernel = MlasGemmFloatKernelLSX;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4LSX;
+        this->GemmDoubleKernel = MlasGemmDoubleKernelLSX;
+        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelLSX;
+        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelLSX;
+        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelLSX;
+        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelLSX;
+
+        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelLSX;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelLSX;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelLSX;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+    }else{
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+    }
+
+    this->NchwcBlockSize = 8;
+    // this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+
+    // this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+
+#endif // MLAS_TARGET_LARCH64
 
 }
 

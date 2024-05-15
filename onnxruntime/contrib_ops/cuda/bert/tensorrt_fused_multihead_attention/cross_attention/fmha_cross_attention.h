@@ -258,8 +258,12 @@ class FusedMultiHeadCrossAttentionKernel
             << "\t force_unroll: " << param.force_unroll << "\n";
   }
 
-  int32_t getSForUnroll(Fused_multihead_attention_params_mhca const& param) const override {
-    return param.s_q;
+  dim3 getGridDim(const FusedMultiHeadCrossAttentionKernelMetaInfoV2& kernelMeta,
+                  const Fused_multihead_attention_params_mhca& params) const override {
+    dim3 gridDim(params.h,
+                 params.b,
+                 params.force_unroll ? ((params.s_q + kernelMeta.mUnrollStep - 1) / kernelMeta.mUnrollStep) : 1);
+    return gridDim;
   }
 };
 

@@ -36,7 +36,7 @@ class GatherOpBuilder : public BaseOpBuilder {
     return ANEURALNETWORKS_FEATURE_LEVEL_3;
   }
 
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
 
@@ -133,7 +133,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 // Operator support related
 
-bool GatherOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool GatherOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                         const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
   Shape input_shape;
@@ -166,8 +166,8 @@ bool GatherOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     return false;
 
   if (indices_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    if (!Contains(initializers, indices_name)) {
-      LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known.";
+    if (!graph_viewer.GetConstantInitializer(indices_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be a constant initializer.";
       return false;
     }
   }

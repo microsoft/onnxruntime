@@ -47,6 +47,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Activations
     CreateActivationOpBuilder("Elu", op_registrations);
+    CreateActivationOpBuilder("Gelu", op_registrations);
     CreateActivationOpBuilder("HardSigmoid", op_registrations);
     CreateActivationOpBuilder("HardSwish", op_registrations);
     CreateActivationOpBuilder("LeakyRelu", op_registrations);
@@ -72,11 +73,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Conv
     CreateConvOpBuilder("Conv", op_registrations);
+    CreateConvOpBuilder("ConvInteger", op_registrations);
     CreateConvOpBuilder("ConvTranspose", op_registrations);
   }
 
   {  // Concat
     CreateConcatOpBuilder("Concat", op_registrations);
+  }
+
+  {  // Quantize/Dequantize
+    CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
+    CreateDequantizeLinearOpBuilder("DequantizeLinear", op_registrations);
   }
 
   {  // Expand
@@ -94,6 +101,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Gemm/MatMul
     CreateGemmOpBuilder("Gemm", op_registrations);
     CreateGemmOpBuilder("MatMul", op_registrations);
+    CreateGemmOpBuilder("MatMulInteger", op_registrations);
   }
 
   {  // Logical
@@ -111,7 +119,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Normalization
     CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
-    CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
   }

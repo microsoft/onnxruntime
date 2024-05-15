@@ -19,7 +19,7 @@ interface BuildDefinitions {
    */
   readonly DISABLE_WEBGPU: boolean;
   /**
-   * defines whether to disable the whole WebAssembly backend in the build.
+   * defines whether to disable the whole WebNN backend in the build.
    */
   readonly DISABLE_WASM: boolean;
   /**

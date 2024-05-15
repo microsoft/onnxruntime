@@ -17,7 +17,7 @@ using namespace onnxruntime::contrib::rocm::blas::internal;
 namespace py = pybind11;
 
 namespace onnxruntime {
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class GemmFastGeluTunable : public IKernelExplorer {
  public:
   GemmFastGeluTunable(BlasOp opa, BlasOp opb,
@@ -72,29 +72,29 @@ class GemmFastGeluTunable : public IKernelExplorer {
   using ParamsT = GemmFastGeluParams<T>;
   ParamsT params_{};
   rocblas_handle rocblas_handle_;
-  GemmFastGeluTunableOp<T, ALayout, BLayout> op_{};
+  GemmFastGeluTunableOp<T, OpA, OpB> op_{};
 };
 
-#define REGISTER_OP(type, alayout, blayout, layout_string)                                                   \
-  py::class_<GemmFastGeluTunable<type, alayout, blayout>>(m, "GemmFastGeluTunable_" #type "_" layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                               \
-                    double,                                                                                  \
-                    DeviceArray&, int64_t,                                                                   \
-                    DeviceArray&, int64_t,                                                                   \
-                    DeviceArray&,                                                                            \
-                    double,                                                                                  \
-                    DeviceArray&, int64_t>())                                                                \
-      .def("SetRepeats", &GemmFastGeluTunable<type, alayout, blayout>::SetRepeats)                           \
-      .def("Profile", &GemmFastGeluTunable<type, alayout, blayout>::Profile)                                 \
-      .def("Run", &GemmFastGeluTunable<type, alayout, blayout>::Run)                                         \
-      .def("ListOps", &GemmFastGeluTunable<type, alayout, blayout>::ListOps)                                 \
-      .def("SelectOp", &GemmFastGeluTunable<type, alayout, blayout>::SelectOp);
+#define REGISTER_OP(type, opa, opb, layout_string)                                                   \
+  py::class_<GemmFastGeluTunable<type, opa, opb>>(m, "GemmFastGeluTunable_" #type "_" layout_string) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                       \
+                    double,                                                                          \
+                    DeviceArray&, int64_t,                                                           \
+                    DeviceArray&, int64_t,                                                           \
+                    DeviceArray&,                                                                    \
+                    double,                                                                          \
+                    DeviceArray&, int64_t>())                                                        \
+      .def("SetRepeats", &GemmFastGeluTunable<type, opa, opb>::SetRepeats)                           \
+      .def("Profile", &GemmFastGeluTunable<type, opa, opb>::Profile)                                 \
+      .def("Run", &GemmFastGeluTunable<type, opa, opb>::Run)                                         \
+      .def("ListOps", &GemmFastGeluTunable<type, opa, opb>::ListOps)                                 \
+      .def("SelectOp", &GemmFastGeluTunable<type, opa, opb>::SelectOp);
 
-#define REGISTER_OP_FOR_ALL_TRANSAB(type) \
-  REGISTER_OP(type, Row, Row, "NN");      \
-  REGISTER_OP(type, Row, Col, "NT");      \
-  REGISTER_OP(type, Col, Row, "TN");      \
-  REGISTER_OP(type, Col, Col, "TT");
+#define REGISTER_OP_FOR_ALL_TRANSAB(type)        \
+  REGISTER_OP(type, BlasOp::N, BlasOp::N, "NN"); \
+  REGISTER_OP(type, BlasOp::N, BlasOp::T, "NT"); \
+  REGISTER_OP(type, BlasOp::T, BlasOp::N, "TN"); \
+  REGISTER_OP(type, BlasOp::T, BlasOp::T, "TT");
 
 KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_TRANSAB(float);

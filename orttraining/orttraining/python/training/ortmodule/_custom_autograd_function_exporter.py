@@ -25,6 +25,7 @@ from onnxruntime.training.utils import pytorch_scalar_type_to_pytorch_dtype, pyt
 
 from ._custom_op_symbolic_registry import wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
+from ._logger import LogColor
 from ._utils import get_fully_qualified_class_name, get_runtime_pytorch_version
 
 
@@ -71,10 +72,10 @@ def register_high_priority_handler(func_name):
 
 
 def register_custom_function_schema_supplementary(kclass: torch.autograd.Function) -> None:
-    """Register a shape inference function for a torch.autograd.Function if there is staticmethod
-    "infer_shape" defined.
+    """Register schema summplementaries, for example custom shape inference function and
+     alias input function for a custom autograd.Function.
 
-    The signature of the shape inference function should be:
+    1. The signature of the shape inference function should be:
         @staticmethod
         def infer_shape(
             node: onnx.NodeProto,
@@ -91,7 +92,7 @@ def register_custom_function_schema_supplementary(kclass: torch.autograd.Functio
     Be noted: we only pass in tensor inputs, and return tensor outputs, non-tensor inputs/outputs are ignored.
 
 
-    The signature of the alias input function should be:
+    2. The signature of the alias input function should be:
         @staticmethod
         def alias_input(node_proto_str: str) -> Tuple[List[int], List[int]]:
             fw_alias_map = [1, -1, -1]
@@ -110,35 +111,6 @@ def register_custom_function_schema_supplementary(kclass: torch.autograd.Functio
 
     if hasattr(kclass, "alias_input"):
         register_input_alias_function(kclass_name, kclass.alias_input)
-
-
-"""
-Defines a list of names of torch.autograd.Function, for checkpoint activation purposes.
-
-Note:
-    If CheckpointFunction is exported as PythonOp, the checkpoint-ed computation
-    (applied on every N transformer layer) may be computed by PyTorch, not ORT.
-    This situation should be especially noted for large language models such as GPT-2.
-
-As alternatives to using checkpoint activation:
-1. Users could leverage HierarchalORTModule to wrap the model, which only wrap exportable
-sub-nn.Module's as ORTModule. In this way, ideally, ORT could cover most of the model computation,
-other than dispatching them to PyTorch.
-2. Users could disable the check by setting the environment variable ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=1.
-This may imply that the exported model is not fully running on ORT, users should be aware of the potential
-performance impact.
-3. Users could also leverage ORT's memory optimization feature to achieve a similar effect as checkpointing
-activations. Turn off PyTorch's checkpointing activation, then refer to env var ORTMODULE_MEMORY_OPT_CONFIG
-to enable ORT's recomputation feature.
-
-"""
-_UNSUPPORTED_CKPT_FUNC_NAMES = frozenset(
-    [
-        # Full qualified name.
-        "torch.utils.checkpoint.CheckpointFunction",
-        "deepspeed.checkpointing.CheckpointFunction",
-    ]
-)
 
 
 def _get_training_mode() -> bool:
@@ -191,15 +163,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 return try_export
 
         # Fall back to common exporter if not handled by high priority exporter.
-
-        # Check if the checkpointing activation is allowed.
-        is_ckpt_activation_allowed = ortmodule._defined_from_envvar("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", 0) == 1
-        if is_ckpt_activation_allowed is False and func_full_qual_name in _UNSUPPORTED_CKPT_FUNC_NAMES:
-            raise Exception(
-                f"The torch.autograd.Function {func_full_qual_name} should not be exported to ONNX. "
-                "Please replace ORTModule with HierarchalORTModule to only"
-                "wrap exportable sub-nn.Module's as ORTModule."
-            )
 
         cconv = n.cconv()
 
@@ -376,8 +339,7 @@ _export = wrap_custom_export_function(_export_pt_1_10)
 
 def post_process_enabling_autograd_function(exported_model: ModelProto) -> ModelProto:
     # Loop all PythonOp, append "_ctx" as the first output.
-    index = 0
-    for node in exported_model.graph.node:
+    for index, node in enumerate(exported_model.graph.node):
         op_name_prefix = node.op_type
         if node.domain == "com.microsoft" and node.op_type == "PythonOp":
             output_names = list(node.output)
@@ -391,9 +353,72 @@ def post_process_enabling_autograd_function(exported_model: ModelProto) -> Model
                     break
 
             node.name = f"{op_name_prefix}_id_{index}"
-        index += 1
 
     return exported_model
+
+
+@register_high_priority_handler("torch.utils.checkpoint.CheckpointFunction")
+@register_high_priority_handler("deepspeed.checkpointing.CheckpointFunction")
+def _gradient_checkpointing_export(g, n, *args, **kwargs):
+    """
+    Register specialized exporter for torch.autograd.Function(s) used for checkpoint activation purposes.
+
+    Note:
+        If CheckpointFunction is exported as PythonOp, the checkpoint-ed computation
+        (applied on every N transformer layer) may be computed by PyTorch, not ORT.
+        This situation should be especially noted for large language models such as GPT-2.
+
+    As alternatives to using checkpoint activation:
+    1. Users could leverage HierarchalORTModule to wrap the model, which only wrap exportable
+    sub-nn.Module's as ORTModule. In this way, ideally, ORT could cover most of the model computation,
+    other than dispatching them to PyTorch.
+    2. Users could disable the check by setting the environment variable ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=1.
+    This may imply that the exported model is not fully running on ORT, users should be aware of the potential
+    performance impact.
+    3. Users could also leverage ORT's memory optimization feature to achieve a similar effect as checkpointing
+    activations. Turn off PyTorch's checkpointing activation, then refer to env var ORTMODULE_MEMORY_OPT_LEVEL
+    to enable ORT's recomputation feature.
+
+    """
+    # Check if the checkpointing activation is allowed.
+    is_ckpt_activation_allowed = ortmodule._defined_from_envvar("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", 0) == 1
+    if is_ckpt_activation_allowed is False:
+        is_layerwise_recompute_enabled = ortmodule._defined_from_envvar("ORTMODULE_MEMORY_OPT_LEVEL", 0) == 1
+        if not is_layerwise_recompute_enabled:
+            raise Exception(
+                f"{LogColor.RED}"
+                "Model uses gradient checkpointing (via {func_full_qual_name}), "
+                "which is not supported for export. \n"
+                "Consider these alternatives:\n"
+                "1) Enable ORTModule's gradient checkpointing for similar or better "
+                "memory efficiency with `export ORTMODULE_MEMORY_OPT_LEVEL=1`.\n"
+                "2) Allow gradient checkpointing export by setting the environment "
+                "variable `ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=1`, though subsequent "
+                "execution may fail."
+                "3) Replace ORTModule with HierarchalORTModule to wrap exportable "
+                "sub-nn.Module's as ORTModule.\n"
+                f"{LogColor.ENDC}"
+            )
+
+        # Hitting this branch means the user has enabled layerwise recompute, but _override_gradient_checkpoint didn't
+        # catch the checkpointing function. This is usually because model code is importing torch.utils.checkpoint
+        # earlier than ORTModule. We should tolerantly allow this case to happen.
+        raise Exception(
+            f"{LogColor.RED}"
+            "Model uses gradient checkpointing (via {func_full_qual_name}), which is not "
+            "supported for export. \n"
+            "Consider these alternatives:\n"
+            "1) `ORTMODULE_MEMORY_OPT_LEVEL=1` is set but checkpoint functions in the model "
+            "are not overridden during onnxruntime.training.ortmodule import, consider importing "
+            "onnxruntime.training.ortmodule earlier before any model code loaded.\n"
+            "2) To allow gradient checkpointing export, set `ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=1`. "
+            "Subsequent execution may fail.\n"
+            "3) Replace ORTModule with HierarchalORTModule to wrap exportable sub-nn.Module's as "
+            "ORTModule.\n"
+            f"{LogColor.ENDC}"
+        )
+    else:
+        return None  # Let the common exporter handle the checkpointing function
 
 
 @register_high_priority_handler("bitsandbytes.autograd._functions.MatMul4Bit")
@@ -412,14 +437,24 @@ def _matmul4bit_export(g, n, *args, **kwargs):
         return None
 
     quant_state = args[4]
-    absmax, shape, dtype, blocksize, compressed_stats, quant_type, data_type = quant_state
+    if isinstance(quant_state, list):
+        # version <= 0.41.1
+        absmax, shape, dtype, blocksize, compressed_stats, quant_type, data_type = quant_state
+        nested = compressed_stats is not None
+    else:
+        # version > 0.41.1
+        absmax = quant_state.absmax
+        shape = quant_state.shape
+        blocksize = quant_state.blocksize
+        nested = quant_state.nested
+        quant_type = quant_state.quant_type
 
     # MatMulBnb4's blocksize needs to be a power of 2 and not smaller than 16
     if blocksize < 16 or blocksize & (blocksize - 1) != 0:
         return None
 
     # MatMulBnb4 does not support double de-quantization (e.g. absmax is int, needs to be dequantized too)
-    if compressed_stats is not None:
+    if nested:
         return None
 
     # The PyTorch linear weight shape is [out_feature, in_feature]

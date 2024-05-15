@@ -451,6 +451,8 @@ onnxruntime_add_static_library(winml_lib_api
   ${winml_lib_api_dir}/impl/TensorKindFrom.h
   ${winml_lib_api_dir}/impl/TensorMemoryBufferReference.h
   ${winml_lib_api_dir}/NumericData.cpp
+  ${winml_lib_api_dir}/HardwareCoreEnumerator.cpp
+  ${winml_lib_api_dir}/HardwareCoreEnumerator.h
   ${winml_lib_api_dir}/ImageFeatureDescriptor.cpp
   ${winml_lib_api_dir}/ImageFeatureDescriptor.h
   ${winml_lib_api_dir}/ImageFeatureValue.cpp
@@ -834,6 +836,13 @@ if (winml_is_inbox)
     target_include_directories(${new_target} PRIVATE ${include_directories})
     target_link_libraries(${new_target} PRIVATE ${link_libraries})
     target_link_options(${new_target} PRIVATE ${link_options})
+
+    # Attempt to copy linker flags 
+    get_target_property(link_flags ${target} LINK_FLAGS)
+    
+    if (NOT link_flags MATCHES ".*NOTFOUND")
+      set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags}")
+    endif()
   endfunction()
 
   if (WAI_ARCH STREQUAL x64 OR WAI_ARCH STREQUAL arm64)

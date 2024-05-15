@@ -20,7 +20,7 @@ using namespace ONNX_NAMESPACE;
 namespace {
 
 // TODO(pengwa): remove this once customized PythonOp shape inference is supported.
-constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation";
 constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
 
 std::array<TensorShapeProto::Dimension, 6> GetRNNDimensions(InferenceContext& ctx) {
@@ -3938,9 +3938,18 @@ Return true if all elements are true and false otherwise.
           "comment",
           "comment only for debugging purposes.",
           AttributeProto::STRING, false)
+      .Attr(
+          "safe_run_mode",
+          "Indicate if the function is running in safe mode or not. "
+          "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
+          "or materialize gradient. In this mode, inplace operation is detected on the fly. "
+          "Unsafe mode is used to run the function faster not considering the above ctx usage."
+          "Additional requirement running in this mode: provide correct input alias map.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Allow inputs and outputs to be any kind of tensor.")
       .TypeConstraint(
           "TInt64",
@@ -4096,9 +4105,18 @@ Return true if all elements are true and false otherwise.
           "comment only for debugging purposes.",
           AttributeProto::STRING,
           false)
+      .Attr(
+          "safe_run_mode",
+          "Indicate if the function is running in safe mode or not. "
+          "Safe mode support common use cases of PyTorch ctx for example, save for backward, mark as dirty,"
+          "or materialize gradient. In this mode, inplace operation is detected on the fly. "
+          "Unsafe mode is used to run the function faster not considering the above ctx usage."
+          "Additional requirement running in this mode: provide correct input alias map.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Allow inputs and outputs to be any kind of tensor.")
       .TypeConstraint(
           "TInt64",

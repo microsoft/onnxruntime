@@ -8,7 +8,7 @@
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
-  set(CUDA_INCLUDE_DIRS ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  set(CUDA_INCLUDE_DIRS ${CUDAToolkit_INCLUDE_DIRS})
   set(TENSORRT_ROOT ${onnxruntime_TENSORRT_HOME})
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   set(PROTOBUF_LIBRARY ${PROTOBUF_LIB})
@@ -34,31 +34,97 @@
     MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
   endif()
 
+  find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+    HINTS ${TENSORRT_ROOT}
+    PATH_SUFFIXES include)
+
+
+  file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
+  string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
+  string(REGEX REPLACE "define NV_TENSORRT_MAJOR * +([0-9]+)" "\\1" NV_TENSORRT_MAJOR "${NV_TENSORRT_MAJOR}")
+  string(REGEX MATCH "define NV_TENSORRT_MINOR * +([0-9]+)" NV_TENSORRT_MINOR "${NVINFER_VER_CONTENT}")
+  string(REGEX REPLACE "define NV_TENSORRT_MINOR * +([0-9]+)" "\\1" NV_TENSORRT_MINOR "${NV_TENSORRT_MINOR}")
+  string(REGEX MATCH "define NV_TENSORRT_PATCH * +([0-9]+)" NV_TENSORRT_PATCH "${NVINFER_VER_CONTENT}")
+  string(REGEX REPLACE "define NV_TENSORRT_PATCH * +([0-9]+)" "\\1" NV_TENSORRT_PATCH "${NV_TENSORRT_PATCH}")
+  math(EXPR NV_TENSORRT_MAJOR_INT "${NV_TENSORRT_MAJOR}")
+  math(EXPR NV_TENSORRT_MINOR_INT "${NV_TENSORRT_MINOR}")
+  math(EXPR NV_TENSORRT_PATCH_INT "${NV_TENSORRT_PATCH}")
+
+  if (NV_TENSORRT_MAJOR)
+    MESSAGE(STATUS "NV_TENSORRT_MAJOR is ${NV_TENSORRT_MAJOR}")
+  else()
+    MESSAGE(STATUS "Can't find NV_TENSORRT_MAJOR macro")
+  endif()
+
+  # Check TRT version >= 10.0.1.6
+  if ((NV_TENSORRT_MAJOR_INT GREATER 10) OR
+      (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_MINOR_INT GREATER 0) OR
+      (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_PATCH_INT GREATER 0))
+    set(TRT_GREATER_OR_EQUAL_TRT_10_GA ON)
+  endif()
+
+  # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
+  # for example, nvinfer_10.dll, nvinfer_plugin_10.dll, nvonnxparser_10.dll ...
+  if (WIN32 AND TRT_GREATER_OR_EQUAL_TRT_10_GA)
+    set(NVINFER_LIB "nvinfer_${NV_TENSORRT_MAJOR}")
+    set(NVINFER_PLUGIN_LIB "nvinfer_plugin_${NV_TENSORRT_MAJOR}")
+    set(PARSER_LIB "nvonnxparser_${NV_TENSORRT_MAJOR}")
+  endif()
+
+  if (NOT NVINFER_LIB)
+     set(NVINFER_LIB "nvinfer")
+  endif()
+
+  if (NOT NVINFER_PLUGIN_LIB)
+     set(NVINFER_PLUGIN_LIB "nvinfer_plugin")
+  endif()
+
+  if (NOT PARSER_LIB)
+     set(PARSER_LIB "nvonnxparser")
+  endif()
+
+  MESSAGE(STATUS "Looking for ${NVINFER_LIB} and ${NVINFER_PLUGIN_LIB}")
+
+  find_library(TENSORRT_LIBRARY_INFER ${NVINFER_LIB}
+    HINTS ${TENSORRT_ROOT}
+    PATH_SUFFIXES lib lib64 lib/x64)
+
+  if (NOT TENSORRT_LIBRARY_INFER)
+    MESSAGE(STATUS "Can't find ${NVINFER_LIB}")
+  endif()
+
+  find_library(TENSORRT_LIBRARY_INFER_PLUGIN ${NVINFER_PLUGIN_LIB}
+    HINTS  ${TENSORRT_ROOT}
+    PATH_SUFFIXES lib lib64 lib/x64)
+
+  if (NOT TENSORRT_LIBRARY_INFER_PLUGIN)
+    MESSAGE(STATUS "Can't find ${NVINFER_PLUGIN_LIB}")
+  endif()
+
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
-    # Add TensorRT library
-    find_path(TENSORRT_INCLUDE_DIR NvInfer.h
-      HINTS ${TENSORRT_ROOT}
-      PATH_SUFFIXES include)
-    MESSAGE(STATUS "Found TensorRT headers at ${TENSORRT_INCLUDE_DIR}")
-    find_library(TENSORRT_LIBRARY_INFER nvinfer
-      HINTS ${TENSORRT_ROOT}
-      PATH_SUFFIXES lib lib64 lib/x64)
-    find_library(TENSORRT_LIBRARY_INFER_PLUGIN nvinfer_plugin
+    MESSAGE(STATUS "Looking for ${PARSER_LIB}")
+
+    find_library(TENSORRT_LIBRARY_NVONNXPARSER ${PARSER_LIB}
       HINTS  ${TENSORRT_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
-    find_library(TENSORRT_LIBRARY_NVONNXPARSER nvonnxparser
-      HINTS  ${TENSORRT_ROOT}
-      PATH_SUFFIXES lib lib64 lib/x64)
+
+    if (NOT TENSORRT_LIBRARY_NVONNXPARSER)
+      MESSAGE(STATUS "Can't find ${PARSER_LIB}")
+    endif()
+
     set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
     MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   else()
+    if (TRT_GREATER_OR_EQUAL_TRT_10_GA)
+      set(ONNX_USE_LITE_PROTO ON)
+    endif()
     FetchContent_Declare(
       onnx_tensorrt
       URL ${DEP_URL_onnx_tensorrt}
       URL_HASH SHA1=${DEP_SHA1_onnx_tensorrt}
     )
     if (NOT CUDA_INCLUDE_DIR)
-      set(CUDA_INCLUDE_DIR ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}) # onnx-tensorrt repo needs this variable to build
+      set(CUDA_INCLUDE_DIR ${CUDAToolkit_INCLUDE_DIRS}) # onnx-tensorrt repo needs this variable to build
     endif()
     # The onnx_tensorrt repo contains a test program, getSupportedAPITest, which doesn't support Windows. It uses
     # unistd.h. So we must exclude it from our build. onnxruntime_fetchcontent_makeavailable is for the purpose.
@@ -73,17 +139,22 @@
       unset(PROTOBUF_LIBRARY)
       unset(OLD_CMAKE_CXX_FLAGS)
       unset(OLD_CMAKE_CUDA_FLAGS)
-      set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
+      set_target_properties(${PARSER_LIB} PROPERTIES LINK_FLAGS "/ignore:4199")
       target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
-      target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
+      target_compile_options(${PARSER_LIB} PRIVATE /FIio.h /wd4100)
     endif()
+    # Static libraries are just nvonnxparser_static on all platforms
     set(onnxparser_link_libs nvonnxparser_static)
+    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN})
+    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   endif()
 
   include_directories(${TENSORRT_INCLUDE_DIR})
   # ${TENSORRT_LIBRARY} is empty if we link nvonnxparser_static.
   # nvonnxparser_static is linked against tensorrt libraries in onnx-tensorrt
   # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121
+  # However, starting from TRT 10 GA, nvonnxparser_static doesn't link against tensorrt libraries.
+  # Therefore, the above code finds ${TENSORRT_LIBRARY_INFER} and ${TENSORRT_LIBRARY_INFER_PLUGIN}.
   set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
@@ -102,11 +173,12 @@
   onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface)
   add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
-    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS})
+    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   else()
-    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS})
+    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   endif()
-  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS}
+    PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${onnxruntime_CUDNN_HOME}/include)
   endif()

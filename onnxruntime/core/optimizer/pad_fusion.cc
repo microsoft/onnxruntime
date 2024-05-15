@@ -48,6 +48,11 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
     return false;
   }
 
+  // This pass currently assumed that this attribute already exists on the child node
+  if (child_node.GetAttributes().find("pads") == child_node.GetAttributes().end()) {
+    return false;
+  }
+
   const NodeAttributes& pad_attributes = node.GetAttributes();
   if (pad_attributes.find("mode") != pad_attributes.end() &&
       pad_attributes.at("mode").s() != "constant") {

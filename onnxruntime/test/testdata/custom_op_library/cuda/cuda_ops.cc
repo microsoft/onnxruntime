@@ -28,14 +28,14 @@ void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
                const Ort::Custom::Tensor<float>& X,
                const Ort::Custom::Tensor<float>& Y,
                Ort::Custom::Tensor<float>& Z) {
-  auto input_shape = X.Shape();
   CUSTOM_ENFORCE(cuda_ctx.cuda_stream, "failed to fetch cuda stream");
   CUSTOM_ENFORCE(cuda_ctx.cudnn_handle, "failed to fetch cudnn handle");
   CUSTOM_ENFORCE(cuda_ctx.cublas_handle, "failed to fetch cublas handle");
+  CUSTOM_ENFORCE(cuda_ctx.arena_extend_strategy == 0, "arena_extend_strategy mismatch");
   void* deferred_cpu_mem = cuda_ctx.AllocDeferredCpuMem(sizeof(int32_t));
   CUSTOM_ENFORCE(deferred_cpu_mem, "failed to allocate deferred cpu allocator");
   cuda_ctx.FreeDeferredCpuMem(deferred_cpu_mem);
-  auto z_raw = Z.Allocate(input_shape);
+  auto z_raw = Z.Allocate(X.Shape());
   cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream);
 }
 

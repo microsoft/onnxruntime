@@ -65,11 +65,12 @@ struct BeamHypotheses {
   __device__ bool CanImprove(float best_sum_logprobs, int current_length) const;
 
   // Output results
-  __device__ void Output(int top_k,                 // number of sequences to return
-                         int max_length,            // max sequence length
-                         int pad_token_id,          // pad token
-                         int32_t* sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
-                         float* sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
+  template <typename T>
+  __device__ void Output(int top_k,             // number of sequences to return
+                         int max_length,        // max sequence length
+                         int pad_token_id,      // pad token
+                         int32_t* sequences,    // buffer with pad token, shape (num_return_sequences, max_length)
+                         T* sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
 };
 
 struct BeamScorerState {
@@ -110,6 +111,7 @@ void LaunchBeamSearchScorer_AppendNextTokenToSequences(BeamScorerState& state_cp
                                                        gsl::span<int32_t> next_beam_indices,
                                                        cudaStream_t stream);
 
+template <typename T>
 void LaunchBeamSearchScorer_Finalize(int batch_size,
                                      BeamScorerState& state,
                                      gsl::span<const int32_t> sequences,
@@ -117,8 +119,13 @@ void LaunchBeamSearchScorer_Finalize(int batch_size,
                                      gsl::span<BeamHypotheses> beam_hyps_,
                                      gsl::span<const float> final_beam_scores,
                                      gsl::span<int32_t> output,
-                                     gsl::span<float> sequence_scores,
+                                     gsl::span<T> sequence_scores,
                                      cudaStream_t stream);
+
+template <typename T>
+void LaunchBeamSearchScoreCopy(gsl::span<const float> final_scores,
+                               gsl::span<T> output_scores,
+                               cudaStream_t stream);
 
 void LaunchNextTokenKernel(const int64_t* next_token_indices,
                            int32_t* next_indices,

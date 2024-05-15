@@ -75,7 +75,7 @@ std::function<void(ModelTestBuilder&)> GetGraphBuilder(const GraphConfig& config
 
 void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq_count) {
   auto run_tests = [config, expected_dq_count](bool use_ms_domain_qdq_ops, bool use_16bit_qdq_ops) {
-    constexpr int opset_version = 12;
+    int opset_version = use_16bit_qdq_ops ? 21 : 12;
     const char* dequantize_linear_key = use_ms_domain_qdq_ops ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
     std::function<void(ModelTestBuilder&)> graph_builder_fn = use_16bit_qdq_ops
                                                                   ? GetGraphBuilder<uint16_t>(config, use_ms_domain_qdq_ops)
@@ -122,7 +122,8 @@ void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq
     }
   };
 
-  run_tests(false, false);
+  run_tests(/*use_ms_domain*/ false, /*use_16bit*/ false);
+  run_tests(/*use_ms_domain*/ false, /*use_16bit*/ true);
 #if !defined(DISABLE_CONTRIB_OPS)
   run_tests(true, false);  // Use contrib QDQ ops.
   run_tests(true, true);   // Use 16-bit contrib QDQ ops.
@@ -232,6 +233,46 @@ TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodes) {
   // additionally the last one also provides a graph output
   // based on that there should be 3 new DQ nodes for the internal consumers and 1 new one for the graph output
   EXPECT_EQ(OpCount(op_count_before, "DequantizeLinear") + 4, OpCount(op_count_after, "DequantizeLinear"));
+}
+
+TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodesPreservingAttributes) {
+  constexpr auto model_uri = ORT_TSTR("testdata/qdq_with_multi_consumer_q_dq_axis.onnx");
+
+  SessionOptions session_options{};
+  // test interaction with level 1 transformers
+  session_options.graph_optimization_level = TransformerLevel::Level1;
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session.Load(model_uri));
+
+  const auto op_count_before = CountOpsInGraph(session.GetGraph());
+
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto op_count_after = CountOpsInGraph(session.GetGraph());
+
+  EXPECT_EQ(OpCount(op_count_before, "DequantizeLinear") + 8, OpCount(op_count_after, "DequantizeLinear"));
+
+  int64_t given_axis = 0;  // all the following 4 DQ nodes and their duplicated one should have axis = 0
+  std::string axis_dq_name0 = "Convolution28_Output_0/fusedmuladd_B/DequantizeLinear";
+  std::string axis_dq_name1 = "Parameter5/DequantizeLinear";
+  std::string axis_dq_name2 = "Convolution110_Output_0/fusedmuladd_B/DequantizeLinear";
+  std::string axis_dq_name3 = "Parameter87/DequantizeLinear";
+  for (const auto& node : session.GetGraph().Nodes()) {
+    if (node.OpType() == "DequantizeLinear") {
+      if (node.Name().find(axis_dq_name0) == 0 ||
+          node.Name().find(axis_dq_name1) == 0 ||
+          node.Name().find(axis_dq_name2) == 0 ||
+          node.Name().find(axis_dq_name3) == 0) {
+        const auto& attrs = node.GetAttributes();
+        ASSERT_TRUE(attrs.find("axis") != attrs.end());
+        const auto& axis_attr = attrs.at("axis");
+        int64_t axis = axis_attr.i();
+        EXPECT_EQ(axis, given_axis);
+      }
+    }
+  }
 }
 
 }  // namespace onnxruntime::test

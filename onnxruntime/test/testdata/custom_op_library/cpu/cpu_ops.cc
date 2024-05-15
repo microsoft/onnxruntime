@@ -49,16 +49,45 @@ struct KernelOne {
   }
 };
 
+struct DataI {
+  const float* from = {};
+  float* to = {};
+};
+
+struct DataII {
+  const float* from = {};
+  int32_t* to = {};
+};
+
+// floats to floats
+void CopyI(void* raw_data, size_t ith) {
+  auto data = reinterpret_cast<DataI*>(raw_data);
+  data->to[ith] = data->from[ith];
+}
+
+// floats to int32_t
+void CopyII(void* raw_data, size_t ith) {
+  auto data = reinterpret_cast<DataII*>(raw_data);
+  data->to[ith] = static_cast<int32_t>(round(data->from[ith]));
+}
+
 // lite custom op as a function
-void KernelTwo(const Ort::Custom::Tensor<float>& X,
+void KernelTwo(OrtKernelContext* context,
+               const Ort::Custom::Tensor<float>& X,
                Ort::Custom::Tensor<int32_t>& Y) {
   const auto& shape = X.Shape();
   auto X_raw = X.Data();
   auto Y_raw = Y.Allocate(shape);
+  std::vector<float> floats(static_cast<size_t>(X.NumberOfElement()), 0.f);
+
+  DataI data_i = {X_raw, floats.data()};
   auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
-  for (int64_t i = 0; i < total; i++) {
-    Y_raw[i] = static_cast<int32_t>(round(X_raw[i]));
-  }
+
+  Ort::KernelContext ctx(context);
+  ctx.ParallelFor(CopyI, static_cast<size_t>(total), 0, &data_i);  // test simple parallel for
+
+  DataII data_ii = {floats.data(), Y_raw};
+  ctx.ParallelFor(CopyII, static_cast<size_t>(total), 2, &data_ii);  // test batch parallel for
 }
 
 template <typename T>

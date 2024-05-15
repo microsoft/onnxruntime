@@ -101,6 +101,10 @@ class RocmKernel : public OpKernel {
     return static_cast<tunable::RocmTuningContext*>(provider_->GetTuningContext());
   }
 
+  bool UseTF32() const {
+    return false;
+  }
+
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
   template <typename T>

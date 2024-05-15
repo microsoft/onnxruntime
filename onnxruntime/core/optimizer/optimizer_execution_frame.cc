@@ -128,26 +128,34 @@ static Status TryCreateKernel(const Node& node,
                               const OrtValueNameIdxMap& ort_value_name_idx_map,
                               FuncManager& funcs_mgr,
                               const DataTransferManager& data_transfer_mgr,
+                              const ConfigOptions& config_options,
                               /*out*/ std::unique_ptr<OpKernel>& op_kernel) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelCreateInfo* kernel_create_info = nullptr;
   ORT_RETURN_IF_ERROR(kernel_registry.TryFindKernel(node, execution_provider.Type(), kernel_type_str_resolver,
                                                     &kernel_create_info));
+
+  static const AllocatorMap dummy_allocators;
+
   OpKernelInfo kernel_info(node,
                            *kernel_create_info->kernel_def,
                            execution_provider,
                            constant_initialized_tensors,
                            ort_value_name_idx_map,
-                           data_transfer_mgr);
+                           data_transfer_mgr,
+                           dummy_allocators,
+                           config_options);
+
   return kernel_create_info->kernel_create_func(funcs_mgr, kernel_info, op_kernel);
 }
 
-std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
+std::unique_ptr<const OpKernel>
+OptimizerExecutionFrame::Info::CreateKernel(const Node* node, const ConfigOptions& config_options) const {
   std::unique_ptr<OpKernel> op_kernel;
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
   FuncManager func;
   auto status = TryCreateKernel(*node, *kernel_registry, execution_provider_, initializers_,
-                                ort_value_name_idx_map_, func, data_transfer_mgr_,
+                                ort_value_name_idx_map_, func, data_transfer_mgr_, config_options,
                                 op_kernel);
 
   // Kernel found in the CPU kernel registry

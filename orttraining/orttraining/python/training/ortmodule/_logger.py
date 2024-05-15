@@ -263,13 +263,15 @@ class SuppressLogs:
                 raise RuntimeError("The class of the function to be tracked must have a '_debug_options' attribute.")
 
             with _suppress_os_stream_output(
-                enable=graph_execution_manager._debug_options.log_level >= LogLevel.INFO,
+                enable=graph_execution_manager._debug_options.log_level >= LogLevel.DEVINFO,
                 on_exit=partial(
                     _log_with_filter,
                     graph_execution_manager._logger,
-                    graph_execution_manager._debug_options.onnxruntime_log_filter
-                    if self.is_ort_filter
-                    else graph_execution_manager._debug_options.torch_exporter_filter,
+                    (
+                        graph_execution_manager._debug_options.onnxruntime_log_filter
+                        if self.is_ort_filter
+                        else graph_execution_manager._debug_options.torch_exporter_filter
+                    ),
                     self.phase.to_string(),
                 ),
             ):

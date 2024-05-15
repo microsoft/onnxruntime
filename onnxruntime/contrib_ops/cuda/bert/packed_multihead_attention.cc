@@ -228,6 +228,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   const Tensor* relative_position_bias = context->Input<Tensor>(6);
 
   PackedAttentionParameters parameters;
+  parameters.use_tf32 = UseTF32();
   ORT_RETURN_IF_ERROR(CheckInputs(query->Shape(),
                                   key,
                                   value,
@@ -297,7 +298,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                                    use_flash_attention,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
-  auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   PackedMultiHeadAttentionData<CudaT> data;

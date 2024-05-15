@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"
@@ -10,14 +10,6 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-
-#include "openvino/core/deprecated.hpp"
-#define IN_OV_COMPONENT
-#define NGRAPH_LEGACY_HEADER_INCLUDED
-#include <ngraph/frontend/onnx_import/onnx.hpp>
-
-#undef NGRAPH_LEGACY_HEADER_INCLUDED
-#undef IN_OV_COMPONENT
 
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
@@ -95,20 +87,6 @@ int GetOnnxOpSet(const GraphViewer& graph_viewer) {
   return dm_to_ver.at(kOnnxDomain);
 }
 
-std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int onnx_opset) {
-  std::map<std::string, std::set<std::string>> ng_supported_ops;
-  OPENVINO_SUPPRESS_DEPRECATED_START
-  ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
-
-  const std::set<std::string> ng_disabled_ops = {"LSTM"};  // Place-holder for ops not supported.
-
-  for (const auto& disabled_op : ng_disabled_ops) {
-    ng_supported_ops.at(kOnnxDomain).erase(disabled_op);
-  }
-  OPENVINO_SUPPRESS_DEPRECATED_END
-  return ng_supported_ops;
-}
-
 /**
  * Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.
  * supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph
@@ -180,12 +158,12 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                const std::unordered_set<std::string>& ng_required_initializers,
                                /*out*/ std::vector<std::string>& cluster_graph_inputs,
                                /*out*/ std::vector<std::string>& cluster_inputs,
-                               /*out*/ std::vector<std::string>& constant_inputs,
                                /*out*/ std::vector<std::string>& cluster_outputs) {
   std::unordered_set<std::string> input_args;
   std::vector<std::string> ordered_input_args;
   std::unordered_set<std::string> output_args;
   std::unordered_set<std::string> external_output_args;
+  std::vector<std::string> constant_inputs;
 
   for (const auto& node_idx : cluster) {
     const auto& node = graph_viewer.GetNode(node_idx);

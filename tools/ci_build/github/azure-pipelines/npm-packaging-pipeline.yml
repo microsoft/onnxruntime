@@ -10,10 +10,10 @@ parameters:
   default: 'nightly (@dev)'
 
 variables:
-  # pipeline should define the following varaibles
+  # pipeline should define the following variables
   #   ExtraBuildArgs
   #   VersionSuffix
-
+  ComponentDetection.Timeout: 1800
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
     NpmPackagingMode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
@@ -41,7 +41,7 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
-    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
     PackageName: 'onnxruntime-web'
     ExtraBuildArgs: ''
     UseWebPoolName: true
@@ -54,9 +54,9 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'
-    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
     PackageName: 'onnxruntime-react-native'
-    BuildAndroidAARStageDependsOn: 'Precheck_and_extract_commit'
+    InitialStageDependsOn: 'Precheck_and_extract_commit'
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:
@@ -65,7 +65,7 @@ stages:
   - Build_web_Debug
   jobs:
   - job: Download_Node_Package_And_Publish_Validation_Script
-    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    pool: 'Onnxruntime-Win-CPU-2022'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10

@@ -56,17 +56,8 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
     return Status::OK();
   }
 
-  TensorInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
-
-  std::vector<uint8_t> unpacked_tensor;
-  if (input_info.is_initializer) {
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, unpacked_tensor));
-  }
-
-  Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, input_info.qnn_data_type, input_info.quant_param,
-                                       std::move(input_info.shape), std::move(unpacked_tensor));
+  QnnTensorWrapper input_tensorwrapper;
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input, input_tensorwrapper));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   input_names.push_back(input_name);
 
@@ -129,7 +120,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     TensorInfo output_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[output_i], output_info));
 
-    if (output_info.quant_param.encodingDefinition == QNN_DEFINITION_DEFINED) {
+    if (output_info.quant_param.IsQuantized()) {
       ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
                                                    output_i, output_info.qnn_data_type, output_info.quant_param));
     }
@@ -143,7 +134,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
       QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
                                                 QNN_TENSOR_TYPE_NATIVE,
                                                 supported_qnn_data_type,
-                                                output_info.quant_param,
+                                                output_info.quant_param.Copy(),
                                                 std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
       output_names.push_back(cast_input_name);
@@ -156,12 +147,12 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     QnnTensorWrapper output_tensorwrapper(output_name,
                                           tensor_type,
                                           output_info.qnn_data_type,
-                                          output_info.quant_param,
+                                          std::move(output_info.quant_param),
                                           std::move(output_info.shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   }
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     qnn_op_type,  // Typically GetQnnOpType(), but can be overridden.
                                                     std::move(input_names),
@@ -189,15 +180,15 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
                                                                size_t input_index,
                                                                size_t output_index,
                                                                Qnn_DataType_t qnn_data_type,
-                                                               Qnn_QuantizeParams_t& quant_param) const {
+                                                               QnnQuantParamsWrapper& quant_param) const {
   const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[input_index]);
   ORT_RETURN_IF_NOT(input_tensor_wrapper.GetTensorDataType() == qnn_data_type,
                     "Input and output data types do not match");
-  Qnn_QuantizeParams_t input_quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
+  const QnnQuantParamsWrapper& input_quant_param = input_tensor_wrapper.GetQnnQuantParams();
 
   float scale_diff = 0.0f;
   int32_t offset_diff = 0;
-  ORT_RETURN_IF_ERROR(CompareQnnQuantParams(quant_param, input_quant_param, scale_diff, offset_diff));
+  ORT_RETURN_IF_ERROR(CompareQnnQuantParams(quant_param.Get(), input_quant_param.Get(), scale_diff, offset_diff));
   constexpr float NEARLY_EQUAL_THRESHOLD = 1e-9f;
   constexpr float WARN_THRESHOLD = 1e-6f;
 
@@ -244,7 +235,9 @@ Status BaseOpBuilder::TransposeInitializer(const QnnModelWrapper& qnn_model_wrap
 
   TensorShape new_tensor_shape(new_tensor_shape_dims);
   Tensor out_tensor = Tensor(tensor_dtype, new_tensor_shape, cpu_allocator);
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(Env::Default(), nullptr, initializer, in_tensor));
+  onnxruntime::PathString model_path = qnn_model_wrapper.GetGraphViewer().ModelPath().ToPathString();
+  const ORTCHAR_T* model_path_str = model_path.empty() ? nullptr : model_path.c_str();
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(Env::Default(), model_path_str, initializer, in_tensor));
   ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
   onnx::TensorProto new_tensor_proto = onnxruntime::utils::TensorToTensorProto(out_tensor, "test");
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(new_tensor_proto, transposed_data));
@@ -279,18 +272,6 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrap
   }
 
   return Status::OK();
-}
-
-Qnn_TensorType_t BaseOpBuilder::GetInputTensorType(const QnnModelWrapper& qnn_model_wrapper, const std::string& input_name) const {
-  if (qnn_model_wrapper.IsInitializerInput(input_name)) {
-    return QNN_TENSOR_TYPE_STATIC;
-  } else if (qnn_model_wrapper.IsGraphInput(input_name)) {
-    return QNN_TENSOR_TYPE_APP_WRITE;
-  } else if (qnn_model_wrapper.IsGraphOutput(input_name)) {
-    return QNN_TENSOR_TYPE_APP_READ;
-  } else {
-    return QNN_TENSOR_TYPE_NATIVE;
-  }
 }
 
 Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper, ONNX_NAMESPACE::DataType onnx_tensor_data_type) {

@@ -71,6 +71,12 @@ if(onnxruntime_target_platform STREQUAL "ARM64EC")
     endif()
 endif()
 
+if(onnxruntime_target_platform STREQUAL "ARM64")
+    if (MSVC)
+        add_compile_options("/bigobj")
+    endif()
+endif()
+
 file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
@@ -129,7 +135,7 @@ target_include_directories(onnxruntime_common
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
 
-target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} ${ABSEIL_LIBS})
+target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} ${ABSEIL_LIBS} date::date)
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -189,6 +195,8 @@ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       set(ARM TRUE)
     elseif(dumpmachine_output MATCHES "^aarch64.*")
       set(ARM64 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+      set(RISCV64 TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
       set(X86 TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
@@ -198,11 +206,7 @@ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 endif()
 
 
-if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
-  if((WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC))
-    # msvc compiler report syntax error with cpuinfo arm source files
-    # and cpuinfo does not have code for getting arm uarch info under windows
-  else()
+if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Link cpuinfo if supported
     # Using it mainly in ARM with Android.
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
@@ -210,7 +214,6 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
       onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo ${ONNXRUNTIME_CLOG_TARGET_NAME})
     endif()
-  endif()
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

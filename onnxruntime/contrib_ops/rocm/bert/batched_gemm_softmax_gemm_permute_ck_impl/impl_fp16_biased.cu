@@ -32,6 +32,27 @@ GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
   return instances;
 }
 
+using BiasedNonmaskedCausal = DeviceBatchedGemmSoftmaxGemmPermute<
+    2, 1, 1, 1, 1,
+    F16, F16, F16, F16, ck::Tuple<F16>, ck::Tuple<>,
+    PassThrough, PassThrough, PreSoftmaxAttentionScoreOp, PassThrough, PassThrough,
+    MaskingSpecialization::MaskOutUpperTriangle>;
+
+template <>
+std::vector<std::unique_ptr<BiasedNonmaskedCausal>>
+GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
+    F16, ck::Tuple<F16>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskOutUpperTriangle>() {
+  std::vector<std::unique_ptr<BiasedNonmaskedCausal>> instances;
+  ck::tensor_operation::device::instance::add_device_operation_instances(
+      instances,
+      device_batched_gemm_softmax_gemm_permute_instances<
+          2, 1, 1, 1, 1,
+          F16, ck::Tuple<F16>, F32, PreSoftmaxAttentionScoreOp,
+          MaskingSpecialization::MaskOutUpperTriangle>{});
+
+  return instances;
+}
+
 }  // namespace internal
 }  // namespace rocm
 }  // namespace contrib

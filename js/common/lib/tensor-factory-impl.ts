@@ -110,13 +110,31 @@ export const tensorFromImage = async(
   let data: Uint8ClampedArray|undefined;
   let bufferToTensorOptions: BufferToTensorOptions = options ?? {};
 
+  const createCanvas = () => {
+    if (typeof document !== 'undefined') {
+      return document.createElement('canvas');
+    } else if (typeof OffscreenCanvas !== 'undefined') {
+      return new OffscreenCanvas(1, 1);
+    } else {
+      throw new Error('Canvas is not supported');
+    }
+  };
+  const createCanvasContext = (canvas: HTMLCanvasElement|OffscreenCanvas) => {
+    if (canvas instanceof HTMLCanvasElement) {
+      return canvas.getContext('2d');
+    } else if (canvas instanceof OffscreenCanvas) {
+      return canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    } else {
+      return null;
+    }
+  };
   // filling and checking image configuration options
   if (isHTMLImageEle) {
     // HTMLImageElement - image object - format is RGBA by default
-    const canvas = document.createElement('canvas');
+    const canvas = createCanvas();
     canvas.width = image.width;
     canvas.height = image.height;
-    const pixels2DContext = canvas.getContext('2d');
+    const pixels2DContext = createCanvasContext(canvas);
 
     if (pixels2DContext != null) {
       let height = image.height;
@@ -166,12 +184,12 @@ export const tensorFromImage = async(
     bufferToTensorOptions.width = width;
 
     if (options !== undefined) {
-      const tempCanvas = document.createElement('canvas');
+      const tempCanvas = createCanvas();
 
       tempCanvas.width = width;
       tempCanvas.height = height;
 
-      const pixels2DContext = tempCanvas.getContext('2d');
+      const pixels2DContext = createCanvasContext(tempCanvas);
 
       if (pixels2DContext != null) {
         pixels2DContext.putImageData(image, 0, 0);
@@ -188,10 +206,10 @@ export const tensorFromImage = async(
       throw new Error('Please provide image config with format for Imagebitmap');
     }
 
-    const canvas = document.createElement('canvas');
+    const canvas = createCanvas();
     canvas.width = image.width;
     canvas.height = image.height;
-    const pixels2DContext = canvas.getContext('2d');
+    const pixels2DContext = createCanvasContext(canvas);
 
     if (pixels2DContext != null) {
       const height = image.height;
@@ -206,8 +224,8 @@ export const tensorFromImage = async(
     }
   } else if (isString) {
     return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
+      const canvas = createCanvas();
+      const context = createCanvasContext(canvas);
       if (!image || !context) {
         return reject();
       }

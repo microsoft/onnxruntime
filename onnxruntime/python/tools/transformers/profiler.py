@@ -329,7 +329,7 @@ def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
         calls = node_freq[node_name]
         avg_time = duration / float(calls)
         percentage = (duration / total) * 100.0
-        provider = node_provider[node_name] if node_name in node_provider else ""
+        provider = node_provider.get(node_name, "")
         before_percentage += percentage
         lines.append(
             f"{duration:10d}\t{percentage:5.2f}\t{before_percentage:5.2f}\t{avg_time:8.1f}\t{calls:5d}\t{provider:8s}\t{node_name}"
@@ -347,7 +347,7 @@ def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
         calls = node_freq[node_name]
         avg_time = duration / float(calls)
         percentage = (duration / total) * 100.0
-        provider = node_provider[node_name] if node_name in node_provider else ""
+        provider = node_provider.get(node_name, "")
         lines.append(f"{duration:10d}\t{percentage:5.2f}\t{avg_time:8.1f}\t{calls:5d}\t{provider:8s}\t{node_name}")
 
     return lines
@@ -393,7 +393,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
                     total_fence_time += item["dur"]
                 continue
 
-            provider = item["args"]["provider"] if "provider" in item["args"] else ""
+            provider = item["args"].get("provider", "")
             if provider in provider_counter:
                 provider_counter[provider] += 1
             else:
@@ -425,7 +425,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
     lines.append("-" * 64)
     lines.append("Total(μs)\tTime%\tKernel(μs)\tKernel%\tCalls\tAvgKernel(μs)\tFence(μs)\tOperator")
     for op_name, kernel_time in sorted(op_kernel_time.items(), key=lambda x: x[1], reverse=True):
-        fence_time = op_fence_time[op_name] if op_name in op_fence_time else 0
+        fence_time = op_fence_time.get(op_name, 0)
         kernel_time_ratio = kernel_time / total_kernel_time
         total_time = kernel_time + fence_time
         time_ratio = total_time / (total_kernel_time + total_fence_time)

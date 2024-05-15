@@ -47,8 +47,8 @@ class GRU_Helper:  # noqa: N801
             if "initial_h" in params
             else np.zeros((num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
         )
-        LBR = params["linear_before_reset"] if "linear_before_reset" in params else 0  # noqa: N806
-        self.direction = params["direction"] if "direction" in params else "forward"
+        LBR = params.get("linear_before_reset", 0)  # noqa: N806
+        self.direction = params.get("direction", "forward")
 
         if num_directions == 1:
             if self.direction == "forward":
@@ -84,7 +84,7 @@ class GRU_Helper:  # noqa: N801
             hidden_size = f_output.shape[3]
 
             output = np.empty((0, 2, batch_size, hidden_size), np.float32)
-            for x in range(0, seq_length):
+            for x in range(seq_length):
                 output = np.append(output, f_output[x])
                 output = np.append(output, r_output_orig_input_order[x])
 

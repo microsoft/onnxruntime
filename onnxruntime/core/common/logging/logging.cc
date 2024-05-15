@@ -12,6 +12,8 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#include "core/platform/windows/logging/etw_sink.h"
+#include "core/common/logging/sinks/composite_sink.h"
 #else
 #include <unistd.h>
 #if defined(__MACH__) || defined(__wasm__) || defined(_AIX)
@@ -241,6 +243,37 @@ unsigned int GetProcessId() {
 #else
   return static_cast<unsigned int>(syscall(SYS_getpid));
 #endif
+}
+
+std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity,
+                                            logging::Severity etwSeverity) {
+#ifdef _WIN32
+  auto& manager = EtwRegistrationManager::Instance();
+  if (manager.IsEnabled()) {
+    auto compositeSink = std::make_unique<CompositeSink>();
+    compositeSink->AddSink(std::move(existingLogger), originalSeverity);
+    compositeSink->AddSink(std::make_unique<EtwSink>(), etwSeverity);
+    return compositeSink;
+  } else {
+    return existingLogger;
+  }
+#else
+  // On non-Windows platforms, just return the existing logger
+  (void)originalSeverity;
+  (void)etwSeverity;
+  return existingLogger;
+#endif  // _WIN32
+}
+
+Severity OverrideLevelWithEtw(Severity originalSeverity) {
+#ifdef _WIN32
+  auto& manager = logging::EtwRegistrationManager::Instance();
+  if (manager.IsEnabled() &&
+      (manager.Keyword() & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
+    return manager.MapLevelToSeverity();
+  }
+#endif  // _WIN32
+  return originalSeverity;
 }
 
 }  // namespace logging

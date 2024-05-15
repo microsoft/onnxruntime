@@ -442,13 +442,20 @@ class GraphRef {
     return !unused;
   }
 
+  /// <summary>
+  /// Is the value a graph output.
+  /// </summary>
+  /// <param name="name">Value name.</param>
+  /// <returns>True if output of the Graph.</returns>
+  virtual bool IsGraphOutput(std::string_view name) const = 0;
+
   virtual ~GraphRef(){};
 };
 
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 20;
+constexpr int64_t kMaxSupportedOpset = 21;
 
 // enum of results that a CostCheckFn can return.
 enum class CostCheckResult {

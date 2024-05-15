@@ -23,7 +23,20 @@ const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& nod
   if (!optimizer_utils::CheckOutputEdges(graph_viewer.GetGraph(), node, 1)) {
     return nullptr;
   }
-  return &*node.OutputNodesBegin();
+  const Node* next_node = &*node.OutputNodesBegin();
+  // ensure that the target node also has only one input that is not an initializer
+  const size_t input_edges_total = next_node->GetInputEdgesCount();
+  int non_const_edges = 0;
+  for (size_t edge_idx = 0; edge_idx < input_edges_total; ++edge_idx) {
+    if (!graph_utils::NodeArgIsConstant(graph_viewer.GetGraph(), *next_node->InputDefs()[edge_idx])) {
+      ++non_const_edges;
+    }
+  }
+  if (non_const_edges > 1) {
+    return nullptr;
+  } else {
+    return next_node;
+  }
 }
 
 bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
@@ -111,7 +124,7 @@ class ConvActivationSelector : public NodeSelector {
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
         return std::nullopt;
       }
-    } else if (node_ep.empty() || node_ep == kCpuExecutionProvider) {
+    } else if (node_ep.empty() || node_ep == kCpuExecutionProvider || node_ep == kJsExecutionProvider) {
       if (!is_supported_non_cuda_rocm_ep_activation(*next_node) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6})) {
         return std::nullopt;

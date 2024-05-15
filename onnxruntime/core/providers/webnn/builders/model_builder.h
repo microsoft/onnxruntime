@@ -30,12 +30,13 @@ class ModelBuilder {
 
   // Accessors for members.
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
-  const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
+  InitializedTensorSet GetInitializerTensors();
 
   const emscripten::val& GetBuilder() const { return wnn_builder_; }
   const emscripten::val& GetContext() const { return wnn_context_; }
   const emscripten::val& GetOperand(const std::string& name) const { return wnn_operands_.at(name); }
   void AddOperand(const std::string& name, const emscripten::val& operand);
+  const emscripten::val& GetZeroConstant(const std::string& data_type);
   // Use the buffers to persist WebNN allocated data like transposed weight.
   // It ensures the validity during inference session.
   std::vector<std::unique_ptr<uint8_t[]>> mem_persist_buffers_;
@@ -44,8 +45,7 @@ class ModelBuilder {
       const std::string& name, const void* buffer,
       const size_t size, const std::vector<uint32_t> shape, const int32_t data_type);
   // Find if an output has a fuseable activation (e.g., Relu).
-  emscripten::val FindActivation(const Node& node, const NodeArg& output,
-                                 const InlinedHashSet<std::string> supported_nodes = {});
+  emscripten::val FindActivation(const Node& node, const NodeArg& output);
 
   const InlinedHashSet<std::string>&
   GetFusedActivations() const { return fused_activations_; }
@@ -83,6 +83,8 @@ class ModelBuilder {
   InlinedHashSet<std::string> skipped_inputs_;
 
   InlinedHashSet<std::string> fused_activations_;
+
+  InlinedHashSet<std::string> supported_activation_nodes_;
 
   uint32_t name_token_{0};
   InlinedHashSet<std::string> unique_names_;

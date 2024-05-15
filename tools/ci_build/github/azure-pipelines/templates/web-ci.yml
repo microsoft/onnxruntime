@@ -65,7 +65,6 @@ stages:
       clean: all
     steps:
     - checkout: self
-      fetchDepth: 1
       submodules: false
     - script: |
        git submodule sync -- cmake/external/onnx

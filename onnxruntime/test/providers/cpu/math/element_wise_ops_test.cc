@@ -5,8 +5,11 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/common/dnnl_op_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
+#include "test/common/trt_op_test_utils.h"
 #include "core/util/math.h"
 #include <algorithm>
+#include <limits>
 #include <math.h>
 
 namespace onnxruntime {
@@ -153,7 +156,7 @@ TEST(MathOpTest, Add_float) {
   test.AddInput<float>("B", dims, rhs_values);
   test.AddOutput<float>("C", dims, out_values);
 
-#if defined(OPENVINO_CONFIG_GPU_GP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch for FP16
 #else
@@ -216,7 +219,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
   test.AddInput<float>("A", {3, 1}, lhs_values);
   test.AddInput<float>("B", {3}, rhs_values);
   test.AddOutput<float>("C", {3, 3}, out_values);
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider,
             kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
@@ -242,7 +245,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
   test.AddInput<float>("A", {3}, lhs_values);
   test.AddInput<float>("B", {3, 1}, rhs_values);
   test.AddOutput<float>("C", {3, 3}, out_values);
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider,
             kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
@@ -420,8 +423,8 @@ TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
 
   std::unordered_set<std::string> excluded_providers;
   excluded_providers.insert(kTensorrtExecutionProvider);
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  // OpenVINO GPU: Disabled temporarily due to accuarcy issues
+#if defined(OPENVINO_CONFIG_GPU)
+  // OpenVINO GPU: Disabled temporarily due to accuracy issues
   // OpenVINO VPU: Disabled due to software limitation
   excluded_providers.insert(kOpenVINOExecutionProvider);
 #endif
@@ -723,7 +726,7 @@ TEST(MathOpTest, Ceil) {
   test.AddOutput<float>("Y", dims,
                         {-1.0f, 1.0f,
                          0.0f, 11.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   // OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
   // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
@@ -741,7 +744,7 @@ TEST(MathOpTest, Ceil_double) {
   test.AddOutput<double>("Y", dims,
                          {-1.0, 1.0,
                           0.0, 11.0});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   // OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
   // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
@@ -786,11 +789,18 @@ TEST(MathOpTest, Sqrt_Float) {
   test.Run();
 }
 
-#if defined(USE_DNNL)
+#if defined(USE_DNNL) || defined(USE_CUDA)
 TEST(MathOpTest, Sqrt_bfloat16) {
 #ifdef USE_DNNL
   if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BFP16";
     return;
   }
 #endif
@@ -804,6 +814,9 @@ TEST(MathOpTest, Sqrt_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
 #endif
   test_bf16.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -1182,10 +1195,10 @@ TEST(MathOpTest, Sum_6) {
                          -6.0f, 6.6f, 28.0f,
                          -1.0f, 0.06f, 0.25f});
 
-#if defined(OPENVINO_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1209,10 +1222,10 @@ TEST(MathOpTest, Sum_6_double) {
                           -6.0, 6.6, 28.0,
                           -1.0, 0.06, 0.25});
 
-#if defined(OPENVINO_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1233,7 +1246,7 @@ TEST(MathOpTest, Sum_8_Test1) {
                          311.0f, 312.0f, 313.0f,
                          321.0f, 322.0f, 323.0f,
                          331.0f, 332.0f, 333.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   // OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
   // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
@@ -1259,7 +1272,7 @@ TEST(MathOpTest, Sum_8_Test1_double) {
                           311.0, 312.0, 313.0,
                           321.0, 322.0, 323.0,
                           331.0, 332.0, 333.0});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   // OpenVINO: Disabled due to software limitation for GPU and VPU Plugins.
   // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
@@ -1293,7 +1306,7 @@ TEST(MathOpTest, Sum_8_Test2) {
                          3.3f, 4.4f, -94.7f,
                          59.6f, 64.01f, -8.0f});
 
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   // OpenVINO: Disabled temporarily due to accuracy issues
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 #else
@@ -1327,7 +1340,7 @@ TEST(MathOpTest, Sum_8_Test2_double) {
                           3.3, 4.4, -94.7,
                           59.6, 64.01, -8.0});
 
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   // OpenVINO: Disabled temporarily due to accuracy issues
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 #else
@@ -1359,7 +1372,8 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
   test.AddOutput<element_type>("sum", dims, expected_output_data);
 
-  test.Run();
+  // TRT EP segmentation fault in A100
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(MathOpTest, SumMultipleInputsNoBroadcasting) {
@@ -1438,7 +1452,7 @@ TEST(MathOpTest, Min_6) {
                         {1.0f, 0.0f, 1.0f,
                          -3.0f, 1.1f, -100.0f,
                          -5.4f, 0.01f, -10000.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 }
 
 TEST(MathOpTest, Min_8) {
@@ -1495,6 +1509,34 @@ TEST(MathOpTest, Min_12_Float_2_Input) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
+TEST(MathOpTest, Min_12_Float_Nan) {
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_2", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("min", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -1.0f, -1.0f, -2.0f,
+                         0.5f, 0.0f, 1.0f});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 TEST(MathOpTest, Min_12_Double) {
   OpTester test("Min", 12);
   test.AddInput<double>("data_0", {1, 3},
@@ -1510,6 +1552,34 @@ TEST(MathOpTest, Min_12_Double) {
                           1.0f, 2.0f, 3.0f,
                           -70.0f, -80.0f, -90.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Min_12_Double_Nan) {
+  OpTester test("Min", 12);
+  test.AddInput<double>("data_2", {3, 3},
+                        {std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::quiet_NaN(),
+                         -0.5, 0.0, -2.0,
+                         0.5, 0.0, 2.0});
+  test.AddInput<double>("data_1", {3, 1},
+                        {0.0, -1.0, 1.0});
+  test.AddOutput<double>("min", {3, 3},
+                         {std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          -1.0, -1.0, -2.0,
+                          0.5, 0.0, 1.0});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Min_12_Int32) {
@@ -1618,6 +1688,7 @@ TEST(MathOpTest, Min_12_MLFLoat16_Scalar1) {
                             MakeMLFloat16({-10.f, -10.f, -10.f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
+
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
   std::vector<int64_t> dims{3, 3};
@@ -1637,7 +1708,7 @@ TEST(MathOpTest, Max_6) {
                         {1.0f, 0.0f, 3.0f,
                          -1.0f, 3.3f, 64.0f,
                          5.4f, 0.03f, 10000.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 }
 
 TEST(MathOpTest, Max_8_Float) {
@@ -1706,6 +1777,34 @@ TEST(MathOpTest, Max_12_Float) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
+TEST(MathOpTest, Max_12_Float_Nan) {
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_2", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("max", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -0.5f, 0.0f, -1.0f,
+                         1.0f, 1.0f, 2.0f});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 TEST(MathOpTest, Max_12_Double) {
   OpTester test("Max", 12);
   test.AddInput<double>("data_0", {1, 3},
@@ -1721,6 +1820,34 @@ TEST(MathOpTest, Max_12_Double) {
                           40.0, 50.0, 60.0,
                           300.0, 300.0, 300.0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+}
+
+TEST(MathOpTest, Max_12_Double_Nan) {
+  OpTester test("Max", 12);
+  test.AddInput<double>("data_2", {3, 3},
+                        {std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::quiet_NaN(),
+                         -0.5, 0.0, -2.0,
+                         0.5, 0.0, 2.0});
+  test.AddInput<double>("data_1", {3, 1},
+                        {0.0, -1.0, 1.0});
+  test.AddOutput<double>("max", {3, 3},
+                         {std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          std::numeric_limits<double>::quiet_NaN(),
+                          -0.5, 0.0, -1.0,
+                          1.0, 1.0, 2.0});
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  if (nullptr != DefaultCudaExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 TEST(MathOpTest, Max_12_Int32) {
@@ -2591,8 +2718,7 @@ TEST(MathOpTest, Mean_6) {
                         {1.0f, 0.0f, 2.0f,
                          -2.0f, 2.2f, 10.0f,
                          -3.0f, 0.02f, -4.0f});
-  // OpenVINO: Disabled due to accuracy mismatch
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 }
 
 TEST(MathOpTest, Mean_8) {
@@ -2619,7 +2745,7 @@ TEST(MathOpTest, Mean_8) {
 #endif
 
 template <float (&op)(float value) MATH_NO_EXCEPT>
-void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
+void TrigFloatTest(OpTester& test, std::initializer_list<float> input, float abs_error = -1.0f) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 
   std::vector<float> output;
@@ -2628,6 +2754,11 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input) {
 
   test.AddInput<float>("X", dims, input);
   test.AddOutput<float>("Y", dims, output);
+
+  if (abs_error >= 0.0f) {
+    test.SetOutputTolerance(abs_error);
+  }
+
   test.Run();
 }
 
@@ -2697,6 +2828,7 @@ TEST(MathOpTest, CosFloat16) {
     TrigFloat16Test<::cosf>(test, {1.1f, -1.1f, 2.2f, -2.2f});
   }
 }
+
 TEST(MathOpTest, Tan) {
   OpTester test("Tan");
   TrigFloatTest<::tanf>(test, {-100.0f, -50.0f, 0.0f, 50.0f, 100.0f});
@@ -2704,7 +2836,8 @@ TEST(MathOpTest, Tan) {
 
 TEST(MathOpTest, Asin) {
   OpTester test("Asin");
-  TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+  float abs_error = DefaultDmlExecutionProvider().get() != nullptr ? 0.0001f : -1.0f;
+  TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f}, abs_error);
 }
 
 TEST(MathOpTest, Acos) {

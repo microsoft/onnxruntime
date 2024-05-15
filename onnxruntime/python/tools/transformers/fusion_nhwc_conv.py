@@ -7,7 +7,8 @@ from logging import getLogger
 from typing import List
 
 from fusion_base import Fusion
-from onnx import TensorProto, helper, numpy_helper
+from fusion_utils import FusionUtils
+from onnx import helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -19,6 +20,7 @@ class FusionNhwcConv(Fusion):
     def __init__(self, model: OnnxModel, update_weight=False):
         super().__init__(model, "NhwcConv", ["Conv"], "NhwcConv")
         self.update_weight = update_weight
+        self.fusion_utils = FusionUtils(model)
 
     def create_transpose_node(self, input_name: str, perm: List[int], output_name=None):
         """Append a Transpose node after an input"""
@@ -49,6 +51,15 @@ class FusionNhwcConv(Fusion):
         if len(weight.shape) != 4:
             return
 
+        dtype = self.model.get_dtype(nhwc_conv_input)
+        if not (dtype is not None and weight_tensor.data_type == dtype):
+            cast_node = self.fusion_utils.add_cast_node(
+                input_name=nhwc_conv_input,
+                to_type=weight_tensor.data_type,
+                output_name_to_node=output_name_to_node,
+            )
+            nhwc_conv_input = cast_node.output[0]
+
         if self.update_weight:
             # Transpose weights from NCHW to NHWC
             weight = weight.transpose(0, 2, 3, 1)
@@ -56,7 +67,7 @@ class FusionNhwcConv(Fusion):
             weight_name = node_name + "_weight_NHWC"
             self.add_initializer(
                 name=weight_name,
-                data_type=TensorProto.FLOAT,
+                data_type=weight_tensor.data_type,
                 dims=list(weight.shape),
                 vals=weight,
             )
