@@ -359,9 +359,10 @@ void IterateSubgraphFromNode(Graph& graph,
 }
 }  // namespace
 
-void RemovePrintDensityFlag(Graph& graph, bool& modified, const logging::Logger& logger) {
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+void RemovePrintDensityFlag(Graph& graph,
+                            const std::vector<NodeIndex>& node_topology_list,
+                            bool& modified,
+                            const logging::Logger& logger) {
   for (auto node_index : node_topology_list) {
     Node* node = graph.GetNode(node_index);
     if (node == nullptr) {
@@ -440,7 +441,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   }
 
   if (!print_density_) {
-    RemovePrintDensityFlag(graph, modified, logger);
+    RemovePrintDensityFlag(graph, node_topology_list, modified, logger);
   }
   if (!embedding_node) {
     LOG_DEBUG_INFO(logger, "Exit PaddingElimination optimization for not finding any valid embedding node.");
