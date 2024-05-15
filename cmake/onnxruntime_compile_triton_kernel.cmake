@@ -12,7 +12,7 @@ if(onnxruntime_USE_ROCM)
 endif()
 if(onnxruntime_USE_CUDA)
   set(triton_kernel_scripts
-      "onnxruntime/contrib_ops/cuda/my_triton_softmax.py"
+      "onnxruntime/contrib_ops/cuda/my_triton_kernel.py"
   )
 endif()
 

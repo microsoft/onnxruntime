@@ -1,4 +1,4 @@
-#include "contrib_ops/cuda/my_triton_softmax.h"
+#include "contrib_ops/cuda/my_triton_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -21,7 +21,7 @@ std::string GetTypeAsString<MLFloat16>() {
 
 template <typename T>
 std::string GetSoftmaxTritonFunctionName(int64_t block_size) {
-  std::string ret = "my_triton_softmax_";
+  std::string ret = "my_triton_kernel_";
   ret += GetTypeAsString<T>();
   ret += "_" + std::to_string(block_size);
 
@@ -32,20 +32,20 @@ std::string GetSoftmaxTritonFunctionName(int64_t block_size) {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      MyTritonSoftmax,                                            \
+      MyTritonKernel,                                            \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      MyTritonSoftmax<T>);
+      MyTritonKernel<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16);
 REGISTER_KERNEL_TYPED(float);
 
 template <typename T>
-MyTritonSoftmax<T>::MyTritonSoftmax(const OpKernelInfo& info) : CudaKernel{info} {
+MyTritonKernel<T>::MyTritonKernel(const OpKernelInfo& info) : CudaKernel{info} {
   input_step_size = info.GetAttrOrDefault<int64_t>("input_step_size", int64_t{10});
   output_step_size = info.GetAttrOrDefault<int64_t>("output_step_size", int64_t{10});
   mask_size = info.GetAttrOrDefault<int64_t>("mask_size", int64_t{10});
@@ -54,7 +54,7 @@ MyTritonSoftmax<T>::MyTritonSoftmax(const OpKernelInfo& info) : CudaKernel{info}
 }
 
 template <typename T>
-Status MyTritonSoftmax<T>::ComputeInternal(OpKernelContext* ctx) const {
+Status MyTritonKernel<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
   Tensor* Y = ctx->Output(0, X_shape);

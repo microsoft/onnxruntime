@@ -2815,11 +2815,11 @@ void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MyTritonSoftmax)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MyTritonKernel)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("MyTritonSoftmax")
+      .SetDoc("MyTritonKernel")
       .Attr("input_step_size",
             "The input step size",
             AttributeProto::INT, static_cast<int64_t>(10))

@@ -45,9 +45,9 @@ def softmax_kernel(output_ptr, input_ptr, input_row_stride, output_row_stride, n
 dtypes = ["fp32", "fp16"]
 # blocks = [1024, 2048, 4096, 8192, 16384]
 blocks = [64, 1024, 2048]
-name_pattern = "my_triton_softmax_{}_{}"
+name_pattern = "my_triton_kernel_{}_{}"
 sig_pattern = "*{},*{},i32,i32,i32"
-group_pattern = "my_triton_softmax_{}"
+group_pattern = "my_triton_kernel_{}"
 
 
 def get_function_table():

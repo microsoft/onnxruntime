@@ -9,9 +9,9 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-class MyTritonSoftmax final : public onnxruntime::cuda::CudaKernel {
+class MyTritonKernel final : public onnxruntime::cuda::CudaKernel {
   public:
-    MyTritonSoftmax(const OpKernelInfo& info);
+    MyTritonKernel(const OpKernelInfo& info);
     Status ComputeInternal(OpKernelContext* context) const override;
   private:
     int64_t input_step_size;  // actual row size
