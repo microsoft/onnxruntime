@@ -41,6 +41,6 @@ stages:
         echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
       displayName: 'Set Start Time as Variable'
       name: Set_Build_Time
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
