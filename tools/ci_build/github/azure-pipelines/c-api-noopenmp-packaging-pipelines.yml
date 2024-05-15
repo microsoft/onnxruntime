@@ -224,7 +224,6 @@ stages:
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
 
-
 # ROCm
 - stage: Linux_C_API_Packaging_ROCm_x64
   dependsOn: []
