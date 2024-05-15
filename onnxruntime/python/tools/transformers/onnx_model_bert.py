@@ -21,6 +21,7 @@ from fusion_qordered_attention import FusionQOrderedAttention
 from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
 from fusion_qordered_matmul import FusionQOrderedMatMul
+from fusion_quickgelu import FusionQuickGelu
 from fusion_reshape import FusionReshape
 from fusion_rotary_attention import FusionRotaryEmbeddings
 from fusion_shape import FusionShape
@@ -64,6 +65,8 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionGelu(self)
         fusion.apply()
         fusion = FusionFastGelu(self)
+        fusion.apply()
+        fusion = FusionQuickGelu(self)
         fusion.apply()
         # Only relevant in models with Q-DQ nodes
         fusion = FusionQOrderedGelu(self)
@@ -346,6 +349,8 @@ class BertOnnxModel(OnnxModel):
 
         if (options is None) or options.enable_rotary_embeddings:
             self.fuse_rotary_embeddings()
+
+        # OnnxModel.save(self.model, "temp.onnx", save_as_external_data=True, all_tensors_to_one_file=True)
 
         if options is not None:
             self.attention_mask.set_mask_format(options.attention_mask_format)
