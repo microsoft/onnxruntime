@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class FusionQuickGelu(Fusion):
     def __init__(self, model: OnnxModel):
-        super().__init__(model, "QuickGelu", ["MatMul"])
+        super().__init__(model, "QuickGelu", ["Mul"])
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         # Fuse the following subgraph to `QuickGelu`
@@ -29,24 +29,14 @@ class FusionQuickGelu(Fusion):
         #         \   /                 |
         #          Mul              ----+
         #           |
-        #         MatMul            [node]
-
-        second_mul_node = self.model.match_parent_path(node, ["Mul"], [0])
-        if second_mul_node is None:
+        #       root_output
+        
+        if node.op_type != "Mul":
             logger.debug("fuse_quickgelu: failed to match second Mul node")
             return
-        second_mul_node = second_mul_node[0]
-        
-        root_input = None
-        root_input_1 = self.model.match_parent_path(second_mul_node, ["Add"], [0])
-        root_input_2 = self.model.match_parent_path(second_mul_node, ["MatMul"], [0])
-        if root_input_1 is not None:
-            root_input = root_input_1[0].output[0]
-        elif root_input_2 is not None:
-            root_input = root_input_2[0].output[0]
-        else:
-            logger.debug("fuse_quickgelu: failed to match root input")
-            return
+
+        second_mul_node = node
+        root_input = second_mul_node.input[0]
 
         sigmoid_node = self.model.match_parent_path(second_mul_node, ["Sigmoid"], [1])
         if sigmoid_node is None:
@@ -61,7 +51,7 @@ class FusionQuickGelu(Fusion):
         first_mul_node = first_mul_node[0]
 
         approximation_value = self.model.get_constant_value(first_mul_node.input[1]).item()
-        if approximation_value != 1.7021484375:
+        if abs(approximation_value - 1.7021484375) >= 1e-3:
             logger.debug("fuse_quickgelu: failed to match approximation value")
             return
 
