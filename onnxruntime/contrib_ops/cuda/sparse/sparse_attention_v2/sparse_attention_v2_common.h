@@ -18,6 +18,8 @@ struct SparseAttentionParams {
   const void* k;
   const void* v;
 
+  bool is_q_bnsh;
+
   int batch_size;
   int num_heads;
   int kv_num_heads;
@@ -26,7 +28,7 @@ struct SparseAttentionParams {
   int sequence_length;
   int past_sequence_length;
   int total_sequence_length;
-  int max_sequence_length;
+  int max_cache_sequence_length;
 
   float scale;
 
@@ -70,13 +72,14 @@ struct SparseAttentionParams {
       const void* q,
       const void* k,
       const void* v,
+      bool is_q_bnsh,
       int batch_size,
       int sequence_length,
       int num_heads,
       int kv_num_heads,
       int head_size,
       int total_sequence_length,
-      int max_sequence_length,
+      int max_cache_sequence_length,
       float scale,
       int kernel_block_size,
       const int* layout_csr_row_indices,
@@ -97,6 +100,7 @@ struct SparseAttentionParams {
     this->q = q;
     this->k = k;
     this->v = v;
+    this->is_q_bnsh = is_q_bnsh;
     this->batch_size = batch_size;
     this->sequence_length = sequence_length;
     this->num_heads = num_heads;
@@ -104,7 +108,7 @@ struct SparseAttentionParams {
     this->head_size = head_size;
     this->past_sequence_length = total_sequence_length - sequence_length;
     this->total_sequence_length = total_sequence_length;
-    this->max_sequence_length = max_sequence_length;
+    this->max_cache_sequence_length = max_cache_sequence_length;
     this->scale = scale == 0.0f ? 1.0f / sqrtf(static_cast<float>(head_size)) : scale;
     this->kernel_block_size = kernel_block_size;
     this->layout_csr_row_indices = layout_csr_row_indices;
@@ -113,20 +117,18 @@ struct SparseAttentionParams {
     this->layout_col_stride_h = layout_col_stride_h;
     this->num_layout = num_layout;
 
-    // Q is in BNSH format
+    // Q can be either BNSH or BSNH format
     this->stride_qb = this->num_heads * this->sequence_length * this->head_size;
-    this->stride_qh = this->sequence_length * this->head_size;
+    this->stride_qh = (is_q_bnsh ? this->sequence_length : this->num_heads) * this->head_size;
     this->stride_qt = this->head_size;
 
     // When kv buffer has max sequence length, stride should match max sequence length.
-    int kv_buffer_sequence_length = max_sequence_length;
-
     // KV cache is in BNSH format
-    this->stride_kb = this->kv_num_heads * kv_buffer_sequence_length * this->head_size;
-    this->stride_kh = kv_buffer_sequence_length * this->head_size;
+    this->stride_kb = this->kv_num_heads * max_cache_sequence_length * this->head_size;
+    this->stride_kh = max_cache_sequence_length * this->head_size;
     this->stride_kt = this->head_size;
-    this->stride_vb = this->kv_num_heads * kv_buffer_sequence_length * this->head_size;
-    this->stride_vh = kv_buffer_sequence_length * this->head_size;
+    this->stride_vb = this->kv_num_heads * max_cache_sequence_length * this->head_size;
+    this->stride_vh = max_cache_sequence_length * this->head_size;
     this->stride_vt = this->head_size;
 
     // Output is BSNH format
@@ -167,8 +169,8 @@ struct SparseAttentionParams {
 #if DUMP_TENSOR_LEVEL > 0
     DUMP_TENSOR_INIT();
     DUMP_TENSOR("q", reinterpret_cast<const half*>(q), batch_size, num_heads, sequence_length, head_size);
-    DUMP_TENSOR("k", reinterpret_cast<const half*>(k), batch_size, kv_num_heads, max_sequence_length, head_size);
-    DUMP_TENSOR("v", reinterpret_cast<const half*>(v), batch_size, kv_num_heads, max_sequence_length, head_size);
+    DUMP_TENSOR("k", reinterpret_cast<const half*>(k), batch_size, kv_num_heads, max_cache_sequence_length, head_size);
+    DUMP_TENSOR("v", reinterpret_cast<const half*>(v), batch_size, kv_num_heads, max_cache_sequence_length, head_size);
     DUMP_TENSOR("csr_col_indices",
                 layout_csr_col_indices,
                 num_layout,
@@ -187,13 +189,13 @@ struct SparseAttentionParams {
     DUMP_TENSOR("q_start_sids", q_start_sids, 1, active_q_blocks);
 
     printf(
-        "layout_row_stride_h=%d, layout_col_stride_h=%d, num_layout=%d, scale=%f,\n"
+        "layout_row_stride_h=%d, layout_col_stride_h=%d, num_layout=%d, scale=%f, is_q_bnsh=%d,\n"
         "stride_qb=%d, stride_qt=%d, stride_qh=%d, stride_kb=%d, stride_kt=%d, stride_kh=%d,\n"
         "stride_vb=%d, stride_vt=%d, stride_vh=%d, stride_ob=%d, stride_ot=%d, stride_oh=%d,\n"
         "num_heads=%d, kv_num_heads=%d, total_sequence_length=%d, past_sequence_length=%d\n"
         "output=%p, q=%p, k=%p, v=%p, layout_csr_row_indices=%p, layout_csr_col_indices=%p\n"
         "q_batch_starts=%p, q_batch_ends=%p, k_batch_starts=%p, k_batch_ends=%p, q_batch_ids=%p, q_start_sids=%p active_q_blocks=%d\n",
-        layout_row_stride_h, layout_col_stride_h, num_layout, scale,
+        layout_row_stride_h, layout_col_stride_h, num_layout, scale, static_cast<int>(is_q_bnsh),
         stride_qb, stride_qt, stride_qh, stride_kb, stride_kt, stride_kh,
         stride_vb, stride_vt, stride_vh, stride_ob, stride_ot, stride_oh,
         num_heads, kv_num_heads, total_sequence_length, past_sequence_length,
