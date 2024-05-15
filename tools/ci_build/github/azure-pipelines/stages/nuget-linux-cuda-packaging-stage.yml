@@ -154,7 +154,7 @@ stages:
     condition: succeeded()
     workspace:
       clean: all
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool: 'Onnxruntime-Linux-GPU'
     variables:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
