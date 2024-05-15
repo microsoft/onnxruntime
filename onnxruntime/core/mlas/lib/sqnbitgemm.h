@@ -139,7 +139,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         MLAS_THREADPOOL* ThreadPool
     );
 
-    SQ4BitGemmPackQuantBDataAndSumBlk_Fn* SQ4BitGemmPackQuantBDataAndSumBlk = nullptr;
+    SQ4BitGemmPackQuantBDataAndSumBlk_Fn* SQ4BitGemmPackQuantBDataAndBlkSum = nullptr;
 
     //
     // CompFp32 kernel function prototypes.
@@ -249,7 +249,6 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         const float* QuantAScale,
         const std::byte* QuantBData,
         const float* QuantBScale,
-        const std::byte* QuantBZeroPoint,
         float* C,
         size_t CountM,
         size_t CountN,

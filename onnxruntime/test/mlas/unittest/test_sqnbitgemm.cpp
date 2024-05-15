@@ -213,10 +213,17 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     auto print_matrix = [](size_t nrows, size_t ncols, const float* data) {
       for (size_t row = 0; row < nrows; ++row) {
         for (size_t col = 0; col < ncols; ++col) {
-          std::cout << data[row * ncols + col] << "\t";
+          std::cout << data[row * ncols + col] << ", ";
         }
         std::cout << "\n";
       }
+    };
+
+    auto print_matrix_col = [](size_t nrows, size_t ncols, size_t col, const float* data) {
+      for (size_t row = 0; row < nrows; ++row) {
+        std::cout << data[row * ncols + col] << ", ";
+      }
+      std::cout << "\n";
     };
 
     std::cout << "A:\n";
@@ -384,6 +391,42 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           }
           tests_registered += RegisterSingleTest(43, 500, 401, ComputeType, WithThreadpool, Symmetric, true);
 
+
+          tests_registered += RegisterSingleTest(1, 4, 49, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 8, 49, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 16, 49, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 32, 49, ComputeType, WithThreadpool, Symmetric, true);
+
+          tests_registered += RegisterSingleTest(1, 4, 92, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 92, 32, ComputeType, WithThreadpool, Symmetric, true);
+
+          tests_registered += RegisterSingleTest(1, 92, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 92, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 88, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 88, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 84, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 84, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 80, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 80, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 76, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 76, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 72, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 72, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 8, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 16, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 32, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 64, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 68, 64, ComputeType, WithThreadpool, Symmetric, true);
+
+          tests_registered += RegisterSingleTest(1, 92, 92, ComputeType, WithThreadpool, Symmetric, true);
+
+          tests_registered += RegisterSingleTest(1, 1, 16, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(1, 2, 16, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(1, 2, 16, ComputeType, WithThreadpool, Symmetric, false);
           tests_registered += RegisterSingleTest(1, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
@@ -398,6 +441,9 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 
           for (bool has_bias : {false, true}) {
             tests_registered += RegisterSingleTest(1, 1, 33, ComputeType, WithThreadpool, Symmetric, has_bias);
+
+            tests_registered += RegisterSingleTest(1, 1, 32, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(1, 1, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
 
             tests_registered += RegisterSingleTest(2, 1, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(2, 1, 128, ComputeType, WithThreadpool, Symmetric, has_bias);

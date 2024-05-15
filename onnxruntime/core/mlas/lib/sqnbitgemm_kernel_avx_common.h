@@ -24,7 +24,7 @@ SQ4BitGemmPackQuantBDataSize(
 }
 
 static void
-SQ4BitGemmPackQuantBDataAndSumBlk(
+SQ4BitGemmPackQuantBDataAndBlkSum(
     size_t N,
     size_t K,
     size_t BlkLen,

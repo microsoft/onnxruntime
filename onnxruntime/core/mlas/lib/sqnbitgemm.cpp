@@ -258,12 +258,12 @@ MlasSQNBitGemmPackQuantBData(
                 ThreadPool
             );
             return;
-        } else if (Dispatch->SQ4BitGemmPackQuantBDataAndSumBlk != nullptr) {
+        } else if (Dispatch->SQ4BitGemmPackQuantBDataAndBlkSum != nullptr) {
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
             PackedQuantBDataStruct packed_quant_b(PackedQuantBDataAndOrBlkSum, N, BlockCountK, BlkLen);
             assert(QuantBScale);
             //assert(QuantBZeroPoint);  // QuantBZeroPoint is nullptr if symetric quantization.
-            Dispatch->SQ4BitGemmPackQuantBDataAndSumBlk(
+            Dispatch->SQ4BitGemmPackQuantBDataAndBlkSum(
                 N,
                 K,
                 BlkLen,
@@ -496,13 +496,11 @@ SQ4BitGemm_CompInt8(
 
                 const std::byte* b_col = QuantBData + n * ldb;
                 const float* b_col_scale = QuantBScale + n * k_blks;
-                const std::byte* b_col_zp =
-                    (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
                 const float* b_blk_sum = QuantBBlkSum + n * k_blks;
                 float* c_blk = C + n;
                 const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-                 GetMlasPlatform().GemmFloatKernel(
+                GetMlasPlatform().GemmFloatKernel(
                     ABlockSum, b_blk_sum, c_blk, k_blks, RangeCountM, CountN, k_blks, ldc, 1.f, true
                     );
 
@@ -512,7 +510,6 @@ SQ4BitGemm_CompInt8(
                     QuantAScale,
                     b_col,
                     b_col_scale,
-                    b_col_zp,
                     c_blk,
                     RangeCountM,
                     CountN,
@@ -567,14 +564,12 @@ SQ4BitGemm_CompInt8(
 
             const std::byte* b_col = QuantBData + n * ldb;
             const float* b_col_scale = QuantBScale + n * k_blks;
-            const std::byte* b_col_zp =
-                (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
             const float* b_blk_sum = QuantBBlkSum + n * k_blks;
 
             float* c_blk = C + n;
             const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-            if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndSumBlk) {
+            if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum) {
                 size_t RowsRemaining = RangeCountM;
                 const float* a_blksum_row = ABlockSum;
                 while (RowsRemaining > 0) {
@@ -595,7 +590,6 @@ SQ4BitGemm_CompInt8(
                 QuantAScale,
                 b_col,
                 b_col_scale,
-                b_col_zp,
                 c_blk,
                 RangeCountM,
                 CountN,
