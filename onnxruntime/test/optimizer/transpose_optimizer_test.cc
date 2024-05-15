@@ -4606,6 +4606,56 @@ TEST(TransposeOptimizerTests, QnnTransposeNonConstBroadcastInput) {
     }
   }
 }
+
+// Layout transform's cost function aggressively pushes down transposes with channel-first or channel-last perms.
+// This can lead to a situation where a channel-fist/last Transpose gets stuck after being pushed down an Unsqueeze
+// that makes the Transpose's perm no longer channel-first/last. This breaks the QDQ node units for both the
+// Unsqueeze and the Transpose: DQ -> Unsqueeze -> Transpose -> Q.
+// The transpose optimizer should insert a Q -> DQ pair between the Unsqueeze and Transpose nodes to fix both
+// QDQ node units: DQ -> Unsqueeze -> Q[new] -> DQ[new] -> Transpose -> Q
+TEST(TransposeOptimizerTests, LayoutTransformFixStuckTransposeWithoutDQ) {
+  Status status;
+
+  // Using a sub-model extracted from a model that we tried to run with QNN EP.
+  auto model_uri = ORT_TSTR("testdata/layout_transform_fix_transpose_without_dq.onnx");
+
+  SessionOptions so;
+
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // Set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Transpose"], 2) << "Should have 2 transposes remaining.";
+
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                            << "' was not assigned to the internal testing EP.";
+    // All Transpose nodes should be in QDQ node units.
+    if (node.OpType() == "Transpose") {
+      for (auto cur_input = node.InputNodesBegin(), end = node.InputNodesEnd(); cur_input != end; ++cur_input) {
+        EXPECT_EQ(cur_input->OpType(), "DequantizeLinear");
+      }
+
+      for (auto cur_output = node.OutputNodesBegin(), end = node.OutputNodesEnd(); cur_output != end; ++cur_output) {
+        EXPECT_EQ(cur_output->OpType(), "QuantizeLinear");
+      }
+    }
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 static void CheckSharedInitializerHandling(bool broadcast) {

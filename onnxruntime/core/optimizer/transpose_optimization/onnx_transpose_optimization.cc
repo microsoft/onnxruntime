@@ -98,14 +98,57 @@ static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::
   return graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
 }
 
-// Use to create a QuantizeLinear or DequantizeLinear node. Does not update output ValueInfo. Adds axis if needed.
-static std::unique_ptr<api::NodeRef> MakeQOrDQ(api::GraphRef& graph, std::string_view domain, std::string_view op_type,
-                                               std::vector<std::string_view> inputs,
-                                               std::optional<int64_t> axis) {
-  std::unique_ptr<api::NodeRef> node = graph.AddNode(op_type, inputs, /* num_outputs */ 1, domain);
-  // only set if provided and not the default
-  if (axis && axis != 1) {
-    node->SetAttributeInt("axis", *axis);
+static void SetAttrIfNotDefault(api::NodeRef& node, std::string_view attr_name,
+                                std::optional<int64_t> attr_val, int64_t attr_default_val) {
+  // Only set attributes if provided and not the default
+  if (attr_val && attr_val != attr_default_val) {
+    node.SetAttributeInt(attr_name, *attr_val);
+  }
+}
+
+// Use to create a QuantizeLinear. Does not update output ValueInfo. Adds attributes if needed.
+static std::unique_ptr<api::NodeRef> MakeQuantizeOp(api::GraphRef& graph, std::string_view domain,
+                                                    std::vector<std::string_view> inputs,
+                                                    std::optional<int64_t> axis,
+                                                    std::optional<int64_t> block_size,
+                                                    std::optional<int64_t> output_dtype,
+                                                    std::optional<int64_t> saturate) {
+  std::unique_ptr<api::NodeRef> node = graph.AddNode("QuantizeLinear", inputs, /* num_outputs */ 1, domain);
+
+  SetAttrIfNotDefault(*node, "axis", axis, 1);
+
+  if (auto opset = graph.Opset(domain); opset) {
+    const int64_t req_opset_1 = IsOnnxDomain(domain) ? 19 : 1;
+    const int64_t req_opset_2 = IsOnnxDomain(domain) ? 21 : 1;
+
+    if (*opset >= req_opset_1) {
+      SetAttrIfNotDefault(*node, "saturate", saturate, 1);
+    }
+
+    if (*opset >= req_opset_2) {
+      SetAttrIfNotDefault(*node, "block_size", block_size, 0);
+      SetAttrIfNotDefault(*node, "output_dtype", output_dtype, 0);
+    }
+  }
+
+  return node;
+}
+
+// Use to create a DequantizeLinear. Does not update output ValueInfo. Adds attributes if needed.
+static std::unique_ptr<api::NodeRef> MakeDequantizeOp(api::GraphRef& graph, std::string_view domain,
+                                                      std::vector<std::string_view> inputs,
+                                                      std::optional<int64_t> axis,
+                                                      std::optional<int64_t> block_size) {
+  std::unique_ptr<api::NodeRef> node = graph.AddNode("DequantizeLinear", inputs, /* num_outputs */ 1, domain);
+
+  SetAttrIfNotDefault(*node, "axis", axis, 1);
+
+  if (auto opset = graph.Opset(domain); opset) {
+    const int64_t req_opset = IsOnnxDomain(domain) ? 21 : 1;
+
+    if (*opset >= req_opset) {
+      SetAttrIfNotDefault(*node, "block_size", block_size, 0);
+    }
   }
 
   return node;
@@ -263,6 +306,7 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   auto update_dq_axis = scale_shape && !scale_shape->empty();
   int64_t axis = dq_node.GetAttributeIntDefault("axis", 1);
 
+  // TODO(adrianlizarraga): Also need to update axis if Unsqueeze inserts a 1 before the axis dim.
   if (update_dq_axis && is_transpose) {
     // update axis.
     auto perm = GetPermAttrIfValid(next_node);
@@ -281,7 +325,8 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   }
 
   // Add Q
-  auto new_q_node = MakeQOrDQ(graph, dq_domain, "QuantizeLinear", inputs, axis);
+  auto new_q_node = MakeQuantizeOp(graph, dq_domain, inputs, axis, dq_node.GetAttributeInt("block_size"),
+                                   dq_node.GetAttributeInt("output_dtype"), dq_node.GetAttributeInt("saturate"));
   auto q_node_outputs = new_q_node->Outputs();
 
   // copy value info from the dq input for the type information, and update the shape to match next_node's output
@@ -293,7 +338,7 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   inputs[0] = new_q_node->Outputs()[0];
 
   // Add DQ
-  auto new_dq_node = MakeQOrDQ(graph, dq_domain, "DequantizeLinear", inputs, axis);
+  auto new_dq_node = MakeDequantizeOp(graph, dq_domain, inputs, axis, dq_node.GetAttributeInt("block_size"));
   auto dq_node_outputs = new_dq_node->Outputs();
 
   // straight copy of value info as the type and shape are the same as next_node's output
@@ -304,6 +349,130 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   auto new_next_node_output_name = next_node.Outputs()[0];
   new_q_node->SetInput(0, new_next_node_output_name);
   graph.CopyValueInfo(dq_node_outputs[0], new_next_node_output_name);
+
+  return true;
+}
+
+/// <summary>
+/// Fixes a Transpose QDQ node unit that is missing the DQ at its input.
+/// Inserts a Q -> DQ pair before the sequence Transpose -> Q by using the scale and zp info from the Q node.
+/// Before: prev_node (or graph input) ->                      Transpose -> Q
+/// After:  prev_node (or graph input) -> Q[new] -> DQ[new] -> Transpose -> Q
+/// </summary>
+/// <param name="transpose_node">Transpose node.</param>
+/// <param name="q_node">Q node.</param>
+/// <returns>True if Q -> DQ insertion was successful.</returns>
+static bool FixTransposeMissingDQ(api::GraphRef& graph, api::NodeRef& transpose_node, const api::NodeRef& q_node) {
+  assert(q_node.OpType() == "QuantizeLinear" && transpose_node.OpType() == "Transpose");
+  auto transpose_input_name = transpose_node.Inputs()[0];
+  auto transpose_output_name = transpose_node.Outputs()[0];
+  const auto q_node_inputs = q_node.Inputs();
+
+  if (transpose_output_name != q_node_inputs[0]) {
+    // Transpose and Q nodes are not connected. Should not happen.
+    return false;
+  }
+
+  auto transpose_output_consumers = graph.GetValueConsumers(transpose_output_name);
+  if (!transpose_output_consumers->comprehensive || transpose_output_consumers->nodes.size() != 1) {
+    // Q node should be the only consumer for the Transpose.
+    return false;
+  }
+
+  auto transpose_input_consumers = graph.GetValueConsumers(transpose_input_name);
+  if (transpose_input_consumers->nodes.size() != 1) {
+    // The transpose node should be the only consumer of its own input.
+    return false;
+  }
+
+  if (graph.GetConstant(transpose_input_name) != nullptr) {
+    // Don't handle a constant input to transpose node. This should really be constant folded.
+    return false;
+  }
+
+  const auto q_domain = q_node.Domain();
+  const auto scale_input = q_node_inputs[1];
+  const auto scale_value_info = graph.GetValueInfo(scale_input);
+  std::optional<std::string_view> zp_input;
+  std::optional<std::unique_ptr<api::ValueInfoRef>> zp_value_info;
+
+  auto scale_shape = scale_value_info->Shape();
+  if (!scale_shape) {
+    // axis potentially needs updating due to the transpose but we don't have the required info to do it.
+    return false;
+  }
+
+  if (q_node_inputs.size() > 2) {
+    zp_input = q_node_inputs[2];
+    zp_value_info = graph.GetValueInfo(zp_input.value());
+  }
+
+  // per-axis quantization if not a scalar (shape is empty for scalar).
+  // note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
+  // so we have to check the shape.
+  const bool update_axis = scale_shape && !scale_shape->empty();
+  int64_t axis = q_node.GetAttributeIntDefault("axis", 1);
+
+  if (update_axis) {
+    // update axis.
+    auto perm = GetPermAttrIfValid(transpose_node);
+    assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
+    NormalizeAndValidateAxis(axis, scale_shape->size());
+    axis = (*perm)[gsl::narrow_cast<size_t>(axis)];  // Do not invert permutation.
+  }
+
+  auto transpose_input_shape = graph.GetValueInfo(transpose_input_name)->Shape();
+
+  // Setup Q node inputs.
+  // We don't connect it to the node preceding the Transpose yet as we will move the output of that to the new DQ first.
+  std::vector<std::string_view> inputs = {"", scale_input};
+  if (zp_input) {
+    inputs.push_back(zp_input.value());
+  }
+
+  // Add Q
+  auto new_q_node = MakeQuantizeOp(graph, q_domain, inputs, axis, q_node.GetAttributeInt("block_size"),
+                                   q_node.GetAttributeInt("output_dtype"), q_node.GetAttributeInt("saturate"));
+  auto new_q_node_output = new_q_node->Outputs()[0];
+
+  // copy value info from the q output for the type information, and update the shape to match Transpose's input
+  graph.CopyValueInfo(q_node.Outputs()[0], new_q_node_output);  // Q produces same type as the q_node output
+  auto new_q_node_value_info = graph.GetValueInfo(new_q_node_output);
+  new_q_node_value_info->SetShape(transpose_input_shape ? &*transpose_input_shape : nullptr);
+
+  // update input to connect the DQ to the Q we just added. re-use scale and zp.
+  inputs[0] = new_q_node->Outputs()[0];
+
+  // Add new DQ.
+  auto new_dq_node = MakeDequantizeOp(graph, q_domain, inputs, axis, q_node.GetAttributeInt("block_size"));
+  auto new_dq_node_output = new_dq_node->Outputs()[0];
+  graph.CopyValueInfo(transpose_input_name, new_dq_node_output);
+
+  auto prev_node = graph.GetNodeProducingOutput(transpose_input_name);
+
+  if (prev_node != nullptr) {
+    auto prev_node_outputs = prev_node->Outputs();
+    size_t prev_node_output_idx = 0;
+    for (size_t out_idx = 0; out_idx < prev_node_outputs.size(); ++out_idx) {
+      if (prev_node_outputs[out_idx] == transpose_input_name) {
+        prev_node_output_idx = out_idx;
+        break;
+      }
+    }
+
+    // move prev_node output to the new DQ node, and connect prev_node with the new Q node
+    graph.MoveOutput(*prev_node, prev_node_output_idx, *new_dq_node, 0);
+    std::string_view new_prev_node_output_name = prev_node->Outputs()[prev_node_output_idx];
+    new_q_node->SetInput(0, new_prev_node_output_name);
+    graph.CopyValueInfo(new_dq_node_output, new_prev_node_output_name);
+  } else {
+    // (prev_node == nullptr) means that Transpose consumes a graph input since we already checked
+    // that Transpose does not consume a constant input.
+
+    // Connect graph input -> Q[new] and DQ[new] -> Transpose
+    new_q_node->SetInput(0, transpose_input_name);
+    transpose_node.SetInput(0, new_dq_node_output);
+  }
 
   return true;
 }
@@ -2583,6 +2752,54 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
           changed = true;
         }
       }
+    }
+  }
+
+  // Run reverse 'fix up' pass for QDQ node units.
+  //
+  // Repair broken QDQ node unit from Transpose being blocked on Op inside a QDQ node unit.
+  //   DQ -> Op ->            Transpose -> Q =>
+  //   DQ -> Op -> Q -> DQ -> Transpose -> Q
+  //
+  // Create QDQ node unit for Transpose that consumes a graph input.
+  //   graph input ->            Transpose -> Q
+  //   graph input -> Q -> DQ -> Transpose -> Q
+  graph_nodes = ctx.graph.Nodes();
+  for (size_t i = 1; i < graph_nodes.size(); i++) {
+    api::NodeRef& node = *graph_nodes[graph_nodes.size() - i - 1];
+
+    if (!can_modify_node(node)) {
+      continue;
+    }
+
+    if (node.OpType() != "Transpose") {
+      continue;
+    }
+
+    auto& transpose_node = node;
+
+    // Require a Q as the single consumer of this transpose node's output.
+    std::unique_ptr<api::NodeRef> maybe_q_node;
+    if (!OutputValueHasSingleConsumerNode(ctx.graph, transpose_node, 0, maybe_q_node) ||
+        maybe_q_node->OpType() != "QuantizeLinear") {
+      continue;
+    }
+
+    auto prev_node = ctx.graph.GetNodeProducingOutput(transpose_node.Inputs()[0]);  // nullptr if graph input.
+    const bool has_prev_node = prev_node != nullptr;
+    if (has_prev_node && !can_modify_node(*prev_node)) {
+      // Not allowed to modify node preceding the Transpose.
+      continue;
+    }
+
+    if (has_prev_node && prev_node->OpType() == "DequantizeLinear") {
+      // Transpose is already in a QDQ node unit.
+      continue;
+    }
+
+    // Add Q -> DQ before Transpose -> Q
+    if (FixTransposeMissingDQ(ctx.graph, transpose_node, *maybe_q_node)) {
+      changed = true;
     }
   }
 

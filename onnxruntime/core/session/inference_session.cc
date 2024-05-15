@@ -42,6 +42,7 @@
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
+#include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/optimizer/transformer_memcpy.h"
@@ -1188,19 +1189,52 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       // Previously we ran the L1 transformers to handle constant folding of any initializers that were transposed in
       // a QDQ format model. The transpose optimizer can now look past DQ nodes to directly update initializers which
       // takes care of most models without needing this.
-      //
-      // if (modified) {
-      //  ORT_RETURN_IF_ERROR_SESSIONID_(
-      //      graph_transformer_mgr_.ApplyTransformers(graph_to_transform, TransformerLevel::Level1, *session_logger_));
-      //
-      // debug the graph after the L1 transformers have run against any layout transformation changes.
-      // this is prior to GraphPartitioner::GetCapabilityForEP calling IExecutionProvider::GetCapability the second
-      // time to validate the EP that requested the layout transformation can take all nodes using the new layout.
-      // if that fails, this allows debugging the graph used in that GetCapability call.
-      // if (debug_graph_fn) {
-      //  debug_graph_fn(graph_to_transform);
-      //}
-      //}
+      // However, the transpose optimizer may insert lone Squeeze/Transpose nodes that may need to be made into
+      // proper QDQ node units via the QDQPropagation transformer.
+
+#if 0
+      if (modified) {
+        bool modified_unused = false;
+        const auto& config_options = session_options_.config_options;
+        const bool disable_quant_qdq = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+
+        const auto* cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
+        ORT_RETURN_IF(cpu_ep == nullptr, "Invalid pointer to CPU execution provider.");
+        ConstantFolding const_folding(*cpu_ep, !disable_quant_qdq, config_options);
+        ORT_RETURN_IF_ERROR_SESSIONID_(const_folding.Apply(graph_to_transform, modified_unused, *session_logger_));
+
+        if (!disable_quant_qdq) {
+          QDQPropagationTransformer qdq_propagation_transformer{};
+          ORT_RETURN_IF_ERROR_SESSIONID_(qdq_propagation_transformer.Apply(graph_to_transform, modified_unused,
+                                                                           *session_logger_));
+
+          EnsureUniqueDQForNodeUnit ensure_unique_dq_for_node_unit{};
+          ORT_RETURN_IF_ERROR_SESSIONID_(ensure_unique_dq_for_node_unit.Apply(graph_to_transform, modified_unused,
+                                                                              *session_logger_));
+        }
+
+        // debug the graph after the QDQ transformers have run against any layout transformation changes.
+        // this is prior to GraphPartitioner::GetCapabilityForEP calling IExecutionProvider::GetCapability the second
+        // time to validate the EP that requested the layout transformation can take all nodes using the new layout.
+        // if that fails, this allows debugging the graph used in that GetCapability call.
+        if (debug_graph_fn) {
+          debug_graph_fn(graph_to_transform);
+        }
+      }
+#elif 0
+      if (modified) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(
+            graph_transformer_mgr_.ApplyTransformers(graph_to_transform, TransformerLevel::Level1, *session_logger_));
+
+        // debug the graph after the L1 transformers have run against any layout transformation changes.
+        // this is prior to GraphPartitioner::GetCapabilityForEP calling IExecutionProvider::GetCapability the second
+        // time to validate the EP that requested the layout transformation can take all nodes using the new layout.
+        // if that fails, this allows debugging the graph used in that GetCapability call.
+        if (debug_graph_fn) {
+          debug_graph_fn(graph_to_transform);
+        }
+      }
+#endif
 
       return Status::OK();
     };
