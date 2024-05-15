@@ -47,3 +47,4 @@ stages:
       ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
       PackageJava: ${{ parameters.PackageJava }}
       PackageNodeJS: ${{ parameters.PackageNodeJS }}
+      SkipComponentGovernanceDetection: true
