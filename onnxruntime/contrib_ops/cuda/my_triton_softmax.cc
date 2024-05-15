@@ -6,18 +6,23 @@ namespace cuda {
 
 namespace {
 
-std::string GetSoftmaxTritonFunctionName(int32_t element_type, int64_t block_size) {
-  std::string ret = "my_triton_softmax_";
+template <typename T>
+std::string GetTypeAsString();
 
-  if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    ret += "fp32";
-  }
-  else if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-    ret += "fp16";
-  }
-  else {
-    ret += "unknowntype_" + std::to_string(element_type);
-  }
+template <>
+std::string GetTypeAsString<float>() {
+  return "fp32";
+}
+
+template <>
+std::string GetTypeAsString<MLFloat16>() {
+  return "fp16";
+}
+
+template <typename T>
+std::string GetSoftmaxTritonFunctionName(int64_t block_size) {
+  std::string ret = "my_triton_softmax_";
+  ret += GetTypeAsString<T>();
   ret += "_" + std::to_string(block_size);
 
   return ret;
@@ -25,36 +30,54 @@ std::string GetSoftmaxTritonFunctionName(int32_t element_type, int64_t block_siz
 
 }  // end of namespace
 
-ONNX_OPERATOR_KERNEL_EX(
-  MyTritonSoftmax,
-  kOnnxDomain,
-  1,
-  kCudaExecutionProvider,
-  (*KernelDefBuilder::Create()).TypeConstraint(
-    "T",
-    BuildKernelDefConstraints<float, MLFloat16>()),
-  MyTritonSoftmax);
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      MyTritonSoftmax,                                            \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      MyTritonSoftmax<T>);
 
-Status MyTritonSoftmax::ComputeInternal(OpKernelContext* ctx) const {
+REGISTER_KERNEL_TYPED(MLFloat16);
+REGISTER_KERNEL_TYPED(float);
+
+template <typename T>
+MyTritonSoftmax<T>::MyTritonSoftmax(const OpKernelInfo& info) : CudaKernel{info} {
+  input_step_size = info.GetAttrOrDefault<int64_t>("input_step_size", int64_t{10});
+  output_step_size = info.GetAttrOrDefault<int64_t>("output_step_size", int64_t{10});
+  mask_size = info.GetAttrOrDefault<int64_t>("mask_size", int64_t{10});
+  batch_size = info.GetAttrOrDefault<int64_t>("batch_size", int64_t{10});
+  block_size = info.GetAttrOrDefault<int64_t>("block_size", int64_t{1024});
+}
+
+template <typename T>
+Status MyTritonSoftmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
   Tensor* Y = ctx->Output(0, X_shape);
 
-  const int64_t n_rows = X_shape.GetDims()[0];
-  const int64_t n_cols = X_shape.GetDims()[1];
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  auto Y_data = reinterpret_cast<CudaT*>(Y);
+  auto X_data = reinterpret_cast<const CudaT*>(X);
 
-  int64_t next_power_of_2 = n_cols - 1;
-  next_power_of_2 |= next_power_of_2 >> 1;
-  next_power_of_2 |= next_power_of_2 >> 2;
-  next_power_of_2 |= next_power_of_2 >> 4;
-  next_power_of_2 |= next_power_of_2 >> 8;
-  next_power_of_2 |= next_power_of_2 >> 16;
-  next_power_of_2 |= next_power_of_2 >> 32;
-  next_power_of_2 += 1;
+  // const int64_t N = X_shape.SizeToDimension(0);
+  // const int64_t D = X_shape.SizeFromDimension(0);
 
-  const int64_t block_size = next_power_of_2;
+  // int64_t block_size = D - 1;
+  // block_size |= block_size >> 1;
+  // block_size |= block_size >> 2;
+  // block_size |= block_size >> 4;
+  // block_size |= block_size >> 8;
+  // block_size |= block_size >> 16;
+  // block_size |= block_size >> 32;
+  // block_size += 1;
+  // block_size = block_size >= 1024 ? block_size : 1024;
+  // block_size = block_size <= 16384 ? block_size : 16384;
 
-  std::string function_name = GetSoftmaxTritonFunctionName(X->GetElementType(), block_size);
+  std::string function_name = GetSoftmaxTritonFunctionName<T>(block_size);
 
   // construct args for launch kernel
   struct {
@@ -63,10 +86,22 @@ Status MyTritonSoftmax::ComputeInternal(OpKernelContext* ctx) const {
     int in_stride;
     int out_stride;
     int n_cols;
-  } args = {(void*)Y, (const void*)Y, static_cast<int32_t>(n_cols), static_cast<int32_t>(n_cols), static_cast<int32_t>(n_cols)};
+  } args = {
+    (void*)Y_data,
+    (const void*)X_data,
+    static_cast<int32_t>(input_step_size),
+    static_cast<int32_t>(output_step_size),
+    static_cast<int32_t>(mask_size),
+    // static_cast<int32_t>(D),
+    // static_cast<int32_t>(D),
+    // static_cast<int32_t>(D)
+  };
+
+  cudaStream_t stream = Stream(ctx);
 
   // grid size is (n_rows, 1, 1), meaning the kernel should be called once per row
-  return onnxruntime::cuda::LaunchTritonKernel(Stream(ctx), function_name, n_rows, 1, 1, &args, sizeof(args));
+  // return onnxruntime::cuda::LaunchTritonKernel(stream, function_name, N, 1, 1, &args, sizeof(args));
+  return onnxruntime::cuda::LaunchTritonKernel(stream, function_name, batch_size, 1, 1, &args, sizeof(args));
 }
 
 }  // namespace cuda

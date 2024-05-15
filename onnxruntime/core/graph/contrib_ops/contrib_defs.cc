@@ -2816,10 +2816,25 @@ void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MyTritonSoftmax)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("MyTritonSoftmax")
+      .Attr("input_step_size",
+            "The input step size",
+            AttributeProto::INT, static_cast<int64_t>(10))
+      .Attr("output_step_size",
+            "The output step size",
+            AttributeProto::INT, static_cast<int64_t>(10))
+      .Attr("mask_size",
+            "Size of the mask (length of each row)",
+            AttributeProto::INT, static_cast<int64_t>(10))
+      .Attr("batch_size",
+            "Outer dimension of the tensor (number of rows)",
+            AttributeProto::INT, static_cast<int64_t>(10))
+      .Attr("block_size",
+            "Kernel block size",
+            AttributeProto::INT, static_cast<int64_t>(1024))
       .Input(0, "X", "Input data tensor", "T")
       .Output(0, "Y", "Output data tensor.", "T")
       .TypeConstraint(
@@ -2827,7 +2842,8 @@ void RegisterContribSchemas() {
           {"tensor(float16)", "tensor(float)"},
           "Constrain input X type to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateShapeAndTypeFromFirstInput(ctx);
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateShapeFromInputToOutput(ctx, 0, 0);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
