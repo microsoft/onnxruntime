@@ -60,6 +60,7 @@ QLinearOpsRegistry = {
     "Concat": QLinearConcat,
     "Softmax": QLinearSoftmax,
     "Where": QLinearWhere,
+    "PRelu": QLinearActivation,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 
