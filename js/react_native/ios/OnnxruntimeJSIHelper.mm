@@ -5,11 +5,16 @@
 
 @implementation OnnxruntimeJSIHelper
 
+@synthesize bridge = _bridge;
+
 RCT_EXPORT_MODULE()
 
+- (void)setBridge:(RCTBridge *)bridge {
+  _bridge = bridge;
+}
+
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
-  RCTBridge *bridge = [RCTBridge currentBridge];
-  RCTCxxBridge *cxxBridge = (RCTCxxBridge *)bridge;
+  RCTCxxBridge *cxxBridge = (RCTCxxBridge *)_bridge;
   if (cxxBridge == nil) {
     return @false;
   }
