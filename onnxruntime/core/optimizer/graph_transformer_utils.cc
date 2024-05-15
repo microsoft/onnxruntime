@@ -360,7 +360,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif
 
+#if !defined(ORT_NEURAL_SPEED)
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
+#endif  // !defined(ORT_NEURAL_SPEED)
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
@@ -433,7 +435,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
+#if !defined(ORT_NEURAL_SPEED)
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep, apply_context));
+#endif  // !defined(ORT_NEURAL_SPEED)
 #else   // !defined(DISABLE_CONTRIB_OPS)
       ORT_UNUSED_PARAMETER(apply_context);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
