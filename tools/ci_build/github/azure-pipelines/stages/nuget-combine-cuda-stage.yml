@@ -35,6 +35,12 @@ parameters:
 - name: buildNodejs
   type: boolean
 
+- name: SpecificArtifact
+  type: boolean
+
+- name: BuildId
+  type: string
+
 stages:
 - template: nuget-linux-cuda-packaging-stage.yml
   parameters:

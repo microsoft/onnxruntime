@@ -215,6 +215,8 @@ stages:
       IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
       buildJava: true
       buildNodejs: true
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
 
 
 # ROCm
