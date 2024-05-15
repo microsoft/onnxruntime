@@ -73,9 +73,9 @@ variables:
       value: 10.0.1.6-1.cuda12.4
   - name: win_trt_home
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
+      value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
+      value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-12.4
   - name: win_cuda_home
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: $(Agent.TempDirectory)\v11.8
