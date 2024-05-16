@@ -169,6 +169,7 @@ __device__ __forceinline__ void AccumulateEightElements(uint32_t values_quant, f
 }
 
 constexpr int kColsPerThreadBlock = 8;
+constexpr int kElementsPerThreadPerIteration = 8;
 constexpr int kWarpSize = GPU_WARP_SIZE;
 
 // kernel for 4bits quantized gemv, i.e., computing A(1,K) x B(K, N)
@@ -192,7 +193,7 @@ __global__ void __launch_bounds__(kWarpSize * kColsPerThreadBlock) MatMulFloatIn
   const int lane_id = threadIdx.x;
   const int warp_id = WarpUniform(threadIdx.y);
   const int n_id = n_block_id * kColsPerThreadBlock + warp_id;
-  constexpr int k_per_iter = kWarpSize * kColsPerThreadBlock;
+  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
 
   extern __shared__ char shared_buffer[];
   // load scale to shared buffer
