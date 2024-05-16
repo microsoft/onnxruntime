@@ -2585,6 +2585,130 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph,
   return ctx;
 }
 
+// Returns true if the transpose optimizer is allowed to modify the given node.
+static bool CanModifyNode(OptimizerCtx& ctx, const api::NodeRef& node) {
+  const auto& node_ep = node.GetExecutionProviderType();
+  bool can_modify = false;
+
+  if (node_ep.empty()) {
+    // unassigned nodes can always be modified
+    can_modify = true;
+  } else if (node_ep == ctx.provider_type) {
+    // we can also modify if the EP name in provider_type is not empty and the node is assigned to that EP.
+    can_modify = true;
+  }
+
+  return can_modify;
+}
+
+// Try to constant fold Transpose or Squeeze nodes if their input is a constant.
+// Returns true if the graph was modified (i.e., at least one of the consumers received a constant-folded value).
+static bool TryConstantFoldNode(OptimizerCtx& ctx, api::NodeRef& node) {
+  std::string_view node_op_type = node.OpType();
+  const bool is_transpose = node_op_type == "Transpose";
+  const bool is_squeeze = node_op_type == "Squeeze";
+
+  if (!is_transpose && !is_squeeze) {
+    return false;
+  }
+
+  std::string_view node_input_name = node.Inputs()[0];
+  auto const_input = ctx.graph.GetLocalConstant(node_input_name);
+  if (const_input == nullptr) {
+    // Doesn't have a constant input. Skip.
+    return false;
+  }
+
+  std::string_view node_output_name = node.Outputs()[0];
+  auto consumers = ctx.graph.GetValueConsumers(node_output_name);
+  std::vector<size_t> consumer_indices;
+  consumer_indices.reserve(consumers->nodes.size());
+
+  // Get indices for consumers we can modify.
+  for (size_t c_i = 0; c_i < consumers->nodes.size(); c_i++) {
+    if (CanModifyNode(ctx, *(consumers->nodes[c_i]))) {
+      consumer_indices.push_back(c_i);
+    }
+  }
+
+  if (consumer_indices.empty()) {
+    // No consumers we can modify. Skip.
+    return false;
+  }
+
+  std::string_view new_initializer_name;
+
+  // Create new folded initializer. Once we create this new initializer, we're committed to modifying the graph.
+  if (is_transpose) {
+    std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(node);
+    if (perm == std::nullopt) {
+      // Invalid transpose perm attribute. Should not happen. Skip.
+      return false;
+    }
+
+    new_initializer_name = ctx.graph.AddInitializer(const_input->DType(),
+                                                    const_input->Shape(),
+                                                    const_input->Data());
+    ctx.graph.TransposeInitializer(new_initializer_name, *perm);
+  } else {
+    assert(is_squeeze);
+    std::optional<std::vector<int64_t>> squeeze_axes = ReadFromAttrOrInput(ctx, node, "axes", /*inp_index*/ 1,
+                                                                           /*opset*/ 13);
+    if (squeeze_axes == std::nullopt) {
+      // Invalid Squeeze axes value. Should not happen. Skip.
+      return false;
+    }
+
+    auto squeezed_shape = SqueezeShape(const_input->Shape(), *squeeze_axes);
+    new_initializer_name = ctx.graph.AddInitializer(const_input->DType(),
+                                                    const_input->Shape(),
+                                                    const_input->Data());
+    ctx.graph.ReshapeInitializer(new_initializer_name, squeezed_shape);
+  }
+
+  // Iterate through consumers and replace their input(s) with the new initializer.
+  for (auto consumer_idx : consumer_indices) {
+    auto& consumer = consumers->nodes[consumer_idx];
+    std::vector<std::string_view> inputs = consumer->Inputs();
+
+    for (size_t input_idx = 0; input_idx < inputs.size(); input_idx++) {
+      if (inputs[input_idx] == node_output_name) {
+        consumer->SetInput(input_idx, new_initializer_name);
+      }
+    }
+  }
+
+  // Remove original node if we processed all of its consumers.
+  // This should always happen if we're allowed to modify all consumer nodes.
+  const bool node_has_consumers = ctx.graph.HasValueConsumers(node_output_name);
+  assert((consumer_indices.size() < consumers->nodes.size()) || !node_has_consumers);
+  if (!node_has_consumers) {
+    ctx.graph.RemoveNode(node);
+  }
+
+  // Remove old initializer if no longer used.
+  // Will not happen if this initializer was unsqueezed/transposed in-place for another consumer.
+  // Will happen if this initializer is a result of a previous constant-folding operation.
+  //
+  // Example: shared_const --+--> Transpose --> Squeeze --> Op0
+  //                         |
+  //                         +--> Op1
+  //
+  // The first call to TryConstantFoldNode(transpose) does not remove shared_const because it is used by 'Op1'.
+  // However, the graph becomes:
+  //   transposed_const --> Squeeze --> Op0 -->
+  //   shared_const --> Op1 -->
+  //
+  // The subsequent call to TryConstantFoldNode(squeeze) removes transposed_const from the graph, and we end up with:
+  //   transposed_squeezed_const --> Op0
+  //   shared_const --> Op1
+  if (!ctx.graph.HasValueConsumers(node_input_name)) {
+    ctx.graph.RemoveInitializer(node_input_name);
+  }
+
+  return true;
+}
+
 // Performs optimization. General algorithm: iterate over nodes in topological order. If a node has a transpose
 // as input, push it through if the transpose cost does not increase and is likely to decrease.
 OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
@@ -2655,20 +2779,6 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   //    Existing nodes assigned to the CPU EP can be modified.
   //    New nodes can be created and are directly assigned to the CPU EP by setting onnxruntime::ApiGraph::new_node_ep_
   //
-  const auto can_modify_node = [&ctx](const api::NodeRef& node) {
-    const auto& node_ep = node.GetExecutionProviderType();
-    bool can_modify = false;
-
-    if (node_ep.empty()) {
-      // unassigned nodes can always be modified
-      can_modify = true;
-    } else if (node_ep == ctx.provider_type) {
-      // we can also modify if the EP name in provider_type is not empty and the node is assigned to that EP.
-      can_modify = true;
-    }
-
-    return can_modify;
-  };
 
   // Optimize graph. Nodes will be modified during iteration, but nodes are never deleted before we reach them.
   // New transpose nodes are inserted, but always as an input to an existing node.
@@ -2678,7 +2788,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       have_dq = true;
     }
 
-    if (!can_modify_node(node)) {
+    if (!CanModifyNode(ctx, node)) {
       continue;
     }
 
@@ -2706,104 +2816,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
     return result;
   }
 
-  // Run constant-folding for Transpose and Squeeze ops.
-  auto graph_nodes = ctx.graph.Nodes();
-  for (size_t i = 1; i < graph_nodes.size(); i++) {
-    auto& node = *graph_nodes[i];
-
-    if (!can_modify_node(node)) {
-      continue;
-    }
-
-    std::string_view node_op_type = node.OpType();
-    const bool is_transpose = node_op_type == "Transpose";
-    const bool is_squeeze = node_op_type == "Squeeze";
-
-    if (is_transpose || is_squeeze) {
-      std::string_view node_input_name = node.Inputs()[0];
-      auto const_input = ctx.graph.GetLocalConstant(node_input_name);
-      if (const_input == nullptr) {
-        // Doesn't have a constant input. Skip.
-        continue;
-      }
-
-      std::string_view node_output_name = node.Outputs()[0];
-      auto consumers = ctx.graph.GetValueConsumers(node_output_name);
-      std::vector<size_t> consumer_indices;
-      consumer_indices.reserve(consumers->nodes.size());
-
-      // Get indices for consumers we can modify.
-      for (size_t c_i = 0; c_i < consumers->nodes.size(); c_i++) {
-        if (can_modify_node(*(consumers->nodes[c_i]))) {
-          consumer_indices.push_back(c_i);
-        }
-      }
-
-      if (consumer_indices.empty()) {
-        // No consumers we can modify. Skip.
-        continue;
-      }
-
-      std::string_view new_initializer_name;
-
-      // Create new folded initializer.
-      if (is_transpose) {
-        std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(node);
-        if (perm == std::nullopt) {
-          // Invalid transpose perm attribute. Should not happen. Skip.
-          continue;
-        }
-
-        // We will now modify the graph.
-        changed = true;
-        new_initializer_name = ctx.graph.AddInitializer(const_input->DType(),
-                                                        const_input->Shape(),
-                                                        const_input->Data());
-        ctx.graph.TransposeInitializer(new_initializer_name, *perm);
-      } else {
-        assert(is_squeeze);
-        std::optional<std::vector<int64_t>> squeeze_axes = ReadFromAttrOrInput(ctx, node, "axes", /*inp_index*/ 1,
-                                                                               /*opset*/ 13);
-        if (squeeze_axes == std::nullopt) {
-          // Invalid Squeeze axes value. Should not happen. Skip.
-          continue;
-        }
-
-        auto squeezed_shape = SqueezeShape(const_input->Shape(), *squeeze_axes);
-
-        // We will now modify the graph.
-        changed = true;
-        new_initializer_name = ctx.graph.AddInitializer(const_input->DType(),
-                                                        const_input->Shape(),
-                                                        const_input->Data());
-        ctx.graph.ReshapeInitializer(new_initializer_name, squeezed_shape);
-      }
-
-      // Iterate through consumers and replace their input(s) with the new initializer.
-      for (auto consumer_idx : consumer_indices) {
-        auto& consumer = consumers->nodes[consumer_idx];
-        std::vector<std::string_view> inputs = consumer->Inputs();
-
-        for (size_t input_idx = 0; input_idx < inputs.size(); input_idx++) {
-          if (inputs[input_idx] == node_output_name) {
-            consumer->SetInput(input_idx, new_initializer_name);
-          }
-        }
-      }
-
-      // Remove original node if we processed all of its consumers.
-      if (!ctx.graph.HasValueConsumers(node_output_name)) {
-        ctx.graph.RemoveNode(node);
-      }
-
-      // Remove old initializer if no longer used.
-      if (!ctx.graph.HasValueConsumers(node_input_name)) {
-        ctx.graph.RemoveInitializer(node_input_name);
-      }
-    }
-  }
-
-  // Run 'fix up' pass for QDQ node units.
+  // Run basic constant-folding and 'fix up' pass for QDQ node units.
   //
   // Repair broken QDQ node unit from Transpose being blocked on Op inside a QDQ node unit.
   //   DQ -> Transpose ->            Op -> Q =>
@@ -2817,11 +2830,17 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   //   DQ -> Q -> consumer node =>
   //              consumer node
 
-  graph_nodes = ctx.graph.Nodes();
+  auto graph_nodes = ctx.graph.Nodes();
   for (size_t i = 1; i < graph_nodes.size(); i++) {
     auto& node = *graph_nodes[i];
 
-    if (!can_modify_node(node)) {
+    if (!CanModifyNode(ctx, node)) {
+      continue;
+    }
+
+    // Run constant-folding for Transpose and Squeeze ops.
+    if (TryConstantFoldNode(ctx, node)) {
+      changed = true;
       continue;
     }
 
@@ -2907,7 +2926,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   for (size_t i = 1; i < graph_nodes.size(); i++) {
     api::NodeRef& node = *graph_nodes[graph_nodes.size() - i - 1];
 
-    if (!can_modify_node(node)) {
+    if (!CanModifyNode(ctx, node)) {
       continue;
     }
 
@@ -2926,7 +2945,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
 
     auto prev_node = ctx.graph.GetNodeProducingOutput(transpose_node.Inputs()[0]);  // nullptr if graph input.
     const bool has_prev_node = prev_node != nullptr;
-    if (has_prev_node && !can_modify_node(*prev_node)) {
+    if (has_prev_node && !CanModifyNode(ctx, *prev_node)) {
       // Not allowed to modify node preceding the Transpose.
       continue;
     }
