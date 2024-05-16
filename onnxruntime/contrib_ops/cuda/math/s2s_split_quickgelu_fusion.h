@@ -15,7 +15,7 @@ namespace cuda {
 
 class S2SModelSplitQuickGelu final : public CudaKernel {
   public:
-    S2SModelSplitQuickGelu(const OpKernelInfo& info) : CudaKernel{info} {}
+    S2SModelSplitQuickGelu(const OpKernelInfo& info) : CudaKernel(info) {}
 
     Status ComputeInternal(OpKernelContext* context) const override;
 
