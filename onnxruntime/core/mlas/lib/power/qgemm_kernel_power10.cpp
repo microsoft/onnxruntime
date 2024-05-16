@@ -873,46 +873,73 @@ MlasQgemmStoreVectorMMA
     int pos
     )
 {
-    __vector int *rowC;
-    __vector signed int vsum = {0};
+    size_t RowCount;
+    __vector signed int vsum0, vsum1, vsum2, vsum3;
+    __vector signed int columnsum = *reinterpret_cast<const __vector int32_t *>(&ColumnSumBuffer[pos]);
+    C += VectorCount;
     if (ZeroPointB != nullptr) {
+        __vector signed int zeropoint = *reinterpret_cast<const __vector int32_t *>(&ZeroPointB[pos]);
         if (ZeroMode) {
-            for (size_t RowCount = 0;RowCount < row; RowCount++){
-                vsum[0] = RowSumBuffer[RowCount] * ZeroPointB[pos] + ColumnSumBuffer[pos];
-                vsum[1] = RowSumBuffer[RowCount] * ZeroPointB[pos+1] + ColumnSumBuffer[pos+1];
-                vsum[2] = RowSumBuffer[RowCount] * ZeroPointB[pos+2] + ColumnSumBuffer[pos+2];
-                vsum[3] = RowSumBuffer[RowCount] * ZeroPointB[pos+3] + ColumnSumBuffer[pos+3];
-                rowC = reinterpret_cast<__vector int *>(&C[ldc * RowCount + VectorCount]);
-                rowC[0] = *reinterpret_cast<__vector int *>(&result[RowCount]) + vsum;
+            for (RowCount = 0; RowCount + 4 <= row; RowCount += 4, C += ldc*4) {
+                vsum0 = vec_splats(RowSumBuffer[RowCount + 0]) * zeropoint + columnsum;
+                vsum1 = vec_splats(RowSumBuffer[RowCount + 1]) * zeropoint + columnsum;
+                vsum2 = vec_splats(RowSumBuffer[RowCount + 2]) * zeropoint + columnsum;
+                vsum3 = vec_splats(RowSumBuffer[RowCount + 3]) * zeropoint + columnsum;
+                *reinterpret_cast<__vector int *>(&C[0]) = *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[ldc]) = *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
+                *reinterpret_cast<__vector int *>(&C[ldc*2]) = *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
+                *reinterpret_cast<__vector int *>(&C[ldc*3]) = *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
+            }
+            for (; RowCount < row; RowCount++, C += ldc) {
+                vsum0 = vec_splats(RowSumBuffer[RowCount]) * zeropoint + columnsum;
+                *reinterpret_cast<__vector int *>(&C[0]) = *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
             }
         } else {
-            for (size_t RowCount = 0;RowCount < row; RowCount++){
-                vsum[0] = RowSumBuffer[RowCount] * ZeroPointB[pos] + ColumnSumBuffer[pos];
-                vsum[1] = RowSumBuffer[RowCount] * ZeroPointB[pos+1] + ColumnSumBuffer[pos+1];
-                vsum[2] = RowSumBuffer[RowCount] * ZeroPointB[pos+2] + ColumnSumBuffer[pos+2];
-                vsum[3] = RowSumBuffer[RowCount] * ZeroPointB[pos+3] + ColumnSumBuffer[pos+3];
-                rowC = reinterpret_cast<__vector int *>(&C[ldc * RowCount + VectorCount]);
-                rowC[0] += *reinterpret_cast<__vector int *>(&result[RowCount]) + vsum;
+            for (RowCount = 0; RowCount + 4 <= row; RowCount += 4, C += ldc*4) {
+                vsum0 = vec_splats(RowSumBuffer[RowCount + 0]) * zeropoint + columnsum;
+                vsum1 = vec_splats(RowSumBuffer[RowCount + 1]) * zeropoint + columnsum;
+                vsum2 = vec_splats(RowSumBuffer[RowCount + 2]) * zeropoint + columnsum;
+                vsum3 = vec_splats(RowSumBuffer[RowCount + 3]) * zeropoint + columnsum;
+                *reinterpret_cast<__vector int *>(&C[0]) += *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[ldc]) += *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
+                *reinterpret_cast<__vector int *>(&C[ldc*2]) += *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
+                *reinterpret_cast<__vector int *>(&C[ldc*3]) += *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
+            }
+            for (; RowCount < row; RowCount++, C += ldc) {
+                vsum0 = vec_splats(RowSumBuffer[RowCount]) * zeropoint + columnsum;
+                *reinterpret_cast<__vector int *>(&C[0]) += *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
             }
         }
     } else {
         if (ZeroMode) {
-            for (size_t RowCount = 0;RowCount < row; RowCount++){
-                vsum[0] = RowSumBuffer[RowCount] + ColumnSumBuffer[pos];
-                vsum[1] = RowSumBuffer[RowCount] + ColumnSumBuffer[pos+1];
-                vsum[2] = RowSumBuffer[RowCount] + ColumnSumBuffer[pos+2];
-                vsum[3] = RowSumBuffer[RowCount] + ColumnSumBuffer[pos+3];
-                rowC = reinterpret_cast<__vector int *>(&C[ldc * RowCount + VectorCount]);
-                rowC[0] = *reinterpret_cast<__vector int *>(&result[RowCount]) + vsum;
+            for (RowCount = 0; RowCount + 4 <= row; RowCount += 4, C += ldc*4) {
+                vsum0 = vec_splats(RowSumBuffer[RowCount + 0]) + columnsum;
+                vsum1 = vec_splats(RowSumBuffer[RowCount + 1]) + columnsum;
+                vsum2 = vec_splats(RowSumBuffer[RowCount + 2]) + columnsum;
+                vsum3 = vec_splats(RowSumBuffer[RowCount + 3]) + columnsum;
+                *reinterpret_cast<__vector int *>(&C[0]) = *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[ldc]) = *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
+                *reinterpret_cast<__vector int *>(&C[ldc*2]) = *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
+                *reinterpret_cast<__vector int *>(&C[ldc*3]) = *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
+            }
+            for (; RowCount < row; RowCount++, C += ldc) {
+                vsum0 = vec_splats(RowSumBuffer[RowCount]) + columnsum;
+                *reinterpret_cast<__vector int *>(&C[0]) = *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
             }
         } else {
-            for (size_t RowCount = 0;RowCount < row; RowCount++){
-                vsum[0] = RowSumBuffer[RowCount] + ColumnSumBuffer[pos];
-                vsum[1] = RowSumBuffer[RowCount] + ColumnSumBuffer[pos+1];
-                vsum[2] = RowSumBuffer[RowCount] + ColumnSumBuffer[pos+2];
-                vsum[3] = RowSumBuffer[RowCount] + ColumnSumBuffer[pos+3];
-                rowC = reinterpret_cast<__vector int *>(&C[ldc * RowCount + VectorCount]);
-                rowC[0] += *reinterpret_cast<__vector int *>(&result[RowCount]) + vsum;
+            for (RowCount = 0; RowCount + 4 <= row; RowCount += 4, C += ldc*4) {
+                vsum0 = vec_splats(RowSumBuffer[RowCount + 0]) + columnsum;
+                vsum1 = vec_splats(RowSumBuffer[RowCount + 1]) + columnsum;
+                vsum2 = vec_splats(RowSumBuffer[RowCount + 2]) + columnsum;
+                vsum3 = vec_splats(RowSumBuffer[RowCount + 3]) + columnsum;
+                *reinterpret_cast<__vector int *>(&C[0]) += *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[ldc]) += *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
+                *reinterpret_cast<__vector int *>(&C[ldc*2]) += *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
+                *reinterpret_cast<__vector int *>(&C[ldc*3]) += *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
+            }
+            for (; RowCount < row; RowCount++, C += ldc) {
+                vsum0 = vec_splats(RowSumBuffer[RowCount]) + columnsum;
+                *reinterpret_cast<__vector int *>(&C[0]) += *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
             }
         }
     }
