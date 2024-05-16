@@ -224,8 +224,7 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain) {
-  std::vector<ONNX_NAMESPACE::OperatorSetVersion> versions_vec(versions);
-  return IsSupportedOptypeVersionAndDomain(node, op_type, versions_vec, domain);
+  return IsSupportedOptypeVersionAndDomain(node, op_type, gsl::span{versions.begin(), versions.size()}, domain);
 }
 
 bool IsSupportedOptypeVersionAndDomain(const Node& node, std::string_view op_type,
@@ -428,18 +427,18 @@ void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edg
   }
 }
 
+bool IsSupportedProvider(const Node& node,
+                         const InlinedHashSet<std::string_view>& compatible_providers) {
+  return !(!compatible_providers.empty() &&
+           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
   return GetIndexFromName(node, input_name, true);
-}
-
-bool IsSupportedProvider(const Node& node,
-                         const InlinedHashSet<std::string_view>& compatible_providers) {
-  return !(!compatible_providers.empty() &&
-           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
 }
 
 /** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.
