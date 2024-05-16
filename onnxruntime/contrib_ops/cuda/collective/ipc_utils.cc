@@ -21,6 +21,8 @@
 
 namespace ort_trtllm {
 
+#if defined(USE_MPI) || defined(USE_NCCL)
+
 using namespace onnxruntime;
 
 Status SetPeerAccess(int rank, int world_size, bool enable) {
@@ -147,5 +149,7 @@ IPCMemoryResourcePack& GlobalIPCMemoryResourcePack::GetIPCMemoryResourcePack() {
   static IPCMemoryResourcePack g_ipc_mem_res_pack;
   return g_ipc_mem_res_pack;
 }
+
+#endif
 
 }  // namespace ort_trtllm

@@ -25,6 +25,8 @@
 
 namespace ort_trtllm {
 
+#if defined(USE_MPI) || defined(USE_NCCL)
+
 // Calculates ceil(a / b). User must be careful to ensure that there
 // is no overflow or underflow in the calculation.
 template <typename T>
@@ -591,5 +593,7 @@ AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, 
 
   return strategy;
 }
+
+#endif
 
 }  // namespace ort_trtllm
