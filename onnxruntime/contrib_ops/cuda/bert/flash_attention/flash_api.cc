@@ -31,6 +31,7 @@ void set_params_fprop(Flash_fwd_params& params,
                       void* out,
                       void* cu_seqlens_q_d,
                       void* cu_seqlens_k_d,
+                      void* seqused_k,
                       void* p_d,
                       void* softmax_lse_d,
                       float softmax_scale,
@@ -82,6 +83,7 @@ void set_params_fprop(Flash_fwd_params& params,
 
   params.cu_seqlens_q = static_cast<int*>(cu_seqlens_q_d);
   params.cu_seqlens_k = static_cast<int*>(cu_seqlens_k_d);
+  params.seqused_k = static_cast<int*>(seqused_k);
 
   // P = softmax(QK^T)
   params.p_ptr = p_d;
@@ -226,6 +228,19 @@ std::tuple<int, int, int> get_num_splits_and_buffer_sizes(int batch_size, int se
   }
 }
 
+// void set_params_alibi(Flash_fwd_params &params, void* alibi_slopes, int batch_size, int num_heads){
+//     if (alibi_slopes != nullptr) {
+//         // TORCH_CHECK(alibi_slopes.dtype() == torch::kFloat32, "ALiBi slopes must have dtype fp32");
+//         // CHECK_DEVICE(alibi_slopes);
+//         // TORCH_CHECK(alibi_slopes.stride(-1) == 1, "ALiBi slopes tensor must have contiguous last dimension");
+//         // TORCH_CHECK(alibi_slopes.sizes() == torch::IntArrayRef({num_heads}) || alibi_slopes.sizes() == torch::IntArrayRef({batch_size, num_heads}));
+//         params.alibi_slopes_ptr = alibi_slopes;
+//         params.alibi_slopes_batch_stride = alibi_slopes.dim() == 2 ? num_heads : 0; // TODO: flag for bool
+//     } else {
+//         params.alibi_slopes_ptr = nullptr;
+//     }
+// }
+
 Status mha_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
                void* q,            // batch_size x seqlen_q x num_heads x head_size
@@ -262,6 +277,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    q, k, v, out,
                    /*cu_seqlens_q*/ nullptr,
                    /*cu_seqlens_k*/ nullptr,
+                   /*seqused_k=*/ nullptr,
                    nullptr,
                    softmax_lse,
                    softmax_scale,
@@ -301,6 +317,8 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       void* out,          // half (total_q, num_heads, head_size)
                       int* cu_seqlens_q,  // int (batch_size + 1)
                       int* cu_seqlens_k,  // int (batch_size + 1)
+                      void* seqused_k,    // batch_size; If given, only this many elements of each batch element's keys are used.
+                      void* block_table,  // batch_size x max_num_blocks_per_seq
                       void* softmax_lse,  // float (batch_size, num_heads, max_seqlen_q)
                       int batch_size,
                       int num_heads,
@@ -315,6 +333,14 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(max_seqlen_q, 128);
   const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
+
+  const bool paged_KV = block_table_.has_value();
+  if (paged_KV) {
+    block_table = block_table_.value();
+    CHECK_DEVICE(block_table);
+    TORCH_CHECK(block_table.dtype() == torch::kInt32, "block_table must have dtype torch.int32");
+    TORCH_CHECK(block_table.stride(-1) == 1, "block_table must have contiguous last dimension");
+  }
 
   Flash_fwd_params params;
   set_params_fprop(params,
