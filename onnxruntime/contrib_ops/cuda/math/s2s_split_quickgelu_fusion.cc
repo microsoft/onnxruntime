@@ -9,6 +9,8 @@
 using namespace onnxruntime;
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::cuda;
+using namespace onnxruntime::common;
+
 
 namespace onnxruntime {
 namespace contrib {

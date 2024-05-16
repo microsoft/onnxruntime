@@ -7,14 +7,13 @@
 
 using namespace onnxruntime::cuda;
 
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 // S2SModelSplitQuickGelu
 
-class S2SModelSplitQuickGelu final : public onnxruntime::cuda::CudaKernel {
+class S2SModelSplitQuickGelu final : public CudaKernel {
   public:
     S2SModelSplitQuickGelu(const OpKernelInfo& info) : CudaKernel{info} {}
 
