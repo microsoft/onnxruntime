@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 enum class SkipReason {
-  Uint16QDQ,
+  Int16QDQ,
   DuplicateDQ,
   ConstInitUnsupportedDQ,
   SandwichedDQ,
@@ -24,6 +24,9 @@ enum class SkipReason {
 };
 
 constexpr std::string_view DuplicateDQ = "/duplicated";
+
+constexpr ONNX_NAMESPACE::TensorProto_DataType DT_UINT16 = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
+constexpr ONNX_NAMESPACE::TensorProto_DataType DT_INT16 = ONNX_NAMESPACE::TensorProto_DataType_INT16;
 
 // Return the data type of the qdq node.
 // Check output type of Q and input type of DQ to determine it as zero_point is an optional input and may not exist
@@ -50,10 +53,21 @@ static NodeArg& ProcessNodeUnitIO(onnxruntime::Graph& dst_graph,
 
   // Handle quantized input or output. Convert to float type.
   if (io_def.quant_param.has_value()) {
-    // Copy the original quantized type proto, but update the type to float.
+    // Copy the original quantized type proto, but update the type to be the type of scale param.
+    const auto& src_initializers = src_graph.GetAllInitializedTensors();
+    const std::string& scale_initializer_name = io_def.quant_param->scale.Name();
+    auto tensor_proto_iter = src_initializers.find(scale_initializer_name);
+
+    ORT_ENFORCE(tensor_proto_iter != src_initializers.end(),
+                "Unable to find scale initializer ", scale_initializer_name);
+
+    const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = tensor_proto_iter->second;
+    int32_t float_type = scale_tensor_proto->data_type();
+
+    // Noe set the arg type to the float type of scale. Could be one of float/float16/bfloat16
     std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = ONNX_NAMESPACE::TypeProto::Create();
     type_proto->copy_from(orig_type_proto);
-    type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type_proto->mutable_tensor_type()->set_elem_type(float_type);
 
     if (src_graph.GetAllInitializedTensors().count(name)) {
       initializers_to_keep.insert({name});
@@ -289,8 +303,8 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
   }
 
   // #3 If UInt16 DQ, don't keep it
-  if (GetQDQDataType(dq_node) == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
-    reason = SkipReason::Uint16QDQ;
+  if (GetQDQDataType(dq_node) == DT_UINT16 || GetQDQDataType(dq_node) == DT_INT16) {
+    reason = SkipReason::Int16QDQ;
     return false;
   }
 
@@ -331,8 +345,8 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
   auto op_type = node_unit.OpType();
 
   // If UInt16 Q, don't keep it
-  if (GetQDQDataType(q_node) == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
-    reason = SkipReason::Uint16QDQ;
+  if (GetQDQDataType(q_node) == DT_UINT16 || GetQDQDataType(q_node) == DT_INT16) {
+    reason = SkipReason::Int16QDQ;
     return false;
   }
 
@@ -360,8 +374,8 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
   bool edges_exist = node_unit_input_edge_count && node_unit_output_edge_count;
 
   // Detect a conversion between quantized types (e.g., int16 to int8)
-  // in mixed-precision QDQ models. The pattern a standalone DQ followed by a standalone Q:
-  // Ex: DQ(int16 to float) -> QuantizeLinear(float to int8) ->
+  // in mixed-precision QDQ models. The pattern a standalone DQ followed by a standalone Q
+  // Keep this standalone Q in the converting pair if it's not int8->int16
   if (node_unit.OpType() == "QuantizeLinear" && edges_exist) {
     const Node& q_node = node_unit.GetNode();
     const Node& i_dq_node = *q_node.InputNodesBegin();
@@ -371,7 +385,7 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
       auto q_zero_point_dt = GetQDQDataType(&q_node);
 
       // Can ignore if this Q is uint16 as it won't be consumed by any supported node
-      if (q_zero_point_dt != ONNX_NAMESPACE::TensorProto_DataType_UINT16 &&
+      if (q_zero_point_dt != DT_UINT16 && q_zero_point_dt != DT_INT16 &&
           !IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(&q_node)) {
         // if it's unequal, then it's a conversion between quantized types.
         AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
@@ -380,9 +394,7 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
     }
   }
 
-  // Keep int8 DQ/Qs in int16 -> int8
-  // Don't keep any QDQs in int8 -> int16
-  // Beginning of a converting QDQ pair. Check if previous Q is int8 and the following Q has a converting zp
+  // Keep this standalone DQ in the converting pair if it's not int16->int8
   if (node_unit.OpType() == "DequantizeLinear" && edges_exist) {
     const Node& dq_node = node_unit.GetNode();
     const Node& i_q_node = *dq_node.InputNodesBegin();
@@ -391,7 +403,7 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
     if (i_q_node.OpType() == "QuantizeLinear" && o_q_node.OpType() == "QuantizeLinear") {
       auto dq_zero_point_dt = GetQDQDataType(&dq_node);
 
-      if (dq_zero_point_dt != ONNX_NAMESPACE::TensorProto_DataType_UINT16 &&
+      if (dq_zero_point_dt != DT_UINT16 && dq_zero_point_dt != DT_INT16 &&
           IsConnectedQPresent(src_graph, dst_graph.Nodes(), &dq_node, dq_node.InputDefs()) &&
           !IsQDQSandwichedBetweenSoftmaxAndConvMatMulOps(&dq_node)) {
         AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
@@ -415,7 +427,8 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
 
     // Case to handle standalone duplicate DQs. Just redirect this arg to the original DQ instead and change the
     // arg type to FLOAT as we're replacing it with Identity
-    if (duplicate_dq && GetQDQDataType(&node_unit.GetNode()) != ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+    if (duplicate_dq &&
+        GetQDQDataType(&node_unit.GetNode()) != DT_UINT16 && GetQDQDataType(&node_unit.GetNode()) != DT_INT16) {
       std::string orig_dq_name = node_unit.Outputs()[0].node_arg.Name();  // ex: dql_output/duplicated
       std::unique_ptr<ONNX_NAMESPACE::TypeProto> type_proto = ONNX_NAMESPACE::TypeProto::Create();
       type_proto->copy_from(node_unit.Inputs()[0].node_arg.TypeAsProto());
