@@ -45,7 +45,8 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   TensorShape output_shape(output_dims);
   auto* output_tensor = context->Output(0, output_shape);
 
-  utils::MLTypeCallDispatcher<MLFloat16, float, double, BFloat16> dispatcher{input_tensor->GetElementType()};
+  // utils::MLTypeCallDispatcher<MLFloat16, float, double, BFloat16> dispatcher{input_tensor->GetElementType()};
+  utils::MLTypeCallDispatcher<MLFloat16, float, BFloat16> dispatcher{input_tensor->GetElementType()};
   dispatcher.Invoke<KernelLaunchDispatcher>(Stream(context), num_outputs, *input_tensor, *output_tensor);
 
   // auto input_data = input_tensor->DataRaw();
