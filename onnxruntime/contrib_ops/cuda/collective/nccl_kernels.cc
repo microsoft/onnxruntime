@@ -452,7 +452,7 @@ Status FuncCustomAllReduce(
       world_size,
       rank,
       ++ipc_mem_res_pack.counter);
-      
+
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   params.local_output_buffer_ptr = output_data;

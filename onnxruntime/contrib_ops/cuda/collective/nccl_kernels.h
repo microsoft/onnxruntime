@@ -4,8 +4,11 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+
+#if defined(ORT_USE_NCCL) || defined(ORT_USE_MPI)
 #include "custom_reduce_impl.h"
 #include "ipc_utils.h"
+#endif
 
 #if defined(ORT_USE_NCCL)
 #include <algorithm>

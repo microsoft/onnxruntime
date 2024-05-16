@@ -67,6 +67,7 @@ Status IpcMemory::AllocateIpcMemory() {
   MPI_CHECK(MPI_Allgather(local_handle.reserved, CUDA_IPC_HANDLE_SIZE, MPI_BYTE, serial_handles.data(),
                           CUDA_IPC_HANDLE_SIZE, MPI_BYTE, MPI_COMM_WORLD));
 #else
+  // TODO: Implement this for NCCL.
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please compile ORT with USE_MPI.");
 #endif
 

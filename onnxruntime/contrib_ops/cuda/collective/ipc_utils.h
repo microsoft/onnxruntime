@@ -23,6 +23,8 @@
 
 namespace ort_trtllm {
 
+#if defined(USE_MPI) || defined(USE_NCCL)
+
 Status SetPeerAccess(int rank, int world_size, bool enable = true);
 
 class IpcMemory {
@@ -61,5 +63,7 @@ class GlobalIPCMemoryResourcePack {
  public:
   IPCMemoryResourcePack& GetIPCMemoryResourcePack();
 };
+
+#endif
 
 }  // namespace ort_trtllm

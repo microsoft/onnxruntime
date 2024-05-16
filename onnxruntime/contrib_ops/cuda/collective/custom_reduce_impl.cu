@@ -140,6 +140,10 @@ __inline__ __device__ void block_barrier(uint32_t** signals, uint32_t const flag
   __syncthreads();
 }
 
+#if defined(_MSC_VER)
+#pragma diag_suppress 177
+#endif
+
 template <typename T, int RANKS_PER_NODE, bool COPY_INPUT = true, bool PUSH_MODE = false>
 static __global__ void oneShotAllReduceKernel(AllReduceParams params) {
   // Suppose that two GPUs participate in the AR exchange, and we start four blocks.
@@ -387,6 +391,10 @@ static __global__ void twoShotAllReduceKernel(AllReduceParams params) {
   }
 }
 
+#if defined(_MSC_VER)
+#pragma diag_default 177
+#endif
+
 bool ConfigurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t world_size,
                             onnxruntime::MLDataType type) {
   size_t elts_per_thread = 16 / type->Size();
@@ -488,20 +496,20 @@ void AllReduceDispatchRanksPerNode(AllReduceStrategyType algo, AllReduceStrategy
 }
 
 template <typename T>
-void AllReduceDispatchType(AllReduceParams& param, AllReduceStrategyType strat, AllReduceStrategyConfig config,
+void AllReduceDispatchType(AllReduceParams& param, AllReduceStrategyType strategy, AllReduceStrategyConfig config,
                            cudaStream_t stream) {
   switch (param.ranks_per_node) {
     case 2:
-      AllReduceDispatchRanksPerNode<T, 2>(strat, config, param, stream);
+      AllReduceDispatchRanksPerNode<T, 2>(strategy, config, param, stream);
       break;
     case 4:
-      AllReduceDispatchRanksPerNode<T, 4>(strat, config, param, stream);
+      AllReduceDispatchRanksPerNode<T, 4>(strategy, config, param, stream);
       break;
     case 6:
-      AllReduceDispatchRanksPerNode<T, 6>(strat, config, param, stream);
+      AllReduceDispatchRanksPerNode<T, 6>(strategy, config, param, stream);
       break;
     case 8:
-      AllReduceDispatchRanksPerNode<T, 8>(strat, config, param, stream);
+      AllReduceDispatchRanksPerNode<T, 8>(strategy, config, param, stream);
       break;
     default:
       ORT_THROW("Custom all reduce only supported on {2, 4, 6, 8} GPUs per node.");
@@ -529,14 +537,14 @@ AllReduceParams AllReduceParams::deserialize(int32_t const* buffer, size_t tp_si
   return params;
 }
 
-void CustomAllReduce(AllReduceParams& params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
+void CustomAllReduce(AllReduceParams& params, onnxruntime::MLDataType data_type, AllReduceStrategyType strategy,
                      AllReduceStrategyConfig config, cudaStream_t stream) {
-  ORT_ENFORCE(ConfigurationSupported(strat, params.elts_total, params.ranks_per_node, data_type),
+  ORT_ENFORCE(ConfigurationSupported(strategy, params.elts_total, params.ranks_per_node, data_type),
               "Custom all-reduce configuration unsupported");
   if (data_type == onnxruntime::DataTypeImpl::GetType<float>()) {
-    AllReduceDispatchType<float>(params, strat, config, stream);
+    AllReduceDispatchType<float>(params, strategy, config, stream);
   } else if (data_type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
-    AllReduceDispatchType<half>(params, strat, config, stream);
+    AllReduceDispatchType<half>(params, strategy, config, stream);
   } else {
     ORT_THROW("Unsupported data type for CustomAllReduce");
   }
@@ -550,10 +558,10 @@ size_t GetMaxRequiredWorkspaceSize(int world_size) {
 }
 
 AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, onnxruntime::MLDataType type) {
-  AllReduceStrategyType strat = AllReduceStrategyType::NCCL;
+  AllReduceStrategyType strategy = AllReduceStrategyType::NCCL;
   if (type != onnxruntime::DataTypeImpl::GetType<float>() &&
       type != onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
-    return strat;
+    return strategy;
   }
 
   const size_t maxWorkspaceSize = GetMaxRequiredWorkspaceSize(world_size);
@@ -561,27 +569,27 @@ AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, 
 
   if (message_size_bytes <= maxWorkspaceSize) {
     if (world_size <= 2) {
-      strat = AllReduceStrategyType::ONESHOT;
+      strategy = AllReduceStrategyType::ONESHOT;
     } else if (world_size <= 4) {
       if (message_size_bytes < 1 * 1000 * 1000) {
-        strat = AllReduceStrategyType::ONESHOT;
+        strategy = AllReduceStrategyType::ONESHOT;
       } else {
-        strat = AllReduceStrategyType::TWOSHOT;
+        strategy = AllReduceStrategyType::TWOSHOT;
       }
     } else {
       if (message_size_bytes < 500 * 1000) {
-        strat = AllReduceStrategyType::ONESHOT;
+        strategy = AllReduceStrategyType::ONESHOT;
       } else {
-        strat = AllReduceStrategyType::TWOSHOT;
+        strategy = AllReduceStrategyType::TWOSHOT;
       }
     }
   }
 
-  if (!ConfigurationSupported(strat, message_size, world_size, type)) {
-    strat = AllReduceStrategyType::NCCL;
+  if (!ConfigurationSupported(strategy, message_size, world_size, type)) {
+    strategy = AllReduceStrategyType::NCCL;
   }
 
-  return strat;
+  return strategy;
 }
 
 }  // namespace ort_trtllm

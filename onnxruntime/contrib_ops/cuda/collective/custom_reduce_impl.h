@@ -23,6 +23,8 @@
 
 namespace ort_trtllm {
 
+#if defined(USE_MPI) || defined(USE_NCCL)
+
 constexpr size_t WARP_SIZE = 32;
 constexpr size_t MAX_ALL_REDUCE_BLOCKS = 24;
 constexpr size_t MAX_RANKS_PER_NODE = 8;
@@ -67,5 +69,7 @@ void CustomAllReduce(AllReduceParams& params, onnxruntime::MLDataType data_type,
 size_t GetMaxRequiredWorkspaceSize(int world_size);
 
 AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, onnxruntime::MLDataType type);
+
+#endif
 
 }  // namespace ort_trtllm
