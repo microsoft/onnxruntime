@@ -20,7 +20,6 @@ class DataReader(CalibrationDataReader):
         self.data_list = []
 
         # Generate 10 random float32 inputs
-        # TODO: Load valid calibration input data for your model
         for _ in range(10):
             input_data = {inp.name: np.random.random(inp.shape).astype(np.float32) for inp in inputs}
             self.data_list.append(input_data)
@@ -37,6 +36,11 @@ class DataReader(CalibrationDataReader):
 
 
 if __name__ == "__main__":
+    """
+    Creates a QDQ model with a shared initializer.
+    The transpose optimizer will generate a (weight -> Transpose -> Squeeze) sequence that can be constant folded
+    by the tranpose optimizer itself.
+    """
     shape = (1, 3, 3, 3)
 
     input0 = onnx.helper.make_tensor_value_info("input0", onnx.TensorProto.FLOAT, shape)
@@ -66,7 +70,7 @@ if __name__ == "__main__":
 
     graph = onnx.helper.make_graph(
         [transpose_node, mul0_node, mul1_node, conv_node],
-        "layout_transform_const_fold_inserted_squeezes",
+        "layout_transform_const_folding",
         [input0, input1],
         [output0, output1],
         initializer=[const_1_weight, conv_weight],
@@ -85,7 +89,7 @@ if __name__ == "__main__":
     onnx.save_model(f32_model, f32_model_path)
 
     # Quantize model
-    qdq_model_path = "layout_transform_const_fold_inserted_squeezes.onnx"
+    qdq_model_path = "layout_transform_const_folding.onnx"
     print("[INFO]: Creating QDQ model")
     quantize_static(
         f32_model_path,

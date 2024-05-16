@@ -4674,11 +4674,11 @@ TEST(TransposeOptimizerTests, LayoutTransformConstantFoldTransposeAndSqueeze) {
   // The test model has a shared initializer that is unsqueezed and transposed in-place for one consumer.
   // The other consumer gets a Transpose -> Squeeze sequence inserted before its input.
   // This Transpose -> Squeeze sequence should get constant-folded.
-  auto model_uri = ORT_TSTR("testdata/layout_transform_const_fold_inserted_squeezes.onnx");
+  auto model_uri = ORT_TSTR("testdata/layout_transform_const_folding.onnx");
 
   SessionOptions so;
 
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
 
   using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
 
