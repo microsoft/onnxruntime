@@ -31,41 +31,41 @@ constexpr size_t DEFAULT_BLOCK_SIZE = 1024;
 // Warning: python definition is in tensorrt_llm/functional.py
 // they must be kept in sync
 enum class AllReduceStrategyType : int8_t {
-    NCCL = 0,
-    ONESHOT = 1,
-    TWOSHOT = 2,
-    AUTO = 3,
+  NCCL = 0,
+  ONESHOT = 1,
+  TWOSHOT = 2,
+  AUTO = 3,
 };
 
 enum class AllReduceStrategyConfig : int8_t {
-    USE_MEMCPY = 1 << 0,
-    PUSH_MODE = 1 << 1,
+  USE_MEMCPY = 1 << 0,
+  PUSH_MODE = 1 << 1,
 };
 
 struct AllReduceParams {
-    size_t elts_total;
-    size_t elts_per_rank;
-    size_t elts_per_block;
-    size_t rank_offset;
-    size_t ranks_per_node, rank, local_rank;
-    uint32_t barrier_flag;
-    uint32_t *peer_barrier_ptrs_in[MAX_RANKS_PER_NODE];
-    uint32_t *peer_barrier_ptrs_out[MAX_RANKS_PER_NODE];
-    void *peer_comm_buffer_ptrs[MAX_RANKS_PER_NODE];
-    void *local_output_buffer_ptr;
-    void const *local_input_buffer_ptr;
+  size_t elts_total;
+  size_t elts_per_rank;
+  size_t elts_per_block;
+  size_t rank_offset;
+  size_t ranks_per_node, rank, local_rank;
+  uint32_t barrier_flag;
+  uint32_t* peer_barrier_ptrs_in[MAX_RANKS_PER_NODE];
+  uint32_t* peer_barrier_ptrs_out[MAX_RANKS_PER_NODE];
+  void* peer_comm_buffer_ptrs[MAX_RANKS_PER_NODE];
+  void* local_output_buffer_ptr;
+  void const* local_input_buffer_ptr;
 
-    static AllReduceParams deserialize(int32_t const *buffer, size_t tp_size, size_t tp_rank);
+  static AllReduceParams deserialize(int32_t const* buffer, size_t tp_size, size_t tp_rank, uint32_t flag);
 };
 
 bool ConfigurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t world_size,
                             onnxruntime::MLDataType type);
 
-void CustomAllReduce(AllReduceParams &params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
+void CustomAllReduce(AllReduceParams& params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
                      AllReduceStrategyConfig config, cudaStream_t stream);
 
 size_t GetMaxRequiredWorkspaceSize(int world_size);
 
 AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, onnxruntime::MLDataType type);
 
-} // namespace ort_trtllm
+}  // namespace ort_trtllm

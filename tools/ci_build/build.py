@@ -14,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.executable = "/wy/miniconda3/envs/phi2/bin/python"
 
 def version_to_tuple(version: str) -> tuple:
     v = []

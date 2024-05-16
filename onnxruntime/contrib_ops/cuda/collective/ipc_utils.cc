@@ -137,14 +137,6 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
     }
   }
 
-  ////////////////////////////////
-  std::cout << "allocation ipc memory with input_size: " << input_size << " ";
-  for (size_t j = 0; j < m_comm_ptrs.size(); j++) {
-    std::cout << m_comm_ptrs[j] << " ";
-  }
-  std::cout << std::endl;
-  ///////////////////////////////
-
   ipc_mem_res_pack.max_input_size = input_size;
 
   return Status::OK();

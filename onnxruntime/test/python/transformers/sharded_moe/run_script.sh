@@ -4,7 +4,7 @@ MPI="mpirun --allow-run-as-root
     --tag-output --npernode 2 --bind-to numa
     -x MIOPEN_FIND_MODE=1"
 
-CMD="$MPI python test_sharded_moe.py"
+CMD="$MPI python test_parity_moe.py"
 
 set -x
 $CMD

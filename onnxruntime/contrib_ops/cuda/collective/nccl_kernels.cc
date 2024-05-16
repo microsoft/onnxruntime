@@ -448,7 +448,10 @@ Status FuncCustomAllReduce(
                                                               ipc_mem_res_pack));
 
   ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
-      reinterpret_cast<int32_t const*>(ipc_mem_res_pack.m_comm_ptrs.data()), world_size, rank);
+      reinterpret_cast<int32_t const*>(ipc_mem_res_pack.m_comm_ptrs.data()), 
+      world_size, 
+      rank, 
+      ++ipc_mem_res_pack.counter);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   params.local_output_buffer_ptr = output_data;
