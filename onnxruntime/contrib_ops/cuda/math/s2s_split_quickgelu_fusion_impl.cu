@@ -103,7 +103,7 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
 
 
 
-  return Status::OK();
+  // return Status::OK();
 
 
 
