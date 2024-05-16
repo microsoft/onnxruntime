@@ -36,7 +36,7 @@ microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.230629.1.z
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
 neural_speed;https://github.com/intel/neural-speed/archive/refs/tags/v0.3.zip;5ec64e3071edc7347ebd8a81679cf06e2bb9b851
-onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.16.0.zip;a6d8b619459fb4657f8bec7d1c6d95ad6d4c069d
+onnx;https://github.com/onnx/onnx/archive/f0f5a4a80e5dfd4ea19fad85cecf63920d23add0.zip;fb000ddd8151f206d9aa147292dea49c6fd9fae9
 #use the latest commit of 10.0-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/eb43908b02a296ea0594432f06e9d3fac288d672.zip;94d07871810a36a5bc70a1def5c50504101c9bd1
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
