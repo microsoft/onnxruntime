@@ -25,22 +25,36 @@ constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 // Need to use SplitSameSplitDimImpl (the other one works for different split sizes)
 
 template <typename scalar_t>
-__global__ void S2SModelSplitQuickGeluKernel(scalar_t* output, scalar_t* input, uint dim) {
-  uint input_line_stride = dim * 2;
-  uint output_line_stride = dim;
-  uint offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
-  uint offset_in2 = offset_in1 + dim;
-  uint offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
-  for (uint i = 0; i < kElementsPerThread; i++) {
-    if (offset_out < dim) {
-      scalar_t v = input[offset_in2 + i] * static_cast<scalar_t>(alpha);
-      scalar_t one = static_cast<scalar_t>(1.f);
-      scalar_t zero = static_cast<scalar_t>(0.f);
-      scalar_t sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-      output[offset_out + i] = input[offset_in1 + i] * sigmoid;
-    }
+__global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, scalar_t* input, scalar_t* output) {
+  unint dim = 2;
+  uint max_len = 16;
+  float alpha = 1.702f;
+  for (uint i = 0; i < max_len/2; i++) {
+    scalar_t v = input[dim + i] * static_cast<scalar_t>(alpha);
+    scalar_t one = static_cast<scalar_t>(1.f);
+    scalar_t zero = static_cast<scalar_t>(0.f);
+    scalar_t sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+    output[i] = input[i] * sigmoid;
   }
 }
+
+// template <typename scalar_t>
+// __global__ void S2SModelSplitQuickGeluKernel(scalar_t* output, scalar_t* input, uint dim) {
+//   uint input_line_stride = dim * 2;
+//   uint output_line_stride = dim;
+//   uint offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
+//   uint offset_in2 = offset_in1 + dim;
+//   uint offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
+//   for (uint i = 0; i < kElementsPerThread; i++) {
+//     if (offset_out < dim) {
+//       scalar_t v = input[offset_in2 + i] * static_cast<scalar_t>(alpha);
+//       scalar_t one = static_cast<scalar_t>(1.f);
+//       scalar_t zero = static_cast<scalar_t>(0.f);
+//       scalar_t sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+//       output[offset_out + i] = input[offset_in1 + i] * sigmoid;
+//     }
+//   }
+// }
 
 
 template <typename T, typename OutputDataArray>
@@ -58,10 +72,6 @@ __global__ void S2SModelSplitQuickGeluKernel_old(const fast_divmod block_size_in
   // T s1 =
   // uint offset_s1, o_s2;
   // s1 = input_data[o_s1]
-
-
-
-
 
   CUDA_LONG id = start;
 #pragma unroll

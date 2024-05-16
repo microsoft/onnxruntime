@@ -20,8 +20,7 @@ class S2SModelSplitQuickGelu final : public onnxruntime::cuda::CudaKernel {
   private:
     template <typename T>
     struct KernelLaunchDispatcher {
-      void operator()(cudaStream_t stream, int64_t input_size, int64_t axis, int64_t alpha, const Tensor& X,
-                      const Tensor& S, Tensor& Y) const;
+      void operator()(cudaStream_t stream, const int num_outputs, const Tensor& input_tensor, Tensor& output_tensor) const;
     };
 };
 
