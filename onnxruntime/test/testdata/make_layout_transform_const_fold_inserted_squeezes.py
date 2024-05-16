@@ -5,7 +5,7 @@ import numpy as np
 import onnx
 
 import onnxruntime
-from onnxruntime.quantization import CalibrationDataReader, QDQQuantizer, QuantFormat, QuantType, quantize_static
+from onnxruntime.quantization import CalibrationDataReader, QuantFormat, QuantType, quantize_static
 
 
 class DataReader(CalibrationDataReader):
@@ -13,7 +13,7 @@ class DataReader(CalibrationDataReader):
         self.enum_data = None
 
         # Use inference session to get input shape.
-        session = onnxruntime.InferenceSession(model_path, providers=['CPUExecutionProvider'])
+        session = onnxruntime.InferenceSession(model_path, providers=["CPUExecutionProvider"])
 
         inputs = session.get_inputs()
 
@@ -22,16 +22,14 @@ class DataReader(CalibrationDataReader):
         # Generate 10 random float32 inputs
         # TODO: Load valid calibration input data for your model
         for _ in range(10):
-            input_data = {inp.name : np.random.random(inp.shape).astype(np.float32) for inp in inputs}
+            input_data = {inp.name: np.random.random(inp.shape).astype(np.float32) for inp in inputs}
             self.data_list.append(input_data)
 
         self.datasize = len(self.data_list)
 
     def get_next(self):
         if self.enum_data is None:
-            self.enum_data = iter(
-                self.data_list
-            )
+            self.enum_data = iter(self.data_list)
         return next(self.enum_data, None)
 
     def rewind(self):
@@ -50,7 +48,9 @@ if __name__ == "__main__":
     const_1_weight = onnx.numpy_helper.from_array(np.array([1.0] * shape[-1], dtype=np.float32), "const_1_weight")
 
     # Transpose with channel-first perm
-    transpose_node = onnx.helper.make_node("Transpose", ["input0"], ["transpose_out"], name="transpose_node", perm=(0, 3, 1, 2))
+    transpose_node = onnx.helper.make_node(
+        "Transpose", ["input0"], ["transpose_out"], name="transpose_node", perm=(0, 3, 1, 2)
+    )
 
     # Mul0
     mul0_node = onnx.helper.make_node("Mul", ["transpose_out", "const_1_weight"], ["mul0_out"], name="mul0_node")
