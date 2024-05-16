@@ -239,27 +239,29 @@ __global__ void S2SModelSplitQuickGeluKernel_old(const fast_divmod block_size_in
 void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
                                         const int num_outputs,
                                         const void* input_data, void* output_data) {
-  CUDA_LONG N = static_cast<CUDA_LONG>(input_size);
-  int blocksPerGrid = CeilDiv(N, kNumElementsPerThread * kNumThreadsPerBlock);
-  fast_divmod block_size_including_axis_dim_div = fast_divmod(block_size_including_axis_dim);
-  fast_divmod block_size_inside_axis_dim_div = fast_divmod(block_size_inside_axis_dim);
-  fast_divmod split_size_div = fast_divmod(static_cast<int>(split_size));
+  // CUDA_LONG N = static_cast<CUDA_LONG>(input_size);
+  // int blocksPerGrid = CeilDiv(N, kNumElementsPerThread * kNumThreadsPerBlock);
+  // fast_divmod block_size_including_axis_dim_div = fast_divmod(block_size_including_axis_dim);
+  // fast_divmod block_size_inside_axis_dim_div = fast_divmod(block_size_inside_axis_dim);
+  // fast_divmod split_size_div = fast_divmod(static_cast<int>(split_size));
+  S2SModelSplitQuickGeluKernel<<<1, 1, 0, stream>>>(num_outputs, reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data), output_data);
 
-  switch (element_size) {
-#define CASE_ELEMENT_TYPE(type)                                                                         \
-  case sizeof(type): {                                                                                  \
-    S2SModelSplitQuickGeluKernel<<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(                    \
-        block_size_including_axis_dim_div, block_size_inside_axis_dim_div, split_size_div, num_outputs, \
-        reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data), output_data, N);             \
-  } break
-    CASE_ELEMENT_TYPE(int8_t);
-    CASE_ELEMENT_TYPE(int16_t);
-    CASE_ELEMENT_TYPE(int32_t);
-    CASE_ELEMENT_TYPE(int64_t);
-#undef CASE_ELEMENT_TYPE
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Split QuickGelu Fusion operator");
-  }
+
+//   switch (element_size) {
+// #define CASE_ELEMENT_TYPE(type)                                                                         \
+//   case sizeof(type): {                                                                                  \
+//     S2SModelSplitQuickGeluKernel<<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(                    \
+//         block_size_including_axis_dim_div, block_size_inside_axis_dim_div, split_size_div, num_outputs, \
+//         reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data), output_data, N);             \
+//   } break
+//     CASE_ELEMENT_TYPE(int8_t);
+//     CASE_ELEMENT_TYPE(int16_t);
+//     CASE_ELEMENT_TYPE(int32_t);
+//     CASE_ELEMENT_TYPE(int64_t);
+// #undef CASE_ELEMENT_TYPE
+//     default:
+//       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Split QuickGelu Fusion operator");
+//   }
 
   return Status::OK();
 
@@ -272,30 +274,30 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
 
   // TODO: Multiply out1 and out_quickgelu and store it in output Y
 
-  T reg_Y[kElementsPerThread] = out1 * out_quickgelu;
-  *(reinterpret_cast<LoadT*>(&Y[input_idx])) = *reinterpret_cast<LoadT*>(&reg_Y[0]);
+  // T reg_Y[kElementsPerThread] = out1 * out_quickgelu;
+  // *(reinterpret_cast<LoadT*>(&Y[input_idx])) = *reinterpret_cast<LoadT*>(&reg_Y[0]);
 
 
-  int num_threads_per_block = std::min<int>(static_cast<int>(CeilDiv(bias_size, kElementsPerThread)), kThreadsPerBlock);
-  const auto grid_width = CeilDiv(bias_size, kElementsPerThread * num_threads_per_block);
-  const auto grid_height = input_size / bias_size;
-  const dim3 grid_dim{static_cast<uint32_t>(grid_height), static_cast<uint32_t>(grid_width)};
+  // int num_threads_per_block = std::min<int>(static_cast<int>(CeilDiv(bias_size, kElementsPerThread)), kThreadsPerBlock);
+  // const auto grid_width = CeilDiv(bias_size, kElementsPerThread * num_threads_per_block);
+  // const auto grid_height = input_size / bias_size;
+  // const dim3 grid_dim{static_cast<uint32_t>(grid_height), static_cast<uint32_t>(grid_width)};
 
-  constexpr int vec_alignment = std::alignment_of<aligned_vector<T, kElementsPerThread>>::value;
+  // constexpr int vec_alignment = std::alignment_of<aligned_vector<T, kElementsPerThread>>::value;
 
-  // Calling the Split kernel
-  S2SModelSplitQuickGeluKernel<T><<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(
-    block_size_including_axis_dim_div, block_size_inside_axis_dim_div, split_size_div, num_outputs,
-    reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data), output_data, N
-  )
+  // // Calling the Split kernel
+  // S2SModelSplitQuickGeluKernel<T><<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(
+  //   block_size_including_axis_dim_div, block_size_inside_axis_dim_div, split_size_div, num_outputs,
+  //   reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data), output_data, N
+  // )
 
 
-  if (bias_size % kElementsPerThread == 0 && reinterpret_cast<uint64_t>(X) % vec_alignment == 0 &&
-      reinterpret_cast<uint64_t>(Y) % vec_alignment == 0) {
-    VectorizedS2SModelSplitQuickGeluKernel<T><<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, X, Y);
-  } else {
-    S2SModelSplitQuickGeluKernel<T><<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, X, Y);
-  }
+  // if (bias_size % kElementsPerThread == 0 && reinterpret_cast<uint64_t>(X) % vec_alignment == 0 &&
+  //     reinterpret_cast<uint64_t>(Y) % vec_alignment == 0) {
+  //   VectorizedS2SModelSplitQuickGeluKernel<T><<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, X, Y);
+  // } else {
+  //   S2SModelSplitQuickGeluKernel<T><<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, X, Y);
+  // }
 }
 
 // explicit instantiations

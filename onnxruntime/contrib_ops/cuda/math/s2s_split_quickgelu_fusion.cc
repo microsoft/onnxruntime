@@ -19,15 +19,13 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()),
     S2SModelSplitQuickGelu);
 
-// template <typename T>
-// void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, int64_t input_size, int64_t axis,
-//                                                                    int64_t alpha, const Tensor& X, const Tensor& S,
-//                                                                    Tensor& Y) const {
-//   using CudaT = typename ToCudaType<T>::MappedType;
-//   LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, input_size, axis, alpha, reinterpret_cast<const CudaT*>(X.template Data<T>()),
-//                                             reinterpret_cast<const CudaT*>(S.template Data<T>()),
-//                                             reinterpret_cast<CudaT*>(Y.template MutableData<T>()));
-// }
+template <typename T>
+void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, const int num_outputs, const Tensor& input_tensor,
+                                                                   Tensor& output_tensor) const {
+  using CudaT = typename ToCudaType<T>::MappedType;
+  LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, num_outputs, reinterpret_cast<const CudaT*>(input_tensor.template Data<T>()),
+                                            reinterpret_cast<CudaT*>(output_tensor.template MutableData<T>()));
+}
 
 Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
@@ -45,10 +43,13 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   TensorShape output_shape(output_dims);
   auto* output_tensor = context->Output(0, output_shape);
 
+  utils::MLTypeCallDispatcher<MLFloat16, float, double, BFloat16> dispatcher{input_tensor->GetElementType()};
+  dispatcher.Invoke<KernelLaunchDispatcher>(Stream(context), num_outputs, *input_tensor, *output_tensor);
+
   // auto input_data = input_tensor->DataRaw();
 
-  ORT_RETURN_IF_ERROR(LaunchS2SModelSplitQuickGeluKernel(Stream(context), num_outputs, input_tensor,
-                                                         output_tensor));
+  // ORT_RETURN_IF_ERROR(LaunchS2SModelSplitQuickGeluKernel(Stream(context), num_outputs, input_tensor,
+  //                                                        output_tensor));
 
 
   return Status::OK();
