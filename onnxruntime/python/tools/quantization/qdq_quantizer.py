@@ -187,6 +187,10 @@ class QDQQuantizer(BaseQuantizer):
 
         self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else None
 
+        # User can specify if removable activations, like Clip/Relu, should be kept in the graph.
+        # Used in the QDQRemovableActivation class.
+        self.qdq_keep_removable_activations = extra_options.get("QDQKeepRemovableActivations", False)
+
         # The ONNX spec did not support 16-bit Q/DQ ops before opset 21.
         # So, may have to override the Q/DQ op domain to 'com.microsoft' if the activation or weight types
         # are 16-bit integers.

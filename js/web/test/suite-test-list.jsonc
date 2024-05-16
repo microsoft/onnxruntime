@@ -1361,6 +1361,7 @@
       "gemm.jsonc",
       "global-average-pool.jsonc",
       "greater.jsonc",
+      "group-query-attention.jsonc",
       "instance-norm.jsonc",
       "less.jsonc",
       "log.jsonc",

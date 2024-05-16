@@ -1,27 +1,22 @@
 parameters:
 - name: DoCompliance
   type: boolean
-  default: true
 
 - name: DoEsrp
   type: boolean
-  default: true
 
 - name: IsReleaseBuild
   type: boolean
-  default: false
 
 stages:
 ######## Nuget ########
 # Win/Linux CUDA Combined packaging
 - stage: NuGet_Packaging_GPU
   dependsOn:
-    - Set_ReleaseVersionSuffix
-    - Windows_Packaging_gpu_Testing
-    - Windows_Packaging_tensorrt_Testing
-    - Linux_C_API_Packaging_CPU_x64
-    - Linux_C_API_Packaging_GPU_x64
-    - Linux_C_API_Packaging_GPU_TensorRT_x64
+    - Setup
+    - Windows_Packaging_CUDA
+    - Windows_Packaging_TensorRT
+    - Linux_C_API_Packaging_Combined_CUDA
   condition: succeeded()
   jobs:
     - job:
@@ -37,35 +32,35 @@ stages:
       steps:
         - checkout: self
           submodules: true
-  # Download the all artifacts
-        - task: DownloadPipelineArtifact@2
-          displayName: 'Download Pipeline Artifact from Linux_C_API_Packaging_GPU_x64 Stage'
-          inputs:
-            artifactName: 'onnxruntime-win-x64-cuda'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        - task: DownloadPipelineArtifact@2
-          displayName: 'Download Pipeline Artifact from Linux_C_API_Packaging_GPU_TensorRT_x64 Stage'
-          inputs:
-            artifactName: 'onnxruntime-win-x64-tensorrt'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        - template: ../templates/flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline Artifact - NuGet'
+            ArtifactName: 'onnxruntime-win-x64-cuda'
+            TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-        - task: DownloadPipelineArtifact@2
-          displayName: 'Download Pipeline Artifact from Windows_Packaging_gpu Stage'
-          inputs:
-            artifactName: 'onnxruntime-linux-x64-cuda'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        - template: ../templates/flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline Artifact - NuGet'
+            ArtifactName: 'onnxruntime-win-x64-tensorrt'
+            TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-        - task: DownloadPipelineArtifact@2
-          displayName: 'Download Pipeline Artifact from Windows_Packaging_tensorrt Stage'
-          inputs:
-            artifactName: 'onnxruntime-linux-x64-tensorrt'
-            targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        - template: ../templates/flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline Artifact - NuGet'
+            ArtifactName: 'onnxruntime-linux-x64-cuda'
+            TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-        - task: DownloadPipelineArtifact@2
-          displayName: 'Download Pipeline Artifact - protoc from Windows_Packaging_(cpu|gpu) Stage'
-          inputs:
-            artifactName: 'drop-extra'
-            targetPath: '$(Build.BinariesDirectory)/extra-artifact'
+        - template: ../templates/flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline Artifact - NuGet'
+            ArtifactName: 'onnxruntime-linux-x64-tensorrt'
+            TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+        - template: ../templates/flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline Artifact - NuGet'
+            ArtifactName: 'drop-extra'
+            TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
 
         # Reconstruct the build dir
         - task: PowerShell@2
@@ -221,7 +216,6 @@ stages:
             configuration: RelWithDebInfo
             msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
 
         - task: RoslynAnalyzers@2
           displayName: 'Run Roslyn Analyzers'
