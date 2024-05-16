@@ -4,6 +4,8 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "custom_reduce_impl.h"
+#include "ipc_utils.h"
 
 #if defined(ORT_USE_NCCL)
 #include <algorithm>
@@ -70,6 +72,9 @@ class AllReduce final : public NcclKernel {
   explicit AllReduce(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  mutable ort_trtllm::GlobalIPCMemoryResourcePack g_ipc_mem_res_pack_;
 };
 
 class AllGather final : public NcclKernel {
@@ -99,6 +104,15 @@ Status FuncAllReduce(
     cudaStream_t stream,
     const Tensor* input,
     Tensor* output);
+
+Status FuncCustomAllReduce(
+    NcclContext* nccl,
+    cudaStream_t stream,
+    const void* input_data,
+    void* output_data,
+    int64_t input_count,
+    onnxruntime::MLDataType data_type,
+    ort_trtllm::IPCMemoryResourcePack& ipc_mem_res_pack);
 
 void FuncAllGather(
     const NcclKernel* nccl_kernel,
