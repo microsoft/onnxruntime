@@ -9,10 +9,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// template <typename T>
+template <typename T>
 void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
                                         const int num_outputs,
-                                        const void* input_data, void* output_data);
+                                        const T* input_data, T* output_data);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -24,16 +24,16 @@ constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 
 // Need to use SplitSameSplitDimImpl (the other one works for different split sizes)
 
-template <typename scalar_t>
-__global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, scalar_t* input, scalar_t* output) {
+template <typename T>
+__global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, T* input, T* output) {
   unint dim = 2;
   uint max_len = 16;
   float alpha = 1.702f;
   for (uint i = 0; i < max_len/2; i++) {
-    scalar_t v = input[dim + i] * static_cast<scalar_t>(alpha);
-    scalar_t one = static_cast<scalar_t>(1.f);
-    scalar_t zero = static_cast<scalar_t>(0.f);
-    scalar_t sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+    T v = input[dim + i] * static_cast<T>(alpha);
+    T one = static_cast<T>(1.f);
+    T zero = static_cast<T>(0.f);
+    T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
     output[i] = input[i] * sigmoid;
   }
 }
@@ -245,10 +245,10 @@ __global__ void S2SModelSplitQuickGeluKernel_old(const fast_divmod block_size_in
 //                                         const int block_size_inside_axis_dim, const int64_t split_size, const int num_outputs,
 //                                         const void* input_data, OutputDataArray output_data, const size_t input_size) {
 
-// template <typename T>
+template <typename T>
 void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
                                         const int num_outputs,
-                                        const void* input_data, void* output_data) {
+                                        const T* input_data, T* output_data) {
   // CUDA_LONG N = static_cast<CUDA_LONG>(input_size);
   // int blocksPerGrid = CeilDiv(N, kNumElementsPerThread * kNumThreadsPerBlock);
   // fast_divmod block_size_including_axis_dim_div = fast_divmod(block_size_including_axis_dim);
