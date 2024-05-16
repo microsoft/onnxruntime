@@ -63,7 +63,7 @@ struct AllReduceParams {
 bool ConfigurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t world_size,
                             onnxruntime::MLDataType type);
 
-void CustomAllReduce(AllReduceParams& params, onnxruntime::MLDataType data_type, AllReduceStrategyType strat,
+void CustomAllReduce(AllReduceParams& params, onnxruntime::MLDataType data_type, AllReduceStrategyType strategy,
                      AllReduceStrategyConfig config, cudaStream_t stream);
 
 size_t GetMaxRequiredWorkspaceSize(int world_size);
