@@ -19,15 +19,15 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()),
     S2SModelSplitQuickGelu);
 
-template <typename T>
-void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, int64_t input_size, int64_t axis,
-                                                                   int64_t alpha, const Tensor& X, const Tensor& S,
-                                                                   Tensor& Y) const {
-  using CudaT = typename ToCudaType<T>::MappedType;
-  LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, input_size, axis, alpha, reinterpret_cast<const CudaT*>(X.template Data<T>()),
-                                            reinterpret_cast<const CudaT*>(S.template Data<T>()),
-                                            reinterpret_cast<CudaT*>(Y.template MutableData<T>()));
-}
+// template <typename T>
+// void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, int64_t input_size, int64_t axis,
+//                                                                    int64_t alpha, const Tensor& X, const Tensor& S,
+//                                                                    Tensor& Y) const {
+//   using CudaT = typename ToCudaType<T>::MappedType;
+//   LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, input_size, axis, alpha, reinterpret_cast<const CudaT*>(X.template Data<T>()),
+//                                             reinterpret_cast<const CudaT*>(S.template Data<T>()),
+//                                             reinterpret_cast<CudaT*>(Y.template MutableData<T>()));
+// }
 
 Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
