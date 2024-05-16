@@ -26,7 +26,7 @@ namespace {
 
 template <typename T>
 __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, T* input, T* output) {
-  unint dim = 2;
+  uint dim = 2;
   uint max_len = 16;
   float alpha = 1.702f;
   for (uint i = 0; i < max_len/2; i++) {
