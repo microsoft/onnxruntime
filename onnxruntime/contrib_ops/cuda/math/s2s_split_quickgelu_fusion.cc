@@ -50,7 +50,7 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   size_t element_size = input_tensor->DataType()->Size();
 
   ORT_RETURN_IF_ERROR(LaunchS2SModelSplitQuickGeluKernel(Stream(context), element_size, num_outputs, input_data,
-                                                         output_tensor, static_cast<size_t>(input_shape.Size())));
+                                                         output_tensor));
 
 
   return Status::OK();
