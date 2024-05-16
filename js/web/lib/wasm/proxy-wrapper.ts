@@ -94,9 +94,6 @@ export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
           initWasmCallbacks = [resolve, reject];
           const message: OrtWasmMessage = {type: 'init-wasm', in : env};
           proxyWorker.postMessage(message);
-          // setTimeout(() => {
-          //   proxyWorker!.postMessage(message);
-          // }, 1000);
           temporaryObjectUrl = objectUrl;
         } catch (e) {
           reject(e);
