@@ -5,6 +5,9 @@
 
 #include "core/providers/cuda/cuda_kernel.h"
 
+using namespace onnxruntime::cuda;
+
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
