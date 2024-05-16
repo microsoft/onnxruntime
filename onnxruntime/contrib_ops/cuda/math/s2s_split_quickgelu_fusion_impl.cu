@@ -237,7 +237,7 @@ __global__ void S2SModelSplitQuickGeluKernel_old(const fast_divmod block_size_in
 
 template <typename T>
 void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, const size_t element_size,
-                                        const int64_t split_size, const int num_outputs,
+                                        const int num_outputs,
                                         const void* input_data, void* output_data, const size_t input_size) {
   CUDA_LONG N = static_cast<CUDA_LONG>(input_size);
   int blocksPerGrid = CeilDiv(N, kNumElementsPerThread * kNumThreadsPerBlock);
