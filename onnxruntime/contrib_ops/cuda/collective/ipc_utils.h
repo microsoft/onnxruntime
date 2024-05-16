@@ -50,7 +50,7 @@ class IpcMemory {
 struct IPCMemoryResourcePack {
   mutable std::vector<std::shared_ptr<IpcMemory>> m_ipc_momery_handles;
   mutable std::vector<const void*> m_comm_ptrs;
-  mutable int64_t max_input_size{0};
+  mutable size_t max_input_size{0};
 };
 
 Status
@@ -58,10 +58,7 @@ GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size, IPCMemo
 
 class GlobalIPCMemoryResourcePack {
  public:
-  IPCMemoryResourcePack& GetIPCMemoryResourcePack() {
-    static IPCMemoryResourcePack g_ipc_mem_res_pack;
-    return g_ipc_mem_res_pack;
-  }
+  IPCMemoryResourcePack& GetIPCMemoryResourcePack();
 };
 
 }  // namespace ort_trtllm

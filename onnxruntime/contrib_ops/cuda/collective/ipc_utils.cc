@@ -150,4 +150,9 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
   return Status::OK();
 }
 
+IPCMemoryResourcePack& GlobalIPCMemoryResourcePack::GetIPCMemoryResourcePack() {
+  static IPCMemoryResourcePack g_ipc_mem_res_pack;
+  return g_ipc_mem_res_pack;
+}
+
 }  // namespace ort_trtllm
