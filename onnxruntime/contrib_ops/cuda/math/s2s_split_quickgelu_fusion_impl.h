@@ -10,7 +10,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, const size_t element_size,
+void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
                                         const int num_outputs,
                                         const void* input_data, void* output_data);
 

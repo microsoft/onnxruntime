@@ -236,7 +236,7 @@ __global__ void S2SModelSplitQuickGeluKernel_old(const fast_divmod block_size_in
 //                                         const void* input_data, OutputDataArray output_data, const size_t input_size) {
 
 template <typename T>
-void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, const size_t element_size,
+void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
                                         const int num_outputs,
                                         const void* input_data, void* output_data) {
   CUDA_LONG N = static_cast<CUDA_LONG>(input_size);

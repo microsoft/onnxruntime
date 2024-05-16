@@ -45,11 +45,9 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   TensorShape output_shape(output_dims);
   auto* output_tensor = context->Output(0, output_shape);
 
-  auto input_data = input_tensor->DataRaw();
+  // auto input_data = input_tensor->DataRaw();
 
-  size_t element_size = input_tensor->DataType()->Size();
-
-  ORT_RETURN_IF_ERROR(LaunchS2SModelSplitQuickGeluKernel(Stream(context), element_size, num_outputs, input_data,
+  ORT_RETURN_IF_ERROR(LaunchS2SModelSplitQuickGeluKernel(Stream(context), num_outputs, input_tensor,
                                                          output_tensor));
 
 
