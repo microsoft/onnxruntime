@@ -35,7 +35,7 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   const auto& input_shape = input_tensor->Shape();
   const auto& input_dims = input_shape.GetDims();
   // Replace it with output count of split?
-  int num_outputs = 2;
+  const int num_outputs = 2;
   // int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
 
   int num_dims = static_cast<int64_t>(input_dims.size());
