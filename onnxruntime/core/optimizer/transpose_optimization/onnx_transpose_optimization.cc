@@ -387,7 +387,7 @@ static bool FixTransposeMissingDQ(api::GraphRef& graph, api::NodeRef& transpose_
   }
 
   if (graph.GetConstant(transpose_input_name) != nullptr) {
-    // Don't handle a constant input to transpose node. This should really be constant folded.
+    // Don't handle a constant input to transpose node. This should have been constant folded.
     return false;
   }
 
@@ -2586,7 +2586,7 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph,
 }
 
 // Returns true if the transpose optimizer is allowed to modify the given node.
-static bool CanModifyNode(OptimizerCtx& ctx, const api::NodeRef& node) {
+static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node) {
   const auto& node_ep = node.GetExecutionProviderType();
   bool can_modify = false;
 
@@ -2943,7 +2943,9 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       continue;
     }
 
-    auto prev_node = ctx.graph.GetNodeProducingOutput(transpose_node.Inputs()[0]);  // nullptr if graph input.
+    // prev_node is nullptr if the transpose consumes a graph input or a constant.
+    // A constant should have been folded by a previous constant-folding pass.
+    auto prev_node = ctx.graph.GetNodeProducingOutput(transpose_node.Inputs()[0]);
     const bool has_prev_node = prev_node != nullptr;
     if (has_prev_node && !CanModifyNode(ctx, *prev_node)) {
       // Not allowed to modify node preceding the Transpose.
