@@ -3,9 +3,13 @@
 
 #pragma once
 #include <ctime>
+#ifndef USE_CUDA_MINIMAL
 #include <cudnn.h>
-#include <cublas_v2.h>
-
+#else
+typedef void* cudnnHandle_t;
+typedef void* cublasHandle_t;
+typedef void* cudnnStatus_t;
+#endif
 #include "core/providers/tensorrt/nv_includes.h"
 
 #include "core/platform/ort_mutex.h"

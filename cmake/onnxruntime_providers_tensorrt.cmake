@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-
+  if(onnxruntime_DISABLE_CONTRIB_OPS)
+    message( FATAL_ERROR "To compile TensorRT execution provider contrib ops have to be enabled to dump an engine using com.microsoft:EPContext node." )
+  endif()
   add_definitions(-DUSE_TENSORRT=1)
   if (onnxruntime_TENSORRT_PLACEHOLDER_BUILDER)
     add_definitions(-DORT_TENSORRT_PLACEHOLDER_BUILDER)
@@ -155,8 +157,11 @@
   # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121
   # However, starting from TRT 10 GA, nvonnxparser_static doesn't link against tensorrt libraries.
   # Therefore, the above code finds ${TENSORRT_LIBRARY_INFER} and ${TENSORRT_LIBRARY_INFER_PLUGIN}.
-  set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
-
+  if(onnxruntime_CUDA_MINIMAL)
+    set(trt_link_libs ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
+  else()
+    set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
+  endif()
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.cc"
@@ -190,6 +195,9 @@
   target_compile_options(onnxruntime_providers_tensorrt PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
   if (WIN32)
     target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4456)
+  endif()
+  if(onnxruntime_CUDA_MINIMAL)
+    target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE USE_CUDA_MINIMAL=1)
   endif()
 
   # Needed for the provider interface, as it includes training headers when training is enabled

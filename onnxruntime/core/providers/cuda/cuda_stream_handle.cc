@@ -81,6 +81,9 @@ CudaStream::CudaStream(cudaStream_t stream,
     cudnn_handle_ = external_cudnn_handle;
     CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
   }
+#else
+  (void)(external_cudnn_handle);
+  (void)(external_cublas_handle);
 #endif
 }
 

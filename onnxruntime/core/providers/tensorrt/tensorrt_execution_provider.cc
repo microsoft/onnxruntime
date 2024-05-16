@@ -269,6 +269,7 @@ void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const 
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
+#ifndef USE_CUDA_MINIMAL
 template <>
 Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line) {
   return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
@@ -288,6 +289,7 @@ template <>
 void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line) {
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
+#endif
 
 void* OutputAllocator::reallocateOutput(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
                                         uint64_t /*alignment*/) noexcept {
@@ -1077,20 +1079,26 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
 TensorrtExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
   if (has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
+#ifndef USE_CUDA_MINIMAL
     ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
     ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream)));
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream)));
+#else
+    (void)(stream);
+#endif
   }
 }
 
 TensorrtExecutionProvider::PerThreadContext::~PerThreadContext() {
+#ifndef USE_CUDA_MINIMAL
   if (external_cublas_handle_ != nullptr) {
     ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
   }
   if (external_cudnn_handle_ != nullptr) {
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
   }
+#endif
   trt_context_map_.clear();
 }
 
@@ -1226,10 +1234,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
+#ifndef USE_CUDA_MINIMAL
     ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
     ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream_)));
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_)));
+#endif
   }
 
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
@@ -1378,6 +1388,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string ep_context_embed_mode_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextEmbedMode);
       if (!ep_context_embed_mode_env.empty()) {
         ep_context_embed_mode_ = std::stoi(ep_context_embed_mode_env);
+      }
+      // incase the EP context is dumped the engine cache has to be enabled
+      if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
+        engine_cache_enable_ = true;
       }
 
       if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
@@ -1653,8 +1667,10 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   }
 
   if (external_stream_) {
+#ifndef USE_CUDA_MINIMAL
     ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
+#endif
   }
 
   if (!external_stream_ && stream_) {
