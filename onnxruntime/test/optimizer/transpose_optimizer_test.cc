@@ -4656,6 +4656,67 @@ TEST(TransposeOptimizerTests, LayoutTransformFixStuckTransposeWithoutDQ) {
     }
   }
 }
+
+// Tests the transpose optimizer's ability to constant fold inserted Transpose and Squeeze nodes.
+// After the core transpose optimization loop, the test model contains the following "constant foldable" sequence:
+//
+// unsqueezed_transposed_weight --+--> Transpose ---> Squeeze ---> DequantizeLinear ---> Mul ---> ...
+//                                |
+//                                +--> DequantizeLinear --> Mul --> ...
+//
+// After constant-folding the Transpose and Squeeze nodes, the final model looks like:
+//
+// new_folded_weight ---> DequantizeLinear ---> Mul ---> ...
+// unsqueezed_transposed_weight ---> DequantizeLinear ---> Mul ---> ...
+TEST(TransposeOptimizerTests, LayoutTransformConstantFoldTransposeAndSqueeze) {
+  Status status;
+
+  // The test model has a shared initializer that is unsqueezed and transposed in-place for one consumer.
+  // The other consumer gets a Transpose -> Squeeze sequence inserted before its input.
+  // This Transpose -> Squeeze sequence should get constant-folded.
+  auto model_uri = ORT_TSTR("testdata/layout_transform_const_fold_inserted_squeezes.onnx");
+
+  SessionOptions so;
+
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // Set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // All Squeeze nodes should have been constant folded by transpose optimizer.
+  ASSERT_EQ(op_to_count["Squeeze"], 0) << "Should have 0 Squeeze nodes remaining.";
+
+  // 1 transpose is constant-folded, 1 is canceled, and 1 remains.
+  ASSERT_EQ(op_to_count["Transpose"], 1) << "Should have 1 transpose remaining.";
+
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                            << "' was not assigned to the internal testing EP.";
+    // All Transpose nodes should be in QDQ node units.
+    if (node.OpType() == "Transpose") {
+      for (auto cur_input = node.InputNodesBegin(), end = node.InputNodesEnd(); cur_input != end; ++cur_input) {
+        EXPECT_EQ(cur_input->OpType(), "DequantizeLinear");
+      }
+
+      for (auto cur_output = node.OutputNodesBegin(), end = node.OutputNodesEnd(); cur_output != end; ++cur_output) {
+        EXPECT_EQ(cur_output->OpType(), "QuantizeLinear");
+      }
+    }
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 static void CheckSharedInitializerHandling(bool broadcast) {

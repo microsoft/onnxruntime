@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cassert>
 #include <iostream>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -398,7 +399,7 @@ static bool FixTransposeMissingDQ(api::GraphRef& graph, api::NodeRef& transpose_
 
   auto scale_shape = scale_value_info->Shape();
   if (!scale_shape) {
-    // axis potentially needs updating due to the transpose but we don't have the required info to do it.
+    // Axis potentially needs updating due to the transpose but we don't have the required info to do it.
     return false;
   }
 
@@ -407,18 +408,17 @@ static bool FixTransposeMissingDQ(api::GraphRef& graph, api::NodeRef& transpose_
     zp_value_info = graph.GetValueInfo(zp_input.value());
   }
 
-  // per-axis quantization if not a scalar (shape is empty for scalar).
+  // Per-axis quantization if not a scalar (shape is empty for scalar).
   // note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
   // so we have to check the shape.
   const bool update_axis = scale_shape && !scale_shape->empty();
   int64_t axis = q_node.GetAttributeIntDefault("axis", 1);
 
   if (update_axis) {
-    // update axis.
     auto perm = GetPermAttrIfValid(transpose_node);
     assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
     NormalizeAndValidateAxis(axis, scale_shape->size());
-    axis = (*perm)[gsl::narrow_cast<size_t>(axis)];  // Do not invert permutation.
+    axis = (*perm)[gsl::narrow_cast<size_t>(axis)];  // Note: do not invert permutation.
   }
 
   auto transpose_input_shape = graph.GetValueInfo(transpose_input_name)->Shape();
@@ -435,7 +435,7 @@ static bool FixTransposeMissingDQ(api::GraphRef& graph, api::NodeRef& transpose_
                                    q_node.GetAttributeInt("output_dtype"), q_node.GetAttributeInt("saturate"));
   auto new_q_node_output = new_q_node->Outputs()[0];
 
-  // copy value info from the q output for the type information, and update the shape to match Transpose's input
+  // Copy value info from the q output for the type information, and update the shape to match Transpose's input
   graph.CopyValueInfo(q_node.Outputs()[0], new_q_node_output);  // Q produces same type as the q_node output
   auto new_q_node_value_info = graph.GetValueInfo(new_q_node_output);
   new_q_node_value_info->SetShape(transpose_input_shape ? &*transpose_input_shape : nullptr);
@@ -448,6 +448,7 @@ static bool FixTransposeMissingDQ(api::GraphRef& graph, api::NodeRef& transpose_
   auto new_dq_node_output = new_dq_node->Outputs()[0];
   graph.CopyValueInfo(transpose_input_name, new_dq_node_output);
 
+  // Get the node upstream from the Transpose. If null, Transpose consumes a graph input.
   auto prev_node = graph.GetNodeProducingOutput(transpose_input_name);
 
   if (prev_node != nullptr) {
@@ -665,6 +666,47 @@ static std::vector<int64_t> UnsqueezeShape(gsl::span<const int64_t> shape, const
       new_shape[i] = shape[j++];
     }
   }
+  return new_shape;
+}
+
+// Returns a new squeezed shape without the dimensions of value 1 indicated by the axes.
+// Unsafe if the shape's rank is smaller than the number of unique axes values.
+static std::vector<int64_t> SqueezeShape(gsl::span<const int64_t> shape, const std::vector<int64_t>& axes) {
+  const size_t init_rank = shape.size();
+  std::vector<int64_t> pos_axes(axes.begin(), axes.end());
+
+  // Normalize negative axis values.
+  for (size_t i = 0; i < pos_axes.size(); i++) {
+    if (pos_axes[i] < 0) {
+      pos_axes[i] += static_cast<int64_t>(init_rank);
+    }
+  }
+
+  // Sort positive axis values and remove duplicates.
+  std::sort(pos_axes.begin(), pos_axes.end());
+  pos_axes.erase(std::unique(pos_axes.begin(), pos_axes.end()), pos_axes.end());
+
+  assert(shape.size() >= pos_axes.size());
+
+  std::vector<int64_t> new_shape;
+  size_t j = 0;
+
+  for (size_t i = 0; i < shape.size(); i++) {
+    if (pos_axes.empty() && shape[i] == 1) {
+      // If axes is empty, skip all shape values equal to 1.
+      continue;
+    }
+
+    if ((j < pos_axes.size()) && (i == gsl::narrow_cast<size_t>(pos_axes[j]))) {
+      // Skip shape dim if it appears in axes. shape[i] must be 1.
+      assert(shape[i] == 1);
+      j++;
+      continue;
+    }
+
+    new_shape.push_back(shape[i]);
+  }
+
   return new_shape;
 }
 
@@ -2664,6 +2706,103 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
     return result;
   }
 
+  // Run constant-folding for Transpose and Squeeze ops.
+  auto graph_nodes = ctx.graph.Nodes();
+  for (size_t i = 1; i < graph_nodes.size(); i++) {
+    auto& node = *graph_nodes[i];
+
+    if (!can_modify_node(node)) {
+      continue;
+    }
+
+    std::string_view node_op_type = node.OpType();
+    const bool is_transpose = node_op_type == "Transpose";
+    const bool is_squeeze = node_op_type == "Squeeze";
+
+    if (is_transpose || is_squeeze) {
+      std::string_view node_input_name = node.Inputs()[0];
+      auto const_input = ctx.graph.GetLocalConstant(node_input_name);
+      if (const_input == nullptr) {
+        // Doesn't have a constant input. Skip.
+        continue;
+      }
+
+      std::string_view node_output_name = node.Outputs()[0];
+      auto consumers = ctx.graph.GetValueConsumers(node_output_name);
+      std::vector<size_t> consumer_indices;
+      consumer_indices.reserve(consumers->nodes.size());
+
+      // Get indices for consumers we can modify.
+      for (size_t c_i = 0; c_i < consumers->nodes.size(); c_i++) {
+        if (can_modify_node(*(consumers->nodes[c_i]))) {
+          consumer_indices.push_back(c_i);
+        }
+      }
+
+      if (consumer_indices.empty()) {
+        // No consumers we can modify. Skip.
+        continue;
+      }
+
+      std::string_view new_initializer_name;
+
+      // Create new folded initializer.
+      if (is_transpose) {
+        std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(node);
+        if (perm == std::nullopt) {
+          // Invalid transpose perm attribute. Should not happen. Skip.
+          continue;
+        }
+
+        // We will now modify the graph.
+        changed = true;
+        new_initializer_name = ctx.graph.AddInitializer(const_input->DType(),
+                                                        const_input->Shape(),
+                                                        const_input->Data());
+        ctx.graph.TransposeInitializer(new_initializer_name, *perm);
+      } else {
+        assert(is_squeeze);
+        std::optional<std::vector<int64_t>> squeeze_axes = ReadFromAttrOrInput(ctx, node, "axes", /*inp_index*/ 1,
+                                                                               /*opset*/ 13);
+        if (squeeze_axes == std::nullopt) {
+          // Invalid Squeeze axes value. Should not happen. Skip.
+          continue;
+        }
+
+        auto squeezed_shape = SqueezeShape(const_input->Shape(), *squeeze_axes);
+
+        // We will now modify the graph.
+        changed = true;
+        new_initializer_name = ctx.graph.AddInitializer(const_input->DType(),
+                                                        const_input->Shape(),
+                                                        const_input->Data());
+        ctx.graph.ReshapeInitializer(new_initializer_name, squeezed_shape);
+      }
+
+      // Iterate through consumers and replace their input(s) with the new initializer.
+      for (auto consumer_idx : consumer_indices) {
+        auto& consumer = consumers->nodes[consumer_idx];
+        std::vector<std::string_view> inputs = consumer->Inputs();
+
+        for (size_t input_idx = 0; input_idx < inputs.size(); input_idx++) {
+          if (inputs[input_idx] == node_output_name) {
+            consumer->SetInput(input_idx, new_initializer_name);
+          }
+        }
+      }
+
+      // Remove original node if we processed all of its consumers.
+      if (!ctx.graph.HasValueConsumers(node_output_name)) {
+        ctx.graph.RemoveNode(node);
+      }
+
+      // Remove old initializer if no longer used.
+      if (!ctx.graph.HasValueConsumers(node_input_name)) {
+        ctx.graph.RemoveInitializer(node_input_name);
+      }
+    }
+  }
+
   // Run 'fix up' pass for QDQ node units.
   //
   // Repair broken QDQ node unit from Transpose being blocked on Op inside a QDQ node unit.
@@ -2678,7 +2817,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   //   DQ -> Q -> consumer node =>
   //              consumer node
 
-  auto graph_nodes = ctx.graph.Nodes();
+  graph_nodes = ctx.graph.Nodes();
   for (size_t i = 1; i < graph_nodes.size(); i++) {
     auto& node = *graph_nodes[i];
 
