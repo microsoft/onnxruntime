@@ -78,8 +78,10 @@ class AllReduce final : public NcclKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
+#ifndef USE_ROCM
  private:
   mutable ort_trtllm::GlobalIPCMemoryResourcePack g_ipc_mem_res_pack_;
+#endif
 };
 
 class AllGather final : public NcclKernel {
