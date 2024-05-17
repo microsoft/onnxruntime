@@ -24,8 +24,8 @@ jobs:
       with:
         submodules: false
 
-    - name: Print runner system info
-      run: echo "OS: ${{ runner.os }} / arch: ${{ runner.arch }}"
+    - name: Print runner info
+      run: uname -a
 
     - uses: actions/setup-python@v5
       with:
