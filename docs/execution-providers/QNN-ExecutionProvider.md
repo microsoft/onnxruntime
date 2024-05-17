@@ -34,16 +34,15 @@ For build instructions, please see the [BUILD page](../build/eps.md#qnn).
 
 ## Pre-built Packages
 Note: Starting version 1.18.0 , you do not need to separately download and install QNN SDK. The required QNN dependency libraries are included in the OnnxRuntime packages.
-Alternatively, ONNX Runtime with QNN EP can be installed from:
 - [NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
-- Python package (Windows ARM64):
+- [Python package](https://pypi.org/project/onnxruntime-qnn/)
   - Requirements:
-    - Windows ARM64
+    - Windows ARM64 (for inferencing on local device with Qualcomm NPU)
+    - Windows X64 (for quantizing models. see [Generating a quantized model (x64 only)])
     - Python 3.11.x
     - Numpy 1.25.2 or >= 1.26.4
   - Install: `pip install onnxruntime-qnn`
   - Install nightly package `python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly-qnn`
-Note: Starting version 1.18.0 , you do not need to separately download and install QNN SDK. The required QNN dependency libraries are included in the OnnxRuntime packages.
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
