@@ -49,7 +49,7 @@ if __name__ == "__main__":
     output0 = onnx.helper.make_tensor_value_info("output0", onnx.TensorProto.FLOAT, None)
     output1 = onnx.helper.make_tensor_value_info("output1", onnx.TensorProto.FLOAT, None)
 
-    # Shared scalar weight (will be unsqueezed and fed into a Squeeze op by layout transformation).
+    # Shared weight (will be unsqueezed and fed into a Squeeze op by layout transformation).
     const_1_weight = onnx.numpy_helper.from_array(np.array([1.0] * shape[-1], dtype=np.float32), "const_1_weight")
 
     # Transpose with channel-first perm
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     # Mul1
     mul1_node = onnx.helper.make_node("Mul", ["input1", "const_1_weight"], ["output1"], name="mul1_node")
 
-    # Conv0. Input[0] shape is (1, 3, 3, 3)
+    # Conv0
     conv_w_shape = (1, 3, 2, 2)
     conv_weight_data = np.random.normal(-1.0, 1.0, conv_w_shape).astype(np.float32)
     conv_weight = onnx.numpy_helper.from_array(conv_weight_data, "conv_weight")
