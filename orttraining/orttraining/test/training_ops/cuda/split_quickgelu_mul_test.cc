@@ -19,9 +19,9 @@ TEST(S2SModelSplitQuickGelu, Int32Type2D) {
                                  5, 6, 7, 8};
 
   OpTester test("S2SModelSplitQuickGelu", 1, onnxruntime::kMSDomain);
-  std::cout << "Input:" << input << std::endl;
+  // std::cout << "Input:" << input << std::endl;
   test.AddInput<float>("input", {4, 4}, input);
-  std::cout << "Output:" << output << std::endl;
+  // std::cout << "Output:" << output << std::endl;
   test.AddOutput<float>("output", {4, 2}, output);
   test.Run();
 }
