@@ -12,7 +12,7 @@ redirect_from: /docs/reference/execution-providers/QNN-ExecutionProvider
 The QNN Execution Provider for ONNX Runtime enables hardware accelerated execution on Qualcomm chipsets. 
 It uses the Qualcomm AI Engine Direct SDK (QNN SDK) to construct a QNN graph from an ONNX model which can 
 be executed by a supported accelerator backend library.
-
+OnnxRuntime QNN Execution Provider can be used on Android and Windows(ARM64) devices with Qualcomm Snapdragon SOC's.
 
 ## Contents
 {: .no_toc }
@@ -20,19 +20,19 @@ be executed by a supported accelerator backend library.
 * TOC placeholder
 {:toc}
 
-## Install Pre-requisites (Building from Source Only)
+## Install Pre-requisites (Build from Source Only)
 
 If you build QNN Execution Provider from source, you should first
 download the Qualcomm AI Engine Direct SDK (QNN SDK) from [https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
 
 ### QNN Version Requirements
 
-ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.22.x and Qualcomm SC8280, SM8350, Snapdragon X SOC's
+ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.22.x and Qualcomm SC8280, SM8350, Snapdragon X SOC's on Android and ARM64 Windows
 
-## Build
+## Build (Android and Windows)
 For build instructions, please see the [BUILD page](../build/eps.md#qnn).
 
-## Pre-built Packages
+## Pre-built Packages (Windows Only)
 Note: Starting version 1.18.0 , you do not need to separately download and install QNN SDK. The required QNN dependency libraries are included in the OnnxRuntime packages.
 - [NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
 - [Python package](https://pypi.org/project/onnxruntime-qnn/)
@@ -43,6 +43,10 @@ Note: Starting version 1.18.0 , you do not need to separately download and insta
     - Numpy 1.25.2 or >= 1.26.4
   - Install: `pip install onnxruntime-qnn`
   - Install nightly package `python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ort-nightly-qnn`
+
+## Qualcomm AI Hub
+Qualcomm AI Hub can be used to optimize and run models on Qualcomm hosted devices.
+OnnxRuntime QNN Execution Provider is a supported runtime in (Qualcomm AI Hub)[https://aihub.qualcomm.com/]
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
@@ -134,12 +138,12 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 |ai.onnx:Asin||
 |ai.onnx:Atan||
 |ai.onnx:AveragePool||
-|ai.onnx:BatchNormalization||
+|ai.onnx:BatchNormalization|fp16 supported since 1.18.0|
 |ai.onnx:Cast||
-|ai.onnx:Clip||
+|ai.onnx:Clip|fp16 supported since 1.18.0|
 |ai.onnx:Concat||
-|ai.onnx:Conv||
-|ai.onnx:ConvTranspose||
+|ai.onnx:Conv|3d supported since 1.18.0|
+|ai.onnx:ConvTranspose|3d supported since 1.18.0|
 |ai.onnx:Cos||
 |ai.onnx:DepthToSpace||
 |ai.onnx:DequantizeLinear||
@@ -175,7 +179,7 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 |ai.onnx:Neg||
 |ai.onnx:Not||
 |ai.onnx:Or||
-|ai.onnx:Prelu||
+|ai.onnx:Prelu|fp16, int32 supported since 1.18.0|
 |ai.onnx:Pad||
 |ai.onnx:Pow||
 |ai.onnx:QuantizeLinear||
