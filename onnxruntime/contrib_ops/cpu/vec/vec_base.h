@@ -11,6 +11,9 @@
 #include <complex>
 
 
+#include "contrib_ops/cpu/vec/math.h"
+#include "contrib_ops/cpu/vec/intrinsics.h"
+
 #if defined(_MSC_VER)
 #define __FORCE_INLINE __forceinline
 #elif __has_attribute(always_inline) || defined(__GNUC__)
@@ -149,7 +152,7 @@ struct Vectorized {
   static Vectorized<T> blend(const Vectorized<T>& a, const Vectorized<T>& b) {
     int64_t mask = mask_;
     Vectorized vector;
-    for (int i=0; i< size(); i++) {
+    for (int i = 0; i < size(); i++) {
       if (mask & 0x01) {
         vector[i] = b[i];
       } else {
@@ -164,7 +167,7 @@ struct Vectorized {
     Vectorized vector;
     int_same_size_t<T> buffer[size()];
     mask.store(buffer);
-    for (int i=0; i< size(); i++) {
+    for (int i = 0; i < size(); i++) {
       if (buffer[i] & 0x01) {
         vector[i] = b[i];
       } else {
@@ -176,14 +179,14 @@ struct Vectorized {
   template <typename step_t>  // step sometimes requires a higher precision type (e.g., T=int, step_t=double)
   static Vectorized<T> arange(T base = static_cast<T>(0), step_t step = static_cast<step_t>(1)) {
     Vectorized vector;
-    for (int i=0; i< size(); i++) {
+    for (int i = 0; i < size(); i++) {
       vector.values[i] = base + i * step;
     }
     return vector;
   }
   static Vectorized<T> set(const Vectorized<T>& a, const Vectorized<T>& b, int64_t count = size()) {
     Vectorized vector;
-    for (int i=0; i< size(); i++) {
+    for (int i = 0; i < size(); i++) {
       if (i < count) {
         vector[i] = b[i];
       } else {
@@ -279,19 +282,20 @@ struct Vectorized {
     return map([](T x) { return static_cast<T>(std::abs(x)); });
   }
 
-  template <typename other_t_sgn = T,
-            typename std::enable_if_t<is_complex<other_t_sgn>::value, int> = 0>
-  Vectorized<T> sgn() const {
-    return map(at::native::sgn_impl);
-  }
+  // template <typename other_t_sgn = T,
+  //           typename std::enable_if_t<is_complex<other_t_sgn>::value, int> = 0>
+  // Vectorized<T> sgn() const {
+  //   return map(at::native::sgn_impl);
+  // }
 
-  template <typename other_t_angle = T,
-            typename std::enable_if_t<!is_complex<other_t_angle>::value, int> = 0>
-  Vectorized<T> angle() const {
-    // other_t_angle is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<other_t_angle, T>, "other_t_angle must be T");
-    return map(at::native::angle_impl<T>);  // compiler is unable to resolve the overload without <T>
-  }
+  // template <typename other_t_angle = T,
+  //           typename std::enable_if_t<!is_complex<other_t_angle>::value, int> = 0>
+  // Vectorized<T> angle() const {
+  //   // other_t_angle is for SFINAE and clarity. Make sure it is not changed.
+  //   static_assert(std::is_same_v<other_t_angle, T>, "other_t_angle must be T");
+  //   return map(at::native::angle_impl<T>);  // compiler is unable to resolve the overload without <T>
+  // }
+
   template <typename complex_t_angle = T,
             typename std::enable_if_t<is_complex<complex_t_angle>::value, int> = 0>
   Vectorized<T> angle() const {
@@ -359,7 +363,7 @@ struct Vectorized {
   }
   Vectorized<T> atan2(const Vectorized<T>& exp) const {
     Vectorized<T> ret;
-    for (int i=0; i< size(); i++) {
+    for (int i = 0; i < size(); i++) {
       ret[i] = std::atan2(values[i], exp[i]);
     }
     return ret;
@@ -388,9 +392,9 @@ struct Vectorized {
   Vectorized<T> exp() const {
     return map(std::exp);
   }
-  Vectorized<T> exp2() const {
-    return map(exp2_impl);
-  }
+  // Vectorized<T> exp2() const {
+  //   return map(exp2_impl);
+  // }
   Vectorized<T> expm1() const {
     return map(std::expm1);
   }
@@ -407,7 +411,7 @@ struct Vectorized {
     // U is for SFINAE purposes only. Make sure it is not changed.
     static_assert(std::is_same_v<U, T>, "U must be T");
     Vectorized<T> ret;
-    for (int i=0; i< size(); i++) {
+    for (int i = 0; i < size(); i++) {
       ret[i] = std::fmod(values[i], q[i]);
     }
     return ret;
@@ -438,7 +442,7 @@ struct Vectorized {
     return Vectorized(map(std::log)) / Vectorized(log_2);
   }
   Vectorized<T> ceil() const {
-    return map(at::native::ceil_impl);
+    return map(std::ceil);
   }
   Vectorized<T> cos() const {
     return map(std::cos);
@@ -446,39 +450,39 @@ struct Vectorized {
   Vectorized<T> cosh() const {
     return map(std::cosh);
   }
-  //   Vectorized<T> floor() const {
-  //     return map(at::native::floor_impl);
-  //   }
+  Vectorized<T> floor() const {
+    return map(std::floor);
+  }
   Vectorized<T> hypot(const Vectorized<T>& b) const {
     Vectorized<T> ret;
-    for (int i=0; i< size(); i++) {
+    for (int i = 0; i < size(); i++) {
       ret[i] = std::hypot(values[i], b[i]);
     }
     return ret;
   }
-  Vectorized<T> i0() const {
-    return map(calc_i0);
-  }
-  Vectorized<T> i0e() const {
-    return map(calc_i0e);
-  }
-  Vectorized<T> digamma() const {
-    return map(calc_digamma);
-  }
-  Vectorized<T> igamma(const Vectorized<T>& x) const {
-    Vectorized<T> ret;
-    for (int i=0; i< size(); i++) {
-      ret[i] = calc_igamma(values[i], x[i]);
-    }
-    return ret;
-  }
-  Vectorized<T> igammac(const Vectorized<T>& x) const {
-    Vectorized<T> ret;
-    for (int i=0; i< size(); i++) {
-      ret[i] = calc_igammac(values[i], x[i]);
-    }
-    return ret;
-  }
+  // Vectorized<T> i0() const {
+  //   return map(calc_i0);
+  // }
+  // Vectorized<T> i0e() const {
+  //   return map(calc_i0e);
+  // }
+  // Vectorized<T> digamma() const {
+  //   return map(calc_digamma);
+  // }
+  // Vectorized<T> igamma(const Vectorized<T>& x) const {
+  //   Vectorized<T> ret;
+  //   for (int i=0; i< size(); i++) {
+  //     ret[i] = calc_igamma(values[i], x[i]);
+  //   }
+  //   return ret;
+  // }
+  // Vectorized<T> igammac(const Vectorized<T>& x) const {
+  //   Vectorized<T> ret;
+  //   for (int i=0; i< size(); i++) {
+  //     ret[i] = calc_igammac(values[i], x[i]);
+  //   }
+  //   return ret;
+  // }
   Vectorized<T> neg() const {
     // NB: the trailing return type is needed because we need to coerce the
     // return value back to T in the case of unary operator- incuring a
@@ -487,7 +491,7 @@ struct Vectorized {
   }
   Vectorized<T> nextafter(const Vectorized<T>& b) const {
     Vectorized<T> ret;
-    for (int i=0; i< size(); i++) {
+    for (int i = 0; i < size(); i++) {
       ret[i] = std::nextafter(values[i], b[i]);
     }
     return ret;
@@ -525,7 +529,7 @@ struct Vectorized {
   }
   Vectorized<T> pow(const Vectorized<T>& exp) const {
     Vectorized<T> ret;
-    for (int i=0; i< size(); i++) {
+    for (int i = 0; i < size(); i++) {
       ret[i] = std::pow(values[i], exp[i]);
     }
     return ret;
@@ -916,7 +920,7 @@ std::enable_if_t<scale == 1 || scale == 2 || scale == 4 || scale == 8, Vectorize
   int_same_size_t<T> index_arr[size];
   vindex.store(static_cast<void*>(index_arr));
   T buffer[size];
-  for (int i=0; i< size; i++) {
+  for (int i = 0; i < size; i++) {
     buffer[i] = base_addr[index_arr[i] * scale / sizeof(T)];
   }
   return Vectorized<T>::loadu(static_cast<void*>(buffer));
@@ -933,7 +937,7 @@ std::enable_if_t<scale == 1 || scale == 2 || scale == 4 || scale == 8, Vectorize
   mask.store(static_cast<void*>(mask_arr));
   vindex.store(static_cast<void*>(index_arr));
   T buffer[size];
-  for (int i=0; i< size; i++) {
+  for (int i = 0; i < size; i++) {
     if (mask_arr[i] & 0x01) {  // check highest bit
       buffer[i] = base_addr[index_arr[i] * scale / sizeof(T)];
     } else {
@@ -1019,7 +1023,7 @@ deinterleave2(const Vectorized<T>& a, const Vectorized<T>& b) {
   T buffer2[size];
   a.store(static_cast<void*>(a_arr));
   b.store(static_cast<void*>(b_arr));
-  for (int i=0; i< half_size; i++) {
+  for (int i = 0; i < half_size; i++) {
     buffer1[i] = a_arr[i * 2];
     buffer1[half_size + i] = b_arr[i * 2];
     buffer2[i] = a_arr[i * 2 + 1];
@@ -1051,7 +1055,7 @@ interleave2(const Vectorized<T>& a, const Vectorized<T>& b) {
   T buffer2[size];
   a.store(static_cast<void*>(a_arr));
   b.store(static_cast<void*>(b_arr));
-  for (int i=0; i< half_size; i++) {
+  for (int i = 0; i < half_size; i++) {
     buffer1[i * 2] = a_arr[i];
     buffer1[i * 2 + 1] = b_arr[i];
     buffer2[i * 2] = a_arr[half_size + i];
@@ -1079,7 +1083,7 @@ inline Vectorized<T> flip(const Vectorized<T>& data) {
   T output[size];
   T buffer[size];
   data.store(static_cast<void*>(buffer));
-  for (int i=0; i< size; i++) {
+  for (int i = 0; i < size; i++) {
     output[i] = buffer[size - i - 1];
   }
   return Vectorized<T>::loadu(static_cast<void*>(output));
@@ -1121,10 +1125,10 @@ inline bool data_index_step(T& x, const T& X, Args&&... args) {
   return false;
 }
 
-}
+}  // namespace CPU_CAPABILITY
 
 template <typename T>
-inline void _store(T* dst, at::vec::Vectorized<T> src) {
+inline void _store(T* dst, vec::Vectorized<T> src) {
   src.store(dst);
 }
 

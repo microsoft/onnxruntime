@@ -22,7 +22,7 @@ struct VecMaskLoad<
   static inline VectorizedN<T, 1> apply(
       const T* ptr,
       const VecMask<mask_t, 1>& vec_mask) {
-    at::vec::Vectorized<T> zero_vec(0);
+    vec::Vectorized<T> zero_vec(0);
     auto all_ones = _mm512_set1_epi32(0xFFFFFFFF);
     auto int_mask = vec_mask.template cast<int, 1>()[0];
     auto mmask = _mm512_cmp_epi32_mask(int_mask, all_ones, _MM_CMPINT_EQ);
@@ -87,7 +87,7 @@ struct VecMaskLoad<int64_t, 2, mask_t, 1> {
     auto zero = _mm512_set1_epi64(0);
     auto int_mask = vec_mask.template cast<int, 1>()[0];
     auto mmask = _mm512_cmp_epi32_mask(int_mask, all_ones, _MM_CMPINT_EQ);
-    at::vec::VectorizedN<int64_t, 2> result;
+    vec::VectorizedN<int64_t, 2> result;
     result[0] = _mm512_mask_loadu_epi64(zero, (__mmask8)mmask, ptr);
     result[1] = _mm512_mask_loadu_epi64(zero, (__mmask8)(mmask >> 8), ptr + 8);
     return result;

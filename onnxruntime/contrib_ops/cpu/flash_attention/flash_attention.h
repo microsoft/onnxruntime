@@ -1,3 +1,5 @@
+
+#pragma once
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/flash_attention/tensor_wrapper.h"

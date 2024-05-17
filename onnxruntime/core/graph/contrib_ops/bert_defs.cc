@@ -1254,7 +1254,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present_value",
                 "Updated value cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size).",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain integer type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           SparseAttentionTypeAndShapeInference(ctx, 3);

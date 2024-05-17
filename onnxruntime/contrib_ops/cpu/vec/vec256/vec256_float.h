@@ -6,10 +6,10 @@
 #include <contrib_ops/cpu/vec/intrinsics.h>
 #include <contrib_ops/cpu/vec/vec_base.h>
 //#include <c10/util/irange.h>
-#if defined(CPU_CAPABILITY_AVX2)
-#define SLEEF_STATIC_LIBS
-#include <sleef.h>
-#endif
+// #if defined(CPU_CAPABILITY_AVX2)
+// #define SLEEF_STATIC_LIBS
+// #include <sleef.h>
+// #endif
 
 namespace onnxruntime::vec {
 // See Note [CPU_CAPABILITY namespace]
@@ -148,27 +148,29 @@ public:
   Vectorized<float> conj() const {
     return *this;
   }
-  Vectorized<float> acos() const {
-    return Vectorized<float>(Sleef_acosf8_u10(values));
-  }
-  Vectorized<float> acosh() const {
-    return Vectorized<float>(Sleef_acoshf8_u10(values));
-  }
-  Vectorized<float> asin() const {
-    return Vectorized<float>(Sleef_asinf8_u10(values));
-  }
-  Vectorized<float> atan() const {
-    return Vectorized<float>(Sleef_atanf8_u10(values));
-  }
-  Vectorized<float> atanh() const {
-    return Vectorized<float>(Sleef_atanhf8_u10(values));
-  }
-  Vectorized<float> atan2(const Vectorized<float> &b) const {
-    return Vectorized<float>(Sleef_atan2f8_u10(values, b));
-  }
-  Vectorized<float> copysign(const Vectorized<float> &sign) const {
-    return Vectorized<float>(Sleef_copysignf8(values, sign));
-  }
+
+  // Vectorized<float> acos() const {
+  //   return Vectorized<float>(Sleef_acosf8_u10(values));
+  // }
+  // Vectorized<float> acosh() const {
+  //   return Vectorized<float>(Sleef_acoshf8_u10(values));
+  // }
+  // Vectorized<float> asin() const {
+  //   return Vectorized<float>(Sleef_asinf8_u10(values));
+  // }
+  // Vectorized<float> atan() const {
+  //   return Vectorized<float>(Sleef_atanf8_u10(values));
+  // }
+  // Vectorized<float> atanh() const {
+  //   return Vectorized<float>(Sleef_atanhf8_u10(values));
+  // }
+  // Vectorized<float> atan2(const Vectorized<float> &b) const {
+  //   return Vectorized<float>(Sleef_atan2f8_u10(values, b));
+  // }
+  // Vectorized<float> copysign(const Vectorized<float> &sign) const {
+  //   return Vectorized<float>(Sleef_copysignf8(values, sign));
+  // }
+
   Vectorized<float> erf() const {
     // constants
     const auto neg_zero_vec = _mm256_set1_ps(-0.f);
@@ -193,29 +195,31 @@ public:
     // - exp(- x * x)
     auto pow_2 = _mm256_mul_ps(values, values);
     auto neg_pow_2 = _mm256_xor_ps(neg_zero_vec, pow_2);
-    // auto tmp4 = exp(neg_pow_2);
-    auto tmp4 = Vectorized<float>(Sleef_expf8_u10(neg_pow_2));
+    auto tmp4 = exp(neg_pow_2);
+    // auto tmp4 = Vectorized<float>(Sleef_expf8_u10(neg_pow_2));
     auto tmp5 = _mm256_xor_ps(neg_zero_vec, tmp4);
     // erf(x) = sign(x) * (1 - r * t * exp(- x * x))
     auto tmp6 = _mm256_mul_ps(tmp5, t);
     auto tmp7 = _mm256_fmadd_ps(tmp6, r, one_vec);
     return _mm256_xor_ps(sign_mask, tmp7);
   }
-  Vectorized<float> erfc() const {
-    return Vectorized<float>(Sleef_erfcf8_u15(values));
-  }
+
+
+  // Vectorized<float> erfc() const {
+  //   return Vectorized<float>(Sleef_erfcf8_u15(values));
+  // }
   Vectorized<float> erfinv() const {
     return map(calc_erfinv);
   }
-  Vectorized<float> exp() const {
-    return Vectorized<float>(Sleef_expf8_u10(values));
-  }
-  Vectorized<float> exp2() const {
-    return Vectorized<float>(Sleef_exp2f8_u10(values));
-  }
-  Vectorized<float> expm1() const {
-    return Vectorized<float>(Sleef_expm1f8_u10(values));
-  }
+  // Vectorized<float> exp() const {
+  //   return Vectorized<float>(Sleef_expf8_u10(values));
+  // }
+  // Vectorized<float> exp2() const {
+  //   return Vectorized<float>(Sleef_exp2f8_u10(values));
+  // }
+  // Vectorized<float> expm1() const {
+  //   return Vectorized<float>(Sleef_expm1f8_u10(values));
+  // }
   Vectorized<float> exp_u20() const {
     // A faster version of exp with ULP=20
     static __m256 vec_factorial_1 =
@@ -278,43 +282,43 @@ public:
     vec_res = _mm256_mul_ps(vec_res, vec_two);
     return vec_res;
   }
-  Vectorized<float> fmod(const Vectorized<float>& q) const {
-    return Vectorized<float>(Sleef_fmodf8(values, q));
-  }
-  Vectorized<float> log() const {
-    return Vectorized<float>(Sleef_logf8_u10(values));
-  }
-  Vectorized<float> log2() const {
-    return Vectorized<float>(Sleef_log2f8_u10(values));
-  }
-  Vectorized<float> log10() const {
-    return Vectorized<float>(Sleef_log10f8_u10(values));
-  }
-  Vectorized<float> log1p() const {
-    return Vectorized<float>(Sleef_log1pf8_u10(values));
-  }
+  // Vectorized<float> fmod(const Vectorized<float>& q) const {
+  //   return Vectorized<float>(Sleef_fmodf8(values, q));
+  // }
+  // Vectorized<float> log() const {
+  //   return Vectorized<float>(Sleef_logf8_u10(values));
+  // }
+  // Vectorized<float> log2() const {
+  //   return Vectorized<float>(Sleef_log2f8_u10(values));
+  // }
+  // Vectorized<float> log10() const {
+  //   return Vectorized<float>(Sleef_log10f8_u10(values));
+  // }
+  // Vectorized<float> log1p() const {
+  //   return Vectorized<float>(Sleef_log1pf8_u10(values));
+  // }
   Vectorized<float> frac() const;
-  Vectorized<float> sin() const {
-    return Vectorized<float>(Sleef_sinf8_u35(values));
-  }
-  Vectorized<float> sinh() const {
-    return Vectorized<float>(Sleef_sinhf8_u10(values));
-  }
-  Vectorized<float> cos() const {
-    return Vectorized<float>(Sleef_cosf8_u35(values));
-  }
-  Vectorized<float> cosh() const {
-    return Vectorized<float>(Sleef_coshf8_u10(values));
-  }
+  // Vectorized<float> sin() const {
+  //   return Vectorized<float>(Sleef_sinf8_u35(values));
+  // }
+  // Vectorized<float> sinh() const {
+  //   return Vectorized<float>(Sleef_sinhf8_u10(values));
+  // }
+  // Vectorized<float> cos() const {
+  //   return Vectorized<float>(Sleef_cosf8_u35(values));
+  // }
+  // Vectorized<float> cosh() const {
+  //   return Vectorized<float>(Sleef_coshf8_u10(values));
+  // }
   Vectorized<float> ceil() const {
     return _mm256_ceil_ps(values);
   }
   Vectorized<float> floor() const {
     return _mm256_floor_ps(values);
   }
-  Vectorized<float> hypot(const Vectorized<float> &b) const {
-    return Vectorized<float>(Sleef_hypotf8_u05(values, b));
-  }
+  // Vectorized<float> hypot(const Vectorized<float> &b) const {
+  //   return Vectorized<float>(Sleef_hypotf8_u05(values, b));
+  // }
   Vectorized<float> i0() const {
     return map(calc_i0);
   }
@@ -349,24 +353,24 @@ public:
   Vectorized<float> neg() const {
     return _mm256_xor_ps(_mm256_set1_ps(-0.f), values);
   }
-  Vectorized<float> nextafter(const Vectorized<float> &b) const {
-    return Vectorized<float>(Sleef_nextafterf8(values, b));
-  }
+  // Vectorized<float> nextafter(const Vectorized<float> &b) const {
+  //   return Vectorized<float>(Sleef_nextafterf8(values, b));
+  // }
   Vectorized<float> round() const {
     return _mm256_round_ps(values, (_MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
   }
-  Vectorized<float> tan() const {
-    return Vectorized<float>(Sleef_tanf8_u10(values));
-  }
-  Vectorized<float> tanh() const {
-    return Vectorized<float>(Sleef_tanhf8_u10(values));
-  }
+  // Vectorized<float> tan() const {
+  //   return Vectorized<float>(Sleef_tanf8_u10(values));
+  // }
+  // Vectorized<float> tanh() const {
+  //   return Vectorized<float>(Sleef_tanhf8_u10(values));
+  // }
   Vectorized<float> trunc() const {
     return _mm256_round_ps(values, (_MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC));
   }
-  Vectorized<float> lgamma() const {
-    return Vectorized<float>(Sleef_lgammaf8_u10(values));
-  }
+  // Vectorized<float> lgamma() const {
+  //   return Vectorized<float>(Sleef_lgammaf8_u10(values));
+  // }
   Vectorized<float> sqrt() const {
     return _mm256_sqrt_ps(values);
   }
@@ -376,9 +380,11 @@ public:
   Vectorized<float> rsqrt() const {
     return _mm256_div_ps(_mm256_set1_ps(1), _mm256_sqrt_ps(values));
   }
-  Vectorized<float> pow(const Vectorized<float> &b) const {
-    return Vectorized<float>(Sleef_powf8_u10(values, b));
-  }
+
+  // Vectorized<float> pow(const Vectorized<float> &b) const {
+  //   return Vectorized<float>(Sleef_powf8_u10(values, b));
+  // }
+
   // Comparison using the _CMP_**_OQ predicate.
   //   `O`: get false if an operand is NaN
   //   `Q`: do not raise if an operand is NaN
@@ -516,11 +522,11 @@ inline Vectorized<float> Vectorized<float>::le(const Vectorized<float>& other) c
 template <>
 inline void convert(const float* src, float* dst, int64_t n) {
   int64_t i;
-#pragma unroll
+// #pragma unroll
   for (i = 0; i <= (n - Vectorized<float>::size()); i += Vectorized<float>::size()) {
     _mm256_storeu_ps(dst + i, _mm256_loadu_ps(src + i));
   }
-#pragma unroll
+// #pragma unroll
   for (; i < n; i++) {
     dst[i] = src[i];
   }
