@@ -334,7 +334,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Neg", V_2023_0, {"CPU", "GPU"}});
-  no_dimension_supported_.push_back({"Pow", V_2023_0, {"CPU", "GPU"}});
+    no_dimension_supported_.push_back({"Pow", V_2023_0, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
@@ -691,7 +691,7 @@ bool DataOps::node_is_supported(const NodeIndex node_idx) {
   // Check 2
 
   bool has_unsupported_dimension = false;
-  node->ForEachDef([&has_unsupported_dimension, this, &optype](const NodeArg& node_arg, bool is_input) {
+  node->ForEachDef([&has_unsupported_dimension, this, &optype, &node](const NodeArg& node_arg, bool is_input) {
     if (is_input) {
       if (this->graph_viewer_.IsConstantInitializer(node_arg.Name(), true))
         return;
@@ -702,6 +702,16 @@ bool DataOps::node_is_supported(const NodeIndex node_idx) {
       if (shape->dim_size() == 0) {
         if (op_is_supported(optype, no_dimension_supported_)) {
           return;
+        }
+        if (npu_qdq_optimizer_enabled_) {
+          // Pad Op with DQ inputs will be optimized out in the qdq optimization pass, so mark those no dim Pad ops
+          // supported here
+          if (optype == "Pad") {
+            for (Node::NodeConstIterator it_dq = node->InputNodesBegin(); it_dq != node->InputNodesEnd(); ++it_dq) {
+              const auto& DQ = &*it_dq;
+              if (DQ->OpType() == "DequantizeLinear") return;
+            }
+          }
         }
         has_unsupported_dimension = true;
         return;

@@ -27,23 +27,26 @@ namespace openvino_ep {
 
 // Constructor
 GetCapability::GetCapability(const GraphViewer& graph_viewer_param,
-                             const std::string device_type_param)
+                             const std::string device_type_param,
+                             const bool enable_qdq_optimizer)
     : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
+  bool npu_qdq_optimizer_enabled = false;
   if (device_type_.find("NPU") != std::string::npos) {
     device_type_ = "CPU";
+    if (enable_qdq_optimizer) npu_qdq_optimizer_enabled = true;
   }
 #if OPENVINO_VERSION_MAJOR == 2023 && OPENVINO_VERSION_MINOR == 1
-  data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
+  data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2023 && OPENVINO_VERSION_MINOR == 2
-  data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_);
+  data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2023 && OPENVINO_VERSION_MINOR == 3
-  data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_);
+  data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 0
-  data_ops_ = new DataOps(graph_viewer_, V_2024_0, device_type_);
+  data_ops_ = new DataOps(graph_viewer_, V_2024_0, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 1
-  data_ops_ = new DataOps(graph_viewer_, V_2024_1, device_type_);
+  data_ops_ = new DataOps(graph_viewer_, V_2024_1, device_type_, npu_qdq_optimizer_enabled);
 #else
-  data_ops_ = new DataOps(graph_viewer_, V_2024_1, device_type_);
+  data_ops_ = new DataOps(graph_viewer_, V_2024_1, device_type_, npu_qdq_optimizer_enabled);
 #endif
 }
 

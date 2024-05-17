@@ -119,7 +119,8 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   }(graph_viewer);
 
   openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type);
+                                 global_context_->device_type,
+                                 global_context_->enable_qdq_optimizer);
   result = obj.Execute();
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
