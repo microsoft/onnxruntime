@@ -38,7 +38,7 @@ Note: Starting version 1.18.0 , you do not need to separately download and insta
 - [Python package](https://pypi.org/project/onnxruntime-qnn/)
   - Requirements:
     - Windows ARM64 (for inferencing on local device with Qualcomm NPU)
-    - Windows X64 (for quantizing models. see [Generating a quantized model (x64 only)])
+    - Windows X64 (for quantizing models. see [Generating a quantized model](./QNN-ExecutionProvider.md#generating-a-quantized-model-x64-only))
     - Python 3.11.x
     - Numpy 1.25.2 or >= 1.26.4
   - Install: `pip install onnxruntime-qnn`
