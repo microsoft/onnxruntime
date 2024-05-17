@@ -33,7 +33,7 @@ jobs:
 
     - name: Build code
       run: |
-        python tools\ci_build\build.py \
+        python tools/ci_build/build.py \
           --update \
           --build --parallel \
           --test \
