@@ -150,10 +150,6 @@ If your device has a supported Qualcomm Snapdragon SOC, and you want to use QNN 
 Download and install [Qualcomm AI Engine Direct SDK](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
 QNN Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_qnn --qnn_home [QNN_SDK path]`
 
-### Testing and Validation
-
-OnnxRuntime QNN Execution Provider is a supported runtime in [Qualcomm AI Hub](https://aihub.qualcomm.com/)
-
 ## Test Android changes using emulator (not applicable for QNN Execution Provider)
 
 See [Testing Android Changes using the Emulator](https://github.com/microsoft/onnxruntime/blob/main/docs/Android_testing.md).
