@@ -4764,8 +4764,9 @@ TEST(TransposeOptimizerTests, ConstantFoldTransposeAndSqueezeOutputCorrectness) 
     Graph& graph = session.GetMutableGraph();
     CPUAllocator allocator;
 
-    using namespace onnx_transpose_optimization;
-    auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+    namespace alias_oto = onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph,
+                                  TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                                   /*new_node_ep*/ nullptr);
 
     // Use a custom optimization cost check that aggressively pushes channel-last or channel-first transposes.
@@ -4774,17 +4775,20 @@ TEST(TransposeOptimizerTests, ConstantFoldTransposeAndSqueezeOutputCorrectness) 
     // shared_const --+--> Transpose --> Squeeze --> Op0
     //                |
     //                +--> Op1
-    auto custom_cost_fn = [](const api::GraphRef& /* graph */, const api::NodeRef& /* node */,
-                             const std::vector<int64_t>& perm,
-                             const std::unordered_set<std::string>& /* outputs_leading_to_transpose */) -> CostCheckResult {
-      if (perm == ChannelFirstToLastPerm(perm.size()) || perm == ChannelLastToFirstPerm(perm.size())) {
-        return CostCheckResult::kPushTranspose;  // Push channel-last/first transposes.
+    auto custom_cost_fn =
+        [](const alias_oto::api::GraphRef& /* graph */,
+           const alias_oto::api::NodeRef& /* node */,
+           const std::vector<int64_t>& perm,
+           const std::unordered_set<std::string>& /* outputs_leading_to_transpose */) -> alias_oto::CostCheckResult {
+      if (perm == alias_oto::ChannelFirstToLastPerm(perm.size()) ||
+          perm == alias_oto::ChannelLastToFirstPerm(perm.size())) {
+        return alias_oto::CostCheckResult::kPushTranspose;
       }
 
-      return CostCheckResult::kFallThrough;
+      return alias_oto::CostCheckResult::kFallThrough;
     };
 
-    OptimizeResult result = Optimize(*api_graph, "", custom_cost_fn);
+    alias_oto::OptimizeResult result = alias_oto::Optimize(*api_graph, /*provider_type*/ "", custom_cost_fn);
 
     ASSERT_EQ(result.error_msg, std::nullopt);
     ASSERT_TRUE(result.graph_modified);

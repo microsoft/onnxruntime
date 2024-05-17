@@ -99,15 +99,31 @@ static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::
   return graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
 }
 
+/// <summary>
+/// Sets an attribute on a node if the attribute value is valid and differs from the default value.
+/// </summary>
+/// <param name="node">Node on which to set the attribute</param>
+/// <param name="attr_name">Attribute's name</param>
+/// <param name="attr_val">Attribute value to set</param>
+/// <param name="attr_default_val">Default attribute value</param>
 static void SetAttrIfNotDefault(api::NodeRef& node, std::string_view attr_name,
                                 std::optional<int64_t> attr_val, int64_t attr_default_val) {
-  // Only set attributes if provided and not the default
   if (attr_val && attr_val != attr_default_val) {
     node.SetAttributeInt(attr_name, *attr_val);
   }
 }
 
-// Use to create a QuantizeLinear. Does not update output ValueInfo. Adds attributes if needed.
+/// <summary>
+/// Adds a new QuantizeLinear node to the graph. Does not update the output's ValueInfo data.
+/// </summary>
+/// <param name="graph">Graph into which to add the new node</param>
+/// <param name="domain">Domain for the new node</param>
+/// <param name="inputs">List of input names for the new node</param>
+/// <param name="axis">Optional 'axis' attribute value</param>
+/// <param name="block_size">Optional 'block_size' attribute value</param>
+/// <param name="output_dtype">Optional 'output_dtype' attribute value</param>
+/// <param name="saturate">Optional 'saturate' attribute value</param>
+/// <returns>Reference to the new QuantizeLinear node</returns>
 static std::unique_ptr<api::NodeRef> MakeQuantizeOp(api::GraphRef& graph, std::string_view domain,
                                                     std::vector<std::string_view> inputs,
                                                     std::optional<int64_t> axis,
@@ -135,7 +151,15 @@ static std::unique_ptr<api::NodeRef> MakeQuantizeOp(api::GraphRef& graph, std::s
   return node;
 }
 
-// Use to create a DequantizeLinear. Does not update output ValueInfo. Adds attributes if needed.
+/// <summary>
+/// Adds a new DequantizeLinear node to the graph. Does not update the output's ValueInfo data.
+/// </summary>
+/// <param name="graph">Graph into which to add the new node</param>
+/// <param name="domain">Domain for the new node</param>
+/// <param name="inputs">List of input names for the new node</param>
+/// <param name="axis">Optional 'axis' attribute value</param>
+/// <param name="block_size">Optional 'block_size' attribute value</param>
+/// <returns>Reference to the new DequantizeLinear node</returns>
 static std::unique_ptr<api::NodeRef> MakeDequantizeOp(api::GraphRef& graph, std::string_view domain,
                                                       std::vector<std::string_view> inputs,
                                                       std::optional<int64_t> axis,
@@ -669,8 +693,13 @@ static std::vector<int64_t> UnsqueezeShape(gsl::span<const int64_t> shape, const
   return new_shape;
 }
 
-// Returns a new squeezed shape without the dimensions of value 1 indicated by the axes.
-// Unsafe if the shape's rank is smaller than the number of unique axes values.
+/// <summary>
+/// Returns a new squeezed shape without the dimensions of value 1 indicated by the given axes.
+/// Unsafe if any axes values are not in the range [-r, r - 1], where r = shape.size().
+/// </summary>
+/// <param name="shape">Input shape to squeeze</param>
+/// <param name="axes">List of integers indicating the dimensions to squeeze</param>
+/// <returns>New squeezed shape</returns>
 static std::vector<int64_t> SqueezeShape(gsl::span<const int64_t> shape, const std::vector<int64_t>& axes) {
   const size_t init_rank = shape.size();
   std::vector<int64_t> pos_axes(axes.begin(), axes.end());
@@ -2585,24 +2614,34 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph,
   return ctx;
 }
 
-// Returns true if the transpose optimizer is allowed to modify the given node.
+/// <summary>
+/// Returns true if the transpose optimizer can modify the given node.
+/// </summary>
+/// <param name="ctx">Optimizer context</param>
+/// <param name="node">Node to check</param>
+/// <returns>True if allowed to modify the given node</returns>
 static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node) {
   const auto& node_ep = node.GetExecutionProviderType();
   bool can_modify = false;
 
   if (node_ep.empty()) {
-    // unassigned nodes can always be modified
+    // Unassigned nodes can always be modified
     can_modify = true;
   } else if (node_ep == ctx.provider_type) {
-    // we can also modify if the EP name in provider_type is not empty and the node is assigned to that EP.
+    // We can also modify if the EP name in provider_type is not empty and the node is assigned to that EP.
     can_modify = true;
   }
 
   return can_modify;
 }
 
-// Try to constant fold Transpose or Squeeze nodes if their input is a constant.
-// Returns true if the graph was modified (i.e., at least one of the consumers received a constant-folded value).
+/// <summary>
+/// Try to constant fold Transpose or Squeeze nodes if their input is a constant.
+/// Returns true if the graph was modified (i.e., at least one of the consumers received a constant-folded value).
+/// </summary>
+/// <param name="ctx">Optimization context state</param>
+/// <param name="node">Squeeze or Transpose node to try to constant-fold</param>
+/// <returns>True if graph was modified. The node may not have been removed in either case.</returns>
 static bool TryConstantFoldNode(OptimizerCtx& ctx, api::NodeRef& node) {
   std::string_view node_op_type = node.OpType();
   const bool is_transpose = node_op_type == "Transpose";
@@ -2638,7 +2677,8 @@ static bool TryConstantFoldNode(OptimizerCtx& ctx, api::NodeRef& node) {
 
   std::string_view new_initializer_name;
 
-  // Create new folded initializer. Once we create this new initializer, we're committed to modifying the graph.
+  // Create new squeezed or transposed initializer.
+  // Once we create this new initializer, we're committed to modifying the graph.
   if (is_transpose) {
     std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(node);
     if (perm == std::nullopt) {
@@ -2816,7 +2856,25 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
     return result;
   }
 
-  // Run basic constant-folding and 'fix up' pass for QDQ node units.
+  // Run constant-folding for Transpose and Squeeze ops.
+  // We currently only run this for QDQ models (i.e., have_dq == true) to convert a sequence like
+  // (quantized_weight --> Squeeze --> DQ) into (squeezed_quantized_weight --> DQ).
+  // This constant-folding pass could also benefit non-quantized models, but we only including it here to
+  // be conservative.
+  auto graph_nodes = ctx.graph.Nodes();
+  for (size_t i = 0; i < graph_nodes.size(); i++) {
+    auto& node = *graph_nodes[i];
+
+    if (!CanModifyNode(ctx, node)) {
+      continue;
+    }
+
+    if (TryConstantFoldNode(ctx, node)) {
+      changed = true;
+    }
+  }
+
+  // Run 'fix up' pass for QDQ node units.
   //
   // Repair broken QDQ node unit from Transpose being blocked on Op inside a QDQ node unit.
   //   DQ -> Transpose ->            Op -> Q =>
@@ -2830,17 +2888,11 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   //   DQ -> Q -> consumer node =>
   //              consumer node
 
-  auto graph_nodes = ctx.graph.Nodes();
-  for (size_t i = 0; i < graph_nodes.size(); i++) {
+  graph_nodes = ctx.graph.Nodes();
+  for (size_t i = 1; i < graph_nodes.size(); i++) {
     auto& node = *graph_nodes[i];
 
     if (!CanModifyNode(ctx, node)) {
-      continue;
-    }
-
-    // Run constant-folding for Transpose and Squeeze ops.
-    if (TryConstantFoldNode(ctx, node)) {
-      changed = true;
       continue;
     }
 
