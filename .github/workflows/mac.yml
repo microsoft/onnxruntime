@@ -40,5 +40,4 @@ jobs:
           --build_objc \
           --use_xnnpack \
           --use_coreml \
-          --build_dir \
           --use_binskim_compliant_compile_flags
