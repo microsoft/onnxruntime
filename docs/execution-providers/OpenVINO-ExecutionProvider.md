@@ -97,7 +97,7 @@ Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtim
 
 OpenVINO™ supports [model caching](https://docs.openvino.ai/2024/openvino-workflow/running-inference/optimize-inference/optimizing-latency/model-caching-overview.html).
 
-From OpenVINO™ 2023.1 version, model caching feature is supported on CPU, NPU, GPU along with kernel caching on iGPU, dGPU.
+Model caching feature is supported on CPU, NPU, GPU along with kernel caching on iGPU, dGPU.
 
 This feature enables users to save and load the blob file directly on to the hardware device target and perform inference with improved Inference Latency.
 
@@ -199,7 +199,14 @@ Multi-Device plugin automatically assigns inference requests to available comput
 For more information on Multi-Device plugin of OpenVINO™, please refer to the
 [Intel OpenVINO™ Multi Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Running_on_multiple_devices.html).
 
+### Export OpenVINO Compiled Blob 
+Export the OpenVINO compiled blob as an ONNX model. Using this ONNX model for subsequent inferences avoids model recompilation and could have a positive impact on Session creation time. The exported model is saved to the same directory as the source model with the suffix -ov_{device}_blob.onnx where device can be one of the supported like CPU or NPU. This feature is currently enabled for fully supported models only. 
+Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
+### Enable QDQ Optimizations Passes
+Optimizes ORT quantized models for the NPU device to only keep QDQs for supported ops and optimize for performance and accuracy.Generally this feature will give better performance/accuracy with ORT Optimizations disabled. 
+Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
+ 
 ## Configuration Options
 
 OpenVINO™ Execution Provider can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
@@ -217,8 +224,8 @@ The session configuration options are passed to SessionOptionsAppendExecutionPro
 
 ```
 std::unordered_map<std::string, std::string> options;
-options[device_type] = "GPU";
-options[device_id] = "";
+options["device_type"] = "GPU";
+options["precision"] = "FP32";
 options[num_of_threads] = "8";
 options[num_streams] = "8";
 options[cache_dir] = "";
@@ -233,7 +240,7 @@ The session configuration options are passed to SessionOptionsAppendExecutionPro
 ```
 OrtOpenVINOProviderOptions options;
 options.device_type = "GPU";
-options.device_id = "";
+options.precision = "FP32"; 
 options.num_of_threads = 8;
 options.cache_dir = "";
 options.context = 0x123456ff;
@@ -263,13 +270,13 @@ The following table lists all the available configuration options for API 2.0 an
 | **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
 | --- | --- | --- | --- | --- |
 | device_type | string | CPU, NPU, GPU, GPU.0, GPU.1 based on the avaialable GPUs, NPU, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
-| device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvino.ai/latest/classInferenceEngine_1_1Core.html). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 during build time will be used for inference. |
 | num_streams | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default streams with this value at runtime. If this option is not explicitly set, default value of 1, performance for latency is used during build time will be used for inference. |
 | cache_dir | string | Any valid string path on the hardware target | string | Explicitly specify the path to save and load the blobs enabling model caching feature.|
 | context | string | OpenCL Context | void* | This option is only available when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
 | enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). |
 | enable_qdq_optimizer | string | True/False | boolean | This option enables QDQ Optimization to improve model performance and accuracy on NPU. |
+| export_ep_ctx_blob | string | True/False | boolean | This options enables exporting the OpenVINO Compiled Blob as an ONNX Operator EPContext. | 
 
 
 Valid Hetero or Multi or Auto Device combinations:
