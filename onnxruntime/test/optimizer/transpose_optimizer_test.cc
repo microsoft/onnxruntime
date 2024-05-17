@@ -4617,7 +4617,7 @@ TEST(TransposeOptimizerTests, LayoutTransformFixStuckTransposeWithoutDQ) {
   Status status;
 
   // Using a sub-model extracted from a model that we tried to run with QNN EP.
-  auto model_uri = ORT_TSTR("testdata/layout_transform_fix_transpose_without_dq.onnx");
+  auto model_uri = ORT_TSTR("testdata/layout_transform_fix_transpose_without_dq.qdq.onnx");
 
   SessionOptions so;
 
@@ -4674,7 +4674,7 @@ TEST(TransposeOptimizerTests, LayoutTransformConstantFoldTransposeAndSqueeze) {
   // The test model has a shared initializer that is unsqueezed and transposed in-place for one consumer.
   // The other consumer gets a Transpose -> Squeeze sequence inserted before its input.
   // This Transpose -> Squeeze sequence should get constant-folded.
-  auto model_uri = ORT_TSTR("testdata/layout_transform_const_folding.onnx");
+  auto model_uri = ORT_TSTR("testdata/layout_transform_const_folding.qdq.onnx");
 
   SessionOptions so;
 
@@ -4718,6 +4718,96 @@ TEST(TransposeOptimizerTests, LayoutTransformConstantFoldTransposeAndSqueeze) {
   }
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
+// Checks that a model that is not processed by the transpose optimizer produces the same
+// results as the same model that undergoes transpose optimization with constant folding
+// of Transpose and Squeeze nodes.
+TEST(TransposeOptimizerTests, ConstantFoldTransposeAndSqueezeOutputCorrectness) {
+  // This test model has a shared initializer that is unsqueezed and transposed in-place for one consumer.
+  // The other consumer gets a Transpose -> Squeeze sequence inserted before its input.
+  // This Transpose -> Squeeze sequence should get constant-folded.
+  auto model_uri = ORT_TSTR("testdata/layout_transform_const_folding.qdq.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 3, 3, 3};
+  std::vector<float> input0_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+  std::vector<float> input1_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+
+  OrtValue input0;
+  OrtValue input1;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input_dims, input0_data, &input0);
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input_dims, input1_data, &input1);
+
+  NameMLValMap feeds{{"input0", input0}, {"input1", input1}};
+
+  std::vector<std::string> output_names{"output0", "output1"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+  so.graph_optimization_level = TransformerLevel::Default;  // off
+
+  // get results with no modifications to the model
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    // We call the ONNX transpose optimizer directly to use a custom cost check function.
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    using namespace onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    // Use a custom optimization cost check that aggressively pushes channel-last or channel-first transposes.
+    // This causes an existing transpose to be pushed through an op (Op1) with a shared initializer input. The other
+    // consumer (Op0) of the shared initializer will get a "constant-foldable" sequence between itself and its input.
+    // shared_const --+--> Transpose --> Squeeze --> Op0
+    //                |
+    //                +--> Op1
+    auto custom_cost_fn = [](const api::GraphRef& /* graph */, const api::NodeRef& /* node */,
+                             const std::vector<int64_t>& perm,
+                             const std::unordered_set<std::string>& /* outputs_leading_to_transpose */) -> CostCheckResult {
+      if (perm == ChannelFirstToLastPerm(perm.size()) || perm == ChannelLastToFirstPerm(perm.size())) {
+        return CostCheckResult::kPushTranspose;  // Push channel-last/first transposes.
+      }
+
+      return CostCheckResult::kFallThrough;
+    };
+
+    OptimizeResult result = Optimize(*api_graph, "", custom_cost_fn);
+
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()), "transpose_opt_updated_const_fold.onnx"));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Squeeze"], 0) << "The Squeeze nodes should have been folded.";
+    EXPECT_EQ(op_to_count["Transpose"], 1) << "1 inserted Transpose should be constant-folded. "
+                                           << "Only the pre-existing Transpose should remain.";
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+  ASSERT_THAT(fetches_orig[1].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[1].Get<Tensor>().DataAsSpan<float>()));
+}
 
 static void CheckSharedInitializerHandling(bool broadcast) {
   auto model_uri = broadcast ? ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast.onnx")

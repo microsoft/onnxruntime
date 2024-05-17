@@ -2831,7 +2831,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   //              consumer node
 
   auto graph_nodes = ctx.graph.Nodes();
-  for (size_t i = 1; i < graph_nodes.size(); i++) {
+  for (size_t i = 0; i < graph_nodes.size(); i++) {
     auto& node = *graph_nodes[i];
 
     if (!CanModifyNode(ctx, node)) {
@@ -2923,7 +2923,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   //   graph input ->            Transpose -> Q
   //   graph input -> Q -> DQ -> Transpose -> Q
   graph_nodes = ctx.graph.Nodes();
-  for (size_t i = 1; i < graph_nodes.size(); i++) {
+  for (size_t i = 0; i < graph_nodes.size(); i++) {
     api::NodeRef& node = *graph_nodes[graph_nodes.size() - i - 1];
 
     if (!CanModifyNode(ctx, node)) {

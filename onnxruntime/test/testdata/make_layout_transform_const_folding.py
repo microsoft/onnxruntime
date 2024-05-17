@@ -6,6 +6,7 @@ import onnx
 
 import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader, QuantFormat, QuantType, quantize_static
+from onnxruntime.quantization.shape_inference import quant_pre_process
 
 
 class DataReader(CalibrationDataReader):
@@ -83,13 +84,13 @@ if __name__ == "__main__":
     print("[INFO]: Running onnx.checker on f32 model")
     f32_model = onnx.shape_inference.infer_shapes(f32_model)
     onnx.checker.check_model(f32_model, True)
-    f32_model_path = "squeeze_repro.onnx"
+    f32_model_path = "layout_transform_const_folding.f32.onnx"
 
     print(f"[INFO]: Saving {f32_model_path}")
     onnx.save_model(f32_model, f32_model_path)
 
     # Quantize model
-    qdq_model_path = "layout_transform_const_folding.onnx"
+    qdq_model_path = "layout_transform_const_folding.qdq.onnx"
     print("[INFO]: Creating QDQ model")
     quantize_static(
         f32_model_path,
@@ -99,9 +100,10 @@ if __name__ == "__main__":
         activation_type=QuantType.QUInt8,
         weight_type=QuantType.QUInt8,
         op_types_to_quantize=[node.op_type for node in f32_model.graph.node],
+        extra_options={"DedicatedQDQPair": True, "ForceQuantizeNoInputCheck": True},
     )
+    quant_pre_process(qdq_model_path, qdq_model_path)
     qdq_model = onnx.load_model(qdq_model_path)
-    qdq_model = onnx.shape_inference.infer_shapes(qdq_model)
     onnx.checker.check_model(qdq_model, True)
     onnx.save_model(qdq_model, qdq_model_path)
     print(f"[INFO]: Created QDQ model {qdq_model_path}")
