@@ -12,7 +12,7 @@ redirect_from: /docs/reference/execution-providers/QNN-ExecutionProvider
 The QNN Execution Provider for ONNX Runtime enables hardware accelerated execution on Qualcomm chipsets. 
 It uses the Qualcomm AI Engine Direct SDK (QNN SDK) to construct a QNN graph from an ONNX model which can 
 be executed by a supported accelerator backend library.
-
+OnnxRuntime QNN Execution Provider can be used on Android and Windows devices with Qualcomm Snapdragon SOC's.
 
 ## Contents
 {: .no_toc }
@@ -20,26 +20,34 @@ be executed by a supported accelerator backend library.
 * TOC placeholder
 {:toc}
 
-## Install Pre-requisites
+## Install Pre-requisites (Build from Source Only)
 
-Download the Qualcomm AI Engine Direct SDK (QNN SDK) from [https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
+If you build QNN Execution Provider from source, you should first
+download the Qualcomm AI Engine Direct SDK (QNN SDK) from [https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
 
 ### QNN Version Requirements
 
-ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.18.x and Qualcomm SC8280, SM8350 SOC's
+ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.22.x and Qualcomm SC8280, SM8350, Snapdragon X SOC's on Android and Windows
 
-## Build
+## Build (Android and Windows)
 For build instructions, please see the [BUILD page](../build/eps.md#qnn).
 
-## Pre-built Packages
-Alternatively, ONNX Runtime with QNN EP can be installed from:
+## Pre-built Packages (Windows Only)
+Note: Starting version 1.18.0 , you do not need to separately download and install QNN SDK. The required QNN dependency libraries are included in the OnnxRuntime packages.
 - [NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
-- Nightly Python package (Windows ARM64):
+  - Feed for nightly packages of Microsoft.ML.OnnxRuntime.QNN can be found [here](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly)
+- [Python package](https://pypi.org/project/onnxruntime-qnn/)
   - Requirements:
-    - Windows ARM64
+    - Windows ARM64 (for inferencing on local device with Qualcomm NPU)
+    - Windows X64 (for quantizing models. see [Generating a quantized model](./QNN-ExecutionProvider.md#generating-a-quantized-model-x64-only))
     - Python 3.11.x
     - Numpy 1.25.2 or >= 1.26.4
-  - Install: `python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly-qnn`
+  - Install: `pip install onnxruntime-qnn`
+  - Install nightly package `python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ort-nightly-qnn`
+
+## Qualcomm AI Hub
+Qualcomm AI Hub can be used to optimize and run models on Qualcomm hosted devices.
+OnnxRuntime QNN Execution Provider is a supported runtime in [Qualcomm AI Hub](https://aihub.qualcomm.com/)
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
@@ -131,12 +139,12 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 |ai.onnx:Asin||
 |ai.onnx:Atan||
 |ai.onnx:AveragePool||
-|ai.onnx:BatchNormalization||
+|ai.onnx:BatchNormalization|fp16 supported since 1.18.0|
 |ai.onnx:Cast||
-|ai.onnx:Clip||
+|ai.onnx:Clip|fp16 supported since 1.18.0|
 |ai.onnx:Concat||
-|ai.onnx:Conv||
-|ai.onnx:ConvTranspose||
+|ai.onnx:Conv|3d supported since 1.18.0|
+|ai.onnx:ConvTranspose|3d supported since 1.18.0|
 |ai.onnx:Cos||
 |ai.onnx:DepthToSpace||
 |ai.onnx:DequantizeLinear||
@@ -172,7 +180,7 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 |ai.onnx:Neg||
 |ai.onnx:Not||
 |ai.onnx:Or||
-|ai.onnx:Prelu||
+|ai.onnx:Prelu|fp16, int32 supported since 1.18.0|
 |ai.onnx:Pad||
 |ai.onnx:Pow||
 |ai.onnx:QuantizeLinear||
@@ -217,13 +225,13 @@ This section provides instructions for quantizing a model and then running the q
 QNN EP does not support models with dynamic shapes (e.g., a dynamic batch size). Dynamic shapes must be fixed to a specific value. Refer to the documentation for [making dynamic input shapes fixed](../tutorials/mobile/helpers/make-dynamic-shape-fixed.md) for more information.
 
 Additionally, QNN EP supports a subset of ONNX operators (e.g., Loops and Ifs are not supported). Refer to the [list of supported ONNX operators](./QNN-ExecutionProvider.md#supported-onnx-operators).
-### Generating a quantized model (x64)
+### Generating a quantized model (x64 only)
 The ONNX Runtime python package provides utilities for quantizing ONNX models via the `onnxruntime.quantization` import. The quantization utilities are currently only supported on x86_64 due to issues installing the `onnx` package on ARM64.
 Therefore, it is recommended to either use an x64 machine to quantize models or, alternatively, use a separate x64 python installation on Windows ARM64 machines.
 
-Install the nightly ONNX Runtime x64 python package.
+Install the ONNX Runtime x64 python package. (please note, you must use x64 package for quantizing the model. use the arm64 package for inferencing and utilizing the HTP/NPU)
 ```shell
-python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly
+python -m pip install onnxruntime-qnn
 ```
 
 Quantization for QNN EP requires the use of calibration input data. Using a calibration dataset that is representative of typical model inputs is crucial in generating an accurate quantized model.
@@ -311,31 +319,10 @@ Refer to the following pages for more information on usage of the quantization u
 - [quantization/execution_providers/qnn/preprocess.py](https://github.com/microsoft/onnxruntime/blob/23996bbbbe0406a5c8edbf6b7dbd71e5780d3f4b/onnxruntime/python/tools/quantization/execution_providers/qnn/preprocess.py#L16)
 - [quantization/execution_providers/qnn/quant_config.py](https://github.com/microsoft/onnxruntime/blob/23996bbbbe0406a5c8edbf6b7dbd71e5780d3f4b/onnxruntime/python/tools/quantization/execution_providers/qnn/quant_config.py#L20-L27)
 
-### Running a quantized model on Windows ARM64
-The following assumes that the [Qualcomm AI Engine SDK (QNN SDK)](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct) has already been downloaded and installed to a location such as `C:\Qualcomm\AIStack\QNN\2.18.0.240101`, hereafter referred to as `QNN_SDK`.
-
-First, determine the HTP architecture version for your device by referring to the QNN SDK documentation:
-- QNN_SDK\docs\QNN\general\htp\htp_backend.html#qnn-htp-backend-api
-- QNN_SDK\docs\QNN\general\overview.html#supported-snapdragon-devices
-
-For example, Snapdragon 8cx Gen 3 (SC8280X) devices have an HTP architecture value of 68, and Snapdragon 8cx Gen 4 (SC8380XP) have an HTP architecture value of 73. In the following, replace `<HTP_ARCH>` with your device's HTP architecture value.
-
-Copy the `.so` file `QNN_SDK\lib\hexagon-v<HTP_ARCH>\unsigned\libQnnHtpV<HTP_ARCH>Skel.so` to the folder `QNN_SDK\lib\aarch64-windows-msvc\`. For example, the following terminal command copies the `libQnnHtpV73Skel.so` file:
-```
-cp QNN_SDK\lib\hexagon-v73\unsigned\libQnnHtpV73Skel.so QNN_SDK\lib\aarch64-windows-msvc\
-```
-
-Add the `QNN_SDK\lib\aarch64-windows-msvc\` directory to your Windows PATH environment variable:
-```
-- Open the `Edit the system environment variables` Control Panel.
-- Click on `Environment variables`.
-- Highlight the `Path` entry under `User variables for ..` and click `Edit`.
-- Add a new entry that points to `QNN_SDK\lib\aarch64-windows-msvc\`
-```
-
-Install the nightly ONNX Runtime ARM64 python package for QNN EP (requires Python 3.11.x and Numpy 1.25.2 or >= 1.26.4):
+### Running a quantized model on Windows ARM64 (onnxruntime-qnn version >= 1.18.0)
+Install the ONNX Runtime ARM64 python package for QNN EP (requires Python 3.11.x and Numpy 1.25.2 or >= 1.26.4):
 ```shell
-python -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly-qnn
+python -m pip install onnxruntime-qnn
 ```
 
 The following Python snippet creates an ONNX Runtime session with QNN EP and runs the quantized model `model.qdq.onnx` on the HTP backend.
