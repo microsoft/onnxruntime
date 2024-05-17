@@ -1,0 +1,44 @@
+name: Mac_CI
+
+on:
+  push:
+    branches:
+    - main
+    - rel-*
+  pull_request:
+    branches:
+    - main
+    - rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  MacOS-ARM64:
+    runs-on: "macos-14"
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: false
+
+    - name: Print runner system info
+      run: echo "OS: ${{ runner.os }} / arch: ${{ runner.arch }}"
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Build code
+      run: |
+        python tools\ci_build\build.py \
+          --update \
+          --build --parallel \
+          --test \
+          --build_objc \
+          --use_xnnpack \
+          --use_coreml \
+          --build_dir \
+          --use_binskim_compliant_compile_flags
