@@ -38,6 +38,7 @@ jobs:
           --update \
           --build --parallel \
           --test \
+          --build_shared_lib \
           --build_objc \
           --use_xnnpack \
           --use_coreml \
