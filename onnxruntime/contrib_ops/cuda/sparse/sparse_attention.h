@@ -26,7 +26,6 @@ class SparseAttention final : public CudaKernel {
   bool do_rotary_;              // Has rotary positional embedding
   bool rotary_interleaved_;     // Interleaved rotary positional embedding
   bool disable_v1_kernel_;      // Whether disable v1 kernel and use v2 kernel for prompt.
-  mutable bool kernel_loaded_;  // Kernel has been loaded
 };
 
 }  // namespace cuda
