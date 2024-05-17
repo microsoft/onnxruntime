@@ -1848,7 +1848,7 @@ struct OrtApi {
    *
    * \param[in] context ::OrtKernelContext instance
    * \param[in] index See KernelContext_GetInputCount for boundaries check.
-   * \param[in, out] out OrtValue if the input is present otherwise is set nullptr
+   * \param[out] out OrtValue if the input is present otherwise is set nullptr
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -1864,7 +1864,7 @@ struct OrtApi {
    * \param[in] index See KernelContext_GetOutputCount for boundaries check.
    * \param[in] dim_values output dimensions
    * \param[in] dim_count number of dimensions
-   * \param[in, out] out a ptr to OrtValue to output otherwise set to nullptr
+   * \param[out] out a ptr to OrtValue to output otherwise set to nullptr
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
