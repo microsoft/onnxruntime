@@ -269,7 +269,8 @@ The following table lists all the available configuration options for API 2.0 an
 
 | **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
 | --- | --- | --- | --- | --- |
-| device_type | string | CPU, NPU, GPU, GPU.0, GPU.1 based on the avaialable GPUs, NPU, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
+| device_type | string | CPU, NPU, GPU, GPU.0, GPU.1 based on the avaialable GPUs, NPU, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type with these values at runtime. If this option is not explicitly set, default hardware specified during build is used. |
+| precision | string | FP32, FP16, ACCURACY based on the device_type chosen | string | Supported precisions for HW {CPU:FP32, GPU:[FP32, FP16, ACCURACY], NPU:FP16}. Default precision for HW for optimized performance {CPU:FP32, GPU:FP16, NPU:FP16}. To execute model with the default input precision, select ACCURACY precision type. |
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 during build time will be used for inference. |
 | num_streams | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default streams with this value at runtime. If this option is not explicitly set, default value of 1, performance for latency is used during build time will be used for inference. |
 | cache_dir | string | Any valid string path on the hardware target | string | Explicitly specify the path to save and load the blobs enabling model caching feature.|
@@ -288,6 +289,8 @@ A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-D
 Example:
 HETERO:GPU,CPU  AUTO:GPU,CPU  MULTI:GPU,CPU
 
+Deprecated device_type option :
+CPU_FP32, GPU_FP32, GPU_FP16 as still supported. It will be deprectaed in the future release. Kindly upgrade to latest device_type and precision option.
 
 ## Support Coverage
 
