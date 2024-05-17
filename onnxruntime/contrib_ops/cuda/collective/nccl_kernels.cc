@@ -259,6 +259,7 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
 
   void* output_data = context->Output(0, in_shape)->MutableDataRaw();
 
+#ifndef USE_ROCM
   return FuncCustomAllReduce(nccl_,
                              Stream(context),
                              input_data,
@@ -266,6 +267,12 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
                              input_count,
                              input_tensor->DataType(),
                              g_ipc_mem_res_pack_.GetIPCMemoryResourcePack());
+#else
+  ncclComm_t comm = nccl_->Comm();
+  ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
+  return Status::OK();
+#endif
 }
 
 AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
@@ -421,6 +428,7 @@ Status FuncAllReduce(
   return Status::OK();
 }
 
+#ifndef USE_ROCM
 Status FuncCustomAllReduce(
     NcclContext* nccl,
     cudaStream_t stream,
@@ -464,6 +472,7 @@ Status FuncCustomAllReduce(
 
   return Status::OK();
 }
+#endif
 
 static std::vector<size_t> CalculatePermToSwapAxes(
     const int64_t axis,
