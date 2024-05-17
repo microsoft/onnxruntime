@@ -12,7 +12,7 @@ redirect_from: /docs/reference/execution-providers/QNN-ExecutionProvider
 The QNN Execution Provider for ONNX Runtime enables hardware accelerated execution on Qualcomm chipsets. 
 It uses the Qualcomm AI Engine Direct SDK (QNN SDK) to construct a QNN graph from an ONNX model which can 
 be executed by a supported accelerator backend library.
-OnnxRuntime QNN Execution Provider can be used on Android and Windows(ARM64) devices with Qualcomm Snapdragon SOC's.
+OnnxRuntime QNN Execution Provider can be used on Android and Windows devices with Qualcomm Snapdragon SOC's.
 
 ## Contents
 {: .no_toc }
@@ -27,7 +27,7 @@ download the Qualcomm AI Engine Direct SDK (QNN SDK) from [https://qpm.qualcomm.
 
 ### QNN Version Requirements
 
-ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.22.x and Qualcomm SC8280, SM8350, Snapdragon X SOC's on Android and ARM64 Windows
+ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.22.x and Qualcomm SC8280, SM8350, Snapdragon X SOC's on Android and Windows
 
 ## Build (Android and Windows)
 For build instructions, please see the [BUILD page](../build/eps.md#qnn).
