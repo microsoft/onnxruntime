@@ -46,7 +46,7 @@ Note: Starting version 1.18.0 , you do not need to separately download and insta
 
 ## Qualcomm AI Hub
 Qualcomm AI Hub can be used to optimize and run models on Qualcomm hosted devices.
-OnnxRuntime QNN Execution Provider is a supported runtime in (Qualcomm AI Hub)[https://aihub.qualcomm.com/]
+OnnxRuntime QNN Execution Provider is a supported runtime in [Qualcomm AI Hub](https://aihub.qualcomm.com/)
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
