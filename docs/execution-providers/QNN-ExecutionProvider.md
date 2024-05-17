@@ -35,6 +35,7 @@ For build instructions, please see the [BUILD page](../build/eps.md#qnn).
 ## Pre-built Packages (Windows Only)
 Note: Starting version 1.18.0 , you do not need to separately download and install QNN SDK. The required QNN dependency libraries are included in the OnnxRuntime packages.
 - [NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
+  - Feed for nightly packages of Microsoft.ML.OnnxRuntime.QNN can be found [here](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly)
 - [Python package](https://pypi.org/project/onnxruntime-qnn/)
   - Requirements:
     - Windows ARM64 (for inferencing on local device with Qualcomm NPU)
