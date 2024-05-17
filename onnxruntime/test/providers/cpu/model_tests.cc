@@ -99,7 +99,7 @@ TEST_P(ModelTest, Run) {
 
   // increase tol for models_opset7_fp16_coreml_FNSCandy test on cpu. See
   // https://github.com/microsoft/onnxruntime/pull/20612
-  if (model_path.find(ORT_TSTR("models_opset7_fp16_coreml_FNSCandy")) > 0) {
+  if (model_path.find(ORT_TSTR("fp16_coreml_FNS")) > 0) {
     if (provider_name == "cpu") {
       per_sample_tolerance = 1e-2;
       relative_per_sample_tolerance = 1e-2;
