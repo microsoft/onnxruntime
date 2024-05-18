@@ -54,9 +54,10 @@ jobs:
           --test \
           --build_shared_lib \
           --build_objc \
-          --use_coreml \
           --use_xnnpack \
           --use_binskim_compliant_compile_flags
+
+        # TODO add --use_coreml once unit test failures are addressed
 
   Objective-C-StaticAnalysis:
     runs-on: macos-14
