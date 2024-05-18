@@ -36,13 +36,13 @@ jobs:
         import platform
         assert platform.machine() == "arm64", "This job expects to be run on an ARM64 machine."
 
-    - uses: actions/checkout@v4
-
     - name: Use Xcode ${{ env.xcode_version }}
       shell: bash
       run: |
         XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
         sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+
+    - uses: actions/checkout@v4
 
     - name: Build and test
       shell: bash
@@ -68,6 +68,12 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: ${{ env.python_version }}
+
+    - name: Use Xcode ${{ env.xcode_version }}
+      shell: bash
+      run: |
+        XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.xcode_version }}.app/Contents/Developer"
+        sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
 
     - uses: actions/checkout@v4
 
