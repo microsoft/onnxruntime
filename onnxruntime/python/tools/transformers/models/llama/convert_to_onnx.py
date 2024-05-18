@@ -401,7 +401,13 @@ def run_torchscript_merged_export(
 
 # Optimize the model as FP32
 def optimize_export(
-    args: argparse.Namespace, config: AutoConfig, input_path: str, output_path: str, remove_model: bool = True, world_size: int = 1, window_size: int = -1
+    args: argparse.Namespace,
+    config: AutoConfig,
+    input_path: str,
+    output_path: str,
+    remove_model: bool = True,
+    world_size: int = 1,
+    window_size: int = -1,
 ):
     from fusion_options import FusionOptions
 
@@ -449,9 +455,7 @@ def optimize_export(
         remove_existing_model(input_path)
 
 
-def convert_to_float16(
-    args: argparse.Namespace, old_paths: list[str], rank: int = 0
-):
+def convert_to_float16(args: argparse.Namespace, old_paths: list[str], rank: int = 0):
     decoder_model_fp16_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp16.onnx")
     decoder_with_past_model_fp16_path = os.path.join(
         args.output, f"rank_{rank}_{args.model_name}_decoder_with_past_model_fp16.onnx"

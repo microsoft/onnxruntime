@@ -660,8 +660,12 @@ def main():
 
     args.rank = rank
     args.world_size = world_size
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth, trust_remote_code=args.auth)
-    config = AutoConfig.from_pretrained(args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth, trust_remote_code=args.auth)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth, trust_remote_code=args.auth
+    )
+    config = AutoConfig.from_pretrained(
+        args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth, trust_remote_code=args.auth
+    )
     target_device = f"cuda:{args.rank}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
 
