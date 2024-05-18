@@ -379,7 +379,7 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
 }
 
 /// <summary>
-/// Fixes a Transpose QDQ node unit that is missing the DQ at its input.
+/// Fixes a Transpose QDQ node unit that is missing the DQ at its input due to the Transpose being blocked on the Q.
 /// Inserts a Q -> DQ pair before the sequence Transpose -> Q by using the scale and zp info from the Q node.
 /// Before: prev_node (or graph input) ->                      Transpose -> Q
 /// After:  prev_node (or graph input) -> Q[new] -> DQ[new] -> Transpose -> Q
@@ -2967,7 +2967,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
 
   // Run reverse 'fix up' pass for QDQ node units.
   //
-  // Repair broken QDQ node unit from Transpose being blocked on Op inside a QDQ node unit.
+  // Repair broken QDQ node unit from Transpose being blocked after Op inside a QDQ node unit.
   //   DQ -> Op ->            Transpose -> Q =>
   //   DQ -> Op -> Q -> DQ -> Transpose -> Q
   //
