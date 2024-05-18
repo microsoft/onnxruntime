@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cuda_runtime_api.h>
-#include <cuda_fp16.h>
+#include <hip/hip_runtime.h>
+#include <hip/hip_fp16.h>
 #include <pybind11/pybind11.h>
 
 #include <string>
 
-#include "core/providers/cuda/tunable/cuda_tunable.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
-#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
+#include "contrib_ops/rocm/quantization/matmul_nbits.cuh"
 
 namespace py = pybind11;
 
@@ -18,7 +18,7 @@ namespace onnxruntime {
 
 // Extend the OpParams so that all specializations have the same parameter passing interface
 template <typename T>
-struct MatrixFloatInt4Params : cuda::tunable::OpParams {
+struct MatrixFloatInt4Params : rocm::tunable::OpParams {
   std::string Signature() const override { return std::to_string(n_); }
 
   T* output_;
@@ -50,7 +50,7 @@ class MatrixFloatInt4 : public IKernelExplorer {
     params_.n_ = n;
     params_.k_ = k;
 
-    CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, 0));
+    HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, 0));
   }
 
   MatrixFloatInt4(DeviceArray& output,
@@ -63,7 +63,7 @@ class MatrixFloatInt4 : public IKernelExplorer {
   }
 
   void Run() override {
-    contrib::cuda::TryMatMul4Bits<T>(
+    contrib::rocm::TryMatMul4Bits<T>(
         params_.output_,
         params_.a_,
         params_.b_,
@@ -81,7 +81,7 @@ class MatrixFloatInt4 : public IKernelExplorer {
   // A VectorAddOp<T> is a callable that can process const VectorAddParams<T>*
   using ParamsT = MatrixFloatInt4Params<T>;
   ParamsT params_{};
-  cudaDeviceProp device_prop_;
+  hipDeviceProp_t device_prop_;
 };
 
 #define REGISTER_OP(name, type)                                                                             \
