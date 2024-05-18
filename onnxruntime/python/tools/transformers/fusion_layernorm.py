@@ -62,7 +62,7 @@ class FusionLayerNormalization(Fusion):
 
             if div_node_1 is not None:
                 div_node = div_node_1
-            elif div_node_2 != []:
+            elif div_node_2 is not None:
                 div_node = div_node_2[-1]
         if div_node is None:
             return
