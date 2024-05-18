@@ -4,8 +4,28 @@ Licensed under the MIT License.
 */
 
 /*
-Kernel implementation for Gamma rotary embeddings.
+Kernel implementation for Gamma rotary embeddings grad.
 This implementation below subgraph
+Grad kernel inputs/outputs (grad kernel mapping inputs/outputs in gradient_builder.cc)
+I0 (GO0): dY1
+I1 (GO1): dY2
+I2 (I0): X
+O0 (GI1): dq
+O1 (GI2): dq_rot
+O2 (GI3): dk
+O3 (GI4): dk_rot
+                   I2
+                /      \
+              Sin      Cos
+               |        |
+              Cast     Cast
+              |---------|------------|
+  |-----------|---------|            |
+  |       I0  |         |      I1    |
+  |     /    \|         |     /   \  |
+Mul_Grad   Mul_Grad   Mul_Grad   Mul_Grad
+  |           |          |           |
+  O0         O1          O2          O3
 */
 
 #include <cuda_fp16.h>
