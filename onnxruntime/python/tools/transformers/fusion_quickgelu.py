@@ -3,11 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import logging
+
 from fusion_base import Fusion
 from onnx import helper
 from onnx_model import OnnxModel
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class FusionQuickGelu(Fusion):
         #          Mul              ----+
         #           |
         #       root_output
-        
+
         if node.op_type != "Mul":
             logger.debug("fuse_quickgelu: failed to match second Mul node")
             return
@@ -43,7 +43,7 @@ class FusionQuickGelu(Fusion):
             logger.debug("fuse_quickgelu: failed to match Sigmoid node")
             return
         sigmoid_node = sigmoid_node[0]
-        
+
         first_mul_node = self.model.match_parent_path(sigmoid_node, ["Mul"], [0])
         if first_mul_node is None:
             logger.debug("fuse_quickgelu: failed to match first Mul node")

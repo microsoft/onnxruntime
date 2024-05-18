@@ -98,7 +98,7 @@ class FusionAttentionClip(FusionAttention):
             # Deal with the first attention after the embedding layer.
             for i in [0, 1]:
                 node_before_layer_norm = None
-                
+
                 node_before_layer_norm_1 = self.model.match_parent(normalize_node, "Add", i)
                 node_before_layer_norm_2 = self.model.match_parent(normalize_node, "LayerNormalization", i)
                 if node_before_layer_norm_1 is not None:
