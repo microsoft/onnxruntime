@@ -7,7 +7,6 @@
 
 #include <contrib_ops/cpu/vec/vec_base.h>
 #include <contrib_ops/cpu/vec/vec256/vec256_float.h>
-#include <contrib_ops/cpu/vec/vec256/vec256_mask.h>
 
 #include <algorithm>
 #include <cstddef>

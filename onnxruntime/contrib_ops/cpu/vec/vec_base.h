@@ -223,6 +223,7 @@ struct Vectorized {
     }
     return mask;
   }
+
   Vectorized<T> isnan() const {
     Vectorized<T> vector;
     for (int64_t i = 0; i != size(); i++) {
@@ -234,6 +235,7 @@ struct Vectorized {
     }
     return vector;
   }
+
   bool has_inf_nan() const {
     for (int64_t i = 0; i != size(); i++) {
       if (_isnan(values[i]) || _isinf(values[i])) {
@@ -242,6 +244,7 @@ struct Vectorized {
     }
     return false;
   }
+
   Vectorized<T> map(T (*const f)(T)) const {
     Vectorized<T> ret;
     for (int64_t i = 0; i != size(); i++) {
@@ -249,6 +252,7 @@ struct Vectorized {
     }
     return ret;
   }
+
   Vectorized<T> map(T (*const f)(const T&)) const {
     Vectorized<T> ret;
     for (int64_t i = 0; i != size(); i++) {
@@ -256,6 +260,7 @@ struct Vectorized {
     }
     return ret;
   }
+
   template <typename other_t_abs = T,
             typename std::enable_if_t<!is_floating_point_v<other_t_abs> && !is_complex<other_t_abs>::value, int> = 0>
   Vectorized<T> abs() const {
@@ -263,6 +268,7 @@ struct Vectorized {
     static_assert(std::is_same_v<other_t_abs, T>, "other_t_abs must be T");
     return map([](T x) -> T { return x < static_cast<T>(0) ? -x : x; });
   }
+
   template <typename float_t_abs = T,
             typename std::enable_if_t<is_floating_point_v<float_t_abs>, int> = 0>
   Vectorized<T> abs() const {
@@ -282,103 +288,6 @@ struct Vectorized {
     return map([](T x) { return static_cast<T>(std::abs(x)); });
   }
 
-  // template <typename other_t_sgn = T,
-  //           typename std::enable_if_t<is_complex<other_t_sgn>::value, int> = 0>
-  // Vectorized<T> sgn() const {
-  //   return map(at::native::sgn_impl);
-  // }
-
-  // template <typename other_t_angle = T,
-  //           typename std::enable_if_t<!is_complex<other_t_angle>::value, int> = 0>
-  // Vectorized<T> angle() const {
-  //   // other_t_angle is for SFINAE and clarity. Make sure it is not changed.
-  //   static_assert(std::is_same_v<other_t_angle, T>, "other_t_angle must be T");
-  //   return map(at::native::angle_impl<T>);  // compiler is unable to resolve the overload without <T>
-  // }
-
-  template <typename complex_t_angle = T,
-            typename std::enable_if_t<is_complex<complex_t_angle>::value, int> = 0>
-  Vectorized<T> angle() const {
-    // complex_t_angle is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<complex_t_angle, T>, "complex_t_angle must be T");
-    return map([](T x) { return static_cast<T>(std::arg(x)); });
-  }
-  template <typename other_t_real = T,
-            typename std::enable_if_t<!is_complex<other_t_real>::value, int> = 0>
-  Vectorized<T> real() const {
-    // other_t_real is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<other_t_real, T>, "other_t_real must be T");
-    return *this;
-  }
-  template <typename complex_t_real = T,
-            typename std::enable_if_t<is_complex<complex_t_real>::value, int> = 0>
-  Vectorized<T> real() const {
-    // complex_t_real is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<complex_t_real, T>, "complex_t_real must be T");
-    return map([](T x) { return static_cast<T>(x.real()); });
-  }
-  template <typename other_t_imag = T,
-            typename std::enable_if_t<!is_complex<other_t_imag>::value, int> = 0>
-  Vectorized<T> imag() const {
-    // other_t_imag is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<other_t_imag, T>, "other_t_imag must be T");
-    return Vectorized(0);
-  }
-  template <typename complex_t_imag = T,
-            typename std::enable_if_t<is_complex<complex_t_imag>::value, int> = 0>
-  Vectorized<T> imag() const {
-    // complex_t_imag is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<complex_t_imag, T>, "complex_t_imag must be T");
-    return map([](T x) { return static_cast<T>(x.imag()); });
-  }
-  template <typename other_t_conj = T,
-            typename std::enable_if_t<!is_complex<other_t_conj>::value, int> = 0>
-  Vectorized<T> conj() const {
-    // other_t_conj is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<other_t_conj, T>, "other_t_conj must be T");
-    return *this;
-  }
-  template <typename complex_t_conj = T,
-            typename std::enable_if_t<is_complex<complex_t_conj>::value, int> = 0>
-  Vectorized<T> conj() const {
-    // complex_t_conj is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<complex_t_conj, T>, "complex_t_conj must be T");
-    return map([](T x) { return static_cast<T>(std::conj(x)); });
-  }
-
-  Vectorized<T> acos() const {
-    return map(std::acos);
-  }
-  Vectorized<T> acosh() const {
-    return map(std::acosh);
-  }
-  Vectorized<T> asin() const {
-    return map(std::asin);
-  }
-  Vectorized<T> atan() const {
-    return map(std::atan);
-  }
-  Vectorized<T> atanh() const {
-    return map(std::atanh);
-  }
-  Vectorized<T> atan2(const Vectorized<T>& exp) const {
-    Vectorized<T> ret;
-    for (int i = 0; i < size(); i++) {
-      ret[i] = std::atan2(values[i], exp[i]);
-    }
-    return ret;
-  }
-
-  // template <
-  //     typename U = T,
-  //     typename std::enable_if_t<is_floating_point_v<U>, int> = 0>
-  // Vectorized<T> copysign(const Vectorized<T>& sign) const {
-  //   Vectorized<T> ret;
-  //   for (size_type i = 0; i < size(); i++) {
-  //     ret[i] = c10::copysign(values[i], sign[i]);
-  //   }
-  //   return ret;
-  // }
 
   Vectorized<T> erf() const {
     return map(std::erf);
@@ -453,36 +362,7 @@ struct Vectorized {
   Vectorized<T> floor() const {
     return map(std::floor);
   }
-  Vectorized<T> hypot(const Vectorized<T>& b) const {
-    Vectorized<T> ret;
-    for (int i = 0; i < size(); i++) {
-      ret[i] = std::hypot(values[i], b[i]);
-    }
-    return ret;
-  }
-  // Vectorized<T> i0() const {
-  //   return map(calc_i0);
-  // }
-  // Vectorized<T> i0e() const {
-  //   return map(calc_i0e);
-  // }
-  // Vectorized<T> digamma() const {
-  //   return map(calc_digamma);
-  // }
-  // Vectorized<T> igamma(const Vectorized<T>& x) const {
-  //   Vectorized<T> ret;
-  //   for (int i=0; i< size(); i++) {
-  //     ret[i] = calc_igamma(values[i], x[i]);
-  //   }
-  //   return ret;
-  // }
-  // Vectorized<T> igammac(const Vectorized<T>& x) const {
-  //   Vectorized<T> ret;
-  //   for (int i=0; i< size(); i++) {
-  //     ret[i] = calc_igammac(values[i], x[i]);
-  //   }
-  //   return ret;
-  // }
+
   Vectorized<T> neg() const {
     // NB: the trailing return type is needed because we need to coerce the
     // return value back to T in the case of unary operator- incuring a
@@ -512,12 +392,6 @@ struct Vectorized {
   Vectorized<T> tanh() const {
     return map(std::tanh);
   }
-  //   Vectorized<T> trunc() const {
-  //     return map(at::native::trunc_impl);
-  //   }
-  Vectorized<T> lgamma() const {
-    return map(std::lgamma);
-  }
   Vectorized<T> sqrt() const {
     return map(std::sqrt);
   }
@@ -536,19 +410,19 @@ struct Vectorized {
   }
 
  private:
-  template <typename Op>
-  inline Vectorized<T> binary_pred(const Vectorized<T>& other, Op op) const {
-    // All bits are set to 1 if the pred is true, otherwise 0.
-    Vectorized<T> vector;
-    for (int64_t i = 0; i != size(); i++) {
-      if (op(values[i], other.values[i])) {
-        std::memset(static_cast<void*>(vector.values + i), 0xFF, sizeof(T));
-      } else {
-        std::memset(static_cast<void*>(vector.values + i), 0, sizeof(T));
-      }
-    }
-    return vector;
-  }
+  // template <typename Op>
+  // inline Vectorized<T> binary_pred(const Vectorized<T>& other, Op op) const {
+  //   // All bits are set to 1 if the pred is true, otherwise 0.
+  //   Vectorized<T> vector;
+  //   for (int64_t i = 0; i != size(); i++) {
+  //     if (op(values[i], other.values[i])) {
+  //       std::memset(static_cast<void*>(vector.values + i), 0xFF, sizeof(T));
+  //     } else {
+  //       std::memset(static_cast<void*>(vector.values + i), 0, sizeof(T));
+  //     }
+  //   }
+  //   return vector;
+  // }
 
  public:
   Vectorized<T> operator==(const Vectorized<T>& other) const { return binary_pred(other, std::equal_to<T>()); }
@@ -1067,8 +941,8 @@ interleave2(const Vectorized<T>& a, const Vectorized<T>& b) {
 
 // template <typename src_T, typename dst_T>
 // inline void convert(const src_T* src, dst_T* dst, int64_t n) {
-// #ifndef _MSC_VER
-// #pragma unroll
+// #if defined(__GNUC__)
+//   #pragma unroll
 // #endif
 //   for(int64_t i =0; i < n ; i++) {
 //     *dst = c10::convert<dst_T>(c10::load(src));

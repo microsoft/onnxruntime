@@ -153,10 +153,10 @@ public:
                                                     not_nan_mask, 0xFFFFFFFF);
     const auto nan_mask = _mm512_cmp_ps_mask(_mm512_castsi512_ps(not_nan_vec),
                                              zero_vec, _CMP_EQ_OQ);
-    const auto pi = _mm512_set1_ps(pi<double>);
+    const auto pi_vec = _mm512_set1_ps(pi<double>());
 
     const auto neg_mask = _mm512_cmp_ps_mask(values, zero_vec, _CMP_LT_OQ);
-    auto angle = _mm512_mask_blend_ps(neg_mask, zero_vec, pi);
+    auto angle = _mm512_mask_blend_ps(neg_mask, zero_vec, pi_vec);
     angle = _mm512_mask_blend_ps(nan_mask, angle, nan_vec);
     return angle;
   }
@@ -338,37 +338,37 @@ public:
   // Vectorized<float> hypot(const Vectorized<float> &b) const {
   //   return Vectorized<float>(Sleef_hypotf16_u05(values, b));
   // }
-  Vectorized<float> i0() const {
-    return map(calc_i0);
-  }
-  Vectorized<float> i0e() const {
-    return map(calc_i0e);
-  }
-  Vectorized<float> digamma() const {
-    return map(calc_digamma);
-  }
-  Vectorized<float> igamma(const Vectorized<float> &x) const {
-    __at_align__ float tmp[size()];
-    __at_align__ float tmp_x[size()];
-    store(tmp);
-    x.store(tmp_x);
-    //for (const auto i : c10::irange(size())) {
-    for (size_t i =0; i < size(); i++) {
-      tmp[i] = calc_igamma(tmp[i], tmp_x[i]);
-    }
-    return loadu(tmp);
-  }
-  Vectorized<float> igammac(const Vectorized<float> &x) const {
-    __at_align__ float tmp[size()];
-    __at_align__ float tmp_x[size()];
-    store(tmp);
-    x.store(tmp_x);
-    //for (const auto i : c10::irange(size())) {
-    for (size_t i =0; i < size(); i++) {
-      tmp[i] = calc_igammac(tmp[i], tmp_x[i]);
-    }
-    return loadu(tmp);
-  }
+  // Vectorized<float> i0() const {
+  //   return map(calc_i0);
+  // }
+  // Vectorized<float> i0e() const {
+  //   return map(calc_i0e);
+  // }
+  // Vectorized<float> digamma() const {
+  //   return map(calc_digamma);
+  // }
+  // Vectorized<float> igamma(const Vectorized<float> &x) const {
+  //   __at_align__ float tmp[size()];
+  //   __at_align__ float tmp_x[size()];
+  //   store(tmp);
+  //   x.store(tmp_x);
+  //   //for (const auto i : c10::irange(size())) {
+  //   for (size_t i =0; i < size(); i++) {
+  //     tmp[i] = calc_igamma(tmp[i], tmp_x[i]);
+  //   }
+  //   return loadu(tmp);
+  // }
+  // Vectorized<float> igammac(const Vectorized<float> &x) const {
+  //   __at_align__ float tmp[size()];
+  //   __at_align__ float tmp_x[size()];
+  //   store(tmp);
+  //   x.store(tmp_x);
+  //   //for (const auto i : c10::irange(size())) {
+  //   for (size_t i =0; i < size(); i++) {
+  //     tmp[i] = calc_igammac(tmp[i], tmp_x[i]);
+  //   }
+  //   return loadu(tmp);
+  // }
   Vectorized<float> neg() const {
     return _mm512_xor_ps(_mm512_set1_ps(-0.f), values);
   }
@@ -554,18 +554,24 @@ inline Vectorized<float> Vectorized<float>::le(const Vectorized<float>& other) c
   return (*this <= other) & Vectorized<float>(1.0f);
 }
 
-template <>
-inline void convert(const float* src, float* dst, int64_t n) {
-  int64_t i;
-// #pragma unroll
-  for (i = 0; i <= (n - Vectorized<float>::size()); i += Vectorized<float>::size()) {
-    _mm512_storeu_ps(dst + i, _mm512_loadu_ps(src + i));
-  }
-// #pragma unroll
-  for (; i < n; i++) {
-    dst[i] = src[i];
-  }
-}
+// template <>
+// inline void convert(const float* src, float* dst, int64_t n) {
+//   int64_t i;
+
+// // #if defined(__GNUC__)
+// //   #pragma unroll
+// // #endif
+//   for (i = 0; i <= (n - Vectorized<float>::size()); i += Vectorized<float>::size()) {
+//     _mm512_storeu_ps(dst + i, _mm512_loadu_ps(src + i));
+//   }
+
+// // #if defined(__GNUC__)
+// //   #pragma unroll
+// // #endif
+//   for (; i < n; i++) {
+//     dst[i] = src[i];
+//   }
+// }
 
 template <>
 Vectorized<float> inline fmadd(const Vectorized<float>& a, const Vectorized<float>& b, const Vectorized<float>& c) {

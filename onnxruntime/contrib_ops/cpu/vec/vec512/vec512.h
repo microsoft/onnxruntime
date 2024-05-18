@@ -9,7 +9,7 @@
 #include <contrib_ops/cpu/vec/vec512/vec512_float.h>
 // #include <contrib_ops/cpu/vec/vec512/vec512_double.h>
 // #include <contrib_ops/cpu/vec/vec512/vec512_int.h>
-#include <contrib_ops/cpu/vec/vec512/vec512_mask.h>
+//#include <contrib_ops/cpu/vec/vec512/vec512_mask.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -56,10 +56,10 @@ std::ostream& operator<<(std::ostream& stream, const Vectorized<T>& vec) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ CAST (AVX512) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-template<>
-inline Vectorized<float> cast<float, double>(const Vectorized<double>& src) {
-  return _mm512_castpd_ps(src);
-}
+// template<>
+// inline Vectorized<float> cast<float, double>(const Vectorized<double>& src) {
+//   return _mm512_castpd_ps(src);
+// }
 
 template<>
 inline Vectorized<double> cast<double, float>(const Vectorized<float>& src) {
@@ -113,7 +113,7 @@ inline mask_gather(const Vectorized<float>& src, const float* base_addr,
 }
 #endif
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ CONVERT ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+/*
 template<>
 Vectorized<int64_t>
 inline convert_to_int_of_same_size<double>(const Vectorized<double> &src) {
@@ -268,6 +268,7 @@ template<>
 inline Vectorized<uint8_t> flip(const Vectorized<uint8_t> & v) {
   return flip8(v);
 }
+*/
 
 #endif // defined(CPU_CAPABILITY_AVX512)
 

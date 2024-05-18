@@ -1,12 +1,13 @@
 
 #pragma once
+
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/flash_attention/tensor_wrapper.h"
-#include "contrib_ops/cpu/vec/vec_base.h"
-#include "contrib_ops/cpu/vec/functional_base.h"
 #include "core/platform/threadpool.h"
 #include "core/util/math.h"
+#include "contrib_ops/cpu/vec/vec_base.h"
+#include "contrib_ops/cpu/vec/functional_base.h"
 
 namespace onnxruntime {
 
@@ -101,9 +102,9 @@ inline void fill_stub(scalar_t* data, scalar_t val, int64_t size) {
     data_vec.store(data + d);
   }
 
-  #if !defined(_MSC_VER)
-  # pragma unroll
-  #endif
+  // #if defined(__GNUC__)
+  // #pragma unroll
+  // #endif
   for (; d < size; d++) {
     data[d] = val;
   }
@@ -437,6 +438,10 @@ void cpu_flash_attention(
     }
   });
 }
+} // anonymous namespace
+
+namespace contrib {
+namespace CPU_CAPABILITY {
 
 void flash_attention_kernel_impl(
     TensorWrapper& output,
@@ -450,8 +455,7 @@ void flash_attention_kernel_impl(
     concurrency::ThreadPool* thread_pool,
     AllocatorPtr allocator,
     bool is_q_bnsh,
-    bool is_kv_bnsh
-    ) {
+    bool is_kv_bnsh) {
   auto q_seq_len = query.Size(2);
 
   // const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
@@ -460,20 +464,20 @@ void flash_attention_kernel_impl(
   if (query.IsDataType<float>()) {
     if (q_seq_len >= 768) {
       cpu_flash_attention<float, 256, 512>(
-        output, logsumexp, query, key, value,
-        is_causal, attn_mask, scale, thread_pool, allocator, is_q_bnsh, is_kv_bnsh);
+          output, logsumexp, query, key, value,
+          is_causal, attn_mask, scale, thread_pool, allocator, is_q_bnsh, is_kv_bnsh);
     } else if (q_seq_len >= 192) {
       cpu_flash_attention<float, 64, 512>(
-        output, logsumexp, query, key, value,
-        is_causal, attn_mask, scale, thread_pool, allocator, is_q_bnsh, is_kv_bnsh);
+          output, logsumexp, query, key, value,
+          is_causal, attn_mask, scale, thread_pool, allocator, is_q_bnsh, is_kv_bnsh);
     } else {
       cpu_flash_attention<float, 32, 512>(
-        output, logsumexp, query, key, value,
-        is_causal, attn_mask, scale, thread_pool, allocator, is_q_bnsh, is_kv_bnsh);
+          output, logsumexp, query, key, value,
+          is_causal, attn_mask, scale, thread_pool, allocator, is_q_bnsh, is_kv_bnsh);
     }
   }
 }
-
-} // anonymous namespace
+}  // namespace CPU_CAPABILITY
+}  // namespace contrib
 
 } // onnxruntime
