@@ -829,7 +829,7 @@ def main():
     location = args.original_model_name if use_auth_token else args.input
 
     if args.optimize_optimum:
-        config = AutoConfig.from_pretrained(args.original_model_name)
+        config = AutoConfig.from_pretrained(args.original_model_name, cache_dir=args.cache_dir)
         optimize_optimum(config, args)
         return
 

@@ -418,7 +418,7 @@ def get_initial_inputs_and_outputs(
     use_buffer_share: bool,
     engine: str,
 ):
-    tokenizer.pad_token = "[PAD]"
+    tokenizer.pad_token = tokenizer.eos_token
     encodings_dict = tokenizer.batch_encode_plus(prompt, padding=True)
     torch_dtype = torch.float16 if use_fp16 else torch.float32
 
