@@ -198,7 +198,7 @@ def get_model(args: argparse.Namespace):
             source,
             torch_dtype=torch.float16 if args.use_fp16 else torch.float32,
             use_auth_token=args.auth,
-            trust_remote_code=True,
+            trust_remote_code=args.auth,
             use_cache=True,
             cache_dir=args.cache_dir,
         ).to(args.target_device)
@@ -241,7 +241,7 @@ def get_model(args: argparse.Namespace):
             decoder_file_name=decoder_file_name,
             decoder_with_past_file_name=decoder_with_past_file_name,
             use_auth_token=args.auth,
-            trust_remote_code=True,
+            trust_remote_code=args.auth,
             use_io_binding=True,  # Large perf gain even for cpu due to avoiding output copy.
             use_merged=(True if decoder_file_name == "model.onnx" else None),
             provider=provider,
@@ -660,8 +660,8 @@ def main():
 
     args.rank = rank
     args.world_size = world_size
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth, trust_remote_code=True)
-    config = AutoConfig.from_pretrained(args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth, trust_remote_code=args.auth)
+    config = AutoConfig.from_pretrained(args.model_name, cache_dir=args.cache_dir, use_auth_token=args.auth, trust_remote_code=args.auth)
     target_device = f"cuda:{args.rank}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
 
