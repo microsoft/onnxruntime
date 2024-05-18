@@ -350,8 +350,6 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_rotary_embeddings:
             self.fuse_rotary_embeddings()
 
-        # OnnxModel.save(self.model, "temp.onnx", save_as_external_data=True, all_tensors_to_one_file=True)
-
         if options is not None:
             self.attention_mask.set_mask_format(options.attention_mask_format)
             if options.use_multi_head_attention and not isinstance(self.attention_fusion, FusionBartAttention):

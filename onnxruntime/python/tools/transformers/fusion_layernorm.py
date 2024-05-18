@@ -64,7 +64,6 @@ class FusionLayerNormalization(Fusion):
                 div_node = div_node_1
             elif div_node_2 != []:
                 div_node = div_node_2[-1]
-                # subgraph_nodes.append(div_node_2[0])  # add Cast node to list of subgraph nodes
         if div_node is None:
             return
 
