@@ -102,7 +102,7 @@
 				>batch size * (prompt length + token generation length) / wall-clock latency</i
 			> where wall-clock latency = the latency from running end-to-end and token generation length =
 			256 generated tokens. The E2E throughput is 2.4X more (13B) and 1.8X more (7B) when compared to
-			PyTorch compile. For higher batch size, sequence length like 16, 2048 pytorch eager times out,
+			PyTorch compile. For higher batch size, sequence length pairs such as (16, 2048), PyTorch eager times out,
 			while ORT shows better performance than compile mode.
 		</p>
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -151,7 +151,7 @@
 
 		<p class="mb-4">
 			More details on these metrics can be found <a
-				href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/models/llama2/README.md"
+				href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/models/llama/README.md"
 				class="text-blue-500">here</a
 			>.
 		</p>
