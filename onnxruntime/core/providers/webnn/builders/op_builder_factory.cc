@@ -182,7 +182,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Transpose
-    CreateTriangularOpBuilder("Triangular", op_registrations);
+    CreateTriangularOpBuilder("Trilu", op_registrations);
   }
   return op_registrations;
 }
