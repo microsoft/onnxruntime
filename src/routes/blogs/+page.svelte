@@ -15,6 +15,7 @@
 	import ORT117Thumbnail from '../../images/blogs/ort-1-17-thumbnail.png';
 	import WebGPUImage from '../../images/blogs/webgpu_blog_thumbnail.jpg';
 	import WebTrainingImage from '../../images/blogs/webtraining_blog_thumbnail.png';
+	import Phi3OnDeviceImage from '../../images/blogs/phi-3-on-device_blog_thumbnail.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -43,6 +44,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Enjoy the Power of Phi-3 with ONNX Runtime on your device',
+			date: 'May 20th, 2024',
+			blurb:
+				"Harness ONNX Runtime to run Phi-3-mini on mobile phones and in the browser.",
+			link: 'blogs/phi-3-on-device',
+			image: Phi3OnDeviceImage,
+			imgalt:
+				'Chart comparing model size (in GB) of ONNX Phi-3-mini for web and mobile with original Phi-3-mini'
+		},
+		{
 			title: 'ONNX Runtime supports Phi-3 mini models across platforms and devices',
 			date: 'April 22nd, 2024',
 			blurb:
@@ -61,7 +72,9 @@
 			image: WebGPUImage,
 			imgalt:
 				'Comparison of ONNX Runtime Web with WebGPU EP on GPU vs. WASM EP on CPU for segment anything example'
-		},
+		}
+	];
+	let blogs = [
 		{
 			title: 'ONNX Runtime 1.17: CUDA 12 support, Phi-2 optimizations, WebGPU, and more!',
 			date: 'February 28th, 2024',
@@ -71,9 +84,6 @@
 			image: ORT117Thumbnail,
 			imgalt: 'ONNX Runtime 1.17 release logo'
 		},
-		
-	];
-	let blogs = [
 		{
 			title: 'Accelerating Phi-2, CodeLlama, Gemma and other Gen AI models with ONNX Runtime',
 			date: 'February 26th, 2024',

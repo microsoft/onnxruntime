@@ -1,0 +1,73 @@
+---
+title: 'Enjoy the Power of Phi-3 with ONNX Runtime on your device'
+date: '20th May, 2024'
+description: 'Harness ONNX Runtime to run Phi-3-mini on mobile phones and in the browser.'
+keywords: 'ORT, ONNX Runtime, ONNX, machine learning, deep learning, phi 3, phi-3, webgpu, webnn, webassembly, hugging face, huggingface, transformers.js'
+authors:
+  [
+    'Emma Ning (Microsoft)',
+    'Scott McKay (Microsoft)',
+    'Guenther Schmuelling (Microsoft)',
+    'Joshua Lochner (Hugging Face)'
+  ]
+authorsLink:
+  [
+    'https://www.linkedin.com/in/qiong-ning-21b554236/',
+    'https://www.linkedin.com/in/scott-mckay-68b5ab/',
+    'https://www.linkedin.com/in/guentherschmuelling/',
+    'https://www.linkedin.com/in/xenova/?originalSubdomain=za'
+  ]
+image: ''
+url: 'https://onnxruntime.ai/blogs/phi-3-on-device'
+---
+
+Phi-3 models, a family of open AI models developed by Microsoft, are the most capable and cost-effective small language models (SLMs) available, outperforming models of the same size and next size up across a variety of language, reasoning, coding, and math benchmarks.
+
+The Phi-3 family consists of different variants by size. [Phi-3-mini](https://arxiv.org/abs/2404.14219), a 3.8 billion parameter language model trained on 3.3 trillion tokens, demonstrates performance comparable to models like Mixtral 8x7B and GPT-3.5. Remarkably, it's compact enough for deployment to client devices. Operating Phi-3-Mini mini offline on client devices opens up numerous opportunities for information retrieval in scenarios with limited connectivity or sensitive privacy concerns.
+
+Client devices are highly constrained for compute, memory, and power. To bring LLMs to these devices, compressed and optimized models with a lightweight runtime are importantessential.  In this blog, we will show how to harness ONNX Runtime to run Phi-3-mini on mobile phones and in the browser.
+
+# Get compressed and optimized phi-3-mini models
+
+Quantization involves reducing the precision of a neural network's weights and activations. This technique can notably decrease the model size and inference time, along withas well as reducinge memory and power consumption, albeit with a trade-off involving some level of accuracy drop. Graph fusion is another effective method for achieving high performance by minimizing elementary computations and fully leveraging kernel optimization and hardware acceleration within the runtime.
+
+We applied 4-bit block quantization for both the web and mobile models. Due to platform and implementation characteristics, there are slight differences in graph fusion and data types in these two versions. For instance, the web model utilizes the Multiheaded Attention fusion, whereas the mobile model utilizes the [Group Query Attention](https://arxiv.org/pdf/2305.13245) fusion. Additionally, the output logits for the web model remains as float32 due to JavaScript's lack of support for float16. The optimized models for mobile and web are notably smaller compared to the original PyTorch version, with a reduction of more than 2.5 times in size.
+
+<img class="m-auto w50" src="./model-size-chart.png" alt="Chart comparing model size (in GB) of ONNX Phi-3-mini for web and mobile with original Phi-3-mini">
+
+We've integrated all these ahead of time quantization and optimizations into Olive, a hardware-aware model optimization tool, for allowing users to easily generate compressed and optimized models tailored for various hardware targets. Here's an [Olive example of Phi-3 optimization](https://github.com/microsoft/Olive/tree/main/examples/phi3). Meanwhile, we’ve uploaded the pre-optimized [mobile model](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/tree/main/cpu_and_mobile) and [web model](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx-web) on to Hugging Face. Feel free to utilize them directly.
+
+# Run Phi-3 with ONNX Runtime on mobile and Web
+
+ONNX Runtime is a cross-platform inference engine for machine learning models in the open standard ONNX format. It supports a wide range of hardware platforms and offers various optimizations and acceleration techniques to improve performance and efficiency. Here we focus on its two solutions for on-device inference, : ONNX Runtime mobile and ONNX Runtime Web. Both ONNX Runtime mobile and websolutions also allow customers to customize the build tailor the model for reducing the binary size and the runtime memory footprint.
+
+## Phi-3 with ONNX Runtime Mobile
+
+ONNX Runtime mobile Mobile provides a lightweight inference engine that enables easy integration of ONNX models into mobile applications on Android, iOS, reactReact -Nnative, and MAUI/Xamarin. It supports various hardware accelerators tailored for mobile devices, such as the default CPU accelerator and XNNPACK accelerator available across all mobile platforms, as well as platform-specific accelerators like CoreML for iOS and NNAPI,  and QNN for Android. For easy integration into different mobile development environments, it also provides a rich set of language bindings, including C, C++, Java, Objective-C, and C#C/C++/Java/Objective-C/C#.
+
+We leverage ONNX Runtime Mobile default CPU accelerator to inference the 4-bit quantized Phi-3 model on mobile phones. Within ONNX Runtime, optimized ARM64 kernels have been developed to accelerate INT4 quantized matrix multiplication. Additionally, it can accommodate quantized 8-bit integer on inputs, further enhancing performance in INT4 quantized matrix multiplication with acceptable accuracy loss. Moreover, ONNX Runtime includes support for Grouped Query Attention, an operator specifically crafted to efficiently execute attention while enabling past and present KV to share the same buffer. These optimizations collectively enable high-performance CPU execution with ONNX Runtime on mobile devices. Here, we showcase the performance of Phi-3-mini token generation on a Samsung Galaxy S21. ONNX Runtime Mobile surpasses llama.cpp in scenarios with small prompt length and Tokens tokens to generate, while remaining comparable in other cases.
+
+<img class="m-auto w50" src="./token-generation-chart.png" alt="Chart comparing token generation (in tokens/second) for llama.cpp and ONNX Runtime Mobile">
+
+*Note: These performance benchmarks were run using four threads on a Samsung Galaxy S21.*
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+<p>Here is <a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/phi-3/android" rel="no-follow">an E2E sample</a> for running Phi-3-mini with ONNX Runtime Mobile on Android. It utilizes the ONNX Runtime Generate() API, which speeds up the inference process for generative AI loops with ONNX models. This includes inference with ONNX Runtime, processing logits, conducting search and sampling, and managing KV cache. Since the official mobile bindings of ONNX Runtime Generate() API is are still in progress, the sample utilizes the C API. It achieves this by creating a JNI wrapper to facilitate communication between the C APIs of the Generative API and Java-level calls. Stay tuned for the update on the official mobile binding of ONNX Runtime Generate() API. For more details on the ONNX Runtime Generate() API, refer to <a href="https://onnxruntime.ai/docs/genai/" rel="no-follow">the documentation</a>.</p>
+
+<img class="m-auto" src="../phi-3-on-device/local-llm-demo-video.gif" alt="End-to-end sample for running Phi-3-mini with ONNX Runtime Mobile on Android">
+
+</div>
+
+## Phi-3 with ONNX Runtime Web 
+
+ONNX Runtime Web is a JavaScript library that enables running ONNX models in browsers and other web platforms. For CPU inference, ORT Web compiles the native ONNX Runtime CPU engine into the WASM backend using Emscripten. Furthermore, It is a normal ONNX Runtime compiled to WebAssembly, providing fast and portable CPU execution of ONNX models. ONNX Runtime Web supports multiple backends, such as WebGPU and WebNN, to further accelerate the inference leveraging underlying hardware acceleration. ONNX Runtime Web can be easily integrated into web applications and frameworks, such as ReactJS and Progressive Web Apps.
+
+Due to Phi3’s substantial size and computational demands, running it in the browser with a CPU is not performance-efficient. WebGPU introduces a modern web API that allows developers to harness GPU power for high-performance computations, providing a significant advantage in scenarios where CPU-based in-browser ML falls short. Microsoft and Intel have been collaborating to perfect the WebGPU capability in ONNX Runtime Web. In the ONNX Runtime 1.17 release, we introduced the WebGPU backend and now added 4-bit block quantization supporting the quantized Phi-3 Web model. We also implemented fused WebGPU operators such as Multi-Headed Attention and Rotary Embeddings, which streamline the computational graph and significantly enhance performance. To reduce memory usage when running Phi-3 with dynamic shapes, we applied a bucketed freelist approach and tuned it across 80 popular models to balance performance and memory efficiency. Large language models benefit from state preservation during generation by caching computation results from previous tokens using key-value caches. To support this, we introduced the ability to pass references to GPU buffers in model inputs and outputs, eliminating the need for cross-device copies and improving overall performance. With all these optimizations, ONNX Runtime Web is able to run Phi-3-mini at over 40 tokens per second on a Nvidia RTX 4090! Don’t miss [this E2E sample](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/chat) of ONNX Runtime web running Phi-3-mini in the browser.
+
+ONNX Runtime Web also powers [Transformers.js](https://huggingface.co/docs/transformers.js/index), a library for running Hugging Face transformers directly in the browser. The library serves as a popular choice for developers to run state-of-the-art pretrained models in the browser with as few as 3 lines of code. Utilizing ONNX Runtime Web with WebAssembly backend, Transformers.js has supported [numerous models](https://huggingface.co/docs/transformers.js/index#supported-tasksmodels) across Natural Language Processing, Vision, Audio, Tabular and Multimodal domains. Now, Hugging Face and Microsoft are collaborating to enable [WebGPU support through ONNX Runtime Web in Transformers.js](https://github.com/xenova/transformers.js/pull/545) to further accelerate performance, with new demos being released as the team makes progress. The latest demo with Phi-3-mini provides the user with a private (and powerful) chatbot experience. You can try it out on [Hugging Face Spaces](https://huggingface.co/spaces/Xenova/experimental-phi3-webgpu).
+
+[insert Transformers.js demo gif]
+
+# Enjoy Phi-3 on your device
+
+Are you thrilled about having a private and potent chatbot on your device? Engage in seamless communication without worrying about data privacy or internet connection. You can download pre-optimized Phi-3 models or utilize Olive to optimize your customized versions, then deploy optimized models with ONNX Runtime on mobile phones or directly in the browser! Give it a try! Feel free to share your feedback on [ONNX Runtime Github](https://github.com/microsoft/onnxruntime)!
