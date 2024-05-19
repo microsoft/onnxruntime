@@ -27,7 +27,8 @@ enum versionNum {
   V_2023_1,
   V_2023_2,
   V_2023_3,
-  V_2024_0
+  V_2024_0,
+  V_2024_1
 };
 
 using VersionNum = enum versionNum;
@@ -62,8 +63,8 @@ class DataOps {
   std::set<Pairs> supported_types_initializer_;
 
  protected:
-  virtual void populate_op_mode_supported();
-  virtual void populate_types_supported();
+  void populate_op_mode_supported();
+  void populate_types_supported();
   bool op_is_supported(std::string name, std::vector<SupportedOp>& list);
   bool dimension_unsupported(const Node* node);
   bool unsupported_op_mode(const Node* node);
@@ -71,8 +72,9 @@ class DataOps {
   bool node_is_supported(const NodeIndex node_idx);
 
  public:
-  DataOps(const GraphViewer& graph_viewer_param, VersionNum ver, const std::string dev_id, const std::string device_precision)
-      : graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id), device_precision_(device_precision) {
+  DataOps(const GraphViewer& graph_viewer_param, VersionNum ver,
+          const std::string dev_id)
+      : graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id) {
     populate_op_mode_supported();
     populate_types_supported();
   }

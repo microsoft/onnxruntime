@@ -13,6 +13,14 @@ struct OrtApi;
 namespace vaip_core {
 
 struct OrtApiForVaip {
+  uint32_t magic;  // 'VAIP' or something else to make sure the following field
+                   // are not garbage.
+  uint32_t major;  // bump this field changes that are not backward compatible or
+                   // that represent a change in direction for the project
+  uint32_t minor;  // bump this field for adding new features without breaking
+                   // existing behavior
+  uint32_t patch;  // bump this field for fixing some bugs but not introducing
+                   // new functionality
   onnxruntime::ProviderHost* host_;
   const OrtApi* ort_api_;
   // model

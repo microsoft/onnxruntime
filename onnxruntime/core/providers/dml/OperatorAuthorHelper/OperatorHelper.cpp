@@ -256,7 +256,7 @@ namespace OperatorHelper
         // Read the tensor bytes of a scalar value into the output data,
         // validating dimensions and byte size.
         const uint32_t elementCount = ComputeElementCountFromDimensions(tensor.GetShape());
-        const size_t elementByteSize = GetByteSizeFromMlDataType(tensor.GetTensorDataType());
+        const size_t elementByteSize = (GetBitSizeFromMlDataType(tensor.GetTensorDataType()) + CHAR_BIT - 1) / CHAR_BIT;
         ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be a CPU Tensor.");
         ML_CHECK_VALID_ARGUMENT(elementCount == 1, "Scalar tensors must have exactly 1 element.");
         ML_CHECK_VALID_ARGUMENT(dataByteSize >= elementByteSize, "Scalar tensor element byte size is too large.");
@@ -839,13 +839,15 @@ namespace OperatorHelper
 
             if (outputShape.size() > 2)
             {
-                ML_CHECK_VALID_ARGUMENT(outputShape[outputShape.size() - 3] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]), "Output channel must be equivalent to filter channel.");
-            }
+                ML_CHECK_VALID_ARGUMENT(outputShape[C] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]),
+                    "Output channel must be equivalent to filter channel.");
+            } 
 
             for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i)
             {
                 size_t outputIndex = outputShape.size() - m_kernel.spatialDimensionCount + i;
-                ML_CHECK_VALID_ARGUMENT(outputShape[outputIndex] >= gsl::narrow_cast<int>(inputDimensions[H + i]), "Output dimension cannot be smaller than input dimension.");
+                ML_CHECK_VALID_ARGUMENT(outputShape[outputIndex] >= gsl::narrow_cast<int>(inputDimensions[H + i]),
+                    "Output dimension cannot be smaller than input dimension.");
                 m_outputShapes[0].GetShape()[H + i] = outputShape[outputIndex];
             }
 
@@ -2771,6 +2773,52 @@ namespace OperatorHelper
         m_numHeads = gsl::narrow_cast<uint32_t>(kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::NumHeads));
     }
 
+    std::vector<EdgeShapes> GroupQueryAttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);
+
+        const auto queryShape = shapeInfo.GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3);
+        const uint32_t batchSize = queryShape[0];
+        const uint32_t sequenceLength = queryShape[1];
+        const uint32_t hiddenSize = queryShape[2];
+
+        const auto keyShape = shapeInfo.GetInputTensorShape(1);
+        ML_CHECK_VALID_ARGUMENT(keyShape.size() == 3);
+        const uint32_t kvHiddenSize = keyShape[2];
+        const uint32_t kvHeadSize = kvHiddenSize / m_kvNumHeads;
+
+        uint32_t pastSequenceLength = 0;
+
+        if (shapeInfo.IsInputValid(3))
+        {
+            const auto pastKeyShape = shapeInfo.GetInputTensorShape(3);
+            ML_CHECK_VALID_ARGUMENT(pastKeyShape.size() == 4);
+            pastSequenceLength = pastKeyShape[2];
+        }
+
+        const uint32_t presentSequenceLength = std::max(pastSequenceLength, m_totalSequenceLength);
+
+        std::vector<EdgeShapes> outputShapes =
+        {
+            EdgeShapes({batchSize, sequenceLength, hiddenSize}),
+            EdgeShapes({batchSize, m_kvNumHeads, presentSequenceLength, kvHeadSize}),
+            EdgeShapes({batchSize, m_kvNumHeads, presentSequenceLength, kvHeadSize}),
+        };
+
+        return outputShapes;
+    }
+
+    void GroupQueryAttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_kvNumHeads = gsl::narrow_cast<uint32_t>(kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::KvNumHeads));
+
+        std::vector<int32_t> totalSequenceLength;
+        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(6), /*out*/ totalSequenceLength);
+        ML_CHECK_VALID_ARGUMENT(totalSequenceLength.size() == 1, "total_sequence_length must be a scalar.");
+        m_totalSequenceLength = totalSequenceLength[0];
+    }
+
     std::vector<EdgeShapes> AttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);
@@ -2871,6 +2919,31 @@ namespace OperatorHelper
         outputShape.back() /= 2;
 
         return { EdgeShapes(std::move(outputShape)) };
+    }
+
+    std::vector<EdgeShapes> MatMulNBitsHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        auto inputShape = shapeInfo.GetInputTensorShape(0);
+        onnxruntime::TensorShape aShape(std::vector<int64_t>(inputShape.begin(), inputShape.end()));
+        onnxruntime::TensorShape bShape({m_bRowCount, m_bColCount});
+
+        onnxruntime::MatMulComputeHelper helper;
+
+        // The B tensor is always transposed
+        ML_CHECK_VALID_ARGUMENT(helper.Compute(aShape, bShape, false, true).IsOK());
+        const auto outputShape = helper.OutputShape().GetDims();
+
+        std::vector<uint32_t> uint32OutputShape;
+        uint32OutputShape.reserve(outputShape.size());
+        std::transform(outputShape.begin(), outputShape.end(), std::back_inserter(uint32OutputShape), [](int64_t dimSize){ return static_cast<uint32_t>(dimSize); });
+
+        return { EdgeShapes(uint32OutputShape) };
+    }
+
+    void MatMulNBitsHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_bRowCount = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::UppercaseN);
+        m_bColCount = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::UppercaseK);
     }
 
 } // namespace OperatorHelper

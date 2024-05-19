@@ -79,6 +79,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
       options.set("axis", rank - 1);
     }
+
     output = model_builder.GetBuilder().call<emscripten::val>("batchNormalization", input, mean, variance, options);
   } else if (op_type == "LayerNormalization") {
     int64_t axis = helper.Get("axis", -1);

@@ -271,10 +271,9 @@ class TrainingManager(GraphExecutionManager):
 
                 # Build the gradient graph
                 if build_gradient_graph:
-                    graph_transformer_config = self._get_graph_transformer_config()
-                    # Set the config according to input inspection.
-                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+                    self._detect_from_inputs(inputs, kwargs)
 
+                    graph_transformer_config = self._get_graph_transformer_config()
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)
 
@@ -324,7 +323,7 @@ class TrainingManager(GraphExecutionManager):
             else:
                 param_to_append_as_onnx_graph_inputs = self._graph_initializers
 
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+            prepared_input_list = _io._combine_input_buffers_initializers(
                 param_to_append_as_onnx_graph_inputs,
                 self._graph_info.user_input_names,
                 self._input_info,
