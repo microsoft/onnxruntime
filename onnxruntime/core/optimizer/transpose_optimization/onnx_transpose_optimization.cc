@@ -2511,7 +2511,7 @@ static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node) {
 }
 
 /// <summary>
-/// Try to remove empty DQ -> Q pair that results from moving a Transpose downstream or a Transpose being cancelled out.
+/// Try to remove empty DQ -> Q pair that results from moving a Transpose downstream or a Transpose being canceled out.
 /// (DQ -> Q -> consumer node) => consumer node
 /// </summary>
 /// <param name="ctx">Optimizer context</param>
