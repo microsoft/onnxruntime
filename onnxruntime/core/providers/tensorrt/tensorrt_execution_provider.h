@@ -191,6 +191,7 @@ struct TensorrtFuncState {
   bool cuda_graph_enable = 0;
   std::string cache_prefix;
   std::string cache_suffix;
+  bool engine_hw_compatible = false;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path

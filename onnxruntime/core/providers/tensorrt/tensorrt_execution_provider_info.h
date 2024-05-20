@@ -55,6 +55,7 @@ struct TensorrtExecutionProviderInfo {
   std::string ep_context_file_path{""};
   int ep_context_embed_mode{0};
   std::string engine_cache_prefix{""};
+  bool engine_hw_compatible{false};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
