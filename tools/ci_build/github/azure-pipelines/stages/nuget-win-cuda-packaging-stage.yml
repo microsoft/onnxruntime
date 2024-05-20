@@ -35,6 +35,10 @@ parameters:
   type: string
   default: '0'
 
+- name: PublishProtoc
+  type: boolean
+  default: false
+
 stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
@@ -54,6 +58,7 @@ stages:
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+    PublishProtoc: ${{ parameters.PublishProtoc }}
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:

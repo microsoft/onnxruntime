@@ -101,19 +101,6 @@ stages:
       PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
       PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-  # this is needed for certain artifacts to be published
-  - stage: Linux_C_API_Packaging_CPU_x64
-    dependsOn: [ ]
-    jobs:
-    - template: templates/c-api-linux-cpu.yml
-      parameters:
-        BaseImage: 'registry.access.redhat.com/ubi8/ubi'
-        OnnxruntimeArch: 'x64'
-        OnnxruntimeNodejsBindingArch: 'x64'
-        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-        PackageJava: false
-        PackageNodeJS: false
-
   # Nuget Packaging
   - template: stages/nuget-combine-cuda-stage.yml
     parameters:
@@ -131,3 +118,4 @@ stages:
       buildNodejs: false
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
+      PublishProtoc: true
