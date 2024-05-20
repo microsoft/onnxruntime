@@ -98,6 +98,12 @@ public void SetSearchOption(string searchOption, double value)
 public void SetSearchOption(string searchOption, bool value)
 ```
 
+### Try graph capture with max batch size
+
+```csharp
+ public void TryGraphCaptureWithMaxBatchSize(int maxBatchSize)
+```
+
 ### Set input ids method
 
 ```csharp
@@ -110,8 +116,11 @@ public void SetInputIDs(ReadOnlySpan<int> inputIDs, ulong sequenceLength, ulong 
 public void SetInputSequences(Sequences sequences)
 ```
 
+### Set model inputs
 
-
+```csharp
+public void SetModelInput(string name, Tensor value)
+```
 
 
 ## Generator class
@@ -137,9 +146,14 @@ public void ComputeLogits()
 ### Generate next token method
 
 ```csharp
-public void GenerateNextTokenTop()
+public void GenerateNextToken()
 ```
 
+### Get sequence
+
+```csharp
+public ReadOnlySpan<int> GetSequence(ulong index)
+```
 
 ## Sequences class
 
