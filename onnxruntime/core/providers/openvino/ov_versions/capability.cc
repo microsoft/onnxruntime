@@ -66,7 +66,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
     for (size_t i = 0; i < unsupported_nodes.size(); i++) {
-      const Node & node = graph_viewer_.GetNode(unsupported_nodes[i]);
+      const Node* node = graph_viewer_.GetNode(unsupported_nodes[i]);
       std::cout << "Unsupported node op " << node->OpType() << std::endl;
     }
   }
