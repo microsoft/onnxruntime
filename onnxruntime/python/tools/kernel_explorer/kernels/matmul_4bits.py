@@ -71,7 +71,7 @@ def profile_matmul_fp_int4_func(m, n, k, dtype, func, is_symmetric):
         else f(output_d, a_d, b_d, scales_d, zeropoints_d, m, n, k)
     )
     duration_ms = my_op.Profile()
-    total_bytes = (m * k + n * k + m * n) * (dtype_to_bytes(dtype))
+    total_bytes = (m * k + m * n) * (dtype_to_bytes(dtype)) + n * k / 2
 
     ke.report(MatrixFpInt4Metric(func, dtype, duration_ms, total_bytes, m, n, k, is_symmetric))
 
