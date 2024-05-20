@@ -7,7 +7,7 @@ stages:
   jobs:
   - job: Set_Variables
     pool:
-      vmImage: onnxruntime-Ubuntu2204-AMD-CPU
+      vmImage: ubuntu-22.04
     steps:
     - checkout: none
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3

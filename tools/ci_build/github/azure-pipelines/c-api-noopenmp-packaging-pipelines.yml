@@ -127,7 +127,7 @@ stages:
   jobs:
   - job: D1
     pool:
-      vmImage: onnxruntime-Ubuntu2204-AMD-CPU
+      vmImage: ubuntu-22.04
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
@@ -149,7 +149,7 @@ stages:
   jobs:
   - job: Download_Java_Tools
     pool:
-      vmImage: onnxruntime-Ubuntu2204-AMD-CPU
+      vmImage: ubuntu-22.04
     steps:
     - checkout: none
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
