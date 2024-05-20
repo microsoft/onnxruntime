@@ -135,14 +135,14 @@ static std::unique_ptr<api::NodeRef> MakeQuantizeOp(api::GraphRef& graph, std::s
   SetAttrIfNotDefault(*node, "axis", axis, 1);
 
   if (auto opset = graph.Opset(domain); opset) {
-    const int64_t req_opset_1 = IsOnnxDomain(domain) ? 19 : 1;
-    const int64_t req_opset_2 = IsOnnxDomain(domain) ? 21 : 1;
+    const int64_t required_opset_1 = IsOnnxDomain(domain) ? 19 : 1;
+    const int64_t required_opset_2 = IsOnnxDomain(domain) ? 21 : 1;
 
-    if (*opset >= req_opset_1) {
+    if (*opset >= required_opset_1) {
       SetAttrIfNotDefault(*node, "saturate", saturate, 1);
     }
 
-    if (*opset >= req_opset_2) {
+    if (*opset >= required_opset_2) {
       SetAttrIfNotDefault(*node, "block_size", block_size, 0);
       SetAttrIfNotDefault(*node, "output_dtype", output_dtype, 0);
     }
@@ -169,9 +169,9 @@ static std::unique_ptr<api::NodeRef> MakeDequantizeOp(api::GraphRef& graph, std:
   SetAttrIfNotDefault(*node, "axis", axis, 1);
 
   if (auto opset = graph.Opset(domain); opset) {
-    const int64_t req_opset = IsOnnxDomain(domain) ? 21 : 1;
+    const int64_t required_opset = IsOnnxDomain(domain) ? 21 : 1;
 
-    if (*opset >= req_opset) {
+    if (*opset >= required_opset) {
       SetAttrIfNotDefault(*node, "block_size", block_size, 0);
     }
   }
@@ -381,8 +381,8 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
 /// <summary>
 /// Fixes a Transpose QDQ node unit that is missing the DQ at its input due to the Transpose being blocked on the Q.
 /// Inserts a Q -> DQ pair before the sequence Transpose -> Q by using the scale and zp info from the Q node.
-/// Before: prev_node (or graph input) ->                      Transpose -> Q
-/// After:  prev_node (or graph input) -> Q[new] -> DQ[new] -> Transpose -> Q
+/// Before: prev_node ->                      Transpose -> Q
+/// After:  prev_node -> Q[new] -> DQ[new] -> Transpose -> Q
 /// </summary>
 /// <param name="transpose_node">Transpose node.</param>
 /// <param name="q_node">Q node.</param>
@@ -393,10 +393,8 @@ static bool FixTransposeMissingDQ(api::GraphRef& graph, api::NodeRef& transpose_
   auto transpose_output_name = transpose_node.Outputs()[0];
   const auto q_node_inputs = q_node.Inputs();
 
-  if (transpose_output_name != q_node_inputs[0]) {
-    // Transpose and Q nodes are not connected. Should not happen.
-    return false;
-  }
+  // Transpose and Q nodes should be connected, otherwise, this is a logical error.
+  assert(transpose_output_name == q_node_inputs[0]);
 
   auto transpose_output_consumers = graph.GetValueConsumers(transpose_output_name);
   if (!transpose_output_consumers->comprehensive || transpose_output_consumers->nodes.size() != 1) {
@@ -404,14 +402,15 @@ static bool FixTransposeMissingDQ(api::GraphRef& graph, api::NodeRef& transpose_
     return false;
   }
 
-  auto transpose_input_consumers = graph.GetValueConsumers(transpose_input_name);
-  if (transpose_input_consumers->nodes.size() != 1) {
-    // The transpose node should be the only consumer of its own input.
+  // Get the node upstream from the Transpose.
+  auto prev_node = graph.GetNodeProducingOutput(transpose_input_name);
+  if (prev_node == nullptr) {
     return false;
   }
 
-  if (graph.GetConstant(transpose_input_name) != nullptr) {
-    // Don't handle a constant input to transpose node. This should have been constant folded.
+  auto transpose_input_consumers = graph.GetValueConsumers(transpose_input_name);
+  if (transpose_input_consumers->nodes.size() != 1) {
+    // The transpose node should be the only consumer of its own input.
     return false;
   }
 
@@ -472,32 +471,20 @@ static bool FixTransposeMissingDQ(api::GraphRef& graph, api::NodeRef& transpose_
   auto new_dq_node_output = new_dq_node->Outputs()[0];
   graph.CopyValueInfo(transpose_input_name, new_dq_node_output);
 
-  // Get the node upstream from the Transpose. If null, Transpose consumes a graph input.
-  auto prev_node = graph.GetNodeProducingOutput(transpose_input_name);
-
-  if (prev_node != nullptr) {
-    auto prev_node_outputs = prev_node->Outputs();
-    size_t prev_node_output_idx = 0;
-    for (size_t out_idx = 0; out_idx < prev_node_outputs.size(); ++out_idx) {
-      if (prev_node_outputs[out_idx] == transpose_input_name) {
-        prev_node_output_idx = out_idx;
-        break;
-      }
+  auto prev_node_outputs = prev_node->Outputs();
+  size_t prev_node_output_idx = 0;
+  for (size_t out_idx = 0; out_idx < prev_node_outputs.size(); ++out_idx) {
+    if (prev_node_outputs[out_idx] == transpose_input_name) {
+      prev_node_output_idx = out_idx;
+      break;
     }
-
-    // move prev_node output to the new DQ node, and connect prev_node with the new Q node
-    graph.MoveOutput(*prev_node, prev_node_output_idx, *new_dq_node, 0);
-    std::string_view new_prev_node_output_name = prev_node->Outputs()[prev_node_output_idx];
-    new_q_node->SetInput(0, new_prev_node_output_name);
-    graph.CopyValueInfo(new_dq_node_output, new_prev_node_output_name);
-  } else {
-    // (prev_node == nullptr) means that Transpose consumes a graph input since we already checked
-    // that Transpose does not consume a constant input.
-
-    // Connect graph input -> Q[new] and DQ[new] -> Transpose
-    new_q_node->SetInput(0, transpose_input_name);
-    transpose_node.SetInput(0, new_dq_node_output);
   }
+
+  // move prev_node output to the new DQ node, and connect prev_node with the new Q node
+  graph.MoveOutput(*prev_node, prev_node_output_idx, *new_dq_node, 0);
+  std::string_view new_prev_node_output_name = prev_node->Outputs()[prev_node_output_idx];
+  new_q_node->SetInput(0, new_prev_node_output_name);
+  graph.CopyValueInfo(new_dq_node_output, new_prev_node_output_name);
 
   return true;
 }
@@ -695,7 +682,6 @@ static std::vector<int64_t> UnsqueezeShape(gsl::span<const int64_t> shape, const
 
 /// <summary>
 /// Returns a new squeezed shape without the dimensions of value 1 indicated by the given axes.
-/// Unsafe if any axes values are not in the range [-r, r - 1], where r = shape.size().
 /// </summary>
 /// <param name="shape">Input shape to squeeze</param>
 /// <param name="axes">List of integers indicating the dimensions to squeeze</param>
@@ -2660,18 +2646,9 @@ static bool TryConstantFoldNode(OptimizerCtx& ctx, api::NodeRef& node) {
 
   std::string_view node_output_name = node.Outputs()[0];
   auto consumers = ctx.graph.GetValueConsumers(node_output_name);
-  std::vector<size_t> consumer_indices;
-  consumer_indices.reserve(consumers->nodes.size());
 
-  // Get indices for consumers we can modify.
-  for (size_t c_i = 0; c_i < consumers->nodes.size(); c_i++) {
-    if (CanModifyNode(ctx, *(consumers->nodes[c_i]))) {
-      consumer_indices.push_back(c_i);
-    }
-  }
-
-  if (consumer_indices.empty()) {
-    // No consumers we can modify. Skip.
+  if (consumers->nodes.empty()) {
+    // No consumers Skip.
     return false;
   }
 
@@ -2707,8 +2684,7 @@ static bool TryConstantFoldNode(OptimizerCtx& ctx, api::NodeRef& node) {
   }
 
   // Iterate through consumers and replace their input(s) with the new initializer.
-  for (auto consumer_idx : consumer_indices) {
-    auto& consumer = consumers->nodes[consumer_idx];
+  for (auto& consumer : consumers->nodes) {
     std::vector<std::string_view> inputs = consumer->Inputs();
 
     for (size_t input_idx = 0; input_idx < inputs.size(); input_idx++) {
@@ -2718,11 +2694,8 @@ static bool TryConstantFoldNode(OptimizerCtx& ctx, api::NodeRef& node) {
     }
   }
 
-  // Remove original node if we processed all of its consumers.
-  // This should always happen if we're allowed to modify all consumer nodes.
-  const bool node_has_consumers = ctx.graph.HasValueConsumers(node_output_name);
-  assert((consumer_indices.size() < consumers->nodes.size()) || !node_has_consumers);
-  if (!node_has_consumers) {
+  // Remove original node if its output is unused.
+  if (!ctx.graph.HasValueConsumers(node_output_name)) {
     ctx.graph.RemoveNode(node);
   }
 
@@ -2856,11 +2829,36 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
     return result;
   }
 
-  // Run constant-folding for Transpose and Squeeze ops.
-  // We currently only run this for QDQ models (i.e., have_dq == true) to convert a sequence like
-  // (quantized_weight --> Squeeze --> DQ) into (squeezed_quantized_weight --> DQ).
-  // This constant-folding pass could also benefit non-quantized models, but we only including it here to
-  // be conservative.
+  // Run constant-folding for Transpose and Squeeze ops to fold sequences like (const --> Squeeze --> DQ)
+  // into (squeezed_const --> DQ).
+  //
+  // These constant-foldable sequences are created when a transpose is pushed through a node that has a shared
+  // initializer as one of its inputs. The node's inputs must be transposed, and for initializer inputs this transpose
+  // is done in-place. Other consumers of this modified shared initializer must get a Transpose node inserted after
+  // the initializer to undo the in-place transformation.
+  //
+  // Example:
+  //     in_place_transposed_const ---+--> DQ0 --> Op0 --> Q0 -->
+  //                                  |
+  //                                  |
+  //                                  +--> Transpose[to undo] --> DQ1 --> Op1 -> Q1 -->
+  //
+  // In the above example, constant folding would remove the Transpose and the graph would become:
+  //     in_place_transposed_const --> DQ0 --> Op0 --> Q0 -->
+  //     new_const --> DQ1 --> Op1 --> Q1 -->
+  //
+  // If the shared initializer needs to be broadcast before being transposed in-place, then we'll also end up
+  // with a redundant Squeeze node to undo the broadcast/unsqueeze.
+  //
+  // Example:
+  //     in_place_unsqueezed_transposed_const ---+--> DQ0 --> Op0 --> Q0 -->
+  //                                             |
+  //                                             |
+  //                                             +--> Transpose[to undo] --> Squeeze[to undo] --> DQ1 --> Op1 -> Q1 -->
+  //
+  // In this case, constant folding would remove both the Transpose and Squeeze nodes:
+  //     in_place_unsqueezed_transposed_const --> DQ0 --> Op0 --> Q0 -->
+  //     new_const --> DQ1 --> Op1 --> Q1 -->
   auto graph_nodes = ctx.graph.Nodes();
   for (size_t i = 0; i < graph_nodes.size(); i++) {
     auto& node = *graph_nodes[i];
@@ -2970,10 +2968,6 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   // Repair broken QDQ node unit from Transpose being blocked after Op inside a QDQ node unit.
   //   DQ -> Op ->            Transpose -> Q =>
   //   DQ -> Op -> Q -> DQ -> Transpose -> Q
-  //
-  // Create QDQ node unit for Transpose that consumes a graph input.
-  //   graph input ->            Transpose -> Q
-  //   graph input -> Q -> DQ -> Transpose -> Q
   graph_nodes = ctx.graph.Nodes();
   for (size_t i = 0; i < graph_nodes.size(); i++) {
     api::NodeRef& node = *graph_nodes[graph_nodes.size() - i - 1];
@@ -2998,13 +2992,12 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
     // prev_node is nullptr if the transpose consumes a graph input or a constant.
     // A constant should have been folded by a previous constant-folding pass.
     auto prev_node = ctx.graph.GetNodeProducingOutput(transpose_node.Inputs()[0]);
-    const bool has_prev_node = prev_node != nullptr;
-    if (has_prev_node && !CanModifyNode(ctx, *prev_node)) {
-      // Not allowed to modify node preceding the Transpose.
+    if (prev_node == nullptr) {
+      // Transpose consumes a graph input or constant. Skip.
       continue;
     }
 
-    if (has_prev_node && prev_node->OpType() == "DequantizeLinear") {
+    if (prev_node->OpType() == "DequantizeLinear") {
       // Transpose is already in a QDQ node unit.
       continue;
     }
