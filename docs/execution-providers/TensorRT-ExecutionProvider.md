@@ -439,6 +439,9 @@ export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
 
 </details>
 
+## TensorRT EP Caches
+Properply set the TRT EP caches can help reduce session creation time from minutes to seconds.
+
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)
 
