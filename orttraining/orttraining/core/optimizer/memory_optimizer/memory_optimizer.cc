@@ -7,6 +7,7 @@
 #include <utility>
 #include <string>
 #include <vector>
+#include <onnx/defs/attr_proto_util.h>
 
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
@@ -126,6 +127,11 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
       if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
           !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
                                  boundary_op_order_in_topological_sort)) {
+        // Ignore the rng state consumer update for the determinstic PythonOp.
+        if ((graph_utils::IsSupportedOptypeVersionAndDomain(*node, "PythonOp", {1}, kMSDomain) &&
+             (it->GetSrcArgIndex() == 1 || it->GetSrcArgIndex() == 2))) {
+          continue;
+        }
         // Remove the edge only connecting to backward op.
         output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(*node, *it, false));
       }
@@ -268,8 +274,59 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
                             << ").";
     }
 
+    const bool is_python_op = graph_utils::IsSupportedOptypeVersionAndDomain(*node_to_duplicate, "PythonOp", {1}, kMSDomain);
+
     InlinedVector<NodeArg*> new_input_args;
-    new_input_args.reserve(node_to_duplicate->MutableInputDefs().size());
+    NodeAttributes update_attrs = node_to_duplicate->GetAttributes();
+
+    if (is_python_op) {
+      new_input_args.reserve(node_to_duplicate->MutableInputDefs().size() + 2);
+      // Ignore the ctx input, and connect the rng output to the recompute node.
+      new_input_args.push_back(node_to_duplicate->MutableOutputDefs()[1]);
+      new_input_args.push_back(node_to_duplicate->MutableOutputDefs()[2]);
+      std::string input_convention = update_attrs.at("input_convention").s();
+      input_convention[1] = 'd';  // Update the rng state input to be a tensor.
+      input_convention[2] = 'd';
+      update_attrs["input_convention"] = ONNX_NAMESPACE::MakeAttribute("input_convention", input_convention);
+
+      const auto& input_pointer_scalars_ints = update_attrs.at("input_pointer_scalars").ints();
+      std::vector<int64_t> input_pointer_scalars(input_pointer_scalars_ints.begin(),
+                                                 input_pointer_scalars_ints.end());
+      // Remove the rng state input.
+      input_pointer_scalars.erase(input_pointer_scalars.begin() + 1, input_pointer_scalars.begin() + 3);
+      update_attrs["input_pointer_scalars"] = ONNX_NAMESPACE::MakeAttribute("input_pointer_scalars",
+                                                                            input_pointer_scalars);
+
+      const auto& input_pointer_scalars_positions_ints = update_attrs.at("input_pointer_scalar_positions").ints();
+      std::vector<int64_t> input_pointer_scalar_positions(input_pointer_scalars_positions_ints.begin(),
+                                                          input_pointer_scalars_positions_ints.end());
+      // Remove the rng state input.
+      input_pointer_scalar_positions.erase(input_pointer_scalar_positions.begin() + 1,
+                                           input_pointer_scalar_positions.begin() + 3);
+      update_attrs["input_pointer_scalar_positions"] = ONNX_NAMESPACE::MakeAttribute("input_pointer_scalar_positions",
+                                                                                     input_pointer_scalar_positions);
+
+      const auto& input_tensor_ranks_ints = update_attrs.at("input_tensor_ranks").ints();
+      std::vector<int64_t> input_tensor_ranks(input_tensor_ranks_ints.begin(),
+                                              input_tensor_ranks_ints.end());
+      // Insert the rng state input and cuda rng state input at the beginning.
+      input_tensor_ranks.insert(input_tensor_ranks.begin(), {1, 1});
+
+      update_attrs["input_tensor_ranks"] = ONNX_NAMESPACE::MakeAttribute("input_tensor_ranks",
+                                                                         input_tensor_ranks);
+
+      const auto& input_tensor_types_ints = update_attrs.at("input_tensor_types").ints();
+      std::vector<int64_t> input_tensor_types(input_tensor_types_ints.begin(),
+                                              input_tensor_types_ints.end());
+      // Insert the uint8 type of rng state and cuda rng state at the beginning.
+      input_tensor_types.insert(input_tensor_types.begin(), {ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                                             ONNX_NAMESPACE::TensorProto_DataType_UINT8});
+      update_attrs["input_tensor_types"] = ONNX_NAMESPACE::MakeAttribute("input_tensor_types",
+                                                                         input_tensor_types);
+    } else {
+      new_input_args.reserve(node_to_duplicate->MutableInputDefs().size());
+    }
+
     for (NodeArg* input_arg : node_to_duplicate->MutableInputDefs()) {
       if (self_contained_outputs_map.find(input_arg) == self_contained_outputs_map.end()) {
         NodeArg* recompute_input_arg = graph.GetNodeArg(graph_utils::RecomputeName(input_arg->Name()));
@@ -294,7 +351,7 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
                                          "Recompute of " + node_to_duplicate->Name(),
                                          new_input_args,
                                          new_output_args,
-                                         &node_to_duplicate->GetAttributes(),
+                                         &update_attrs,
                                          node_to_duplicate->Domain());
 
     recompute_node.SetExecutionProviderType(node_to_duplicate->GetExecutionProviderType());
@@ -320,6 +377,11 @@ Status MemoryOptimizer::CreateRecomputeGraph(Graph& graph,
                     static_cast<int>(j));
 
       graph.AddConsumerNode(input_arg->Name(), &recompute_node);
+    }
+
+    if (is_python_op) {
+      graph.AddConsumerNode(node_to_duplicate->MutableOutputDefs()[1]->Name(), &recompute_node);
+      graph.AddConsumerNode(node_to_duplicate->MutableOutputDefs()[2]->Name(), &recompute_node);
     }
 
     bool training_mode_reset = SetTrainingModeForForwardPythonOpNode(*node_to_duplicate);

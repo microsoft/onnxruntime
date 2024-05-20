@@ -492,6 +492,7 @@ bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
           "flash_attn.bert_padding.IndexPutFirstAxis",
           "flash_attn.flash_attn_interface.FlashAttnFunc",
           "flash_attn.flash_attn_interface.FlashAttnVarlenFunc",
+          "orttraining_test_ortmodule_api.test_layerwise_recompute_determinstic.<locals>.DropoutFunction",
       };
       return deterministic_python_ops.find(func_name_attr->s()) != deterministic_python_ops.end();
     }
