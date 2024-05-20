@@ -118,4 +118,3 @@ stages:
       buildNodejs: false
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
-      PublishProtoc: true
