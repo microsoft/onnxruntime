@@ -33,18 +33,11 @@ parameters:
   type: boolean
   default: true
 
-- name: SkipComponentGovernanceDetection
-  type: boolean
-  default: false
-
 jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
 
   workspace:
     clean: all
-  variables:
-  - name: skipComponentGovernanceDetection
-    value: ${{parameters.SkipComponentGovernanceDetection}}
   timeoutInMinutes:  210
   pool: ${{parameters.PoolName}}
   steps:
