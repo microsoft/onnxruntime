@@ -384,6 +384,5 @@ TEST(MemoryOptimizerTests, TransformerLayerDetectionTest) {
   ASSERT_EQ(layer_boundary_ln_node[2]->Name(), "LayerNormalization_token_12");
 }
 
-
 }  // namespace test
 }  // namespace onnxruntime
