@@ -43,7 +43,7 @@ parameters:
 
 - name: PublishProtoc
   type: boolean
-  value: false
+  default: false
 
 stages:
 - template: nuget-linux-cuda-packaging-stage.yml
