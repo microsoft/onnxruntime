@@ -51,7 +51,7 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
    *
    * @param backendName - the registered backend name.
    */
-  async init(backendName: string): Promise<void> {
+  async init(backendName: string, webnnOptions?: InferenceSession.WebNNExecutionProviderOption): Promise<void> {
     // populate wasm flags
     initializeFlags();
 
@@ -59,7 +59,7 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
     await initializeWebAssemblyAndOrtRuntime();
 
     // performe EP specific initialization
-    await initializeOrtEp(backendName);
+    await initializeOrtEp(backendName, webnnOptions);
   }
   createInferenceSessionHandler(path: string, options?: InferenceSession.SessionOptions):
       Promise<InferenceSessionHandler>;

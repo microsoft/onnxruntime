@@ -50,7 +50,7 @@ interface MessageInitWasm extends MessageError {
 
 interface MessageInitEp extends MessageError {
   type: 'init-ep';
-  in ?: {env: Env; epName: string};
+  in ?: {env: Env; epName: string, webnnOptions?: InferenceSession.WebNNExecutionProviderOption};
   out?: never;
 }
 

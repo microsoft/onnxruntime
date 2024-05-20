@@ -60,8 +60,8 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
                 });
         break;
       case 'init-ep': {
-        const {epName, env} = message!;
-        initEp(env, epName)
+        const {epName, env, webnnOptions} = message!;
+        initEp(env, epName, webnnOptions)
             .then(
                 () => {
                   postMessage({type});

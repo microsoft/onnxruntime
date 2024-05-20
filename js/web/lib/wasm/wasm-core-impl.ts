@@ -83,7 +83,8 @@ export const initRuntime = async(env: Env): Promise<void> => {
  * @param env
  * @param epName
  */
-export const initEp = async(env: Env, epName: string): Promise<void> => {
+export const initEp =
+    async(env: Env, epName: string, webnnOptions?: InferenceSession.WebNNExecutionProviderOption): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WEBGPU) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
@@ -128,9 +129,20 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
       await initJsep('webgpu', getInstance(), env, adapter);
     }
     if (epName === 'webnn') {
-      // perform WebNN availability check
+      // perform WebNN availability check.
       if (typeof navigator === 'undefined' || !(navigator as unknown as {ml: unknown}).ml) {
         throw new Error('WebNN is not supported in current environment');
+      } else {
+        try {
+          if (webnnOptions?.powerPreference === 'default') {
+            // current implementation of WebNN API in Chromium does not support "default" powerPreference.
+            webnnOptions.powerPreference = undefined;
+          }
+          // validate if WebNN MLContext can be created with current options.
+          await (navigator as any).ml.createContext(webnnOptions);
+        } catch (e) {
+          throw(e);
+        }
       }
 
       await initJsep('webnn', getInstance(), env);

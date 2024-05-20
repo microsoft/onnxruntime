@@ -118,16 +118,17 @@ export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
   }
 };
 
-export const initializeOrtEp = async(epName: string): Promise<void> => {
+export const initializeOrtEp =
+    async(epName: string, webnnOptions?: InferenceSession.WebNNExecutionProviderOption): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<void>((resolve, reject) => {
       enqueueCallbacks('init-ep', [resolve, reject]);
-      const message: OrtWasmMessage = {type: 'init-ep', in : {epName, env}};
+      const message: OrtWasmMessage = {type: 'init-ep', in : {epName, env, webnnOptions}};
       proxyWorker!.postMessage(message);
     });
   } else {
-    await core.initEp(env, epName);
+    await core.initEp(env, epName, webnnOptions);
   }
 };
 
