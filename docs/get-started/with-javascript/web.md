@@ -50,6 +50,17 @@ import * as ort from 'onnxruntime-web/webgpu';
 const ort = require('onnxruntime-web/webgpu');
 ```
 
+If you want to use ONNX Runtime Web with WebNN support (experimental feature), you need to import as below:
+
+```js
+// use ES6 style import syntax (recommended)
+import * as ort from 'onnxruntime-web/experimental';
+```
+```js
+// or use CommonJS style import syntax
+const ort = require('onnxruntime-web/experimental');
+```
+
 For a complete table for importing, see [Conditional Importing](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/importing_onnxruntime-web#conditional-importing).
 
 ## Documentation
@@ -98,4 +109,4 @@ The following are video tutorials that use ONNX Runtime Web in web applications:
 - \[2]: WebGPU requires Chromium v113 or later on Windows. Float16 support requires Chrome v121 or later, and Edge v122 or later.
 - \[3]: WebGPU requires Chromium v121 or later on Windows.
 - \[4]: WebGL support is in maintenance mode. It is recommended to use WebGPU for better performance.
-- \[5]: Requires to launch browser with commandline flag `--enable-experimental-web-platform-features`.
+- \[5]: Requires to launch browser with commandline flag `--enable-features=WebMachineLearningNeuralNetwork`.
