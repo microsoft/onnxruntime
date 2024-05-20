@@ -2,10 +2,11 @@ resources:
   pipelines:
   - pipeline: build
     source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
-    trigger: 
+    trigger:
       branches:
         include:
         - main
+        - rel-*
     branch: main
 
 stages:
@@ -20,23 +21,28 @@ stages:
     pool: 'onnxruntime-Win-CPU-2022'
 
     steps:
+    # https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema/resources-pipelines-pipeline?view=azure-pipelines#pipeline-resource-metadata-as-predefined-variables
+    - script: |
+        echo $(resources.pipeline.build.sourceBranch)
+        echo $(Build.Reason)
+      displayName: 'Print triggering sourceBranch Name in resources'
+
     - checkout: self
       submodules: false
     - template: templates/set-version-number-variables-step.yml
-    
+
     - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
-    
+
     - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-CPU'
-   
+
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-CPU\*" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
 
     - template: nuget/templates/get-nuget-package-version-as-variable.yml
       parameters:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
-    # TODO: the following step has no error checking
     - task: CmdLine@2
       displayName: 'Post binary sizes to the dashboard database using command line'
       inputs:
@@ -46,8 +52,8 @@ stages:
             echo processing nupkg
             SETLOCAL EnableDelayedExpansion
             FOR /R %%i IN (*.nupkg) do (
-             set filename=%%~ni
-             IF NOT "!filename:~25,7!"=="Managed" (
+            set filename=%%~ni
+            IF NOT "!filename:~25,7!"=="Managed" (
               echo processing %%~ni.nupkg
               copy %%~ni.nupkg %%~ni.zip
               echo copied to zip
@@ -61,10 +67,10 @@ stages:
               )
             )
 
-    # Only report binary sizes to database if the build build was auto-triggered from the main branch
     - task: AzureCLI@2
       displayName: 'Azure CLI'
-      condition: and (succeeded(), and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')))
+      #Only report binary sizes to database if the build build was auto-triggered from the main branch
+      condition: and (succeeded(), and(eq(variables['resources.pipeline.build.sourceBranch'], 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')))
       inputs:
         azureSubscription: AIInfraBuildOnnxRuntimeOSS
         scriptLocation: inlineScript
@@ -95,6 +101,11 @@ stages:
       artifact: 'drop-signed-nuget-ROCm'
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
+    - download: build
+      displayName: 'Download Pipeline Artifact - Signed NuGet Qnn Package'
+      artifact: 'drop-signed-nuget-qnn'
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-qnn\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
     - script: |
         dir $(Build.BinariesDirectory)\nuget-artifact\final-package
         cd $(Build.BinariesDirectory)\nuget-artifact\final-package
@@ -117,7 +128,7 @@ stages:
 
     - task: CodeSign@1
       displayName: 'Run Codesign Validation'
-      
+
 
     - task: PublishSecurityAnalysisLogs@3
       displayName: 'Publish Security Analysis Logs'
@@ -136,6 +147,7 @@ stages:
         command: 'push'
         packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
         publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
+        allowPackageConflicts: true
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :

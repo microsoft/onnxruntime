@@ -876,11 +876,11 @@ if (MSVC)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26451>")
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
-  # Avoid the error for Win arm64 Release build. error C1128: number of sections exceeded object file format limit: compile with /bigobj
-  string(TOLOWER ${onnxruntime_target_platform} GEN_PLATFORM)
-  if (${GEN_PLATFORM} STREQUAL "arm64" AND "${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-    target_compile_options(onnxruntime_test_all PRIVATE "/bigobj")
-  endif()
+
+  # Avoid this compile error in graph_transform_test.cc:
+  # fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
+  set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
+               APPEND PROPERTY COMPILE_OPTIONS "/bigobj")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()

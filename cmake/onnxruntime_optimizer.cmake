@@ -19,6 +19,8 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer_utils.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/matmul_nbits_fusion.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/matmul_nbits_fusion.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/nhwc_transformer.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/nhwc_transformer.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_final_cleanup.cc"

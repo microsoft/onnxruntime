@@ -2915,7 +2915,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.</dd>
 </dl>
 
-#### Inputs (3 - 5)
+#### Inputs (3 - 6)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
@@ -2928,6 +2928,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>quantization zero points</dd>
 <dt><tt>g_idx</tt> (optional) : T4</dt>
 <dd>group_idx</dd>
+<dt><tt>bias</tt> (optional) : T1</dt>
+<dd>Bias to add to result. It should have shape [N].</dd>
 </dl>
 
 #### Outputs
