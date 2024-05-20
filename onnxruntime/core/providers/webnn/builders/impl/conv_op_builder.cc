@@ -138,11 +138,6 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
     options.set("bias", model_builder.GetOperand(input_defs[2]->Name()));
   }
 
-  emscripten::val activation = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-  if (emscripten::val::null() != activation) {
-    options.set("activation", activation);
-  }
-
   return Status::OK();
 }
 
