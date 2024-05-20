@@ -6,12 +6,14 @@ import {env, InferenceSession} from 'onnxruntime-common';
 import {OrtWasmMessage, SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
 import * as core from './wasm-core-impl';
 import {initializeWebAssembly} from './wasm-factory';
+import {importProxyWorker} from './wasm-utils-import';
 
 const isProxy = (): boolean => !!env.wasm.proxy && typeof document !== 'undefined';
 let proxyWorker: Worker|undefined;
 let initializing = false;
 let initialized = false;
 let aborted = false;
+let temporaryObjectUrl: string|undefined;
 
 type PromiseCallbacks<T = void> = [resolve: (result: T) => void, reject: (reason: unknown) => void];
 let initWasmCallbacks: PromiseCallbacks;
@@ -43,6 +45,10 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         initialized = true;
         initWasmCallbacks[0]();
       }
+      if (temporaryObjectUrl) {
+        URL.revokeObjectURL(temporaryObjectUrl);
+        temporaryObjectUrl = undefined;
+      }
       break;
     case 'init-ep':
     case 'copy-from':
@@ -62,7 +68,6 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
   }
 };
 
-const scriptSrc = typeof document !== 'undefined' ? (document?.currentScript as HTMLScriptElement)?.src : undefined;
 
 export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
   if (initialized) {
@@ -78,30 +83,22 @@ export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
   initializing = true;
 
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
-    // overwrite wasm filepaths
-    if (env.wasm.wasmPaths === undefined) {
-      if (scriptSrc && scriptSrc.indexOf('blob:') !== 0) {
-        env.wasm.wasmPaths = scriptSrc.substr(0, +(scriptSrc).lastIndexOf('/') + 1);
-      }
-    }
-
     return new Promise<void>((resolve, reject) => {
       proxyWorker?.terminate();
 
-      const workerUrl = URL.createObjectURL(new Blob(
-          [
-            // This require() function is handled by esbuild plugin to load file content as string.
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            require('./proxy-worker/main')
-          ],
-          {type: 'text/javascript'}));
-      proxyWorker = new Worker(workerUrl, {name: 'ort-wasm-proxy-worker'});
-      proxyWorker.onerror = (ev: ErrorEvent) => reject(ev);
-      proxyWorker.onmessage = onProxyWorkerMessage;
-      URL.revokeObjectURL(workerUrl);
-      initWasmCallbacks = [resolve, reject];
-      const message: OrtWasmMessage = {type: 'init-wasm', in : env};
-      proxyWorker.postMessage(message);
+      void importProxyWorker().then(([objectUrl, worker]) => {
+        try {
+          proxyWorker = worker;
+          proxyWorker.onerror = (ev: ErrorEvent) => reject(ev);
+          proxyWorker.onmessage = onProxyWorkerMessage;
+          initWasmCallbacks = [resolve, reject];
+          const message: OrtWasmMessage = {type: 'init-wasm', in : env};
+          proxyWorker.postMessage(message);
+          temporaryObjectUrl = objectUrl;
+        } catch (e) {
+          reject(e);
+        }
+      }, reject);
     });
 
   } else {

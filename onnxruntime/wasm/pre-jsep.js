@@ -3,23 +3,12 @@
 
 'use strict';
 
-/**
- * Mount external data files of a model to an internal map, which will be used during session initialization.
- *
- * @param {string} externalDataFilesPath
- * @param {Uint8Array} externalDataFilesData
- */
-Module['mountExternalData'] = (externalDataFilePath, externalDataFileData) => {
-  const files = Module.MountedFiles || (Module.MountedFiles = new Map());
-  files.set(externalDataFilePath, externalDataFileData);
-};
+//
+// This file contains the pre-run code for the ORT WebAssembly module. The code in this file will be injected into the
+// final module using Emscripten's `--pre-js` option.
+//
+// This file will only be used in build with flag `--use_jsep`.
 
-/**
- * Unmount external data files of a model.
- */
-Module['unmountExternalData'] = () => {
-  delete Module.MountedFiles;
-};
 
 /**
  * initialize JSEP for asyncify support.
