@@ -116,7 +116,7 @@ stages:
   - Android_Java_API_AAR_Packaging_Training_Full
   condition: succeeded()
   jobs:
-  - job: NuGet_Packaging_Training_CPU
+  - job:
     workspace:
       clean: all
     # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
@@ -303,19 +303,19 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-  - template: ../nuget/templates/test_win.yml
-    parameters:
-      AgentPool : 'onnxruntime-Win-CPU-2022'
-      Skipx86Tests : false
-      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Training'
-      ArtifactSuffix: 'Training-CPU'
-      StageSuffix: 'Training_CPU'
-      TestDataArtifactSuffix: '-training'
+- template: ../nuget/templates/test_win.yml
+  parameters:
+    AgentPool : 'onnxruntime-Win-CPU-2022'
+    Skipx86Tests : false
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Training'
+    ArtifactSuffix: 'Training-CPU'
+    StageSuffix: 'Training_CPU'
+    TestDataArtifactSuffix: '-training'
 
-  - template: ../nuget/templates/test_linux.yml
-    parameters:
-      AgentPool : onnxruntime-Ubuntu2204-AMD-CPU
-      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Training'
-      ArtifactSuffix: 'Training-CPU'
-      StageSuffix: 'Training_CPU'
-      NativePackagePrefix: 'onnxruntime-training'
+- template: ../nuget/templates/test_linux.yml
+  parameters:
+    AgentPool : onnxruntime-Ubuntu2204-AMD-CPU
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Training'
+    ArtifactSuffix: 'Training-CPU'
+    StageSuffix: 'Training_CPU'
+    NativePackagePrefix: 'onnxruntime-training'

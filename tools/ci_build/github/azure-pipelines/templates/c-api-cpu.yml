@@ -192,7 +192,7 @@ stages:
     buildJava: true
     buildNodejs: true
 
-- stage: Jar_Packaging_CPU
+- stage: Jar_Packaging
   dependsOn:
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Package_Publish
@@ -200,7 +200,7 @@ stages:
   - Download_Java_Tools
   condition: succeeded()
   jobs:
-  - job: Jar_Packaging_CPU
+  - job:
     workspace:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'
@@ -277,26 +277,7 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-  - template: final-jar-testing.yml
-    parameters:
-      OS: Windows
-      BuildId: ${{ parameters.BuildId }}
-      SpecificArtifact: ${{ parameters.SpecificArtifact }}
-      PoolName: 'onnxruntime-Win-CPU-2022'
 
-  - template: final-jar-testing.yml
-    parameters:
-      OS: Linux
-      BuildId: ${{ parameters.BuildId }}
-      SpecificArtifact: ${{ parameters.SpecificArtifact }}
-      PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-
-  - template: final-jar-testing.yml
-    parameters:
-      OS: MacOS
-      BuildId: ${{ parameters.BuildId }}
-      SpecificArtifact: ${{ parameters.SpecificArtifact }}
-      PoolName: 'macOS-latest'
 - stage: NuGet_Packaging_CPU
   dependsOn:
   - Setup
@@ -309,7 +290,7 @@ stages:
   - iOS_Full_xcframework
   condition: succeeded()
   jobs:
-  - job: NuGet_Packaging_CPU
+  - job:
     workspace:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'
@@ -524,25 +505,6 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-  - template: ../nuget/templates/test_win.yml
-    parameters:
-      AgentPool: 'onnxruntime-Win-CPU-2022'
-      Skipx86Tests: false
-      NugetPackageName: 'Microsoft.ML.OnnxRuntime'
-      ArtifactSuffix: 'CPU'
-      SpecificArtifact: ${{ parameters.SpecificArtifact }}
-      BuildId: ${{ parameters.BuildId }}
-  - template: ../nuget/templates/test_linux.yml
-    parameters:
-      AgentPool: onnxruntime-Ubuntu2204-AMD-CPU
-      NugetPackageName: 'Microsoft.ML.OnnxRuntime'
-      ArtifactSuffix: 'CPU'
-      SpecificArtifact: ${{ parameters.SpecificArtifact }}
-      BuildId: ${{ parameters.BuildId }}
-  - template: ../nuget/templates/test_macos.yml
-    parameters:
-      AgentPool: macOS-latest
-      ArtifactSuffix: 'CPU'
 
 - stage: Nodejs_Packaging
   dependsOn:
@@ -553,7 +515,7 @@ stages:
   - MacOS_C_API_Package_Publish
   condition: succeeded()
   jobs:
-  - job: Nodejs_Packaging
+  - job:
     workspace:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'
@@ -819,18 +781,59 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-  - template: ../nodejs/templates/test_win.yml
-    parameters:
-      AgentPool : 'onnxruntime-Win-CPU-2022'
-      StageSuffix : 'Win_CPU_x64'
+- template: ../nuget/templates/test_win.yml
+  parameters:
+    AgentPool : 'onnxruntime-Win-CPU-2022'
+    Skipx86Tests : false
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
-  - template: ../nodejs/templates/test_linux.yml
-    parameters:
-      AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
-      StageSuffix : 'Linux_CPU_x64'
+- template: ../nuget/templates/test_linux.yml
+  parameters:
+    AgentPool : onnxruntime-Ubuntu2204-AMD-CPU
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
-  - template: ../nodejs/templates/test_macos.yml
-    parameters:
-      StageSuffix : 'macOS_CPU_x64'
+- template: ../nuget/templates/test_macos.yml
+  parameters:
+    AgentPool : macOS-latest
+    ArtifactSuffix: 'CPU'
 
+- template: ../nodejs/templates/test_win.yml
+  parameters:
+    AgentPool : 'onnxruntime-Win-CPU-2022'
+    StageSuffix : 'Win_CPU_x64'
 
+- template: ../nodejs/templates/test_linux.yml
+  parameters:
+    AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
+    StageSuffix : 'Linux_CPU_x64'
+
+- template: ../nodejs/templates/test_macos.yml
+  parameters:
+    StageSuffix : 'macOS_CPU_x64'
+
+- template: final-jar-testing.yml
+  parameters:
+    OS: Windows
+    BuildId: ${{ parameters.BuildId }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    PoolName: 'onnxruntime-Win-CPU-2022'
+
+- template: final-jar-testing.yml
+  parameters:
+    OS: Linux
+    BuildId: ${{ parameters.BuildId }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+
+- template: final-jar-testing.yml
+  parameters:
+    OS: MacOS
+    BuildId: ${{ parameters.BuildId }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    PoolName: 'macOS-latest'
