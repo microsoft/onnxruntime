@@ -34,13 +34,24 @@ pip install onnxruntime-genai-cuda --pre --index-url=https://aiinfra.pkgs.visual
 
 ## Nuget packages
 
+```bash
+dotnet add package Microsoft.ML.OnnxRuntimeGenAI --prerelease
+```
+
+For the package that has been optimized for CUDA:
+
+```bash
+dotnet add package Microsoft.ML.OnnxRuntimeGenAI.Cuda --prerelease
+```
+
+For the package that has been optimized for DirectML:
+
+```bash
+dotnet add package Microsoft.ML.OnnxRuntimeGenAI.Cuda --prerelease
+```
 
 
 
-To run with CUDA, use the following packages instead:
-
-- `Microsoft.ML.OnnxRuntimeGenAI.Cuda`
-- `Microsoft.ML.OnnxRuntime.Gpu`
 
 
    
