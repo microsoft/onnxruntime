@@ -463,10 +463,8 @@ Following numbers are measured from initializing session with TRT EP for SD UNet
 
 ![image](https://github.com/microsoft/onnxruntime/assets/54722500/ef1ce168-74f7-4df4-beac-b14bf2cb3e00)
 
-
-
 ### How to set caches
-* Use Timing cache (.timing)
+* Use Timing cache (.timing):
   - `trt_timing_cache_enable = true`
   - `trt_timing_cache_path = .\`
   - `trt_force_timing_cache = true (accept slight GPU mismatch within CC)`
@@ -474,19 +472,29 @@ Following numbers are measured from initializing session with TRT EP for SD UNet
   - `trt_engine_cache_enable = true`
   - `trt_engine_cache_path = .\trt_engines`
 * Use Embed Engine (_ctx.onnx):
-  - Get the embed engine model via warmup run:    
+  - Get the embed engine model via warmup run with the original model
   - `trt_engine_cache_enable = true`
   - `trt_dump_ep_context_model = true`
   - `trt_ep_context_file_path = .\`
   - Will be generated with inputs/outputs identical to original model
   - Run the embed engine model as the original model !
 
+Following is a simple example to create and run embed engine model:
+
+```bash
+$pwd
+/model_database/transformer_model
+$./onnxruntime_perf_test -e tensorrt -r 1 -i "trt_engine_cache_enable|true trt_engine_cache_path|./trt_engines trt_dump_ep_context_model|true" /model_database/transformer_model/model.onnx
+$./onnxruntime_perf_test -e tensorrt -r 1 /model_database/transformer_model/model_ctx.onnx
+```
+
 The folder structure of the caches:
 
 ![image](https://github.com/microsoft/onnxruntime/assets/54722500/5be4a087-79c8-4d34-af8b-75138642079c)
 
-
-
+### More about Embedded engine model / EPContext model
+* One constrait is that the whole model needs to be TRT eligible.
+* When running the embedded engine model, `trt_ep_context_embed_mode=0` is the default where the engine cache path is embedded and TRT EP will look for the engine cache in the disk.
 
 
 
