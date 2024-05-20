@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <limits>
 #include <stdint.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -11,7 +12,8 @@ namespace cuda {
 
 // broadcast by computing output coordinate from offset, using fast_divmod
 template <typename T, typename T1, typename T2, typename FuncT,
-          bool lhs_need_compute, bool rhs_need_compute, int NumThreadsPerBlock, int NumElementsPerThread, typename NumElemT>
+          bool lhs_need_compute, bool rhs_need_compute, int NumThreadsPerBlock, int NumElementsPerThread,
+          typename NumElemT>
 __global__ void _BinaryElementWise(
     int32_t output_rank,
     const TArray<int64_t> lhs_padded_strides,
@@ -69,7 +71,8 @@ __global__ void _BinaryElementWise(
 }
 
 // for scalar broadcast or non-broadcast case
-template <bool IncL, bool IncR, typename T, typename T1, typename T2, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread, typename NumElemT>
+template <bool IncL, bool IncR, typename T, typename T1, typename T2, typename FuncT, int NumThreadsPerBlock,
+          int NumElementsPerThread, typename NumElemT>
 __global__ void _BinaryElementWiseSimple(
     const T1* lhs_data,
     const T2* rhs_data,
@@ -103,7 +106,8 @@ __global__ void _BinaryElementWiseSimple(
 }
 
 // for rhs per-channel broadcast case
-template <typename T, typename T1, typename T2, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread, typename NumElemT>
+template <typename T, typename T1, typename T2, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread,
+          typename NumElemT>
 __global__ void _BinaryElementWiseRhsPerChannelBatch1(
     const T1* lhs_data,
     const T2* rhs_data,
@@ -138,7 +142,8 @@ __global__ void _BinaryElementWiseRhsPerChannelBatch1(
   }
 }
 
-template <typename T, typename T1, typename T2, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread, typename NumElemT>
+template <typename T, typename T1, typename T2, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread,
+          typename NumElemT>
 __global__ void _BinaryElementWiseRhsPerChannelBatchN(
     const T1* lhs_data,
     const T2* rhs_data,
@@ -198,15 +203,16 @@ void BinaryElementWiseNoBroadcastImpl(
 #endif
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
-#define FUNC_CALL(NumElemT)                                                                                                                                              \
-  _BinaryElementWiseSimple<true, true, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT><<<blocksPerGrid, num_threads_per_block, 0, stream>>>( \
-      lhs_data,                                                                                                                                                          \
-      rhs_data,                                                                                                                                                          \
-      output_data,                                                                                                                                                       \
-      func,                                                                                                                                                              \
-      N);
-  size_t N = count;
-  if (N > std::numeric_limits<CUDA_LONG>::max()) {
+#define FUNC_CALL(NumElemT)                                                                                        \
+  _BinaryElementWiseSimple<true, true, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT> \
+      <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(                                                       \
+          lhs_data,                                                                                                \
+          rhs_data,                                                                                                \
+          output_data,                                                                                             \
+          func,                                                                                                    \
+          static_cast<NumElemT>(N));
+  size_t N = static_cast<size_t>(count);
+  if (N > static_cast<size_t>(std::numeric_limits<CUDA_LONG>::max())) {
     FUNC_CALL(size_t);
   } else {
     FUNC_CALL(CUDA_LONG);
@@ -240,79 +246,87 @@ void _BinaryElementWiseImpl(
 #endif
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
-  NumElemT N = count;
+  NumElemT N = static_cast<NumElemT>(count);
   if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::NoBroadcast)) {
-    _BinaryElementWiseSimple<true, true, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-        lhs_data,
-        rhs_data,
-        output_data,
-        func,
-        N);
+    _BinaryElementWiseSimple<true, true, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT>
+        <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+            lhs_data,
+            rhs_data,
+            output_data,
+            func,
+            N);
   } else if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::LeftScalar)) {
-    _BinaryElementWiseSimple<false, true, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-        lhs_data,
-        rhs_data,
-        output_data,
-        func,
-        N);
+    _BinaryElementWiseSimple<false, true, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT>
+        <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+            lhs_data,
+            rhs_data,
+            output_data,
+            func,
+            N);
   } else if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightScalar)) {
-    _BinaryElementWiseSimple<true, false, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-        lhs_data,
-        rhs_data,
-        output_data,
-        func,
-        N);
+    _BinaryElementWiseSimple<true, false, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT>
+        <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+            lhs_data,
+            rhs_data,
+            output_data,
+            func,
+            N);
   } else if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatch1)) {
-    _BinaryElementWiseRhsPerChannelBatch1<T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-        lhs_data,
-        rhs_data,
-        fdm_H,
-        output_data,
-        func,
-        N);
+    _BinaryElementWiseRhsPerChannelBatch1<T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT>
+        <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+            lhs_data,
+            rhs_data,
+            fdm_H,
+            output_data,
+            func,
+            N);
   } else if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatchN)) {
-    _BinaryElementWiseRhsPerChannelBatchN<T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-        lhs_data,
-        rhs_data,
-        fdm_H,
-        fdm_C,
-        output_data,
-        func,
-        N);
+    _BinaryElementWiseRhsPerChannelBatchN<T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread, NumElemT>
+        <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+            lhs_data,
+            rhs_data,
+            fdm_H,
+            fdm_C,
+            output_data,
+            func,
+            N);
   } else {
     if (lhs_padded_strides && rhs_padded_strides && lhs_padded_strides->Size() && rhs_padded_strides->Size())
-      _BinaryElementWise<T, T1, T2, FuncT, true, true, num_threads_per_block, num_elements_per_thread, NumElemT><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-          output_rank_or_simple_broadcast,
-          *lhs_padded_strides,
-          lhs_data,
-          *rhs_padded_strides,
-          rhs_data,
-          *fdm_output_strides,
-          output_data,
-          func,
-          N);
+      _BinaryElementWise<T, T1, T2, FuncT, true, true, num_threads_per_block, num_elements_per_thread, NumElemT>
+          <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+              output_rank_or_simple_broadcast,
+              *lhs_padded_strides,
+              lhs_data,
+              *rhs_padded_strides,
+              rhs_data,
+              *fdm_output_strides,
+              output_data,
+              func,
+              N);
     else if (lhs_padded_strides && lhs_padded_strides->Size())
-      _BinaryElementWise<T, T1, T2, FuncT, true, false, num_threads_per_block, num_elements_per_thread, NumElemT><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-          output_rank_or_simple_broadcast,
-          *lhs_padded_strides,
-          lhs_data,
-          TArray<int64_t>(),  // rhs is not computed, so no need to deference rhs_padded_strides
-          rhs_data,
-          *fdm_output_strides,
-          output_data,
-          func,
-          N);
+      _BinaryElementWise<T, T1, T2, FuncT, true, false, num_threads_per_block, num_elements_per_thread, NumElemT>
+          <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+              output_rank_or_simple_broadcast,
+              *lhs_padded_strides,
+              lhs_data,
+              TArray<int64_t>(),  // rhs is not computed, so no need to deference rhs_padded_strides
+              rhs_data,
+              *fdm_output_strides,
+              output_data,
+              func,
+              N);
     else if (rhs_padded_strides && rhs_padded_strides->Size())
-      _BinaryElementWise<T, T1, T2, FuncT, false, true, num_threads_per_block, num_elements_per_thread, NumElemT><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-          output_rank_or_simple_broadcast,
-          TArray<int64_t>(),  // lhs is not computed, so no need to deference lhs_padded_strides
-          lhs_data,
-          *rhs_padded_strides,
-          rhs_data,
-          *fdm_output_strides,
-          output_data,
-          func,
-          N);
+      _BinaryElementWise<T, T1, T2, FuncT, false, true, num_threads_per_block, num_elements_per_thread, NumElemT>
+          <<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+              output_rank_or_simple_broadcast,
+              TArray<int64_t>(),  // lhs is not computed, so no need to deference lhs_padded_strides
+              lhs_data,
+              *rhs_padded_strides,
+              rhs_data,
+              *fdm_output_strides,
+              output_data,
+              func,
+              N);
   }
 }
 
@@ -333,9 +347,9 @@ void BinaryElementWiseImpl(
 #define FUNC_CALL(NumElemT)                                                                                      \
   _BinaryElementWiseImpl<T, T1, T2, FuncT, NumElemT>(stream, output_rank_or_simple_broadcast,                    \
                                                      lhs_padded_strides, lhs_data, rhs_padded_strides, rhs_data, \
-                                                     fdm_output_strides, fdm_H, fdm_C, output_data, func, count);
+                                                     fdm_output_strides, fdm_H, fdm_C, output_data, func, static_cast<NumElemT>(count));
 
-  if (count > std::numeric_limits<CUDA_LONG>::max()) {
+  if (count > static_cast<size_t>(std::numeric_limits<CUDA_LONG>::max())) {
     FUNC_CALL(size_t)
   } else {
     FUNC_CALL(CUDA_LONG)
