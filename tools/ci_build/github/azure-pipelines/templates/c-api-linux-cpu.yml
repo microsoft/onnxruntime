@@ -38,9 +38,6 @@ jobs:
 
   workspace:
     clean: all
-  variables:
-  - name: skipComponentGovernanceDetection
-    value: ${{ in('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64', 'aarch64') }}
   timeoutInMinutes:  210
   pool: ${{parameters.PoolName}}
   steps:
