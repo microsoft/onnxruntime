@@ -32,6 +32,30 @@ TEST(DequantizeLinearOpTest, Int8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Test int16 DequantizeLinear (per tensor)
+TEST(DequantizeLinearOpTest, Int16) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int16_t>("x", dims, {-300, -30, -1025, 1270});
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<int16_t>("zero_point", {}, {-1024}, true);
+  test.AddOutput<float>("y", dims, {1448.0f, 1988.0f, -2.0f, 4588.0f});
+  // Disable Tensorrt EP due to error: unsupported data type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test uint16 DequantizeLinear (per tensor)
+TEST(DequantizeLinearOpTest, Uint16) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint16_t>("x", dims, {30000, 31000, 32768, 33000});
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<uint16_t>("zero_point", {}, {32767}, true);
+  test.AddOutput<float>("y", dims, {-5534.0f, -3534.0f, 2.0f, 466.0f});
+  // Disable Tensorrt EP due to error: unsupported data type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // scalar zero & scale with int8
 TEST(DequantizeLinearOpTest, Int32) {
   OpTester test("DequantizeLinear", 10);
@@ -97,7 +121,7 @@ TEST(DequantizeLinearOpTest, Without_Zero_Point) {
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", {}, {200.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
 }
 
 // 1d zero & scale with default axis
@@ -268,6 +292,60 @@ TEST(QuantizeLinearOpTest, Int8) {
   test.AddInput<int8_t>("y_zero_point", {}, {0});
   test.AddOutput<int8_t>("y", dims, {0, 51, 76, 127, -51, -127});
   // Disable Tensorrt EP due to the error, out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test uint16 QuantizeLinear (per tensor)
+TEST(QuantizeLinearOpTest, Uint16) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{12};
+  test.AddInput<float>("x", dims, {
+                                      0.f, -128.f, 3.f, -3.f,  // rounding half to even
+                                      2.9f, -2.9f,             // round < .5
+                                      3.1f, -3.1f,             // round > .5
+                                      65536.f, -65534.f,       // critical point
+                                      70000.f, -70000.f        // saturate case
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<uint16_t>("zero_point", {}, {32767}, true);
+  test.AddOutput<uint16_t>("y", dims,
+                           {32767, 32703,
+                            32769, 32765,
+                            32768, 32766,
+                            32769, 32765,
+                            65535, 0,
+                            65535, 0});
+
+  // Disable Tensorrt EP due to error: unsupported data type
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test int16 QuantizeLinear (per tensor)
+TEST(QuantizeLinearOpTest, Int16) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{16};
+  test.AddInput<float>("x", dims, {
+                                      0.f, -514.f, 3.f, -3.f,  // rounding half to even
+                                      2.9f, -2.9f,             // round < .5
+                                      3.1f, -3.1f,             // round > .5
+                                      65022.f, -66046.f,       // critical point
+                                      65023.f, -66047.f,       // critical point
+                                      65024.f, -66048.f,       // critical point
+                                      70000.f, -70000.f        // saturate case
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<int16_t>("zero_point", {}, {256}, true);
+  test.AddOutput<int16_t>("y", dims,
+                          {256, -1,
+                           258, 254,
+                           257, 255,
+                           258, 254,
+                           32767, -32767,
+                           32767, -32768,
+                           32767, -32768,
+                           32767, -32768});
+
+  // Disable Tensorrt EP due to error: unsupported data type
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 

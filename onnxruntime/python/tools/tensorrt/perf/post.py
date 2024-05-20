@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import argparse
-import csv
 import datetime
 import os
 import sys
@@ -311,7 +310,7 @@ def get_specs(specs, branch, commit_hash, commit_datetime):
     :return: The updated table.
     """
 
-    init_id = int(specs.tail(1).get(".", 0)) + 1
+    init_id = int(specs.tail(1).get(".", 0).iloc[0]) + 1
     specs_additional = pd.DataFrame(
         {
             ".": [init_id, init_id + 1, init_id + 2],
@@ -417,14 +416,14 @@ def main():
     identifier = get_identifier(
         args.commit_datetime, args.commit_hash, args.trt_version, args.branch, args.use_tensorrt_oss_parser
     )
+    print(f"DB record identifier: {identifier}")
     upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
 
     try:
-        # Load EP Perf test results from /result
         result_file = args.report_folder
-        result_perf_test_path = os.path.join(result_file, "result")
-        folders = os.listdir(result_perf_test_path)
-        os.chdir(result_perf_test_path)
+
+        folders = os.listdir(result_file)
+        os.chdir(result_file)
 
         tables = [
             fail_name,
@@ -447,13 +446,13 @@ def main():
         for model_group in folders:
             os.chdir(model_group)
             csv_filenames = os.listdir()
-            for csv_file in csv_filenames:
-                table = pd.read_csv(csv_file)
-                if session_name in csv_file:
+            for csv in csv_filenames:
+                table = pd.read_csv(csv)
+                if session_name in csv:
                     table_results[session_name] = pd.concat(
                         [table_results[session_name], get_session(table, model_group)], ignore_index=True
                     )
-                elif specs_name in csv_file:
+                elif specs_name in csv:
                     table_results[specs_name] = pd.concat(
                         [
                             table_results[specs_name],
@@ -461,12 +460,12 @@ def main():
                         ],
                         ignore_index=True,
                     )
-                elif fail_name in csv_file:
+                elif fail_name in csv:
                     table_results[fail_name] = pd.concat(
                         [table_results[fail_name], get_failures(table, model_group)],
                         ignore_index=True,
                     )
-                elif latency_name in csv_file:
+                elif latency_name in csv:
                     table_results[memory_name] = pd.concat(
                         [table_results[memory_name], get_memory(table, model_group)],
                         ignore_index=True,
@@ -476,11 +475,11 @@ def main():
                         [table_results[latency_name], get_latency(table, model_group)],
                         ignore_index=True,
                     )
-                elif status_name in csv_file:
+                elif status_name in csv:
                     table_results[status_name] = pd.concat(
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
                     )
-                elif op_metrics_name in csv_file:
+                elif op_metrics_name in csv:
                     table = table.assign(Group=model_group)
                     table_results[op_metrics_name] = pd.concat(
                         [table_results[op_metrics_name], table], ignore_index=True
@@ -506,43 +505,6 @@ def main():
                 ingest_client,
                 args.database,
                 table_results[table],
-                db_table_name,
-                upload_time,
-                identifier,
-                args.branch,
-                args.commit_hash,
-                args.commit_datetime,
-            )
-
-        # Load concurrency test results
-        result_mem_test_path = os.path.join(result_file, "result_mem_test")
-        os.chdir(result_mem_test_path)
-        log_path = "concurrency_test.log"
-        if os.path.exists(log_path):
-            print("Generating concurrency test report")
-            with open(log_path) as log_file:
-                log_content = log_file.read()
-
-            failed_cases_section = log_content.split("Failed Test Cases:")[1]
-
-            # passed = 1 if no failed test cases
-            if failed_cases_section.strip() == "":
-                passed = 1
-            else:
-                passed = 0
-
-            csv_path = "concurrency_test.csv"
-            with open(csv_path, "w", newline="") as csv_file:
-                csv_writer = csv.writer(csv_file)
-                csv_writer.writerow(["Passed", "Log"])
-                csv_writer.writerow([passed, log_content])
-
-            db_table_name = "ep_concurrencytest_record"
-            table = pd.read_csv(csv_path)
-            write_table(
-                ingest_client,
-                args.database,
-                table,
                 db_table_name,
                 upload_time,
                 identifier,

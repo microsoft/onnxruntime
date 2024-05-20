@@ -394,14 +394,6 @@ struct ConfigOptions final {
   PROVIDER_DISALLOW_ALL(ConfigOptions)
 };
 
-struct OrtRunOptions final {
-  const ConfigOptions& GetConfigOptions() const {
-    return g_host->RunOptions__GetConfigOptions(this);
-  }
-
-  PROVIDER_DISALLOW_ALL(OrtRunOptions)
-};
-
 struct ComputeCapability final {
   static std::unique_ptr<ComputeCapability> Create(std::unique_ptr<IndexedSubGraph> t_sub_graph) { return g_host->ComputeCapability__construct(std::move(t_sub_graph)); }
   static void operator delete(void* p) { g_host->ComputeCapability__operator_delete(reinterpret_cast<ComputeCapability*>(p)); }
@@ -892,10 +884,15 @@ class GraphViewer final {
 
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept { return g_host->GraphViewer__DomainToVersionMap(this); }
 
-  const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const { return g_host->GraphViewer__GetNodesInTopologicalOrder(this); }
+  const std::vector<NodeIndex>& GetNodesInTopologicalOrder(int execution_order = 0) const { return g_host->GraphViewer__GetNodesInTopologicalOrder(this, execution_order); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->GraphViewer__GetInputsIncludingInitializers(this); }
 
-  void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) const { g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args); }
+  void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto,
+               bool include_initializers,
+               bool include_outer_scope_args,
+               int execution_order = 0) const {
+    g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, execution_order);
+  }
   const Node* GetProducerNode(const std::string& node_arg_name) const { return g_host->GraphViewer__GetProducerNode(this, node_arg_name); }
 
   GraphViewer() = delete;
@@ -1283,3 +1280,10 @@ template <>
 inline gsl::span<const int64_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int64(this); }
 
 }  // namespace onnxruntime
+
+struct OrtRunOptions final {
+  const onnxruntime::ConfigOptions& GetConfigOptions() const {
+    return onnxruntime::g_host->RunOptions__GetConfigOptions(this);
+  }
+  PROVIDER_DISALLOW_ALL(OrtRunOptions)
+};

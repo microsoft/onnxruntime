@@ -405,7 +405,8 @@ export class WebGpuBackend {
    */
   run(program: ProgramInfo, inputTensorViews: readonly TensorView[], outputIndices: readonly number[],
       createKernelOutput: (index: number, dataType: number, dims: readonly number[]) => TensorView,
-      createIntermediateOutput: (dataType: number, dims: readonly number[]) => TensorView): TensorView[] {
+      createIntermediateOutput: (dataType: number, dims: readonly number[]) => TensorView,
+      outputCount: number): TensorView[] {
     TRACE_FUNC_BEGIN(program.name);
     // create info for inputs
     const inputDatas: GpuData[] = [];
@@ -438,7 +439,7 @@ export class WebGpuBackend {
       // value -3 is used for placeholder output. So -3, -2, -1 and 0, 1, 2, ... are valid
       // output indices. see type definition of ComputeContextInputsOutputsMapping for more details.
       if (!Number.isInteger(validatedOutputIndices[i]) || validatedOutputIndices[i] < -3 ||
-          validatedOutputIndices[i] >= outputs.length) {
+          validatedOutputIndices[i] >= outputCount) {
         throw new Error(`Invalid output index: ${validatedOutputIndices[i]}`);
       }
       if (validatedOutputIndices[i] === -3) {
@@ -563,6 +564,24 @@ export class WebGpuBackend {
       artifact = this.programManager.build(program, normalizedDispatchGroup);
       this.programManager.setArtifact(key, artifact);
       LOG_DEBUG('info', () => `[artifact] key: ${key}, programName: ${program.name}`);
+    }
+
+    // validate uniform variables
+    if (programUniforms && artifact.uniformVariablesInfo) {
+      if (programUniforms.length !== artifact.uniformVariablesInfo.length) {
+        throw new Error(`Uniform variables count mismatch: expect ${artifact.uniformVariablesInfo.length}, got ${
+            programUniforms.length} in program "${artifact.programInfo.name}".`);
+      }
+      for (let i = 0; i < programUniforms.length; i++) {
+        const uniform = programUniforms[i];
+        const actualType = uniform.type;
+        const actualLength = typeof uniform.data === 'number' ? 1 : uniform.data.length;
+        const [type, length] = artifact.uniformVariablesInfo[i];
+        if (actualType !== type || actualLength !== length) {
+          throw new Error(`Uniform variable ${i} mismatch: expect type ${type} with size ${length}, got type ${
+              actualType} with size ${actualLength} in program "${artifact.programInfo.name}".`);
+        }
+      }
     }
 
     LOG_DEBUG(

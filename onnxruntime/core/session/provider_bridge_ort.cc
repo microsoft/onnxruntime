@@ -271,6 +271,7 @@ struct ProviderHostImpl : ProviderHost {
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ double* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ MLFloat16* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+  Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ BFloat16* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int8_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint8_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int16_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
@@ -1085,10 +1086,16 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::unordered_map<std::string, int>& GraphViewer__DomainToVersionMap(const GraphViewer* p) override { return p->DomainToVersionMap(); }
 
-  const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) override { return p->GetNodesInTopologicalOrder(); }
+  const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p, int execution_order) override {
+    return p->GetNodesInTopologicalOrder(static_cast<ExecutionOrder>(execution_order));
+  }
   const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
-  void GraphViewer__ToProto(const GraphViewer* p, ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) noexcept override {
-    GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args);
+  void GraphViewer__ToProto(const GraphViewer* p,
+                            ONNX_NAMESPACE::GraphProto& graph_proto,
+                            bool include_initializers,
+                            bool include_outer_scope_args,
+                            int execution_order) noexcept override {
+    GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args, static_cast<ExecutionOrder>(execution_order));
   }
   const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
 
@@ -1488,7 +1495,12 @@ static ProviderLibrary s_library_rocm(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provi
 #endif
 );
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_dnnl") LIBRARY_EXTENSION);
-static ProviderLibrary s_library_vitisai(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_vitisai") LIBRARY_EXTENSION);
+static ProviderLibrary s_library_vitisai(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_vitisai") LIBRARY_EXTENSION
+#ifndef _WIN32
+                                         ,
+                                         false /* unload - On Linux if we unload the vitisai shared provider we crash */
+#endif
+);
 static ProviderLibrary s_library_openvino(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_openvino") LIBRARY_EXTENSION);
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_tensorrt") LIBRARY_EXTENSION
 #ifndef _WIN32
@@ -1640,32 +1652,6 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   return trt_options_converted;
 }
 
-#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
-// Apply configs from session options to TensorRT provider options V2 that are needed for TensorRT EP.
-// For example, EP context configs.
-void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptions* session_options, OrtTensorRTProviderOptionsV2* tensorrt_options) {
-  if (session_options) {
-    auto context_cache_enabled = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
-    tensorrt_options->trt_dump_ep_context_model = context_cache_enabled;
-    LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
-
-    auto context_cache_path = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-    tensorrt_options->trt_ep_context_file_path = context_cache_path.c_str();
-    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << tensorrt_options->trt_ep_context_file_path;
-
-    auto embed_mode = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
-    if ("1" == embed_mode) {
-      tensorrt_options->trt_ep_context_embed_mode = 1;
-    } else if ("0" == embed_mode) {
-      tensorrt_options->trt_ep_context_embed_mode = 0;
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
-    }
-    LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << tensorrt_options->trt_ep_context_embed_mode;
-  }
-}
-#endif
-
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
 }
@@ -1695,9 +1681,6 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
     ov_options_converted_map["enable_npu_fast_compile"] = "true";
   }
 
-  if (legacy_ov_options->device_id != nullptr)
-    ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
-
   if (legacy_ov_options->num_of_threads != '\0')
     ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
 
@@ -1720,6 +1703,8 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
 
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
+  ov_options_converted_map["export_ep_ctx_blob"] = "false";
+  ov_options_converted_map["model_priority"] = "DEFAULT";
   return ov_options_converted_map;
 }
 
@@ -1729,7 +1714,6 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
 }
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions* provider_options_map) {
-  // std::cout << provider_options_map.at("num_streams") << std::endl;
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
 }
 
@@ -2097,7 +2081,32 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
     // Note: No need to worry about new_tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
     // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
     OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
-    onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, &new_tensorrt_options);
+
+    // Update provider options from session options. Curretnly only EPContext related session options are supported.
+    // Note: The string-based local variables will be kept accessible during the lifetime of this function,
+    // therefore the "const char*" provider options can still be accessible when calling CreateExecutionProviderFactory() in TRT EP.
+    bool context_cache_enabled = false;
+    std::string context_cache_path = "";
+    std::string embed_mode = "";
+    if (options) {
+      context_cache_enabled = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
+      new_tensorrt_options.trt_dump_ep_context_model = context_cache_enabled;
+      LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
+
+      context_cache_path = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+      new_tensorrt_options.trt_ep_context_file_path = (context_cache_path.size() == 0) ? nullptr : context_cache_path.c_str();
+      LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path;
+
+      embed_mode = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
+      if ("1" == embed_mode) {
+        new_tensorrt_options.trt_ep_context_embed_mode = 1;
+      } else if ("0" == embed_mode) {
+        new_tensorrt_options.trt_ep_context_embed_mode = 0;
+      } else {
+        LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
+      }
+      LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << embed_mode;
+    }
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
   } else {
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
@@ -2403,6 +2412,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProvider
   options->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
   options->enable_cann_graph = 1;
   options->dump_graphs = 0;
+  options->dump_om_model = 1;
   options->default_memory_arena_cfg = nullptr;
   *out = options.release();
   return nullptr;

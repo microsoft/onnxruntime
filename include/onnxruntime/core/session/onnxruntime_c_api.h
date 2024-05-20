@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 18
+#define ORT_API_VERSION 19
 
 #ifdef __cplusplus
 extern "C" {
@@ -267,7 +267,7 @@ typedef enum OrtOpAttrType {
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
-  typedef struct Ort##X Ort##X;
+  typedef struct Ort##X Ort##X
 
 /** \addtogroup Global
  * ONNX Runtime C API
@@ -319,6 +319,12 @@ typedef struct OrtAllocator {
   void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);                ///< Returns a pointer to an allocated block of `size` bytes
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);                      ///< Free a block of memory previously allocated with OrtAllocator::Alloc
   const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);  ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  /**
+   * @brief Optional allocation function to use for memory allocations made during session initialization.
+   * Use this function if you want to separate allocations made by ORT during Run() calls from
+   * those made during session initialization. This allows for separate memory management strategies for these allocations.
+   */
+  void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -1841,8 +1847,8 @@ struct OrtApi {
    * and not present, the function returns success and out is set to nullptr.
    *
    * \param[in] context ::OrtKernelContext instance
-   * \param[in] input index. See KernelContext_GetInputCount for boundaries check.
-   * \param[in, out] returns a ptr to OrtValue if the input is present
+   * \param[in] index See KernelContext_GetInputCount for boundaries check.
+   * \param[out] out OrtValue if the input is present otherwise is set nullptr
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -1855,8 +1861,10 @@ struct OrtApi {
    * and not present, the function returns success and out is set to nullptr.
    *
    * \param[in] context ::OrtKernelContext instance
-   * \param[in] output index. See KernelContext_GetOutputCount for boundaries check.
-   * \param[in, out] returns a ptr to OrtValue if the output is present
+   * \param[in] index See KernelContext_GetOutputCount for boundaries check.
+   * \param[in] dim_values output dimensions
+   * \param[in] dim_count number of dimensions
+   * \param[out] out a ptr to OrtValue to output otherwise set to nullptr
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -2931,7 +2939,7 @@ struct OrtApi {
    *
    * Please refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#cc
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtTensorRTProviderOptionsV2
-   * and value should be its related range.
+   * and value should be its related range. Recreates the options and only sets the supplied values.
    *
    * For example, key="trt_max_workspace_size" and value="2147483648"
    *
@@ -3427,7 +3435,7 @@ struct OrtApi {
    *
    * Please refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtCUDAProviderOptionsV2
-   * and value should be its related range.
+   * and value should be its related range. Recreates the options and only sets the supplied values.
    *
    * For example, key="device_id" and value="0"
    *
@@ -3500,15 +3508,15 @@ struct OrtApi {
    * \param[in] options
    * \param[in] initializer_names Array of null terminated UTF-8 encoded strings of the initializers names.
    * \param[in] initializers Array of ::OrtValue type
-   * \param[in] initializers_num Number of elements in the initializer_names and initializers
+   * \param[in] num_initializers Number of elements in the initializer_names and initializers
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.12.
    */
   ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
-                  _In_reads_(input_len) const char* const* initializer_names,
-                  _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
+                  _In_reads_(num_initializers) const char* const* initializer_names,
+                  _In_reads_(num_initializers) const OrtValue* const* initializers, size_t num_initializers);
 
   /** \brief: Create attribute of onnxruntime operator
    *
@@ -3612,6 +3620,7 @@ struct OrtApi {
    * QNN supported keys:
    *   "backend_path": file path to QNN backend library.
    *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
+   *   "profiling_file_path": QNN profiling file path if ETW not enabled.
    *   "rpc_control_latency": QNN RPC control latency.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
@@ -4624,6 +4633,31 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
+
+  /** \brief Replace initialized Tensors with external data with the provided files in memory
+   *
+   * The function will find the initialized TensorProtos with external data in the graph with the provided
+   * external file names and the file content in memory. The API gets the external file name, offset, data length
+   * from TensorProto, and locate the tensor data from the file in memory buffer.
+   * It creates a Tensor to replace the existing Tensor in graph. The replacement
+   * will occur before any of the optimizations take place. The data will be copied into the graph
+   * since TensorProto can't refer to the user provided buffers.
+   *
+   * \param[in] options
+   * \param[in] external_initializer_file_names Array of null terminated UTF-8 encoded strings of the file names
+   *            which holds the external initializers.
+   * \param[in] external_initializer_file_buffer_array Array of pointers to the buffer of the file content.
+   *            The buffer can be freed after session creation.
+   * \param[in] external_initializer_file_lengths Array of size_t to indicate the length of file content
+   * \param[in] num_external_initializer_files Number of external files
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(AddExternalInitializersFromFilesInMemory, _In_ OrtSessionOptions* options,
+                  _In_reads_(num_external_initializer_files) const ORTCHAR_T* const* external_initializer_file_names,
+                  _In_reads_(num_external_initializer_files) char* const* external_initializer_file_buffer_array,
+                  _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
+                  size_t num_external_initializer_files);
 };
 
 /*
@@ -4726,8 +4760,16 @@ struct OrtCustomOp {
   // Callers will provide 2 raw int* and pass in their address, this function will fill these 2 arrays
   // when return, output (*output_index)[i] may reuse the input (*input_index[i]).
   // The return value is the size of these 2 arrays.
-  // Callers are responsible to delete these 2 arrays after use.
+  // Callers are responsible to delete these 2 arrays after use by calling OrtCustomOp::ReleaseMayInplace().
   size_t(ORT_API_CALL* GetMayInplace)(_Out_ int** input_index, _Out_ int** output_index);
+
+  // Release the pointer input_index and output_index allocated from GetMayInplace() function.
+  // If GetMayInplace() is defined, this function MUST be defined as well.
+  void(ORT_API_CALL* ReleaseMayInplace)(_Frees_ptr_opt_ int* input_index, _Frees_ptr_opt_ int* output_index);
+
+  // Same as GetMayInplace() and ReleaseMayInplace()
+  size_t(ORT_API_CALL* GetAliasMap)(_Out_ int** input_index, _Out_ int** output_index);
+  void(ORT_API_CALL* ReleaseAliasMap)(_Frees_ptr_opt_ int* input_index, _Frees_ptr_opt_ int* output_index);
 };
 
 /*

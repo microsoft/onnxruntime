@@ -558,7 +558,9 @@ async function main() {
       if (args.noSandbox) {
         karmaArgs.push('--no-sandbox');
       }
-      if (webgpu || webnn) {
+
+      // When using BrowserStack with Safari, we need NOT to use 'localhost' as the hostname.
+      if (!(browser.startsWith('BS_') && browser.includes('Safari'))) {
         karmaArgs.push('--force-localhost');
       }
       if (webgpu) {
@@ -573,6 +575,9 @@ async function main() {
         karmaArgs.push('--log-level debug');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
+      if (args.userDataDir) {
+        karmaArgs.push(`--user-data-dir="${args.userDataDir}"`);
+      }
       karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));
       if (browser.startsWith('Edge')) {
         // There are currently 2 Edge browser launchers:
@@ -671,7 +676,7 @@ async function main() {
       case 'edge':
         return 'EdgeTest';
       case 'firefox':
-        return 'Firefox';
+        return 'FirefoxTest';
       case 'electron':
         return 'Electron';
       case 'safari':

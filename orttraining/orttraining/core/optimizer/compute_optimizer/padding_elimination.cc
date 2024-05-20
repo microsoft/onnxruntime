@@ -17,8 +17,12 @@ namespace onnxruntime {
 namespace {
 
 // TODO(pengwa): remove this once customized PythonOp shape inference is supported.
-constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
-constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
+constexpr const char* kInspectActivationFuncName =
+    "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation";
+constexpr const char* kIncrementStepFuncName =
+    "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
+constexpr const char* kFlagAndPrintDensityFuncName =
+    "onnxruntime.training.ortmodule._runtime_inspector.FlagAndPrintDensity";
 
 void PushAllOutputNode(Graph& graph, std::queue<Node*>& q, Node* node, std::unordered_set<Node*>& visited) {
   for (auto iter = node->OutputNodesBegin(); iter != node->OutputNodesEnd(); ++iter) {
@@ -224,8 +228,10 @@ void IterateSubgraphFromNode(Graph& graph,
     visited.insert(cur);
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Add", {7, 13, 14}) ||
         graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "BiasGelu", {1}, kMSDomain) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Sub", {7, 13, 14}) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Mul", {7, 13, 14})) {
+        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Div", {7, 13, 14}) ||
+        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Mul", {7, 13, 14}) ||
+        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Pow", {7, 12, 13, 15}) ||
+        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Sub", {7, 13, 14})) {
       ORT_ENFORCE(subgraph.find(cur->MutableInputDefs()[0]) != subgraph.end() ||
                   subgraph.find(cur->MutableInputDefs()[1]) != subgraph.end());
       if (cur->InputDefs()[0]->Shape() && cur->InputDefs()[1]->Shape()) {
@@ -278,7 +284,10 @@ void IterateSubgraphFromNode(Graph& graph,
       subgraph.insert(cur->MutableOutputDefs()[1]);
       PushAllOutputNode(graph, to_visit, cur, visited);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Cast", {9, 13}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Gelu", {1}, kMSDomain)) {
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "FastGelu", {1}, kMSDomain) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Gelu", {1}, kMSDomain) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "QuickGelu", {1}, kMSDomain) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Sqrt", {6, 13})) {
       ORT_ENFORCE(subgraph.find(cur->MutableInputDefs()[0]) != subgraph.end());
       subgraph.insert(cur->MutableOutputDefs()[0]);
       PushAllOutputNode(graph, to_visit, cur, visited);
@@ -311,7 +320,7 @@ void IterateSubgraphFromNode(Graph& graph,
         candidate_outputs.insert(cur);
         continue;
       }
-      auto func_name = static_cast<std::string>(cur->GetAttributes().at("name").s());
+      auto func_name = static_cast<std::string>(cur->GetAttributes().at("func_name").s());
       if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
         subgraph.insert(cur->MutableOutputDefs()[1]);
         PushAllOutputNode(graph, to_visit, cur, visited);
@@ -350,13 +359,32 @@ void IterateSubgraphFromNode(Graph& graph,
 }
 }  // namespace
 
+void RemovePrintDensityFlag(Graph& graph,
+                            const std::vector<NodeIndex>& node_topology_list,
+                            bool& modified,
+                            const logging::Logger& logger) {
+  for (auto node_index : node_topology_list) {
+    Node* node = graph.GetNode(node_index);
+    if (node == nullptr) {
+      continue;
+    }
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*node, "PythonOp", {1}, kMSDomain) &&
+        static_cast<std::string>(node->GetAttributes().at("func_name").s()) == kFlagAndPrintDensityFuncName) {
+      if (graph_utils::CanRemoveNode(graph, *node, logger)) {
+        if (graph_utils::RemoveNode(graph, *node)) {
+          modified = true;
+        } else {
+          LOG_DEBUG_INFO(logger, "Failed to remove node " + node->Name() + "(" + node->OpType() + ")");
+        }
+      } else {
+        LOG_DEBUG_INFO(logger, "Can not remove node " + node->Name() + "(" + node->OpType() + ")");
+      }
+    }
+  }
+}
+
 Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "Enter PaddingElimination");
-
-  if (sparse_embedding_input_names_.size() == 0) {
-    LOG_DEBUG_INFO(logger, "Exit PaddingElimination, no sparse embedding input names.");
-    return Status::OK();
-  }
 
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -386,13 +414,14 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         node.InputDefs()[2]->Exists() &&
         graph_utils::IsConstantInitializer(graph, node.InputDefs()[2]->Name()) &&
         node.InputDefs()[1]->Exists() &&
-        graph_utils::IsGraphInput(graph, node.InputDefs()[1]) &&
         node.InputDefs()[1]->Shape() &&
         node.InputDefs()[1]->Shape()->dim_size() >= 2) {
-      if (std::find(sparse_embedding_input_names_.begin(), sparse_embedding_input_names_.end(),
-                    node.InputDefs()[1]->Name()) == sparse_embedding_input_names_.end()) {
-        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                   ") due to embedding input is not in the sparse embedding input list.");
+      Node* embedding_input_node = graph.GetMutableProducerNode(node.MutableInputDefs()[1]->Name());
+      if (embedding_input_node == nullptr ||
+          !graph_utils::IsSupportedOptypeVersionAndDomain(*embedding_input_node, "PythonOp", {1}, kMSDomain) ||
+          static_cast<std::string>(embedding_input_node->GetAttributes().at("func_name").s()) !=
+              kFlagAndPrintDensityFuncName) {
+        LOG_DEBUG_INFO(logger, "not find PythonOp of flagPaddingElimination after embedding node");
         continue;
       }
       const ONNX_NAMESPACE::TensorProto* padding_initializer =
@@ -406,18 +435,21 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
           continue;
         }
         embedding_node = &node;
-        input_ids_arg = embedding_node->MutableInputDefs()[1];
-        for (auto output_defs : embedding_node->MutableOutputDefs()) {
-          subgraph.insert(output_defs);
-        }
         break;
       }
     }
   }
 
+  if (!print_density_) {
+    RemovePrintDensityFlag(graph, node_topology_list, modified, logger);
+  }
   if (!embedding_node) {
     LOG_DEBUG_INFO(logger, "Exit PaddingElimination optimization for not finding any valid embedding node.");
     return Status::OK();
+  }
+  input_ids_arg = embedding_node->MutableInputDefs()[1];
+  for (auto output_defs : embedding_node->MutableOutputDefs()) {
+    subgraph.insert(output_defs);
   }
 
   if (!input_ids_arg->Shape()) {
@@ -479,7 +511,6 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   // to flattern the shape of [batch_size, seqlen, ...] to [valid_token_count, ...]
   InsertFlattenPatternForInput(graph, *embedding_node, 1, squeeze_out_arg, logger);
   handled_input_count++;
-  modified = true;
   for (auto& node : candidate_inputs) {
     for (uint32_t i = 0; i < node->InputDefs().size(); ++i) {
       if (subgraph.find(node->MutableInputDefs()[i]) == subgraph.end()) {

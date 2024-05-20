@@ -4,6 +4,7 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
+#include <unordered_set>
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -15,7 +16,7 @@
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_fusions.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
@@ -192,8 +193,12 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(ERROR) << "No backend path provided.";
   }
 
+  std::string profiling_file_path;
   static const std::string PROFILING_LEVEL = "profiling_level";
   qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
+  // separate out the profiling level for ETW in case it gets disabled later when we extract the events
+  // set to invalid to indicate that ETW is no enabled when we setup QNN
+  qnn::ProfilingLevel profiling_level_etw = qnn::ProfilingLevel::INVALID;
   const Env& env = Env::Default();
   auto& provider = env.GetTelemetryProvider();
   if (provider.IsEnabled()) {
@@ -203,22 +208,30 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       if (level != 0) {
         if (level == 5) {
           LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
-          ParseProfilingLevel("basic", profiling_level);
+          profiling_level_etw = qnn::ProfilingLevel::BASIC;
         } else if (level < 5) {
           LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
                              << static_cast<int>(level);
+          profiling_level_etw = qnn::ProfilingLevel::OFF;
         } else {
           LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
-          ParseProfilingLevel("detailed", profiling_level);
+          profiling_level_etw = qnn::ProfilingLevel::DETAILED;
         }
       }
     }
-  } else {
-    auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
-    if (profiling_level_pos != provider_options_map.end()) {
-      ParseProfilingLevel(profiling_level_pos->second, profiling_level);
-    }
   }
+
+  // In case ETW gets disabled later
+  auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
+  if (profiling_level_pos != provider_options_map.end()) {
+    ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+  }
+  static const std::string PROFILING_FILE = "profiling_file_path";
+  auto profiling_file_pos = provider_options_map.find(PROFILING_FILE);
+  if (profiling_file_pos != provider_options_map.end()) {
+    profiling_file_path = profiling_file_pos->second;
+  }
+  LOGS_DEFAULT(VERBOSE) << "Profiling file path: " << profiling_file_path;
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
   auto latency_pos = provider_options_map.find(RPC_CONTROL_LANTENCY);
@@ -315,7 +328,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
+      profiling_level_etw,
       profiling_level,
+      std::move(profiling_file_path),
       context_priority,
       std::move(qnn_saver_path),
       device_id_,
@@ -383,11 +398,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     return supported_nodes;
   }
 
-  // This holds the result of whether a NodeUnit is supported or not,
-  // to prevent nodes in a NodeUnit to be checked for multiple times
-  std::unordered_map<const NodeUnit*, bool> node_unit_supported_result;
-  node_unit_supported_result.reserve(node_unit_size);
-
   std::unordered_set<std::string> initializer_input_lookup;
   auto graph_initializers = graph_viewer.GetAllInitializedTensors();
   for (auto graph_ini : graph_initializers) {
@@ -417,6 +427,15 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType());
 
+  std::unordered_set<const NodeUnit*> handled_node_units;
+  handled_node_units.reserve(node_unit_size);
+
+  auto add_supported_nodes = [](std::unordered_set<const Node*>& supported_nodes, const NodeUnit* node_unit) {
+    for (const auto* node_in_group : node_unit->GetAllNodesInGroup()) {
+      supported_nodes.insert(node_in_group);
+    }
+  };
+
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
@@ -431,50 +450,45 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
       continue;
     }
 
-    if (node_unit_supported_result.count(node_unit) != 0) {
+    if (handled_node_units.count(node_unit) != 0) {
       continue;  // Already handled this node unit
     }
 
-    // Try to convert certain standalone DQ -> Q sequences into QNN Convert op
-    auto convert_result = TryHandleConvertSequence(qnn_model_wrapper,
-                                                   *node_unit,
-                                                   node_unit_map,
-                                                   logger,
-                                                   true /*do_op_validation*/);
-    if (!convert_result.status.IsOK()) {
-      LOGS(logger, WARNING) << "Failed to convert DQ -> Q sequence to QNN Convert. "
-                            << "Type: " << node_unit->OpType() << ", Node name: " << node_unit->Name() << ", "
-                            << "Message: " << convert_result.status.ErrorMessage();
+    // Try to see if this node unit can be fused.
+    std::vector<const NodeUnit*> fused_nodes;
+    Status fusion_status = TryFusions(fused_nodes, qnn_model_wrapper, *node_unit, node_unit_map,
+                                      handled_node_units, logger, true /*do_op_validation*/);
+
+    if (!fusion_status.IsOK()) {
+      LOGS(logger, WARNING) << "Failed to apply fusion: " << fusion_status.ErrorMessage();
+      handled_node_units.insert(node_unit);
+      continue;
     }
 
-    bool supported = false;
-
-    if (convert_result.status.IsOK() && convert_result.q_node_unit) {  // Merged DQ -> Q sequence into QNN Convert op
-      supported = true;
-
-      // Mark the Q node unit as handled and supported here so that we don't try to process it again.
-      node_unit_supported_result.insert({convert_result.q_node_unit, true});
-      supported_nodes.insert(&convert_result.q_node_unit->GetNode());
-    } else {
-      supported = IsNodeSupported(qnn_model_wrapper, *node_unit, logger);
-      LOGS(logger, VERBOSE) << "Node supported: [" << supported
-                            << "] index: [" << node->Index()
-                            << "] name: [" << node->Name()
-                            << "] Operator type: [" << node->OpType()
-                            << "] as part of the NodeUnit type: [" << node_unit->OpType()
-                            << "] index: [" << node_unit->Index()
-                            << "] name: [" << node_unit->Name()
-                            << "]";
+    if (!fused_nodes.empty()) {
+      for (auto fused_node_unit : fused_nodes) {
+        handled_node_units.insert(fused_node_unit);
+        add_supported_nodes(supported_nodes, fused_node_unit);
+      }
+      continue;
     }
+
+    // Couldn't fuse the node unit. See if it is supported by itself.
+    const bool supported = IsNodeSupported(qnn_model_wrapper, *node_unit, logger);
+    LOGS(logger, VERBOSE) << "Node supported: [" << supported
+                          << "] index: [" << node->Index()
+                          << "] name: [" << node->Name()
+                          << "] Operator type: [" << node->OpType()
+                          << "] as part of the NodeUnit type: [" << node_unit->OpType()
+                          << "] index: [" << node_unit->Index()
+                          << "] name: [" << node_unit->Name()
+                          << "]";
 
     if (supported) {
-      // If the node_unit is supported, add all of its nodes to the supported list.
-      for (const auto* node_in_group : node_unit->GetAllNodesInGroup()) {
-        supported_nodes.insert(node_in_group);
-      }
+      add_supported_nodes(supported_nodes, node_unit);
     }
 
-    node_unit_supported_result.insert({node_unit, supported});
+    handled_node_units.insert(node_unit);
   }
 
   return supported_nodes;

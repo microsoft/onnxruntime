@@ -249,9 +249,9 @@ class MoE(nn.Module):
             num_experts,
             in_features,
             hidden_features,
-            self.moe_experts.weight1,
+            self.moe_experts.weight1.transpose(1, 2),
             self.moe_experts.bias1,
-            self.moe_experts.weight2,
+            self.moe_experts.weight2.transpose(1, 2),
             self.moe_experts.bias2,
         )
 

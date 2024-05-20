@@ -71,6 +71,12 @@ if(onnxruntime_target_platform STREQUAL "ARM64EC")
     endif()
 endif()
 
+if(onnxruntime_target_platform STREQUAL "ARM64")
+    if (MSVC)
+        add_compile_options("/bigobj")
+    endif()
+endif()
+
 file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
@@ -129,7 +135,7 @@ target_include_directories(onnxruntime_common
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
 
-target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} ${ABSEIL_LIBS})
+target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} ${ABSEIL_LIBS} date::date)
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
