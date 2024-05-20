@@ -250,14 +250,13 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 ### Prerequisites
 {: .no_toc }
 
-1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2023.1** for the appropriate OS and target hardware:
-   * [Windows - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?VERSION=v_2023_1_0&OP_SYSTEM=WINDOWS&DISTRIBUTION=ARCHIVE).
+1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2024.1** for the appropriate OS and target hardware:
+   * [Windows - CPU, GPU, NPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?VERSION=v_2023_1_0&OP_SYSTEM=WINDOWS&DISTRIBUTION=ARCHIVE).
    * [Linux - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?VERSION=v_2023_1_0&OP_SYSTEM=LINUX&DISTRIBUTION=ARCHIVE)
 
-   Follow [documentation](https://docs.openvino.ai/latest/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvino.ai/2024/home.html) for detailed instructions.
 
-  *2023.1 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/archive/2022.1/index.html) is minimal OpenVINO™ version requirement.*
-  *The minimum ubuntu version to support 2023.1 is 18.04.*
+  *2024.1 is the current recommended OpenVINO™ version. [OpenVINO™ 2023.1](https://docs.openvino.ai/archive/2023.1/home.html) is minimal OpenVINO™ version requirement.*
 
 2. Configure the target hardware with specific follow on instructions:
    * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#linux)
@@ -291,7 +290,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 ./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib --build_wheel
 ```
 
-* `--build_wheel` Creates python wheel file in dist/ folder. Enable it when building from source and/or while building with CXX11_ABI=1 of OpenVINO.
+* `--build_wheel` Creates python wheel file in dist/ folder. Enable it when building from source.
 * `--use_openvino` builds the OpenVINO™ Execution Provider in ONNX Runtime.
 * `<hardware_option>`: Specifies the default hardware target for building OpenVINO™ Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
@@ -299,13 +298,11 @@ Refer to [Intel GPU device naming convention](https://docs.openvino.ai/latest/op
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
-| <code>CPU_FP32</code> | Intel<sup>®</sup> CPUs |
-| <code>GPU_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
-| <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
-| <code>GPU.0_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
-| <code>GPU.0_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
-| <code>GPU.1_FP32</code> | Intel<sup>®</sup> Discrete Graphics |
-| <code>GPU.1_FP16</code> | Intel<sup>®</sup> Discrete Graphics with FP16 quantization of models |
+| <code>CPU</code> | Intel<sup>®</sup> CPUs |
+| <code>GPU</code> | Intel<sup>®</sup> Integrated Graphics |
+| <code>GPU.0</code> | Intel<sup>®</sup> Integrated Graphics |
+| <code>GPU.1</code> | Intel<sup>®</sup> Discrete Graphics |
+| <code>NPU</code> | Intel<sup>®</sup> Neural Processor Unit |
 | <code>HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 | <code>MULTI:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 | <code>AUTO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
@@ -313,7 +310,7 @@ Refer to [Intel GPU device naming convention](https://docs.openvino.ai/latest/op
 Specifying Hardware Target for HETERO or Multi or AUTO device Build:
 
 HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...
-The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU']
+The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU', 'NPU']
 
 A minimum of two device's should be specified for a valid HETERO or MULTI or AUTO device build.
 
