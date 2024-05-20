@@ -29,6 +29,7 @@ pip install onnxruntime-genai-directml --pre
 Append `-cuda` for the library that is optimized for CUDA environments
 
 ```bash
+pip install numpy
 pip install onnxruntime-genai-cuda --pre --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
 ```
 
