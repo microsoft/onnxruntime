@@ -440,7 +440,20 @@ export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
 </details>
 
 ## TensorRT EP Caches
-Properply set the TRT EP caches can help reduce session creation time from minutes to seconds.
+There are three major TRT EP cahces:
+* TRT timing cache
+* TRT engine cache
+* Embedded engine model / EPContext model
+
+Let's see how properly setting the caches helps reduce session creation time from minutes to seconds.
+
+Following numbers are measured from initializing session with TRT EP for SD UNet model.
+* No cache (default)  – 384 seconds
+  - First run (warmup) can be very long since building engine involves exhaustive profiling for every kernels to select optimal one.
+
+
+
+
 
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)
