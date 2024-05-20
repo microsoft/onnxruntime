@@ -65,6 +65,10 @@ ONNX Runtime Web currently supports a subset of operators in [ai.onnx](https://g
 
 WebGPU backend is still an experimental feature. See [webgpu-operators.md](./docs/webgpu-operators.md) for a detailed list of which ONNX operators are supported by WebGPU backend.
 
+#### WebNN backend
+
+WebNN backend is still an experimental feature. See [webnn-operators.md](./docs/webnn-operators.md) for a detailed list of which ONNX operators are supported by WebNN backend.
+
 ## License
 
 License information can be found [here](https://github.com/microsoft/onnxruntime/blob/main/README.md#license).
