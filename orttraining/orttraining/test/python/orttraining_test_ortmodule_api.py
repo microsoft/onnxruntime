@@ -6745,7 +6745,7 @@ def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_ch
             del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
 
 
-def test_layerwise_recompute_determinstic():
+def test_layerwise_recompute_pythonop_determinstic():
 
     original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
 
@@ -6857,7 +6857,7 @@ def test_layerwise_recompute_determinstic():
     pt_model = ToyModel(num_layers, vocab_size, hidden_size, num_attention_heads, 1, 3).to(device)
 
     os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = "0"
-    ort_model1 = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="baseline"))
+    ort_model1 = ORTModule(copy.deepcopy(pt_model))
 
     torch.backends.cudnn.determinstic = True
     torch.backends.cudnn.benchmark = False
@@ -6896,6 +6896,27 @@ def test_layerwise_recompute_determinstic():
         _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=2e-3, rtol=2e-4)
     else:
         _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=1e-3, rtol=1e-4)
+
+    execution_mgr = ort_model2._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    # Keep the logic aligned with _graph_execution_manager.py
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "execution_model", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = onnx_model.graph.node
+
+    recompute_nodes = 0
+    for node in onnx_nodes:
+        if "_recompute" in node.name:
+            recompute_nodes += 1
+
+    assert recompute_nodes > 0, "No Recompute nodes are found"
 
     # Make sure environment variable is restored to its original value after the run is completed.
     torch.cuda.synchronize()
