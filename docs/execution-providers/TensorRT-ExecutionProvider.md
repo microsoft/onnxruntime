@@ -445,26 +445,46 @@ There are three major TRT EP cahces:
 * TRT engine cache
 * Embedded engine model / EPContext model
 
-### Properly setting the caches helps reduce session creation time from minutes to seconds.
+### Properly setting the caches helps reduce session creation time from minutes to seconds
 
 Following numbers are measured from initializing session with TRT EP for SD UNet model.
 * No cache (default)  – 384 seconds
   - First run (warmup) can be very long since building engine involves exhaustive profiling for every kernels to select optimal one.
-
 * Timing cache used – 42 seconds
   - Keep layer-profiling information and reuse them to expedite build time
   - Timing cache can be shared across multiple models if layers are the same
-
 * Engine cache used – 9 seconds
   - Serialize engine from memory to disk for later use
   - Skip entire engine build and deserialize engine cache to memory
-
 * Embed Engine used (no builder instantiation) - 1.9 seconds
   - The serialized engine cache is wrapped inside an ONNX model
   - No builder will be instantiated, nor engine will be built
   - Quickly load engine with less processes needed
 
-![image](https://github.com/microsoft/onnxruntime/assets/54722500/283958a1-f2c1-47d8-94d3-d86f5822ee07)
+![image](https://github.com/microsoft/onnxruntime/assets/54722500/ef1ce168-74f7-4df4-beac-b14bf2cb3e00)
+
+
+
+### How to set caches
+* Use Timing cache (.timing)
+  - `trt_timing_cache_enable = true`
+  - `trt_timing_cache_path = .\`
+  - `trt_force_timing_cache = true (accept slight GPU mismatch within CC)`
+* Use Engine Cache (.engine):
+  - `trt_engine_cache_enable = true`
+  - `trt_engine_cache_path = .\trt_engines`
+* Use Embed Engine (_ctx.onnx):
+  - Get the embed engine model via warmup run:    
+  - `trt_engine_cache_enable = true`
+  - `trt_dump_ep_context_model = true`
+  - `trt_ep_context_file_path = .\`
+  - Will be generated with inputs/outputs identical to original model
+  - Run the embed engine model as the original model !
+
+The folder structure of the caches:
+
+![image](https://github.com/microsoft/onnxruntime/assets/54722500/5be4a087-79c8-4d34-af8b-75138642079c)
+
 
 
 
