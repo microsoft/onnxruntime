@@ -34,7 +34,7 @@ https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda
 https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml
 
 
-This tutorial downloads and runs the short context (4k) mini (3B) model variant. See the [model reference](#phi3-onnx-model-reference) for download commands for the other variants.
+This tutorial downloads and runs the short context (4k) mini (3B) model variant. See the [model reference](#phi-3-onnx-model-reference) for download commands for the other variants.
 
 
 ## Setup
