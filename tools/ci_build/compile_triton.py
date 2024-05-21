@@ -20,7 +20,6 @@ def compile(function_table, out_dir):
             signature=sig,
             constants=constants,
         )
-        # Now that a GPU is available, try without target?
         ret = triton.compile(src, options=kwargs)
         return ret
 
