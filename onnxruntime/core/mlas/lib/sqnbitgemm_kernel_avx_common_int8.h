@@ -4,8 +4,8 @@
 #include <utility>
 
 #include "sqnbitgemm.h"
-#include "sqnbitgemm_q8_block.h"
 #include "sqnbitgemm_kernel_avx_common.h"
+#include "sqnbitgemm_q8_block.h"
 
 void
 SQ4BitGemmM1Kernel_CompInt8_avx2(
