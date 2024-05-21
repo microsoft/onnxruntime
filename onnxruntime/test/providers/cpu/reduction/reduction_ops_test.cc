@@ -43,7 +43,7 @@ void TestReduceOp(const std::string& op,
   test.AddAttribute("keepdims", keepdims);
   test.AddInput<float>("data", input_dims, data);
   test.AddOutput<OutT>("reduced", expected_dims, expected_data);
-#if defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  // TensorRT,OpenVINO: result differs
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  // TensorRT: result differs
@@ -1356,7 +1356,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
                           11, 12});
   test.AddOutput<int32_t>("reduced", {3, 1, 1}, {4, 8, 12});
 
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
@@ -1377,7 +1377,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {3, 1, 1}, {4, 8, 12});
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
@@ -3541,6 +3541,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
+                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
@@ -3591,6 +3592,7 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
+                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
@@ -5779,6 +5781,7 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       {
           kCoreMLExecutionProvider,
           kCudaExecutionProvider,
+          kCudaNHWCExecutionProvider,
           kDmlExecutionProvider,
           kDnnlExecutionProvider,
           kMIGraphXExecutionProvider,

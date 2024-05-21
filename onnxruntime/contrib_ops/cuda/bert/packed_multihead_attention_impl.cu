@@ -381,7 +381,7 @@ void InvokeTranspose(
     const T* query, const T* key, const T* value, const T* bias, T* output,
     const int batch_size, const int sequence_length,
     const int num_heads, const int qk_head_size, const int v_head_size,
-    AttentionQkvFormat source_format, AttentionQkvFormat target_format,
+    [[maybe_unused]] AttentionQkvFormat source_format, AttentionQkvFormat target_format,
     const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
   if (key != nullptr && value != nullptr) {
@@ -551,7 +551,7 @@ void LaunchTranspose(
 
 template <typename T>
 Status FusedAttentionTrt(
-    const cudaDeviceProp& device_prop,
+    const cudaDeviceProp& /*device_prop*/,
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
     PackedMultiHeadAttentionData<T>& data) {
@@ -775,7 +775,7 @@ Status UnfusedAttention(
       q, qk_head_size, sequence_length * qk_head_size,
       &zero,
       scaled_qk, sequence_length, sequence_length * sequence_length,
-      batches, device_prop));
+      batches, device_prop, parameters.use_tf32));
 
   // Q, K and V are ready now
   DUMP_TENSOR_INIT();
@@ -808,7 +808,7 @@ Status UnfusedAttention(
       v_head_size, sequence_length, sequence_length,
       &one, v, v_head_size, sequence_length * v_head_size,
       attention_score, sequence_length, sequence_length * sequence_length,
-      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
+      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
 
   // Temp_output is BxNxSxH_v, transpose and remove padding to output TxNxH_v
   Status result = LaunchTransposeRemovePadding(

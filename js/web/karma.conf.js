@@ -9,6 +9,8 @@ const karmaPlugins = args['karma-plugins'] || undefined;
 const timeoutMocha = args['timeout-mocha'] || 60000;
 const forceLocalHost = !!args['force-localhost'];
 
+// user data directory; will be passed to the Edge/Chrome/ChromeCanary/Firefox launchers
+const userDataDir = args['user-data-dir'];
 // parse chromium flags
 let chromiumFlags = args['chromium-flags'];
 if (!chromiumFlags) {
@@ -71,7 +73,7 @@ module.exports = function(config) {
       {pattern: TEST_FILE},
       {pattern: 'test/testdata-file-cache-*.json', included: false, watched: false},
       {pattern: 'test/data/**/*', included: false, nocache: true, watched: false},
-      {pattern: 'dist/*.wasm', included: false, watched: false},
+      {pattern: 'dist/*.*', included: false, watched: false},
     ],
     plugins: karmaPlugins,
     client: {captureConsole: true, mocha: {expose: ['body'], timeout: timeoutMocha}},
@@ -86,11 +88,12 @@ module.exports = function(config) {
     hostname,
     listenAddress,
     customLaunchers: {
-      // the following flags are used to make sure Edge on CI agents to initialize WebGPU correctly.
-      EdgeTest: {base: 'Edge', flags: chromiumFlags},
-      ChromeTest: {base: 'Chrome', flags: chromiumFlags},
-      ChromeTestHeadless: {base: 'ChromeHeadless', flags: chromiumFlags},
-      ChromeCanaryTest: {base: 'ChromeCanary', flags: chromiumFlags},
+      // Chromium-based browsers
+      EdgeTest: {base: 'Edge', flags: chromiumFlags, edgeDataDir: userDataDir},
+      ChromeTest: {base: 'Chrome', flags: chromiumFlags, chromeDataDir: userDataDir},
+      ChromeCanaryTest: {base: 'ChromeCanary', flags: chromiumFlags, chromeDataDir: userDataDir},
+      FirefoxTest: {base: 'Firefox', profile: userDataDir},
+
       //
       // ==== BrowserStack browsers ====
       //

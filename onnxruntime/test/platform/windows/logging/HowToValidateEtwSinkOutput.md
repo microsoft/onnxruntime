@@ -3,13 +3,13 @@
 The ETW Sink (ONNXRuntimeTraceLoggingProvider) allows ONNX semi-structured printf style logs to be output via ETW.
 
 ETW makes it easy and useful to only enable and listen for events with great performance, and when you need them instead of only at compile time.
-Therefore ONNX will preserve any existing loggers and log severity [provided at compile time](docs/FAQ.md?plain=1#L7).
+Therefore ONNX will preserve any existing loggers and log severity [provided at compile time](/docs/FAQ.md?plain=1#L7).
 
 However, when the provider is enabled a new ETW logger sink will also be added and the severity separately controlled via ETW dynamically.
 
 - Provider GUID: 929DD115-1ECB-4CB5-B060-EBD4983C421D
-- Keyword: Logs (0x2) keyword per [logging.h](include\onnxruntime\core\common\logging\logging.h)
-- Level: 1-5 ([CRITICAL through VERBOSE](https://learn.microsoft.com/en-us/windows/win32/api/evntprov/ns-evntprov-event_descriptor)) [mapping](onnxruntime\core\platform\windows\logging\etw_sink.cc) to [ONNX severity](include\onnxruntime\core\common\logging\severity.h) in an intuitive manner
+- Keyword: Logs (0x2) keyword per [logging.h](/include/onnxruntime/core/common/logging/logging.h)
+- Level: 1-5 ([CRITICAL through VERBOSE](https://learn.microsoft.com/en-us/windows/win32/api/evntprov/ns-evntprov-event_descriptor)) [mapping](/onnxruntime/core/platform/windows/logging/etw_sink.cc) to [ONNX severity](/include/onnxruntime/core/common/logging/severity.h) in an intuitive manner
 
 Notes:
 - The ETW provider must be enabled prior to session creation, as that as when internal logging setup is complete

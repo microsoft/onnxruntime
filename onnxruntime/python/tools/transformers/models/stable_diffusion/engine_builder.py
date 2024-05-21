@@ -5,6 +5,7 @@
 import hashlib
 import os
 from enum import Enum
+from typing import Optional
 
 import torch
 from diffusion_models import CLIP, VAE, CLIPWithProj, PipelineInfo, UNet, UNetXL
@@ -91,7 +92,7 @@ class EngineBuilder:
             "unetxl": "unet",
             "vae": "vae_decoder",
         }
-        return name_mapping[model_name] if model_name in name_mapping else model_name
+        return name_mapping.get(model_name, model_name)
 
     def get_cached_model_name(self, model_name):
         model_name = self.get_diffusers_module_name(model_name)
@@ -273,7 +274,9 @@ class EngineBuilder:
         return self._vae_decode(latents)
 
 
-def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType):
+def get_engine_paths(
+    work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType, framework_model_dir: Optional[str] = None
+):
     root_dir = work_dir or "."
     short_name = pipeline_info.short_name()
 
@@ -287,6 +290,7 @@ def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: En
 
     # Shared among ORT_CUDA, ORT_TRT and TRT engines, and need use load_model(..., always_download_fp16=True)
     # So that the shared model is always fp16.
-    framework_model_dir = os.path.join(root_dir, "torch_model")
+    if framework_model_dir is None:
+        framework_model_dir = os.path.join(root_dir, "torch_model")
 
     return onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache

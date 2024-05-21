@@ -43,7 +43,7 @@ const createBiasSplitGeluProgramInfo = (inputs: readonly TensorView[]): ProgramI
 
   ${shaderHelper.declareVariables(input, bias, output)}
 
-  ${erfImpl(`vec4<${dataType}>`, dataType)}
+  ${erfImpl(dataType)}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}

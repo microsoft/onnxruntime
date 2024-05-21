@@ -143,7 +143,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T1>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T1>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop, UseTF32()));
 
   // Update the q, k, and v buffers
   parameters.q = gemm_buffer.get();

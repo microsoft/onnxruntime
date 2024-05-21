@@ -39,10 +39,6 @@ const ONNXRUNTIME_THRESHOLD_RELATIVE_ERROR = 1.00001;
  */
 const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : Date.now;
 
-function toInternalTensor(tensor: ort.Tensor): Tensor {
-  return new Tensor(
-      tensor.dims, tensor.type as Tensor.DataType, undefined, undefined, tensor.data as Tensor.NumberType);
-}
 function fromInternalTensor(tensor: Tensor): ort.Tensor {
   return new ort.Tensor(tensor.type, tensor.data as ort.Tensor.DataType, tensor.dims);
 }
@@ -138,8 +134,8 @@ async function loadTensors(
 
 async function initializeSession(
     modelFilePath: string, backendHint: ort.InferenceSession.ExecutionProviderConfig, ioBindingMode: Test.IOBindingMode,
-    profile: boolean, sessionOptions: ort.InferenceSession.SessionOptions,
-    fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
+    profile: boolean, externalData: ort.InferenceSession.SessionOptions['externalData'],
+    sessionOptions: ort.InferenceSession.SessionOptions, fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
   const preloadModelData: Uint8Array|undefined =
       fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
   Logger.verbose(
@@ -153,7 +149,8 @@ async function initializeSession(
     executionProviders: [backendHint],
     profiler: profilerConfig,
     enableProfiling: profile,
-    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined
+    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined,
+    externalData
   };
 
   let session: ort.InferenceSession;
@@ -162,7 +159,8 @@ async function initializeSession(
     if (preloadModelData) {
       session = await ort.InferenceSession.create(preloadModelData, sessionConfig);
     } else {
-      session = await ort.InferenceSession.create(modelFilePath, sessionConfig);
+      const modelData = await readFile(modelFilePath);
+      session = await ort.InferenceSession.create(modelData, sessionConfig);
     }
   } catch (e) {
     Logger.error(
@@ -246,8 +244,8 @@ export class ModelTestContext {
       const executionProviderConfig =
           modelTest.backend === 'webnn' ? (testOptions?.webnnOptions || 'webnn') : modelTest.backend!;
       const session = await initializeSession(
-          modelTest.modelUrl, executionProviderConfig, modelTest.ioBinding, profile, testOptions?.sessionOptions || {},
-          this.cache);
+          modelTest.modelUrl, executionProviderConfig, modelTest.ioBinding, profile, modelTest.externalData,
+          testOptions?.sessionOptions || {}, this.cache);
 
       const initEnd = now();
 
@@ -329,6 +327,10 @@ export class TensorResultValidator {
   }
 
   checkTensorResult(actual: Tensor[], expected: Tensor[]): void {
+    this.checkApiTensorResult(actual.map(fromInternalTensor), expected.map(fromInternalTensor));
+  }
+
+  checkApiTensorResult(actual: ort.Tensor[], expected: ort.Tensor[]): void {
     // check output size
     expect(actual.length, 'size of output tensors').to.equal(expected.length);
 
@@ -346,10 +348,6 @@ export class TensorResultValidator {
     }
   }
 
-  checkApiTensorResult(actual: ort.Tensor[], expected: ort.Tensor[]): void {
-    this.checkTensorResult(actual.map(toInternalTensor), expected.map(toInternalTensor));
-  }
-
   checkNamedTensorResult(actual: Record<string, ort.Tensor>, expected: Test.NamedTensor[]): void {
     // check output size
     expect(Object.getOwnPropertyNames(actual).length, 'size of output tensors').to.equal(expected.length);
@@ -363,7 +361,7 @@ export class TensorResultValidator {
   }
 
   // This function check whether 2 tensors should be considered as 'match' or not
-  areEqual(actual: Tensor, expected: Tensor): boolean {
+  areEqual(actual: ort.Tensor, expected: ort.Tensor): boolean {
     if (!actual || !expected) {
       return false;
     }
@@ -391,13 +389,13 @@ export class TensorResultValidator {
 
     switch (actualType) {
       case 'string':
-        return this.strictEqual(actual.stringData, expected.stringData);
+        return this.strictEqual(actual.data, expected.data);
 
       case 'float32':
       case 'float64':
         return this.floatEqual(
-            actual.numberData as number[] | Float32Array | Float64Array,
-            expected.numberData as number[] | Float32Array | Float64Array);
+            actual.data as number[] | Float32Array | Float64Array,
+            expected.data as number[] | Float32Array | Float64Array);
 
       case 'uint8':
       case 'int8':
@@ -408,10 +406,8 @@ export class TensorResultValidator {
       case 'int64':
       case 'bool':
         return TensorResultValidator.integerEqual(
-            actual.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
-                Int32Array,
-            expected.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
-                Int32Array);
+            actual.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array,
+            expected.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array);
 
       default:
         throw new Error('type not implemented or not supported');
@@ -578,7 +574,9 @@ export async function sessionRun(options: {
       // replace the CPU tensors in feeds into GPU tensors
       for (const name in feeds) {
         if (Object.hasOwnProperty.call(feeds, name)) {
-          feeds[name] = createGpuTensorForInput(feeds[name]);
+          if (feeds[name].size > 0) {
+            feeds[name] = createGpuTensorForInput(feeds[name]);
+          }
         }
       }
     }
@@ -587,7 +585,11 @@ export async function sessionRun(options: {
       for (const name in options.outputsMetaInfo) {
         if (Object.hasOwnProperty.call(options.outputsMetaInfo, name)) {
           const {type, dims} = options.outputsMetaInfo[name];
-          fetches[name] = createGpuTensorForOutput(type, dims);
+          if (dims.some(d => d === 0)) {
+            fetches[name] = new ort.Tensor(type, [], dims);
+          } else {
+            fetches[name] = createGpuTensorForOutput(type, dims);
+          }
         }
       }
     }
@@ -632,8 +634,8 @@ export async function runModelTestSet(
   try {
     const feeds: Record<string, ort.Tensor> = {};
     const outputsMetaInfo: Record<string, ort.Tensor> = {};
-    testCase.inputs!.forEach((tensor, i) => feeds[context.session.inputNames[i]] = tensor);
-    testCase.outputs!.forEach((tensor, i) => outputsMetaInfo[context.session.outputNames[i]] = tensor);
+    testCase.inputs!.forEach((tensor) => feeds[tensor.name] = tensor);
+    testCase.outputs!.forEach((tensor) => outputsMetaInfo[tensor.name] = tensor);
     const [start, end, outputs] =
         await sessionRun({session: context.session, feeds, outputsMetaInfo, ioBinding: context.ioBinding});
     if (context.perfData.count === 0) {
@@ -761,6 +763,25 @@ export class ProtoOpTestContext {
       throw new Error(
           `Test cases for test: ${test.name} [${test.operator}] must have the same number of inputs and outputs`);
     }
+    const inputsOmitted = test.cases[0].inputs.map(input => !input.data);
+    const outputsOmitted = test.cases[0].outputs.map(output => !output.data);
+    for (let caseIndex = 1; caseIndex < test.cases.length; caseIndex++) {
+      const testCase = test.cases[caseIndex];
+      for (let i = 0; i < inputCount; i++) {
+        if (inputsOmitted[i] !== !testCase.inputs![i].data) {
+          throw new Error(`Test cases for test: ${test.name} [${
+              test.operator}] must have consistent inputs data availability. Data of input[${i}] in testCase #0 and #${
+              caseIndex} should be both available or both omitted.`);
+        }
+      }
+      for (let i = 0; i < outputCount; i++) {
+        if (outputsOmitted[i] !== !testCase.outputs![i].data) {
+          throw new Error(`Test cases for test: ${test.name} [${
+              test.operator}] must have consistent outputs data availability. Data of output[${
+              i}] in testCase #0 and #${caseIndex} should be both available or both omitted.`);
+        }
+      }
+    }
 
     const model = onnx.ModelProto.create();
     model.irVersion = onnx.Version.IR_VERSION;
@@ -768,8 +789,8 @@ export class ProtoOpTestContext {
     model.graph = onnx.GraphProto.create();
 
     model.graph.node = [onnx.NodeProto.create({
-      input: test.cases[0].inputs!.map((_, i) => `input_${i}`),
-      output: test.cases[0].outputs!.map((_, i) => `output_${i}`),
+      input: test.cases[0].inputs!.map((t, i) => t.data ? `input_${i}` : ''),
+      output: test.cases[0].outputs!.map((t, i) => t.data ? `output_${i}` : ''),
       opType: operator,
       domain: test.opset?.domain,
       name: operator,
@@ -828,27 +849,36 @@ export class ProtoOpTestContext {
       normalizedInputShapeDefinitions = test.inputShapeDefinitions;
     }
 
-    model.graph.input = test.cases[0].inputs!.map((input, i) => {
-      const shapeDefinition = normalizedInputShapeDefinitions[i];
-      const shape = shapeDefinition ? onnx.TensorShapeProto.create({
-        dim: shapeDefinition.map(
-            dim => onnx.TensorShapeProto.Dimension.create(typeof dim === 'string' ? {dimParam: dim} : {dimValue: dim}))
-      }) :
-                                      undefined;
-      return onnx.ValueInfoProto.create({
-        name: `input_${i}`,
-        type: onnx.TypeProto.create({
-          tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(input.type), shape}),
-        }),
-      });
-    });
+    model.graph.input =
+        test.cases[0]
+            .inputs!
+            .map((input, i) => {
+              const shapeDefinition = normalizedInputShapeDefinitions[i];
+              const shape = shapeDefinition ? onnx.TensorShapeProto.create({
+                dim: shapeDefinition.map(
+                    dim => onnx.TensorShapeProto.Dimension.create(
+                        typeof dim === 'string' ? {dimParam: dim} : {dimValue: dim}))
+              }) :
+                                              undefined;
+              return onnx.ValueInfoProto.create({
+                name: `input_${i}`,
+                type: onnx.TypeProto.create({
+                  tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(input.type), shape}),
+                }),
+              });
+            })
+            .filter((_, i) => test.cases[0].inputs![i].data);
 
-    model.graph.output = test.cases[0].outputs!.map((output, i) => onnx.ValueInfoProto.create({
-      name: `output_${i}`,
-      type: onnx.TypeProto.create({
-        tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(output.type)}),
-      }),
-    }));
+    model.graph.output =
+        test.cases[0]
+            .outputs!
+            .map((output, i) => onnx.ValueInfoProto.create({
+              name: `output_${i}`,
+              type: onnx.TypeProto.create({
+                tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(output.type)}),
+              }),
+            }))
+            .filter((_, i) => test.cases[0].outputs![i].data);
 
     model.graph.name = test.name;
 

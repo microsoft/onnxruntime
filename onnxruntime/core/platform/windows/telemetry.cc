@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
+#include "core/platform/ort_mutex.h"
 #include "core/common/logging/logging.h"
 #include "onnxruntime_config.h"
 
@@ -63,6 +64,8 @@ bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
 UCHAR WindowsTelemetry::level_ = 0;
 UINT64 WindowsTelemetry::keyword_ = 0;
+std::vector<WindowsTelemetry::EtwInternalCallback> WindowsTelemetry::callbacks_;
+OrtMutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<OrtMutex> lock(mutex_);
@@ -104,6 +107,11 @@ UINT64 WindowsTelemetry::Keyword() const {
 //     return etw_status_;
 // }
 
+void WindowsTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
+  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  callbacks_.push_back(callback);
+}
+
 void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
     _In_ LPCGUID SourceId,
     _In_ ULONG IsEnabled,
@@ -112,15 +120,21 @@ void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
     _In_ ULONGLONG MatchAllKeyword,
     _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
     _In_opt_ PVOID CallbackContext) {
-  (void)SourceId;
-  (void)MatchAllKeyword;
-  (void)FilterData;
-  (void)CallbackContext;
-
   std::lock_guard<OrtMutex> lock(provider_change_mutex_);
   enabled_ = (IsEnabled != 0);
   level_ = Level;
   keyword_ = MatchAnyKeyword;
+
+  InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+}
+
+void WindowsTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
+                                       ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
+                                       PVOID CallbackContext) {
+  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  for (const auto& callback : callbacks_) {
+    callback(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+  }
 }
 
 void WindowsTelemetry::EnableTelemetryEvents() const {

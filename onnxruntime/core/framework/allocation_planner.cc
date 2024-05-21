@@ -175,14 +175,12 @@ class PlannerImpl {
 
   size_t num_logic_streams_{0};
   std::vector<InlinedVector<NodeIndex>> stream_nodes_;
-  InlinedVector<size_t> node_stream_map_;
 
   // dependence_graph_ keeps the dependencies combining model graph and logic streams
   // e.g. dependence_graph_[downstream_node] = [upstream_node_0, upstream_node_1, upstream_node_2 ...]
   // upstream_node_0 and upstream_node_1 are the immmediate upstream nodes of downstream_node
   // upstream_node_2 is the immediate nodes ahead of downstream_node in the same logic stream
   InlinedHashMap<onnxruntime::NodeIndex, InlinedHashSet<onnxruntime::NodeIndex>> dependence_graph_;
-  InlinedHashMap<onnxruntime::OrtValueIndex, InlinedHashSet<onnxruntime::NodeIndex>> value_consumer_map_;
   InlinedHashMap<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
@@ -295,7 +293,7 @@ class PlannerImpl {
   }
 #endif
 
-  // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
+  // Find if there exists some input tensor that we can use in-place for output_arg_num-th output in the node.
   bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input,
                          bool* is_strided_tensor) {
     *is_strided_tensor = false;
@@ -530,6 +528,7 @@ class PlannerImpl {
 
     // Initialize allocation plan:
     plan_.allocation_plan.resize(num_ml_values);
+    for (int i = 0; static_cast<size_t>(i) < num_ml_values; i++) AllocPlan(i).reused_buffer = i;
   }
 
   bool HasExternalOutputs(const Node& node) const {
@@ -1065,7 +1064,8 @@ class PlannerImpl {
 
     // build the consumer list for each value
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
-    value_consumer_map_.reserve(num_ml_values);
+    InlinedHashMap<onnxruntime::OrtValueIndex, InlinedHashSet<onnxruntime::NodeIndex>> value_consumer_map;
+    value_consumer_map.reserve(num_ml_values);
 
     // iterate each stream from back, so the first element is the last consumer in single stream case
     for (auto& stream : stream_nodes_) {
@@ -1078,10 +1078,10 @@ class PlannerImpl {
             const auto& name = input.Name();
             int value_idx;
             ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(name, value_idx));
-            auto origin = Buffer(value_idx);
-            if (origin != -1 && plan_.allocation_plan[origin].alloc_kind == AllocKind::kAllocate) {
+            auto origin = AllocPlan(value_idx).reused_buffer;
+            if (AllocPlan(origin).alloc_kind == AllocKind::kAllocate) {
               // add current node as consumer for origin buffer
-              value_consumer_map_[origin].insert(node_index);
+              value_consumer_map[origin].insert(node_index);
             }
           }
           return Status::OK();
@@ -1138,8 +1138,8 @@ class PlannerImpl {
                   std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                   allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                   allocation_plan[output_idx_global].reused_buffer = reusable_input;
-                  value_consumer_map_[reusable_input].insert(value_consumer_map_[output_idx_global].begin(),
-                                                             value_consumer_map_[output_idx_global].end());
+                  value_consumer_map[reusable_input].insert(value_consumer_map[output_idx_global].begin(),
+                                                            value_consumer_map[output_idx_global].end());
                   reused.insert(reusable_input);
                   found_reusable = true;
                   break;
@@ -1168,8 +1168,8 @@ class PlannerImpl {
                   allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
                 allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                 allocation_plan[output_idx_global].reused_buffer = reusable_input;
-                value_consumer_map_[reusable_input].insert(value_consumer_map_[output_idx_global].begin(),
-                                                           value_consumer_map_[output_idx_global].end());
+                value_consumer_map[reusable_input].insert(value_consumer_map[output_idx_global].begin(),
+                                                          value_consumer_map[output_idx_global].end());
                 reused.insert(reusable_input);
                 continue;
               }  // if
@@ -1187,11 +1187,11 @@ class PlannerImpl {
                 OrtValueIndex input_arg_index{};
                 if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
                     allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
-                  if (value_consumer_map_[input_arg_index].size() == 1 && SameSize(*p_input_arg, *p_output_arg)) {
+                  if (value_consumer_map[input_arg_index].size() == 1 && SameSize(*p_input_arg, *p_output_arg)) {
                     allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                     allocation_plan[output_idx_global].reused_buffer = input_arg_index;
-                    value_consumer_map_[input_arg_index].insert(value_consumer_map_[output_idx_global].begin(),
-                                                                value_consumer_map_[output_idx_global].end());
+                    value_consumer_map[input_arg_index].insert(value_consumer_map[output_idx_global].begin(),
+                                                               value_consumer_map[output_idx_global].end());
                     reused.insert(input_arg_index);
                   }
                 }
@@ -1266,7 +1266,7 @@ class PlannerImpl {
             }
 
             bool all_covered = true;
-            for (auto consumer : value_consumer_map_[output_idx_global]) {
+            for (auto consumer : value_consumer_map[output_idx_global]) {
               if (deps->find(consumer) == deps->end()) {
                 all_covered = false;
                 break;
@@ -1277,9 +1277,9 @@ class PlannerImpl {
               allocation_plan[downstream_value].reused_buffer = output_idx_global;
               get_reused = true;
               // add new consumer for the value to be reused
-              value_consumer_map_[output_idx_global].insert(value_node_map_[downstream_value]);
-              value_consumer_map_[output_idx_global].insert(value_consumer_map_[downstream_value].begin(),
-                                                            value_consumer_map_[downstream_value].end());
+              value_consumer_map[output_idx_global].insert(value_node_map_[downstream_value]);
+              value_consumer_map[output_idx_global].insert(value_consumer_map[downstream_value].begin(),
+                                                           value_consumer_map[downstream_value].end());
               node_iter = size_iter->second.erase(node_iter);
               if (size_iter->second.empty()) {
                 local_iter->second.erase(size_iter);
@@ -1342,8 +1342,9 @@ class PlannerImpl {
     ort_value_usecount.reserve(ort_value_info_.size());
 #endif
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
-      // compute use count first
+      // compute use count first. TODO(leca): call ComputeReuseCount() only once is enough!
       ORT_RETURN_IF_ERROR(ComputeReuseCount());
+      for (int j = 0; static_cast<size_t>(j) < ort_value_info_.size(); j++) Buffer(j) = j;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       if (i == 0) {
         for (auto ort_value_info : ort_value_info_) {
@@ -1693,8 +1694,8 @@ class PlannerImpl {
             const auto& name = input.Name();
             int value_idx;
             ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(name, value_idx));
-            auto origin = Buffer(value_idx);
-            if (origin != -1 && plan_.allocation_plan[origin].alloc_kind == AllocKind::kAllocate) {
+            auto origin = AllocPlan(value_idx).reused_buffer;
+            if (AllocPlan(origin).alloc_kind == AllocKind::kAllocate) {
               // add current node as consumer for origin buffer
               value_consumers[origin].push_back(node_index);
             }
@@ -1721,9 +1722,9 @@ class PlannerImpl {
         // we actually can do better if all the consumers depends on the last consumer.
         // will optimize it later
         bool is_all_consumer_same_stream = true;
-        auto stream_idx = node_stream_map_[value_consumers[i][0]];
+        auto stream_idx = plan_.node_stream_map_[value_consumers[i][0]];
         for (size_t j = 1; j < value_consumers[i].size(); ++j) {
-          if (node_stream_map_[value_consumers[i][j]] != stream_idx) {
+          if (plan_.node_stream_map_[value_consumers[i][j]] != stream_idx) {
             is_all_consumer_same_stream = false;
             break;
           }
@@ -1748,10 +1749,10 @@ class PlannerImpl {
                             const PathString& /*partition_config_file*/) {
     if (graph_viewer_.NumberOfNodes() > 0) {
       stream_nodes_.push_back({});
-      node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
+      plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
       for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
         stream_nodes_[0].push_back(node_index);
-        node_stream_map_[node_index] = 0;
+        plan_.node_stream_map_[node_index] = 0;
       }
       num_logic_streams_ = 1;
     }
@@ -1773,7 +1774,12 @@ class PlannerImpl {
       execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location));
       // 2. add steps to the execution plan
       for (auto node_index : stream_nodes_[0]) {
+#if defined(ORT_MINIMAL_BUILD)
         execution_plan[0]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
+#else
+        execution_plan[0]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index,
+                                                                                  graph_viewer_.GetNode(node_index)->Name()));
+#endif
       }
     } else {
       // graph with no nodes. e.g. subgraph of If might return the input as-is or a constant value from an initializer
@@ -1790,10 +1796,10 @@ class PlannerImpl {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
+    plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
-        node_stream_map_[node_index] = i;
+        plan_.node_stream_map_[node_index] = i;
       }
     }
     num_logic_streams_ = stream_nodes_.size();
@@ -1856,7 +1862,7 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
           // if the output node is not in the same stream, generate a trigger point
-          if (node_stream_map_[it->Index()] != i
+          if (plan_.node_stream_map_[it->Index()] != i
 #ifdef ENABLE_TRAINING
               // Do not insert Barrier/TriggerDownStream step if the producer and consumer are in different sides of yieldOp
               // As in this case producer will surely be ready before the consumer is running.
@@ -1889,9 +1895,9 @@ class PlannerImpl {
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
-                  OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.Type();
+                  OrtDevice::DeviceType output_arg_device = AllocPlan(output_arg_idx).location.Type();
                   WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, output_arg_device);
-                  if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
+                  if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
                       node_to_notification[node_index] = plan_.notification_owners.size();
                       plan_.notification_owners.push_back(i);
@@ -1903,7 +1909,7 @@ class PlannerImpl {
               }  // output->Exists
             }    // for each output
             if (output_consumed_in_subgraph) {
-              const auto downstream = node_stream_map_[it->Index()];
+              const auto downstream = plan_.node_stream_map_[it->Index()];
               if (downstream != i) {
                 auto downstream_device = execution_plan[downstream]->device_.Type();
                 WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, downstream_device);
@@ -1929,7 +1935,7 @@ class PlannerImpl {
         onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
         const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
         auto node_device_mem_location = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault);
-        ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.Type());
+        ORT_ENFORCE(execution_plan[plan_.node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.Type());
       }
     }
 
@@ -1978,8 +1984,12 @@ class PlannerImpl {
           // add dependency for model graph
           dependence_graph_[it->Index()].insert(node_index);
         }
-        // push launch kernel command
+// push launch kernel command
+#if defined(ORT_MINIMAL_BUILD)
         execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
+#else
+        execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index, graph_viewer_.GetNode(node_index)->Name()));
+#endif
         // check if any notification generated by this node, if yes, push a activate
         auto notification_it = node_to_notification.find(node_index);
         if (notification_it != node_to_notification.end()) {
@@ -2003,7 +2013,7 @@ class PlannerImpl {
         if (!node_output->Exists()) continue;
         OrtValueIndex output_idx_global;
         ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(node_output->Name(), output_idx_global));
-        plan_.value_to_stream_map[output_idx_global] = node_stream_map_[node_index];
+        plan_.value_to_stream_map[output_idx_global] = plan_.node_stream_map_[node_index];
         value_node_map_[output_idx_global] = node_index;
       }
     }
@@ -2079,7 +2089,7 @@ class PlannerImpl {
         }
         // trigger downstream
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          auto stream_idx = node_stream_map_[it->Index()];
+          auto stream_idx = plan_.node_stream_map_[it->Index()];
           if (stream_idx != i) {
             auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
             int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it));

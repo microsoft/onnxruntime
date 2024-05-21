@@ -1,3 +1,10 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+from __future__ import annotations
+
 import logging
 import os
 import tempfile
@@ -253,7 +260,17 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
         scale = numpy.array(1.0, dtype=rmax.dtype)
         zero_point = numpy.array(0, dtype=qmin.dtype)
     else:
-        zero_point = numpy.array(numpy.round(qmin - rmin / scale), dtype=qmin.dtype)
+        if symmetric:
+            # When symmetric (i.e., rmax == -rmin), the zero_point formula reduces to round((qmax + qmin) / 2.0).
+            # This simpler formula doesn't depend on scale and guarantees that the zero point values
+            # for int8, uint8, int16, and uint16 are always 0, 128, 0, and 32768, respectively.
+            # This is important for per-channel/symmetric QLinearConv on CPU EP, which requires all channels to have
+            # the exact same zero_point values.
+            zero_point = numpy.array(
+                numpy.round((qmin + qmax) / numpy.array(2.0, dtype=numpy.float64)), dtype=qmin.dtype
+            )
+        else:
+            zero_point = numpy.array(numpy.round(qmin - rmin / scale), dtype=qmin.dtype)
         scale = scale.astype(rmax.dtype)
 
     return [zero_point, scale]
@@ -276,7 +293,7 @@ def compute_scale_zp_float8(element_type, std):
             from onnx.reference.custom_element_types import float8e4m3fn
 
             zp_dtype = float8e4m3fn
-            all_values = [float8e4m3_to_float32(i) for i in range(0, 256)]
+            all_values = [float8e4m3_to_float32(i) for i in range(256)]
             values = numpy.array(
                 [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
             )
@@ -407,6 +424,18 @@ def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N
     return qmax - qmin
 
 
+def normalize_axis(axis: int, rank: int) -> tuple[bool, int]:
+    """
+    Helper function that tries to return a normalized axis in the range [0, rank - 1].
+    :parameter axis: The axis to normalize.
+    :parameter rank: The tensor rank (number of dimensions).
+    :return (is_valid, axis_norm)
+    """
+    axis_norm = axis + rank if axis < 0 else axis
+    is_valid = axis_norm >= 0 and axis_norm < rank
+    return is_valid, axis_norm
+
+
 class QuantizedInitializer:
     """
     Represents a linearly quantized weight input from ONNX operators
@@ -530,7 +559,7 @@ def get_elem_index(elem_name, elem_list):
     Helper function to return index of an item in a node list
     """
     elem_idx = -1
-    for i in range(0, len(elem_list)):
+    for i in range(len(elem_list)):
         if elem_list[i] == elem_name:
             elem_idx = i
     return elem_idx

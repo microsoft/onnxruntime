@@ -47,9 +47,9 @@ const getOutputShape = (inputShape: readonly number[], repeats: readonly number[
   return outputShape;
 };
 
-export const createTileProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => {
+export const createTileProgramInfo = (inputs: readonly TensorView[], shape?: number[]): ProgramInfo => {
   const inputShape = inputs[0].dims;
-  const repeats: readonly number[] = getRepeats(inputs[1]);
+  const repeats: readonly number[] = shape == null ? getRepeats(inputs[1]) : shape;
   const outputShape = getOutputShape(inputShape, repeats);
   const outputSize = ShapeUtil.size(outputShape);
 
@@ -79,10 +79,8 @@ export const createTileProgramInfo = (inputs: readonly TensorView[]): ProgramInf
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-      programUniforms: [
-        {type: 'uint32', data: outputSize}, ...createTensorShapeVariables(inputs[0].dims),
-        ...createTensorShapeVariables(outputShape)
-      ],
+      programUniforms:
+          [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputs[0].dims, outputShape)],
     }),
     getShaderSource,
   };

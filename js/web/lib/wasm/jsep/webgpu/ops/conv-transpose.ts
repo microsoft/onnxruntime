@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 import {TensorView} from '../../tensor-view';
-import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
 import {createConv2DTransposeMatMulProgramInfo} from './3rd-party/conv_backprop_mm_webgpu';
@@ -59,7 +58,6 @@ export interface ConvTransposeAttributes extends ConvAttributes {
   readonly outputShape: readonly number[];
 }
 
-
 const getAdjustedConvTransposeAttributes =
     <T extends ConvTransposeAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
       const kernelShape = attributes.kernelShape.slice();
@@ -96,11 +94,7 @@ const getAdjustedConvTransposeAttributes =
 
       // always return a new object so does not modify the original attributes
       const newAttributes: T = Object.assign({}, attributes);
-      const cacheKey = attributes.cacheKey + [
-        kernelShape.join('n,'), pads.join(','), strides.join(','), outputPadding.join(','), outputShape.join(','),
-        dilations.join(',')
-      ].join('_');
-      Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, dilations, strides, cacheKey});
+      Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, dilations, strides});
       return newAttributes;
     };
 
@@ -119,7 +113,7 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
   const wIsConst = (attributes.wIsConst as () => boolean)();
   const outputPadding = attributes.outputPadding as [number, number, number, number];
   const outputShape = attributes.outputShape as [number, number];
-  return createAttributeWithCacheKey({
+  return {
     autoPad,
     format,
     dilations,
@@ -130,8 +124,9 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
     pads,
     strides,
     wIsConst,
-    ...activationAttributes
-  });
+    ...activationAttributes,
+    cacheKey: `${attributes.format};${activationAttributes.activation};`
+  };
 };
 
 const validateInputs = (inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
@@ -273,7 +268,7 @@ const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttri
     //[FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kW] -> [FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kH=1, kW]
     context.inputs[1].reshape([context.inputs[1].dims[0], context.inputs[1].dims[1], 1, context.inputs[1].dims[2]])
   ];
-  if (inputs.length === 3) {
+  if (context.inputs.length === 3) {
     inputs.push(context.inputs[2]);
   }
   let kernelShape = attributes.kernelShape;

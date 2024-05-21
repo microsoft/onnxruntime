@@ -12,6 +12,7 @@ namespace AttrName
     static constexpr const char* AllowZero = "allowzero";
     static constexpr const char* Alpha = "alpha";
     static constexpr const char* AlignCorners = "align_corners";
+    static constexpr const char* Antialiased = "antialias";
     static constexpr const char* AutoPad = "auto_pad";
     static constexpr const char* Axes = "axes";
     static constexpr const char* Axis = "axis";
@@ -107,6 +108,7 @@ namespace AttrName
     static constexpr const char* QkvHiddenSizes = "qkv_hidden_sizes";
     static constexpr const char* Unidirectional = "unidirectional";
     static constexpr const char* NumHeads = "num_heads";
+    static constexpr const char* KvNumHeads = "kv_num_heads";
     static constexpr const char* PastPresentShareBuffer = "past_present_share_buffer";
 
     static constexpr const char* FusedActivation = "fused_activation";
@@ -124,6 +126,10 @@ namespace AttrName
     static constexpr const char* GraphFusedActivation = "activation";
     static constexpr const char* GraphFusedAxis = "activation_axis";
     static constexpr const char* Interleaved = "interleaved";
+    static constexpr const char* Bits = "bits";
+    static constexpr const char* UppercaseN = "N";
+    static constexpr const char* UppercaseK = "K";
+    static constexpr const char* MatMulNBitsBlockSize = "block_size";
 
 } // namespace AttrName
 
@@ -149,5 +155,6 @@ namespace AttrValue
     static constexpr const char* NearestNeighbor = "NN";
     static constexpr const char* NotSet = "NOTSET";
     static constexpr const char* Reflect = "reflect";
+    static constexpr const char* Wrap = "wrap";
 
 } // namespace AttrValue

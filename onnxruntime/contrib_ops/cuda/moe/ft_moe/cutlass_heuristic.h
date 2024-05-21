@@ -13,11 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifdef USE_CUTLASS
 
 #pragma once
 
-#include "ft_gemm_configs.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm_configs.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -29,13 +28,13 @@ using namespace onnxruntime;
 
 namespace ort_fastertransformer {
 
-std::vector<CutlassGemmConfig> get_candidate_configs(int sm, const bool is_weight_only, const bool simt_configs_only);
+std::vector<CutlassGemmConfig> get_candidate_configs(int sm, bool const is_weight_only, bool const simt_configs_only,
+                                                     bool const int8_configs_only = false, int const max_split_k = 1);
 
-CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<CutlassGemmConfig>& candidate_configs,
-                                                        const std::vector<int>& occupancies, const int64_t m,
+CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmConfig> const& candidate_configs,
+                                                        std::vector<int> const& occupancies, const int64_t m,
                                                         const int64_t n, const int64_t k, const int64_t num_experts,
-                                                        const int split_k_limit, const size_t workspace_bytes,
-                                                        const int multi_processor_count, const int is_weight_only);
+                                                        int const split_k_limit, const size_t workspace_bytes,
+                                                        int const multi_processor_count, int const is_weight_only);
 
 }  // namespace ort_fastertransformer
-#endif

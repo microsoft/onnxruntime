@@ -8,6 +8,15 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   string(APPEND CMAKE_ASM_FLAGS_RELEASE " -O3")
 endif()
 
+# Suggested by https://gitlab.kitware.com/cmake/cmake/-/issues/20132
+# MacCatalyst is not well supported in CMake
+# The error that can emerge without this flag can look like:
+# "clang : error : overriding '-mmacosx-version-min=11.0' option with '-target x86_64-apple-ios14.0-macabi' [-Werror,-Woverriding-t-option]"
+if (PLATFORM_NAME STREQUAL "macabi")
+  add_compile_options(-Wno-overriding-t-option)
+  add_link_options(-Wno-overriding-t-option)
+endif()
+
 # Enable space optimization for gcc/clang
 # Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
 if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
@@ -92,7 +101,7 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 endif()
 
-# enable stream for all the non-minimal build
+# Enable stream for all the non-minimal build
 if (NOT onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_ENABLE_STREAM)
 endif()
@@ -195,9 +204,9 @@ if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
   endif()
 endif()
 
-# Mark symbols to be invisible, for macOS/iOS target only
+# Mark symbols to be invisible, for macOS/iOS/visionOS target only
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS")
   foreach(flags CMAKE_CXX_FLAGS CMAKE_OBJC_FLAGS CMAKE_OBJCXX_FLAGS)
     string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden")
   endforeach()
@@ -205,7 +214,7 @@ endif()
 
 
 macro(check_nvcc_compiler_flag _FLAG _RESULT)
-    execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
+    execute_process(COMMAND ${CUDAToolkit_BIN_DIR}/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
     message("NVCC_ERROR = ${NVCC_ERROR}")
     message("NVCC_OUT = ${NVCC_OUT}")
     if ("${NVCC_OUT}" MATCHES "0")

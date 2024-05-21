@@ -7,12 +7,12 @@ from abc import abstractmethod
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-import numpy as np
 import sympy
+import torch
 
 from ._common import AutotuneConfigs, CodeBuffer, CodegenContext, NodeVisitor, TensorInfo
 from ._sympy_utils import parse_shape
-from ._utils import gen_unique_name, gen_variable_name, sort_reduce_axes, to_numpy_type
+from ._utils import gen_unique_name, gen_variable_name, sort_reduce_axes, to_torch_dtype
 
 
 class TensorArg:
@@ -22,15 +22,15 @@ class TensorArg:
     If it's constant (initializer or constant node), it also contains the data in numpy array.
     """
 
-    def __init__(self, name: str, tensor_info: Optional[TensorInfo] = None, data: Optional[np.ndarray] = None):
+    def __init__(self, name: str, tensor_info: Optional[TensorInfo] = None, data: Optional[torch.Tensor] = None):
         self._name: str = name
-        self._data: Optional[np.ndarray] = data
+        self._data: Optional[torch.Tensor] = data
         if data is not None:
-            self._dtype: np.dtype = data.dtype
+            self._dtype: torch.dtype = data.dtype
             self._shape: List[sympy.Expr] = parse_shape(list(data.shape))
         else:
             assert tensor_info is not None
-            self._dtype: np.dtype = to_numpy_type(tensor_info.dtype)
+            self._dtype: torch.dtype = to_torch_dtype(tensor_info.dtype)
             self._shape: List[sympy.Expr] = tensor_info.shape
         self.cross_kernels: bool = False
 
@@ -39,7 +39,7 @@ class TensorArg:
         return self._name
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> torch.dtype:
         return self._dtype
 
     @property
@@ -47,7 +47,7 @@ class TensorArg:
         return self._shape
 
     @property
-    def data(self) -> Optional[np.ndarray]:
+    def data(self) -> Optional[torch.Tensor]:
         return self._data
 
 
@@ -328,11 +328,10 @@ class KernelNode(IRNode):
             self.var_map[name] = gen_variable_name(name, "c", existing_names)
             if tensor_arg.data is not None:
                 value = tensor_arg.data
-                if value is not None:
-                    assert value.size == 1, f"unsupported constant array {value}"
-                    variable_name = self.var_map[name]
-                    assert variable_name not in self.var_map
-                    self.var_map[variable_name] = str(np.array(value.item(), value.dtype))
+                assert value.numel() == 1, f"unsupported constant {value} which has more than one element."
+                variable_name = self.var_map[name]
+                assert variable_name not in self.var_map
+                self.var_map[variable_name] = str(value.item())
 
 
 class ElementwiseKernelNode(KernelNode):
@@ -392,5 +391,8 @@ class ModuleNode(IRNode):
             for ir_node in kernel.sub_nodes:
                 if isinstance(ir_node, DropoutNode):
                     ir_node.global_offset = running_offset
+                    kernel.offset_calc.symbolic_shape_variables.update(
+                        [symbol.name for symbol in running_offset.free_symbols]
+                    )
                     running_offset = running_offset + sympy.prod(ir_node.outputs[0].shape)
                     self.has_dropout = True

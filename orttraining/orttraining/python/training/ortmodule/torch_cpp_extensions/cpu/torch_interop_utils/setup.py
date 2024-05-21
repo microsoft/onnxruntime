@@ -23,7 +23,7 @@ header_filenames = [
     cur_file_dir,
 ]
 
-extra_compile_args = {"cxx": ["-O3"]}
+extra_compile_args = {"cxx": ["-O3", "-std=c++17"]}
 setup(
     name="torch_interop_utils",
     ext_modules=[

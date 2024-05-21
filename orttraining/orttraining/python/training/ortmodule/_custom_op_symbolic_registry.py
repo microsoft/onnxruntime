@@ -10,7 +10,7 @@ import torch.onnx.symbolic_helper as sym_help
 from packaging import version
 from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
-from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
+from torch.onnx.symbolic_helper import parse_args
 
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
@@ -176,9 +176,9 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     try:
         # Tolerant to the case when sizes of indices are not available or not usable (for example
         # when DeepSpeed stage3 enabled, all weights size is (0), this will fail.)
-        indices_shape = _get_tensor_sizes(indices)
+        indices_shape = sym_help._get_tensor_sizes(indices)
         if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
-            output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
+            output_type = weight.type().with_sizes([*indices_shape, sym_help._get_tensor_dim_size(weight, 1)])
             output.setType(output_type)
     except IndexError:
         output.setType(weight.type())
@@ -808,3 +808,164 @@ def upsample_nearest2d(g, input, output_size, scale_factors):
 @register_symbolic("upsample_nearest3d")
 def upsample_nearest3d(g, input, output_size, scale_factors):
     return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
+
+
+@register_symbolic("upsample_bicubic2d")
+def upsample_bicubic2d(g, input, output_size, align_corners, scale_factors):
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        output_size,
+        align_corners,
+        scale_factors,
+        operator_s="upsample_bicubic2d",
+        overload_name_s="vec",
+    )
+
+
+@register_symbolic("layer_norm")
+@parse_args("v", "is", "v", "v", "f", "none")
+def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
+    # normalized_shape: input shape from an expected input of size
+    # axis: The first normalization dimension.
+    # layer_norm normalizes on the last D dimensions,
+    # where D is the size of normalized_shape
+    axis = -len(normalized_shape)
+
+    res, new_running_mean, new_running_var = g.op(
+        "LayerNormalization",
+        input,
+        weight,
+        bias,
+        epsilon_f=eps,
+        axis_i=axis,
+        outputs=3,  # force all 3 outputs to be exported in training mode
+        operator_s="layer_norm",
+        overload_name_s="vec",
+    )
+
+    return res
+
+
+# Adapted from torch.onnx.symbolic_opset9._convolution -
+# https://github.com/pytorch/pytorch/blob/cf06189a2d2785ac493bcd0d55e520af5a0e3b97/torch/onnx/symbolic_opset9.py#L2334
+# We override aten::_convolution here to support bf16 for phimm model from GenAI team.
+# For bf16 inputs, we will convert input to float32, do convolution then convert output back to bf16.
+# TODO: This might have negative impact on performance.
+@register_symbolic("_convolution")
+@parse_args("v", "v", "v", "is", "is", "is", "i", "is", "i", "i", "i", "i", "i")
+def convolution(
+    g,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    dilation,
+    transposed,
+    output_padding,
+    groups,
+    benchmark,
+    deterministic,
+    cudnn_enabled,
+    allow_tf32=None,
+):
+    from torch.onnx.symbolic_opset9 import _convolution
+
+    input_casted = (
+        g.op("Cast", input, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        if input.type().scalarType() == "BFloat16"
+        else input
+    )
+    weight_casted = (
+        g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        if weight.type().scalarType() == "BFloat16"
+        else weight
+    )
+
+    n = _convolution(
+        g,
+        input_casted,
+        weight_casted,
+        bias,
+        stride,
+        padding,
+        dilation,
+        transposed,
+        output_padding,
+        groups,
+        benchmark,
+        deterministic,
+        cudnn_enabled,
+        allow_tf32,
+    )
+
+    n_casted = (
+        g.op("Cast", n, to_i=torch.onnx.TensorProtoDataType.BFLOAT16) if input.type().scalarType() == "BFloat16" else n
+    )
+    return n_casted
+
+
+# Adapted from torch.onnx.symbolic_opset9._convolution_mode -
+# https://github.com/pytorch/pytorch/blob/cf06189a2d2785ac493bcd0d55e520af5a0e3b97/torch/onnx/symbolic_opset9.py#L2406
+# We override aten::_convolution_mode here to support bf16 for phimm model from GenAI team.
+# For bf16 inputs, we will convert input to float32, do convolution then convert output back to bf16.
+# TODO: This might have negative impact on performance.
+@register_symbolic("_convolution_mode")
+@parse_args("v", "v", "v", "is", "s", "is", "i")
+def convolution_mode(
+    g,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    dilation,
+    groups,
+):
+    from torch.onnx.symbolic_opset9 import _convolution_mode
+
+    input_casted = (
+        g.op("Cast", input, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        if input.type().scalarType() == "BFloat16"
+        else input
+    )
+    weight_casted = (
+        g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        if weight.type().scalarType() == "BFloat16"
+        else weight
+    )
+
+    n = _convolution_mode(g, input_casted, weight_casted, bias, stride, padding, dilation, groups)
+
+    n_casted = (
+        g.op("Cast", n, to_i=torch.onnx.TensorProtoDataType.BFLOAT16) if input.type().scalarType() == "BFloat16" else n
+    )
+    return n_casted
+
+
+# Adapted from torch.onnx.symbolic_opset13.softmax -
+# https://github.com/pytorch/pytorch/blob/cf06189a2d2785ac493bcd0d55e520af5a0e3b97/torch/onnx/symbolic_opset13.py#L27
+# We don't need overloads symbolic_opset9 because training support opsets >= 13.
+#
+# Why we need to define softmax export logic here?
+# For the usage `nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32)` in the model,
+# https://github.com/huggingface/transformers/blob/76a33a10923ccc1074917f6b6a1e719e626b7dc9/src/transformers/models/mistral/modeling_mistral.py#L302
+# If dtype is specified, the input tensor is casted to dtype before the operation is performed.
+# This is useful for preventing data type overflows. While existing ONNX exporter do the cast after the operation.
+# This override can be a workaround before PyTorch fix the issues in coming releases.
+# (TODO: pengwa - add PyTorch versions when the issue is fixed).
+@register_symbolic("softmax")
+@parse_args("v", "i", "none")
+def softmax(g, input, dim, dtype=None):
+    from torch.onnx import _type_utils
+
+    casted_input = input
+    need_cast_for_compute = dtype and dtype.node().kind() != "prim::Constant"
+    if need_cast_for_compute:
+        parsed_dtype = sym_help._get_const(dtype, "i", "dtype")
+        casted_input = g.op("Cast", input, to_i=_type_utils.JitScalarType(parsed_dtype).onnx_type())
+
+    softmax = g.op("Softmax", casted_input, axis_i=dim)
+
+    return softmax

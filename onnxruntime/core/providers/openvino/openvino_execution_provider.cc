@@ -1,11 +1,14 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
+#include <filesystem>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "openvino_execution_provider.h"
-#include "contexts.h"
-#include "backend_manager.h"
-#include "ov_versions/capability.h"
+#include "core/providers/openvino/openvino_execution_provider.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/onnx_ctx_model_helper.h"
+#include "core/providers/openvino/ov_versions/capability.h"
+#include "openvino/core/version.hpp"
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
 
@@ -20,17 +23,19 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_->precision_str = info.precision_;
   global_context_->enable_npu_fast_compile = info.enable_npu_fast_compile_;
   global_context_->cache_dir = info.cache_dir_;
+  global_context_->model_priority = info.model_priority_;
   global_context_->num_streams = info.num_streams_;
   global_context_->context = info.context_;
   global_context_->enable_opencl_throttling = info.enable_opencl_throttling_;
   global_context_->disable_dynamic_shapes = info.disable_dynamic_shapes_;
   global_context_->num_of_threads = info.num_of_threads_;
+  global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
+  global_context_->export_ep_ctx_blob = info.export_ep_ctx_blob_;
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
   if (info.cache_dir_.empty()) {
     bool device_found = false;
-    bool device_id_found = false;
     auto available_devices = global_context_->ie_core.GetAvailableDevices();
     // Checking for device_type configuration
     if (info.device_type_ != "") {
@@ -38,70 +43,50 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
           info.device_type_.find("MULTI") != std::string::npos ||
           info.device_type_.find("AUTO") != std::string::npos) {
         device_found = true;
-      } else if (info.device_type_ == "CPU" || info.device_type_.find("GPU") != std::string::npos) {
+      } else {
         for (auto device : available_devices) {
           if (device.rfind(info.device_type_, 0) == 0) {
             if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
-                                                                       info.precision_ == "FP16")) {
+                                                                       info.precision_ == "FP16" ||
+                                                                       info.precision_ == "ACCURACY")) {
               device_found = true;
               break;
             }
-            if (info.device_type_ == "CPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
+            if (info.device_type_ == "CPU" && (info.precision_ == "FP32")) {
               device_found = true;
               break;
             }
-            if ((info.device_type_.find("NPU") != std::string::npos) &&
-                (info.precision_ == "FP16" || info.precision_ == "U8")) {
+            if (info.device_type_.find("NPU") != std::string::npos) {
               device_found = true;
               break;
             }
           }
         }
-      } else {
-        device_found = true;
       }
     }
     if (!device_found) {
-      std::string err_msg = std::string("Device Type not found : ") + info.device_type_ +
-                            "\nChoose the right precision with one of:\n";
-      for (auto device : available_devices) {
-        err_msg = err_msg + device + "\n";
-      }
-      ORT_THROW(err_msg);
-    }
-    // Checking for device_id configuration
-    if (info.device_id_ != "") {
-      for (auto device : available_devices) {
-        if (device.rfind(info.device_id_, 0) == 0) {
-          if (info.device_id_ == "CPU" || info.device_id_ == "GPU") {
-            LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
-                               << "Switching to Device ID: " << info.device_id_;
-            device_id_found = true;
-            break;
-          }
-        }
-      }
-      if (!device_id_found) {
-        std::string err_msg = std::string("Device ID not found : ") + info.device_id_ + "\nChoose one of:\n";
-        for (auto device : available_devices) {
-          err_msg = err_msg + device + "\n";
-        }
-        ORT_THROW(err_msg);
-      }
+      ORT_THROW("[ERROR] [OpenVINO] Specified device - " + info.device_type_ + " is not available");
     }
   }
-  global_context_->device_id = info.device_id_;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
 OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                          const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  std::string openvino_sdk_version = std::to_string(global_context_->OpenVINO_Version.at(0)) + "." +
+                                     std::to_string(global_context_->OpenVINO_Version.at(1));
+
+  // Check for valid ctx node and maintain state for validity
+  if (ep_ctx_handle_.CheckForOVEPCtxNode(graph_viewer, openvino_sdk_version))
+    ORT_ENFORCE(graph_viewer.NumberOfNodes() == 1,
+                "[Invalid Graph] EPContext Model with OpenVINO compiled blob should not have more than one node.");
+
   // Enable CI Logs
   if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
     std::cout << "In the OpenVINO EP" << std::endl;
   }
-  global_context_->onnx_model_name = graph_viewer.Name();
 #ifdef _WIN32
   std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
   global_context_->onnx_model_path_name =
@@ -113,27 +98,28 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-#if defined(OPENVINO_2023_0)
+  global_context_->model_precision = [&](const GraphViewer& graph_viewer) {
+    // return empty if graph has no inputs or if types are not one of FP32/FP16
+    // else assume the type of the first input
+    if (graph_viewer.GetInputs().empty()) {
+      return "";
+    } else {
+      auto input_type = graph_viewer.GetInputs()[0]->TypeAsProto()->tensor_type().elem_type();
+      if (global_context_->precision_str == "ACCURACY" &&
+          global_context_->device_type.find("GPU") != std::string::npos) {
+        if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+          return "FP32";
+        } else if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+          return "FP16";
+        }
+      }
+    }
+    return "";
+  }(graph_viewer);
+
   openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_0");
+                                 global_context_->device_type);
   result = obj.Execute();
-#elif defined(OPENVINO_2023_1)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_1");
-  result = obj.Execute();
-#elif defined(OPENVINO_2023_2)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_2");
-  result = obj.Execute();
-#elif defined(OPENVINO_2023_3)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_3");
-  result = obj.Execute();
-#endif
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
 
@@ -151,8 +137,21 @@ common::Status OpenVINOExecutionProvider::Compile(
 
     global_context_->use_api_2 = true;
 
+    // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
+    // For precompiled blob, directly load the model instead of compiling the model
+    // For original model, check if the user wants to export a model with pre-compiled blob
+
     std::shared_ptr<openvino_ep::BackendManager> backend_manager =
-        std::make_shared<openvino_ep::BackendManager>(*global_context_, fused_node, graph_body_viewer, *GetLogger());
+        std::make_shared<openvino_ep::BackendManager>(*global_context_,
+                                                      fused_node,
+                                                      graph_body_viewer,
+                                                      *GetLogger(),
+                                                      ep_ctx_handle_);
+
+    if (global_context_->export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
+      ORT_RETURN_IF_ERROR(backend_manager->ExportCompiledBlobAsEPCtxNode(graph_body_viewer,
+                                                                         *GetLogger()));
+    }
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {

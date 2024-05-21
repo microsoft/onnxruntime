@@ -17,13 +17,16 @@ namespace test {
 template <typename T>
 inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>& input_vals_vec,
                              std::function<T(T)> expected_func,
-                             const std::unordered_map<std::string, float> attribs = {},
+                             const std::unordered_map<std::string, float> float_attribs = {},
+                             const std::unordered_map<std::string, std::string> string_attribs = {},
                              bool is_tensorrt_supported = true, int opset_version = 7,
                              const char* domain = kOnnxDomain) {
   for (const std::vector<T>& input_vals : input_vals_vec) {
     OpTester test(szOp, opset_version, domain);
 
-    for (auto attr : attribs) test.AddAttribute<float>(attr.first, attr.second);
+    for (auto attr : float_attribs) test.AddAttribute<float>(attr.first, attr.second);
+    for (auto attr : string_attribs) test.AddAttribute(attr.first, attr.second);
+
     std::vector<int64_t> dims{(int64_t)input_vals.size()};
 
     std::vector<T> expected_vals;
@@ -39,7 +42,7 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
     }
 
 // Disabled because of accuracy issues for GPU
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
     int leaky = strcmp(szOp, "LeakyRelu");
     if (leaky == 0) {
       excluded_providers.insert(kOpenVINOExecutionProvider);
@@ -66,6 +69,11 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       test.SetOutputRelErr("Y", .000001f);
     }
 #endif
+
+    if (strcmp(szOp, "QuickGelu") == 0) {
+      test.SetOutputTolerance(0.0001f);
+    }
+
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
 }

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -21,11 +22,12 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
 #include "core/framework/framework_provider_common.h"
+#include "core/framework/session_options.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
-#include "core/framework/session_options.h"
+#include "core/platform/ort_mutex.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -119,6 +121,10 @@ class InferenceSession {
   };
 
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
+  static std::map<uint32_t, InferenceSession*> active_sessions_;
+#ifdef _WIN32
+  static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+#endif
 
  public:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -217,13 +223,12 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
-    * Register a graph transformer. If you've one to register, call this before invoking Initialize().
-    * Calling this API is optional.
-    * @param[in] - providers Optional. If providers is non-empty this transformer will only to
-      applied to nodes which are assigned to given providers.
-    * @param[in] - level Optional. Level to which this transformer should be registered. Default is set to 2.
-    * @return OK if success.
-    */
+   * Register a graph transformer. If you've one to register, call this before invoking Initialize().
+   * Calling this API is optional.
+   * @param p_graph_transformer The graph transformer to register.
+   * @param level Optional. Level to which this transformer should be registered. Default is set to 2.
+   * @return OK if success.
+   */
   [[nodiscard]] common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                                         TransformerLevel level = TransformerLevel::Level2);
 
@@ -642,7 +647,7 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  void TraceSessionOptions(const SessionOptions& session_options);
+  void TraceSessionOptions(const SessionOptions& session_options, bool captureState);
 
   [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
                                            const TensorShape& expected_shape, const char* input_output_moniker) const;
@@ -669,7 +674,6 @@ class InferenceSession {
    * If we encounter an invalid request, we return an error
    * back to the user.
    */
-
   [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
                                                                  /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
 
@@ -678,6 +682,10 @@ class InferenceSession {
    * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
    */
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
+
+#ifdef _WIN32
+  void LogAllSessions();
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(
@@ -857,14 +865,17 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptureEnabled();
     }
 
-    bool IsGraphCaptured() const {
-      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured();
+    bool IsGraphCaptured(int graph_annotation_id) const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured(graph_annotation_id);
     }
 
-    Status ReplayGraph() {
-      ORT_ENFORCE(IsGraphCaptured());
+    bool AllowGraphCaptureOnRun(int graph_annotation_id) const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != kGraphAnnotationSkip;
+    }
+
+    Status ReplayGraph(int graph_annotation_id) {
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph();
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }
@@ -874,6 +885,8 @@ class InferenceSession {
     }
 
     IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
+    // TODO(wy): Same as kCudaGraphAnnotationSkip in cuda_graph.h. Move to a common place.
+    constexpr static int kGraphAnnotationSkip = -1;
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;

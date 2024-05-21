@@ -3,7 +3,7 @@
 
 import {DataType} from '../../../wasm-common';
 import {ShapeUtil} from '../../util';
-import {ProgramUniform} from '../types';
+import {ProgramUniform, ProgramUniformVariableInfo} from '../types';
 
 /**
  * constant value for a workgroup size.
@@ -259,8 +259,16 @@ export const tensorTypeToWsglValueType = (type: DataType, components: 1|2|3|4 = 
   return typeof mappedType === 'string' ? mappedType : mappedType[1];
 };
 
-export const createTensorShapeVariables = (dims: readonly number[]): ProgramUniform[] =>
-    dims.length === 0 ? [] : [{type: 'uint32', data: dims}, {type: 'uint32', data: ShapeUtil.computeStrides(dims)}];
+export const createTensorShapeVariables = (...dims: ReadonlyArray<readonly number[]>): ProgramUniform[] => {
+  const programUniforms: ProgramUniform[] = [];
+  dims.forEach(dim => {
+    if (dim.length !== 0) {
+      programUniforms.push(
+          {type: DataType.uint32, data: dim}, {type: DataType.uint32, data: ShapeUtil.computeStrides(dim)});
+    }
+  });
+  return programUniforms;
+};
 
 /**
  * A helper function to get maximum vector size for specified data length
@@ -305,7 +313,7 @@ export const castToF32 = (dataType: string, components: number, value: string) =
     return `f32(${value})`;
   }
 
-  return `vec${components}f(${value})`;
+  return `vec${components}<f32>(${value})`;
 };
 
 /**
@@ -330,18 +338,28 @@ export const sumVector = (name: string, components: number) => {
  * @param name - the name of variable.
  * @param index - the index of variable element.
  * @param length - the length of variable.
+ * @param type - the type of variable, optional.
  */
-export const getElementAt = (name: string, index: number|string, length: number): string => {
-  if (name.startsWith('uniforms.') && length > 4) {
-    if (typeof (index) === 'string') {
-      return `${name}[(${index}) / 4][(${index}) % 4]`;
-    } else {
-      return `${name}[${Math.floor(index / 4)}][${index % 4}]`;
-    }
-  } else {
-    return length > 1 ? `${name}[${index}]` : name;
-  }
-};
+export const getElementAt =
+    (name: string, index: number|string, length: number, type?: UniformDataElementType): string => {
+      if (name.startsWith('uniforms.') && length > 4) {
+        if (typeof (index) === 'string') {
+          if (type === 'f16') {
+            return `${name}[(${index}) / 8][(${index}) % 8 / 4][(${index}) % 8 % 4]`;
+          } else {
+            return `${name}[(${index}) / 4][(${index}) % 4]`;
+          }
+        } else {
+          if (type === 'f16') {
+            return `${name}[${Math.floor(index / 8)}][${Math.floor(index % 8 / 4)}][${index % 8 % 4}]`;
+          } else {
+            return `${name}[${Math.floor(index / 4)}][${index % 4}]`;
+          }
+        }
+      } else {
+        return length > 1 ? `${name}[${index}]` : name;
+      }
+    };
 
 /**
  * A helper function to get a IndicesHelper for a given input or output.
@@ -688,7 +706,7 @@ export const internalVariable =
     (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
         createIndicesHelper(name, type, shapeOrRank, 'internal', components);
 
-export type UniformDataElementType = 'u32'|'f32'|'i32';
+export type UniformDataElementType = 'u32'|'f16'|'f32'|'i32';
 export type UniformsArrayType = Array<{name: string; type: UniformDataElementType; length?: number}>;
 
 /**
@@ -765,7 +783,7 @@ export interface ShaderHelper {
 }
 
 class ShaderHelperImpl implements ShaderHelper {
-  constructor(private normalizedDispatchGroup: [number, number, number]) {}
+  constructor(private normalizedDispatchGroup: [number, number, number], private limits: GPUSupportedLimits) {}
 
   guardAgainstOutOfBoundsWorkgroupSizes(size: number|string): string {
     // Guard against out-of-bounds work group sizes
@@ -778,11 +796,26 @@ class ShaderHelperImpl implements ShaderHelper {
     const workgroupSizeY = typeof workgroupSize === 'number' ? 1 : workgroupSize[1];
     const workgroupSizeZ = typeof workgroupSize === 'number' ? 1 : workgroupSize[2];
 
+    if (workgroupSizeX > this.limits.maxComputeWorkgroupSizeX ||
+        workgroupSizeY > this.limits.maxComputeWorkgroupSizeY ||
+        workgroupSizeZ > this.limits.maxComputeWorkgroupSizeZ) {
+      throw new Error(`workgroup size [${workgroupSizeX}, ${workgroupSizeY}, ${
+          workgroupSizeZ}] exceeds the maximum workgroup size [${this.limits.maxComputeWorkgroupSizeX}, ${
+          this.limits.maxComputeWorkgroupSizeY}, ${this.limits.maxComputeWorkgroupSizeZ}].`);
+    }
+
+    if (workgroupSizeX * workgroupSizeY * workgroupSizeZ > this.limits.maxComputeInvocationsPerWorkgroup) {
+      throw new Error(`workgroup size [${workgroupSizeX}, ${workgroupSizeY}, ${
+          workgroupSizeZ}] exceeds the maximum workgroup invocations ${
+          this.limits.maxComputeInvocationsPerWorkgroup}.`);
+    }
+
     const is1DimensionDispatch = this.normalizedDispatchGroup[1] === 1 && this.normalizedDispatchGroup[2] === 1;
     const paramList = is1DimensionDispatch ? `@builtin(global_invocation_id) global_id : vec3<u32>,
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(local_invocation_id) local_id : vec3<u32>` :
-                                             `@builtin(local_invocation_id) local_id : vec3<u32>,
+                                             `@builtin(global_invocation_id) global_id : vec3<u32>,
+                                             @builtin(local_invocation_id) local_id : vec3<u32>,
     @builtin(local_invocation_index) local_idx : u32,
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(num_workgroups) num_workgroups : vec3<u32>`;
@@ -861,7 +894,11 @@ class ShaderHelperImpl implements ShaderHelper {
     const uniformSnippets: string[] = [];
     for (const {name, type, length} of this.uniforms) {
       if (length && length > 4) {
-        uniformSnippets.push(`${name}:array<vec4<${type}>, ${Math.ceil(length / 4)}>`);
+        if (type === 'f16') {
+          uniformSnippets.push(`@align(16) ${name}:array<mat2x4<${type}>, ${Math.ceil(length / 8)}>`);
+        } else {
+          uniformSnippets.push(`${name}:array<vec4<${type}>, ${Math.ceil(length / 4)}>`);
+        }
       } else {
         const typeTemp = length == null || length === 1 ? type : `vec${length}<${type}>`;
         uniformSnippets.push(`${name}:${typeTemp}`);
@@ -881,9 +918,24 @@ class ShaderHelperImpl implements ShaderHelper {
     return this.uniformDeclaration() + this.variables.map(i => i.impl()).join('\n') +
         this.internalVariables.map(i => i.impl()).join('\n');
   }
+
+  /**
+   * Get the variable info of the shader program.
+   */
+  get variablesInfo(): ProgramUniformVariableInfo[]|undefined {
+    if (this.uniforms.length === 0) {
+      return undefined;
+    }
+
+    const uniformWgslTypeToDataType = (type: UniformDataElementType) =>
+        ([DataType.uint32, DataType.float16, DataType.float,
+          DataType.int32][['u32', 'f16', 'f32', 'i32'].indexOf(type)]);
+    return this.uniforms.map(u => ([uniformWgslTypeToDataType(u.type), u.length ?? 1]));
+  }
 }
 
-export const createShaderHelper = (dispatchGroup: [number, number, number]) => new ShaderHelperImpl(dispatchGroup);
+export const createShaderHelper = (dispatchGroup: [number, number, number], limits: GPUSupportedLimits) =>
+    new ShaderHelperImpl(dispatchGroup, limits);
 
 /**
  * This function comes from https://github.com/tensorflow/tfjs/blob/master/tfjs-core/src/ops/broadcast_util.ts#L18-L40
@@ -908,6 +960,3 @@ export const getBroadcastDims = (inShape: readonly number[], outShape: readonly 
   }
   return dims;
 };
-
-// TODO: remove this when all related uses have been removed.
-export const enableShapesUniforms = (_rank: number): boolean => true;

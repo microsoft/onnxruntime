@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -9,8 +9,9 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <set>
 
-#include "backend_manager.h"
+#include "core/providers/openvino/backend_manager.h"
 
 namespace onnxruntime {
 
@@ -20,7 +21,7 @@ static void print_build_options() {
             << "you want to build"
             << std::endl;
   std::cout << "The different hardware devices that can be added with HETERO/MULTI/AUTO build "
-            << "are ['CPU','GPU']"
+            << "are ['CPU','GPU','NPU']"
             << std::endl;
   std::cout << "An example of how to specify the HETERO or MULTI or AUTO build type. "
             << "Ex: HETERO:GPU,CPU  Ex: MULTI:GPU,CPU Ex: AUTO:GPU,CPU"
@@ -48,7 +49,7 @@ static std::vector<std::string> parseDevices(const std::string& device_string) {
     print_build_options();
     ORT_THROW("Invalid device string: " + device_string);
   }
-  std::vector<std::string> dev_options = {"CPU", "GPU"};
+  std::vector<std::string> dev_options = {"CPU", "GPU", "NPU"};
   for (std::string dev : devices) {
     if (!std::count(dev_options.begin(), dev_options.end(), dev)) {
       print_build_options();
@@ -60,55 +61,54 @@ static std::vector<std::string> parseDevices(const std::string& device_string) {
 
 // Information needed to construct OpenVINO execution providers.
 struct OpenVINOExecutionProviderInfo {
-  std::string device_type_;
-  std::string precision_;
-  bool enable_npu_fast_compile_;
-  std::string device_id_;
-  size_t num_of_threads_;
-  std::string cache_dir_;
-  int num_streams_;
-  void* context_;
-  bool enable_opencl_throttling_;
-  bool disable_dynamic_shapes_;
+  std::string device_type_{""};
+  std::string precision_{""};
+  bool enable_npu_fast_compile_{false};
+  size_t num_of_threads_{0};
+  std::string cache_dir_{""};
+  std::string model_priority_{""};
+  int num_streams_{1};
+  void* context_{NULL};
+  bool enable_opencl_throttling_{false};
+  bool disable_dynamic_shapes_{false};
+  bool export_ep_ctx_blob_{false};
 
-  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_npu_fast_compile, std::string dev_id,
-                                         size_t num_of_threads, std::string cache_dir, int num_streams,
-                                         void* context, bool enable_opencl_throttling,
-                                         bool disable_dynamic_shapes)
-      : enable_npu_fast_compile_(enable_npu_fast_compile),
-        device_id_(dev_id),
+  OpenVINOExecutionProviderInfo() = delete;
+
+  explicit OpenVINOExecutionProviderInfo(std::string dev_type, std::string precision, bool enable_npu_fast_compile,
+                                         size_t num_of_threads, std::string cache_dir, std::string model_priority,
+                                         int num_streams, void* context, bool enable_opencl_throttling,
+                                         bool disable_dynamic_shapes, bool export_ep_ctx_blob)
+      : precision_(precision),
+        enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
         cache_dir_(cache_dir),
+        model_priority_(model_priority),
         num_streams_(num_streams),
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
-        disable_dynamic_shapes_(disable_dynamic_shapes) {
+        disable_dynamic_shapes_(disable_dynamic_shapes),
+        export_ep_ctx_blob_(export_ep_ctx_blob) {
+    std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
+                                                       "GPU.0", "GPU.1", "NPU"};
     if (dev_type == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                          << "No runtime device selection option provided.";
-#if defined OPENVINO_CONFIG_CPU_FP32
+#if defined OPENVINO_CONFIG_CPU
       device_type_ = "CPU";
       precision_ = "FP32";
-#elif defined OPENVINO_CONFIG_CPU_FP16
-      device_type_ = "CPU";
-      precision_ = "FP16";
-#elif defined OPENVINO_CONFIG_GPU_FP32
-      device_type_ = "GPU";
-      precision_ = "FP32";
-#elif defined OPENVINO_CONFIG_GPU_FP16
+#elif defined OPENVINO_CONFIG_GPU
       device_type_ = "GPU";
       precision_ = "FP16";
-#elif defined OPENVINO_CONFIG_NPU_FP16
+#elif defined OPENVINO_CONFIG_NPU
       device_type_ = "NPU";
       precision_ = "FP16";
-#elif defined OPENVINO_CONFIG_NPU_U8
-      device_type_ = "NPU";
-      precision_ = "U8";
 #elif defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
 #ifdef DEVICE_NAME
 #define DEVICE DEVICE_NAME
 #endif
       dev_type = DEVICE;
+
       if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0 || dev_type.find("AUTO") == 0) {
         std::vector<std::string> devices = parseDevices(dev_type);
         precision_ = "FP16";
@@ -118,55 +118,16 @@ struct OpenVINOExecutionProviderInfo {
         device_type_ = dev_type;
       }
 #endif
-    } else if (dev_type == "CPU_FP32") {
-      device_type_ = "CPU";
-      precision_ = "FP32";
-    } else if (dev_type == "CPU_FP16") {
-      device_type_ = "CPU";
-      precision_ = "FP16";
-    } else if (dev_type == "GPU_FP32") {
-      device_type_ = "GPU";
-      precision_ = "FP32";
-    } else if (dev_type == "GPU.0_FP32") {
-      device_type_ = "GPU.0";
-      precision_ = "FP32";
-    } else if (dev_type == "GPU.1_FP32") {
-      device_type_ = "GPU.1";
-      precision_ = "FP32";
-    } else if (dev_type == "GPU_FP16") {
-      device_type_ = "GPU";
-      precision_ = "FP16";
-    } else if (dev_type == "GPU.0_FP16") {
-      device_type_ = "GPU.0";
-      precision_ = "FP16";
-    } else if (dev_type == "GPU.1_FP16") {
-      device_type_ = "GPU.1";
-      precision_ = "FP16";
-    } else if (dev_type == "NPU_FP16") {
-      device_type_ = "NPU";
-      precision_ = "FP16";
-    } else if (dev_type == "NPU_U8") {
-      device_type_ = "NPU";
-      precision_ = "U8";
-    } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0) {
-      std::vector<std::string> devices = parseDevices(dev_type);
-      precision_ = "FP16";
-      if (devices[0] == "CPU") {
-        precision_ = "FP32";
-      }
+    } else if (ov_supported_device_types.find(dev_type) != ov_supported_device_types.end()) {
       device_type_ = dev_type;
-    } else if (dev_type.find("AUTO") == 0) {
+    } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0 || dev_type.find("AUTO") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type);
-      precision_ = "FP32";
       device_type_ = dev_type;
     } else {
       ORT_THROW("Invalid device string: " + dev_type);
     }
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                        << "Choosing Device: " << device_type_ << " , Precision: " << precision_;
-  }
-  OpenVINOExecutionProviderInfo() {
-    OpenVINOExecutionProviderInfo("", false, "", 0, "", 1, NULL, false, false);
   }
 };
 
@@ -196,6 +157,7 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
 
  private:
   std::unique_ptr<openvino_ep::GlobalContext> global_context_;
+  openvino_ep::EPCtxHandler ep_ctx_handle_{};
 };
 
 }  // namespace onnxruntime

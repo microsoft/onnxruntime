@@ -14,7 +14,7 @@ struct LogicalProcessorInformation {
 
 struct CoreCounter {
   uint32_t PhysicalCores = 0;
-  uint32_t SocDieCores = 0;
+  uint32_t LLCCores = 0;
 };
 
 static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RELATIONSHIP relationship) {
@@ -42,7 +42,7 @@ uint32_t CountSetBits(DWORD input) {
   return c;
 }
 
-static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
+static CoreCounter GetCoreInfo() {
   auto logicalProcessorInformation = GetLogicalProcessorInfos(RelationAll);
 
   CoreCounter cores;
@@ -64,6 +64,7 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
         cores.PhysicalCores++;
         break;
       case RelationCache:
+        //Cache level masks count Logicial processors
         if (currentProcessorInfo->Cache.Level == 2) {
           dwLevel2GroupMask |= currentProcessorInfo->Cache.GroupMask.Mask;
         } else if (currentProcessorInfo->Cache.Level == 3) {
@@ -75,16 +76,35 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
     read += currentProcessorInfo->Size;
   }
 
-  cores.SocDieCores = CountSetBits(dwLevel2GroupMask & ~dwLevel3GroupMask);
+  cores.LLCCores = cores.PhysicalCores - CountSetBits(dwLevel2GroupMask & ~dwLevel3GroupMask);
+
   return cores;
 }
 
 uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of physical cores = # of P cores + # of E Cores + # of Soc Cores.
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
-  auto cores = GetNumberOPhysicalAndEngineeringCores();
-  // We want to use the number of physical cores, but exclude soc cores
-  return cores.PhysicalCores - cores.SocDieCores;
+  auto cores = GetCoreInfo();
+
+#if !defined(_M_ARM64EC) && !defined(_M_ARM64) && !defined(__aarch64__)
+  const int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
+  int regs_leaf0[4];
+  int regs_leaf7[4];
+  __cpuid(regs_leaf0, 0);
+  __cpuid(regs_leaf7, 0x7);
+
+  auto isIntel = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) &&
+    (kVendorID_Intel[2] == regs_leaf0[3]);
+
+  auto isHybrid = (regs_leaf7[3] & (1 << 15));
+
+  if (isIntel && isHybrid) {
+    // We want to use the number of physical cores, but exclude cores without an LLC
+    return cores.LLCCores;
+  }
+#endif
+
+  return cores.PhysicalCores;
 }
 
 }  // namespace WINMLP

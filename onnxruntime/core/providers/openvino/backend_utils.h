@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -12,8 +12,8 @@
 #include <string>
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "contexts.h"
-#include "ov_interface.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/ov_interface.h"
 #ifdef _WIN32
 #include <direct.h>
 #define GetCurrentDir _getcwd
@@ -65,7 +65,6 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto,
               const GlobalContext& global_context,
-              const SubGraphContext& subgraph_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,

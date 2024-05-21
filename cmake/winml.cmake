@@ -836,6 +836,13 @@ if (winml_is_inbox)
     target_include_directories(${new_target} PRIVATE ${include_directories})
     target_link_libraries(${new_target} PRIVATE ${link_libraries})
     target_link_options(${new_target} PRIVATE ${link_options})
+
+    # Attempt to copy linker flags 
+    get_target_property(link_flags ${target} LINK_FLAGS)
+    
+    if (NOT link_flags MATCHES ".*NOTFOUND")
+      set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags}")
+    endif()
   endfunction()
 
   if (WAI_ARCH STREQUAL x64 OR WAI_ARCH STREQUAL arm64)

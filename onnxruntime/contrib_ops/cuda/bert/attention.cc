@@ -84,6 +84,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
+  parameters.use_tf32 = UseTF32();
+
   // Use the second dimension from weight for bias to get q_hidden_size when bias is nullptr
   std::vector<int64_t> bias_dims{weights->Shape().GetDims()[1]};
   const TensorShape bias_shape{bias_dims};
@@ -251,7 +253,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop, UseTF32()));
 
   constexpr size_t element_size = sizeof(T);
   constexpr bool use_fused_cross_attention = false;

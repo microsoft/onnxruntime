@@ -255,7 +255,64 @@
         "^test_reduce_prod_empty_set_cuda",
         "^test_reduce_sum_empty_set_cuda",
         "^test_reduce_sum_square_empty_set_cuda",
-        "^test_reduce_sum_square_empty_set_expanded_cuda"
+        "^test_reduce_sum_square_empty_set_expanded_cuda",
+        // ONNX 1.16.0 fixed a maxpool output size bug and added this test.
+        // Enable this test when ORT PR is merged: https://github.com/microsoft/onnxruntime/pull/18377
+        // See original ONNX 1.16.0 fix: https://github.com/onnx/onnx/pull/5741
+        "^test_maxpool_2d_ceil_output_size_reduce_by_one",
+        // ai.onnx.ml.TreeEnsemble from ONNX 1.16.0 is not implemented in ORT yet.
+        "^test_ai_onnx_ml_tree_ensemble_set_membership_cpu",
+        "^test_ai_onnx_ml_tree_ensemble_set_membership_cpu",
+        "^test_ai_onnx_ml_tree_ensemble_single_tree_cpu",
+        "^test_ai_onnx_ml_tree_ensemble_set_membership_cuda",
+        "^test_ai_onnx_ml_tree_ensemble_single_tree_cuda",
+        // ORT Cast(21) implementation doesn't support int4 yet
+        "^test_cast_INT4_to_FLOAT_cpu",
+        "^test_cast_INT4_to_INT8_cpu",
+        "^test_cast_UINT4_to_FLOAT_cpu",
+        "^test_cast_UINT4_to_UINT8_cpu",
+        "^test_cast_INT4_to_FLOAT_cuda",
+        "^test_cast_INT4_to_INT8_cuda",
+        "^test_cast_UINT4_to_FLOAT_cuda",
+        "^test_cast_UINT4_to_UINT8_cuda",
+        // ConstantOfShape(21) from ONNX 1.16.0 is not implemented for cuda.
+        "^test_constantofshape_float_ones_cuda",
+        "^test_constantofshape_int_shape_zero_cuda",
+        "^test_constantofshape_int_zeros_cuda",
+        // Flatten(21) from ONNX 1.16.0 is not implemented for cuda.
+        "^test_flatten_axis0_cuda",
+        "^test_flatten_axis1_cuda",
+        "^test_flatten_axis2_cuda",
+        "^test_flatten_axis3_cuda",
+        "^test_flatten_default_axis_cuda",
+        "^test_flatten_negative_axis1_cuda",
+        "^test_flatten_negative_axis2_cuda",
+        "^test_flatten_negative_axis3_cuda",
+        "^test_flatten_negative_axis4_cuda",
+        // QLinearMatMul(21) from ONNX 1.16.0 is not implemented in ORT yet.
+        "^test_qlinearmatmul_2D_int8_float16_cpu",
+        "^test_qlinearmatmul_2D_int8_float32_cpu",
+        "^test_qlinearmatmul_2D_uint8_float16_cpu",
+        "^test_qlinearmatmul_2D_uint8_float32_cpu",
+        "^test_qlinearmatmul_3D_int8_float16_cpu",
+        "^test_qlinearmatmul_3D_int8_float32_cpu",
+        "^test_qlinearmatmul_3D_uint8_float16_cpu",
+        "^test_qlinearmatmul_3D_uint8_float32_cpu",
+        "^test_qlinearmatmul_2D_int8_float16_cuda",
+        "^test_qlinearmatmul_2D_int8_float32_cuda",
+        "^test_qlinearmatmul_2D_uint8_float16_cuda",
+        "^test_qlinearmatmul_2D_uint8_float32_cuda",
+        "^test_qlinearmatmul_3D_int8_float16_cuda",
+        "^test_qlinearmatmul_3D_int8_float32_cuda",
+        "^test_qlinearmatmul_3D_uint8_float16_cuda",
+        "^test_qlinearmatmul_3D_uint8_float32_cuda",
+        // Size(21) from ONNX 1.16.0 is not implemented in cuda.
+        "^test_size_cuda",
+        "^test_size_example_cuda",
+        // DequantizeLinear(21) blocked quantization from ONNX 1.16.0 is not implemented in ORT yet.
+        "^test_dequantizelinear_blocked",
+        "^test_quantizelinear_blocked_asymmetric",
+        "^test_quantizelinear_blocked_symmetric"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -493,9 +550,12 @@
         "test_range_float_type_positive_delta_expanded_cpu", // Error but not a failure.
         "test_scan_sum_cpu", // Disabled due to output mismatch with tolerance.
         "test_scan9_sum_cpu", // Disabled due to output mismatch with tolerance.
-        "test_reduce_max_bool_inputs_cpu"
+        "test_reduce_max_bool_inputs_cpu",
+        "test_gelu_default_1_cpu", // Disabled due to accuracy mismatch
+        "test_gelu_default_2_cpu"
+
     ],
-    "current_failing_tests_OPENVINO_NPU_FP16": [
+    "current_failing_tests_OPENVINO_NPU": [
         "^test_prelu_broadcast",
         "test_loop11_cpu"
     ],

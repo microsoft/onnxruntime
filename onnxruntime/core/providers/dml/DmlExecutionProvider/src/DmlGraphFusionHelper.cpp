@@ -3,6 +3,8 @@
 #include "DmlGraphFusionHelper.h"
 #include "DmlRuntimeFusedGraphKernel.h"
 
+using namespace Windows::AI::MachineLearning::Adapter;
+
 namespace Dml
 {
 namespace DmlGraphFusionHelper
@@ -94,13 +96,13 @@ namespace DmlGraphFusionHelper
         ID3D12Resource** resource,
         uint64_t* allocId)
     {
-        IUnknown* allocationUnk = static_cast<IUnknown*>(const_cast<void*>(tensor->DataRaw()));
-        Microsoft::WRL::ComPtr<IUnknown> resourceUnk;
-        winmlProvider->GetABIDataInterface(false, allocationUnk, &resourceUnk);
+        IUnknown* allocationUnknown = static_cast<IUnknown*>(const_cast<void*>(tensor->DataRaw()));
+        Microsoft::WRL::ComPtr<IUnknown> resourceUnknown;
+        winmlProvider->GetABIDataInterface(false, allocationUnknown, &resourceUnknown);
 
-        *allocId = winmlProvider->TryGetPooledAllocationId(allocationUnk, 0);
+        *allocId = winmlProvider->TryGetPooledAllocationId(allocationUnknown, 0);
 
-        ORT_THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
+        ORT_THROW_IF_FAILED(resourceUnknown->QueryInterface(resource));
     }
 
     std::tuple<std::unique_ptr<std::byte[]>, std::vector<uint8_t>, std::byte*, size_t> UnpackInitializer(
@@ -135,8 +137,10 @@ namespace DmlGraphFusionHelper
 
     void ProcessInputData(
         const ExecutionProviderImpl* providerImpl,
+        const bool graphSerializationEnabled,
         const std::vector<uint8_t>& isInputsUploadedByDmlEP,
-        const std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
+        const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex,
         const gsl::span<const std::string> subGraphInputArgNames,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
         onnxruntime::Graph& graph,
@@ -162,8 +166,17 @@ namespace DmlGraphFusionHelper
 
         // Walk through each graph edge and mark used inputs
         inputsUsed.assign(fusedNodeInputCount, false);
-        for (const DML_INPUT_GRAPH_EDGE_DESC& edge : inputEdges) {
-            inputsUsed[edge.GraphInputIndex] = true;
+        for (auto it = serializedGraphInputIndexToSubgraphInputIndex->begin(); it != serializedGraphInputIndexToSubgraphInputIndex->end(); it++) {
+            inputsUsed[it->second] = true;
+        }
+        for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex->begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex->end(); it++) {
+            inputsUsed[it->second] = true;
+        }
+
+        std::wstring modelName;
+        if (graphSerializationEnabled)
+        {
+            modelName = GetModelName(graph.ModelPath());
         }
 
         for (uint32_t i = 0; i < initInputBindings.size(); i++)
@@ -209,6 +222,10 @@ namespace DmlGraphFusionHelper
 
                 // Tensor sizes in DML must be a multiple of 4 bytes large.
                 tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
+                if(graphSerializationEnabled)
+                {
+                    WriteToFile(modelName, ConvertToWString(iter->first) + L".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
+                }
 
                 if (inputRawData)
                 {
@@ -287,55 +304,158 @@ namespace DmlGraphFusionHelper
         return initializerPartitionMap;
     }
 
+    inline uint32_t GetConstantNodeGraphInputIndex(
+        const std::string& constantName,
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphConstantNameToMainGraphInputIndex,
+        uint32_t& graphMaxInputIndex,
+        std::unordered_map<std::string_view, uint32_t>& localConstantNameToIndexMap)
+    {
+        if (serializedGraphConstantNameToMainGraphInputIndex == nullptr)
+        {
+            if (localConstantNameToIndexMap.find(constantName) == localConstantNameToIndexMap.end())
+            {
+                localConstantNameToIndexMap[constantName] = ++graphMaxInputIndex;
+            }
+            return localConstantNameToIndexMap[constantName];
+        }
+        else
+        {
+            graphMaxInputIndex = std::max(graphMaxInputIndex, serializedGraphConstantNameToMainGraphInputIndex->at(constantName));
+            return serializedGraphConstantNameToMainGraphInputIndex->at(constantName);
+        }
+    }
+
+    template <size_t AllocatorSize>
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
-        _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         const uint32_t inputCount,
         const uint32_t outputCount,
-        _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
-        _Inout_ std::vector<DML_CONSTANT_DATA_GRAPH_NODE_DESC>& dmlConstantGraphNodes,
+        IDMLDevice* device,
+        StackAllocator<AllocatorSize>& allocator,
+        const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex,
+        _Out_ DML_GRAPH_DESC& dmlGraphDesc,
+        _Inout_ std::vector<ComPtr<IDMLOperator>>& dmlOperators,
         _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
     {
-        for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
+        std::unordered_map<uint32_t, uint32_t> oldNodeIndexToNewNodeIndexMap;
+        for (uint32_t index = 0; index < static_cast<uint32_t>(graphDesc.Nodes.size()); index++)
         {
-            auto& nodeInfo = graphDesc.nodes[i];
-
-            if (std::holds_alternative<Microsoft::WRL::ComPtr<IDMLOperator>>(nodeInfo.nodeDef))
+            const DmlSerializedGraphNode& node = graphDesc.Nodes[index];
+            if (std::holds_alternative<AbstractOperatorDesc>(node.Desc))
             {
-                dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{std::get<Microsoft::WRL::ComPtr<IDMLOperator>>(nodeInfo.nodeDef).Get(), nodeInfo.name.data()};
-                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
+                oldNodeIndexToNewNodeIndexMap[index] = static_cast<uint32_t>(dmlGraphNodes.size());
+                DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc<AllocatorSize>(std::get<AbstractOperatorDesc>(node.Desc), &allocator);
+                ComPtr<IDMLOperator> op;
+                ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
+                dmlOperators.push_back(op);
+                DML_OPERATOR_GRAPH_NODE_DESC* dmlOperatorGraphNode = allocator.template Allocate<DML_OPERATOR_GRAPH_NODE_DESC>();
+                dmlOperatorGraphNode->Name = node.Name.data();
+                dmlOperatorGraphNode->Operator = op.Get();
+                dmlGraphNodes.push_back(DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, dmlOperatorGraphNode});
             }
             else
             {
-                auto& nodeDefinitionData = std::get<std::vector<uint8_t>>(nodeInfo.nodeDef);
-                dmlConstantGraphNodes[i] = DML_CONSTANT_DATA_GRAPH_NODE_DESC{
-                    nodeDefinitionData.data(),
-                    nodeDefinitionData.size(),
-                    nodeInfo.name.data()
-                };
+                auto& constantNodeVariant = std::get<DmlSerializedGraphNodeConstantVariant>(node.Desc);
+                if (std::holds_alternative<ConstantData>(constantNodeVariant))
+                {
+                    oldNodeIndexToNewNodeIndexMap[index] = static_cast<uint32_t>(dmlGraphNodes.size());
 
-                // TODO: Change as new header is ingested
-                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{static_cast<DML_GRAPH_NODE_TYPE>(2), &dmlConstantGraphNodes[i]};
+                    auto& constantData = std::get<ConstantData>(constantNodeVariant);
+
+                    DML_CONSTANT_DATA_GRAPH_NODE_DESC* constantNode = allocator.template Allocate<DML_CONSTANT_DATA_GRAPH_NODE_DESC>();
+                    constantNode->Name = node.Name.data();
+                    constantNode->DataSize = constantData.dataSize;
+                    constantNode->Data = constantData.data;
+                    dmlGraphNodes.push_back(DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_CONSTANT, constantNode});
+                }
             }
         }
 
-        for (size_t i = 0; i < graphDesc.inputEdges.size(); ++i)
+        uint32_t graphMaxInputIndex = 0;
+
+        for (size_t i = 0; i < graphDesc.InputEdges.size(); ++i)
         {
-            dmlInputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INPUT, &graphDesc.inputEdges[i]};
+            DML_INPUT_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_INPUT_GRAPH_EDGE_DESC>();
+            // 1. If serializedGraphInputIndexToMainGraphInputIndex is not null:
+            //      then use the corresponding main graph input index, because the caller will use corresponding
+            //      main graph input index for extracting the actual input tensor from the main graph and
+            //      the caller does not own the creation of dml bindings directly.
+            //      Use Case: When the caller is ORT (DML EP) or DmlEngine.
+            //
+            // 2. If serializedGraphInputIndexToMainGraphInputIndex is null:
+            //      then assign the sequential graph input index, because it owns the creation of dml bindings
+            //      directly.
+            edge->GraphInputIndex = serializedGraphInputIndexToSubgraphInputIndex == nullptr ?
+                graphDesc.InputEdges[i].GraphInputIndex :
+                serializedGraphInputIndexToSubgraphInputIndex->at(graphDesc.InputEdges[i].GraphInputIndex);
+            edge->ToNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.InputEdges[i].ToNodeIndex];
+            edge->ToNodeInputIndex = graphDesc.InputEdges[i].ToNodeInputIndex;
+            edge->Name = graphDesc.InputEdges[i].Name.data();
+
+            graphMaxInputIndex = std::max(graphMaxInputIndex, edge->GraphInputIndex);
+            dmlInputEdges.push_back(DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INPUT, edge});
         }
 
-        for (size_t i = 0; i < graphDesc.outputEdges.size(); ++i)
+        for (size_t i = 0; i < graphDesc.OutputEdges.size(); ++i)
         {
-            dmlOutputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_OUTPUT, &graphDesc.outputEdges[i]};
+            DML_OUTPUT_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_OUTPUT_GRAPH_EDGE_DESC>();
+            edge->GraphOutputIndex = graphDesc.OutputEdges[i].GraphOutputIndex;
+            edge->FromNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.OutputEdges[i].FromNodeIndex];
+            edge->FromNodeOutputIndex = graphDesc.OutputEdges[i].FromNodeOutputIndex;
+            edge->Name = graphDesc.OutputEdges[i].Name.data();
+
+            dmlOutputEdges.push_back(DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_OUTPUT, edge});
         }
 
-        for (size_t i = 0; i < graphDesc.intermediateEdges.size(); ++i)
+        std::unordered_map<std::string_view, uint32_t> localConstantNameToIndexMap;
+        for (uint32_t i = 0; i < static_cast<uint32_t>(graphDesc.IntermediateEdges.size()); ++i)
         {
-            dmlIntermediateEdges[i] =
-                DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &graphDesc.intermediateEdges[i]};
+            DmlSerializedGraphNodeDescVariant descVariant = graphDesc.Nodes[graphDesc.IntermediateEdges[i].FromNodeIndex].Desc;
+            bool isConstantEdge = std::holds_alternative<DmlSerializedGraphNodeConstantVariant>(descVariant);
+            if (isConstantEdge)
+            {
+                auto& constantNodeVariant = std::get<DmlSerializedGraphNodeConstantVariant>(descVariant);
+                if (std::holds_alternative<ConstantData>(constantNodeVariant))
+                {
+                    DML_INTERMEDIATE_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_INTERMEDIATE_GRAPH_EDGE_DESC>();
+                    edge->FromNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].FromNodeIndex];
+                    edge->FromNodeOutputIndex = graphDesc.IntermediateEdges[i].FromNodeOutputIndex;
+                    edge->ToNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].ToNodeIndex];
+                    edge->ToNodeInputIndex = graphDesc.IntermediateEdges[i].ToNodeInputIndex;
+                    edge->Name = graphDesc.IntermediateEdges[i].Name.data();
+                    dmlIntermediateEdges.push_back(DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, edge});
+                }
+                else
+                {
+                    const std::string& constantName = graphDesc.Nodes[graphDesc.IntermediateEdges[i].FromNodeIndex].Name;
+
+                    DML_INPUT_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_INPUT_GRAPH_EDGE_DESC>();
+                    edge->GraphInputIndex = GetConstantNodeGraphInputIndex(
+                        constantName,
+                        serializedGraphLargeConstantNameToSubgraphInputIndex,
+                        graphMaxInputIndex,
+                        localConstantNameToIndexMap);
+                    edge->ToNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].ToNodeIndex];
+                    edge->ToNodeInputIndex = graphDesc.IntermediateEdges[i].ToNodeInputIndex;
+                    edge->Name = graphDesc.IntermediateEdges[i].Name.data();
+
+                    dmlInputEdges.push_back({DML_GRAPH_EDGE_TYPE_INPUT, edge});
+                }
+            }
+            else
+            {
+                DML_INTERMEDIATE_GRAPH_EDGE_DESC* edge = allocator.template Allocate<DML_INTERMEDIATE_GRAPH_EDGE_DESC>();
+                edge->FromNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].FromNodeIndex];
+                edge->FromNodeOutputIndex = graphDesc.IntermediateEdges[i].FromNodeOutputIndex;
+                edge->ToNodeIndex = oldNodeIndexToNewNodeIndexMap[graphDesc.IntermediateEdges[i].ToNodeIndex];
+                edge->ToNodeInputIndex = graphDesc.IntermediateEdges[i].ToNodeInputIndex;
+                edge->Name = graphDesc.IntermediateEdges[i].Name.data();
+                dmlIntermediateEdges.push_back(DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, edge});
+            }
         }
 
         dmlGraphDesc.InputCount = inputCount;
@@ -400,27 +520,34 @@ namespace DmlGraphFusionHelper
     Microsoft::WRL::ComPtr<IDMLCompiledOperator> TryCreateCompiledOperator(
         const GraphDescBuilder::GraphDesc& graphDesc,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
-        const ExecutionProviderImpl* providerImpl)
+        const ExecutionProviderImpl* providerImpl,
+        const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex)
     {
         const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->inputs.size());
         const uint32_t fusedNodeOutputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->outputs.size());
 
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
-        DML_GRAPH_DESC dmlGraphDesc = {};
-        std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(graphDesc.nodes.size());
-        std::vector<DML_CONSTANT_DATA_GRAPH_NODE_DESC> dmlConstantGraphNodes(graphDesc.nodes.size());
+        ComPtr<IDMLDevice> device;
+        ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
 
-        std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(graphDesc.nodes.size());
-        std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(graphDesc.inputEdges.size());
-        std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
-        std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
+        StackAllocator<1024> allocator;
+        DML_GRAPH_DESC dmlGraphDesc = {};
+        std::vector<ComPtr<IDMLOperator>> dmlOperators;
+        std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes;
+        std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges;
+        std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges;
+        std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges;
         ConvertGraphDesc(
             graphDesc,
-            dmlGraphDesc,
             fusedNodeInputCount,
             fusedNodeOutputCount,
-            dmlOperatorGraphNodes,
-            dmlConstantGraphNodes,
+            device.Get(),
+            allocator,
+            serializedGraphInputIndexToSubgraphInputIndex,
+            serializedGraphLargeConstantNameToSubgraphInputIndex,
+            dmlGraphDesc,
+            dmlOperators,
             dmlGraphNodes,
             dmlInputEdges,
             dmlOutputEdges,
@@ -438,8 +565,6 @@ namespace DmlGraphFusionHelper
             executionFlags |= DML_EXECUTION_FLAG_DISABLE_META_COMMANDS;
         }
 
-        ComPtr<IDMLDevice> device;
-        ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
 
         ComPtr<IDMLDevice1> device1;
         ORT_THROW_IF_FAILED(device.As(&device1));
@@ -460,6 +585,7 @@ namespace DmlGraphFusionHelper
     }
 
     void FusePartitionAndRegisterKernel(
+        const uint32_t partitionIndex,
         onnxruntime::Graph& graph,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
@@ -467,8 +593,43 @@ namespace DmlGraphFusionHelper
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         std::vector<uint8_t>&& isInputsUploadedByDmlEP,
         const GraphDescBuilder::GraphDesc& graphDesc,
-        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator)
+        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
+        const bool graphSerializationEnabled,
+        const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
+        const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex)
     {
+        if (graphSerializationEnabled)
+        {
+
+          const std::wstring modelName = GetModelName(graph.ModelPath());
+          auto buffer = SerializeDmlGraph(graphDesc);
+
+          const std::wstring partitionName =
+              L"Partition_" +
+              std::to_wstring(partitionIndex) +
+              L".bin";
+          WriteToFile(modelName, partitionName, buffer.data(), buffer.size());
+
+          std::vector<std::unique_ptr<std::byte[]>> rawData;
+          DmlSerializedGraphDesc deserializedGraphDesc = DeserializeDmlGraph(buffer.data(), rawData);
+          GraphDescBuilder::GraphDesc deserializedDmlGraphDesc = {};
+          deserializedDmlGraphDesc.InputCount = deserializedGraphDesc.InputCount;
+          deserializedDmlGraphDesc.InputEdges = std::move(deserializedGraphDesc.InputEdges);
+          deserializedDmlGraphDesc.IntermediateEdges = std::move(deserializedGraphDesc.IntermediateEdges);
+          deserializedDmlGraphDesc.Nodes = std::move(deserializedGraphDesc.Nodes);
+          deserializedDmlGraphDesc.OutputCount = deserializedGraphDesc.OutputCount;
+          deserializedDmlGraphDesc.OutputEdges = std::move(deserializedGraphDesc.OutputEdges);
+          deserializedDmlGraphDesc.reuseCommandList = graphDesc.reuseCommandList;
+          deserializedDmlGraphDesc.outputShapes = graphDesc.outputShapes;
+
+          compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
+                          deserializedDmlGraphDesc,
+                          indexedSubGraph,
+                          providerImpl,
+                          serializedGraphInputIndexToSubgraphInputIndex,
+                          serializedGraphLargeConstantNameToSubgraphInputIndex);
+        }
+
         auto& fusedNode = graph.BeginFuseSubGraph(indexedSubGraph, indexedSubGraph.GetMetaDef()->name);
         fusedNode.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
 
@@ -482,8 +643,10 @@ namespace DmlGraphFusionHelper
         std::vector<bool> inputsUsed;
         ProcessInputData(
             providerImpl,
+            graphSerializationEnabled,
             isInputsUploadedByDmlEP,
-            graphDesc.inputEdges,
+            serializedGraphInputIndexToSubgraphInputIndex,
+            serializedGraphLargeConstantNameToSubgraphInputIndex,
             indexedSubGraph.GetMetaDef()->inputs,
             initializerNameToInitializerMap,
             graph,
@@ -696,6 +859,213 @@ namespace DmlGraphFusionHelper
         fusedNode.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
 
         graph.FinalizeFuseSubGraph(*indexedSubGraph, fusedNode);
+    }
+
+    std::unique_ptr<DmlReusedCommandListState> BuildReusableCommandList(
+        IExecutionProvider* provider,
+        IDMLCompiledOperator* compiledExecutionPlanOperator,
+        ID3D12Resource* persistentResource,
+        std::optional<DML_BUFFER_BINDING> persistentResourceBinding)
+    {
+        auto commandListState = std::make_unique<DmlReusedCommandListState>();
+
+        ComPtr<IDMLDevice> device;
+        ORT_THROW_IF_FAILED(provider->GetDmlDevice(device.GetAddressOf()));
+
+        DML_BINDING_PROPERTIES execBindingProps = compiledExecutionPlanOperator->GetBindingProperties();
+
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        desc.NumDescriptors = execBindingProps.RequiredDescriptorCount;
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+
+        ComPtr<ID3D12Device> d3dDevice;
+        ORT_THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
+
+        ORT_THROW_IF_FAILED(d3dDevice->CreateDescriptorHeap(&desc, IID_GRAPHICS_PPV_ARGS(commandListState->heap.ReleaseAndGetAddressOf())));
+
+        // Create a binding table for execution.
+        DML_BINDING_TABLE_DESC bindingTableDesc = {};
+        bindingTableDesc.Dispatchable = compiledExecutionPlanOperator;
+        bindingTableDesc.CPUDescriptorHandle = commandListState->heap->GetCPUDescriptorHandleForHeapStart();
+        bindingTableDesc.GPUDescriptorHandle = commandListState->heap->GetGPUDescriptorHandleForHeapStart();
+        bindingTableDesc.SizeInDescriptors = execBindingProps.RequiredDescriptorCount;
+
+        ORT_THROW_IF_FAILED(device->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&commandListState->bindingTable)));
+
+        ORT_THROW_IF_FAILED(d3dDevice->CreateCommandAllocator(
+            provider->GetCommandListTypeForQueue(),
+            IID_GRAPHICS_PPV_ARGS(commandListState->commandAllocator.ReleaseAndGetAddressOf())));
+
+        ORT_THROW_IF_FAILED(d3dDevice->CreateCommandList(
+            0,
+            provider->GetCommandListTypeForQueue(),
+            commandListState->commandAllocator.Get(),
+            nullptr,
+            IID_GRAPHICS_PPV_ARGS(commandListState->graphicsCommandList.ReleaseAndGetAddressOf())));
+
+        if (persistentResource)
+        {
+            DML_BINDING_DESC persistentResourceBindingDesc =
+                { DML_BINDING_TYPE_BUFFER, persistentResourceBinding ? &*persistentResourceBinding : nullptr };
+            commandListState->bindingTable->BindPersistentResource(&persistentResourceBindingDesc);
+        }
+
+        ID3D12DescriptorHeap* descriptorHeaps[] = { commandListState->heap.Get() };
+        commandListState->graphicsCommandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
+
+        ComPtr<IDMLCommandRecorder> recorder;
+        ORT_THROW_IF_FAILED(device->CreateCommandRecorder(IID_PPV_ARGS(recorder.GetAddressOf())));
+
+        recorder->RecordDispatch(commandListState->graphicsCommandList.Get(), compiledExecutionPlanOperator, commandListState->bindingTable.Get());
+
+        ORT_THROW_IF_FAILED(commandListState->graphicsCommandList->Close());
+
+        return commandListState;
+    }
+
+    void ExecuteReusableCommandList(
+        onnxruntime::OpKernelContext* kernelContext,
+        DmlReusedCommandListState& commandListState,
+        IDMLCompiledOperator* compiledExecutionPlanOperator,
+        const onnxruntime::OpKernelInfo& kernelInfo,
+        gsl::span<const uint8_t> isInputsUploadedByDmlEP,
+        const std::vector<bool>& inputsUsed,
+        gsl::span<const ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers,
+        const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
+        IWinmlExecutionProvider* winmlProvider,
+        IExecutionProvider* provider,
+        IUnknown* persistentResourceAllocatorUnknown)
+    {
+        DML_BINDING_PROPERTIES execBindingProps = compiledExecutionPlanOperator->GetBindingProperties();
+
+        std::vector<DML_BUFFER_BINDING> inputBindings(kernelContext->InputCount());
+        std::vector<DML_BINDING_DESC> inputBindingDescs(kernelContext->InputCount());
+
+        OpKernelContextWrapper contextWrapper(
+            kernelContext,
+            kernelInfo.GetExecutionProvider(),
+            true,
+            nullptr);
+
+        // Populate input bindings, excluding those which were specified as owned by DML and provided
+        // at initialization instead.
+        commandListState.inputBindingAllocIds.resize(inputBindings.size());
+        bool inputBindingsChanged = false;
+
+        for (uint32_t i = 0; i < inputBindings.size(); ++i)
+        {
+            if (!isInputsUploadedByDmlEP[i] && inputsUsed[i])
+            {
+                if (nonOwnedGraphInputsFromInitializers[i])
+                {
+                    inputBindings[i].Buffer = nonOwnedGraphInputsFromInitializers[i].Get();
+                    inputBindings[i].SizeInBytes = nonOwnedGraphInputsFromInitializers[i]->GetDesc().Width;
+                    inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
+                }
+                else
+                {
+                    assert(kernelContext->InputType(gsl::narrow_cast<int>(i))->IsTensorType());
+                    const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(i));
+
+                    uint64_t allocId;
+                    DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &inputBindings[i].Buffer, &allocId);
+                    inputBindingsChanged = inputBindingsChanged || (!allocId || commandListState.inputBindingAllocIds[i] != allocId);
+                    inputBindings[i].Buffer->Release(); // Avoid holding an additional reference
+                    inputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                    inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
+                    commandListState.inputBindingAllocIds[i] = allocId;
+                }
+            }
+        }
+
+        if (inputBindingsChanged)
+        {
+            commandListState.bindingTable->BindInputs(gsl::narrow_cast<uint32_t>(inputBindingDescs.size()), inputBindingDescs.data());
+        }
+
+        // Populate Output bindings
+        std::vector<DML_BUFFER_BINDING> outputBindings(kernelContext->OutputCount());
+        std::vector<DML_BINDING_DESC> outputBindingDescs(kernelContext->OutputCount());
+
+        commandListState.outputBindingAllocIds.resize(outputBindings.size());
+        bool outputBindingsChanged = false;
+
+        for (uint32_t i = 0; i < outputBindings.size(); ++i)
+        {
+            std::vector<int64_t> outputDims;
+            outputDims.reserve(outputShapes.GetShape(i).size());
+            for (uint32_t dimSize : outputShapes.GetShape(i))
+            {
+                outputDims.push_back(dimSize);
+            }
+
+            onnxruntime::Tensor* tensor = kernelContext->Output(
+                static_cast<int>(i),
+                onnxruntime::TensorShape::FromExistingBuffer(outputDims)
+                );
+
+            uint64_t allocId;
+            DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &outputBindings[i].Buffer, &allocId);
+            outputBindingsChanged = outputBindingsChanged || (!allocId || commandListState.outputBindingAllocIds[i] != allocId);
+            outputBindings[i].Buffer->Release(); // Avoid holding an additional reference
+            outputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+            outputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &outputBindings[i]};
+            commandListState.outputBindingAllocIds[i] = allocId;
+        }
+
+        if (outputBindingsChanged)
+        {
+            commandListState.bindingTable->BindOutputs(gsl::narrow_cast<uint32_t>(outputBindingDescs.size()), outputBindingDescs.data());
+        }
+
+        if (execBindingProps.TemporaryResourceSize > 0)
+        {
+            // Allocate temporary data which will automatically be freed when the GPU work
+            // which is scheduled up to the point that this method returns has completed.
+            ComPtr<IUnknown> tempAlloc;
+            uint64_t tempAllocId = 0;
+            ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
+
+            ComPtr<IUnknown> tempResourceUnknown;
+            winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnknown);
+
+            // Bind the temporary resource.
+            ComPtr<ID3D12Resource> tempResource;
+            ORT_THROW_IF_FAILED(tempResourceUnknown->QueryInterface(tempResource.GetAddressOf()));
+            DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, execBindingProps.TemporaryResourceSize};
+            DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
+
+            if (!tempAllocId || commandListState.tempBindingAllocId != tempAllocId)
+            {
+                commandListState.bindingTable->BindTemporaryResource(&tempBindingDesc);
+            }
+
+            commandListState.tempBindingAllocId = tempAllocId;
+        }
+
+        // Execute the command list and if it succeeds, update the fence value at which this command may be
+        // re-used.
+        ComPtr<ID3D12Fence> fence;
+        uint64_t completionValue;
+        HRESULT hr = provider->ExecuteCommandList(commandListState.graphicsCommandList.Get(), fence.GetAddressOf(), &completionValue);
+
+        if (hr == DXGI_ERROR_DEVICE_REMOVED)
+        {
+            ComPtr<ID3D12Device> device;
+            ORT_THROW_IF_FAILED(provider->GetD3DDevice(&device));
+            ORT_THROW_IF_FAILED(device->GetDeviceRemovedReason());
+        }
+
+        ORT_THROW_IF_FAILED(hr);
+        commandListState.fence = fence;
+        commandListState.completionValue = completionValue;
+
+        // Queue references to objects which must be kept alive until resulting GPU work completes
+        winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(commandListState.graphicsCommandList).Get());
+        winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(commandListState.heap).Get());
+        winmlProvider->QueueReference(commandListState.bindingTable.Get());
+        winmlProvider->QueueReference(persistentResourceAllocatorUnknown);
     }
 }
 }

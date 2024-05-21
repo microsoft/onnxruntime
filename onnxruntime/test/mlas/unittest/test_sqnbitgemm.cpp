@@ -197,7 +197,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
  public:
   void Test(size_t M, size_t N, size_t K,
             MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
-            bool WithBias, bool Symmetric, bool WithThreadpool) {
+            bool WithThreadpool, bool Symmetric, bool WithBias) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
     const float* A = BufferA.GetBuffer(K * M);
@@ -210,10 +210,10 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
 #if 0
-    auto print_matrix = [](size_t ncols, size_t nrows, const float* data) {
+    auto print_matrix = [](size_t nrows, size_t ncols, const float* data) {
       for (size_t row = 0; row < nrows; ++row) {
         for (size_t col = 0; col < ncols; ++col) {
-          std::cout << data[row * nrows + col] << "\t";
+          std::cout << data[row * ncols + col] << "\t";
         }
         std::cout << "\n";
       }
@@ -259,10 +259,11 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* PackedQuantBData = nullptr;
-    if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen);
+    if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
         PackedQuantBDataSize > 0) {
       PackedQuantBData = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
-      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, QuantBData, PackedQuantBData, GetMlasThreadPool());
+      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBData,
+                                   GetMlasThreadPool());
     }
 
     if (ComputeType == CompFp32) {
@@ -330,7 +331,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
                                    bool WithThreadpool, bool Symmetric, bool WithBias) {
     size_t tests_registered = 0;
 
-    if (MlasIsSQNBitGemmAvailable(M, N, K, BlkBitWidth, BlkLen, ComputeType)) {
+    if (MlasIsSQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
       std::stringstream ss;
       ss << (WithThreadpool ? "SingleThread" : "Threaded")
          << "/isSymmetric" << Symmetric
@@ -382,6 +383,16 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           }
           tests_registered += RegisterSingleTest(43, 500, 401, ComputeType, WithThreadpool, Symmetric, true);
 
+          tests_registered += RegisterSingleTest(1, 2, 16, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 2, 16, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(11, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 1027, 1031, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(11, 1027, 1031, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 527, 2131, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(11, 527, 2131, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(11, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           // tests_registered += RegisterSingleTest(1001, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
         }
       }

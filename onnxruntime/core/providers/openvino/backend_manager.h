@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -8,9 +8,10 @@
 #include <memory>
 #include <string>
 
-#include "ov_interface.h"
-#include "contexts.h"
-#include "ibackend.h"
+#include "core/providers/openvino/ov_interface.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/onnx_ctx_model_helper.h"
+#include "core/providers/openvino/ibackend.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -21,11 +22,14 @@ class BackendManager {
   BackendManager(const GlobalContext& global_context,
                  const onnxruntime::Node& fused_node,
                  const onnxruntime::GraphViewer& subgraph,
-                 const logging::Logger& logger);
+                 const logging::Logger& logger,
+                 EPCtxHandler& ctx_handle);
   void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
   void SetGlobalCotext(const GlobalContext& global_context);
   GlobalContext& GetGlobalContext();
+  Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph,
+                                       const logging::Logger& logger);
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(
@@ -47,6 +51,8 @@ class BackendManager {
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   SubGraphContext subgraph_context_;
   GlobalContext global_context_;
+  EPCtxHandler ep_ctx_handle_{};
+  std::string openvino_sdk_version_{};
 };
 
 }  // namespace openvino_ep

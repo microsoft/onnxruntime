@@ -18,7 +18,7 @@ namespace internal {
 using F16 = ck::half_t;
 using F32 = float;
 
-using Swish = ck::tensor_operation::element_wise::Swish;
+using Silu = ck::tensor_operation::element_wise::Swish;
 using Pass = ck::tensor_operation::element_wise::PassThrough;
 
 using ck::tensor_operation::device::DeviceNormalizationFwd;      // the interface
@@ -101,9 +101,9 @@ GetDeviceGroupNormInstances() {
 
 template <>
 std::vector<std::unique_ptr<DeviceNormalizationFwd<
-    F16, F32, F32, F16, F32, Swish, 5, 3>>>
+    F16, F32, F32, F16, F32, Silu, 5, 3>>>
 GetDeviceGroupNormInstances<
-    F16, F32, F32, F16, F32, Swish, 5, 3>();
+    F16, F32, F32, F16, F32, Silu, 5, 3>();
 
 template <>
 std::vector<std::unique_ptr<DeviceNormalizationFwd<
@@ -113,9 +113,9 @@ GetDeviceGroupNormInstances<
 
 template <>
 std::vector<std::unique_ptr<DeviceNormalizationFwd<
-    F32, F32, F32, F32, F32, Swish, 5, 3>>>
+    F32, F32, F32, F32, F32, Silu, 5, 3>>>
 GetDeviceGroupNormInstances<
-    F32, F32, F32, F32, F32, Swish, 5, 3>();
+    F32, F32, F32, F32, F32, Silu, 5, 3>();
 
 template <>
 std::vector<std::unique_ptr<DeviceNormalizationFwd<

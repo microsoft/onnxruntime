@@ -14,7 +14,6 @@ Mostly, Nodes are classified into two categories:
 
 from typing import Tuple
 
-import numpy as np
 import sympy
 import torch
 from sympy.codegen.rewriting import create_expand_pow_optimization
@@ -37,7 +36,7 @@ from ._ir import (
 from ._lowering import lower
 from ._sorted_graph import SortedGraph
 from ._sympy_utils import parse_shape, sympy_dot
-from ._utils import may_add_brackets
+from ._utils import is_number, may_add_brackets
 
 
 class TritonCodegen(NodeVisitor):
@@ -316,14 +315,14 @@ class TritonCodegen(NodeVisitor):
                 op_type = "Sqrt"
 
         if op_type == "Cast":
-            from_dtype = node.inputs[0].dtype.type
-            to_dtype = node.outputs[0].dtype.type
-            if from_dtype == to_dtype:
+            from_dtype = node.inputs[0].dtype
+            to_dtype = node.outputs[0].dtype
+            if from_dtype == to_dtype or is_number(kwargs["i0"]):
                 op_type = "Identity"
-            elif to_dtype == np.bool_:
+            elif to_dtype == torch.bool:
                 op_type = "CastBool"
             else:
-                kwargs["dtype"] = to_dtype.__name__
+                kwargs["dtype"] = str(to_dtype)[6:]  # Remove "torch." prefix.
 
         if op_type == "QuickGelu" or op_type == "QuickGeluGrad":
             kwargs["alpha"] = str(node.attributes.get("alpha", 1.702))
@@ -473,7 +472,7 @@ class TritonCodegen(NodeVisitor):
                 code_buffer += "\n"
             # Allocate output tensor.
             for output in kernel_node.outputs:
-                torch_dtype = torch.from_numpy(np.zeros(1, dtype=output.dtype)).dtype
+                torch_dtype = output.dtype
                 # Workaround for DLPack which doesn't support bool.
                 if torch_dtype == torch.bool:
                     torch_dtype = torch.uint8

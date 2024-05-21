@@ -74,6 +74,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   parameters.kv_data_in_flight = ParseEnvironmentVariableWithDefault<bool>(
       attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);
 
+  bool is_unidirectional = false;
   bool is_dmmha_packing = (key == nullptr && value == nullptr);
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
@@ -88,6 +89,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       num_heads_,
                                                                       mask_filter_value_,
                                                                       scale_,
+                                                                      is_unidirectional,
                                                                       past_present_share_buffer_,
                                                                       is_dmmha_packing,  // dmmha_packing
                                                                       device_prop.maxThreadsPerBlock));

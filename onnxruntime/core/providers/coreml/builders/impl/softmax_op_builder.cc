@@ -1,43 +1,29 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/coreml/builders/impl/base_op_builder.h"
-
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
-
-#ifdef __APPLE__
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
-#include "core/providers/coreml/builders/op_builder_factory.h"
 
 namespace onnxruntime {
 namespace coreml {
 
 class SoftmaxOpBuilder : public BaseOpBuilder {
-  // Add operator related
-#ifdef __APPLE__
- private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
 
-  // Operator support related
- private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
-// Add operator related
-
-#ifdef __APPLE__
-
 Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const Node& node,
                                                const logging::Logger& logger) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
   const auto& input_name = node.InputDefs()[0]->Name();
   const auto& output_name = node.OutputDefs()[0]->Name();
 
@@ -66,17 +52,15 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     target_shape.push_back(size_to_dimension);
     target_shape.push_back(size_from_dimension);
 
-    const auto reshape1_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "reshape1_output"));
+    const auto reshape1_output_name = model_builder.GetUniqueName(node, "reshape1_output");
     {  // Add reshape layer
-      const auto softmax_reshape1_layer_name =
-          model_builder.GetUniqueName(MakeString(node.Name(), "_Softmax_reshape1"));
-      auto reshape_layer = CreateNNLayer(softmax_reshape1_layer_name);
+      auto reshape_layer = model_builder.CreateNNLayer(node, "_Softmax_reshape1");
       *reshape_layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
       *reshape_layer->mutable_input()->Add() = input_name;
       *reshape_layer->mutable_output()->Add() = reshape1_output_name;
       model_builder.AddLayer(std::move(reshape_layer));
     }
-    const auto softmax_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "softmax_output"));
+    const auto softmax_output_name = model_builder.GetUniqueName(node, "softmax_output");
     {
       auto* coreml_softmaxnd = layer->mutable_softmaxnd();
       coreml_softmaxnd->set_axis(-1);
@@ -86,9 +70,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
     {
       // Add reshape back layer
-      const auto softmax_reshape2_layer_name =
-          model_builder.GetUniqueName(MakeString(node.Name(), "_Softmax_reshape2"));
-      auto reshape_layer = CreateNNLayer(softmax_reshape2_layer_name);
+      auto reshape_layer = model_builder.CreateNNLayer(node, "_Softmax_reshape2");
       *reshape_layer->mutable_reshapestatic()->mutable_targetshape() = {data_shape.cbegin(), data_shape.cend()};
       *reshape_layer->mutable_input()->Add() = softmax_output_name;
       *reshape_layer->mutable_output()->Add() = output_name;
@@ -98,10 +80,6 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   return Status::OK();
 }
-
-#endif
-
-// Operator support related
 
 bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */,
                                          const logging::Logger& logger) const {

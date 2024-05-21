@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -6,7 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
-#include "ov_interface.h"
+#include "core/providers/openvino/ov_interface.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -18,19 +18,22 @@ struct GlobalContext {
   bool enable_npu_fast_compile = false;
   bool enable_opencl_throttling = false;
   bool disable_dynamic_shapes = false;
+  bool ep_context_embed_mode = true;
+  bool export_ep_ctx_blob = false;
   size_t num_of_threads;
   std::string device_type;
   std::string precision_str;
-  std::string device_id;
+  std::string model_precision;
   std::string cache_dir;
+  std::string model_priority = "DEFAULT";
   int num_streams;
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};
-  std::vector<std::string> deviceTags = {"0", "1", "2", "3", "4", "5", "6", "7"};
   std::string onnx_model_name;
   std::string onnx_model_path_name;
   int onnx_opset_version;
   void* context = 0;
   bool use_api_2;
+  std::vector<int> OpenVINO_Version = {};  // Ov Major and OV minor version from OV headers
 };
 
 // Holds context specific to subgraph.
@@ -44,7 +47,6 @@ struct SubGraphContext {
   std::vector<int> input_indexes;
   std::unordered_map<std::string, int> input_names;
   std::unordered_map<std::string, int> output_names;
-  std::string precision;
 };
 
 }  // namespace openvino_ep

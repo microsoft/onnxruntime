@@ -79,6 +79,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
       options.set("axis", rank - 1);
     }
+
     output = model_builder.GetBuilder().call<emscripten::val>("batchNormalization", input, mean, variance, options);
   } else if (op_type == "LayerNormalization") {
     int64_t axis = helper.Get("axis", -1);
@@ -125,10 +126,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
-      std::vector<uint32_t> output_shape;
-      std::transform(input_shape.begin(), input_shape.end(),
-                     std::back_inserter(output_shape),
-                     [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
+      std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
       output = model_builder.GetBuilder().call<emscripten::val>(
           "reshape", output, emscripten::val::array(output_shape));
     }

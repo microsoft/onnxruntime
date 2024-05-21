@@ -57,15 +57,6 @@ endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
-function(add_jblas)
-    add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas)
-    target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
-    target_sources(onnxruntime_mlas PRIVATE
-        ${MLAS_SRC_DIR}/jblas_gemm.cpp
-     )
-    set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
-endfunction()
-
 #TODO: set MASM flags properly
 function(setup_mlas_source_for_windows)
 
@@ -176,6 +167,9 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAmx.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAvx2.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8U8KernelAvx2.asm
@@ -206,6 +200,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/sgemma.asm
       ${MLAS_SRC_DIR}/amd64/cvtfp16a.asm
       ${MLAS_SRC_DIR}/amd64/SoftmaxKernelAvx.asm
+      ${MLAS_SRC_DIR}/amd64/SoftmaxKernelAvx512F.asm
       ${MLAS_SRC_DIR}/amd64/TransKernelFma3.asm
       ${MLAS_SRC_DIR}/amd64/TransKernelAvx512F.asm
       ${MLAS_SRC_DIR}/amd64/LogisticKernelFma3.asm
@@ -364,19 +359,23 @@ else()
             ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
             ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S
             ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S
+            ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
             ${MLAS_SRC_DIR}/activate_fp16.cpp
             ${MLAS_SRC_DIR}/dwconv.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
             ${MLAS_SRC_DIR}/pooling_fp16.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
+            ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
           )
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
@@ -534,6 +533,7 @@ else()
           ${MLAS_SRC_DIR}/x86_64/ErfKernelFma3.S
           ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
         )
         set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
@@ -541,6 +541,7 @@ else()
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SconvKernelAvx512F.S
+          ${MLAS_SRC_DIR}/x86_64/SoftmaxKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SpoolKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/TransKernelAvx512F.S
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
@@ -552,8 +553,14 @@ else()
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvx512Vnni.S
           ${MLAS_SRC_DIR}/x86_64/QgemmU8X8KernelAvx512Core.S
           ${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx512Core.S
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
+
+        set(mlas_platform_srcs_avx512vnni
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+        )
+        set_source_files_properties(${mlas_platform_srcs_avx512vnni} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
 
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/activate_fp16.cpp
@@ -566,6 +573,7 @@ else()
           ${mlas_platform_srcs_avx2}
           ${mlas_platform_srcs_avx512f}
           ${mlas_platform_srcs_avx512core}
+          ${mlas_platform_srcs_avx512vnni}
         )
 
         if (NOT onnxruntime_ORT_MINIMAL_BUILD)
@@ -622,10 +630,6 @@ else()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
 
-if(USE_JBLAS)
-  add_jblas()
-endif()
-
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
     target_include_directories(${mlas_target} PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
     onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET})
@@ -638,6 +642,12 @@ if (WIN32)
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
     target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize 131072>")
   endif()
+endif()
+
+if (PLATFORM_NAME STREQUAL "macabi")
+  # Needed for maccatalyst C compilation
+  # i.e. the flags below add "--target=x86_64-apple-ios14.0-macabi -ffunction-sections -fdata-sections"
+  target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

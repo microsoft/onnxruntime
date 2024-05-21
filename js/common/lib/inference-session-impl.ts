@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {resolveBackend} from './backend-impl.js';
+import {resolveBackendAndExecutionProviders} from './backend-impl.js';
 import {InferenceSessionHandler} from './backend.js';
 import {InferenceSession as InferenceSessionInterface} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
@@ -195,11 +195,9 @@ export class InferenceSession implements InferenceSessionInterface {
       throw new TypeError('Unexpected argument[0]: must be \'path\' or \'buffer\'.');
     }
 
-    // get backend hints
-    const eps = options.executionProviders || [];
-    const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
-    const backend = await resolveBackend(backendHints);
-    const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, options);
+    // resolve backend, update session options with validated EPs, and create session handler
+    const [backend, optionsWithValidatedEPs] = await resolveBackendAndExecutionProviders(options);
+    const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, optionsWithValidatedEPs);
     TRACE_FUNC_END();
     return new InferenceSession(handler);
   }

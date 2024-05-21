@@ -13,13 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#pragma warning(disable : 4244)
+#pragma warning(disable : 4200)
+#endif
 
-#ifdef USE_CUTLASS
+#include "contrib_ops/cuda/moe/ft_moe/moe_gemm_kernels_template.h"
 
-#include "moe_gemm_kernels_template.h"
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 namespace ort_fastertransformer {
 template class MoeGemmRunner<float, float>;
 }  // namespace ort_fastertransformer
-
-#endif

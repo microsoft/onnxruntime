@@ -97,11 +97,11 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                              bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) {
+                              bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
-  if (NHWC && is_nhwc_domain_) {  // InputTensors::IN_W
-    if (input_idx == 1) {
+  if constexpr (NHWC) {
+    if (is_nhwc_domain_ && input_idx == 1) {  // InputTensors::IN_W
       // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
       auto orig_shape = tensor.Shape();
 
@@ -123,6 +123,10 @@ Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
       CUDA_CALL_THROW(cudaStreamSynchronize(DefaultCudaStream()));
       is_packed = true;
     }
+  } else {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
   }
 
   return Status::OK();
@@ -149,8 +153,11 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
   // Make sure input and weight are 4D for NHWC since we set 4D descriptor for NHWC.
   constexpr bool channels_last = NHWC;
-  if (channels_last && (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+  if constexpr (channels_last) {
+    if (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+    }
   }
 
   // set B
@@ -326,7 +333,8 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
     ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                          gsl::narrow_cast<int>(conv_attrs_.group),
-                                         CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
+                                         CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>(),
+                                         UseTF32()));
 
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
@@ -351,8 +359,13 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
-      if constexpr (std::is_same<T, MLFloat16>::value)
+      if constexpr (std::is_same<T, MLFloat16>::value) {
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+      } else if constexpr (std::is_same<T, float>::value) {
+        if (!UseTF32()) {
+          CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_FMA_MATH));
+        }
+      }
 
       cudnnConvolutionFwdAlgoPerf_t perf;
       int algo_count = 1;
@@ -397,8 +410,11 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
         default:
           perf.algo = kDefaultConvAlgo;
           CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(GetCudnnHandle(context), s_, perf.algo, &perf.memory));
-          if (std::is_same<T, MLFloat16>::value) {
+
+          if constexpr (std::is_same<T, MLFloat16>::value) {
             perf.mathType = CUDNN_TENSOR_OP_MATH;
+          } else if (std::is_same<T, float>::value && !UseTF32()) {
+            perf.mathType = CUDNN_FMA_MATH;
           } else {
             perf.mathType = CUDNN_DEFAULT_MATH;
           }
@@ -480,7 +496,8 @@ Status CudnnConvolutionDescriptor::Set(
     const gsl::span<const int64_t>& dilations,
     int groups,
     cudnnConvolutionMode_t mode,
-    cudnnDataType_t data_type) {
+    cudnnDataType_t data_type,
+    bool use_tf32) {
   if (!desc_)
     CUDNN_RETURN_IF_ERROR(cudnnCreateConvolutionDescriptor(&desc_));
 
@@ -513,6 +530,8 @@ Status CudnnConvolutionDescriptor::Set(
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
   if (data_type == CUDNN_DATA_HALF) {
     CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
+  } else if (data_type == CUDNN_DATA_FLOAT && !use_tf32) {
+    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_FMA_MATH));
   }
 
   return Status::OK();

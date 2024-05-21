@@ -122,9 +122,15 @@ void CreateBaseModel(std::string model_name,
   status = onnxruntime::Model::Save(model, model_name);
 }
 
-bool HasCacheFileWithPrefix(const std::string& prefix) {
-  const std::filesystem::path current_dir = std::filesystem::current_path();
-  for (const auto& entry : std::filesystem::directory_iterator(current_dir)) {
+bool HasCacheFileWithPrefix(const std::string& prefix, std::string file_dir = "") {
+  std::filesystem::path target_dir;
+  if (file_dir.empty()) {
+    target_dir = std::filesystem::current_path();
+  } else {
+    target_dir = std::filesystem::path(file_dir);
+  }
+
+  for (const auto& entry : std::filesystem::directory_iterator(target_dir)) {
     if (entry.is_regular_file()) {
       std::string filename = entry.path().filename().string();
       if (filename.rfind(prefix, 0) == 0) {
@@ -191,6 +197,8 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
   params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
+  params.trt_dump_ep_context_model = 1;
+  params.trt_ep_context_file_path = "EP_Context_model.onnx";
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   auto status = session_object.Load(model_name);
@@ -209,6 +217,9 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
 
   // Verify on cache with customized prefix
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
+
+  // Verify EP context model with user provided name
+  ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
 }
 
 void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string sess_log_id, bool has_non_zero_node = false) {
@@ -348,6 +359,192 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
 }
 
+TEST(TensorrtExecutionProviderTest, EPContextNode) {
+  std::string model_name = "EPContextNode_test.onnx";
+  std::string graph_name = "EPContextNode_test";
+  std::string sess_log_id = "EPContextNode_test";
+  std::vector<int> dims = {1, 3, 2};
+  CreateBaseModel(model_name, graph_name, dims);
+
+  SessionOptions so;
+  so.session_logid = sess_log_id;
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> dims_mul_x = {1, 3, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
+  OrtValue ml_value_y;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
+  OrtValue ml_value_z;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+  feeds.insert(std::make_pair("Y", ml_value_y));
+  feeds.insert(std::make_pair("Z", ml_value_z));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("M");
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
+  std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
+
+  /*
+   * Test case 1: Dump context model
+   *
+   * provider options=>
+   *   trt_ep_context_file_path = "EP_Context_model.onnx"
+   *
+   * expected result =>
+   *   context model "EP_Context_model.onnx" should be created in current directory
+   *
+   */
+  OrtTensorRTProviderOptionsV2 params;
+  params.trt_engine_cache_enable = 1;
+  params.trt_dump_ep_context_model = 1;
+  params.trt_ep_context_file_path = "EP_Context_model.onnx";
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  auto status = session_object.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
+
+  /*
+   * Test case 2: Dump context model
+   *
+   * provider options=>
+   *   trt_engine_cache_prefix = "TRT_engine_cache"
+   *   trt_ep_context_file_path = "context_model_folder"
+   *   trt_engine_cache_path = "engine_cache_folder"
+   *
+   * expected result =>
+   *   engine cache "./context_model_folder/engine_cache_folder/TRT_engine_cache...engine" should be created
+   *   context model "./context_model_folder/EPContextNode_test_ctx.onnx" should be created
+   */
+  InferenceSession session_object2{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params2;
+  params2.trt_engine_cache_enable = 1;
+  params2.trt_dump_ep_context_model = 1;
+  params2.trt_engine_cache_prefix = "TRT_engine_cache";
+  params2.trt_engine_cache_path = "engine_cache_folder";  // due to dump_ep_context_model = 1, the new cache path is ./context_model_folder/engine_cache_folder
+  params2.trt_ep_context_file_path = "context_model_folder";
+  execution_provider = TensorrtExecutionProviderWithOptions(&params2);
+  EXPECT_TRUE(session_object2.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object2.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object2.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  auto new_engine_cache_path = std::filesystem::path(params2.trt_ep_context_file_path).append(params2.trt_engine_cache_path).string();
+  // Test engine cache path:
+  // "./context_model_folder/engine_cache_folder/TRT_engine_cache...engine" should be created
+  ASSERT_TRUE(HasCacheFileWithPrefix(params2.trt_engine_cache_prefix, new_engine_cache_path));
+  // Test context model path:
+  // "./context_model_folder/EPContextNode_test_ctx.onnx" should be created
+  ASSERT_TRUE(HasCacheFileWithPrefix("EPContextNode_test_ctx.onnx", params2.trt_ep_context_file_path));
+
+  /*
+   * Test case 3: Run the dumped context model
+   *
+   * context model path = "./EP_Context_model.onnx" (created from case 1)
+   *
+   * expected result=>
+   *   engine cache is also in the same current dirctory as "./xxxxx.engine"
+   *   and the "ep_cache_context" attribute node of the context model should point to that.
+   *
+   */
+  InferenceSession session_object3{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params3;
+  model_name = params.trt_ep_context_file_path;
+  params3.trt_engine_cache_enable = 1;
+  execution_provider = TensorrtExecutionProviderWithOptions(&params3);
+  EXPECT_TRUE(session_object3.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object3.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object3.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  // run inference
+  // TRT engine will be created and cached
+  // TRT profile will be created and cached only for dynamic input shape
+  // Data in profile,
+  // X: 1, 3, 3, 2, 2, 2
+  // Y: 1, 3, 3, 2, 2, 2
+  // Z: 1, 3, 3, 2, 2, 2
+  RunSession(session_object3, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+
+  /*
+   * Test case 4: Run the dumped context model
+   *
+   * context model path = "./context_model_folder/EPContextNode_test_ctx.onnx" (created from case 2)
+   *
+   * expected result=>
+   *   engine cache path is "./context_model_folder/engine_cache_folder/xxxxx.engine"
+   *   and the "ep_cache_context" attribute node of the context model should point to "engine_cache_folder/xxxxx.engine".
+   *
+   */
+  InferenceSession session_object4{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params4;
+  model_name = "./context_model_folder/EPContextNode_test_ctx.onnx";
+  execution_provider = TensorrtExecutionProviderWithOptions(&params4);
+  EXPECT_TRUE(session_object4.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object4.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object4.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  // run inference
+  // TRT engine will be created and cached
+  // TRT profile will be created and cached only for dynamic input shape
+  // Data in profile,
+  // X: 1, 3, 3, 2, 2, 2
+  // Y: 1, 3, 3, 2, 2, 2
+  // Z: 1, 3, 3, 2, 2, 2
+  RunSession(session_object4, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+
+  /*
+   * Test case 5: Dump context model with embed_model = 1
+   */
+  InferenceSession session_object5{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params5;
+  params5.trt_dump_ep_context_model = 1;
+  params5.trt_ep_context_embed_mode = 1;
+  params5.trt_ep_context_file_path = "EP_Context_model_2.onnx";
+  model_name = "EPContextNode_test.onnx";
+  execution_provider = TensorrtExecutionProviderWithOptions(&params5);
+  EXPECT_TRUE(session_object5.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object5.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object5.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  /*
+   * Test case 6: Run context model with embed_model = 1 (created from case 5)
+   */
+  InferenceSession session_object6{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params6;
+  params6.trt_ep_context_embed_mode = 1;
+  model_name = params5.trt_ep_context_file_path;
+  execution_provider = TensorrtExecutionProviderWithOptions(&params6);
+  EXPECT_TRUE(session_object6.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object6.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object6.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  // run inference
+  // TRT engine will be created and cached
+  // TRT profile will be created and cached only for dynamic input shape
+  // Data in profile,
+  // X: 1, 3, 3, 2, 2, 2
+  // Y: 1, 3, 3, 2, 2, 2
+  // Z: 1, 3, 3, 2, 2, 2
+  RunSession(session_object6, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+}
+
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   std::string model_name = "testdata/trt_plugin_custom_op_test.onnx";
   SessionOptions so;
@@ -448,6 +645,8 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
     params.trt_engine_cache_enable = 1;
     params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
+    params.trt_dump_ep_context_model = 1;
+    params.trt_ep_context_file_path = "EP_Context_model.onnx";
     std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
     auto status = session_object.Load(model_name);
@@ -575,6 +774,9 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
     // Verify on cache with customized prefix
     ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
+
+    // Verify EP context model with user provided name
+    ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
 
     if (input_type.compare("static") == 0) {
       // Can't run inference since input shape changes but the engine is built with static input

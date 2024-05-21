@@ -68,13 +68,14 @@ stages:
           BuildConfig: Debug
           MachinePool: 'onnxruntime-Win-CPU-2022'
           WithCache: false
+          InstallONNX: false
           Today: $(TODAY)
 
       - task: PythonScript@0
         displayName: 'Build and Test'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+          arguments: --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
           workingDirectory: '$(Build.BinariesDirectory)'
 
 
@@ -155,7 +156,7 @@ stages:
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
-        
+
 - stage: x86_release
   dependsOn: []
   jobs:
@@ -256,5 +257,3 @@ stages:
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
-
-

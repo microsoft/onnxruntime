@@ -14,8 +14,8 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 struct PriorityNodeCompare {
   inline bool IsHighPri(const Node* n) const {
     // local statics so we can compare std::strings in the checks
-    static const std::string shape_op("Shape");
-    static const std::string size_op("Size");
+    static constexpr std::string_view shape_op("Shape");
+    static constexpr std::string_view size_op("Size");
 
     const auto& op_type = n->OpType();
     return op_type == shape_op || op_type == size_op;
@@ -26,24 +26,17 @@ struct PriorityNodeCompare {
   // If return true, n2 will be output first
   bool operator()(const Node* n1, const Node* n2) const {
     // nodes in global high priority list will be output first
-    if (IsHighPri(n1) != IsHighPri(n2)) {
-      return IsHighPri(n2);
+    const bool isN1HighPri = IsHighPri(n1);
+    const bool isN2HighPri = IsHighPri(n2);
+    if (isN1HighPri != isN2HighPri) {
+      return isN2HighPri;
     }
 
     // nodes with lower priority value will be output first
-    if (n1->Priority() != n2->Priority()) {
-      return n1->Priority() > n2->Priority();
-    }
-
-    // nodes of forward pass will be output first
-    auto n1_attrs = n1->GetAttributes();
-    auto n2_attrs = n2->GetAttributes();
-    int64_t n1_is_forward = static_cast<int64_t>(n1_attrs.find(kBackwardNodeAttributeName) == n1_attrs.cend()) ||
-                            (n1_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
-    int64_t n2_is_forward = static_cast<int64_t>(n2_attrs.find(kBackwardNodeAttributeName) == n2_attrs.cend()) ||
-                            (n2_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
-    if (n1_is_forward != n2_is_forward) {
-      return n2_is_forward > n1_is_forward;
+    const auto n1_priority = n1->Priority();
+    const auto n2_priority = n2->Priority();
+    if (n1_priority != n2_priority) {
+      return n1_priority > n2_priority;
     }
 
     // otherwise, nodes with lower index will be output first
@@ -68,7 +61,10 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
                       : ConstGraphNodes::NodeFilterFunc(nullptr))},
       filter_info_{filter_info} {
   std::vector<const Node*> leaf_nodes;
+
 #ifdef ENABLE_TRAINING
+  const Node* yield_node = nullptr;
+
   // Keep the info of shape and size nodes and their parents so that after topological sort, we can move them
   // right after their parents. This is to make sure the shape and size nodes are executed right after their parents
   // so it's possible the input tensor memory can be released as soon as possible. This is especially important
@@ -95,6 +91,10 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
         shape_size_parents[parent].push_back(node.Index());
       }
     }
+
+    if (node.OpType() == "YieldOp") {
+      yield_node = &node;
+    }
 #endif
   }
 
@@ -105,6 +105,7 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
         nodes_in_topological_order_.push_back(n->Index());
       },
       NodeCompare());
+
 #ifdef ENABLE_TRAINING
   auto original = std::move(nodes_in_topological_order_);
   nodes_in_topological_order_.reserve(original.size());
@@ -122,13 +123,33 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
       }
     }
   }
+
 #endif
+
 #if !defined(ORT_MINIMAL_BUILD)
-  graph.KahnsTopologicalSort(
+  graph_->KahnsTopologicalSort(
       [this](const Node* n) {
         nodes_in_topological_order_with_priority_.push_back(n->Index());
       },
       PriorityNodeCompare());
+#endif
+
+#ifdef ENABLE_TRAINING
+  if (yield_node != nullptr) {
+    std::vector<NodeIndex> node_orders;
+    const size_t num_of_nodes = NumberOfNodes();
+    node_orders.reserve(num_of_nodes);
+    graph_->MemoryEfficientTopologicalSort(
+        yield_node,
+        shape_size_parents,
+        node_orders);
+
+    ORT_ENFORCE(node_orders.size() == num_of_nodes,
+                "Topological sort failed.", node_orders.size(), "!=", num_of_nodes);
+    nodes_in_mem_efficient_topological_order_ = std::move(node_orders);
+  } else {
+    nodes_in_mem_efficient_topological_order_ = nodes_in_topological_order_;
+  }
 #endif
 
   if (filter_info_) {
@@ -189,9 +210,17 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
 
 #if !defined(ORT_MINIMAL_BUILD)
     auto orig_priority_order = std::move(nodes_in_topological_order_with_priority_);
-    nodes_in_topological_order_with_priority_.reserve(filter_info->nodes.size());
+    nodes_in_topological_order_with_priority_.reserve(filter_info_->nodes.size());
     std::copy_if(orig_priority_order.cbegin(), orig_priority_order.cend(),
                  std::back_inserter(nodes_in_topological_order_with_priority_),
+                 [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
+#endif
+
+#ifdef ENABLE_TRAINING
+    auto orig_mem_efficient_order = std::move(nodes_in_mem_efficient_topological_order_);
+    nodes_in_mem_efficient_topological_order_.reserve(filter_info_->nodes.size());
+    std::copy_if(orig_mem_efficient_order.cbegin(), orig_mem_efficient_order.cend(),
+                 std::back_inserter(nodes_in_mem_efficient_topological_order_),
                  [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
 #endif
   }
@@ -212,6 +241,8 @@ const std::string& GraphViewer::Description() const noexcept {
 
 bool GraphViewer::GetInitializedTensor(const std::string& tensor_name,
                                        const ONNX_NAMESPACE::TensorProto*& value) const {
+  value = nullptr;
+
   // if we are using filtered subgraph, the initializer has to be part of the subgraph
   if (filter_info_ != nullptr && filtered_initializers_.find(tensor_name) == filtered_initializers_.cend())
     return false;
@@ -283,9 +314,17 @@ const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder(ExecutionO
   switch (order) {
     case ExecutionOrder::DEFAULT:
       return nodes_in_topological_order_;
-#if !defined(ORT_MINIMAL_BUILD)
     case ExecutionOrder::PRIORITY_BASED:
+#if !defined(ORT_MINIMAL_BUILD)
       return nodes_in_topological_order_with_priority_;
+#else
+      ORT_THROW("Priority based topological order is not enabled for ORT minimal build.");
+#endif
+    case ExecutionOrder::MEMORY_EFFICIENT:
+#ifdef ENABLE_TRAINING
+      return nodes_in_mem_efficient_topological_order_;
+#else
+      ORT_THROW("Memory efficient topological order is not enabled for non-training build.");
 #endif
     default:
       ORT_THROW("Invalid ExecutionOrder");

@@ -18,4 +18,5 @@ enum CudaResource : int {
   cudnn_conv1d_pad_to_nc1d_t,
   enable_skip_layer_norm_strict_mode_t,
   prefer_nhwc_t,
+  use_tf32_t,
 };

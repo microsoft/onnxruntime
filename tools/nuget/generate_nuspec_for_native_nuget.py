@@ -219,7 +219,7 @@ def add_common_dependencies(xml_text, package_name, version):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.13.1"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.14.1"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -280,6 +280,10 @@ def generate_dependencies(xml_text, package_name, version):
             xml_text.append('<group targetFramework="net6.0-macos12.3">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
+            # Support net6.0-maccatalyst
+            xml_text.append('<group targetFramework="net6.0-maccatalyst14.0">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
         # Support Native C++
         if include_dml:
             xml_text.append('<group targetFramework="native">')
@@ -324,10 +328,12 @@ def generate_metadata(line_list, args):
     generate_owners(metadata_list, "Microsoft")
     generate_description(metadata_list, args.package_name)
     generate_copyright(metadata_list, "\xc2\xa9 " + "Microsoft Corporation. All rights reserved.")
-    generate_tags(
-        metadata_list, "ONNX ONNX Runtime Machine Learning"
-    ) if "Microsoft.ML.OnnxRuntime.Training." in args.package_name else generate_tags(
-        metadata_list, "native ONNX ONNXRuntime-Training Learning-on-The-Edge On-Device-Training MachineLearning"
+    (
+        generate_tags(metadata_list, "ONNX ONNX Runtime Machine Learning")
+        if "Microsoft.ML.OnnxRuntime.Training." in args.package_name
+        else generate_tags(
+            metadata_list, "native ONNX ONNXRuntime-Training Learning-on-The-Edge On-Device-Training MachineLearning"
+        )
     )
     generate_icon(metadata_list, "ORT_icon_for_light_bg.png")
     generate_license(metadata_list)
@@ -482,7 +488,7 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\dnnl\\dnnl_provider_factory.h")
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\dnnl\\dnnl_provider_options.h")
             + '" target="build\\native\\include" />'
         )
 
@@ -558,6 +564,33 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime_perf_test.exe") + runtimes + " />"
         )
+
+    if is_qnn_package:
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnCpu.dll") + runtimes + " />")
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtp.dll") + runtimes + " />")
+        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnSaver.dll") + runtimes + " />")
+        if args.target_architecture != "x64":
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnSystem.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpPrepare.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpV73Stub.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV73Skel.so") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "libqnnhtpv73.cat") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpV68Stub.dll") + runtimes + " />"
+            )
+            files_list.append(
+                "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV68Skel.so") + runtimes + " />"
+            )
 
     is_ado_packaging_build = False
     # Process runtimes
@@ -732,7 +765,7 @@ def generate_files(line_list, args):
         )
 
     if args.execution_provider == "openvino":
-        openvino_path = get_env_var("INTEL_OPENVINO_DIR")
+        get_env_var("INTEL_OPENVINO_DIR")
         files_list.append(
             "<file src="
             + '"'
@@ -749,32 +782,6 @@ def generate_files(line_list, args):
             + args.target_architecture
             + '\\native" />'
         )
-
-        if is_windows():
-            dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
-            tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
-
-            for dll_element in os.listdir(dll_list_path):
-                if dll_element.endswith("dll"):
-                    files_list.append(
-                        "<file src="
-                        + '"'
-                        + os.path.join(dll_list_path, dll_element)
-                        + runtimes_target
-                        + args.target_architecture
-                        + '\\native" />'
-                    )
-
-            for tbb_element in os.listdir(tbb_list_path):
-                if tbb_element.endswith("dll"):
-                    files_list.append(
-                        "<file src="
-                        + '"'
-                        + os.path.join(tbb_list_path, tbb_element)
-                        + runtimes_target
-                        + args.target_architecture
-                        + '\\native" />'
-                    )
 
     if args.execution_provider == "cuda" or is_cuda_gpu_win_sub_package and not is_ado_packaging_build:
         files_list.append(
@@ -1013,6 +1020,20 @@ def generate_files(line_list, args):
                 args.package_name + ".targets",
             )
 
+            net6_maccatalyst_source_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-maccatalyst",
+                "_._",
+            )
+
+            net6_maccatalyst_target_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-maccatalyst", "_._"
+            )
+
             net6_macos_source_targets = os.path.join(
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-macos", "targets.xml"
             )
@@ -1030,6 +1051,7 @@ def generate_files(line_list, args):
             os.system(copy_command + " " + xamarinios_source_targets + " " + xamarinios_target_targets)
             os.system(copy_command + " " + net6_android_source_targets + " " + net6_android_target_targets)
             os.system(copy_command + " " + net6_ios_source_targets + " " + net6_ios_target_targets)
+            os.system(copy_command + " " + net6_maccatalyst_source_targets + " " + net6_maccatalyst_target_targets)
             os.system(copy_command + " " + net6_macos_source_targets + " " + net6_macos_target_targets)
 
             files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
@@ -1052,6 +1074,15 @@ def generate_files(line_list, args):
             files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net6.0-ios15.4" />')
             files_list.append(
                 "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net6.0-ios15.4" />'
+            )
+            files_list.append(
+                "<file src=" + '"' + net6_maccatalyst_target_targets + '" target="build\\net6.0-maccatalyst14.0" />'
+            )
+            files_list.append(
+                "<file src="
+                + '"'
+                + net6_maccatalyst_target_targets
+                + '" target="buildTransitive\\net6.0-maccatalyst14.0" />'
             )
 
             files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net6.0-macos12.3" />')
@@ -1134,6 +1165,13 @@ def generate_files(line_list, args):
         + os.path.join(args.sources_path, "ORT_icon_for_light_bg.png")
         + '" target="ORT_icon_for_light_bg.png" />'
     )
+    if is_qnn_package:
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, "Qualcomm AI Hub Proprietary License.pdf")
+            + '" target="Qualcomm AI Hub Proprietary License.pdf" />'
+        )
     files_list.append("</files>")
 
     line_list += files_list

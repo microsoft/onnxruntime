@@ -30,7 +30,7 @@ jobs:
           java-version: '11'
           distribution: 'adopt'
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
+        uses: gradle/gradle-build-action@v3
         with:
           build-root-directory: java
           gradle-executable: java/gradlew

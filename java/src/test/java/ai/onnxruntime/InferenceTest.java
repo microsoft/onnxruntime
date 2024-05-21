@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -651,6 +651,12 @@ public class InferenceTest {
     runProvider(OrtProvider.CORE_ML);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
+  public void testDirectML() throws OrtException {
+    runProvider(OrtProvider.DIRECT_ML);
+  }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
@@ -672,8 +678,11 @@ public class InferenceTest {
         if (provider == OrtProvider.CORE_ML) {
           // CoreML gives slightly different answers on a 2020 13" M1 MBP
           assertArrayEquals(expectedOutput, resultArray, 1e-2f);
+        } else if (provider == OrtProvider.CUDA) {
+          // CUDA gives slightly different answers on a H100 with CUDA 12.2
+          assertArrayEquals(expectedOutput, resultArray, 1e-3f);
         } else {
-          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+          assertArrayEquals(expectedOutput, resultArray, 1e-5f);
         }
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to execute a scoring operation", e);
@@ -1926,6 +1935,8 @@ public class InferenceTest {
           options.addNnapi();
           break;
         case DIRECT_ML:
+          options.setMemoryPatternOptimization(false);
+          options.setExecutionMode(ExecutionMode.SEQUENTIAL);
           options.addDirectML(0);
           break;
         case ACL:

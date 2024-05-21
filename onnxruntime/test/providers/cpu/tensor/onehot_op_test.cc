@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/trt_op_test_utils.h"
 
 using namespace std;
 
@@ -36,7 +37,8 @@ TEST(OneHotOpTest, DefaultAxis_float_float_float /*indices, output, depth*/) {
                          0., 0., 1., 0., 0., 0., 0., 0., 0., 0.,
                          0., 0., 0., 0., 1., 0., 0., 0., 0., 0.,
                          0., 0., 0., 0., 0., 0., 1., 0., 0., 0.});
-  test.Run();
+  // TRT EP segmentation fault in A100
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(OneHotOpTest, DefaultAxis_int64_int32_float /*indices, output, depth*/) {
@@ -51,7 +53,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_int32_float /*indices, output, depth*/) {
                            0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
                            0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
                            0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(OneHotOpTest, DefaultAxis_int64_float_int64 /*indices, output, depth*/) {
@@ -81,7 +83,7 @@ TEST(OneHotOpTest, DefaultAxis_int32_float_float /*indices, output, depth*/) {
                          0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                          0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                          0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(OneHotOpTest, DefaultAxis_int32_float_int32 /*indices, output, depth*/) {
@@ -231,7 +233,7 @@ TEST(OneHotOpTest, DefaultAxis_float_float_float_NonZeroOffValue /*indices, outp
                          2., 2., 3., 2., 2., 2., 2., 2., 2., 2.,
                          2., 2., 2., 2., 3., 2., 2., 2., 2., 2.,
                          2., 2., 2., 2., 2., 2., 3., 2., 2., 2.});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(OneHotOpTest, DefaultAxis_int64_int32_float_NonZeroOffValue /*indices, output, depth*/) {
@@ -246,7 +248,7 @@ TEST(OneHotOpTest, DefaultAxis_int64_int32_float_NonZeroOffValue /*indices, outp
                            2, 2, 3, 2, 2, 2, 2, 2, 2, 2,
                            2, 2, 2, 2, 3, 2, 2, 2, 2, 2,
                            2, 2, 2, 2, 2, 2, 3, 2, 2, 2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(OneHotOpTest, DefaultAxis_int64_float_int64_NonZeroOffValue /*indices, output, depth*/) {
@@ -276,7 +278,7 @@ TEST(OneHotOpTest, DefaultAxis_int32_float_float_NonZeroOffValue /*indices, outp
                          2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
                          2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
                          2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(OneHotOpTest, DefaultAxis_int32_float_int32_NonZeroOffValue /*indices, output, depth*/) {

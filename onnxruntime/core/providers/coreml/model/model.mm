@@ -19,9 +19,11 @@
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/platform/env.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/model/objc_str_utils.h"
 #include "core/providers/coreml/shape_utils.h"
 
 // force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
@@ -32,13 +34,6 @@ using namespace onnxruntime;
 using namespace onnxruntime::coreml;
 
 namespace {
-// Converts a UTF8 const char* to an NSString. Throws on failure.
-NSString* _Nonnull Utf8StringToNSString(const char* utf8_str) {
-  NSString* result = [NSString stringWithUTF8String:utf8_str];
-  ORT_ENFORCE(result != nil, "NSString conversion failed.");
-  return result;
-}
-
 /**
  * Computes the static output shape used to allocate the output tensor.
  * `inferred_shape` is the inferred shape known at model compile time. It may contain dynamic dimensions (-1).
@@ -164,7 +159,7 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
                   (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
 
     MLFeatureValue* feature_value = [MLFeatureValue featureValueWithMultiArray:multi_array];
-    NSString* feature_name = Utf8StringToNSString(name.c_str());
+    NSString* feature_name = util::Utf8StringToNSString(name.c_str());
     feature_dictionary[feature_name] = feature_value;
   }
 
@@ -252,14 +247,14 @@ NS_ASSUME_NONNULL_BEGIN
                 coreml_flags:(uint32_t)coreml_flags;
 - (void)cleanup;
 - (void)dealloc;
-- (Status)loadModel API_AVAILABLE_OS_VERSIONS;
+- (Status)loadModel API_AVAILABLE_COREML3;
 - (Status)predict:(const std::unordered_map<std::string, OnnxTensorData>&)inputs
                   outputs:(const std::unordered_map<std::string, OnnxTensorInfo>&)outputs
     getOutputTensorDataFn:(const GetOutputTensorMutableRawDataFn&)
                               get_output_tensor_mutable_raw_data_fn
-    API_AVAILABLE_OS_VERSIONS;
+    API_AVAILABLE_COREML3;
 
-@property(nullable) MLModel* model API_AVAILABLE_OS_VERSIONS;
+@property(nullable) MLModel* model API_AVAILABLE_COREML3;
 
 @end
 
@@ -269,7 +264,7 @@ NS_ASSUME_NONNULL_BEGIN
                       logger:(const logging::Logger&)logger
                 coreml_flags:(uint32_t)coreml_flags {
   if (self = [super init]) {
-    coreml_model_path_ = [NSString stringWithUTF8String:path.c_str()];
+    coreml_model_path_ = util::Utf8StringToNSString(path.c_str());
     logger_ = &logger;
     coreml_flags_ = coreml_flags;
   }
@@ -286,6 +281,14 @@ NS_ASSUME_NONNULL_BEGIN
     }
     compiled_model_path_ = nil;
   }
+
+#if !defined(NDEBUG)
+  std::string path_override = Env::Default().GetEnvironmentVar(util::kOverrideModelOutputDirectoryEnvVar);
+  if (!path_override.empty()) {
+    // don't cleanup
+    coreml_model_path_ = nil;
+  }
+#endif
 
   if (coreml_model_path_ != nil) {
     error = nil;
@@ -308,6 +311,10 @@ NS_ASSUME_NONNULL_BEGIN
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create model URL from path");
   }
 
+  // TODO: Update this to version with callback handler as the API used here is deprecated.
+  // https://developer.apple.com/documentation/coreml/mlmodel/3929553-compilemodelaturl
+  // As we call loadModel during EP Compile there shouldn't be an issue letting the actual compile run in the
+  // background. We will have to check for completion in `predict` and block until it is done.
   NSError* error = nil;
   NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
 
@@ -358,7 +365,7 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (const auto& [output_name, output_tensor_info] : outputs) {
       MLFeatureValue* output_value =
-          [output_features featureValueForName:Utf8StringToNSString(output_name.c_str())];
+          [output_features featureValueForName:util::Utf8StringToNSString(output_name.c_str())];
 
       if (output_value == nil) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_features has no value for ", output_name);
@@ -454,7 +461,7 @@ Status Execution::LoadModel() {
     return Status::OK();
   }
 
-  if (HAS_VALID_BASE_OS_VERSION) {
+  if (HAS_COREML3_OR_LATER) {
     Status status{};
     @autoreleasepool {
       status = [execution_ loadModel];
@@ -471,7 +478,7 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
                           const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn) {
   ORT_RETURN_IF_NOT(model_loaded, "Execution::Predict requires Execution::LoadModel");
 
-  if (HAS_VALID_BASE_OS_VERSION) {
+  if (HAS_COREML3_OR_LATER) {
     @autoreleasepool {
       return [execution_ predict:inputs
                          outputs:outputs
@@ -482,8 +489,20 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::Predict requires macos 10.15+ or ios 13+");
 }
 
-Model::Model(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
-    : execution_(std::make_unique<Execution>(path, logger, coreml_flags)) {
+Model::Model(const std::string& path,
+             std::vector<std::string>&& model_input_names,
+             std::vector<std::string>&& model_output_names,
+             std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
+             std::unordered_set<std::string>&& scalar_outputs,
+             std::unordered_set<std::string>&& int64_outputs,
+             const logging::Logger& logger,
+             uint32_t coreml_flags)
+    : execution_(std::make_unique<Execution>(path, logger, coreml_flags)),
+      model_input_names_(std::move(model_input_names)),
+      model_output_names_(std::move(model_output_names)),
+      input_output_info_(std::move(input_output_info)),
+      scalar_outputs_(std::move(scalar_outputs)),
+      int64_outputs_(std::move(int64_outputs)) {
 }
 
 Model::~Model() {}
@@ -497,25 +516,5 @@ Status Model::Predict(const std::unordered_map<std::string, OnnxTensorData>& inp
                       const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn) {
   return execution_->Predict(inputs, outputs, get_output_tensor_mutable_raw_data_fn);
 }
-
-bool Model::IsScalarOutput(const std::string& output_name) const {
-  return Contains(scalar_outputs_, output_name);
-}
-
-bool Model::IsInt64Output(const std::string& output_name) const {
-  return Contains(int64_outputs_, output_name);
-}
-
-const OnnxTensorInfo* Model::TryGetInputOutputInfo(const std::string& name) const {
-  const auto info_it = input_output_info_.find(name);
-  return info_it != input_output_info_.end() ? &info_it->second : nullptr;
-}
-
-const OnnxTensorInfo& Model::GetInputOutputInfo(const std::string& name) const {
-  const auto* info = TryGetInputOutputInfo(name);
-  ORT_ENFORCE(info != nullptr, "Failed to get info for input/output: ", name);
-  return *info;
-}
-
 }  // namespace coreml
 }  // namespace onnxruntime

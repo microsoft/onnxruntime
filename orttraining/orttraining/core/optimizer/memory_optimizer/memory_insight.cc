@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "core/common/string_utils.h"
+#include "core/framework/random_seed.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
@@ -38,18 +40,14 @@ constexpr const int kTitleWidthInSecondColumn = 15;
  * @param fw_op_output_arg_used_map Collected activation usage mapping.
  *   - key: node arg name
  *   - value: a pair of bool, representing whether the activation is used by forward nodes or by backward nodes.
- * @param is_forward_nodes Collected node is forward pass op mapping.
  */
 void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
                               const ptrdiff_t boundary_op_order_in_topological_sort,
                               const InlinedHashMap<NodeIndex, size_t>&
                                   node_index_to_its_order_in_topological_sort_map,
-                              ActivationUsedMap& fw_op_output_arg_used_map,
-                              InlinedHashMap<const Node*, bool>& is_forward_nodes) {
+                              ActivationUsedMap& fw_op_output_arg_used_map) {
   ORT_ENFORCE(boundary_op_order_in_topological_sort >= 0);
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
-  is_forward_nodes.clear();
-  is_forward_nodes.reserve(node_ids.size());
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(TOPOLOGICAL_SORT_ALGORITHM);
 
   auto is_forward_pass_operator = [](ptrdiff_t op_order_in_topological_sort,
                                      ptrdiff_t boundary_op_order_in_topological_sort) -> bool {
@@ -67,11 +65,8 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
     const Node& node = *p_node;
     bool is_forward_op = is_forward_pass_operator(static_cast<ptrdiff_t>(i), boundary_op_order_in_topological_sort);
     if (!is_forward_op) {
-      is_forward_nodes[p_node] = false;
       continue;
     }
-
-    is_forward_nodes[p_node] = true;
 
     for (auto& output_arg : node.OutputDefs()) {
       if (!output_arg->Exists() || output_arg->Name().empty()) {
@@ -107,26 +102,22 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
  *
  * @param graph_viewer Graph to iterate.
  * @param boundary_op_order_in_topological_sort The order of the boundary op in the topological sort.
- * @param fw_op_output_arg_used_map Activation usage mapping.
- * @param candidate_output_args_map Candidate activations, which are consumed by both fw and bw ops.
- * @param is_forward_nodes Whether a node is a forward node.
+ * @param candidate_output_args_map Candidate activations generated in forward, and are consumed by backward ops.
  * @param logger Logger.
  * @return Status
  */
 
 Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
                                       const ptrdiff_t boundary_op_order_in_topological_sort,
-                                      ActivationUsedMap& fw_op_output_arg_used_map,
                                       InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                           candidate_output_args_map,
-                                      InlinedHashMap<const Node*, bool>& is_forward_nodes,
                                       const logging::Logger& logger) {
   if (boundary_op_order_in_topological_sort < 0) {
     MO_LOG_DEBUG_INFO(logger, "No boundary op found. Skip memory optimization.");
     return Status::OK();
   }
 
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(TOPOLOGICAL_SORT_ALGORITHM);
 
   InlinedHashMap<NodeIndex, size_t> node_index_to_its_order_in_topological_sort_map;
   for (size_t i = 0; i < node_ids.size(); ++i) {
@@ -138,19 +129,20 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
     node_index_to_its_order_in_topological_sort_map[p_node->Index()] = i;
   }
 
+  ActivationUsedMap fw_op_output_arg_used_map;
   GetForwardOutputUsageMap(graph_viewer, boundary_op_order_in_topological_sort,
                            node_index_to_its_order_in_topological_sort_map,
-                           fw_op_output_arg_used_map,
-                           is_forward_nodes);
+                           fw_op_output_arg_used_map);
 
   for (auto& kv : fw_op_output_arg_used_map) {
-    // used by fw and bw, then it is a candidate.
-    if (kv.second.first && kv.second.second) {
-      const Node* n = graph_viewer.GetProducerNode(kv.first);
+    const auto& fw_out_arg = kv.first;
+    const Node* n = graph_viewer.GetProducerNode(fw_out_arg);
+    // Node run in forward pass, and the result is used by bw, then it is a candidate.
+    if (kv.second.second) {
       ORT_ENFORCE(n, "Activation should have a producer node");
       size_t k = 0;
       for (k = 0; k < n->OutputDefs().size(); ++k) {
-        if (n->OutputDefs()[k]->Name().compare(kv.first) == 0) {
+        if (n->OutputDefs()[k]->Name().compare(fw_out_arg) == 0) {
           break;
         }
       }
@@ -169,52 +161,6 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified) {
-  // Find the YieldOp node.
-  Node* yield_op_node = nullptr;
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "YieldOp") {
-      yield_op_node = &node;
-      break;
-    }
-  }
-
-  if (yield_op_node == nullptr) {
-    return Status::OK();
-  }
-
-  // Reverse BFS from YieldOp to find all "forward" nodes.
-  std::vector<const Node*> fw_nodes;
-  std::vector<const Node*> end_nodes{yield_op_node};
-  graph.ReverseDFSFrom(
-      end_nodes,
-      nullptr,
-      [&fw_nodes](const Node* n) {
-        fw_nodes.push_back(n);
-      },
-      nullptr);
-
-  // Set the attribute to true for all backward nodes.
-  for (auto& node : graph.Nodes()) {
-    if (std::find(fw_nodes.begin(), fw_nodes.end(), &node) == fw_nodes.end()) {
-      auto& attrs = node.GetAttributes();
-      if (attrs.count(kBackwardNodeAttributeName)) {
-        continue;
-      }
-      node.AddAttribute(kBackwardNodeAttributeName, static_cast<int64_t>(1));
-      modified = true;
-    } else {
-      auto& attrs = node.GetAttributes();
-      if (attrs.count(kBackwardNodeAttributeName)) {
-        node.ClearAttribute(kBackwardNodeAttributeName);
-        modified = true;
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
 Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       const ProbeConfig& probe_config,
                                       const logging::Logger& logger,
@@ -224,7 +170,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                           candidate_output_args_map,
                                       MemoryOptimizationPlanner& memory_opt_planner) {
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(TOPOLOGICAL_SORT_ALGORITHM);
 
   // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
   yield_op_order_in_topological_sort = -1;
@@ -245,18 +191,19 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
     node_index_to_its_order_in_topological_sort_map[p_node->Index()] = static_cast<ptrdiff_t>(i);
   }
 
-  ActivationUsedMap fw_op_output_arg_used_map;
-
-  InlinedHashMap<const Node*, bool> is_forward_nodes;
   ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph_viewer,
                                                      yield_op_order_in_topological_sort,
-                                                     fw_op_output_arg_used_map,
                                                      candidate_output_args_map,
-                                                     is_forward_nodes,
                                                      logger));
 
-  InlinedHashSet<const Node*> layer_boundary_ln_nodes;
-  FindLayerBoundaryLayerNormNodes(graph_viewer, logger, layer_boundary_ln_nodes);
+  InlinedVector<const Node*> layer_boundary_ln_nodes;
+  FindLayerBoundaryLayerNormNodes(graph_viewer, logger, node_index_to_its_order_in_topological_sort_map,
+                                  yield_op_order_in_topological_sort, layer_boundary_ln_nodes);
+
+  if (probe_config.enable_transformer_layer_as_boundary && layer_boundary_ln_nodes.size() == 0) {
+    LOGS(logger, WARNING) << "No transformer layer boundary nodes found, this might cause memory optimization "
+                             "not working as expected. Please check the model and the configuration.";
+  }
 
   // The first pass - find the candidate subgraphs.
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
@@ -274,7 +221,6 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
         CheckNodeForRecompute(graph_viewer,
                               *p_node,
                               probe_config,
-                              fw_op_output_arg_used_map,
                               node_index_to_its_order_in_topological_sort_map,
                               candidate_output_args_map,
                               layer_boundary_ln_nodes,
@@ -284,13 +230,15 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
       memory_opt_planner.AddNodeOptimizationPlan(p_node, std::move(recompute_plan));
     }
 
-    if (can_compromise_stashed_activation) {
+    // Only detect compromise recompute when recompute is not found, in case there are multiple recompute plans
+    // for the same named activations, then user might enable those conflicting recompute plans by mistakes.
+    if (recompute_plan == nullptr && can_compromise_stashed_activation) {
       MO_LOG_DEBUG_INFO(logger, "Searching Node " + p_node->Name() + "(" + p_node->OpType() +
                                     ") for compromised recompute");
       // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist
       // during backward pass, then we can consider to recompute them.
       std::unique_ptr<NodeRecomputePlan> recompute_with_compromise_plan =
-          CheckNodeForRecompute(graph_viewer, *p_node, probe_config, fw_op_output_arg_used_map,
+          CheckNodeForRecompute(graph_viewer, *p_node, probe_config,
                                 node_index_to_its_order_in_topological_sort_map,
                                 candidate_output_args_map,
                                 layer_boundary_ln_nodes,
@@ -654,8 +602,7 @@ void FormatRecomputeMemoryRecords(int option_index,
         ", actual applied count=" + std::to_string(actual_count));
   } else {
     rows.push_back(empty_first_col + ToFixedLengthString("  Status", kTitleWidthInSecondColumn) +
-                   ": Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=" +
-                   subgraph_str + ":" + std::to_string(static_cast<int>(opt_type)) + ":-1");
+                   ": Disabled.");
   }
 
   std::string activation_str = empty_first_col + "  Stashed Activations: ";
@@ -694,7 +641,7 @@ void FormatRecomputeMemoryRecords(int option_index,
 
 std::string SerializeMemoryRecords(
     const std::vector<std::pair<std::string, MemoryRecord>>& records_grouped_by_node_cluster_id,
-    std::string_view user_config) {
+    std::string_view memory_optimization_config_file_path) {
   InlinedVector<std::string> rows;
   rows.push_back(kTableBorder);
   rows.push_back("|" + ToFixedLengthString("Freq", kFirstColumnWidth) +
@@ -750,7 +697,10 @@ std::string SerializeMemoryRecords(
   std::string table_border_full(max_length, '=');
   std::ostringstream summary;
   summary << std::endl;
-  summary << MakeString("MemoryInsight Summary - User config: ", (user_config.empty() ? "not provided" : user_config))
+  summary << MakeString("MemoryInsight Summary - User config file path: ",
+                        (memory_optimization_config_file_path.empty()
+                             ? "not provided"
+                             : memory_optimization_config_file_path))
           << std::endl;
   for (auto& row : rows) {
     if (row == kTableRowSeparator) {
@@ -768,8 +718,9 @@ std::string SerializeMemoryRecords(
 }
 
 std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
-                                             std::string_view memory_optimization_config,
+                                             std::string_view memory_optimization_config_file_path,
                                              std::string_view recompute_probe_config,
+                                             const bool return_opportunity_table,
                                              const logging::Logger& logger,
                                              std::map<std::string, std::pair<std::string, int>>&
                                                  cluster_id_combinations_to_saved_symbolic_byte_map,
@@ -800,8 +751,8 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
 
   NodeToClusterApplyContextMap node_to_apply_context_map;
 
-  if (!memory_optimization_config.empty()) {
-    ORT_ENFORCE(ParseOptimizationConfigFromString(memory_optimization_config, cluster_id_to_config_map)
+  if (!memory_optimization_config_file_path.empty()) {
+    ORT_ENFORCE(ParseOptimizationConfigFromString(memory_optimization_config_file_path, cluster_id_to_config_map)
                     .IsOK());
     InlinedHashMap<const Node*, std::shared_ptr<NodeOptimizationPlanBase>> node_to_opt_plan_map;
     ORT_ENFORCE(memory_opt_planner.FinalizeNodePlansFromUserConfig(cluster_id_to_config_map,
@@ -817,12 +768,16 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
                     .IsOK());
   }
 
-  std::vector<std::pair<std::string, MemoryRecord>> records;
-  GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, node_to_apply_context_map, records);
-
   GetMemorySavingSymbolicString(memory_opt_planner, logger, cluster_id_combinations_to_saved_symbolic_byte_map);
 
-  return SerializeMemoryRecords(records, memory_optimization_config);
+  if (return_opportunity_table) {
+    std::vector<std::pair<std::string, MemoryRecord>> records;
+    GetMemoryRecordsGroupedByNodeClusterId(memory_opt_planner, node_to_apply_context_map, records);
+    return SerializeMemoryRecords(records, memory_optimization_config_file_path);
+  }
+
+  // Otherwise, return empty.
+  return "";
 }
 
 }  // namespace onnxruntime::optimizer::memory_optimizer

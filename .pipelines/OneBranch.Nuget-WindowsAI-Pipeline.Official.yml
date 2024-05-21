@@ -29,6 +29,8 @@ extends:
     git:
       submodules: false
     globalSdl: # https://aka.ms/obpipelines/sdl
+      asyncSdl:
+        enabled: false
       tsa:
         enabled: true
       prefast:

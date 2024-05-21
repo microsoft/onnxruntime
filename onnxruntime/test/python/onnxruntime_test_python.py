@@ -312,6 +312,7 @@ class TestInferenceSession(unittest.TestCase):
             option["trt_engine_cache_path"] = engine_cache_path
             force_sequential_engine_build = "true"
             option["trt_force_sequential_engine_build"] = force_sequential_engine_build
+            option["user_compute_stream"] = "1"
             sess.set_providers(["TensorrtExecutionProvider"], [option])
 
             options = sess.get_provider_options()
@@ -326,6 +327,8 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_engine_cache_enable"], "1")
             self.assertEqual(option["trt_engine_cache_path"], str(engine_cache_path))
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
+            self.assertEqual(option["user_compute_stream"], "1")
+            self.assertEqual(option["has_user_compute_stream"], "1")
 
             from onnxruntime.capi import _pybind_state as C
 
@@ -353,6 +356,19 @@ class TestInferenceSession(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 sess.set_providers(['TensorrtExecutionProvider'], [option])
             """
+
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    s = torch.cuda.Stream()
+                    option["user_compute_stream"] = str(s.cuda_stream)
+                    sess.set_providers(["TensorrtExecutionProvider"], [option])
+                    options = sess.get_provider_options()
+                    self.assertEqual(options["TensorrtExecutionProvider"]["user_compute_stream"], str(s.cuda_stream))
+                    self.assertEqual(options["TensorrtExecutionProvider"]["has_user_compute_stream"], "1")
+            except ImportError:
+                print("torch is not installed, skip testing setting user_compute_stream from torch cuda stream")
 
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             cuda_success = 0
@@ -414,6 +430,8 @@ class TestInferenceSession(unittest.TestCase):
                             str(option_value),
                         )
 
+                test_get_and_set_option_with_values("enable_cuda_graph", ["1", "0"])
+
                 test_get_and_set_option_with_values("arena_extend_strategy", ["kNextPowerOfTwo", "kSameAsRequested"])
 
                 test_get_and_set_option_with_values("cudnn_conv_algo_search", ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
@@ -426,6 +444,8 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
 
+                test_get_and_set_option_with_values("use_tf32", ["1", "0"])
+
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
                 option["gpu_external_empty_cache"] = "0"
@@ -434,6 +454,25 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_alloc"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_free"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_empty_cache"], "0")
+
+                option["user_compute_stream"] = "0"
+                sess.set_providers(["CUDAExecutionProvider"], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], "0")
+
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        s = torch.cuda.Stream()
+                        option["user_compute_stream"] = str(s.cuda_stream)
+                        sess.set_providers(["CUDAExecutionProvider"], [option])
+                        options = sess.get_provider_options()
+                        self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], str(s.cuda_stream))
+                        self.assertEqual(options["CUDAExecutionProvider"]["has_user_compute_stream"], "1")
+                except ImportError:
+                    print("torch is not installed, skip testing setting user_compute_stream from torch cuda stream")
+
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
                 #       so run them last. Each set_providers call will attempt to re-create a session, so it's
@@ -534,6 +573,18 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
 
+                test_get_and_set_option_with_values("enable_hip_graph", ["1", "0"])
+
+                # test for user_compute_stream
+                option = options["ROCMExecutionProvider"]
+                option["user_compute_stream"] = "1"
+                sess.set_providers(["ROCMExecutionProvider"], [option])
+                new_options = sess.get_provider_options()
+                new_option = new_options["ROCMExecutionProvider"]
+                self.assertEqual(new_option["user_compute_stream"], "1")
+                # set user_compute_stream will set has_user_compute_stream to 1 too
+                self.assertEqual(new_option["has_user_compute_stream"], "1")
+
             run_rocm_options_test()
 
     def test_invalid_set_providers(self):
@@ -630,6 +681,14 @@ class TestInferenceSession(unittest.TestCase):
 
         if "ROCMExecutionProvider" in onnxrt.get_available_providers():
             do_test_get_and_set_tuning_results("ROCMExecutionProvider")
+
+    def test_run_model_with_optional_sequence_input(self):
+        sess = onnxrt.InferenceSession(get_name("identity_opt.onnx"))
+        x = [np.array([1, 2, 3, 4, 5]).astype(np.float32)]
+        input_name = sess.get_inputs()[0].name
+        output_name = sess.get_outputs()[0].name
+        res = sess.run([output_name], {input_name: x})
+        np.testing.assert_allclose(res[0], x)
 
     def test_run_model(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)

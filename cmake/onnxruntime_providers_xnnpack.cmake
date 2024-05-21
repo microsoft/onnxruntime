@@ -7,9 +7,6 @@
     "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.cc"
-    # utils for handling QDQ models
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
   )
 
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
@@ -18,6 +15,12 @@
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool
     flatbuffers::flatbuffers Boost::mp11 safeint_interface
   )
+
+  # TODO fix stringop-overflow warnings
+  # Add compile option to suppress stringop-overflow error in Flatbuffers.
+  if (HAS_STRINGOP_OVERFLOW)
+    target_compile_options(onnxruntime_providers_xnnpack PRIVATE -Wno-error=stringop-overflow)
+  endif()
 
   add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")

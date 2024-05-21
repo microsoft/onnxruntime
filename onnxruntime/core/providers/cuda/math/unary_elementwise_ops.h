@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
@@ -116,6 +117,23 @@ template <typename T>
 class Sign final : public UnaryElementwise {
  public:
   Sign(const OpKernelInfo& info) : UnaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+class IsInf final : public UnaryElementwise {
+ public:
+  explicit IsInf(const OpKernelInfo& info);
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  bool detect_positive_{true};
+  bool detect_negative_{true};
+  int opset_;
+};
+
+class IsNaN : public UnaryElementwise {
+ public:
+  explicit IsNaN(const OpKernelInfo& info) : UnaryElementwise(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

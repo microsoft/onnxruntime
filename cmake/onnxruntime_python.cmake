@@ -170,7 +170,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_TVM}
-    ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_COREML}
@@ -283,10 +282,7 @@ if (WIN32)
     get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
     string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
     if(NOT onnxruntime_CUDA_VERSION)
-      message("Reading json file ${onnxruntime_CUDA_HOME}/version.json")
-      set(CUDA_SDK_JSON_FILE_PATH "${onnxruntime_CUDA_HOME}/version.json")
-      file(READ ${CUDA_SDK_JSON_FILE_PATH} CUDA_SDK_JSON_CONTENT)
-      string(JSON onnxruntime_CUDA_VERSION GET ${CUDA_SDK_JSON_CONTENT} "cuda" "version")
+      set(onnxruntime_CUDA_VERSION ${CUDAToolkit_VERSION})
       message("onnxruntime_CUDA_VERSION=${onnxruntime_CUDA_VERSION}")
     endif()
     file(APPEND "${VERSION_INFO_FILE}"
@@ -384,6 +380,9 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ortmodule_graph_optimizers_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/graph_optimizers/*"
   )
+  file(GLOB onnxruntime_python_ortmodule_pipe_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/experimental/pipe/*"
+  )
   file(GLOB onnxruntime_python_ort_triton_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ort_triton/*.py"
   )
@@ -474,6 +473,9 @@ file(GLOB onnxruntime_python_transformers_models_llama_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_transformers_models_longformer_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/longformer/*.py"
 )
+file(GLOB onnxruntime_python_transformers_models_phi2_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/phi2/*.py"
+)
 file(GLOB onnxruntime_python_transformers_models_stable_diffusion_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/stable_diffusion/*.py"
 )
@@ -544,6 +546,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/gpt2
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/llama
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/phi2
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/whisper
@@ -648,6 +651,9 @@ add_custom_command(
       ${onnxruntime_python_transformers_models_longformer_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_phi2_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/phi2/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_stable_diffusion_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -687,7 +693,7 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
 endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
                                   AND NOT onnxruntime_USE_ROCM
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -753,6 +759,7 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/graph_optimizers
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/pipe
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/kernel
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils
@@ -804,6 +811,9 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_ortmodule_graph_optimizers_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/graph_optimizers/
     COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_pipe_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/pipe/
+    COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ort_triton_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -847,6 +857,16 @@ if (onnxruntime_USE_DNNL)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_dnnl>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_VITISAI)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_vitisai>
         $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
@@ -986,6 +1006,23 @@ if (onnxruntime_USE_COREML)
         $<TARGET_FILE:onnxruntime_providers_coreml>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
+endif()
+
+if (onnxruntime_USE_QNN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${QNN_LIB_FILES}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+  if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf"
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+    )
+  endif()
 endif()
 
 endif()

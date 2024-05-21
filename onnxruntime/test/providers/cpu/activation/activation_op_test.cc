@@ -116,13 +116,13 @@ TEST_F(ActivationOpTest, Relu) {
       "Relu",
       input_values_double,
       [](double x) { return std::max(x, 0.0); },
-      {},
+      {}, {},
       /*is_tensorrt_supported=*/false);
   TestActivationOp<int8_t>(
       "Relu",
       input_values_int8,
       [](int8_t x) { return std::max(x, static_cast<int8_t>(0)); },
-      {},
+      {}, {},
       /*is_tensorrt_supported=*/false,
       /*opset_version= */ 14);
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -133,7 +133,7 @@ TEST_F(ActivationOpTest, Relu) {
         if (x.ToFloat() > 0.0f) return x;
         return MLFloat16();
       },
-      {},
+      {}, {},
       /*is_tensorrt_supported=*/false,
       /*opset_version= */ 11);
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -402,7 +402,7 @@ TEST_F(ActivationOpTest, Celu) {
       // TODO: Investigate why gcc 4 fails to compile without the explicit cast
       [alpha](float x) { return std::max(0.0f, x) + std::min(0.0f, alpha * (static_cast<float>(exp(x / alpha)) - 1)); },
       // Disable on TensorRT as it seems like it doesn't yet support Celu
-      {{"alpha", alpha}}, false, 12);
+      {{"alpha", alpha}}, {}, false, 12);
 }
 
 TEST_F(ActivationOpTest, LeakyRelu) {
@@ -410,7 +410,7 @@ TEST_F(ActivationOpTest, LeakyRelu) {
   TestActivationOp<float>("LeakyRelu",
                           input_values,
                           [alpha](float x) { return (x >= 0) ? x : alpha * x; },
-                          {{"alpha", alpha}});
+                          {{"alpha", alpha}}, {});
 }
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -442,7 +442,7 @@ TEST_F(ActivationOpTest, ThresholdedRelu) {
       "ThresholdedRelu",
       input_values,
       [alpha](float x) { return (x >= alpha) ? x : 0; },
-      {{"alpha", alpha}}, true, 10);
+      {{"alpha", alpha}}, {}, true, 10);
 }
 
 TEST_F(ActivationOpTest, Selu) {
@@ -452,7 +452,7 @@ TEST_F(ActivationOpTest, Selu) {
   TestActivationOp<float>("Selu",
                           input_values,
                           [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                          {{"alpha", alpha}, {"gamma", gamma}});
+                          {{"alpha", alpha}, {"gamma", gamma}}, {});
 }
 
 TEST_F(ActivationOpTest, Selu_Attributes) {
@@ -462,7 +462,7 @@ TEST_F(ActivationOpTest, Selu_Attributes) {
   TestActivationOp<float>("Selu",
                           input_values,
                           [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                          {{"alpha", alpha}, {"gamma", gamma}});
+                          {{"alpha", alpha}, {"gamma", gamma}}, {});
 }
 
 TEST_F(ActivationOpTest, Selu_GH10726) {
@@ -472,7 +472,7 @@ TEST_F(ActivationOpTest, Selu_GH10726) {
   TestActivationOp<float>("Selu",
                           {{1.f, -1.f}},
                           [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                          {{"alpha", alpha}, {"gamma", gamma}});
+                          {{"alpha", alpha}, {"gamma", gamma}}, {});
 }
 
 TEST_F(ActivationOpTest, PRelu) {
@@ -625,7 +625,7 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
 
         return result;
       },
-      {}, false);  // Disable TensorRT because result mismatches
+      {}, {}, false);  // Disable TensorRT because result mismatches
 }
 
 #if defined(ENABLE_TRAINING_OPS)
@@ -692,6 +692,36 @@ TEST(LeakyReluGradInferenceTest, Basic) {
         return LeakyReluGrad(dy, y, alpha);
       },
       {{"alpha", alpha}}, 1, kMSDomain);
+}
+#endif
+
+// Remove DNNL from running this test because DNNL Gelu op seems not check domain for kernel implementation.
+// It will run the DNNL Gelu op which only be part of standard of Gelu-20 op.
+// [TODO] Temporarily ignore this test for OpenVINO to avoid an exception due to mishandling of the
+// approximate parameter. Re-enable it later when the issue is fixed
+#if !defined(USE_DNNL) && !defined(USE_QNN) && !defined(USE_OPENVINO)
+TEST_F(ActivationOpTest, ONNX_Gelu) {
+  TestActivationOp<float>(
+      "Gelu",
+      input_values,
+      [](float x) { return 0.5 * x * (1 + erf(x * M_SQRT1_2)); }, {},
+      {{"approximate", "none"}}, true, 20);
+
+  TestActivationOp<float>(
+      "Gelu",
+      input_values,
+      [](float x) { return 0.5 * x * (1 + erf(x * M_SQRT1_2)); },
+      {},
+      {/*default value of approximate attribute is none */}, true, 20);
+
+  TestActivationOp<float>(
+      "Gelu",
+      input_values,
+      [](float x) {
+        return 0.5 * x * (1 + tanh(sqrt(2 / M_PI) * (x + 0.044715 * x * x * x)));
+      },
+      {},
+      {{"approximate", "tanh"}}, true, 20);
 }
 #endif
 

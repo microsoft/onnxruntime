@@ -31,7 +31,6 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
 
 Status ModelBuilder::Initialize() {
   PreprocessInitializers();
-  PreprocessActivations();
   ORT_RETURN_IF_ERROR(RegisterInitializers());
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(AddOperations());
@@ -74,54 +73,6 @@ void ModelBuilder::PreprocessInitializers() {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (const auto* op_builder = GetOpBuilder(*node)) {
       op_builder->AddInitializersToSkip(*this, *node);
-    }
-  }
-}
-
-void ModelBuilder::PreprocessActivations() {
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    const auto& op_type(node->OpType());
-
-    if (op_type == "Clip") {
-      // Temporarily disable clamp fusion for WebNN GPU as which is not supported yet.
-      if (wnn_device_type_ == WebnnDeviceType::CPU) {
-        float minValue, maxValue;
-        GetClipMinMax(GetInitializerTensors(), *node, minValue, maxValue, logger_);
-        emscripten::val options = emscripten::val::object();
-        options.set("minValue", minValue);
-        options.set("maxValue", maxValue);
-        activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("clamp", options));
-      }
-    } else if (op_type == "Elu") {
-      NodeAttrHelper helper(*node);
-      emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", 1.0f));
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("elu", options));
-    } else if (op_type == "HardSigmoid") {
-      NodeAttrHelper helper(*node);
-      emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", 0.2f));
-      options.set("beta", helper.Get("beta", 0.5f));
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("hardSigmoid", options));
-    } else if (op_type == "HardSwish") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("hardSwish"));
-    } else if (op_type == "Relu") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("relu"));
-    } else if (op_type == "LeakyRelu") {
-      NodeAttrHelper helper(*node);
-      emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", 0.0f));
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("leakyRelu", options));
-    } else if (op_type == "Sigmoid") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("sigmoid"));
-    } else if (op_type == "Softplus") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("softplus"));
-    } else if (op_type == "Softsign") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("softsign"));
-    } else if (op_type == "Tanh") {
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("tanh"));
     }
   }
 }
@@ -197,14 +148,10 @@ Status ModelBuilder::RegisterInitializers() {
         default:
           break;
       }
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-      // Workaround for WebAssembly multi-threads enabled since WebNN API only accepts non-shared ArrayBufferView.
-      // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
-      operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
-#else
-      operand = wnn_builder_.call<emscripten::val>("constant", desc, view);
-#endif
 
+      // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
+      // buffers in JS side. Simply create a copy to fix it.
+      operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
     } else {
       // TODO: support other type.
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -360,13 +307,10 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 
   desc.set("dimensions", emscripten::val::array(shape));
   emscripten::val operand = emscripten::val::object();
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // Workaround for WebAssembly multi-threads enabled since WebNN API only accepts non-shared ArrayBufferView.
-  // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
+  // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
+  // buffers in JS side. Simply create a copy to fix it.
   operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
-#else
-  operand = wnn_builder_.call<emscripten::val>("constant", desc, view);
-#endif
+
   AddOperand(name, operand);
   mem_persist_buffers_.push_back(std::move(persist_buffer));
   return Status::OK();
@@ -386,7 +330,8 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   for (auto& name : output_names_) {
     named_operands.set(name, wnn_operands_.at(name));
   }
-  emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("buildSync", named_operands);
+
+  emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("build", named_operands).await();
   if (!wnn_graph.as<bool>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to build WebNN graph.");
   }
@@ -395,54 +340,11 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   model->SetOutputs(std::move(output_names_));
   model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // Pre-allocate the input and output tensors for the WebNN graph
-  // when WebAssembly multi-threads is enabled since WebNN API only
-  // accepts non-shared ArrayBufferView.
-  // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
+  // Wasm heap is not transferrable, we have to pre-allocate the MLNamedArrayBufferViews
+  // for inputs and outputs because they will be transferred after compute() done.
+  // https://webmachinelearning.github.io/webnn/#api-mlcontext-async-execution
   model->AllocateInputOutputBuffers();
-#endif
   return Status::OK();
-}
-
-// supported_nodes is provided by the op to indicate whether it can be fused with the activation node.
-emscripten::val ModelBuilder::FindActivation(const Node& node, const NodeArg& output,
-                                             const InlinedHashSet<std::string> supported_nodes) {
-  emscripten::val fused_op = emscripten::val::null();
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    const auto& dst_node = it->GetNode();
-    const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    if (!Contains(supported_nodes, dst_node.OpType())) {
-      return emscripten::val::null();
-    }
-    if (Contains(activation_nodes_, dst_node.Index())) {
-      if (&output == dst_input) {
-        fused_op = activation_nodes_.at(dst_node.Index());
-      }
-    } else {
-      // If there is any other non-relu node using the output
-      // will add relu separately.
-      if (&output == dst_input) {
-        return emscripten::val::null();
-      }
-    }
-  }
-
-  // If output is a graph output, will add relu separately.
-  if (fused_op != emscripten::val::null()) {
-    for (const auto* graph_output : graph_viewer_.GetOutputs()) {
-      if (&output == graph_output) {
-        return emscripten::val::null();
-      }
-    }
-
-    LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
-                          << "], fused the output [" << output.Name() << "]";
-
-    fused_activations_.insert(output.Name());
-  }
-
-  return fused_op;
 }
 
 void ModelBuilder::AddScalarOutput(const std::string& output_name) {

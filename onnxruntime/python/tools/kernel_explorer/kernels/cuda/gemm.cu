@@ -56,6 +56,9 @@ class GemmBenchmark : public IKernelExplorer {
     typedef typename ToCudaType<T>::MappedType CudaT;
     CudaT one = ToCudaType<T>::FromFloat(1.0f);
     CudaT zero = ToCudaType<T>::FromFloat(0.0f);
+
+    // TF32 is enable by default. To disable TF32, set environment variable NVIDIA_TF32_OVERRIDE = 0
+    constexpr bool use_tf32 = true;
     CUBLAS_CALL_THROW(cublasGemmHelper(
         params_.cublas_handle,
         CUBLAS_OP_N,
@@ -69,7 +72,8 @@ class GemmBenchmark : public IKernelExplorer {
         &zero,
         params_.output_,
         params_.n_,
-        device_prop_));
+        device_prop_,
+        use_tf32));
   }
 
  private:
@@ -79,11 +83,11 @@ class GemmBenchmark : public IKernelExplorer {
   cudaDeviceProp device_prop_;
 };
 
-#define REGISTER_OP(name, type)                                                               \
-  py::class_<name<type>>(m, #name "_" #type)                                                  \
+#define REGISTER_OP(name, type)                                                 \
+  py::class_<name<type>>(m, #name "_" #type)                                    \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int, int>()) \
-      .def("SetRepeats", &name<type>::SetRepeats)                                             \
-      .def("Profile", &name<type>::Profile)                                                   \
+      .def("SetRepeats", &name<type>::SetRepeats)                               \
+      .def("Profile", &name<type>::Profile)                                     \
       .def("Run", &name<type>::Run);
 
 KE_REGISTER(m) {

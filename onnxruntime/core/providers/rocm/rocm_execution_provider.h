@@ -10,6 +10,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
+#include "core/providers/rocm/rocm_graph.h"
 #include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
@@ -27,9 +28,9 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   Status Sync() const override;
 
-  Status OnRunStart() override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
-  Status OnRunEnd(bool sync_stream) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The ROCM interface does not return anything interesting.
@@ -73,6 +74,9 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
+  bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  Status ReplayGraph(int graph_annotation_id) override;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
@@ -81,6 +85,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;
   bool external_stream_ = false;
+  // only used when set user external stream or hip graph
   hipStream_t stream_ = nullptr;
 
   bool use_ep_level_unified_stream_ = false;
@@ -133,6 +138,13 @@ class ROCMExecutionProvider : public IExecutionProvider {
       }
     }
 
+    bool IsGraphCaptureAllowed() const;
+    void CaptureBegin(int graph_annotation_id);
+    void CaptureEnd(int graph_annotation_id);
+    bool IsGraphCaptured(int graph_annotation_id) const;
+    Status ReplayGraph(int graph_annotation_id);
+    void IncrementRegularRunCountBeforeGraphCapture();
+
    private:
     rocblas_handle rocblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
@@ -141,6 +153,18 @@ class ROCMExecutionProvider : public IExecutionProvider {
     std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<rocm::IConstantBuffer<half>> constant_ones_half_;
     std::unique_ptr<rocm::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
+
+    // Hip graph with multi threads will be supported in the future, so hip_graph_
+    // is put under PerThreadContext.
+    ROCMGraph hip_graph_;
+    bool is_graph_captured_ = false;
+    int regular_run_count_before_graph_capture_ = 0;
+
+    // There is chance that the second regular run allocates GPU memory for causes like:
+    // (1) memory pattern is enabled. (2) arena allocation for stream.
+    // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
+    // to allocate enough memory in Arena before graph capturing.
+    const int min_num_runs_before_hip_graph_capture_ = 2;  // required min regular runs before graph capture for the necessary memory allocations.
   };
 
   using PerThreadContextMap = std::unordered_map<const ROCMExecutionProvider*, std::weak_ptr<PerThreadContext>>;
