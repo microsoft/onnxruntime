@@ -72,14 +72,6 @@ ort.env.wasm.numThreads = 0;
 
 See [API reference: env.wasm.numThreads](https://onnxruntime.ai/docs/api/js/interfaces/Env.WebAssemblyFlags.html#numThreads) for more details.
 
-### Enable SIMD
-
-Always enable SIMD if it's supported. SIMD (Single Instruction, Multiple Data) is a set of instructions that perform the same operation on multiple data points simultaneously. This can significantly improve the performance of your application.
-
-This feature is enabled by default in ONNX Runtime Web, unless you explicitly disable it by setting `ort.env.wasm.simd = false`.
-
-See [API reference: env.wasm.simd](https://onnxruntime.ai/docs/api/js/interfaces/Env.WebAssemblyFlags.html#simd) for more details.
-
 ### Prefer uint8 quantized models
 
 If you are using a quantized model, prefer uint8 quantized models. Avoid float16 models if possible, as float16 is not natively supported by CPU and it is going to be slow.
