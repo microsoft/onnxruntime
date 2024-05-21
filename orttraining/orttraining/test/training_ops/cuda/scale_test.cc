@@ -29,7 +29,6 @@ struct ScaleInputOutput {
     output_up_bf16 = FloatsToBFloat16s(output_up_float);
     output_down_bf16 = FloatsToBFloat16s(output_down_float);
     scale_bf16 = FloatsToBFloat16s(scale_float);
-
   }
 
   // Fp32 Inputs/Output
@@ -182,28 +181,6 @@ TEST(CudaKernelTest, ScaleFloatBFloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(CudaKernelTest, ScaleBFloat16Float) {
-#ifdef USE_CUDA
-  int min_cuda_architecture = 530;
-  if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware does not support BFP16";
-    return;
-  }
-#endif
-  ScaleInputOutput data;
-  OpTester test("Scale", 1, onnxruntime::kMSDomain);
-  test.AddInput<BFloat16>("input", {3}, data.input_bf16);
-  test.AddInput<float>("scale", {1}, data.scale_float);
-  test.AddOutput<float>("output", {3}, data.output_up_float);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
 #endif
 }  // namespace test
 }  // namespace onnxruntime

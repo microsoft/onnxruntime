@@ -48,7 +48,7 @@ Status Scale<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   float scale_value;
   auto scale_tensor = context->Input<Tensor>(1);
-  utils::MLTypeCallDispatcher<float, double, MLFloat16, int64_t, int32_t> t_disp(scale_tensor->GetElementType());
+  utils::MLTypeCallDispatcher<float, double, MLFloat16, BFloat16, int64_t, int32_t> t_disp(scale_tensor->GetElementType());
   t_disp.Invoke<GetScaleValueImpl>(scale_tensor, scale_value);
 
   if (scale_down_) {
