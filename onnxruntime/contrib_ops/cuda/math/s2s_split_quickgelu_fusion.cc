@@ -44,7 +44,8 @@ void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t 
                                             reinterpret_cast<CudaT*>(output_tensor.template MutableData<T>()));
 }
 
-Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
+template <typename T>
+Status S2SModelSplitQuickGelu<T>::ComputeInternal(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor);
   const auto& input_shape = input_tensor->Shape();
