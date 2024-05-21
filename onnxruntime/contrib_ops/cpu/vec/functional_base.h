@@ -1,10 +1,6 @@
 #pragma once
 
-// DO NOT DEFINE STATIC DATA IN THIS HEADER!
-// See Note [Do not compile initializers with AVX]
-
 #include "contrib_ops/cpu/vec/vec.h"
-//#include <c10/util/irange.h>
 
 namespace onnxruntime::vec {
 
@@ -36,6 +32,7 @@ struct VecReduceAllSIMD {
 };
 
 #if defined(__GNUC__) && (__GNUC__ > 5) && !defined(_MSC_VER)
+
 #if defined(CPU_CAPABILITY_AVX2)
 template <typename Op>
 struct VecReduceAllSIMD<float, Op> {
@@ -55,6 +52,7 @@ struct VecReduceAllSIMD<float, Op> {
   }
 };
 #endif // defined(CPU_CAPABILITY_AVX2)
+
 #if defined(CPU_CAPABILITY_AVX512)
 template <typename Op>
 struct VecReduceAllSIMD<float, Op> {
@@ -77,6 +75,7 @@ struct VecReduceAllSIMD<float, Op> {
   }
 };
 #endif // defined(CPU_CAPABILITY_AVX512)
+
 #endif // defined(__GNUC__) && (__GNUC__ > 5) && !defined(_MSC_VER)
 
 #if defined(__aarch64__)  && !defined(__CUDACC__)

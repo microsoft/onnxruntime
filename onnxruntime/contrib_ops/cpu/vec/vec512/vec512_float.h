@@ -1,21 +1,11 @@
 #pragma once
 
-// DO NOT DEFINE STATIC DATA IN THIS HEADER!
-// See Note [Do not compile initializers with AVX]
-
 #include <contrib_ops/cpu/vec/intrinsics.h>
 #include <contrib_ops/cpu/vec/vec_base.h>
 #include <contrib_ops/cpu/vec/math.h>
 
-//#include <c10/util/irange.h>
-// #if defined(CPU_CAPABILITY_AVX512)
-// #define SLEEF_STATIC_LIBS
-// #include <sleef.h>
-// #endif
-
 namespace onnxruntime {
 namespace vec {
-// See Note [CPU_CAPABILITY namespace]
 inline namespace CPU_CAPABILITY {
 
 #if defined(CPU_CAPABILITY_AVX512)
@@ -398,25 +388,6 @@ inline Vectorized<float> Vectorized<float>::lt(const Vectorized<float>& other) c
 inline Vectorized<float> Vectorized<float>::le(const Vectorized<float>& other) const {
   return (*this <= other) & Vectorized<float>(1.0f);
 }
-
-// template <>
-// inline void convert(const float* src, float* dst, int64_t n) {
-//   int64_t i;
-
-// // #if defined(__GNUC__)
-// //   #pragma unroll
-// // #endif
-//   for (i = 0; i <= (n - Vectorized<float>::size()); i += Vectorized<float>::size()) {
-//     _mm512_storeu_ps(dst + i, _mm512_loadu_ps(src + i));
-//   }
-
-// // #if defined(__GNUC__)
-// //   #pragma unroll
-// // #endif
-//   for (; i < n; i++) {
-//     dst[i] = src[i];
-//   }
-// }
 
 template <>
 Vectorized<float> inline fmadd(const Vectorized<float>& a, const Vectorized<float>& b, const Vectorized<float>& c) {

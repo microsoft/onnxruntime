@@ -3,7 +3,6 @@
 
 #include "core/common/common.h"
 #include "core/providers/common.h"
-#include "contrib_ops/cpu/flash_attention/tensor_wrapper.h"
 #include "core/platform/threadpool.h"
 #include "core/util/math.h"
 #include "contrib_ops/cpu/vec/vec_base.h"
@@ -111,7 +110,7 @@ inline void fill_stub(scalar_t* data, scalar_t val, int64_t size) {
 }
 
 // void reshape_attn_mask_to_4d(
-//     TensorWrapper & attn_mask,
+//     Tensor & attn_mask,
 //     int64_t batchSize,
 //     int64_t num_head,
 //     int64_t qSize,
@@ -137,16 +136,16 @@ inline void fill_stub(scalar_t* data, scalar_t val, int64_t size) {
 
 template <typename scalar_t, int64_t q_split_size, int64_t kv_split_size>
 void cpu_flash_attention(
-    TensorWrapper& output,          // batch x q_seq_len  x num_heads  x head_size
-    TensorWrapper& logsumexp,       // batch x q_seq_len  x num_heads
-    const TensorWrapper& query,     // batch x q_seq_len  x num_heads  x head_size or
+    Tensor& output,          // batch x q_seq_len  x num_heads  x head_size
+    Tensor& logsumexp,       // batch x q_seq_len  x num_heads
+    const Tensor& query,     // batch x q_seq_len  x num_heads  x head_size or
                                     // batch x num_heads  x q_seq_len  x head_size (when is_q_bnsh is True)
-    const TensorWrapper& key,       // batch x kv_seq_len x num_heads  x head_size or
+    const Tensor& key,       // batch x kv_seq_len x num_heads  x head_size or
                                     // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
-    const TensorWrapper& value,     // batch x kv_seq_len x num_heads  x head_size or
+    const Tensor& value,     // batch x kv_seq_len x num_heads  x head_size or
                                     // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
     bool is_causal,
-    const TensorWrapper& attn_mask, // batch x num_heads q_seq_len x kv_seq_len, optional
+    const Tensor* attn_mask, // batch x num_heads q_seq_len x kv_seq_len, optional
     double scale,
     concurrency::ThreadPool* thread_pool,
     AllocatorPtr allocator,
@@ -172,7 +171,7 @@ void cpu_flash_attention(
   int64_t headSize = query.Size(3);
 
   // attention mask is optional
-  bool has_attn_mask = attn_mask.HasValue() && attn_mask.NumberOfElements() > 0;
+  bool has_attn_mask = attn_mask != nullptr && attn_mask->NumberOfElements() > 0;
   // if (has_attn_mask) {
   //   // if (is_reduced_type) {
   //   //   attn_mask = attn_mask.to(onnxruntime::kFloat);
@@ -197,15 +196,15 @@ void cpu_flash_attention(
   int64_t lStrideM = logsumexp.Stride(1);
   int64_t lStrideH = logsumexp.Stride(2);
   int64_t mStrideB =
-      (has_attn_mask && attn_mask.Size(0) > 1)
-      ? attn_mask.Stride(0)
+      (has_attn_mask && attn_mask->Size(0) > 1)
+      ? attn_mask->Stride(0)
       : 0;
   int64_t mStrideH =
-      (has_attn_mask && attn_mask.Size(1) > 1)
-      ? attn_mask.Stride(1)
+      (has_attn_mask && attn_mask->Size(1) > 1)
+      ? attn_mask->Stride(1)
       : 0;
   int64_t mStrideM =
-      has_attn_mask ? attn_mask.Stride(2) : 0;
+      has_attn_mask ? attn_mask->Stride(2) : 0;
 
   int64_t qSplitSize = q_split_size > qSize ? qSize : q_split_size;
   int64_t kvSplitSize = kv_split_size > kvSize ? kvSize : kv_split_size;
@@ -229,7 +228,7 @@ void cpu_flash_attention(
   const scalar_t* q_data = query.Data<scalar_t>();
   const scalar_t* k_data = key.Data<scalar_t>();
   const scalar_t* v_data = value.Data<scalar_t>();
-  const accum_t* mask_data = has_attn_mask ? attn_mask.Data<accum_t>() : nullptr;
+  const accum_t* mask_data = has_attn_mask ? attn_mask->Data<accum_t>() : nullptr;
   scalar_t* out_data = output.MutableData<scalar_t>();
   accum_t* lse_data = logsumexp.MutableData<accum_t>();
   // accum_t* buf_data = buf.MutableData<accum_t>();
@@ -441,25 +440,24 @@ void cpu_flash_attention(
 } // anonymous namespace
 
 namespace contrib {
+
+// Note that CPU_CAPABILITY is a macro, which will be replaced by "cpu_default", "cpu_avx2", "cpu_avx512" etc to support different CPU capabilities.
 namespace CPU_CAPABILITY {
 
 void flash_attention_kernel_impl(
-    TensorWrapper& output,
-    TensorWrapper& logsumexp,
-    const TensorWrapper& query,
-    const TensorWrapper& key,
-    const TensorWrapper& value,
+    Tensor& output,
+    Tensor& logsumexp,
+    const Tensor& query,
+    const Tensor& key,
+    const Tensor& value,
     bool is_causal,
-    const TensorWrapper& attn_mask,
+    const Tensor* attn_mask,
     double scale,
     concurrency::ThreadPool* thread_pool,
     AllocatorPtr allocator,
     bool is_q_bnsh,
     bool is_kv_bnsh) {
   auto q_seq_len = query.Size(2);
-
-  // const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
-  // if (cpu_id_info.HasAVX512f())
 
   if (query.IsDataType<float>()) {
     if (q_seq_len >= 768) {

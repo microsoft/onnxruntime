@@ -83,8 +83,6 @@ bit_cast(const From& src) noexcept {
 
 // std::isnan isn't performant to use on integral types; it will
 // (uselessly) convert to floating point and then do the test.
-// This function is.
-
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 inline bool _isnan(T /*val*/) {
   return false;
@@ -97,8 +95,6 @@ inline bool _isnan(T val) {
 
 // std::isinf isn't performant to use on integral types; it will
 // (uselessly) convert to floating point and then do the test.
-// This function is.
-
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 inline  bool _isinf(T /*val*/) {
   return false;

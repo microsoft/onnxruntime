@@ -162,6 +162,7 @@ struct Vectorized {
     }
     return vector;
   }
+
   static Vectorized<T> blendv(const Vectorized<T>& a, const Vectorized<T>& b,
                               const Vectorized<T>& mask) {
     Vectorized vector;
@@ -184,6 +185,7 @@ struct Vectorized {
     }
     return vector;
   }
+  
   static Vectorized<T> set(const Vectorized<T>& a, const Vectorized<T>& b, int64_t count = size()) {
     Vectorized vector;
     for (int i = 0; i < size(); i++) {

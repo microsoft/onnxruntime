@@ -276,6 +276,35 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
+
+  int64_t NumberOfElements() const {
+#ifdef ENABLE_STRIDED_TENSORS
+    ORT_ENFORCE(IsContiguous());
+#endif
+  return shape_.Size();
+  }
+
+  size_t Dim() const {
+    return shape_.NumDimensions();
+  }
+
+  int64_t Size(int i) const {
+    int64_t index = i < 0 ? shape_.NumDimensions() + i : i;
+    ORT_ENFORCE(index >= 0 && index < static_cast<int64_t>(shape_.NumDimensions()));
+    return shape_[index];
+  }
+
+  int64_t Stride(int i) const {
+    int64_t index = i < 0 ? shape_.NumDimensions() + i : i;
+    ORT_ENFORCE(index >= 0 && index < static_cast<int64_t>(shape_.NumDimensions()));
+
+#ifdef ENABLE_STRIDED_TENSORS
+    return strides_[index];
+#else
+    return shape_.SizeFromDimension(index + 1);
+#endif
+  }
+
 #ifdef ENABLE_STRIDED_TENSORS
   /**
    * Get the strides of the tensor.

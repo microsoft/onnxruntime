@@ -9,7 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-
+#include "contrib_ops/cpu/flash_attention/flash_attention_api.h"
 namespace onnxruntime {
 namespace contrib {
 
@@ -53,14 +53,10 @@ class AttentionCPUBase : public AttentionBase {
     // Total sequence length including that of past state: T = P + L
     const int total_sequence_length = past_sequence_length + kv_sequence_length;
 
-    // Compute the attention score.
-    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
-    auto attention_probs = allocator->Alloc(bytes);
-    BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
-
-    bool causal = (is_unidirectional_ && sequence_length > 1);
-
+    // Consolidate causal mask with user provided mask, and convert attention mask from 0/1 to -inf/0,
+    // and broadcast mask data to 3D (BxSxT)
     void* mask_data = nullptr;
+    bool causal = (is_unidirectional_ && sequence_length > 1);
     if (mask_index != nullptr || causal) {
       size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * total_sequence_length * sizeof(T);
       mask_data = allocator->Alloc(mask_data_bytes);
@@ -72,6 +68,54 @@ class AttentionCPUBase : public AttentionBase {
     gsl::span<const int64_t> mask_index_dims = mask_index != nullptr
                                                    ? mask_index->Shape().GetDims()
                                                    : gsl::span<const int64_t>{};
+    // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
+    if (mask_data != nullptr) {
+      PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
+                  causal, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
+    }
+
+
+    // Use Flash Attention if possible
+    if (relative_position_bias == nullptr && v_head_size == qk_head_size && past == nullptr) {
+      auto data_type = DataTypeImpl::GetType<T>();
+
+      OrtValue logSumExp;
+      Tensor::InitOrtValue(data_type, TensorShape({batch_size, sequence_length, num_heads_}), allocator, logSumExp);
+
+      Tensor query(data_type,
+                   TensorShape({batch_size, num_heads_, sequence_length, qk_head_size}),
+                   const_cast<void*>(reinterpret_cast<const void*>(Q)), allocator->Info());
+
+      Tensor key(data_type,
+                 TensorShape({batch_size, num_heads_, total_sequence_length, qk_head_size}),
+                 const_cast<void*>(reinterpret_cast<const void*>(K)), allocator->Info());
+
+      Tensor value(data_type,
+                   TensorShape({batch_size, num_heads_, total_sequence_length, v_head_size}),
+                   const_cast<void*>(reinterpret_cast<const void*>(V)), allocator->Info());
+
+      OrtValue mask;
+      Tensor::InitOrtValue(data_type, TensorShape({batch_size, 1, sequence_length, total_sequence_length}), allocator, mask);
+
+      constexpr bool is_q_bnsh = true;
+      constexpr bool is_kv_bnsh = true;
+      cpu_flash_attention(
+          *output,
+          *(logSumExp.GetMutable<Tensor>()),
+          query,
+          present_key == nullptr ? key :*present_key,
+          present_value == nullptr ? value :*present_value,
+          is_unidirectional_,
+          &(mask.Get<Tensor>()),
+          0.0, // scale
+          tp,
+          allocator,
+          is_q_bnsh,
+          is_kv_bnsh);
+      return Status::OK();
+    }
+
+
     const T* past_data = past != nullptr ? past->Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->MutableData<T>() : nullptr;
     const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
@@ -84,8 +128,12 @@ class AttentionCPUBase : public AttentionBase {
       relative_position_bias_data = relative_position_bias->Data<T>();
     }
 
+    // Compute the attention score.
+    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
+    auto attention_probs = allocator->Alloc(bytes);
+    BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
-                             mask_index_data, mask_index_dims, static_cast<T*>(mask_data), causal,
+                             static_cast<T*>(mask_data), causal,
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data,
                              present_data, present_key_data, tp, relative_position_bias_data);
@@ -113,8 +161,6 @@ class AttentionCPUBase : public AttentionBase {
   void ComputeAttentionProbs(T* attention_probs,                        // output buffer with size BxNxSxT
                              const T* Q,                                // Q data. Its size is BxNxSxH
                              const T* K,                                // k data. Its size is BxNxLxH
-                             const int32_t* mask_index,                 // mask index. nullptr if no mask.
-                             gsl::span<const int64_t> mask_index_dims,  // mask index shape
                              T* mask_data,                              // buffer for mask data.
                              bool causal,                               // has causal (unidirectional) mask
                              int batch_size,                            // batch size of self-attention
@@ -136,12 +182,6 @@ class AttentionCPUBase : public AttentionBase {
     const size_t present_chunk_length = past_chunk_length + kv_input_chunk_length;             // T x H
 
     {
-      // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
-      if (mask_data != nullptr) {
-        PrepareMask(mask_index, mask_index_dims, mask_data,
-                    causal, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
-      }
-
       const int loop_len = batch_size * num_heads_;
       const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
