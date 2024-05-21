@@ -56,12 +56,6 @@ stages:
             ArtifactName: 'onnxruntime-linux-x64-tensorrt'
             TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-        - template: ../templates/flex-downloadPipelineArtifact.yml
-          parameters:
-            StepName: 'Download Pipeline Artifact - NuGet'
-            ArtifactName: 'drop-extra'
-            TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
-
         # Reconstruct the build dir
         - task: PowerShell@2
           displayName: 'PS: Extract nuget files gpu'
