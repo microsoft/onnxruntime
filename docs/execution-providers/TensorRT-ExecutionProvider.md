@@ -479,23 +479,28 @@ Following numbers are measured from initializing session with TRT EP for SD UNet
   - Will be generated with inputs/outputs identical to original model
   - Run the embed engine model as the original model !
 
-Following is a simple example to create and run embed engine model:
-
-```bash
-$pwd
-/model_database/transformer_model
-$./onnxruntime_perf_test -e tensorrt -r 1 -i "trt_engine_cache_enable|true trt_engine_cache_path|./trt_engines trt_dump_ep_context_model|true" /model_database/transformer_model/model.onnx
-$./onnxruntime_perf_test -e tensorrt -r 1 /model_database/transformer_model/model_ctx.onnx
-```
-
 The folder structure of the caches:
 
 ![image](https://github.com/microsoft/onnxruntime/assets/54722500/5be4a087-79c8-4d34-af8b-75138642079c)
 
+
+With following command, the embededd engine model (model_ctx.onnx) will be generated as well as the engine cache in the same directory:
+Note: the example doesn't specify trt_engine_cache_path due to onnxruntime_perf_test looks for specific folder structure to run the inference. But we still suggest to have trt_engine_cache_path like above to better organize the caches
+```bash
+$./onnxruntime_perf_test -e tensorrt -r 1 -i "trt_engine_cache_enable|true trt_dump_ep_context_model|true" /model_database/transformer_model/model.onnx
+```
+Once the inference is done. The embedded engine model is saved to disk and simply run that model just like running original model but with much quicker session creation time:
+```bask
+$./onnxruntime_perf_test -e tensorrt -r 1 /model_database/transformer_model/model_ctx.onnx
+```
+
+
+
 ### More about Embedded engine model / EPContext model
 * One constrait is that the whole model needs to be TRT eligible.
 * When running the embedded engine model, `trt_ep_context_embed_mode=0` is the default where the engine cache path is embedded and TRT EP will look for the engine cache in the disk.
-
+  However, users can set `trt_ep_context_embed_mode=1` which means the whole engine binary data will be embedded as a string in the model, but when loading the model, ORT graph optimization will hash the string which will increase the initialization time. Therefore, we still suggest to use `trt_ep_context_embed_mode=0`.
+* The default name of a embedded engine model will have `_ctx.onnx` appended in the end, user can specify `trt_ep_context_file_path=my_ep_context_model.onnx` to overwrite it.
 
 
 
