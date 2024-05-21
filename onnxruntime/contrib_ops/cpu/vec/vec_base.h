@@ -80,15 +80,6 @@ struct is_reduced_floating_point : std::integral_constant<bool,
 template <typename T>
 constexpr bool is_reduced_floating_point_v = is_reduced_floating_point<T>::value;
 
-template <typename T>
-struct is_8bit_integer : std::integral_constant<bool,
-                                                std::is_same_v<T, unsigned char> ||
-                                                    std::is_same_v<T, signed char>> {
-};
-
-template <typename T>
-constexpr bool is_8bit_integer_v = is_8bit_integer<T>::value;
-
 template <size_t n>
 struct int_of_size;
 
@@ -599,8 +590,6 @@ Vectorized<T> inline clamp_min(const Vectorized<T>& a, const Vectorized<T>& min_
   return c;
 }
 
-struct Vectorizedi;
-
 template <class T>
 Vectorized<T> inline operator<<(const Vectorized<T>& a, const Vectorized<T>& b) {
   constexpr T max_shift = sizeof(T) * CHAR_BIT;
@@ -681,7 +670,8 @@ inline Vectorized<T> fmsub(const Vectorized<T>& a, const Vectorized<T>& b, const
 }
 
 template <int64_t scale = 1, typename T = void>
-std::enable_if_t<scale == 1 || scale == 2 || scale == 4 || scale == 8, Vectorized<T>> inline gather(T const* base_addr, const Vectorized<int_same_size_t<T>>& vindex) {
+std::enable_if_t<scale == 1 || scale == 2 || scale == 4 || scale == 8, Vectorized<T>>
+inline gather(T const* base_addr, const Vectorized<int_same_size_t<T>>& vindex) {
   static constexpr int size = Vectorized<T>::size();
   int_same_size_t<T> index_arr[size];
   vindex.store(static_cast<void*>(index_arr));
@@ -689,28 +679,6 @@ std::enable_if_t<scale == 1 || scale == 2 || scale == 4 || scale == 8, Vectorize
   for (int i = 0; i < size; i++) {
     buffer[i] = base_addr[index_arr[i] * scale / sizeof(T)];
   }
-  return Vectorized<T>::loadu(static_cast<void*>(buffer));
-}
-
-template <int64_t scale = 1, typename T = void>
-std::enable_if_t<scale == 1 || scale == 2 || scale == 4 || scale == 8, Vectorized<T>> inline mask_gather(const Vectorized<T>& src, T const* base_addr,
-                                                                                                         const Vectorized<int_same_size_t<T>>& vindex, Vectorized<T>& mask) {
-  static constexpr int size = Vectorized<T>::size();
-  T src_arr[size];
-  int_same_size_t<T> mask_arr[size];  // use int type so we can logical and
-  int_same_size_t<T> index_arr[size];
-  src.store(static_cast<void*>(src_arr));
-  mask.store(static_cast<void*>(mask_arr));
-  vindex.store(static_cast<void*>(index_arr));
-  T buffer[size];
-  for (int i = 0; i < size; i++) {
-    if (mask_arr[i] & 0x01) {  // check highest bit
-      buffer[i] = base_addr[index_arr[i] * scale / sizeof(T)];
-    } else {
-      buffer[i] = src_arr[i];
-    }
-  }
-  mask = Vectorized<T>();  // "zero out" mask
   return Vectorized<T>::loadu(static_cast<void*>(buffer));
 }
 
@@ -741,44 +709,6 @@ template <typename dst_t, typename src_t>
 inline Vectorized<dst_t> cast(const Vectorized<src_t>& src) {
   return CastImpl<dst_t, src_t>::apply(src);
 }
-
-template <typename T, typename IntType = int_same_size_t<T>>
-inline Vectorized<IntType> convert_to_int_of_same_size(const Vectorized<T>& src) {
-  static_assert(sizeof(T) == sizeof(IntType));
-  static constexpr int size = Vectorized<T>::size();
-
-  std::array<T, size> src_arr;
-  src.store(static_cast<void*>(src_arr.data()));
-  std::array<IntType, size> buffer;
-  std::transform(src_arr.cbegin(), src_arr.cend(), buffer.begin(),
-                 [](const T& x) { return static_cast<IntType>(x); });
-  return Vectorized<IntType>::loadu(static_cast<const void*>(buffer.data()));
-}
-
-template <typename T, typename IntType = int_same_size_t<T>>
-inline Vectorized<T> convert_to_fp_of_same_size(const Vectorized<IntType>& src) {
-  static_assert(sizeof(T) == sizeof(IntType));
-  static constexpr int size = Vectorized<T>::size();
-
-  std::array<IntType, size> src_arr;
-  src.store(static_cast<void*>(src_arr.data()));
-  std::array<T, size> buffer;
-  std::transform(src_arr.cbegin(), src_arr.cend(), buffer.begin(),
-                 [](const IntType& x) { return static_cast<T>(x); });
-  return Vectorized<T>::loadu(static_cast<const void*>(buffer.data()));
-}
-
-// template <typename src_T, typename dst_T>
-// inline void convert(const src_T* src, dst_T* dst, int64_t n) {
-// #if defined(__GNUC__)
-//   #pragma unroll
-// #endif
-//   for(int64_t i =0; i < n ; i++) {
-//     *dst = c10::convert<dst_T>(c10::load(src));
-//     src++;
-//     dst++;
-//   }
-// }
 
 template <typename T>
 inline Vectorized<T> flip(const Vectorized<T>& data) {
