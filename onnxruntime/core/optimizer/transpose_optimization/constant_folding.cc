@@ -4,6 +4,7 @@
 #include "core/optimizer/transpose_optimization/constant_folding.h"
 
 #include <cassert>
+#include <optional>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -25,6 +26,7 @@ class ConstOperation {
   };
 
   ConstOperation() = default;
+  ConstOperation(Type type, std::vector<int64_t> op_data) : type_(type), op_data_(std::move(op_data)) {}
 
   // Converts an ONNX operator type to a ConstOperation::Type.
   static ConstOperation::Type GetConstOperationType(std::string_view op_type) {
@@ -38,21 +40,21 @@ class ConstOperation {
     return type;
   }
 
-  // Initializes a ConstOperation from the given node and constant input.
-  static bool Init(const OptimizerCtx& ctx, const api::TensorRef& const_input, const api::NodeRef& node,
-                   /*out*/ ConstOperation& const_op) {
+  // Creates a ConstOperation from the given node and constant input.
+  static std::optional<ConstOperation> Create(const OptimizerCtx& ctx, const api::TensorRef& const_input,
+                                              const api::NodeRef& node) {
     ConstOperation::Type type = GetConstOperationType(node.OpType());
+    std::optional<ConstOperation> result;
 
     switch (type) {
       case ConstOperation::Type::kTranspose: {
         std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(node);
         if (perm == std::nullopt) {
           // Invalid transpose perm attribute. Should not happen. Skip.
-          return false;
+          return std::nullopt;
         }
 
-        const_op.type_ = type;
-        const_op.op_data_ = *perm;
+        result = ConstOperation(type, *perm);
         break;
       }
       case ConstOperation::Type::kSqueeze: {
@@ -60,23 +62,23 @@ class ConstOperation {
                                                                                /*opset*/ 13);
         if (squeeze_axes == std::nullopt) {
           // Invalid Squeeze axes value. Should not happen. Skip.
-          return false;
+          return std::nullopt;
         }
 
-        const_op.type_ = type;
-        const_op.op_data_ = SqueezeShape(const_input.Shape(), *squeeze_axes);
+        result = ConstOperation(type, SqueezeShape(const_input.Shape(), *squeeze_axes));
         break;
       }
       default:
         // Unsupported
-        return false;
+        result = std::nullopt;
+        break;
     }
 
-    return true;
+    return result;
   }
 
   // Compares constant operations for equality.
-  bool operator==(const ConstOperation& other) {
+  bool operator==(const ConstOperation& other) const {
     return type_ == other.type_ && op_data_ == other.op_data_;
   }
 
@@ -111,8 +113,7 @@ class ConstOperation {
   Type type_{Type::kUnsupported};
 
   // Data necessary to compute operation (i.e., perms for Transpose or axes for Squeeze).
-  // If new operator types are added later, this would need to be updated to a tagged union
-  // or use of inheritance.
+  // If new operator types are added later, this would need to be generalized.
   std::vector<int64_t> op_data_;
 };
 
@@ -139,33 +140,34 @@ class ConstantFoldingCtx {
     return ConstOperation::GetConstOperationType(node.OpType()) != ConstOperation::Type::kUnsupported;
   }
 
+  // Creates a new initializer by performing an operation on the given constant input.
   std::optional<std::string_view> CreateNewInitializer(const api::TensorRef& const_input,
                                                        std::string_view const_input_name,
                                                        const api::NodeRef& op_node) {
-    ConstOperation const_op = {};
-    if (!ConstOperation::Init(ctx_, const_input, op_node, const_op)) {
+    std::optional<ConstOperation> const_op = ConstOperation::Create(ctx_, const_input, op_node);
+    if (!const_op.has_value()) {
       return std::nullopt;
     }
 
     // Check if we've done this operation on this initializer before.
     // If so, just return the name of the previously computed initializer.
-    auto it = prev_const_operation_results_.find(const_input_name);
-    if (it != prev_const_operation_results_.end()) {
+    auto it = const_operation_results_.find(const_input_name);
+    if (it != const_operation_results_.end()) {
       for (const auto& op_result : it->second) {
-        if (const_op == op_result.op) {
+        if (*const_op == op_result.op) {
           return op_result.result_initializer_name;
         }
       }
     }
 
     // Create new initializer.
-    auto new_initializer_name = const_op.Apply(ctx_, const_input);
+    auto new_initializer_name = const_op->Apply(ctx_, const_input);
     if (!new_initializer_name.has_value()) {
       return std::nullopt;
     }
 
-    // Store result of this constant-folding operation in case it needs to be reused later.
-    prev_const_operation_results_[const_input_name].push_back({const_op, *new_initializer_name});
+    // Store result of this operation in case it needs to be reused later.
+    const_operation_results_[const_input_name].push_back({*const_op, *new_initializer_name});
 
     return new_initializer_name;
   }
@@ -173,16 +175,16 @@ class ConstantFoldingCtx {
   // Removes initializer if no longer used.
   void TryRemoveInitializer(std::string_view name) {
     if (!ctx_.graph.HasValueConsumers(name)) {
-      prev_const_operation_results_.erase(name);
+      const_operation_results_.erase(name);
       ctx_.graph.RemoveInitializer(name);
     }
   }
 
   OptimizerCtx& ctx_;
 
-  // Maps an initializer name to the constant operations (+ new initializer names) that have already been
+  // Maps an initializer name to the operations (+ new initializer names) that have already been
   // performed on that initializer. Enables reuse of previous computations.
-  std::unordered_map<std::string_view, std::vector<ConstOperationAndResult>> prev_const_operation_results_;
+  std::unordered_map<std::string_view, std::vector<ConstOperationAndResult>> const_operation_results_;
 };
 
 /// <summary>
