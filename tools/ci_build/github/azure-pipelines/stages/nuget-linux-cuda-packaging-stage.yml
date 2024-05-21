@@ -151,7 +151,9 @@ stages:
     - template: ../templates/clean-agent-build-directory-step.yml
   # Linux CUDA Combined Testing and Publishing
 - stage: Linux_Packaging_combined_CUDA
-  dependsOn: []
+  dependsOn:
+  - Linux_C_API_Packaging_CUDA
+  - Linux_C_API_Packaging_TensorRT
   jobs:
   - job: Linux_Packaging_combined_CUDA
     condition: succeeded()
