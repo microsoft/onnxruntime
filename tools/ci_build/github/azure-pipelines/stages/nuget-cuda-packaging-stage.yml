@@ -22,7 +22,7 @@ stages:
     - Linux_C_API_Packaging_CPU_x64
   condition: succeeded()
   jobs:
-    - job:
+    - job: NuGet_Packaging_GPU
       workspace:
         clean: all
       pool: 'Onnxruntime-Win-CPU-2022'
