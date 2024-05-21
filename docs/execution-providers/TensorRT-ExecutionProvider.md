@@ -445,7 +445,7 @@ There are three major TRT EP cahces:
 * TRT engine cache
 * Embedded engine model / EPContext model
 
-### Properly setting the caches helps reduce session creation time from minutes to seconds
+### Caches can help reduce session creation time from minutes to seconds
 
 Following numbers are measured from initializing session with TRT EP for SD UNet model.
 * No cache (default)  – 384 seconds
@@ -456,7 +456,7 @@ Following numbers are measured from initializing session with TRT EP for SD UNet
 * Engine cache used – 9 seconds
   - Serialize engine from memory to disk for later use
   - Skip entire engine build and deserialize engine cache to memory
-* Embed Engine used (no builder instantiation) - 1.9 seconds
+* Embedded engine used (no builder instantiation) - 1.9 seconds
   - The serialized engine cache is wrapped inside an ONNX model
   - No builder will be instantiated, nor engine will be built
   - Quickly load engine with less processes needed
@@ -484,30 +484,21 @@ The folder structure of the caches:
 ![image](https://github.com/microsoft/onnxruntime/assets/54722500/5be4a087-79c8-4d34-af8b-75138642079c)
 
 
-With following command, the embededd engine model (model_ctx.onnx) will be generated as well as the engine cache in the same directory:
-Note: the example doesn't specify trt_engine_cache_path due to onnxruntime_perf_test looks for specific folder structure to run the inference. But we still suggest to have trt_engine_cache_path like above to better organize the caches
+With the following command, the embedded engine model (`model_ctx.onnx`) will be generated along with the engine cache in the same directory.
+
+Note: The example does not specify `trt_engine_cache_path` because `onnxruntime_perf_test` requires a specific folder structure to run the inference. However, we still recommend specifying `trt_engine_cache_path` to better organize the caches.
 ```bash
 $./onnxruntime_perf_test -e tensorrt -r 1 -i "trt_engine_cache_enable|true trt_dump_ep_context_model|true" /model_database/transformer_model/model.onnx
 ```
-Once the inference is done. The embedded engine model is saved to disk and simply run that model just like running original model but with much quicker session creation time:
+Once the inference is complete, the embedded engine model is saved to disk. User can then run this model just like the original one, but with a significantly quicker session creation time.
 ```bask
 $./onnxruntime_perf_test -e tensorrt -r 1 /model_database/transformer_model/model_ctx.onnx
 ```
 
-
-
 ### More about Embedded engine model / EPContext model
-* One constrait is that the whole model needs to be TRT eligible.
-* When running the embedded engine model, `trt_ep_context_embed_mode=0` is the default where the engine cache path is embedded and TRT EP will look for the engine cache in the disk.
-  However, users can set `trt_ep_context_embed_mode=1` which means the whole engine binary data will be embedded as a string in the model, but when loading the model, ORT graph optimization will hash the string which will increase the initialization time. Therefore, we still suggest to use `trt_ep_context_embed_mode=0`.
-* The default name of a embedded engine model will have `_ctx.onnx` appended in the end, user can specify `trt_ep_context_file_path=my_ep_context_model.onnx` to overwrite it.
-
-
-
-
-
-
-
+* One constraint is that the entire model needs to be TRT eligible
+* When running the embedded engine model, the default setting is `trt_ep_context_embed_mode=0`, where the engine cache path is embedded and TRT EP will look for the engine cache on the disk. Alternatively, users can set `trt_ep_context_embed_mode=1`, embedding the entire engine binary data as a string in the model. However, this mode increases initialization time due to ORT graph optimization hashing the long string. Therefore, we recommend using `trt_ep_context_embed_mode=0`.
+* The default name of an embedded engine model will have `_ctx.onnx` appended to the end. Users can specify `trt_ep_context_file_path=my_ep_context_model.onnx` to overwrite this default name.
 
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)
