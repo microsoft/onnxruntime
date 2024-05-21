@@ -18,6 +18,8 @@ stages:
     - Windows_Packaging_TensorRT
     - Linux_C_API_Packaging_CUDA
     - Linux_C_API_Packaging_TensorRT
+#    This is need for Download Linux CustomOp TestData
+    - Linux_C_API_Packaging_CPU_x64
   condition: succeeded()
   jobs:
     - job:
