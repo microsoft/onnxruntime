@@ -23,6 +23,7 @@
         "-runtime/references"
     ],
     "files.associations": {
-        "span": "cpp"
+        "span": "cpp",
+        "ostream": "cpp"
     }
 }

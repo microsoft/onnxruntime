@@ -4,8 +4,7 @@
 #pragma once
 #include <string>
 #include "core/framework/ort_value.h"
-
-// #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
+#include "contrib_ops/cpu/utils/debug_macros.h"
 
 namespace onnxruntime {
 namespace contrib {

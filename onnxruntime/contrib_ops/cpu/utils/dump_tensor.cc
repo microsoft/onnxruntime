@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "dump_tensor.h"
 #include <iomanip>
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "core/framework/print_tensor_utils.h"
+#include "contrib_ops/cpu/utils/debug_macros.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-#ifdef DEBUG_GENERATION
+#if DUMP_CPU_TENSOR_LEVEL > 0
 
 template <typename T>
 void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1) {

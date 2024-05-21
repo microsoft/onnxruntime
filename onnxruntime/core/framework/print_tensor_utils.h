@@ -5,10 +5,12 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include "core/framework/float16.h"
 
 namespace onnxruntime {
-namespace utils {
+class Tensor;
 
+namespace utils {
 constexpr int64_t kDefaultSnippetEdgeItems = 3;
 constexpr int64_t kDefaultSnippetThreshold = 200;
 
@@ -40,12 +42,12 @@ inline void PrintValue(const T& value) {
 
 // Explicit specialization
 template <>
-inline void PrintValue(const MLFloat16& value) {
+inline void PrintValue(const onnxruntime::MLFloat16& value) {
   std::cout << std::setprecision(8) << value.ToFloat();
 }
 
 template <>
-inline void PrintValue(const BFloat16& value) {
+inline void PrintValue(const onnxruntime::BFloat16& value) {
   std::cout << std::setprecision(8) << value.ToFloat();
 }
 
@@ -127,7 +129,9 @@ void PrintCpuTensorFull(const T* tensor, int64_t dim0, int64_t dim1, int64_t dim
 }
 
 template <typename T>
-void PrintCpuTensor(const Tensor& tensor, int threshold = kDefaultSnippetThreshold, int edge_items = kDefaultSnippetEdgeItems) {
+void PrintCpuTensor(const Tensor& tensor,
+                    int threshold = kDefaultSnippetThreshold,
+                    int edge_items = kDefaultSnippetEdgeItems) {
   const auto& shape = tensor.Shape();
   auto num_items = shape.Size();
   if (num_items == 0) {

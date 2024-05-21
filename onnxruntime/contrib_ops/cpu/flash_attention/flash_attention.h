@@ -7,6 +7,7 @@
 #include "core/util/math.h"
 #include "contrib_ops/cpu/vec/vec_base.h"
 #include "contrib_ops/cpu/vec/functional_base.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
 
@@ -109,31 +110,6 @@ inline void fill_stub(scalar_t* data, scalar_t val, int64_t size) {
   }
 }
 
-// void reshape_attn_mask_to_4d(
-//     Tensor & attn_mask,
-//     int64_t batchSize,
-//     int64_t num_head,
-//     int64_t qSize,
-//     int64_t kvSize) {
-//   // Support mask shapes:
-//   // 2d: ({q_seq_len, 1}  x {kv_seq_len, 1})
-//   // 4d: ({batch, 1} x {num_heads, 1} x {q_seq_len, 1}  x {kv_seq_len, 1})
-//   // Guaranteed in check_attn_mask_shape
-//   int64_t attn_mask_size_0 = 1;
-//   int64_t attn_mask_size_1 = 1;
-//   if (attn_mask.Dim() == 4) {
-//     if (attn_mask.Size(0) == batchSize) {
-//       attn_mask_size_0 = batchSize;
-//     }
-//     if (attn_mask.Size(1) == num_head) {
-//       attn_mask_size_1 = num_head;
-//     }
-//   }
-//   attn_mask = attn_mask
-//                 .view({attn_mask_size_0, attn_mask_size_1, attn_mask.Size(-2), attn_mask.Size(-1)})
-//                 .expand({attn_mask_size_0, attn_mask_size_1, qSize, kvSize});
-// }
-
 template <typename scalar_t, int64_t q_split_size, int64_t kv_split_size>
 void cpu_flash_attention(
     Tensor& output,          // batch x q_seq_len  x num_heads  x head_size
@@ -227,6 +203,17 @@ void cpu_flash_attention(
   accum_t* lse_data = logsumexp.MutableData<accum_t>();
   // accum_t* buf_data = buf.MutableData<accum_t>();
   // scalar_t* buf_reduced_data = is_reduced_type ? buf_reduced.data_ptr<scalar_t>() : nullptr;
+
+  DUMP_CPU_TENSOR_INIT();
+  DUMP_CPU_TENSOR("query", query);
+  DUMP_CPU_TENSOR("key", key);
+  DUMP_CPU_TENSOR("value", value);
+#if DUMP_CPU_TENSOR_LEVEL > 0
+  if (attn_mask != nullptr){
+    DUMP_CPU_TENSOR("attn_mask", *attn_mask);
+  }
+  printf("is_q_bnsh=%d, is_kv_bnsh=%d, scale=%f\n", is_q_bnsh, is_kv_bnsh, static_cast<float>(scale));
+#endif
 
   double cost_per_slice = 1.0;
   concurrency::ThreadPool::TryParallelFor(
@@ -430,6 +417,9 @@ void cpu_flash_attention(
       vec::data_index_step(i, batchSize, j, num_head, k, qSlice);
     }
   });
+
+  DUMP_CPU_TENSOR("logsumexp", logsumexp);
+  DUMP_CPU_TENSOR("output", output);
 }
 } // anonymous namespace
 
