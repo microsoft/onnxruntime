@@ -1,11 +1,5 @@
 #pragma once
 
-#if defined(CPU_CAPABILITY_AVX512)
-#include "contrib_ops/cpu/vec/vec512/vec512.h"
-#else
-#include "contrib_ops/cpu/vec/vec256/vec256.h"
-#endif
-
 namespace onnxruntime::vec {
 // See Note [CPU_CAPABILITY namespace]
 inline namespace CPU_CAPABILITY {
