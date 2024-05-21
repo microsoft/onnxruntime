@@ -9,7 +9,7 @@ namespace test {
 
 // #if defined(USE_CUDA) || defined(USE_ROCM)
 
-TEST(S2SModelSplitQuickGelu, Int32Type2D) {
+TEST(S2SModelSplitQuickGeluTest, Int32Type2D) {
   std::cout << "Starting test" << std::endl;
   std::vector<float> input = {1, 1, 3, 2,
                                 0, 3, 0, 4,
