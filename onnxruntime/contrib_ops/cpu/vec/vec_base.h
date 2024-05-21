@@ -185,7 +185,7 @@ struct Vectorized {
     }
     return vector;
   }
-  
+
   static Vectorized<T> set(const Vectorized<T>& a, const Vectorized<T>& b, int64_t count = size()) {
     Vectorized vector;
     for (int i = 0; i < size(); i++) {
@@ -297,15 +297,9 @@ struct Vectorized {
   Vectorized<T> erfc() const {
     return map(std::erfc);
   }
-  Vectorized<T> erfinv() const {
-    return map(calc_erfinv);
-  }
   Vectorized<T> exp() const {
     return map(std::exp);
   }
-  // Vectorized<T> exp2() const {
-  //   return map(exp2_impl);
-  // }
   Vectorized<T> expm1() const {
     return map(std::expm1);
   }
@@ -703,13 +697,6 @@ inline Vectorized<T> operator^(const Vectorized<T>& a, const Vectorized<T>& b) {
 }
 
 #endif  // defined(CPU_CAPABILITY_AVX2) || defined(CPU_CAPABILITY_AVX512)
-
-// template <class T, typename std::enable_if_t<!std::is_base_of<Vectorizedi, Vectorized<T>>::value, int> = 0>
-// inline Vectorized<T> operator~(const Vectorized<T>& a) {
-//   using int_t = int_same_size_t<T>;
-//   Vectorized<T> ones(c10::bit_cast<T>((int_t)(~(int_t)0)));  // All bits are 1
-//   return a ^ ones;
-// }
 
 template <class T>
 Vectorized<T> inline operator<<(const Vectorized<T>& a, const Vectorized<T>& b) {
