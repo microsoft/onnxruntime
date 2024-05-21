@@ -16,10 +16,9 @@ stages:
     - Setup
     - Windows_Packaging_CUDA
     - Windows_Packaging_TensorRT
-    - Linux_C_API_Packaging_CUDA
-    - Linux_C_API_Packaging_TensorRT
+    - Linux_C_API_Packaging_GPU
 #    This is need for Download Linux CustomOp TestData
-    - Linux_C_API_Packaging_CPU_x64
+    - Linux_C_API_Packaging_CPU
   condition: succeeded()
   jobs:
     - job: NuGet_Packaging_GPU
