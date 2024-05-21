@@ -48,7 +48,7 @@
 			date: 'May 20th, 2024',
 			blurb:
 				"Harness ONNX Runtime to run Phi-3-mini on mobile phones and in the browser.",
-			link: 'blogs/phi-3-on-device',
+			link: 'https://huggingface.co/blog/Emma-N/enjoy-the-power-of-phi-3-with-onnx-runtime',
 			image: Phi3OnDeviceImage,
 			imgalt:
 				'Chart comparing model size (in GB) of ONNX Phi-3-mini for web and mobile with original Phi-3-mini'
