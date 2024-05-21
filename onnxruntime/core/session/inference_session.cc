@@ -1186,8 +1186,11 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                       std::move(cpu_allocator), debug_graph_fn));
 
       // Previously we ran the L1 transformers to handle constant folding of any initializers that were transposed in
-      // a QDQ format model. The transpose optimizer can now look past DQ nodes to directly update initializers which
-      // takes care of most models without needing this.
+      // a QDQ format model. The transpose optimizer can now do the following, which takes care of most models without
+      // needing this.
+      //   - Look past DQ nodes to directly update initializers in-place.
+      //   - Fix-up broken Transpose QDQ groups.
+      //   - Constant fold inserted Squeeze and Transpose ops.
       //
       // if (modified) {
       //  ORT_RETURN_IF_ERROR_SESSIONID_(
