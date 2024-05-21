@@ -70,7 +70,7 @@ This support is added/removed by appending the following flags to the build comm
 | `--enable_wasm_threads` | build with multi-thread support |
 | `--enable_wasm_simd`    | build with SIMD support         |
 
-ONNX Runtime Web can be built with WebGPU support via JavaScript Execution Provider (JSEP). To build with JSEP support, use flag `--use_jsep`.
+ONNX Runtime Web can be built with WebGPU and WebNN support via JavaScript Execution Provider (JSEP). To build with JSEP support, use flag `--use_jsep`. Building WebNN support requires additional flag `--use_webnn`.
 
 ONNX Runtime Web can also be built to support the training APIs. To build with training APIs included, use the flag `--enable-training-apis`.
 
@@ -95,22 +95,23 @@ in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
 
 A full list of required build artifacts:
 
-| file name                   | file name (renamed)              | build flag used                                           |
-| --------------------------- | -------------------------------- | --------------------------------------------------------- |
-| ort-wasm.js                 |                                  |                                                           |
-| ort-wasm.wasm               |                                  |                                                           |
-| ort-wasm-threaded.js        |                                  | `--enable_wasm_threads`                                   |
-| ort-wasm-threaded.wasm      |                                  | `--enable_wasm_threads`                                   |
-| ort-wasm-threaded.worker.js |                                  | `--enable_wasm_threads`                                   |
-| ort-wasm-simd.wasm          |                                  | `--enable_wasm_simd`                                      |
-| ort-wasm-simd-threaded.wasm |                                  | `--enable_wasm_simd` `--enable_wasm_threads`              |
-| ort-wasm-simd.js            | ort-wasm-simd.jsep.js            | `--use_jsep` `--enable_wasm_simd`                         |
-| ort-wasm-simd.wasm          | ort-wasm-simd.jsep.wasm          | `--use_jsep` `--enable_wasm_simd`                         |
-| ort-wasm-simd-threaded.js   | ort-wasm-simd-threaded.jsep.js   | `--use_jsep` `--enable_wasm_simd` `--enable_wasm_threads` |
-| ort-wasm-simd-threaded.wasm | ort-wasm-simd-threaded.jsep.wasm | `--use_jsep` `--enable_wasm_simd` `--enable_wasm_threads` |
-| ort-training-wasm-simd.wasm |                                  | `--enable_wasm_simd` `--enable_training_apis`                     |
+| file name                   | file name (renamed)              | build flag used                                                         |
+| --------------------------- | -------------------------------- | ----------------------------------------------------------------------- |
+| ort-wasm.js                 |                                  |                                                                         |
+| ort-wasm.wasm               |                                  |                                                                         |
+| ort-wasm-threaded.js        |                                  | `--enable_wasm_threads`                                                 |
+| ort-wasm-threaded.wasm      |                                  | `--enable_wasm_threads`                                                 |
+| ort-wasm-threaded.worker.js |                                  | `--enable_wasm_threads`                                                 |
+| ort-wasm-simd.wasm          |                                  | `--enable_wasm_simd`                                                    |
+| ort-wasm-simd-threaded.wasm |                                  | `--enable_wasm_simd` `--enable_wasm_threads`                            |
+| ort-wasm-simd.js            | ort-wasm-simd.jsep.js            | `--use_jsep` `--use_webnn` `--enable_wasm_simd`                         |
+| ort-wasm-simd.wasm          | ort-wasm-simd.jsep.wasm          | `--use_jsep` `--use_webnn` `--enable_wasm_simd`                         |
+| ort-wasm-simd-threaded.js   | ort-wasm-simd-threaded.jsep.js   | `--use_jsep` `--use_webnn` `--enable_wasm_simd` `--enable_wasm_threads` |
+| ort-wasm-simd-threaded.wasm | ort-wasm-simd-threaded.jsep.wasm | `--use_jsep` `--use_webnn` `--enable_wasm_simd` `--enable_wasm_threads` |
+| ort-training-wasm-simd.wasm |                                  | `--enable_wasm_simd` `--enable_training_apis`                           |
 
-NOTE: WebGPU is currently supported as experimental feature for ONNX Runtime Web. The build instructions may change. Please make sure to refer to latest documents from [this gist](https://gist.github.com/fs-eire/a55b2c7e10a6864b9602c279b8b75dce) for a detailed build/consume instruction for ORT Web WebGpu.
+NOTE: WebGPU and WebNN is currently supported as experimental feature for ONNX Runtime Web. The build instructions may change. Please make sure to refer to latest documents from [webgpu gist](https://gist.github.com/fs-eire/a55b2c7e10a6864b9602c279b8b75dce) and [webnn gist](https://gist.github.com/Honry/88b87c43b3f51a6c38c10454f3599405) for a detailed build/consume instruction for ORT Web WebGPU and WebNN.
+
 
 ### Minimal Build Support
 
