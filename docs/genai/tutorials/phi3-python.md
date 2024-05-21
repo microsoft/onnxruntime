@@ -1,28 +1,39 @@
 ---
-title: Python phi-3 tutorial
-description: Small but mighty. Run Phi-3 with ONNX Runtime.
+title: Phi-3 tutorial
+description: Small but mighty. Run Phi-3 with ONNX Runtime in 3 easy steps.
 has_children: false
 parent: Tutorials
 grand_parent: Generate API (Preview)
 nav_order: 1
 ---
 
-# Run the Phi-3 Mini models with the ONNX Runtime generate() API
-
-## Steps
-1. [Setup](#setup)
-2. [Choose your platform](#choose-your-platform)
-3. [Run with DirectML](#run-with-directml)
-4. [Run with NVDIA CUDA](#run-with-nvidia-cuda)
-5. [Run on CPU](#run-on-cpu)
+# Run Phi-3 language models with the ONNX Runtime generate() API
+{: .no_toc }
 
 ## Introduction
+{: .no_toc }
 
-There are two Phi-3 mini models to choose from: the short (4k) context version or the long (128k) context version. The long context version can accept much longer prompts and produce longer output text, but it does consume more memory.
+Phi-3 ONNX models are hosted on HuggingFace and you can run them with the ONNX Runtime generate() API.
 
-The Phi-3 ONNX models are hosted on HuggingFace: [short](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx) and [long](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct-onnx).
+The mini (3.3B) and medium (14B) versions available now, with support. Both mini and medium have a short (4k) context version and a long (128k) context version. The long context version can accept much longer prompts and produce longer output text, but it does consume more memory.
 
-This tutorial downloads and runs the short context model. If you would like to use the long context model, change the `4k` to `128k` in the instructions below.
+Available models are:
+
+
+* [https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx)
+* [https://huggingface.co/microsoft/Phi-3-mini-128k-instruct-onnx](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct-onnx)
+* [https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cpu](https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cpu)
+* [https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cuda](https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cuda)
+* [https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-directml](https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-directml)
+* [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cpu](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cpu)
+* [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda)
+* [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml/)
+
+
+This tutorial downloads and runs the short context (4k) mini (3B) model variant. See the [model reference](#phi-3-onnx-model-reference) for download commands for the other variants.
+
+* TOC placeholder
+{:toc}
 
 ## Setup
 
@@ -128,7 +139,7 @@ Are you on a Windows machine with GPU?
    ```bash
    Input: Tell me a joke about creative writing
  
-   Output:  Why don\'t writers ever get lost? Because they always follow the plot! 
+   Output:  Why don't writers ever get lost? Because they always follow the plot! 
    ```
 
 ## Run on CPU
@@ -165,3 +176,90 @@ Are you on a Windows machine with GPU?
    Output:  Why did the generative AI go to school?
 
    To improve its "creativity" algorithm!
+   ```
+
+## Phi-3 ONNX model reference
+
+### Phi-3 mini 4k context CPU
+
+```bash
+huggingface-cli download microsoft/Phi-3-mini-4k-instruct-onnx --include cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/* --local-dir .
+python phi3-qa.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4
+```
+
+### Phi-3 mini 4k context CUDA
+
+```bash
+huggingface-cli download microsoft/Phi-3-mini-4k-instruct-onnx --include cuda/cuda-int4-rtn-block-32/* --local-dir .
+python phi3-qa.py -m cuda/cuda-int4-rtn-block-32
+```
+
+### Phi-3 mini 4k context DirectML
+
+```bash
+huggingface-cli download microsoft/Phi-3-mini-4k-instruct-onnx --include directml/* --local-dir .
+python phi3-qa.py -m directml\directml-int4-awq-block-128
+```
+
+### Phi-3 mini 128k context CPU
+
+```bash
+huggingface-cli download microsoft/Phi-3-mini-128k-instruct-onnx --include cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/* --local-dir .
+python phi3-qa.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4
+```
+
+### Phi-3 mini 128k context CUDA
+
+```bash
+huggingface-cli download microsoft/Phi-3-mini-128k-instruct-onnx --include cuda/cuda-int4-rtn-block-32/* --local-dir .
+python phi3-qa.py -m cuda/cuda-int4-rtn-block-32
+```
+
+### Phi-3 mini 128k context DirectML
+
+```bash
+huggingface-cli download microsoft/Phi-3-mini-128k-instruct-onnx --include directml/* --local-dir .
+python phi3-qa.py -m directml\directml-int4-awq-block-128
+```
+
+### Phi-3 medium 4k context CPU
+
+```bash
+git clone https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cpu
+python phi3-qa.py -m Phi-3-medium-4k-instruct-onnx-cpu/cpu-int4-rtn-block-32-acc-level-4
+```
+
+### Phi-3 medium 4k context CUDA
+
+```bash
+git clone https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cuda
+python phi3-qa.py -m Phi-3-medium-4k-instruct-onnx-cuda/cuda-int4-rtn-block-32
+```
+
+### Phi-3 medium 4k context DirectML
+
+```bash
+git clone https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-directml
+python phi3-qa.py -m Phi-3-medium-4k-instruct-onnx-directml/directml-int4-awq-block-128
+```
+
+### Phi-3 medium 128k context CPU
+
+```bash
+git clone https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cpu
+python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-cpu/cpu-int4-rtn-block-32-acc-level-4
+```
+
+### Phi-3 medium 128k context CUDA
+
+```bash
+git clone https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda
+python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-cuda/cuda-int4-rtn-block-32
+```
+
+### Phi-3 medium 128k context DirectML
+
+```bash
+git clone https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml
+python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-directml/directml-int4-awq-block-128
+```
