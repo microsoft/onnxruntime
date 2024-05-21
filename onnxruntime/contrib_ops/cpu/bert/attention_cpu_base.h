@@ -74,6 +74,7 @@ class AttentionCPUBase : public AttentionBase {
                   causal, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
     }
 
+    float scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
 
     // Use Flash Attention if possible
     if (relative_position_bias == nullptr && v_head_size == qk_head_size && past == nullptr) {
@@ -94,8 +95,9 @@ class AttentionCPUBase : public AttentionBase {
                    TensorShape({batch_size, num_heads_, total_sequence_length, v_head_size}),
                    const_cast<void*>(reinterpret_cast<const void*>(V)), allocator->Info());
 
-      OrtValue mask;
-      Tensor::InitOrtValue(data_type, TensorShape({batch_size, 1, sequence_length, total_sequence_length}), allocator, mask);
+      Tensor mask(data_type,
+                  TensorShape({batch_size, 1, sequence_length, total_sequence_length}),
+                  const_cast<void*>(reinterpret_cast<const void*>(mask_data)), allocator->Info());
 
       constexpr bool is_q_bnsh = true;
       constexpr bool is_kv_bnsh = true;
@@ -106,8 +108,8 @@ class AttentionCPUBase : public AttentionBase {
           present_key == nullptr ? key :*present_key,
           present_value == nullptr ? value :*present_value,
           is_unidirectional_,
-          &(mask.Get<Tensor>()),
-          0.0, // scale
+          mask_data == nullptr ? nullptr : &mask,
+          static_cast<double>(scale),
           tp,
           allocator,
           is_q_bnsh,
@@ -136,7 +138,7 @@ class AttentionCPUBase : public AttentionBase {
                              static_cast<T*>(mask_data), causal,
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data,
-                             present_data, present_key_data, tp, relative_position_bias_data);
+                             present_data, present_key_data, tp, scale, relative_position_bias_data);
 
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     auto out_tmp_data =
@@ -173,6 +175,7 @@ class AttentionCPUBase : public AttentionBase {
                              T* present,                                // present state
                              T* present_key,                            // present key only (if not using present state)
                              ThreadPool* tp,                            // thread pool
+                             float scale,                               // scale factor
                              const T* relative_position_bias_data       // bias addition matrix with shape BxNxSxT
   ) const {
     const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
@@ -183,7 +186,7 @@ class AttentionCPUBase : public AttentionBase {
 
     {
       const int loop_len = batch_size * num_heads_;
-      const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
+      const float alpha = scale;
 
       TensorOpCost unit_cost;
       const size_t probs_matrix_bytes = SafeInt<size_t>(sequence_length) * total_sequence_length * sizeof(T);

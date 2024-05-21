@@ -139,11 +139,11 @@ void cpu_flash_attention(
     Tensor& output,          // batch x q_seq_len  x num_heads  x head_size
     Tensor& logsumexp,       // batch x q_seq_len  x num_heads
     const Tensor& query,     // batch x q_seq_len  x num_heads  x head_size or
-                                    // batch x num_heads  x q_seq_len  x head_size (when is_q_bnsh is True)
+                             // batch x num_heads  x q_seq_len  x head_size (when is_q_bnsh is True)
     const Tensor& key,       // batch x kv_seq_len x num_heads  x head_size or
-                                    // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
+                             // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
     const Tensor& value,     // batch x kv_seq_len x num_heads  x head_size or
-                                    // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
+                             // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
     bool is_causal,
     const Tensor* attn_mask, // batch x num_heads q_seq_len x kv_seq_len, optional
     double scale,
@@ -172,12 +172,6 @@ void cpu_flash_attention(
 
   // attention mask is optional
   bool has_attn_mask = attn_mask != nullptr && attn_mask->NumberOfElements() > 0;
-  // if (has_attn_mask) {
-  //   // if (is_reduced_type) {
-  //   //   attn_mask = attn_mask.to(onnxruntime::kFloat);
-  //   // }
-  //   reshape_attn_mask_to_4d(attn_mask.value(), batchSize, num_head, qSize, kvSize);
-  // }
 
   // Strides
   int64_t qStrideB = query.Stride(0);

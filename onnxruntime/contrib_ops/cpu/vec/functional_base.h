@@ -13,7 +13,7 @@ inline scalar_t vec_reduce_all(
   using Vec = vec::Vectorized<scalar_t>;
   scalar_t acc_arr[Vec::size()];
   acc_vec.store(acc_arr);
-  //for (const auto i : c10::irange(1, size)) {
+
   for (int64_t i = 1; i < size; i++) {
     std::array<scalar_t, Vec::size()> acc_arr_next = {0};
     acc_arr_next[0] = acc_arr[i];
