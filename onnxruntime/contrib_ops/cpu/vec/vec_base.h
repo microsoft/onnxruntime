@@ -406,19 +406,19 @@ struct Vectorized {
   }
 
  private:
-  // template <typename Op>
-  // inline Vectorized<T> binary_pred(const Vectorized<T>& other, Op op) const {
-  //   // All bits are set to 1 if the pred is true, otherwise 0.
-  //   Vectorized<T> vector;
-  //   for (int64_t i = 0; i != size(); i++) {
-  //     if (op(values[i], other.values[i])) {
-  //       std::memset(static_cast<void*>(vector.values + i), 0xFF, sizeof(T));
-  //     } else {
-  //       std::memset(static_cast<void*>(vector.values + i), 0, sizeof(T));
-  //     }
-  //   }
-  //   return vector;
-  // }
+  template <typename Op>
+  inline Vectorized<T> binary_pred(const Vectorized<T>& other, Op op) const {
+    // All bits are set to 1 if the pred is true, otherwise 0.
+    Vectorized<T> vector;
+    for (int64_t i = 0; i != size(); i++) {
+      if (op(values[i], other.values[i])) {
+        std::memset(static_cast<void*>(vector.values + i), 0xFF, sizeof(T));
+      } else {
+        std::memset(static_cast<void*>(vector.values + i), 0, sizeof(T));
+      }
+    }
+    return vector;
+  }
 
  public:
   Vectorized<T> operator==(const Vectorized<T>& other) const { return binary_pred(other, std::equal_to<T>()); }
@@ -766,69 +766,6 @@ inline Vectorized<T> convert_to_fp_of_same_size(const Vectorized<IntType>& src) 
   std::transform(src_arr.cbegin(), src_arr.cend(), buffer.begin(),
                  [](const IntType& x) { return static_cast<T>(x); });
   return Vectorized<T>::loadu(static_cast<const void*>(buffer.data()));
-}
-
-// Example inputs for AVX512:
-// a   Vectorized<float>   = {a0, b0, a1, b1, a2, b2, a3, b3, a4, b4, a5, b5, a6, b6, a7, b7}
-// b   Vectorized<float>   = {a8, b8, a9, b9, a10, b10, a11, b11, a12, b12, a13, b13, a14, b14, a15, b15}
-// returns:
-//           Vectorized<float>   = {a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15}
-//           Vectorized<float>   = {b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15}
-// Example inputs for AVX2: a           Vectorized<float>   = {a0, b0, a1, b1, a2, b2, a3, b3}
-//               b                      Vectorized<float>   = {a4, b4, a5, b5, a6, b6, a7, b7}
-//       returns:                       Vectorized<float>   = {a0, a1, a2, a3, a4, a5, a6, a7}
-//                                      Vectorized<float>   = {b0, b1, b2, b3, b4, b5, b6, b7}
-template <typename T>
-inline std::enable_if_t<Vectorized<T>::size() % 2 == 0, std::pair<Vectorized<T>, Vectorized<T>>>
-deinterleave2(const Vectorized<T>& a, const Vectorized<T>& b) {
-  static constexpr int size = Vectorized<T>::size();
-  static constexpr int half_size = size / 2;
-  T a_arr[size];
-  T b_arr[size];
-  T buffer1[size];
-  T buffer2[size];
-  a.store(static_cast<void*>(a_arr));
-  b.store(static_cast<void*>(b_arr));
-  for (int i = 0; i < half_size; i++) {
-    buffer1[i] = a_arr[i * 2];
-    buffer1[half_size + i] = b_arr[i * 2];
-    buffer2[i] = a_arr[i * 2 + 1];
-    buffer2[half_size + i] = b_arr[i * 2 + 1];
-  }
-  return std::make_pair(Vectorized<T>::loadu(static_cast<void*>(buffer1)),
-                        Vectorized<T>::loadu(static_cast<void*>(buffer2)));
-}
-
-// inverse operation of deinterleave2
-// Example inputs for AVX512:
-//  a       Vectorized<float>   = {a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15}
-//  b       Vectorized<float>   = {b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15}
-// returns, for AVX512:
-//          Vectorized<float>   = {a0, b0, a1, b1, a2, b2, a3, b3, a4, b4, a5, b5, a6, b6, a7, b7}
-//          Vectorized<float>   = {a8, b8, a9, b9, a10, b10, a11, b11, a12, b12, a13, b13, a14, b14, a15, b15}
-// Example inputs for AVX2 : a           Vectorized<float>   = {a0, a1, a2, a3, a4, a5, a6, a7}
-//                   b                   Vectorized<float>   = {b0, b1, b2, b3, b4, b5, b6, b7}
-//       returns:            Vectorized<float>   = {a0, b0, a1, b1, a2, b2, a3, b3}
-//                           Vectorized<float>   = {a4, b4, a5, b5, a6, b6, a7, b7}
-template <typename T>
-inline std::enable_if_t<Vectorized<T>::size() % 2 == 0, std::pair<Vectorized<T>, Vectorized<T>>>
-interleave2(const Vectorized<T>& a, const Vectorized<T>& b) {
-  static constexpr int size = Vectorized<T>::size();
-  static constexpr int half_size = size / 2;
-  T a_arr[size];
-  T b_arr[size];
-  T buffer1[size];
-  T buffer2[size];
-  a.store(static_cast<void*>(a_arr));
-  b.store(static_cast<void*>(b_arr));
-  for (int i = 0; i < half_size; i++) {
-    buffer1[i * 2] = a_arr[i];
-    buffer1[i * 2 + 1] = b_arr[i];
-    buffer2[i * 2] = a_arr[half_size + i];
-    buffer2[i * 2 + 1] = b_arr[half_size + i];
-  }
-  return std::make_pair(Vectorized<T>::loadu(static_cast<void*>(buffer1)),
-                        Vectorized<T>::loadu(static_cast<void*>(buffer2)));
 }
 
 // template <typename src_T, typename dst_T>
