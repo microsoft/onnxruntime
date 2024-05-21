@@ -16,6 +16,7 @@
 	import WebGPUImage from '../../images/blogs/webgpu_blog_thumbnail.jpg';
 	import WebTrainingImage from '../../images/blogs/webtraining_blog_thumbnail.png';
 	import Phi3OnDeviceImage from '../../images/blogs/phi-3-on-device_blog_thumbnail.png';
+	import Phi3SmallMediumImage from '../../images/blogs/accelerating-phi-3-medium-thumbnail.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -44,6 +45,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Phi-3 Small and Medium Models are now Optimized with ONNX Runtime and DirectML',
+			date: 'May 21th, 2024',
+			blurb:
+				"You can now run the Phi-3 medium, small models on device of your choice.",
+			link: 'blogs/accelerating-phi-3-small-medium',
+			image: Phi3SmallMediumImage,
+			imgalt:
+				'Chart comparing model size (in GB) of ONNX Phi-3-medium between PyTorch and ONNX Runtime'
+		},
+		{
 			title: 'Enjoy the Power of Phi-3 with ONNX Runtime on your device',
 			date: 'May 20th, 2024',
 			blurb:
@@ -62,7 +73,9 @@
 			image: Phi3Image,
 			imgalt:
 				'Phi-3 + ONNX Runtime with the prompt "Tell me a joke" and Phi-3 answering: "Why don\'t scientists trust atoms?" "Because they make up everything!"'
-		},
+		}	
+	];
+	let blogs = [
 		{
 			title: 'ONNX Runtime Web unleashes generative AI in the browser using WebGPU',
 			date: 'February 29th, 2024',
@@ -72,9 +85,7 @@
 			image: WebGPUImage,
 			imgalt:
 				'Comparison of ONNX Runtime Web with WebGPU EP on GPU vs. WASM EP on CPU for segment anything example'
-		}
-	];
-	let blogs = [
+		}, 
 		{
 			title: 'ONNX Runtime 1.17: CUDA 12 support, Phi-2 optimizations, WebGPU, and more!',
 			date: 'February 28th, 2024',
