@@ -15,6 +15,9 @@ namespace webnn {
 
 class TriangularOpBuilder : public BaseOpBuilder {
   // Add operator related.
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
@@ -25,44 +28,49 @@ class TriangularOpBuilder : public BaseOpBuilder {
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
+// Add operator related.
+
+void TriangularOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // Skip diagonal initializer if present.
+  if (node.InputDefs().size() > 1) {
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  }
+}
 
 Status TriangularOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                               const Node& node,
-                                               const logging::Logger& logger) const {
-    const auto& input_defs = node.InputDefs();
-    emscripten::val input = model_builder.GetOperand(node.InputDefs()[0]->Name());
-    emscripten::val output = emscripten::val::object();
-    const auto& initializers = model_builder.GetInitializerTensors();
-    NodeAttrHelper helper(node);
+                                                  const Node& node,
+                                                  const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& initializers = model_builder.GetInitializerTensors();
+  emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
+  emscripten::val output = emscripten::val::object();
+  NodeAttrHelper helper(node);
+  emscripten::val options = emscripten::val::object();
 
+  const bool upper = helper.Get("upper", 1);
+  options.set("upper", upper);
 
-    emscripten::val options = emscripten::val::object();
+  if (!GetTensorName(input_defs, 1).empty()) {
+    // Optional input diagonal is provided, use diagonal initializer data.
+    const auto diagonal_tensor = *initializers.at(input_defs[1]->Name());
 
-    if (!GetTensorName(input_defs, 1).empty()) {
-      // Optional input axes is provided, use axes initializer data.
-      const auto diagonal_tensor = *initializers.at(input_defs[1]->Name());
-      emscripten::val diagonal = emscripten::val::object();
-      ORT_RETURN_IF_NOT(ReadScalarTensorData(diagonal_tensor, diagonal, logger), "Cannot read diagonal value");
-      options.set("diagonal", diagonal);
-    }
-    else {
-      options.set("diagonal", 0);
-    }
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(diagonal_tensor, unpacked_tensor));
+    const auto diagonal = *reinterpret_cast<int64_t*>(unpacked_tensor.data());
+    options.set("diagonal", narrow<int32_t>(diagonal));
+  }
 
-    int32_t upper = helper.Get("upper", 1);
-    options.set("upper", upper);
+  output = model_builder.GetBuilder().call<emscripten::val>("triangular", input, options);
 
-    output = model_builder.GetBuilder().call<emscripten::val>("triangular", input, options);
-
-    model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
-    return Status::OK();
+  model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
+  return Status::OK();
 }
 
 // Operator support related.
-bool TriangularOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
-                                         const Node& node,
-                                         const WebnnDeviceType /* device_type */,
-                                         const logging::Logger& logger) const {
+bool TriangularOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+                                            const Node& node,
+                                            const WebnnDeviceType /* device_type */,
+                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
@@ -74,6 +82,15 @@ bool TriangularOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initi
     return false;
   }
 
+  const std::string diagonal_name = GetTensorName(input_defs, 1);
+  emscripten::val diagonal = emscripten::val::object();
+  // Inputs contain optional 'diagonal' input.
+  if (!diagonal_name.empty()) {
+    if (!Contains(initializers, diagonal_name)) {
+      LOGS(logger, VERBOSE) << "The diagonal must be a constant initializer.";
+      return false;
+    }
+  }
   return true;
 }
 
