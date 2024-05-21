@@ -441,7 +441,7 @@ Status FuncCustomAllReduce(
   int world_size = nccl->Size();
 
   ort_trtllm::AllReduceStrategyType runtime_strategy =
-      ort_trtllm::SelectImplementation(input_count, world_size, data_type);
+      ort_trtllm::SelectImplementation(input_count, rank, world_size, data_type);
 
   if (runtime_strategy == ort_trtllm::AllReduceStrategyType::NCCL) {
     ncclDataType_t dtype = GetNcclDataType(data_type);

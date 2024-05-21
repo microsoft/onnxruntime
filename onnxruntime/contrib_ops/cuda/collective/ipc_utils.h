@@ -25,8 +25,6 @@ namespace ort_trtllm {
 
 #if defined(USE_MPI) || defined(USE_NCCL)
 
-Status SetPeerAccess(int rank, int world_size, bool enable = true);
-
 class IpcMemory {
  public:
   size_t static constexpr FLAGS_SIZE = (MAX_ALL_REDUCE_BLOCKS + 1) * sizeof(uint32_t);

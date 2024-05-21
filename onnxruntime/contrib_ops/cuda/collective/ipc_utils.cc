@@ -25,31 +25,6 @@ namespace ort_trtllm {
 
 using namespace onnxruntime;
 
-Status SetPeerAccess(int rank, int world_size, bool enable) {
-  const int src_node = rank;
-
-  for (int dst_node = 0; dst_node < world_size; dst_node++) {
-    if (dst_node == src_node) {
-      continue;
-    }
-
-    int can_access_peer;
-    CUDA_RETURN_IF_ERROR(cudaDeviceCanAccessPeer(&can_access_peer, src_node, dst_node));
-
-    if (enable) {
-      cudaDeviceEnablePeerAccess(dst_node, 0);
-    } else {
-      cudaDeviceDisablePeerAccess(dst_node);
-    }
-    auto const error = cudaGetLastError();
-    if (error != cudaErrorPeerAccessAlreadyEnabled && error != cudaErrorPeerAccessNotEnabled) {
-      CUDA_RETURN_IF_ERROR(error);
-    }
-  }
-
-  return Status::OK();
-}
-
 IpcMemory::IpcMemory(int rank, int world_size, std::size_t buffer_size)
     : rank_(rank), world_size_(world_size), m_comm_ptrs_(world_size), mbuffer_size_(buffer_size) {
   ORT_ENFORCE(AllocateIpcMemory() == Status::OK());
@@ -112,9 +87,6 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
   if (input_size <= ipc_mem_res_pack.max_input_size) {
     return Status::OK();
   }
-
-  ORT_ENFORCE(SetPeerAccess(rank, world_size, true) == Status::OK());
-  CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   const std::size_t buffer_size = world_size * input_size;
 

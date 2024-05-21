@@ -16,6 +16,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/shared_library/provider_api.h"
 #include "custom_reduce_impl.h"
 #include <algorithm>
@@ -26,6 +27,9 @@
 namespace ort_trtllm {
 
 #if defined(USE_MPI) || defined(USE_NCCL)
+
+using namespace onnxruntime;
+using namespace onnxruntime::cuda;
 
 // Calculates ceil(a / b). User must be careful to ensure that there
 // is no overflow or underflow in the calculation.
@@ -559,10 +563,51 @@ size_t GetMaxRequiredWorkspaceSize(int world_size) {
   return 8 * 1000 * 1000;
 }
 
-AllReduceStrategyType SelectImplementation(size_t message_size, int world_size, onnxruntime::MLDataType type) {
+Status SetPeerAccess(int rank, int world_size, bool enable, int& can_access_peer) {
+  const int src_node = rank;
+
+  for (int dst_node = 0; dst_node < world_size; dst_node++) {
+    if (dst_node == src_node) {
+      continue;
+    }
+
+    CUDA_RETURN_IF_ERROR(cudaDeviceCanAccessPeer(&can_access_peer, src_node, dst_node));
+
+    if (!can_access_peer) {
+      return Status::OK();
+    }
+
+    if (enable) {
+      cudaDeviceEnablePeerAccess(dst_node, 0);
+    } else {
+      cudaDeviceDisablePeerAccess(dst_node);
+    }
+
+    auto const error = cudaGetLastError();
+    if (error != cudaErrorPeerAccessAlreadyEnabled && error != cudaErrorPeerAccessNotEnabled) {
+      CUDA_RETURN_IF_ERROR(error);
+    }
+  }
+
+  return Status::OK();
+}
+
+AllReduceStrategyType SelectImplementation(size_t message_size, int rank, int world_size,
+                                           onnxruntime::MLDataType type) {
   AllReduceStrategyType strategy = AllReduceStrategyType::NCCL;
   if (type != onnxruntime::DataTypeImpl::GetType<float>() &&
       type != onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
+    return strategy;
+  }
+
+  if (world_size != 2 && world_size != 4 && world_size != 6 && world_size != 8) {
+    return strategy;
+  }
+
+  int can_access_peer = 0;
+  ORT_ENFORCE(SetPeerAccess(rank, world_size, true, can_access_peer) == Status::OK());
+  // If P2P is not enabled, we cannot use the custom allreduce, so default to NCCL.
+  if (!can_access_peer) {
     return strategy;
   }
 
