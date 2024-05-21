@@ -252,6 +252,7 @@ static bool IsPreviousTargetNodeOfDQValid(const Node* DQ,
 // Current Target -> Q -> DQ -> Next Target
 // Do the inverse of the function above. Check to keep the Q if the next target is valid
 static bool IsNextTargetNodeOfQValid(const Node* Q,
+                                     const Node* current_target,
                                      const onnxruntime::GraphViewer& src_graph,
                                      const std::vector<std::string>& supported_ops,
                                      bool check_const_init) {
@@ -275,6 +276,8 @@ static bool IsNextTargetNodeOfQValid(const Node* Q,
     } else {
       return true;  // because the next target is supported
     }
+  } else if (current_target->OpType() == "Conv" || current_target->OpType() == "MatMul") {
+    return true;  // Conv and MatMul can keep all Qs by default. Is there a better way to check this?
   } else {
     return false;  // because the next target is not supported
   }
@@ -338,6 +341,7 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
   // If the target node of the NodeUnit following this one is one of the supported Op types, then keep this Q
   // This Q should also be uint8
 
+  const auto& target_node = node_unit.GetNode();
   auto op_type = node_unit.OpType();
 
   // If UInt16 Q, don't keep it
@@ -347,16 +351,14 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
   }
 
   if (op_type == "Conv" || op_type == "MatMul") {
-    // Conv and MatMul keep Qs except if the target that succeeds it is Add/Mul/Div and has any const init OR
-    // Conv and MatMul keep Qs if the node that follows it is one of Conv, Add, MaMul
-    return IsNextTargetNodeOfQValid(q_node, src_graph, {"Add", "Mul", "Div"}, true) ||
-           IsNextTargetNodeOfQValid(q_node, src_graph, {"Conv", "Add", "MatMul"}, false);
+    // Conv and MatMul keep all Qs except if the target that succeeds it is Add/Mul/Div AND has any const init
+    return IsNextTargetNodeOfQValid(q_node, &target_node, src_graph, {"Add", "Mul", "Div"}, true);
   } else if (op_type == "Add") {
     // Add keeps all Qs
     return true;
   } else {
     // Keep Q of an unsupported Op only if the target that succeeds it is a supported Op in this list
-    return IsNextTargetNodeOfQValid(q_node, src_graph, {"Conv", "Add", "MatMul"}, false);
+    return IsNextTargetNodeOfQValid(q_node, &target_node, src_graph, {"Conv", "Add", "MatMul"}, false);
   }
 }
 
