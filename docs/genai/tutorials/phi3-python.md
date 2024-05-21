@@ -14,7 +14,7 @@ nav_order: 1
 
 Phi-3 ONNX models are hosted on HuggingFace and you can run them with the ONNX Runtime generate() API.
 
-The mini (3.3B) and medium (14B) versions available now, with support for small coming soon. Both mini and medium have a short (4k) context version and a long (128k) context version. The long context version can accept much longer prompts and produce longer output text, but it does consume more memory.
+The mini (3.3B) and medium (14B) versions available now, with support. Both mini and medium have a short (4k) context version and a long (128k) context version. The long context version can accept much longer prompts and produce longer output text, but it does consume more memory.
 
 Available models are:
 
