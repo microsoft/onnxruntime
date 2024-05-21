@@ -22,7 +22,8 @@ namespace cuda {
                                      DataTypeImpl::GetTensorType<double>(),    \
                                      DataTypeImpl::GetTensorType<MLFloat16>(), \
                                      DataTypeImpl::GetTensorType<int64_t>(),   \
-                                     DataTypeImpl::GetTensorType<int32_t>()})  \
+                                     DataTypeImpl::GetTensorType<int32_t>(),
+                                     DataTypeImpl::GetTensorType<BFloat16>()})  \
           .InputMemoryType(OrtMemTypeCPUInput, 1),                             \
       Scale<T>);
 
@@ -69,10 +70,12 @@ Status Scale<T>::ComputeInternal(OpKernelContext* context) const {
 REGISTER_SCALE_KERNEL_TYPED(MLFloat16)
 REGISTER_SCALE_KERNEL_TYPED(float)
 REGISTER_SCALE_KERNEL_TYPED(double)
+REGISTER_SCALE_KERNEL_TYPED(BFloat16)
 
 template Status Scale<MLFloat16>::ComputeInternal(OpKernelContext* context) const;
 template Status Scale<float>::ComputeInternal(OpKernelContext* context) const;
 template Status Scale<double>::ComputeInternal(OpKernelContext* context) const;
+template Status Scale<BFloat16>::ComputeInternal(OpKernelContext* context) const;
 
 }  // namespace cuda
 }  // namespace onnxruntime
