@@ -449,7 +449,7 @@ There are three major TRT EP cahces:
 
 Following numbers are measured from initializing session with TRT EP for SD UNet model.
 * No cache (default)  – 384 seconds
-  - First run (warmup) can be very long since building engine involves exhaustive profiling for every kernels to select optimal one.
+  - The first run (warmup) can be very long because building engine involves exhaustive profiling for every kernels to select the optimal one.
 * Timing cache used – 42 seconds
   - Keep layer-profiling information and reuse them to expedite build time
   - Timing cache can be shared across multiple models if layers are the same
