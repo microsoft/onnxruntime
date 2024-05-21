@@ -8,13 +8,7 @@ nav_order: 1
 ---
 
 # Run Phi-3 language models with the ONNX Runtime generate() API
-
-## Steps
-1. [Setup](#setup)
-2. [Choose your platform](#choose-your-platform)
-3. [Run with DirectML](#run-with-directml)
-4. [Run with NVDIA CUDA](#run-with-nvidia-cuda)
-5. [Run on CPU](#run-on-cpu)
+{: .no_toc }
 
 ## Introduction
 
@@ -36,6 +30,8 @@ https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml
 
 This tutorial downloads and runs the short context (4k) mini (3B) model variant. See the [model reference](#phi-3-onnx-model-reference) for download commands for the other variants.
 
+* TOC placeholder
+{:toc}
 
 ## Setup
 
