@@ -113,6 +113,7 @@ onnxruntime_add_include_to_target(onnxruntime_optimizer onnxruntime_common onnxr
 target_include_directories(onnxruntime_optimizer PRIVATE ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_optimizer PRIVATE ${ORTTRAINING_ROOT})
+  onnxruntime_add_include_to_target(onnxruntime_optimizer nlohmann_json::nlohmann_json)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime_optimizer Python::Module)
   endif()
