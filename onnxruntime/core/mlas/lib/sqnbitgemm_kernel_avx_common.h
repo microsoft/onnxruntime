@@ -1,5 +1,6 @@
 #pragma once
 #include "sqnbitgemm.h"
+#include "sqnbitgemm_q8_block.h"
 
 //
 // Quantized B data packing function implementation.
