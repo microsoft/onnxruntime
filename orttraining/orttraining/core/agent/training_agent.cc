@@ -110,6 +110,7 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
 
 std::string TrainingAgent::GetSerializedORTModuleMemoryStat(std::string_view memory_optimization_config,
                                                             std::string_view recompute_probe_level,
+                                                            const bool return_opportunity_table,
                                                             std::map<std::string, std::pair<std::string, int>>&
                                                                 cluster_id_combinations_to_saved_symbolic_byte_map)
     const {
@@ -120,6 +121,7 @@ std::string TrainingAgent::GetSerializedORTModuleMemoryStat(std::string_view mem
       session_state.GetGraphViewer(),
       memory_optimization_config,
       recompute_probe_level,
+      return_opportunity_table,
       *inference_session_.GetLogger(),
       cluster_id_combinations_to_saved_symbolic_byte_map,
       &ortvalue_name_to_idx_map,
