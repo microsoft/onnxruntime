@@ -16,10 +16,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(
-    S2SModelSplitQuickGelu, kMSDomain, 1, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()),
-    S2SModelSplitQuickGelu);
+// ONNX_OPERATOR_KERNEL_EX(
+//     S2SModelSplitQuickGelu, kMSDomain, 1, kCudaExecutionProvider,
+//     (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()),
+//     S2SModelSplitQuickGelu);
 
 template <typename T>
 void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, const int num_outputs, const Tensor& input_tensor,
