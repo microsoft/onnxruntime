@@ -15,6 +15,7 @@
 #include "core/common/gsl.h"
 #include "core/common/make_string.h"
 #include "core/graph/constants.h"
+#include "core/optimizer/transpose_optimization/constant_folding.h"
 
 namespace onnx_transpose_optimization {
 
@@ -195,7 +196,7 @@ static bool IsValidPerm(const std::vector<int64_t>& perm) {
   return true;
 }
 
-static std::optional<std::vector<int64_t>> GetPermAttrIfValid(const api::NodeRef& node) {
+std::optional<std::vector<int64_t>> GetPermAttrIfValid(const api::NodeRef& node) {
   std::optional<std::vector<int64_t>> perm = node.GetAttributeInts("perm");
   if (perm.has_value() && !IsValidPerm(*perm)) {
     return std::nullopt;
@@ -480,9 +481,9 @@ static bool NormalizeAndValidateAxes(std::vector<int64_t>& axes, size_t rank) {
 }
 
 // Read int64 data from attribute or input, depending on whether model opset < provided opset
-static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(OptimizerCtx& ctx, api::NodeRef& node,
-                                                               std::string_view attr_name, size_t inp_index,
-                                                               int64_t opset) {
+std::optional<std::vector<int64_t>> ReadFromAttrOrInput(const OptimizerCtx& ctx, const api::NodeRef& node,
+                                                        std::string_view attr_name, size_t inp_index,
+                                                        int64_t opset) {
   if (ctx.opset < opset) {
     return node.GetAttributeInts(attr_name);
   } else {
@@ -575,7 +576,7 @@ static std::vector<int64_t> UnsqueezeShape(gsl::span<const int64_t> shape, const
 /// <param name="shape">Input shape to squeeze</param>
 /// <param name="axes">List of integers indicating the dimensions to squeeze</param>
 /// <returns>New squeezed shape</returns>
-static std::vector<int64_t> SqueezeShape(gsl::span<const int64_t> shape, const std::vector<int64_t>& axes) {
+std::vector<int64_t> SqueezeShape(const std::vector<int64_t>& shape, const std::vector<int64_t>& axes) {
   const size_t init_rank = shape.size();
   std::vector<int64_t> pos_axes(axes.begin(), axes.end());
 
@@ -2759,107 +2760,6 @@ static bool FixQDQNodeUnits(OptimizerCtx& ctx) {
   return changed;
 }
 
-/// <summary>
-/// Try to constant fold Transpose or Squeeze nodes if their input is a constant.
-/// Returns true if the graph was modified (i.e., at least one of the consumers received a constant-folded value).
-/// </summary>
-/// <param name="ctx">Optimization context state</param>
-/// <param name="node">Squeeze or Transpose node to try to constant-fold</param>
-/// <returns>True if graph was modified. The node may not have been removed in either case.</returns>
-static bool TryConstantFoldNode(OptimizerCtx& ctx, api::NodeRef& node) {
-  std::string_view node_op_type = node.OpType();
-  const bool is_transpose = node_op_type == "Transpose";
-  const bool is_squeeze = node_op_type == "Squeeze";
-
-  if (!is_transpose && !is_squeeze) {
-    return false;
-  }
-
-  std::string_view node_input_name = node.Inputs()[0];
-  auto const_input = ctx.graph.GetLocalConstant(node_input_name);
-  if (const_input == nullptr) {
-    // Doesn't have a constant input. Skip.
-    return false;
-  }
-
-  std::string_view node_output_name = node.Outputs()[0];
-  auto consumers = ctx.graph.GetValueConsumers(node_output_name);
-
-  if (consumers->nodes.empty()) {
-    // No consumers Skip.
-    return false;
-  }
-
-  std::string_view new_initializer_name;
-
-  // Create new squeezed or transposed initializer.
-  // Once we create this new initializer, we're committed to modifying the graph.
-  if (is_transpose) {
-    std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(node);
-    if (perm == std::nullopt) {
-      // Invalid transpose perm attribute. Should not happen. Skip.
-      return false;
-    }
-
-    new_initializer_name = ctx.graph.AddInitializer(const_input->DType(),
-                                                    const_input->Shape(),
-                                                    const_input->Data());
-    ctx.graph.TransposeInitializer(new_initializer_name, *perm);
-  } else {
-    assert(is_squeeze);
-    std::optional<std::vector<int64_t>> squeeze_axes = ReadFromAttrOrInput(ctx, node, "axes", /*inp_index*/ 1,
-                                                                           /*opset*/ 13);
-    if (squeeze_axes == std::nullopt) {
-      // Invalid Squeeze axes value. Should not happen. Skip.
-      return false;
-    }
-
-    auto squeezed_shape = SqueezeShape(const_input->Shape(), *squeeze_axes);
-    new_initializer_name = ctx.graph.AddInitializer(const_input->DType(),
-                                                    const_input->Shape(),
-                                                    const_input->Data());
-    ctx.graph.ReshapeInitializer(new_initializer_name, squeezed_shape);
-  }
-
-  // Iterate through consumers and replace their input(s) with the new initializer.
-  for (auto& consumer : consumers->nodes) {
-    std::vector<std::string_view> inputs = consumer->Inputs();
-
-    for (size_t input_idx = 0; input_idx < inputs.size(); input_idx++) {
-      if (inputs[input_idx] == node_output_name) {
-        consumer->SetInput(input_idx, new_initializer_name);
-      }
-    }
-  }
-
-  // Remove original node if its output is unused.
-  if (!ctx.graph.HasValueConsumers(node_output_name)) {
-    ctx.graph.RemoveNode(node);
-  }
-
-  // Remove old initializer if no longer used.
-  // Will not happen if this initializer was unsqueezed/transposed in-place for another consumer.
-  // Will happen if this initializer is a result of a previous constant-folding operation.
-  //
-  // Example: shared_const --+--> Transpose --> Squeeze --> Op0
-  //                         |
-  //                         +--> Op1
-  //
-  // The first call to TryConstantFoldNode(transpose) does not remove shared_const because it is used by 'Op1'.
-  // However, the graph becomes:
-  //   transposed_const --> Squeeze --> Op0 -->
-  //   shared_const --> Op1 -->
-  //
-  // The subsequent call to TryConstantFoldNode(squeeze) removes transposed_const from the graph, and we end up with:
-  //   transposed_squeezed_const --> Op0
-  //   shared_const --> Op1
-  if (!ctx.graph.HasValueConsumers(node_input_name)) {
-    ctx.graph.RemoveInitializer(node_input_name);
-  }
-
-  return true;
-}
-
 // Performs optimization. General algorithm: iterate over nodes in topological order. If a node has a transpose
 // as input, push it through if the transpose cost does not increase and is likely to decrease.
 OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
@@ -2997,17 +2897,8 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   // In this case, constant folding would remove both the Transpose and Squeeze nodes:
   //     in_place_unsqueezed_transposed_const --> DQ0 --> Op0 --> Q0 -->
   //     new_const --> DQ1 --> Op1 --> Q1 -->
-  auto graph_nodes = ctx.graph.Nodes();
-  for (size_t i = 0; i < graph_nodes.size(); i++) {
-    auto& node = *graph_nodes[i];
-
-    if (!CanModifyNode(ctx, node)) {
-      continue;
-    }
-
-    if (TryConstantFoldNode(ctx, node)) {
-      changed = true;
-    }
+  if (RunConstantFolding(ctx, CanModifyNode)) {
+    changed = true;
   }
 
   // Run 'fix up' pass for QDQ node units.

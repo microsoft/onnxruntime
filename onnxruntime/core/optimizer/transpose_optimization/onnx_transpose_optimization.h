@@ -61,6 +61,37 @@ inline std::vector<size_t> FirstInput(OptimizerCtx&, api::NodeRef&) { return {0}
 
 std::vector<int64_t> InvertPerm(const std::vector<int64_t>& perm);
 
+/// <summary>
+/// Returns the node's perm attribute if it exists and is valid
+/// (i.e., contains each value from 0 to perm.size() - 1 exactly once).
+/// </summary>
+/// <param name="node">Node from which to get the perm attribute</param>
+/// <returns>An std::optional wrapping the valid perms</returns>
+std::optional<std::vector<int64_t>> GetPermAttrIfValid(const api::NodeRef& node);
+
+/// <summary>
+/// Returns int64 data from either the node's attribute or the node's input.
+/// Gets the data from the node's attributes if the model's opset is less than the provided opset. Otherwise, gets
+/// the data from the node's input.
+/// </summary>
+/// <param name="ctx">Optimizer context</param>
+/// <param name="node">Node from which to get int64 data</param>
+/// <param name="attr_name">Attribute name</param>
+/// <param name="inp_index">Input index</param>
+/// <param name="opset">opset version when the attribute became an input in the ONNX spec</param>
+/// <returns>The int64 data as an optional value</returns>
+std::optional<std::vector<int64_t>> ReadFromAttrOrInput(const OptimizerCtx& ctx, const api::NodeRef& node,
+                                                        std::string_view attr_name, size_t inp_index,
+                                                        int64_t opset);
+
+/// <summary>
+/// Returns a new squeezed shape without the dimensions of value 1 indicated by the given axes.
+/// </summary>
+/// <param name="shape">Input shape to squeeze</param>
+/// <param name="axes">List of integers indicating the dimensions to squeeze</param>
+/// <returns>New squeezed shape</returns>
+std::vector<int64_t> SqueezeShape(const std::vector<int64_t>& shape, const std::vector<int64_t>& axes);
+
 // Transpose all inputs and all outputs
 bool HandleSimpleNode(HandlerArgs& args);
 
