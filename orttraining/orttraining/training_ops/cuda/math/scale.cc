@@ -21,9 +21,9 @@ namespace cuda {
           .TypeConstraint("ScaleT", {DataTypeImpl::GetTensorType<float>(),     \
                                      DataTypeImpl::GetTensorType<double>(),    \
                                      DataTypeImpl::GetTensorType<MLFloat16>(), \
+                                     DataTypeImpl::GetTensorType<BFloat16>(),  \
                                      DataTypeImpl::GetTensorType<int64_t>(),   \
-                                     DataTypeImpl::GetTensorType<int32_t>(),
-                                     DataTypeImpl::GetTensorType<BFloat16>()})  \
+                                     DataTypeImpl::GetTensorType<int32_t>()})  \
           .InputMemoryType(OrtMemTypeCPUInput, 1),                             \
       Scale<T>);
 
