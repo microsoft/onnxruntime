@@ -59,7 +59,7 @@ def use_dev_mode(args):
         return False
     if args.use_armnn:
         return False
-    if args.ios and is_macOS():
+    if args.ios and is_macOS() or args.visionos:
         return False
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
     if SYSTEM_COLLECTIONURI and SYSTEM_COLLECTIONURI != "https://dev.azure.com/onnxruntime/":
@@ -102,7 +102,8 @@ def number_of_nvcc_threads(args):
                 memory_per_thread = 4 * 1024 * 1024 * 1024
                 fmha_cu_files = 4 if is_windows() else 16
                 fmha_parallel_jobs = min(fmha_cu_files, number_of_parallel_jobs(args))
-                nvcc_threads = max(1, int(available_memory / (memory_per_thread * fmha_parallel_jobs)))
+                nvcc_threads = max(1,
+                                   int(available_memory / (memory_per_thread * fmha_parallel_jobs)))
                 print(
                     f"nvcc_threads={nvcc_threads} to ensure memory per thread >= 4GB for available_memory="
                     f"{available_memory} and fmha_parallel_jobs={fmha_parallel_jobs}"
@@ -192,9 +193,8 @@ def setup_cuda_vars(args):
         if not cuda_home_valid or (not is_windows() and not cudnn_home_valid):
             raise BuildError(
                 "cuda_home and cudnn_home paths must be specified and valid.",
-                "cuda_home='{}' valid={}. cudnn_home='{}' valid={}".format(
-                    cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid
-                ),
+                f"cuda_home='{cuda_home}' valid={cuda_home_valid}. cudnn_home='{cudnn_home}'"
+                f" valid={cudnn_home_valid}",,
             )
 
-    return cuda_home, cudnn_home
+        return cuda_home, cudnn_home
