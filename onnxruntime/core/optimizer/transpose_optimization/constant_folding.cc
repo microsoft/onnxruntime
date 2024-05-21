@@ -15,19 +15,20 @@ namespace onnx_transpose_optimization {
 
 /// <summary>
 /// Represents a constant-folding operation. Currently only supports Transpose and Squeeze.
-/// Used to look up operations that we've already done on shared initializers.
 /// </summary>
-struct FoldOp {
+class ConstOperation {
+ public:
   enum class Type {
     kUnsupported,
     kTranspose,
     kSqueeze,
   };
 
-  FoldOp() = default;
+  ConstOperation() = default;
 
-  static FoldOp::Type GetFoldOpType(std::string_view op_type) {
-    FoldOp::Type type = Type::kUnsupported;
+  // Converts an ONNX operator type to a ConstOperation::Type.
+  static ConstOperation::Type GetConstOperationType(std::string_view op_type) {
+    ConstOperation::Type type = Type::kUnsupported;
     if (op_type == "Transpose") {
       type = Type::kTranspose;
     } else if (op_type == "Squeeze") {
@@ -37,23 +38,24 @@ struct FoldOp {
     return type;
   }
 
+  // Initializes a ConstOperation from the given node and constant input.
   static bool Init(const OptimizerCtx& ctx, const api::TensorRef& const_input, const api::NodeRef& node,
-                   /*out*/ FoldOp& fold_op) {
-    FoldOp::Type type = GetFoldOpType(node.OpType());
+                   /*out*/ ConstOperation& const_op) {
+    ConstOperation::Type type = GetConstOperationType(node.OpType());
 
     switch (type) {
-      case FoldOp::Type::kTranspose: {
+      case ConstOperation::Type::kTranspose: {
         std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(node);
         if (perm == std::nullopt) {
           // Invalid transpose perm attribute. Should not happen. Skip.
           return false;
         }
 
-        fold_op.type = type;
-        fold_op.op_data = *perm;
+        const_op.type_ = type;
+        const_op.op_data_ = *perm;
         break;
       }
-      case FoldOp::Type::kSqueeze: {
+      case ConstOperation::Type::kSqueeze: {
         std::optional<std::vector<int64_t>> squeeze_axes = ReadFromAttrOrInput(ctx, node, "axes", /*inp_index*/ 1,
                                                                                /*opset*/ 13);
         if (squeeze_axes == std::nullopt) {
@@ -61,8 +63,8 @@ struct FoldOp {
           return false;
         }
 
-        fold_op.type = type;
-        fold_op.op_data = SqueezeShape(const_input.Shape(), *squeeze_axes);
+        const_op.type_ = type;
+        const_op.op_data_ = SqueezeShape(const_input.Shape(), *squeeze_axes);
         break;
       }
       default:
@@ -73,26 +75,28 @@ struct FoldOp {
     return true;
   }
 
-  bool operator==(const FoldOp& other) {
-    return type == other.type && op_data == other.op_data;
+  // Compares constant operations for equality.
+  bool operator==(const ConstOperation& other) {
+    return type_ == other.type_ && op_data_ == other.op_data_;
   }
 
+  // Applies constant operation to the given input.
   std::optional<std::string_view> Apply(OptimizerCtx& ctx, const api::TensorRef& const_input) const {
     std::string_view new_initializer_name;
 
-    switch (type) {
-      case FoldOp::Type::kTranspose: {
+    switch (type_) {
+      case ConstOperation::Type::kTranspose: {
         new_initializer_name = ctx.graph.AddInitializer(const_input.DType(),
                                                         const_input.Shape(),
                                                         const_input.Data());
-        ctx.graph.TransposeInitializer(new_initializer_name, op_data);
+        ctx.graph.TransposeInitializer(new_initializer_name, op_data_);
         break;
       }
-      case FoldOp::Type::kSqueeze: {
+      case ConstOperation::Type::kSqueeze: {
         new_initializer_name = ctx.graph.AddInitializer(const_input.DType(),
                                                         const_input.Shape(),
                                                         const_input.Data());
-        ctx.graph.ReshapeInitializer(new_initializer_name, op_data);
+        ctx.graph.ReshapeInitializer(new_initializer_name, op_data_);
         break;
       }
       default:
@@ -103,15 +107,20 @@ struct FoldOp {
     return new_initializer_name;
   }
 
-  Type type{Type::kUnsupported};
-  std::vector<int64_t> op_data;  // perms (Transpose) or axes (Squeeze)
+ private:
+  Type type_{Type::kUnsupported};
+
+  // Data necessary to compute operation (i.e., perms for Transpose or axes for Squeeze).
+  // If new operator types are added later, this would need to be updated to a tagged union
+  // or use of inheritance.
+  std::vector<int64_t> op_data_;
 };
 
 /// <summary>
 /// POD type that stores an operation that has been done to an initializer and the name of the resulting initializer.
 /// </summary>
-struct FoldOpResult {
-  FoldOp op;
+struct ConstOperationAndResult {
+  ConstOperation op;
   std::string_view result_initializer_name;
 };
 
@@ -127,49 +136,53 @@ class ConstantFoldingCtx {
 
  private:
   bool IsNodeSupported(const api::NodeRef& node) const {
-    return FoldOp::GetFoldOpType(node.OpType()) != FoldOp::Type::kUnsupported;
+    return ConstOperation::GetConstOperationType(node.OpType()) != ConstOperation::Type::kUnsupported;
   }
 
-  std::optional<std::string_view> CreateFoldedInitializer(const api::TensorRef& const_input,
-                                                          std::string_view const_input_name,
-                                                          api::NodeRef& op_node) {
-    FoldOp fold_op = {};
-    if (!FoldOp::Init(ctx_, const_input, op_node, fold_op)) {
+  std::optional<std::string_view> CreateNewInitializer(const api::TensorRef& const_input,
+                                                       std::string_view const_input_name,
+                                                       const api::NodeRef& op_node) {
+    ConstOperation const_op = {};
+    if (!ConstOperation::Init(ctx_, const_input, op_node, const_op)) {
       return std::nullopt;
     }
 
-    // Try to see if we've done this folding operation on this initializer before.
+    // Check if we've done this operation on this initializer before.
     // If so, just return the name of the previously computed initializer.
-    auto it = folded_initializers_.find(const_input_name);
-    if (it != folded_initializers_.end()) {
+    auto it = prev_const_operation_results_.find(const_input_name);
+    if (it != prev_const_operation_results_.end()) {
       for (const auto& op_result : it->second) {
-        if (fold_op == op_result.op) {
+        if (const_op == op_result.op) {
           return op_result.result_initializer_name;
         }
       }
     }
 
-    // Create new folded initializer.
-    auto new_initializer_name = fold_op.Apply(ctx_, const_input);
+    // Create new initializer.
+    auto new_initializer_name = const_op.Apply(ctx_, const_input);
     if (!new_initializer_name.has_value()) {
       return std::nullopt;
     }
 
     // Store result of this constant-folding operation in case it needs to be reused later.
-    folded_initializers_[const_input_name].push_back({fold_op, *new_initializer_name});
+    prev_const_operation_results_[const_input_name].push_back({const_op, *new_initializer_name});
 
     return new_initializer_name;
   }
 
+  // Removes initializer if no longer used.
   void TryRemoveInitializer(std::string_view name) {
     if (!ctx_.graph.HasValueConsumers(name)) {
-      folded_initializers_.erase(name);
+      prev_const_operation_results_.erase(name);
       ctx_.graph.RemoveInitializer(name);
     }
   }
 
   OptimizerCtx& ctx_;
-  std::unordered_map<std::string_view, std::vector<FoldOpResult>> folded_initializers_;
+
+  // Maps an initializer name to the constant operations (+ new initializer names) that have already been
+  // performed on that initializer. Enables reuse of previous computations.
+  std::unordered_map<std::string_view, std::vector<ConstOperationAndResult>> prev_const_operation_results_;
 };
 
 /// <summary>
@@ -201,7 +214,7 @@ bool ConstantFoldingCtx::TryConstantFoldNode(api::NodeRef& node) {
 
   // Create new squeezed or transposed initializer.
   // Once we create this new initializer, we're committed to modifying the graph.
-  std::optional<std::string_view> new_initializer_name = CreateFoldedInitializer(*const_input, node_input_name, node);
+  std::optional<std::string_view> new_initializer_name = CreateNewInitializer(*const_input, node_input_name, node);
   if (!new_initializer_name.has_value()) {
     return false;
   }

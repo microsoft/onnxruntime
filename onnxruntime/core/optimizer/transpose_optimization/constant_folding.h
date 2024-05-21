@@ -12,7 +12,8 @@ using CanModifyNodeFn = bool (*)(const OptimizerCtx& ctx, const api::NodeRef& no
 
 /// <summary>
 /// Runs constant-folding on the graph managed by the provided OptimizerCtx. Only folds Transpose and Squeeze nodes
-/// in order to remove Transpose/Squeeze nodes that were inserted to undo in-place modifications to shared initializers.
+/// in order to remove Transpose/Squeeze nodes that were originally inserted to undo in-place modifications to
+/// shared initializers.
 /// </summary>
 /// <param name="ctx">Optimizer context containing the graph</param>
 /// <param name="can_modify_node_fn">Function that returns true if a node can be modified</param>
