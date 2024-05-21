@@ -21,6 +21,21 @@ namespace cuda {
 //     (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()),
 //     S2SModelSplitQuickGelu);
 
+#define REGISTER_SplitQuickGelu_KERNEL_TYPED(T)                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
+      S2SModelSplitQuickGelu,                                        \
+      kMSDomain,                                                     \
+      1,                                                             \
+      T,                                                             \
+      kCudaExecutionProvider,                                        \
+      (*KernelDefBuilder::Create())                                  \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
+      S2SModelSplitQuickGelu<T>);
+
+REGISTER_SplitQuickGelu_KERNEL_TYPED(float)
+REGISTER_SplitQuickGelu_KERNEL_TYPED(double)
+
+
 template <typename T>
 void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, const int num_outputs, const Tensor& input_tensor,
                                                                    Tensor& output_tensor) const {
