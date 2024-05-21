@@ -272,16 +272,6 @@ struct Vectorized {
     return map([](T x) -> T { return std::abs(x); });
   }
 
-  template <typename complex_t_abs = T,
-            typename std::enable_if_t<is_complex<complex_t_abs>::value, int> = 0>
-  Vectorized<T> abs() const {
-    // complex_t_abs is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<complex_t_abs, T>, "complex_t_abs must be T");
-    // Specifically map() does not perform the type conversion needed by abs.
-    return map([](T x) { return static_cast<T>(std::abs(x)); });
-  }
-
-
   Vectorized<T> erf() const {
     return map(std::erf);
   }
@@ -329,14 +319,7 @@ struct Vectorized {
     static_assert(std::is_same_v<other_t_log2, T>, "other_t_log2 must be T");
     return map(std::log2);
   }
-  template <typename complex_t_log2 = T,
-            typename std::enable_if_t<is_complex<complex_t_log2>::value, int> = 0>
-  Vectorized<T> log2() const {
-    // complex_t_log2 is for SFINAE and clarity. Make sure it is not changed.
-    static_assert(std::is_same_v<complex_t_log2, T>, "complex_t_log2 must be T");
-    const T log_2 = T(std::log(2.0));
-    return Vectorized(map(std::log)) / Vectorized(log_2);
-  }
+
   Vectorized<T> ceil() const {
     return map(std::ceil);
   }
@@ -510,22 +493,6 @@ Vectorized<T> inline maximum(const Vectorized<T>& a, const Vectorized<T>& b) {
   return c;
 }
 
-template <class T,
-          typename std::enable_if_t<is_complex<T>::value, int> = 0>
-Vectorized<T> inline maximum(const Vectorized<T>& a, const Vectorized<T>& b) {
-  Vectorized<T> c;
-  for (int i = 0; i != Vectorized<T>::size(); i++) {
-    c[i] = (std::abs(a[i]) > std::abs(b[i])) ? a[i] : b[i];
-    if (_isnan(a[i])) {
-      // If either input is NaN, propagate a NaN.
-      // NOTE: The case where b[i] was NaN is handled correctly by the naive
-      // ternary operator above.
-      c[i] = a[i];
-    }
-  }
-  return c;
-}
-
 // Implements the IEEE 754 201X `minimum` operation, which propagates NaN if
 // either input is a NaN.
 template <class T,
@@ -534,22 +501,6 @@ Vectorized<T> inline minimum(const Vectorized<T>& a, const Vectorized<T>& b) {
   Vectorized<T> c;
   for (int i = 0; i != Vectorized<T>::size(); i++) {
     c[i] = (a[i] < b[i]) ? a[i] : b[i];
-    if (_isnan(a[i])) {
-      // If either input is NaN, propagate a NaN.
-      // NOTE: The case where b[i] was NaN is handled correctly by the naive
-      // ternary operator above.
-      c[i] = a[i];
-    }
-  }
-  return c;
-}
-
-template <class T,
-          typename std::enable_if_t<is_complex<T>::value, int> = 0>
-Vectorized<T> inline minimum(const Vectorized<T>& a, const Vectorized<T>& b) {
-  Vectorized<T> c;
-  for (int i = 0; i != Vectorized<T>::size(); i++) {
-    c[i] = (std::abs(a[i]) < std::abs(b[i])) ? a[i] : b[i];
     if (_isnan(a[i])) {
       // If either input is NaN, propagate a NaN.
       // NOTE: The case where b[i] was NaN is handled correctly by the naive
