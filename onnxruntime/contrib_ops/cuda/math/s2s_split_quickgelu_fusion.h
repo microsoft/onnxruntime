@@ -13,7 +13,6 @@ namespace cuda {
 
 // S2SModelSplitQuickGelu
 
-template <typename T>
 class S2SModelSplitQuickGelu final : public CudaKernel {
   public:
     S2SModelSplitQuickGelu(const OpKernelInfo& info) : CudaKernel(info) {}

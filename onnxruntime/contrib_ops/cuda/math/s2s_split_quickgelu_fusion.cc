@@ -16,25 +16,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// ONNX_OPERATOR_KERNEL_EX(
-//     S2SModelSplitQuickGelu, kMSDomain, 1, kCudaExecutionProvider,
-//     (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()),
-//     S2SModelSplitQuickGelu);
-
-#define REGISTER_SplitQuickGelu_KERNEL_TYPED(T)                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
-      S2SModelSplitQuickGelu,                                        \
-      kMSDomain,                                                     \
-      1,                                                             \
-      T,                                                             \
-      kCudaExecutionProvider,                                        \
-      (*KernelDefBuilder::Create())                                  \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
-      S2SModelSplitQuickGelu<T>);
-
-REGISTER_SplitQuickGelu_KERNEL_TYPED(float)
-REGISTER_SplitQuickGelu_KERNEL_TYPED(double)
-
+ONNX_OPERATOR_KERNEL_EX(
+    S2SModelSplitQuickGelu, kMSDomain, 1, kCudaExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()),
+    S2SModelSplitQuickGelu);
 
 template <typename T>
 void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, const int num_outputs, const Tensor& input_tensor,
@@ -44,8 +29,7 @@ void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t 
                                             reinterpret_cast<CudaT*>(output_tensor.template MutableData<T>()));
 }
 
-template <typename T>
-Status S2SModelSplitQuickGelu<T>::ComputeInternal(OpKernelContext* context) const {
+Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor);
   const auto& input_shape = input_tensor->Shape();
