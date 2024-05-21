@@ -31,6 +31,5 @@ steps:
         $(Build.Repository.LocalPath)/cmake/external/onnx/third_party,
         $(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,
         $(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,
-        $(Build.Repository.LocalPath)/tools/ci_build/github'
         $(Build.SourcesDirectory)/onnxruntime-inference-examples,
         $(Build.BinariesDirectory)'
