@@ -14,11 +14,8 @@ class MyTritonKernel final : public onnxruntime::cuda::CudaKernel {
     MyTritonKernel(const OpKernelInfo& info);
     Status ComputeInternal(OpKernelContext* context) const override;
   private:
-    int64_t input_step_size;  // actual row size
-    int64_t output_step_size; // unused
-    int64_t mask_size;        // amount of row to change
-    int64_t batch_size;       // number of blocks to run (grid size)
-    int64_t block_size;       // width of block (amount of row to change)
+    int64_t input_size;
+    int64_t block_size;
 };
 
 }  // namespace cuda

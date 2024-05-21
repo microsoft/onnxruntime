@@ -2820,21 +2820,12 @@ void RegisterContribSchemas() {
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("MyTritonKernel")
-      .Attr("input_step_size",
-            "The input step size",
-            AttributeProto::INT, static_cast<int64_t>(10))
-      .Attr("output_step_size",
-            "The output step size",
-            AttributeProto::INT, static_cast<int64_t>(10))
-      .Attr("mask_size",
-            "Size of the mask (length of each row)",
-            AttributeProto::INT, static_cast<int64_t>(10))
-      .Attr("batch_size",
-            "Outer dimension of the tensor (number of rows)",
-            AttributeProto::INT, static_cast<int64_t>(10))
+      .Attr("input_size",
+            "The number of elements in the input vector",
+            AttributeProto::INT, static_cast<int64_t>(128))
       .Attr("block_size",
             "Kernel block size",
-            AttributeProto::INT, static_cast<int64_t>(1024))
+            AttributeProto::INT, static_cast<int64_t>(64))
       .Input(0, "X", "Input data tensor", "T")
       .Output(0, "Y", "Output data tensor.", "T")
       .TypeConstraint(
