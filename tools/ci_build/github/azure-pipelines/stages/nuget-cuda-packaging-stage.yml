@@ -16,7 +16,8 @@ stages:
     - Setup
     - Windows_Packaging_CUDA
     - Windows_Packaging_TensorRT
-    - Linux_C_API_Packaging_Combined_CUDA
+    - Linux_C_API_Packaging_CUDA
+    - Linux_C_API_Packaging_TensorRT
   condition: succeeded()
   jobs:
     - job:
