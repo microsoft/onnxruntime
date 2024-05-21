@@ -20,14 +20,14 @@ The mini (3.3B) and medium (14B) versions available now, with support. Both mini
 Available models are:
 
 
-* (https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx)
-* (https://huggingface.co/microsoft/Phi-3-mini-128k-instruct-onnx)
-* (https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cpu) 
-* (https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cuda)
-* (https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-directml)
-* (https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cpu)
-* (https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda)
-* (https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml)
+* [https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx]
+* [https://huggingface.co/microsoft/Phi-3-mini-128k-instruct-onnx]
+* [https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cpu] 
+* [https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cuda]
+* [https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-directml]
+* [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cpu]
+* [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda]
+* [https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml]
 
 
 This tutorial downloads and runs the short context (4k) mini (3B) model variant. See the [model reference](#phi-3-onnx-model-reference) for download commands for the other variants.
