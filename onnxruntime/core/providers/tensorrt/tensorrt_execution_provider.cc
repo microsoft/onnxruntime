@@ -2837,7 +2837,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   } else {
     cache_hw_compat = "_sm" + compute_capability_;
   }
-  
+
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
   const std::string cache_path_prefix = cache_path + cache_hw_compat;
@@ -3157,7 +3157,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     } else {
       cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
     }
-    
+
     // Enable hardware compatility mode if assigned
     std::string cache_hw_compat = "";
     if (engine_cache_enable_ && engine_hw_compatible_) {
