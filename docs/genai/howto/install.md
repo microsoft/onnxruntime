@@ -1,13 +1,13 @@
 ---
 title: Install
-description: Instructions to install ONNX Runtime GenAI on your target platform in your environment
+description: Instructions to install ONNX Runtime generate() API on your target platform in your environment
 has_children: false
 parent: How to
 grand_parent: Generate API (Preview)
 nav_order: 1
 ---
 
-# Install ONNX Runtime GenAI
+# Install ONNX Runtime generate() API
 {: .no_toc }
 
 * TOC placeholder

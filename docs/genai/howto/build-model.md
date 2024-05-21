@@ -1,6 +1,6 @@
 ---
 title: Build models
-description: How to build models with ONNX Runtime GenAI
+description: How to build models with ONNX Runtime generate() API
 has_children: false
 parent: How to
 grand_parent: Generate API (Preview)
@@ -113,7 +113,7 @@ python3 builder.py -m model_name -o path_to_output_folder -p precision -e execut
 To see all available options through `--extra_options`, please use the `help` commands in the `Full Usage` section above.
 
 ### Config Only
-This scenario is for when you already have your optimized and/or quantized ONNX model and you need to create the config files to run with ONNX Runtime GenAI.
+This scenario is for when you already have your optimized and/or quantized ONNX model and you need to create the config files to run with ONNX Runtime generate() API.
 ```
 # From wheel:
 python3 -m onnxruntime_genai.models.builder -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_for_hf_files --extra_options config_only=true

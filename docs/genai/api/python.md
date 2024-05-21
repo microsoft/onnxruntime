@@ -1,6 +1,6 @@
 ---
 title: Python API
-description: Python API reference for ONNX Runtime GenAI
+description: Python API reference for ONNX Runtime generate() API
 has_children: false
 parent: API docs
 grand_parent: Generate API (Preview)

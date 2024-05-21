@@ -1,13 +1,13 @@
 ---
 title: C API
-description: C API reference for ONNX Runtime GenAI
+description: C API reference for ONNX Runtime generate() API
 has_children: false
 parent: API docs
 grand_parent: Generate API (Preview)
 nav_order: 3
 ---
 
-# ONNX Runtime GenAI C API
+# ONNX Runtime generate() C API
 
 _Note: this API is in preview and is subject to change._
 
