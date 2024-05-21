@@ -13,20 +13,18 @@ image: ''
 url: 'https://onnxruntime.ai/blogs/accelerating-phi-3-small-medium'
 ---
 
-# Phi-3 Small and Medium Models are now optimized with ONNX Runtime and DirectML
-
 We previously shared optimization support for [Phi-3 mini](https://onnxruntime.ai/blogs/accelerating-phi-3). We now introduce optimized [ONNX](https://onnx.ai/) variants of the [newly introduced Phi-3 models](https://aka.ms/Phi-3Build2024). The new **Phi-3-Small** and **Phi-3-Medium** outperform language models of the same size as well as those that are much larger. Phi-3-small beats GPT-3.5T across a variety of language, reasoning, coding and math benchmarks. The new models empower developers with a building block for generative AI applications which require strong reasoning, limited compute, and latency bound scenarios.
 
 **Phi-3-Medium** is a 14B parameter language model. It is available in short-(4K) and long-(128K) context variants. You can now find the **Phi-3-medium-4k-instruct-onnx** and **Phi-3-medium-128K-instruct-onnx** optimized models with **ONNX Runtime and DML** on Huggingface! Check the [Phi-3 Collection](https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3) for the ONNX models.
 
-We also have added support for **Phi-3 Small** models for CUDA capable Nvidia GPUs, other variants coming soon. This includes support for Block Sparse kernel in the newly released [ONNX Runtime 1.18 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.18.0) via in ONNX Runtime generate() API.
+We also have added support for **Phi-3 Small** models for CUDA capable Nvidia GPUs, other variants coming soon. We have added **Phi-3 Small** models for CUDA capable Nvidia GPUs, other variants coming soon. Support for small in ONNX Generate() API coming soon!
 
 **ONNXRuntime 1.18** adds new features like improved 4bit quantization support, improved MultiheadAttention performance on CPU, and ONNX Runtime generate() API enhancements to enable easier and efficient run across devices. 
 
 
 <!-- Phi-3-vision is a 4.2B parameter multimodal model with language and vision capabilities. The optimized variants of the model are now available in ONNX format for windows DML, CUDA, and CPU. The models are available at . The models can be easily run using ONNX Runtime generate() API (see a tutorial [here](https://aka.ms/run-phi3-v-onnx)).
 -->
-We are also happy to share that the new optimized ONNX Phi-3-mini for web deployment is available now. You can run Phi3-mini-4K entirely in the browser! Please check out the model [here](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx-web). What’s more, we now have updated the optimized ONNX version for [CPU and mobile](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/tree/main/cpu_and_mobile) with even better performance. And don’t miss [this blog](https://onnxruntime.ai/blogs/phi-3-on-device) about how to run Phi-3 on your phone and in the browser.
+We are also happy to share that the new optimized ONNX Phi-3-mini for web deployment is available now. You can run Phi3-mini-4K entirely in the browser! Please check out the model [here](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx-web). What’s more, we now have updated the optimized ONNX version for [CPU and mobile](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/tree/main/cpu_and_mobile) with even better performance. And don’t miss [this blog](https://huggingface.co/blog/Emma-N/enjoy-the-power-of-phi-3-with-onnx-runtime) about how to run Phi-3 on your phone and in the browser.
 
 
 ## How to run Phi-3-Medium with ONNX Runtime
