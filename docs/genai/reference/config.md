@@ -1,9 +1,9 @@
 ---
 title: Config reference
-description: Reference for the ONNX Runtime Generative AI configuration file
+description: Reference for the ONNX Runtime generate() API configuration file
 has_children: false
 parent: Reference
-grand_parent: Generative AI (Preview)
+grand_parent: Generate API (Preview)
 nav_order: 1
 ---
 

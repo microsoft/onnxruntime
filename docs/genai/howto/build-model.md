@@ -1,9 +1,9 @@
 ---
 title: Build models
-description: How to build models with ONNX Runtime GenAI
+description: How to build models with ONNX Runtime generate() API
 has_children: false
 parent: How to
-grand_parent: Generative AI (Preview)
+grand_parent: Generate API (Preview)
 nav_order: 2
 ---
 
@@ -13,7 +13,7 @@ nav_order: 2
 * TOC placeholder
 {:toc}
 
-The model builder greatly accelerates creating optimized and quantized ONNX models that run with ONNX Runtime GenAI.
+The model builder greatly accelerates creating optimized and quantized ONNX models that run with the ONNX Runtime generate() API.
 
 ## Current Support
 The tool currently supports the following model architectures.
@@ -23,11 +23,33 @@ The tool currently supports the following model architectures.
 - Mistral
 - Phi
 
-## Usage
+## Installation
 
-### Full Usage
-For all available options, please use the `-h/--help` flag.
+Model builder is available as an [Olive](https://github.com/microsoft/olive) pass. It is also shipped as part of the onnxruntime-genai Python package. You can also download and run it standalone.
+
+In any case, you need to have the following packages installed.
+
+```bash
+pip install torch transformers onnx onnxruntime
 ```
+
+### Install from package
+
+```bash
+pip install --pre onnxruntime-genai
+```
+
+#### Direct download
+
+```bash
+curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/src/python/py/models/builder.py -o builder.py
+```
+
+### Usage
+
+For all available options, please use the `-h/--help` flag.
+
+```bash
 # From wheel:
 python3 -m onnxruntime_genai.models.builder --help
 
@@ -35,9 +57,12 @@ python3 -m onnxruntime_genai.models.builder --help
 python3 builder.py --help
 ```
 
-### Original PyTorch Model from Hugging Face
+### Original PyTorch Model from HuggingFace
+
 This scenario is where your PyTorch model is not downloaded locally (either in the default Hugging Face cache directory or in a local folder on disk).
-```
+
+```bash
+
 # From wheel:
 python3 -m onnxruntime_genai.models.builder -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_to_save_hf_files
 
@@ -46,6 +71,7 @@ python3 builder.py -m model_name -o path_to_output_folder -p precision -e execut
 ```
 
 ### Original PyTorch Model from Disk
+
 This scenario is where your PyTorch model is already downloaded locally (either in the default Hugging Face cache directory or in a local folder on disk).
 ```
 # From wheel:
@@ -87,7 +113,7 @@ python3 builder.py -m model_name -o path_to_output_folder -p precision -e execut
 To see all available options through `--extra_options`, please use the `help` commands in the `Full Usage` section above.
 
 ### Config Only
-This scenario is for when you already have your optimized and/or quantized ONNX model and you need to create the config files to run with ONNX Runtime GenAI.
+This scenario is for when you already have your optimized and/or quantized ONNX model and you need to create the config files to run with ONNX Runtime generate() API.
 ```
 # From wheel:
 python3 -m onnxruntime_genai.models.builder -m model_name -o path_to_output_folder -p precision -e execution_provider -c cache_dir_for_hf_files --extra_options config_only=true

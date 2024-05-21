@@ -1,13 +1,13 @@
 ---
 title: C API
-description: C API reference for ONNX Runtime GenAI
+description: C API reference for ONNX Runtime generate() API
 has_children: false
 parent: API docs
-grand_parent: Generative AI (Preview)
+grand_parent: Generate API (Preview)
 nav_order: 3
 ---
 
-# ONNX Runtime GenAI C API
+# ONNX Runtime generate() C API
 
 _Note: this API is in preview and is subject to change._
 
@@ -23,7 +23,7 @@ _Note: this API is in preview and is subject to change._
 
 ### Create model
 
-Creates a model from the given configuration directory and device type.
+Creates a model from the given directory. The directory should contain a file called `genai_config.json`, which corresponds to the [configuration specification](../reference/config.md).
 
 #### Parameters
  * Input: config_path The path to the model configuration directory. The path is expected to be encoded in UTF-8.
@@ -224,6 +224,23 @@ Set a search option where the option is a bool.
 OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetSearchBool(OgaGeneratorParams* generator_params, const char* name, bool value);
 ```
 
+### Try graph capture with max batch size
+
+Graph capture fixes the dynamic elements of the computation graph to constant values. It can provide more efficient execution in some environments. To execute in graph capture mode, the maximum batch size needs to be known ahead of time. This function can fail if there is not enough memory to allocate the specified maximum batch size.
+
+#### Parameters
+
+* generator_params: The generator params object to set the parameter on
+* max_batch_size: The maximum batch size to allocate
+
+#### Returns
+
+`OgaResult` containing the error message if graph capture mode could not be configured with the specified batch size
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsTryGraphCaptureWithMaxBatchSize(OgaGeneratorParams* generator_params, int32_t max_batch_size);
+```
+
 ### Set inputs
 
 Sets the input ids for the generator params. The input ids are used to seed the generation.
@@ -255,10 +272,28 @@ Sets the input id sequences for the generator params. The input id sequences are
 
 #### Returns
 
- OgaResult containing the error message if the setting of the input id sequences failed.
+OgaResult containing the error message if the setting of the input id sequences failed.
  
 ```c
 OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetInputSequences(OgaGeneratorParams* generator_params, const OgaSequences* sequences);
+```
+
+### Set model input
+
+Set an additional model input, aside from the input_ids. For example additional inputs for LoRA adapters.
+
+### Parameters
+
+* generator_params: The generator params to set the input on
+* name: the name of the parameter to set
+* tensor: the value of the parameter
+
+### Returns
+
+OgaResult containing the error message if the setting of the input failed.
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetWhisperInputFeatures(OgaGeneratorParams*, OgaTensor* tensor);
 ```
 
 
@@ -330,7 +365,7 @@ OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerator_ComputeLogits(OgaGenerator* gene
 
 ### Generate next token
 
-Generates the next token based on the computed logits using the greedy search.
+Generates the next token based on the computed logits using the configured generation parameters.
 
 #### Parameters
 
@@ -341,32 +376,13 @@ Generates the next token based on the computed logits using the greedy search.
 OgaResult containing the error message if the generation of the next token failed.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerator_GenerateNextToken_Top(OgaGenerator* generator);
+OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerator_GenerateNextToken(OgaGenerator* generator);
 ```
 
-### Generate next token with Top K sampling
-
-#### Parameters
-
-#### Returns
-
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerator_GenerateNextToken_TopK(OgaGenerator* generator, int k, float t);
-```
-
-### Generate next token with Top P sampling
-
-#### Parameters
-
-#### Returns
-
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerator_GenerateNextToken_TopP(OgaGenerator* generator, float p, float t);
-```
 
 ### Get number of tokens
 
- Returns the number of tokens in the sequence at the given index.
+Returns the number of tokens in the sequence at the given index.
 
 #### Parameters
 
@@ -378,12 +394,12 @@ OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerator_GenerateNextToken_TopP(OgaGenera
 The number tokens in the sequence at the given index.
  
 ```c
-OGA_EXPORT size_t OGA_API_CALL OgaGenerator_GetSequenceLength(const OgaGenerator* generator, size_t index);
+OGA_EXPORT size_t OGA_API_CALL OgaGenerator_GetSequenceCount(const OgaGenerator* generator, size_t index);
 ```
 
 ### Get sequence
 
-Returns a pointer to the sequence data at the given index. The number of tokens in the sequence is given by OgaGenerator_GetSequenceLength.
+Returns a pointer to the sequence data at the given index. The number of tokens in the sequence is given by `OgaGenerator_GetSequenceCount`.
 
 #### Parameters
 
@@ -395,7 +411,7 @@ Returns a pointer to the sequence data at the given index. The number of tokens 
 A pointer to the token sequence
 
 ```c
-OGA_EXPORT const int32_t* OGA_API_CALL OgaGenerator_GetSequence(const OgaGenerator* generator, size_t index);
+OGA_EXPORT const int32_t* OGA_API_CALL OgaGenerator_GetSequenceData(const OgaGenerator* generator, size_t index);
 ```
 
 ## Enums and structs
@@ -418,6 +434,18 @@ typedef struct OgaBuffer OgaBuffer;
 
 
 ## Utility functions
+
+### Set the GPU device ID
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaSetCurrentGpuDeviceId(int device_id);
+```
+
+### Get the GPU device ID
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaGetCurrentGpuDeviceId(int* device_id);
+```
 
 ### Get error message
 

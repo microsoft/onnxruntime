@@ -1,7 +1,7 @@
 ---
 title: API docs
-description: API documentation for ONNX Runtime GenAI
-parent: Generative AI (Preview)
+description: API documentation for ONNX Runtime generate() API
+parent: Generate API (Preview)
 has_children: true
 nav_order: 2
 ---

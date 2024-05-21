@@ -1,7 +1,7 @@
 ---
 title: How to
-description: How to perform specific tasks with ONNX Runtime GenAI
-parent: Generative AI (Preview)
+description: How to perform specific tasks with ONNX Runtime generate() API
+parent: Generate API (Preview)
 has_children: true
 nav_order: 3
 ---

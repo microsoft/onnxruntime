@@ -1,15 +1,17 @@
 ---
-title: Generative AI (Preview)
-description: Run generative models with ONNX Runtime GenAI
+title: Generate API (Preview)
+description: Run generative models with the ONNX Runtime generate() API
 has_children: true
 nav_order: 6
 ---
 
-# Generative AI with ONNX Runtime
+# ONNX Runtime generate() API
 
 _Note: this API is in preview and is subject to change._
 
-Run generative AI models with ONNX Runtime. Source code: (https://github.com/microsoft/onnxruntime-genai) 
+Run generative AI models with ONNX Runtime.
+
+See the source code here: [https://github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) 
 
 This library provides the generative AI loop for ONNX models, including inference with ONNX Runtime, logits processing, search and sampling, and KV cache management.
 

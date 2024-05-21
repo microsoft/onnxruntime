@@ -3,7 +3,7 @@ title: Build from source
 description: How to build the ONNX Runtime generate() API from source
 has_children: false
 parent: How to
-grand_parent: Generative AI (Preview)
+grand_parent: Generate API (Preview)
 nav_order: 2
 ---
 

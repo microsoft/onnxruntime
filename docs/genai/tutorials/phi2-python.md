@@ -1,17 +1,17 @@
 ---
 title: Python phi-2 tutorial
-description: Learn how to write a language generation application with ONNX Runtime GenAI in Python using the phi-2 model
+description: Learn how to write a language generation application with ONNX Runtime generate() API in Python using the phi-2 model
 has_children: false
 parent: Tutorials
-grand_parent: Generative AI (Preview)
-nav_order: 1
+grand_parent: Generate API (Preview)
+nav_order: 2
 ---
 
 # Language generation in Python with phi-2
 
 ## Setup and installation
 
-Install the ONNX Runtime GenAI Python package using the [installation instructions](../howto/install.md).
+Install the ONNX Runtime generate() API Python package using the [installation instructions](../howto/install.md).
 
 ## Build phi-2 ONNX model
 
@@ -31,11 +31,11 @@ python -m onnxruntime_genai.models.builder -m microsoft/phi-2 -e cpu -p int4 -o 
 ```
 You can replace the name of the output folder specified with the `-o` option with a folder of your choice.
 
-After you run the script, you will see a series of files generated in this folder. They include the HuggingFace configs for your reference, as well as the following generated files used by ONNX Runtime GenAI.
+After you run the script, you will see a series of files generated in this folder. They include the HuggingFace configs for your reference, as well as the following generated files used by ONNX Runtime generate() API.
 
 - `model.onnx`: the phi-2 ONNX model
 - `model.onnx.data`: the phi-2 ONNX model weights
-- `genai_config.json`: the configuration used by ONNX Runtime GenAI
+- `genai_config.json`: the configuration used by ONNX Runtime generate() API
 
 You can view and change the values in the `genai_config.json` file. The model section should not be updated unless you have brought your own model and it has different parameters. 
 
