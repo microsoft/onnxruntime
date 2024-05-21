@@ -11,6 +11,7 @@ nav_order: 1
 {: .no_toc }
 
 ## Introduction
+{: .no_toc }
 
 Phi-3 ONNX models are hosted on HuggingFace and you can run them with the ONNX Runtime generate() API.
 
