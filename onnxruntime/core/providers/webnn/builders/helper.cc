@@ -130,16 +130,10 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   return supported_node_groups;
 }
 
-bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_type) {
-  // Current data type implementation status of WebNN is inconsistent along with different backends,
-  // The XNNPack backend supports only FP32, while the DML backend POC supports more.
-  if (device_type == WebnnDeviceType::CPU) {
-    return std::find(supported_cpu_data_types.begin(), supported_cpu_data_types.end(), data_type) !=
-           supported_cpu_data_types.end();
-  } else {
-    return std::find(supported_gpu_data_types.begin(), supported_gpu_data_types.end(), data_type) !=
-           supported_gpu_data_types.end();
-  }
+bool IsSupportedDataType(const int32_t data_type,
+                         const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>& supported_data_types) {
+  return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) !=
+         supported_data_types.end();
 }
 
 bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
