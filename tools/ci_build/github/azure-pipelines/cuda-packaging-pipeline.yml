@@ -60,11 +60,11 @@ parameters:
   - name: buildJava
     displayName: Build Java API
     type: boolean
-    default: true
+    default: false
   - name: buildNodejs
     displayName: Build Node.js API
     type: boolean
-    default: true
+    default: false
 
 variables:
   - name: ReleaseVersionSuffix

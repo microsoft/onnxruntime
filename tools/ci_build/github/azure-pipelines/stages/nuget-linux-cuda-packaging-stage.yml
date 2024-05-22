@@ -8,10 +8,8 @@ parameters:
   type: string
 - name: buildJava
   type: boolean
-  default: false
 - name: buildNodejs
   type: boolean
-  default: false
 
 stages:
 - stage: Linux_C_API_Packaging_GPU
