@@ -312,6 +312,25 @@ stages:
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
 
+- stage: NeuralSpeed
+  dependsOn: [ ]
+  jobs:
+  - template: templates/jobs/win-ci-vs-2022-job.yml
+    parameters:
+      BuildConfig: 'RelWithDebInfo'
+      EnvSetupScript: setup_env.bat
+      buildArch: x64
+      additionalBuildFlags: --cmake_extra_defines onnxruntime_USE_NEURAL_SPEED=ON
+      msbuildPlatform: x64
+      isX86: false
+      job_name_suffix: x64_neural_speed
+      RunOnnxRuntimeTests: true
+      isTraining: false
+      ORT_EP_NAME: CPU
+      GenerateDocumentation: false
+      EnablePython: false
+      MachinePool: 'onnxruntime-Win-CPU-2022'
+
 #Generate test coverage report and publish the data to a Cloud database. Only runs daily.
 - stage: CodeCoverage
   dependsOn: [ ]
