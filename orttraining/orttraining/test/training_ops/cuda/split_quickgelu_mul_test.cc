@@ -15,8 +15,8 @@ TEST(S2SModelSplitQuickGeluTest, Int32Type2D) {
                                 0, 3, 0, 4,
                                 0, 5, 0, 6,
                                 0, 0, 0, 2};
-  std::vector<float> output = {1, 2, 3, 4,
-                                 5, 6, 7, 8};
+  std::vector<float> output = {0.9940, 0.9678, 1.5, 1.9880,
+                                 0.0000, 2.9967, 0.0000, 3.9992};
 
   OpTester test("S2SModelSplitQuickGelu", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("input", {4, 4}, input);
