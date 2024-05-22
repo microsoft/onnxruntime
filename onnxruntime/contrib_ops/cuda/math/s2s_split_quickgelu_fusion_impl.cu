@@ -28,13 +28,24 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
   uint dim = 2;
   uint max_len = 16;
   float alpha = 1.702f;
-  for (uint i = 0; i < max_len / 2; i++) {
-    T v = input[dim + i] * static_cast<T>(alpha);
-    T one = static_cast<T>(1.f);
-    T zero = static_cast<T>(0.f);
-    T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-    output[i] = input[i] * sigmoid;
+  uint max_dim = 4;
+  T one = static_cast<T>(1.f);
+  T zero = static_cast<T>(0.f);
+  for (uint i = 0; i < max_dim; i++){
+    for (uint j = 0; j < dim; j++){
+      T v = input[dim + i*max_dim+j] * static_cast<T>(alpha);
+      T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+      T quickgelu_out = input[dim + i*max_dim+j] * sigmoid;
+      output[i*max_dim/2+j] = input[i*max_dim+j] * quickgelu_out;
+    }
   }
+  // for (uint i = 0; i < max_len / 2; i++) {
+  //   T v = input[dim + i] * static_cast<T>(alpha);
+  //   T one = static_cast<T>(1.f);
+  //   T zero = static_cast<T>(0.f);
+  //   T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+  //   output[i] = input[i] * sigmoid;
+  // }
 }
 
 // template <typename T>
