@@ -619,7 +619,7 @@ export const applyAttention =
       const pastSequenceLength = parameters.kvNumHeads != null || outputCount > 1 ? parameters.pastSequenceLength : 0;
       const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
 
-      const inputsK = parameters.kvNumHeads == null && (outputCount > 1 && pastKey) ? [q, k, pastKey] : [q, k];
+      const inputsK = (parameters.kvNumHeads == null && outputCount > 1 && pastKey) ? [q, k, pastKey] : [q, k];
       if (relativePositionBias) {
         inputsK.push(relativePositionBias);
       }
@@ -640,7 +640,7 @@ export const applyAttention =
 
       // Run AttrionScore
       const inputsV =
-          parameters.kvNumHeads == null && (outputCount > 1 && pastValue) ? [probs, v, pastValue] : [probs, v];
+          (parameters.kvNumHeads == null && outputCount > 1 && pastValue) ? [probs, v, pastValue] : [probs, v];
       context.compute(
           createVxAttentionScoreProgramInfo(
               context, probs, v, outputCount > 1 && pastValue ? pastValue : undefined, parameters, pastSequenceLength),
