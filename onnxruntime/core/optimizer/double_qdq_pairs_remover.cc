@@ -129,7 +129,7 @@ static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node, /*out*
     // If a zero_point input is absent, get the type from the "output_dtype" attribute or default to uint8.
     // The "output_dtype" attribute was added in ONNX opset 21.
     const auto* attr = graph_utils::GetNodeAttribute(q_node, "output_dtype");
-    zp_data_type = attr != nullptr ? attr->i() : ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+    zp_data_type = attr != nullptr ? attr->i() : static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
     return true;
   }
 
