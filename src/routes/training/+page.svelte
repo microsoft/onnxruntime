@@ -10,13 +10,25 @@
 		'ONNX Runtime can be used to accelerate both large model training and on-device training.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let authors = ['']
+	let keywords = 'onnx runtime, onnx, onnxruntime, onnx runtime performance, onnx runtime training, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform, onnx runtime training, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform'
 </script>
-
 <svelte:head>
-	<meta
-		name="description"
-		content="Learn how you can use ONNX Runtime to accelerate your Machine Learning Training workloads."
-	/>
+	<!-- Dynamic meta tags -->
+	<meta name="description" content={description} />
+	<meta name="image" content={image} />
+	<meta name="author" content={authors.join(', ')} />
+	<meta name="keywords" content={keywords} />
+	<!-- Open Graph / Facebook -->
+	<meta property="og:description" content={description}/>
+	<meta property="og:image" content={image} />
+	
+	<!-- Twitter -->
+	<meta property="twitter:description" content={description} />
+	<meta property="twitter:image" content={image} />
+	<meta property="twitter:card" content={imageSquare} />
 </svelte:head>
 
 <LandingHero {title} {description} {imgsrc} {imgalt} />

@@ -31,14 +31,28 @@
 			link: 'https://www.youtube-nocookie.com/embed/lOp8WK0fa94?si=rHn8fxAii3Ksr8Ey'
 		}
 	];
+	let description = 'ONNX Runtime Events - information on past and future ONNX Runtime Events.';
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let authors = ['']
+	let keywords = 'onnxruntime, onnx runtime events, onnx runtime community events, onnx runtime community meetup, onnx runtime community meetups'
 </script>
-
 <svelte:head>
-	<meta
-		name="description"
-		content="ONNX Runtime Events - information on past and future ONNX Runtime Events."
-	/>
+	<!-- Dynamic meta tags -->
+	<meta name="description" content={description} />
+	<meta name="image" content={image} />
+	<meta name="author" content={authors.join(', ')} />
+	<meta name="keywords" content={keywords} />
+	<!-- Open Graph / Facebook -->
+	<meta property="og:description" content={description}/>
+	<meta property="og:image" content={image} />
+	
+	<!-- Twitter -->
+	<meta property="twitter:description" content={description} />
+	<meta property="twitter:image" content={image} />
+	<meta property="twitter:card" content={imageSquare} />
 </svelte:head>
+
 <div class="container mx-auto">
 	<div class="flex">
 		<h1 class="text-5xl my-auto mx-4">Events</h1>
