@@ -669,7 +669,6 @@ MlasGemmQuantCopyPackB8x8(
     // Process four columns of matrix B in a loop.
     //
     while (CountN >= 4) {
-
         const uint8_t* b = B;
         __vector unsigned int vsum = {0};
         size_t y = CountK;
@@ -885,14 +884,19 @@ MlasQgemmStoreVectorMMA
                 vsum1 = vec_splats(RowSumBuffer[RowCount + 1]) * zeropoint + columnsum;
                 vsum2 = vec_splats(RowSumBuffer[RowCount + 2]) * zeropoint + columnsum;
                 vsum3 = vec_splats(RowSumBuffer[RowCount + 3]) * zeropoint + columnsum;
-                *reinterpret_cast<__vector int *>(&C[0]) = *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
-                *reinterpret_cast<__vector int *>(&C[ldc]) = *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
-                *reinterpret_cast<__vector int *>(&C[ldc*2]) = *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
-                *reinterpret_cast<__vector int *>(&C[ldc*3]) = *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
+                *reinterpret_cast<__vector int *>(&C[0]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[ldc]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
+                *reinterpret_cast<__vector int *>(&C[ldc*2]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
+                *reinterpret_cast<__vector int *>(&C[ldc*3]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
             }
             for (; RowCount < row; RowCount++, C += ldc) {
                 vsum0 = vec_splats(RowSumBuffer[RowCount]) * zeropoint + columnsum;
-                *reinterpret_cast<__vector int *>(&C[0]) = *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[0]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
             }
         } else {
             for (RowCount = 0; RowCount + 4 <= row; RowCount += 4, C += ldc*4) {
@@ -900,14 +904,19 @@ MlasQgemmStoreVectorMMA
                 vsum1 = vec_splats(RowSumBuffer[RowCount + 1]) * zeropoint + columnsum;
                 vsum2 = vec_splats(RowSumBuffer[RowCount + 2]) * zeropoint + columnsum;
                 vsum3 = vec_splats(RowSumBuffer[RowCount + 3]) * zeropoint + columnsum;
-                *reinterpret_cast<__vector int *>(&C[0]) += *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
-                *reinterpret_cast<__vector int *>(&C[ldc]) += *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
-                *reinterpret_cast<__vector int *>(&C[ldc*2]) += *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
-                *reinterpret_cast<__vector int *>(&C[ldc*3]) += *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
+                *reinterpret_cast<__vector int *>(&C[0]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[ldc]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
+                *reinterpret_cast<__vector int *>(&C[ldc*2]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
+                *reinterpret_cast<__vector int *>(&C[ldc*3]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
             }
             for (; RowCount < row; RowCount++, C += ldc) {
                 vsum0 = vec_splats(RowSumBuffer[RowCount]) * zeropoint + columnsum;
-                *reinterpret_cast<__vector int *>(&C[0]) += *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[0]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
             }
         }
     } else {
@@ -917,14 +926,19 @@ MlasQgemmStoreVectorMMA
                 vsum1 = vec_splats(RowSumBuffer[RowCount + 1]) + columnsum;
                 vsum2 = vec_splats(RowSumBuffer[RowCount + 2]) + columnsum;
                 vsum3 = vec_splats(RowSumBuffer[RowCount + 3]) + columnsum;
-                *reinterpret_cast<__vector int *>(&C[0]) = *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
-                *reinterpret_cast<__vector int *>(&C[ldc]) = *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
-                *reinterpret_cast<__vector int *>(&C[ldc*2]) = *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
-                *reinterpret_cast<__vector int *>(&C[ldc*3]) = *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
+                *reinterpret_cast<__vector int *>(&C[0]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[ldc]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
+                *reinterpret_cast<__vector int *>(&C[ldc*2]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
+                *reinterpret_cast<__vector int *>(&C[ldc*3]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
             }
             for (; RowCount < row; RowCount++, C += ldc) {
                 vsum0 = vec_splats(RowSumBuffer[RowCount]) + columnsum;
-                *reinterpret_cast<__vector int *>(&C[0]) = *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[0]) =
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
             }
         } else {
             for (RowCount = 0; RowCount + 4 <= row; RowCount += 4, C += ldc*4) {
@@ -932,14 +946,19 @@ MlasQgemmStoreVectorMMA
                 vsum1 = vec_splats(RowSumBuffer[RowCount + 1]) + columnsum;
                 vsum2 = vec_splats(RowSumBuffer[RowCount + 2]) + columnsum;
                 vsum3 = vec_splats(RowSumBuffer[RowCount + 3]) + columnsum;
-                *reinterpret_cast<__vector int *>(&C[0]) += *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
-                *reinterpret_cast<__vector int *>(&C[ldc]) += *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
-                *reinterpret_cast<__vector int *>(&C[ldc*2]) += *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
-                *reinterpret_cast<__vector int *>(&C[ldc*3]) += *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
+                *reinterpret_cast<__vector int *>(&C[0]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[ldc]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 1]) + vsum1;
+                *reinterpret_cast<__vector int *>(&C[ldc*2]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 2]) + vsum2;
+                *reinterpret_cast<__vector int *>(&C[ldc*3]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 3]) + vsum3;
             }
             for (; RowCount < row; RowCount++, C += ldc) {
                 vsum0 = vec_splats(RowSumBuffer[RowCount]) + columnsum;
-                *reinterpret_cast<__vector int *>(&C[0]) += *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
+                *reinterpret_cast<__vector int *>(&C[0]) +=
+                    *reinterpret_cast<__vector int *>(&result[RowCount + 0]) + vsum0;
             }
         }
     }
@@ -1055,7 +1074,7 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
     if (Mval >= 8) {
         Mval = 4;
     }
-    while(CountN > 0) {
+    while (CountN > 0) {
         const int8_t *a = A;
         typedef __vector unsigned char vec_t;
         const uint8_t *b = B;
