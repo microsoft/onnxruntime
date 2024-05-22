@@ -7,7 +7,7 @@ parameters:
   type: string
 
 stages:
-- stage: Java_GPU_Packaging
+- stage: Jar_Packaging_GPU
   dependsOn:
   - Linux_C_API_Packaging_GPU
   - Windows_Packaging_CUDA
