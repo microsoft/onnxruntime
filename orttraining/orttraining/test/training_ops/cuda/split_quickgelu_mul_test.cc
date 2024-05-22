@@ -26,8 +26,8 @@ TEST(S2SModelSplitQuickGeluTest, Int32Type2D) {
 
 TEST(QuickGeluTest, Int32Type2D) {
   std::cout << "Starting QuickGelu test" << std::endl;
-  std::vector<float> input = {0, 5, 0, 6,
-                              0, 0, 0, 2};
+  std::vector<float> input = {3, 2, 0, 4,
+                              0, 6, 0, 2};
   std::vector<float> output = {0.9940, 0.9678, 0.5, 0.9940,
                                  0.5000, 0.9989, 0.5000, 0.9998};
 
