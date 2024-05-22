@@ -26,6 +26,7 @@ bool IsLayerNormNode(const Node& node) {
       "SimplifiedLayerNormalization",
       "SkipSimplifiedLayerNormalization",
   };
+
   return layer_norm_ops.find(node.OpType()) != layer_norm_ops.end();
 }
 

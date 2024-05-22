@@ -166,9 +166,11 @@ StreamExecutionContext::~StreamExecutionContext() {}
 void StreamExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
   auto* execution_plan = session_state_->GetExecutionPlan();
   for (auto idx : execution_plan->node_release_list[node_index]) {
+    // std::cout << "checking ort value " << execution_plan->release_actions[idx].value_index << " can be released? " << release_plan_[idx] << std::endl;
     if (--release_plan_[idx] == 0) {
       ORT_ENFORCE(frame_.ReleaseMLValue(static_cast<int>(execution_plan->release_actions[idx].value_index)).IsOK());
       VLOGS(*logger_, 0) << "ort value " << execution_plan->release_actions[idx].value_index << " released";
+      // std::cout << "ort value " << execution_plan->release_actions[idx].value_index << " released" << std::endl;
     }
   }
 }

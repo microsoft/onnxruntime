@@ -516,7 +516,10 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     LOGS(logger, ERROR) << msg_string;
     return Status(status.Category(), status.Code(), msg_string);
   }
+
+  // std::cout << "Before RecycleNodeInputs: " << p_kernel->Node().Name() << ", idx: " << idx << std::endl;
   ctx.RecycleNodeInputs(idx);
+  // std::cout << "After RecycleNodeInputs: " << p_kernel->Node().Name() << std::endl;
   VLOGS(logger, 0) << "stream " << stream_idx << " launch kernel with idx " << idx;
   return Status::OK();
 }
@@ -615,7 +618,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 
 #ifdef ENABLE_TRAINING
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
-                                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                          std::vector<OrtValue>& feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                               fetch_allocators,
@@ -628,6 +631,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           int32_t partial_graph_index) {
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
+  feeds.clear(); // Release the feeds at the earliest convenience.
   auto* plan = session_state.GetExecutionPlan();
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
