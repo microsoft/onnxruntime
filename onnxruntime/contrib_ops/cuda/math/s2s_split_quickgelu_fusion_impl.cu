@@ -26,7 +26,7 @@ namespace {
 template <typename T>
 __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* input, T* output) {
   uint dim = 2;
-  uint max_len = 16;
+  // uint max_len = 16;
   float alpha = 1.702f;
   uint max_dim = 4;
   T one = static_cast<T>(1.f);
