@@ -9,8 +9,8 @@ authors:
 authorsLink:
   [
    ]
-image: 'https://freeimage.host/i/JiYKUNe'
-imageSquare: 'https://freeimage.host/i/JiYKUNe'
+image: 'https://iili.io/JiYKUNe.png'
+imageSquare: 'https://iili.io/JiYKUNe.png'
 url: 'https://onnxruntime.ai/blogs/accelerating-phi-3-small-medium'
 ---
 

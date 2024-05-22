@@ -59,13 +59,13 @@
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="date" content={date} />
 	<meta name="og:title" content={title} />
+	<meta name="og:image" content={imageSquare ? imageSquare : image}  />
 	<meta name="og:description" content={description} />
 	<meta name="og:type" content="article" />
 	<meta name="og:url" content={url} />
 	<meta name="twitter:title" content={title} />
 	<meta name="twitter:description" content={description} />
 	<meta name="image" content={image} />
-	<meta name="og:image" content={imageSquare ? imageSquare : image}  />
 	<meta name="twitter:card" content={imageSquare ? imageSquare : image}  />
 	<meta name="twitter:image" content={image}  />
 	<meta name="robots" content={robots} />
