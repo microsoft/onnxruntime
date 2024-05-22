@@ -116,54 +116,18 @@ variables:
     value: $(Agent.TempDirectory)\v12.2
 
 stages:
-- stage: Setup
-  jobs:
-  - job: Set_Variables
-    pool:
-      vmImage: ubuntu-latest
-    steps:
-    - checkout: none
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
-    - bash: |
-        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
-        set +x
-        if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-          if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
-            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
-          else
-            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
-          fi
-        else
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
-        fi
-      name: Set_Release_Version_Suffix
-    - script: |
-        # Extracting hours and minutes
-        date=$(date +'%Y%m%d')
-        # Set the hhmm value as a pipeline variable
-        echo "##vso[task.setvariable variable=BuildDate;isOutput=true]$date"
-      displayName: 'Set Start Date as Variable'
-      name: Set_Build_Date
-
-    - script: |
-        # Extracting hours and minutes
-        hhmm=$(date +'%H%M')
-        # Set the hhmm value as a pipeline variable
-        echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
-      displayName: 'Set Start Time as Variable'
-      name: Set_Build_Time
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+- template: stages/set_packaging_variables_stage.yml
+  parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
 - stage: Debug
   dependsOn: Setup
   jobs:
   - job: D1
     pool:
-      vmImage: ubuntu-latest
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
     variables:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
@@ -185,7 +149,7 @@ stages:
   jobs:
   - job: Download_Java_Tools
     pool:
-      vmImage: ubuntu-latest
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
     steps:
     - checkout: none
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -237,13 +201,28 @@ stages:
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
 
-- template: stages/nuget-linux-cuda-packaging-stage.yml
+- template: stages/java-cuda-packaging-stage.yml
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
-    docker_base_image: ${{ variables.docker_base_image }}
-    linux_trt_version: ${{ variables.linux_trt_version }}
-    buildJava: true
-    buildNodejs: true
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+
+- template: stages/nuget-combine-cuda-stage.yml
+  parameters:
+      DoCompliance: ${{ parameters.DoCompliance }}
+      CudaVersion: ${{ parameters.CudaVersion }}
+      docker_base_image: ${{ variables.docker_base_image }}
+      linux_trt_version: ${{ variables.linux_trt_version }}
+      RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+      UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+      win_trt_home: ${{ variables.win_trt_home }}
+      win_cuda_home: ${{ variables.win_cuda_home }}
+      DoEsrp: ${{ parameters.DoEsrp }}
+      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+      buildJava: true
+      buildNodejs: true
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
 
 # ROCm
 - stage: Linux_C_API_Packaging_ROCm_x64
@@ -311,29 +290,6 @@ stages:
         condition: 'succeeded'
     - template: templates/clean-agent-build-directory-step.yml
 
-- template: stages/java-cuda-packaging-stage.yml
-  parameters:
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: stages/nuget-win-cuda-packaging-stage.yml
-  parameters:
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    DoCompliance: ${{ parameters.DoCompliance }}
-    UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
-    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-    win_trt_home: ${{ variables.win_trt_home }}
-    win_cuda_home: ${{ variables.win_cuda_home }}
-
-- template: stages/nuget-combine-cuda-stage.yml
-  parameters:
-    DoEsrp: ${{ parameters.DoEsrp }}
-    DoCompliance: ${{ parameters.DoCompliance }}
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
 - stage: NuGet_Packaging_ROCm
   dependsOn:
@@ -556,50 +512,6 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-- template: nuget/templates/test_win.yml
-  parameters:
-    AgentPool: 'onnxruntime-Win2022-GPU-A10'
-    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
-    ArtifactSuffix: 'GPU'
-    StageSuffix: 'GPU'
-    Skipx86Tests: 'true'
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: nuget/templates/test_win.yml
-  parameters:
-    AgentPool: 'onnxruntime-Win2022-GPU-A10'
-    NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
-    ArtifactSuffix: 'GPU'
-    StageSuffix: 'GPU'
-    MoreSuffix: '_Windows'
-    Skipx86Tests: 'true'
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: nuget/templates/test_linux.yml
-  parameters:
-    AgentPool: Onnxruntime-Linux-GPU-A10
-    ArtifactSuffix: 'GPU'
-    StageSuffix: 'GPU'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.specificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: nuget/templates/test_linux.yml
-  parameters:
-    AgentPool: Onnxruntime-Linux-GPU-A10
-    ArtifactSuffix: 'GPU'
-    StageSuffix: 'GPU'
-    MoreSuffix: '_Linux'
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
-    CudaVersion: ${{ parameters.CudaVersion }}
-    SpecificArtifact: ${{ parameters.specificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
 - template: nuget/templates/test_linux.yml
   parameters:
     AgentPool: AMD-GPU
@@ -813,13 +725,13 @@ stages:
       inputs:
         artifactName: 'drop-nuget-qnn-x64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
-        
+
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - QNN NuGet arm64'
       inputs:
         artifactName: 'drop-nuget-qnn-arm64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
-    
+
     - task: PowerShell@2
       displayName: 'Bundle NuGet'
       inputs:
