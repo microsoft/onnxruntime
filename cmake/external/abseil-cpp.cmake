@@ -47,8 +47,6 @@ endif()
 # We'd better to not manually manage the list.
 set(ABSEIL_LIBS
 absl::city
-absl::core_headers
-absl::fixed_array
 absl::flags
 absl::flat_hash_map
 absl::flat_hash_set
@@ -60,8 +58,18 @@ absl::node_hash_set
 absl::optional
 absl::raw_hash_set
 absl::raw_logging_internal
-absl::span
 absl::str_format
+absl::str_format_internal
+absl::bits
+absl::fixed_array
+absl::numeric_representation
+absl::utility
+absl::type_traits
+absl::string_view
+absl::core_headers
+absl::nullability
+absl::span
+absl::config
 absl::synchronization
 absl::base
 absl::civil_time
