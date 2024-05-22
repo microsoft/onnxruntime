@@ -52,13 +52,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("minValue", minValue);
   options.set("maxValue", maxValue);
   emscripten::val input = model_builder.GetOperand(input_name);
-  emscripten::val output = emscripten::val::object();
-  if (Contains(model_builder.GetFusedActivations(), input_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Clip Node [" << node.Name() << "] fused";
-    output = input;
-  } else {
-    output = model_builder.GetBuilder().call<emscripten::val>("clamp", input, options);
-  }
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("clamp", input, options);
 
   model_builder.AddOperand(output_name, std::move(output));
   return Status::OK();

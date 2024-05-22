@@ -232,10 +232,9 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
     py_tensor_state[layer1_item.first] = {};
     for (const auto& layer2_item : layer1_item.second) {
       assert(layer2_item.second.IsTensor());
-      py::object obj;
-      const Tensor& rtensor = layer2_item.second.Get<Tensor>();
-      GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
-      py_tensor_state[layer1_item.first].insert({layer2_item.first, obj});
+      py::array arr = PrimitiveTensorToNumpyFromDevice(layer2_item.second,
+                                                       &data_transfer_manager);
+      py_tensor_state[layer1_item.first].insert({layer2_item.first, py::cast<py::object>(arr)});
     }
   }
   return py_tensor_state;
@@ -436,15 +435,17 @@ void addObjectMethodsForTraining(py::module& m) {
           throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("get_serialized_ortmodule_memory_stat",            // for memory optimization
-           [](TrainingAgent* agent,                           // agent
-              const std::string& memory_optimization_config,  // user config string
-              const std::string& recompute_probe_level        // user config string for probe level
+      .def("get_serialized_ortmodule_memory_stat",                      // for memory optimization
+           [](TrainingAgent* agent,                                     // agent
+              const std::string& memory_optimization_config_file_path,  // user config file path
+              const std::string& recompute_probe_level,                 // user config string for probe level
+              const bool return_opportunity_table                       //  return detailed opportunity_table or not.
               ) -> std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>> {
              std::map<std::string, std::pair<std::string, int>> cluster_id_combinations_to_saved_symbolic_byte_map;
              std::string opportunity_table =
-                 agent->GetSerializedORTModuleMemoryStat(memory_optimization_config,
+                 agent->GetSerializedORTModuleMemoryStat(memory_optimization_config_file_path,
                                                          recompute_probe_level,
+                                                         return_opportunity_table,
                                                          cluster_id_combinations_to_saved_symbolic_byte_map);
              return std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>>(
                  opportunity_table, cluster_id_combinations_to_saved_symbolic_byte_map);
@@ -488,7 +489,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
       .def_readwrite("enable_compute_optimizer", &TrainingGraphTransformerConfiguration::enable_compute_optimizer)
-      .def_readwrite("sparse_label_input_names", &TrainingGraphTransformerConfiguration::sparse_label_input_names)
+      .def_readwrite("print_input_density", &TrainingGraphTransformerConfiguration::print_input_density)
       .def_readwrite("optimized_pre_grad_filepath", &TrainingGraphTransformerConfiguration::optimized_pre_grad_filepath)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 

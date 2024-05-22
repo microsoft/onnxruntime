@@ -5756,9 +5756,6 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         loss.backward()
         return loss
 
-    # batch_size = 3
-    # sequence = 4
-
     if embed_is_sparse:
         input = torch.tensor([[0, 2, 3, 4], [2, 3, 1, 1], [1, 1, 1, 1]], device=device)
     else:
@@ -5778,9 +5775,13 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     found_embed_is_sparse = False
     found_embed_is_dense = False
     found_label_is_sparse = False
+    found_label_is_dense = False
     for record in caplog.records:
         if "Label sparsity-based optimization is ON for" in record.getMessage():
             found_label_is_sparse = True
+
+        if "Label sparsity-based optimization is OFF for" in record.getMessage():
+            found_label_is_dense = True
 
         if "Embedding sparsity-based optimization is OFF for" in record.getMessage():
             found_embed_is_dense = True
@@ -5789,7 +5790,9 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
             found_embed_is_sparse = True
 
     if label_is_sparse:
-        assert found_label_is_sparse
+        assert found_label_is_sparse and not found_label_is_dense
+    else:
+        assert not found_label_is_sparse and found_label_is_dense
 
     if embed_is_sparse:
         assert found_embed_is_sparse and not found_embed_is_dense
@@ -6740,3 +6743,185 @@ def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_ch
     else:
         if "ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT" in os.environ:
             del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
+
+
+def test_layerwise_recompute_pythonop_determinstic():
+
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
+
+    class DropoutFunction(torch.autograd.Function):
+
+        @staticmethod
+        def forward(ctx, x):
+            return torch.nn.functional.dropout(x, p=0.5, training=True)
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            return grad_output
+
+    class OneLayer(torch.nn.Module):
+        def __init__(self, hidden_size, num_attention_heads):
+            super().__init__()
+            self.num_attention_heads = num_attention_heads
+            self.attention_head_size = int(hidden_size / num_attention_heads)
+            self.all_head_size = num_attention_heads * self.attention_head_size
+            self.query = nn.Linear(hidden_size, self.all_head_size)
+            self.key = nn.Linear(hidden_size, self.all_head_size)
+            self.value = nn.Linear(hidden_size, self.all_head_size)
+            self.dense = nn.Linear(hidden_size, hidden_size)
+            self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+
+        def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+            new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+            x = x.view(new_x_shape)
+            return x.permute(0, 2, 1, 3)
+
+        def forward(self, hidden_states, attention_mask):
+            query_layer = self.transpose_for_scores(self.query(hidden_states))
+            key_layer = self.transpose_for_scores(self.key(hidden_states))
+            value_layer = self.transpose_for_scores(self.value(hidden_states))
+            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+            attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+            attention_scores = attention_scores + attention_mask
+            attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+            attention_probs = DropoutFunction.apply(attention_probs)
+            context_layer = torch.matmul(attention_probs, value_layer)
+            context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+            context_layer = context_layer.view(new_context_layer_shape)
+
+            output = self.dense(context_layer)
+            output = DropoutFunction.apply(output)
+            output = self.LayerNorm(output + hidden_states)
+            return output
+
+    # This toy model is written referring to HuggingFace bert-large-uncased model in run_glue.py:
+    # https://github.com/huggingface/optimum/blob/72133e595f9a054c3221ec9ea87f42e0bdaa062b/examples/onnxruntime/training/text-classification/run_glue.py
+    # This is just a simple version of it for convenient testing.
+    class ToyModel(torch.nn.Module):
+        def __init__(self, num_hidden_layers, vocab_size, hidden_size, num_attention_heads, pad_token_id, num_labels):
+            super().__init__()
+            self.word_embeddings = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_token_id)
+            self.token_type_embeddings = nn.Embedding(1, hidden_size)
+            self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+            self.layer = nn.ModuleList([OneLayer(hidden_size, num_attention_heads) for _ in range(num_hidden_layers)])
+            self.out_proj = nn.Linear(hidden_size, num_labels)
+
+        def forward(self, input_ids, attention_mask, target):
+            input_shape = input_ids.size()
+            token_type_ids = torch.zeros(input_shape, dtype=torch.long).to(device)
+            inputs_embeds = self.word_embeddings(input_ids)
+            token_type_embeddings = self.token_type_embeddings(token_type_ids)
+            embeddings = inputs_embeds + token_type_embeddings
+            embeddings = self.LayerNorm(embeddings)
+            hidden_states = DropoutFunction.apply(embeddings)
+            extended_attention_mask = attention_mask[:, None, None, :]
+            extended_attention_mask = extended_attention_mask.to(dtype=torch.float32)
+            extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(torch.float32).min
+            for _, layer_module in enumerate(self.layer):
+                hidden_states = layer_module(hidden_states, extended_attention_mask)
+            x = hidden_states[:, 0, :]
+            x = self.out_proj(x)
+            loss_fct = torch.nn.CrossEntropyLoss()
+            return loss_fct(x, target)
+
+    def run_step(model, inputs, mask, target):
+        loss = model(inputs, mask, target)
+        loss.backward()
+        return loss
+
+    # Generate one batch of inputs (shape:[batch_size, max_seq_length]) and masks (shape:[batch_size, max_seq_length]).
+    # Each input has random length from 1 to max_seq_length*0.8 with values from 2 to vocab_size and padded with 1 at
+    # [max_seq_length - length:]. Values of masks are 1 at [0:length] and 0 at [length:max_seq_length].
+    def generate_inputs(batch_size, max_seq_length, vocab_size):
+        batched_inputs = []
+        batched_masks = []
+        for _ in range(batch_size):
+            # Generate random length from 1 to max_seq_length*0.8, to ensure sparsity > 20%
+            seq_len = random.randint(1, int(max_seq_length * 0.8))
+
+            # Generate input values and padding respectively and concatenate them
+            input_id = torch.randint(2, vocab_size, (seq_len,), dtype=torch.long, device=device)
+            padding = torch.ones((max_seq_length - seq_len,), dtype=torch.long, device=device)
+            batched_inputs.append(torch.cat((input_id, padding)))
+
+            # Generate mask values and padding respectively and concatenate them
+            mask_ones = torch.ones((seq_len,), device=device)
+            mask_zeros = torch.zeros((max_seq_length - seq_len,), device=device)
+            batched_masks.append(torch.cat((mask_ones, mask_zeros)))
+        return torch.stack(batched_inputs), torch.stack(batched_masks)
+
+    num_layers, vocab_size, hidden_size, num_attention_heads = 12, 50265, 768, 12
+    batch_size, max_seq_length = 8, 128
+    device = "cuda"
+    pt_model = ToyModel(num_layers, vocab_size, hidden_size, num_attention_heads, 1, 3).to(device)
+
+    os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = "0"
+    ort_model1 = ORTModule(copy.deepcopy(pt_model))
+
+    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.benchmark = False
+
+    pt_input, pt_mask = generate_inputs(batch_size, max_seq_length, vocab_size)
+    ort_input = copy.deepcopy(pt_input)
+    ort_mask = copy.deepcopy(pt_mask)
+    pt_target = torch.randint(3, (batch_size,), device=device)
+    ort_target = copy.deepcopy(pt_target)
+
+    seed = 5033
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # Run one step of forward and backward for torch and ort respectively
+    ort_prediction1 = run_step(ort_model1, ort_input, ort_mask, ort_target)
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = "1"
+    ort_model2 = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="recompute"))
+    ort_prediction2 = run_step(ort_model2, ort_input, ort_mask, ort_target)
+
+    for ort_param1, ort_param2 in zip(ort_model1.parameters(), ort_model2.parameters()):
+        _test_helpers.assert_values_are_close(ort_param1.grad, ort_param2.grad, atol=1e-4, rtol=1e-5)
+
+    if os.getenv("ORTMODULE_ROCM_TEST", "0") == "1":
+        # For ROCm EP, the difference between ORT and PyTorch is larger than CUDA EP.
+        _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=2e-3, rtol=2e-4)
+    else:
+        _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=1e-3, rtol=1e-4)
+
+    execution_mgr = ort_model2._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    # Keep the logic aligned with _graph_execution_manager.py
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "execution_model", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = onnx_model.graph.node
+
+    recompute_nodes = 0
+    for node in onnx_nodes:
+        if "_recompute" in node.name:
+            recompute_nodes += 1
+
+    assert recompute_nodes > 0, "No Recompute nodes are found"
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+    else:
+        if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]

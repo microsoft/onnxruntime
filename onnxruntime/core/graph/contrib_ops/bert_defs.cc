@@ -287,7 +287,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
       auto& past_shape = getInputShape(ctx, past_key_index);
       auto& past_dims = past_shape.dim();
 
-      // past key has shape (batch_size, kv_num_heads, max_sequence_length, head_size)
+      // past key has shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size)
       if (past_dims.size() != 4) {
         fail_shape_inference("The past_key input shall be 4 dimensions");
       }
@@ -1046,10 +1046,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
 Group Query Self/Cross Attention.
 
-Supports different number of heads for q and kv. Only supports causal or local attention.
-Supports rotary position embedding.
-Supports k-v cache.
-CPU EP supports fp32... CUDA EP supports fp16.
+*Highly recommend using k-v cache share buffer for both CPU and CUDA. Enabled through IOBinding past and present kv.
+Supports different number of heads for q and kv for CPU and CUDA.
+Only supports causal and local attention.
+Supports rotary position embedding for CPU and CUDA.
+Supports packed input for CPU and CUDA.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1103,6 +1104,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(5,
                "seqlens_k",
+               // For prompt, the value is number of tokens (excluding padding) - 1.
                "1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.",
                "M")
         .Input(6,
@@ -1150,11 +1152,29 @@ block_mask can be used to configure sparse layout for different head.
 When number of sparse layout is 1, all heads have same sparse layout. Otherwise, different layouts are used cyclically.
 For example, given 4 layouts (S0, S1, S2, S3), 8 heads will have layouts like (S0, S1, S2, S3, S0, S1, S2, S3).
 
-Padding shall be on the right side.
+The block_row_indices and block_col_indices are the CSR representation of block mask. The block_col_indices might contain
+paddings at the right side when different layout has different number of non-zeros in block mask.
 
-When do_rotary is True, cos_cache and sin_cache are required.
+An example of block mask with 2 layouts where each layout is 4 x 4 blocks:
+  [[[1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [0, 1, 1, 0],
+    [0, 1, 1, 1]],
+
+   [[1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [1, 1, 1, 0],
+    [1, 0, 1, 1]]]
+
+The corresponding CSR format:
+  block_col_indices = [[0,  0,  1,  1,  2,  1,  2,  3, -1], [0,  0,  1,  0,  1,  2,  0,  2,  3]]
+  block_row_indices = [[0, 1, 3, 5, 8], [0, 1, 3, 6, 9]]
+
+When do_rotary is True, cos_cache and sin_cache are required. Note that the maximum sequence length supported by cos
+or sin cache can be different from the maximum sequence length used by kv cache.
 
 Only supports unidirectional attention with cache of past key and value in linear buffers.
+
 For performance, past_key and present_key share same memory buffer, and past_value and present_value too.
 )DOC";
 
@@ -1188,36 +1208,38 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(3,
                "past_key",
-               "Key cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size)",
-               "T",
-               OpSchema::Optional)
+               "Key cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size)",
+               "T")
         .Input(4,
                "past_value",
-               "Value cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size)",
-               "T",
-               OpSchema::Optional)
+               "Value cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size)",
+               "T")
         .Input(5,
-               "block_mask",
-               "block mask. 1 indicates attention and 0 no attention. "
-               "Its shape is (num_layout, max_blocks, max_blocks), "
-               "where num_heads is divisible by num_layout, and max_blocks is max_sequence_length / sparse_block_size.",
+               "block_row_indices",
+               "The row indices of CSR format of block mask with shape (num_layout, max_blocks + 1)."
+               "The num_heads is divisible by num_layout, and max_blocks is max_sequence_length / sparse_block_size.",
                "M")
         .Input(6,
+               "block_col_indices",
+               "The col indices of CSR format of block mask with shape (num_layout, max_nnz_blocks)."
+               "The max_nnz_blocks is the maximum number of non-zeros per layout in block mask.",
+               "M")
+        .Input(7,
                "total_sequence_length",
                "Scalar tensor of maximum total sequence length (past_sequence_length + sequence_length) among keys.",
                "M")
-        .Input(7,
+        .Input(8,
                "key_total_sequence_lengths",
                "1D tensor with shape (batch_size) where each value is total sequence length of key excluding paddings.",
                "M")
-        .Input(8,
+        .Input(9,
                "cos_cache",
-               "Cos cache of rotary with shape (max_sequence_length, head_size / 2).",
+               "Cos cache of rotary with shape (max_rotary_sequence_length, head_size / 2).",
                "T",
                OpSchema::Optional)
-        .Input(9,
+        .Input(10,
                "sin_cache",
-               "Sin cache of rotary with shape (max_sequence_length, head_size / 2).",
+               "Sin cache of rotary with shape (max_rotary_sequence_length, head_size / 2).",
                "T",
                OpSchema::Optional)
         .Output(0,
@@ -1226,11 +1248,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "Updated key cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size).",
+                "Updated key cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size).",
                 "T")
         .Output(2,
                 "present_value",
-                "Updated value cache with shape (batch_size, kv_num_heads, max_sequence_length, head_size).",
+                "Updated value cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size).",
                 "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain integer type.")
