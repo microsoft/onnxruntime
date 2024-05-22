@@ -24,6 +24,20 @@ TEST(S2SModelSplitQuickGeluTest, Int32Type2D) {
   test.Run();
 }
 
+TEST(QuickGeluTest, Int32Type2D) {
+  std::cout << "Starting QuickGelu test" << std::endl;
+  std::vector<float> input = {0, 5, 0, 6,
+                              0, 0, 0, 2};
+  std::vector<float> output = {0.9940, 0.9678, 0.5, 0.9940,
+                                 0.5000, 0.9989, 0.5000, 0.9998};
+
+  OpTester test("QuickGelu", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("input", {4, 2}, input);
+  test.AddOutput<float>("output", {4, 2}, output);
+  test.Run();
+}
+
+
 // #endif
 
 }  // namespace test
