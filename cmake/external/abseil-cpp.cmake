@@ -45,7 +45,7 @@ endif()
 
 # TODO: since multiple ORT's dependencies depend on Abseil, the list below would vary from version to version.
 # We'd better to not manually manage the list.
-set(ABSEIL_LIBS absl::base
+set(ABSEIL_LIBS
 absl::city
 absl::core_headers
 absl::fixed_array
@@ -62,7 +62,22 @@ absl::raw_hash_set
 absl::raw_logging_internal
 absl::span
 absl::str_format
-absl::strings
 absl::synchronization
+absl::base
+absl::civil_time
+absl::debugging_internal
+absl::demangle_internal
+absl::graphcycles_internal
+absl::int128
+absl::kernel_timeout_internal
+absl::log_severity
+absl::malloc_internal
+absl::spinlock_wait
+absl::stacktrace
+absl::string_view
+absl::strings
+absl::strings_internal
+absl::symbolize
 absl::throw_delegate
-absl::time)
+absl::time
+absl::time_zone)
