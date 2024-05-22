@@ -28,13 +28,6 @@
 	<meta property="twitter:card" content={imageSquare} />
 </svelte:head>
 
-<svelte:head>
-	<meta
-		name="description"
-		content="Integrate the power of generative AI in your apps and services with ONNX Runtime."
-	/>
-</svelte:head>
-
 <LandingHero {title} {description} {imgsrc} {imgalt} />
 <div class="container mx-auto px-10 my-10">
 	<h1 class="text-4xl">Stable Diffusion + ONNX Runtime</h1>
