@@ -11,12 +11,16 @@ class DeprecatedNodeIndexAndKernelDefHash(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsDeprecatedNodeIndexAndKernelDefHash(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = DeprecatedNodeIndexAndKernelDefHash()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsDeprecatedNodeIndexAndKernelDefHash(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def DeprecatedNodeIndexAndKernelDefHashBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -39,7 +43,26 @@ class DeprecatedNodeIndexAndKernelDefHash(object):
             return self._tab.Get(flatbuffers.number_types.Uint64Flags, o + self._tab.Pos)
         return 0
 
-def DeprecatedNodeIndexAndKernelDefHashStart(builder): builder.StartObject(2)
-def DeprecatedNodeIndexAndKernelDefHashAddNodeIndex(builder, nodeIndex): builder.PrependUint32Slot(0, nodeIndex, 0)
-def DeprecatedNodeIndexAndKernelDefHashAddKernelDefHash(builder, kernelDefHash): builder.PrependUint64Slot(1, kernelDefHash, 0)
-def DeprecatedNodeIndexAndKernelDefHashEnd(builder): return builder.EndObject()
+def DeprecatedNodeIndexAndKernelDefHashStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    DeprecatedNodeIndexAndKernelDefHashStart(builder)
+
+def DeprecatedNodeIndexAndKernelDefHashAddNodeIndex(builder, nodeIndex):
+    builder.PrependUint32Slot(0, nodeIndex, 0)
+
+def AddNodeIndex(builder, nodeIndex):
+    DeprecatedNodeIndexAndKernelDefHashAddNodeIndex(builder, nodeIndex)
+
+def DeprecatedNodeIndexAndKernelDefHashAddKernelDefHash(builder, kernelDefHash):
+    builder.PrependUint64Slot(1, kernelDefHash, 0)
+
+def AddKernelDefHash(builder, kernelDefHash):
+    DeprecatedNodeIndexAndKernelDefHashAddKernelDefHash(builder, kernelDefHash)
+
+def DeprecatedNodeIndexAndKernelDefHashEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return DeprecatedNodeIndexAndKernelDefHashEnd(builder)

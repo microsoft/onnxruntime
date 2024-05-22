@@ -245,10 +245,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       auto value = token.substr(pos + 1);
 
       if (key == "device_type") {
-        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
-                                                           "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16", "NPU"};
+        std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
+                                                           "GPU.0", "GPU.1", "NPU"};
+        std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
+                                                         "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
+                                                         "GPU.0_FP16", "GPU.1_FP16"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          ov_options[key] = value;
+        } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
           ov_options[key] = value;
         } else if (value.find("HETERO:") == 0) {
           ov_options[key] = value;
@@ -258,13 +262,45 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ov_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [OpenVINO] You have selected a wrong configuration value for the key 'device_type'. "
-              "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-              "'GPU.0_FP16', 'GPU.1_FP16', 'NPU' or from"
+              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+              "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
               " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
-        ov_options[key] = value;
+        if (value == "CPU" || value == "GPU" || value == "NPU") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
+        }
+      } else if (key == "precision") {
+        auto device_type = ov_options["device_type"];
+        if (device_type.find("GPU") != std::string::npos) {
+          if (value == "") {
+            ov_options[key] = "FP16";
+            continue;
+          } else if (value == "ACCURACY" || value == "FP16" || value == "FP32") {
+            ov_options[key] = value;
+            continue;
+          } else {
+            ORT_THROW(
+                "[ERROR] [OpenVINO] Unsupported inference precision is selected. "
+                "GPU only supported FP32 / FP16. \n");
+          }
+        } else if (device_type.find("NPU") != std::string::npos) {
+          if (value == "" || value == "ACCURACY" || value == "FP16") {
+            ov_options[key] = "FP16";
+            continue;
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
+          }
+        } else if (device_type.find("CPU") != std::string::npos) {
+          if (value == "" || value == "ACCURACY" || value == "FP32") {
+            ov_options[key] = "FP32";
+            continue;
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
+          }
+        }
       } else if (key == "enable_npu_fast_compile") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
@@ -294,6 +330,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ov_options[key] = value;
         }
+      } else if (key == "model_priority") {
+        ov_options[key] = value;
       } else if (key == "cache_dir") {
         ov_options[key] = value;
       } else if (key == "context") {
@@ -303,6 +341,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_streams' should be in the range of 1-8 \n");
         } else {
           ov_options[key] = value;
+        }
+      } else if (key == "export_ep_ctx_blob") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [OpenVINO] The value for the key 'export_ep_ctx_blob' "
+              "should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else {
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
@@ -520,7 +567,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     dml_options["performance_preference"] = "high_performance";
     dml_options["device_filter"] = "gpu";
     dml_options["disable_metacommands"] = "false";
-    dml_options["enable_dynamic_graph_fusion"] = "false";
+    dml_options["enable_graph_capture"] = "false";
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
@@ -564,16 +611,16 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           dml_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong value for the key 'disable_metacommands'. "
+              "[ERROR] [DML] You have selected a wrong value for the key 'disable_metacommands'. "
               "Select from 'true' or 'false' \n");
         }
-      } else if (key == "enable_dynamic_graph_fusion") {
+      } else if (key == "enable_graph_capture") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
           dml_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
+              "[ERROR] [DML] You have selected a wrong value for the key 'enable_graph_capture'. "
               "Select from 'true' or 'false' \n");
         }
       } else if (key == "enable_graph_serialization") {
@@ -582,7 +629,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           session_options.AddConfigEntry(kOrtSessionOptionsConfigEnableGraphSerialization, value.data());
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong value for the key 'enable_graph_serialization'. "
+              "[ERROR] [DML] You have selected a wrong value for the key 'enable_graph_serialization'. "
               "Select from 'true' or 'false' \n");
         }
       }

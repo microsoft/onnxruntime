@@ -33,7 +33,7 @@ namespace Dml
         IDMLDevice* dmlDevice,
         Dml::ExecutionContext* execution_context,
         bool enableMetacommands,
-        bool enableDynamicGraphFusion,
+        bool enableGraphCapture,
         bool enableCpuSyncSpinning);
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);

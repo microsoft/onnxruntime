@@ -71,7 +71,7 @@ namespace Dml
         IDMLDevice* dmlDevice,
         Dml::ExecutionContext* executionContext,
         bool enableMetacommands,
-        bool enableDynamicGraphFusion,
+        bool enableGraphCapture,
         bool enableSyncSpinning) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
@@ -85,7 +85,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), executionContext, enableMetacommands, enableDynamicGraphFusion, enableSyncSpinning);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), executionContext, enableMetacommands, enableGraphCapture, enableSyncSpinning);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -102,6 +102,9 @@ namespace Dml
 
     void ExecutionProviderImpl::Close()
     {
+        // Release the cached command list references before closing the context
+        m_capturedGraphs.clear();
+
         m_context->Close();
     }
 
@@ -146,11 +149,11 @@ namespace Dml
         }
     }
 
-    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ExecutionContext* executionContext, bool enableMetacommands, bool enableDynamicGraphFusion, bool enableCpuSyncSpinning)
+    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ExecutionContext* executionContext, bool enableMetacommands, bool enableGraphCapture, bool enableCpuSyncSpinning)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
-          m_dynamicGraphFusionEnabled(enableDynamicGraphFusion),
+          m_graphCaptureEnabled(enableGraphCapture),
           m_cpuSyncSpinningEnabled(enableCpuSyncSpinning),
           m_context(executionContext)
     {
@@ -1142,10 +1145,15 @@ namespace Dml
         return m_cpuSyncSpinningEnabled;
     }
 
-    bool ExecutionProviderImpl::DynamicGraphFusionEnabled() const noexcept
+    bool ExecutionProviderImpl::GraphCaptureEnabled() const noexcept
     {
-        return m_dynamicGraphFusionEnabled;
+        return m_graphCaptureEnabled;
     }
+
+    bool ExecutionProviderImpl::GraphCaptured(int graph_annotation_id) const
+    {
+        return m_graphCapturingDone.find(graph_annotation_id) != m_graphCapturingDone.end();
+    };
 
     std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
     ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
@@ -1181,14 +1189,62 @@ namespace Dml
         return onnxruntime::common::Status::OK();
     }
 
+    void ExecutionProviderImpl::AppendCapturedGraph(int annotationId, std::unique_ptr<DmlReusedCommandListState> capturedGraph)
+    {
+        m_capturedGraphs[annotationId].push_back(std::move(capturedGraph));
+    }
+
+    onnxruntime::common::Status ExecutionProviderImpl::ReplayGraph(int graph_annotation_id)
+    {
+        for (auto& capturedGraph : m_capturedGraphs[graph_annotation_id])
+        {
+            ExecuteCommandList(capturedGraph->graphicsCommandList.Get(), &capturedGraph->fence, &capturedGraph->completionValue);
+        }
+
+        return onnxruntime::common::Status::OK();
+    }
+
+    Status ExecutionProviderImpl::OnRunStart(const onnxruntime::RunOptions& run_options)
+    {
+        if (GraphCaptureEnabled())
+        {
+            auto graphAnnotationStr = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
+            // If graph annotation is not provided, fall back to the one dml graph per session behavior
+            int dmlGraphAnnotationId = 0;
+            if (graphAnnotationStr.has_value())
+            {
+                ORT_ENFORCE(onnxruntime::TryParseStringWithClassicLocale<int>(*graphAnnotationStr, dmlGraphAnnotationId),
+                            "Failed to parse the dml graph annotation id: ",
+                            *graphAnnotationStr);
+            }
+
+            m_currentGraphAnnotationId = dmlGraphAnnotationId;
+        }
+
+        return onnxruntime::common::Status::OK();
+    }
+
+    Status ExecutionProviderImpl::OnRunEnd()
+    {
+        if (GraphCaptureEnabled() && m_currentGraphAnnotationId != -1)
+        {
+            m_graphCapturingDone.insert(m_currentGraphAnnotationId);
+        }
+
+        // Flush any pending work to the GPU, but don't block for completion, permitting it
+        // to overlap other work.
+        Flush();
+        return onnxruntime::common::Status::OK();
+    }
+
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         Dml::ExecutionContext* executionContext,
         bool enableMetacommands,
-        bool enableDynamicGraphFusion,
+        bool enableGraphCapture,
         bool enableCpuSyncSpinning)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, executionContext, enableMetacommands, enableDynamicGraphFusion, enableCpuSyncSpinning);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, executionContext, enableMetacommands, enableGraphCapture, enableCpuSyncSpinning);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)

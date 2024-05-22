@@ -44,9 +44,15 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShapeVector strides;
   };
 
+  // Viewing dim 1 of the X input as 'input channels' (C) and dim 1 of the Y output as 'output channels' (M),
+  // if is_nhwc is true, the input channels (dim 0) or output channels (dim 1) of the W input (the filter with
+  // shape {C, M/group, ...}) could be transposed to be last. transposed_input_channels indicates whether dim 0 or
+  // dim 1 was moved.
+  //
+  // e.g. XNNPACK moves the input channels dim to the end. CUDA moves the output channels dim to the end.
   Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p,
                            bool dynamic_padding = false, const TensorShape* filter_shape = nullptr,
-                           bool is_nhwc = false) const {
+                           bool is_nhwc = false, bool transposed_input_channels = true) const {
     const Tensor* X = context->Input<Tensor>(0);
     const Tensor* F = (filter_shape != nullptr) ? nullptr : context->Input<Tensor>(1);
     const TensorShape& F_Shape = (filter_shape != nullptr) ? *filter_shape : F->Shape();
@@ -57,7 +63,12 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShape input_shape = X->Shape().Slice(is_nhwc ? 1 : 2, is_nhwc ? rank - 1 : rank);
     const int64_t num_input_channels = is_nhwc ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
-    const int64_t num_output_channels_multiplier = is_nhwc ? F_Shape[3] : F_Shape[1];
+
+    // W is {C, M/group, ....}. adjust for NHWC and transposed_input_channels
+    // If we transposed the input channels, {C, M/group, ...} becomes {M/group, ..., C}
+    // If we transposed the output channels, {C, M/group, ...} becomes {C, ..., M/group}
+    const auto M_div_group_dim = is_nhwc ? (transposed_input_channels ? 0 : F_Shape.NumDimensions() - 1) : 1;
+    const int64_t num_output_channels_multiplier = F_Shape[M_div_group_dim];
     const int64_t num_output_channels = num_output_channels_multiplier * group;
 
     // input validations
@@ -72,9 +83,10 @@ struct ConvTransposeAttributes : public ConvAttributes {
                              " W: ", F_Shape.ToString().c_str());
     }
 
-    if (F_Shape[0] != num_input_channels) {
+    const auto F_channels_dim = is_nhwc && transposed_input_channels ? F_Shape.NumDimensions() - 1 : 0;
+    if (F_Shape[F_channels_dim] != num_input_channels) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.",
-                             " filter_number: ", F_Shape[0],
+                             " filter_number: ", F_Shape[F_channels_dim],
                              " num_input_channels: ", num_input_channels);
     }
 
@@ -180,25 +192,6 @@ struct ConvTransposeAttributes : public ConvAttributes {
   TensorShapeVector output_shape;
 
  private:
-  int64_t ComputeTotalPad(int64_t in_size, int64_t stride, int64_t adj,
-                          int64_t kernel, int64_t dilation, int64_t out_size) const {
-    return std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - out_size);
-  }
-
-  void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
-                         int64_t& pad_head, int64_t& pad_tail) const {
-    if (pad_type == AutoPadType::SAME_UPPER) {
-      // pad more on tail when total_pad is odd.
-      pad_head = total_pad / 2;
-      pad_tail = total_pad - total_pad / 2;
-    } else {
-      // When pad_type is NOTSET, SAME_LOWER or VALID,
-      // pad more on head when total_pad is odd.
-      pad_head = total_pad - total_pad / 2;
-      pad_tail = total_pad / 2;
-    }
-  }
-
   void ComputeTransposePadAndOutputShape(
       const int64_t in_size,
       const int64_t stride,
