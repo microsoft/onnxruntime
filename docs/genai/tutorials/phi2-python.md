@@ -4,7 +4,7 @@ description: Learn how to write a language generation application with ONNX Runt
 has_children: false
 parent: Tutorials
 grand_parent: Generate API (Preview)
-nav_order: 2
+nav_order: 3
 ---
 
 # Language generation in Python with phi-2
