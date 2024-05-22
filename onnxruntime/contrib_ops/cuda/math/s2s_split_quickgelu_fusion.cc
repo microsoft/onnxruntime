@@ -74,14 +74,6 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   //   split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
   // }
 
-  // ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
-  //                                       num_outputs,
-  //                                       axis,
-  //                                       before_dims,
-  //                                       block_size_including_axis_dim,
-  //                                       block_size_inside_axis_dim,
-  //                                       split_sizes));
-
   // auto input_data = input_tensor->DataRaw();
 
   // auto input_dims = input_shape.GetDims();

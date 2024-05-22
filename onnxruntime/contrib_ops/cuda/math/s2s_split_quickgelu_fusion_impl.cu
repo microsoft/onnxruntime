@@ -38,26 +38,6 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, T* input, T*
   }
 }
 
-// template <typename scalar_t>
-// __global__ void S2SModelSplitQuickGeluKernel(scalar_t* output, scalar_t* input, uint dim) {
-//   uint input_line_stride = dim * 2;
-//   uint output_line_stride = dim;
-//   uint offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
-//   uint offset_in2 = offset_in1 + dim;
-//   uint offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
-//   for (uint i = 0; i < kElementsPerThread; i++) {
-//     if (offset_out < dim) {
-//       scalar_t v = input[offset_in2 + i] * static_cast<scalar_t>(alpha);
-//       scalar_t one = static_cast<scalar_t>(1.f);
-//       scalar_t zero = static_cast<scalar_t>(0.f);
-//       scalar_t sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-//       output[offset_out + i] = input[offset_in1 + i] * sigmoid;
-//     }
-//   }
-// }
-
-
-
 // template <typename T>
 // __global__ void VectorizedS2SModelSplitQuickGeluKernel(int64_t axis, const T* X, T* Y) {
 //   const auto kElementsPerBlock = kElementsPerThread * blockDim.x;
@@ -72,19 +52,6 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, T* input, T*
 
 //   T reg_X[kElementsPerThread];
 //   T reg_Y[kElementsPerThread];
-
-//   LoadT* value_X = reinterpret_cast<LoadT*>(&reg_X);
-//   LoadT* value_B = reinterpret_cast<LoadT*>(&reg_B);
-//   *value_X = *reinterpret_cast<const LoadT*>(&X[input_idx]);
-//   *value_B = *reinterpret_cast<const LoadT*>(&B[bias_idx]);
-
-// #pragma unroll
-//   for (int element_idx = 0; element_idx < kElementsPerThread; ++element_idx) {
-//     reg_Y[element_idx] = _Gelu(reg_X[element_idx] + reg_B[element_idx]);
-//   }
-
-//   *(reinterpret_cast<LoadT*>(&Y[input_idx])) = *reinterpret_cast<LoadT*>(&reg_Y[0]);
-// }
 
 // void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, const size_t element_size, const int block_size_including_axis_dim,
 //                                         const int block_size_inside_axis_dim, const int64_t split_size, const int num_outputs,
@@ -130,14 +97,6 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
   //   block_size_including_axis_dim_div, block_size_inside_axis_dim_div, split_size_div, num_outputs,
   //   reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data), output_data, N
   // )
-
-
-  // if (bias_size % kElementsPerThread == 0 && reinterpret_cast<uint64_t>(X) % vec_alignment == 0 &&
-  //     reinterpret_cast<uint64_t>(Y) % vec_alignment == 0) {
-  //   VectorizedS2SModelSplitQuickGeluKernel<T><<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, X, Y);
-  // } else {
-  //   S2SModelSplitQuickGeluKernel<T><<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, X, Y);
-  // }
 }
 
 
