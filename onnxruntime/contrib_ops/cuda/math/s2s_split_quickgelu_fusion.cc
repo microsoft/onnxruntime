@@ -2,60 +2,53 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/math/s2s_split_quickgelu_fusion.h"
-
-#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/math/s2s_split_quickgelu_fusion_impl.h"
 
-using namespace onnxruntime;
-using namespace onnxruntime::cuda;
-using namespace onnxruntime::contrib::cuda;
 using namespace onnxruntime::common;
-
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
     S2SModelSplitQuickGelu, kMSDomain, 1, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, BFloat16>()),
     S2SModelSplitQuickGelu);
 
 template <typename T>
-void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, const int num_outputs, const Tensor& input_tensor,
-                                                                   Tensor& output_tensor) const {
+void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, int num_outputs,
+                                                                   const Tensor& input, Tensor& output) const {
   using CudaT = typename ToCudaType<T>::MappedType;
-  LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, num_outputs, reinterpret_cast<const CudaT*>(input_tensor.template Data<T>()),
-                                            reinterpret_cast<CudaT*>(output_tensor.template MutableData<T>()));
+  LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, num_outputs, reinterpret_cast<const CudaT*>(input.template Data<T>()),
+                                            reinterpret_cast<CudaT*>(output.template MutableData<T>()));
 }
 
 Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
-  const auto* input_tensor = context->Input<Tensor>(0);
-  ORT_ENFORCE(input_tensor);
-  const auto& input_shape = input_tensor->Shape();
-  const auto& input_dims = input_shape.GetDims();
-  // Replace it with output count of split?
-  const int num_outputs = 2;
-  // int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
+  const auto* input = context->Input<Tensor>(0);
+  ORT_ENFORCE(input);
+  const auto& input_shape = input->Shape();
+  auto output_shape = input_shape;
+  output_shape[1] /= 2;
+  auto* output = context->Output(0, output_shape);
+  ORT_ENFORCE(output);
 
-  int num_dims = static_cast<int64_t>(input_dims.size());
-  std::vector<int64_t> output_dims(num_dims, 0);
-  std::copy(input_dims.begin(), input_dims.end(), output_dims.begin());
-  output_dims[num_dims-1] = output_dims[num_dims-1]/2;
-  TensorShape output_shape(output_dims);
-  auto* output_tensor = context->Output(0, output_shape);
-
-  // utils::MLTypeCallDispatcher<MLFloat16, float, double, BFloat16> dispatcher{input_tensor->GetElementType()};
-  utils::MLTypeCallDispatcher<MLFloat16, float, BFloat16> dispatcher{input_tensor->GetElementType()};
-  dispatcher.Invoke<KernelLaunchDispatcher>(Stream(context), num_outputs, *input_tensor, *output_tensor);
-
-  // auto input_data = input_tensor->DataRaw();
-
-  // ORT_RETURN_IF_ERROR(LaunchS2SModelSplitQuickGeluKernel(Stream(context), num_outputs, input_tensor,
-  //                                                        output_tensor));
-
+  utils::MLTypeCallDispatcher<float, MLFloat16, BFloat16> dispatcher{input->GetElementType()};
+  dispatcher.Invoke<KernelLaunchDispatcher>(Stream(context), 2, *input, *output);
 
   return Status::OK();
+
+  // CODE TO CHANGE OUTPUT DIMENSIONS
+  // const auto& input_dims = input_shape.GetDims();
+  // // Replace it with output count of split?
+  // const int num_outputs = 2;
+  // // int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
+
+  // int num_dims = static_cast<int64_t>(input_dims.size());
+  // std::vector<int64_t> output_dims(num_dims, 0);
+  // std::copy(input_dims.begin(), input_dims.end(), output_dims.begin());
+  // output_dims[num_dims-1] = output_dims[num_dims-1]/2;
+  // TensorShape output_shape(output_dims);
+  // auto* output_tensor = context->Output(0, output_shape);
+
 
 
 

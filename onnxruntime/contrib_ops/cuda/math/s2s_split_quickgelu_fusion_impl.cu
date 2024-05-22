@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/math/s2s_split_quickgelu_fusion_impl.h"
-
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "contrib_ops/cuda/math/s2s_split_quickgelu_fusion_impl.h"
 
 using namespace onnxruntime::cuda;
 
@@ -25,11 +24,11 @@ namespace {
 // Need to use SplitSameSplitDimImpl (the other one works for different split sizes)
 
 template <typename T>
-__global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, T* input, T* output) {
+__global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* input, T* output) {
   uint dim = 2;
   uint max_len = 16;
   float alpha = 1.702f;
-  for (uint i = 0; i < max_len/2; i++) {
+  for (uint i = 0; i < max_len / 2; i++) {
     T v = input[dim + i] * static_cast<T>(alpha);
     T one = static_cast<T>(1.f);
     T zero = static_cast<T>(0.f);
@@ -58,15 +57,13 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, T* input, T*
 //                                         const void* input_data, OutputDataArray output_data, const size_t input_size) {
 
 template <typename T>
-void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
-                                        const int num_outputs,
-                                        const T* input_data, T* output_data) {
+void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int num_outputs, const T* input_data, T* output_data) {
   // CUDA_LONG N = static_cast<CUDA_LONG>(input_size);
   // int blocksPerGrid = CeilDiv(N, kNumElementsPerThread * kNumThreadsPerBlock);
   // fast_divmod block_size_including_axis_dim_div = fast_divmod(block_size_including_axis_dim);
   // fast_divmod block_size_inside_axis_dim_div = fast_divmod(block_size_inside_axis_dim);
   // fast_divmod split_size_div = fast_divmod(static_cast<int>(split_size));
-  S2SModelSplitQuickGeluKernel<<<1, 1, 0, stream>>>(num_outputs, input_data, output_data);
+  S2SModelSplitQuickGeluKernel<T><<<1, 1, 0, stream>>>(num_outputs, input_data, output_data);
 
 
 
@@ -99,6 +96,14 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream,
   // )
 }
 
+// explicit instantiations
+#define SPECIALIZED_SplitQuickGelu_IMPL(T)                                                   \
+  template void LaunchS2SModelSplitQuickGeluKernel<T>(cudaStream_t stream, int num_outputs,  \
+                                                      const T* input_data, T* output_data)
+
+SPECIALIZED_SplitQuickGelu_IMPL(float);
+SPECIALIZED_SplitQuickGelu_IMPL(half);
+SPECIALIZED_SplitQuickGelu_IMPL(BFloat16);
 
 }  // namespace cuda
 }  // namespace contrib

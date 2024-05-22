@@ -11,18 +11,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// S2SModelSplitQuickGelu
-
+// Add Split + QuickGelu
 class S2SModelSplitQuickGelu final : public CudaKernel {
   public:
     S2SModelSplitQuickGelu(const OpKernelInfo& info) : CudaKernel(info) {}
-
     Status ComputeInternal(OpKernelContext* context) const override;
 
   private:
     template <typename T>
     struct KernelLaunchDispatcher {
-      void operator()(cudaStream_t stream, const int num_outputs, const Tensor& input_tensor, Tensor& output_tensor) const;
+      void operator()(cudaStream_t stream, int num_outputs, const Tensor& input, Tensor& output) const;
     };
 };
 
