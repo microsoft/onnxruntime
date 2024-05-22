@@ -278,10 +278,26 @@
 			imgalt: 'Xilinx logo'
 		}
 	];
+	let description = "ONNX Runtime's many consumer testimonials. Hear from some of the products and companies using ONNX Runtime."
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let authors = ['']
+	let keywords = 'onnx runtime testimonials'
 </script>
-
 <svelte:head>
-	<meta name="description" content="ONNX Runtime's many customer testimonials." />
+	<!-- Dynamic meta tags -->
+	<meta name="description" content={description} />
+	<meta name="image" content={image} />
+	<meta name="author" content={authors.join(', ')} />
+	<meta name="keywords" content={keywords} />
+	<!-- Open Graph / Facebook -->
+	<meta property="og:description" content={description}/>
+	<meta property="og:image" content={image} />
+	
+	<!-- Twitter -->
+	<meta property="twitter:description" content={description} />
+	<meta property="twitter:image" content={image} />
+	<meta property="twitter:card" content={imageSquare} />
 </svelte:head>
 
 <div class="container mx-auto">

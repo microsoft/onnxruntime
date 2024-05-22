@@ -373,13 +373,26 @@
 			link: 'https://www.linkedin.com/pulse/hcm-sentence-similarity-language-model-using-java-jonathon-palmieri-tdlpc%3FtrackingId=CN2PPVO4Toqh8r6JsAYMIw%253D%253D/?trackingId=ByNomo0pQFKM%2F%2BWEknVs7Q%3D%3D'
 		}
 	];
+	let description = 'ONNX Runtime Blogs - your source for staying updated on the latest ONNX Runtime updated and information.'
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let authors = ['']
+	let keywords = 'onnxruntime, onnx runtime blogs, onnx runtime community blogs, onnx runtime community posts, onnx runtime community announcements'
 </script>
-
 <svelte:head>
-	<meta
-		name="description"
-		content="ONNX Runtime Blogs - your source for staying updated on the latest ONNX Runtime updated and information."
-	/>
+	<!-- Dynamic meta tags -->
+	<meta name="description" content={description} />
+	<meta name="image" content={image} />
+	<meta name="author" content={authors.join(', ')} />
+	<meta name="keywords" content={keywords} />
+	<!-- Open Graph / Facebook -->
+	<meta property="og:description" content={description}/>
+	<meta property="og:image" content={image} />
+	
+	<!-- Twitter -->
+	<meta property="twitter:description" content={description} />
+	<meta property="twitter:image" content={image} />
+	<meta property="twitter:card" content={imageSquare} />
 </svelte:head>
 <div class="container mx-auto">
 	<div class="flex">

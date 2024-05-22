@@ -6,13 +6,25 @@
 		'ONNX Runtime makes it easier for you to create amazing AI experiences on Windows with less engineering effort and better performance.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let authors = ['']
+	let keywords = 'onnxruntime, onnx runtime windows, onnx runtime windows models, onnx runtime windows deployment, onnx runtime windows performance, onnx runtime windows time to market, onnx runtime windows deploy anywhere, onnx runtime windows boost performance, onnx runtime windows improve time to market, onnx runtime windows production ready, onnx runtime windows lower latency, onnx runtime windows higher throughput, onnx runtime windows get innovations into production faster, onnx runtime windows testimonials, onnx runtime windows performance enhancements, onnx runtime windows production ready, onnx runtime windows lower latency, onnx runtime windows higher throughput, onnx runtime windows get innovations into production faster, onnx runtime windows testimonials, onnx runtime windows performance enhancements'
 </script>
-
 <svelte:head>
-	<meta
-		name="description"
-		content="Learn about using ONNX Runtime to create AI experiences on Windows."
-	/>
+	<!-- Dynamic meta tags -->
+	<meta name="description" content={description} />
+	<meta name="image" content={image} />
+	<meta name="author" content={authors.join(', ')} />
+	<meta name="keywords" content={keywords} />
+	<!-- Open Graph / Facebook -->
+	<meta property="og:description" content={description}/>
+	<meta property="og:image" content={image} />
+	
+	<!-- Twitter -->
+	<meta property="twitter:description" content={description} />
+	<meta property="twitter:image" content={image} />
+	<meta property="twitter:card" content={imageSquare} />
 </svelte:head>
 
 <div class="container mx-auto px-10 my-10">

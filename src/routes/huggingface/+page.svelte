@@ -9,13 +9,25 @@
 		'ONNX Runtime can be used to accelerate well over 130,000 of the models available on Hugging Face.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let authors = ['']
+	let keywords = 'onnxruntime, onnx runtime hugging face, onnx runtime hugging face models, onnx runtime hugging face deployment, onnx runtime hugging face performance, onnx runtime hugging face time to market, onnx runtime hugging face deploy anywhere, onnx runtime hugging face boost performance, onnx runtime hugging face improve time to market, onnx runtime hugging face production ready, onnx runtime hugging face lower latency, onnx runtime hugging face higher throughput, onnx runtime hugging face get innovations into production faster, onnx runtime hugging face testimonials, onnx runtime hugging face performance enhancements, onnx runtime hugging face production ready, onnx runtime hugging face lower latency, onnx runtime hugging face higher throughput, onnx runtime hugging face get innovations into production faster, onnx runtime hugging face testimonials, onnx runtime hugging face performance enhancements'
 </script>
-
 <svelte:head>
-	<meta
-		name="description"
-		content="Learn about how ONNX Runtime works with hundreds of thousands of models on Hugging Face."
-	/>
+	<!-- Dynamic meta tags -->
+	<meta name="description" content={description} />
+	<meta name="image" content={image} />
+	<meta name="author" content={authors.join(', ')} />
+	<meta name="keywords" content={keywords} />
+	<!-- Open Graph / Facebook -->
+	<meta property="og:description" content={description}/>
+	<meta property="og:image" content={image} />
+	
+	<!-- Twitter -->
+	<meta property="twitter:description" content={description} />
+	<meta property="twitter:image" content={image} />
+	<meta property="twitter:card" content={imageSquare} />
 </svelte:head>
 
 <div class="container mx-auto px-10 my-10">
