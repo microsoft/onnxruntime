@@ -452,14 +452,17 @@ Status FuncCustomAllReduce(
 
   ort_trtllm::AllReduceStrategyConfig m_config = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
 
+  static std::mutex s_mutex;
+  std::unique_lock<std::mutex> lock(s_mutex);
   ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank, world_size, input_count * data_type->Size(),
                                                               ipc_mem_res_pack));
 
   ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
-      reinterpret_cast<int32_t const*>(ipc_mem_res_pack.m_comm_ptrs.data()),
+      reinterpret_cast<const int32_t*>(ipc_mem_res_pack.m_comm_ptrs.data()),
       world_size,
       rank,
       ++ipc_mem_res_pack.counter);
+  lock.unlock();
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 

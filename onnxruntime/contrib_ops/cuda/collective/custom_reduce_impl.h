@@ -55,9 +55,9 @@ struct AllReduceParams {
   uint32_t* peer_barrier_ptrs_out[MAX_RANKS_PER_NODE];
   void* peer_comm_buffer_ptrs[MAX_RANKS_PER_NODE];
   void* local_output_buffer_ptr;
-  void const* local_input_buffer_ptr;
+  const void* local_input_buffer_ptr;
 
-  static AllReduceParams deserialize(int32_t const* buffer, size_t tp_size, size_t tp_rank, uint32_t flag);
+  static AllReduceParams deserialize(const int32_t* buffer, size_t tp_size, size_t tp_rank, uint32_t flag);
 };
 
 bool ConfigurationSupported(AllReduceStrategyType algo, size_t msg_size, size_t world_size,

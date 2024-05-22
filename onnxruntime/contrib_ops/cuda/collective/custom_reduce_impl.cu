@@ -522,7 +522,7 @@ void AllReduceDispatchType(AllReduceParams& param, AllReduceStrategyType strateg
   }
 }
 
-AllReduceParams AllReduceParams::deserialize(int32_t const* buffer, size_t tp_size, size_t tp_rank, uint32_t flag) {
+AllReduceParams AllReduceParams::deserialize(const int32_t* buffer, size_t tp_size, size_t tp_rank, uint32_t flag) {
   void* const* buffer_ptrs = reinterpret_cast<void* const*>(buffer);
   AllReduceParams params;
 
