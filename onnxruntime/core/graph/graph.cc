@@ -4066,7 +4066,7 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   // to this function, its values are consistently written to the GraphProto
   auto sort_predicate = [](const NodeArg* v1, const NodeArg* v2) { return v1->Name() < v2->Name(); };
   std::vector<const NodeArg*> value_info_sorted{value_info_.begin(), value_info_.end()};
-  std::sort(value_info_sorted.begin(), value_info_set.end(), sort_predicate);
+  std::sort(value_info_sorted.begin(), value_info_sorted.end(), sort_predicate);
 
   for (const auto* value_info : value_info_sorted) {
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
