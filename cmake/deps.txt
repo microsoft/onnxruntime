@@ -50,7 +50,7 @@ psimd;https://github.com/Maratyszcza/psimd/archive/072586a71b55b7f8c584153d223e9
 pthreadpool;https://github.com/Maratyszcza/pthreadpool/archive/4fe0e1e183925bf8cfa6aae24237e724a96479b8.zip;07a0aa91dd9bf86f31b95497e00f31d8a261a4bd
 pybind11;https://github.com/pybind/pybind11/archive/refs/tags/v2.10.1.zip;769b6aa67a77f17a770960f604b727645b6f6a13
 pytorch_cpuinfo;https://github.com/pytorch/cpuinfo/archive/959002f82d7962a473d8bf301845f2af720e0aa4.zip;85da3caa60eb2b148613b443fbc2bfdc30689965
-re2;https://github.com/google/re2/releases/download/2024-05-01/re2-2024-05-01.zip;4cce2fa0e5da48ab4055d5091c62ffc7bce9f97a
+re2;https://github.com/google/re2/archive/refs/tags/2024-05-01.tar.gz;206cfee5ee0b4c6844680ba66275e9e8faa77405
 safeint;https://github.com/dcleblanc/SafeInt/archive/refs/tags/3.0.28.zip;23f252040ff6cb9f1fd18575b32fa8fb5928daac
 tensorboard;https://github.com/tensorflow/tensorboard/archive/373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81.zip;67b833913605a4f3f499894ab11528a702c2b381
 cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v3.1.0.zip;757f90a795034a89d4f48a79d1f009f7a04c8dee
