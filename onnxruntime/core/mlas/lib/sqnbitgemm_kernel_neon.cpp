@@ -891,6 +891,9 @@ QuantizeBlock(
 
     int8_t* QuantAData = Q8BlkData(QuantA);
 
+    int32_t& QuantABlkSum = Q8BlkSum(QuantA);
+    QuantABlkSum = 0;
+
     for (k = 0; k < ElementCount; k += SubBlkLen) {
         const size_t SubBlkElementCount = std::min(ElementCount - k, SubBlkLen);
 
@@ -912,6 +915,15 @@ QuantizeBlock(
             QuantAData[k + i * 4 + 2] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 2));
             QuantAData[k + i * 4 + 3] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 3));
         });
+
+        // accumulate sum of SubBlkLen elements
+        for (size_t interval = SubBlkLen / 4 / 2; interval > 0; interval /= 2) {
+            for (size_t i = 0; i < interval; ++i) {
+                a_s32[i] = vaddq_s32(a_s32[i], a_s32[i + interval]);
+            }
+        }
+
+        QuantABlkSum += vaddvq_s32(a_s32[0]);
     }
 
     //
@@ -1297,22 +1309,24 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32(
         const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;
 
         float32x4_t acc0{}, acc1{};
+        float acc_scaled_bzp_ablksum_product{};
 
         for (size_t k_blk_idx = 0; k_blk_idx < BlockCountK; ++k_blk_idx) {
             // compute combined scale
-            const float32x4_t scale = vdupq_n_f32(Q8BlkScale(QuantAPtr) * (*QuantBScalePtr));
+            const float scale = Q8BlkScale(QuantAPtr) * (*QuantBScalePtr);
+            const float32x4_t scalev = vdupq_n_f32(scale);
 
             // load B zero point
-            const int8x16_t bzp = [&]() -> int8x16_t {
+            const int8_t bzp = [&]() -> int8_t {
                 if constexpr (HasZeroPoint) {
-                    return vdupq_n_s8(
-                        ((k_blk_idx & 1) == 0) ? std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{0x0F})
-                                               : std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4)
-                    );
+                    return ((k_blk_idx & 1) == 0) ? std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{0x0F})
+                                                  : std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4);
                 } else {
-                    return vdupq_n_s8(8);
+                    return 8;
                 }
             }();
+
+            acc_scaled_bzp_ablksum_product += scale * bzp * Q8BlkSum(QuantAPtr);
 
             const int8_t* QuantADataPtr = Q8BlkData(QuantAPtr);
 
@@ -1333,10 +1347,10 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32(
                 int8x16_t bv3 = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed1, 4));
 
                 // subtract B zero point
-                bv0 = vsubq_s8(bv0, bzp);
-                bv1 = vsubq_s8(bv1, bzp);
-                bv2 = vsubq_s8(bv2, bzp);
-                bv3 = vsubq_s8(bv3, bzp);
+                //bv0 = vsubq_s8(bv0, bzp);
+                //bv1 = vsubq_s8(bv1, bzp);
+                //bv2 = vsubq_s8(bv2, bzp);
+                //bv3 = vsubq_s8(bv3, bzp);
 
                 // quantized dot product
                 int32x4_t dot0{}, dot1{};
@@ -1348,8 +1362,8 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32(
                 const float32x4_t dot_f32_1 = vcvtq_f32_s32(dot1);
 
                 // multiply by scale and update accumulator
-                acc0 = vfmaq_f32(acc0, dot_f32_0, scale);
-                acc1 = vfmaq_f32(acc1, dot_f32_1, scale);
+                acc0 = vfmaq_f32(acc0, dot_f32_0, scalev);
+                acc1 = vfmaq_f32(acc1, dot_f32_1, scalev);
 
                 // increment block data pointers to next sub-block
                 QuantADataPtr += 16 * 4;
@@ -1366,7 +1380,7 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32(
             }
         }
 
-        *SumPtr = vaddvq_f32(acc0) + vaddvq_f32(acc1);
+        *SumPtr = vaddvq_f32(acc0) + vaddvq_f32(acc1) - acc_scaled_bzp_ablksum_product;
         if (BiasPtr) {
             *SumPtr += *BiasPtr;
         }
