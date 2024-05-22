@@ -1020,7 +1020,7 @@ struct ProviderHostImpl : ProviderHost {
 
   std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
   QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer) override {
-     return QDQ::GetAllNodeUnits(*graph_viewer);
+    return QDQ::GetAllNodeUnits(*graph_viewer);
   }
 
   // Model (wrapped)

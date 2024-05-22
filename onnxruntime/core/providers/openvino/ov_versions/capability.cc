@@ -133,7 +133,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 #endif
 
     std::vector<NodeIndex> modified_unsupported_nodes;
-    for (const NodeIndex & node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
+    for (const NodeIndex& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
       if (find(unsupported_nodes.begin(), unsupported_nodes.end(), node_idx) != unsupported_nodes.end()) {
         modified_unsupported_nodes.push_back(node_idx);
       } else {
