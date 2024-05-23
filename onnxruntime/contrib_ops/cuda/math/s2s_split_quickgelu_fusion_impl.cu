@@ -56,8 +56,8 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
   uint dim = 2;
   float alpha = 1.702f;
   uint twice_dim = 2*dim;
+  // max_dim is input size divided by 2*dim
   uint max_dim = 5;
-  // uint twice_dim = 2*dim;
   T one = static_cast<T>(1.f);
   T zero = static_cast<T>(0.f);
   for (uint i = 0; i < max_dim; i++){
