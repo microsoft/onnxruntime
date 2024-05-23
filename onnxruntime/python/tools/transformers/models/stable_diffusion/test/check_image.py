@@ -65,7 +65,7 @@ def main():
     print("similarity Score: ", {score})
     if args.negative:
         if score > 97:
-            print(f"Why generated this incorrect image")
+            print("Why generated this incorrect image")
             raise SystemExit(1)
     else:
         if score < 97:
