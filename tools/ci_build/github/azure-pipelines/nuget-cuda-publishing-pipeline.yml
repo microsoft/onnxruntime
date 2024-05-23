@@ -76,7 +76,7 @@ stages:
       inputs:
         command: push
         packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
-        ${{ if ne(parameters.nightly, true) }}:
+        ${{ if eq(parameters.nightly, true) }}:
           publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/d3daa2b0-aa56-45ac-8145-2c3dc0661c87'
         ${{ else }}:
           publishVstsFeed: 'PublicPackages/onnxruntime-cuda-12'
