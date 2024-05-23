@@ -45,7 +45,7 @@ jobs:
       clean: true
       submodules: none
     - template: set-version-number-variables-step.yml
-    ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
+    - ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
       - template: get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -53,7 +53,7 @@ jobs:
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
           Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}
           
-    ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
+    - ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
       - template: get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
