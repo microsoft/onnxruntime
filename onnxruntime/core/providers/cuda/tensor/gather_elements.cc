@@ -112,6 +112,8 @@ ONNX_NAMESPACE::TensorProto_DataType GetElementType(size_t element_size) {
       return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
     case sizeof(double):
       return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+    case sizeof(BFloat16):
+      return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
     // should not reach here as we validate if the all relevant types are supported in the Compute method
     default:
       return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
@@ -189,7 +191,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
     ORT_THROW("Unsupported element size by the GatherElements CUDA kernel");
   }
 
-  utils::MLTypeCallDispatcher<int8_t, MLFloat16, float, double> t_disp(dtype);
+  utils::MLTypeCallDispatcher<int8_t, MLFloat16, BFloat16, float, double> t_disp(dtype);
   return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), input_tensor->DataRaw(), indices_tensor->DataRaw(),
                                                output_tensor->MutableDataRaw(), indices_tensor->DataType()->Size(),
                                                args);

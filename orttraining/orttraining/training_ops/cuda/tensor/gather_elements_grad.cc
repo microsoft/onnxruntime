@@ -108,7 +108,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
     });
   }
 
-  utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(dtype);
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double> t_disp(dtype);
   return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), dY->DataRaw(), indices_tensor->DataRaw(),
                                                dX->MutableDataRaw(),
                                                indices_tensor->DataType()->Size(), args);

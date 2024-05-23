@@ -186,6 +186,17 @@ TEST(GatherElementsGrad, double) { RunTestWrapper<double>(); }
 
 TEST(GatherElementsGrad, MLFloat16) { RunTestWrapper<MLFloat16>(); }
 
+TEST(CudaKernelTest, GatherElementsGradBFloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does not support BFP16";
+    return;
+  }
+#endif
+  RunTestWrapper<BFloat16>();
+}
+
 TEST(GatherElementsGrad, IndicesUpdatesDontMatch) {
   onnxruntime::test::OpTester test("GatherElementsGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", 1);
@@ -203,6 +214,18 @@ TEST(GatherElementsGrad, Strided_float) { RunKernelComputeTestWrapper<float>(); 
 TEST(GatherElementsGrad, Strided_double) { RunKernelComputeTestWrapper<double>(); }
 
 TEST(GatherElementsGrad, Strided_MLFloat16) { RunKernelComputeTestWrapper<MLFloat16>(); }
+
+TEST(CudaKernelTest, GatherElementsGradStridedBFloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does not support BFP16";
+    return;
+  }
+#endif
+  RunKernelComputeTestWrapper<BFloat16>();
+}
+
 #endif
 
 }  // namespace test
