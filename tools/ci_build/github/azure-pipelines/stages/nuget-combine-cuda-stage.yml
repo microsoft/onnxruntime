@@ -31,9 +31,11 @@ parameters:
 
 - name: buildJava
   type: boolean
+  default: false
 
 - name: buildNodejs
   type: boolean
+  default: false
 
 - name: SpecificArtifact
   type: boolean
