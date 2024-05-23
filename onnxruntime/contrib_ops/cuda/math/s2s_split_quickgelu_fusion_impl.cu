@@ -55,7 +55,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
       T quickgelu_out = input[offset_in2+i] * sigmoid;
       output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
       printf("Current output idx %d\n", offset_out + i);
-      printf("Current output value %f\n", input[offset_in1 + i] * quickgelu_out);
+      // printf("Current output value %f\n", quickgelu_out);
     }
   }
 
