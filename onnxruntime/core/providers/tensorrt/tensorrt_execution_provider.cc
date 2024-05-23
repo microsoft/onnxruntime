@@ -2839,7 +2839,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
   const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
-  const std::string engine_cache_path = cache_path_prefix + ".engine";
+  const std::string engine_cache_path = (weight_stripped_engine_enable_) ? cache_path_prefix + ".stripped.engine" : cache_path_prefix + ".engine";
   const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
   const std::string profile_cache_path = cache_path_prefix + ".profile";
 
@@ -3159,7 +3159,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
     }
     const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
-    const std::string engine_cache_path = cache_path_prefix + ".engine";
+    const std::string engine_cache_path = (weight_stripped_engine_enable_) ? cache_path_prefix + ".stripped.engine" : cache_path_prefix + ".engine";
     const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
     const std::string profile_cache_path = cache_path_prefix + ".profile";
     std::string timing_cache_path = "";

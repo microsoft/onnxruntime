@@ -266,6 +266,17 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     // Get engine from cache file.
     std::string cache_path = attrs.at(EP_CACHE_CONTEXT).s();
 
+    // If the serialized refitted engine is preset, directly use it without needed to refit it again
+    if (weight_stripped_engine_refit_) {
+      // The weight-stripped engine has the naming of xxx.stripped.engine
+      std::filesystem::path stripped_cache_path(cache_path);
+      std::string weight_stripped_cache_path = stripped_cache_path.stem().stem().string() + ".engine";
+      if (std::filesystem::exists(weight_stripped_cache_path)) {
+        cache_path = weight_stripped_cache_path;
+        weight_stripped_engine_refit_ = false;
+      }
+    }
+
     // For security purpose, in the case of running context model, TRT EP won't allow
     // engine cache path to be the relative path like "../file_path" or the absolute path.
     // It only allows the engine cache to be in the same directory or sub directory of the context model.
@@ -299,6 +310,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     }
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
   }
+
   if (weight_stripped_engine_refit_) {
 #if NV_TENSORRT_MAJOR >= 10
     const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
