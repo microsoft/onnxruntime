@@ -50,14 +50,14 @@ class TensorRTCacheModelHandler {
                             nvinfer1::IRuntime* trt_runtime,
                             std::string ep_context_model_path,
                             std::string compute_capability,
-                            bool weightless_engine_refit,
+                            bool weight_stripped_engine_refit,
                             std::string onnx_model_folder_path,
                             bool detailed_build_log)
       : trt_engine_(trt_engine),
         trt_runtime_(trt_runtime),
         ep_context_model_path_(ep_context_model_path),
         compute_capability_(compute_capability),
-        weightless_engine_refit_(weightless_engine_refit),
+        weight_stripped_engine_refit_(weight_stripped_engine_refit),
         onnx_model_folder_path_(onnx_model_folder_path),
         detailed_build_log_(detailed_build_log) {
   }
@@ -72,7 +72,7 @@ class TensorRTCacheModelHandler {
   nvinfer1::IRuntime* trt_runtime_;
   std::string ep_context_model_path_;  // If using context model, it implies context model and engine cache is in the same directory
   std::string compute_capability_;
-  bool weightless_engine_refit_;
+  bool weight_stripped_engine_refit_;
   std::string onnx_model_folder_path_;
   bool detailed_build_log_;
 };  // TRTCacheModelHandler

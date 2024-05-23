@@ -299,7 +299,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     }
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
   }
-  if (weightless_engine_refit_) {
+  if (weight_stripped_engine_refit_) {
 #if NV_TENSORRT_MAJOR >= 10
     const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
     std::filesystem::path onnx_model_path{onnx_model_folder_path_};
@@ -316,20 +316,20 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                              "allowed to point outside the directory.");
     }
 
-    // Weightless engine refit logic
+    // weight-stripped engine refit logic
     TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
     auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(**trt_engine_, trt_logger));
     auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
         nvonnxparser::createParserRefitter(*refitter, trt_logger));
     if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP's IParserRefitter could not refit deserialized weightless engine with weights contained in: " + onnx_model_path.string());
+                             "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
     }
     if (refitter->refitCudaEngine()) {
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weightless engine.";
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weight-stripped engine.";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP's IRefitter could not refit deserialized weightless engine with weights contained in: " + onnx_model_path.string());
+                             "TensorRT EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
     }
 #else
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");

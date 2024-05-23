@@ -1251,7 +1251,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     dump_subgraphs_ = info.dump_subgraphs;
     engine_cache_enable_ = info.engine_cache_enable;
-    weightless_engine_enable_ = info.weightless_engine_enable;
+    weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
     onnx_model_folder_path_ = info.onnx_model_folder_path;
     timing_cache_enable_ = info.timing_cache_enable;
     force_timing_cache_match_ = info.force_timing_cache;
@@ -1352,9 +1352,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
       }
 
-      const std::string weightless_engine_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kWeightlessEngineEnable);
-      if (!weightless_engine_enable_env.empty()) {
-        weightless_engine_enable_ = std::stoi(weightless_engine_enable_env) != 0;
+      const std::string weight_stripped_engine_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kWeightStrippedEngineEnable);
+      if (!weight_stripped_engine_enable_env.empty()) {
+        weight_stripped_engine_enable_ = std::stoi(weight_stripped_engine_enable_env) != 0;
       }
 
       const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
@@ -1626,7 +1626,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_dla_core: " << dla_core_
                         << ", trt_dump_subgraphs: " << dump_subgraphs_
                         << ", trt_engine_cache_enable: " << engine_cache_enable_
-                        << ", trt_weightless_engine_enable: " << weightless_engine_enable_
+                        << ", trt_weight_stripped_engine_enable: " << weight_stripped_engine_enable_
                         << ", trt_onnx_model_folder_path: " << onnx_model_folder_path_
                         << ", trt_cache_path: " << cache_path_
                         << ", trt_global_cache_path: " << global_cache_path_
@@ -2798,14 +2798,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 #endif
 
-  if (weightless_engine_enable_) {
+  if (weight_stripped_engine_enable_) {
 #if NV_TENSORRT_MAJOR >= 10
     trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
     trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
 #else
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Weightless engines can only be used on TRT 10.0 onwards!";
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] weight-stripped engines can only be used on TRT 10.0 onwards!";
 #endif
   }
 
@@ -3090,7 +3090,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
           input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
-          weightless_engine_enable_, dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision,
+          dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision,
           engine_cache_enable_, cache_path_, runtime_.get(), profiles_[context->node_name],
           context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
@@ -3307,14 +3307,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
       }
 #endif
-      if (trt_state->weightless_engine_enable) {
+      if (weight_stripped_engine_enable_) {
 #if NV_TENSORRT_MAJOR >= 10
         trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
         trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
 #else
-        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Weightless engines can only be used on TRT 10.0 onwards!";
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] weight-stripped engines can only be used on TRT 10.0 onwards!";
 #endif
       }
       // limit used tactic sources
@@ -3615,7 +3615,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
                                                            runtime_.get(),
                                                            model_path_,
                                                            compute_capability_,
-                                                           weightless_engine_enable_,
+                                                           weight_stripped_engine_enable_,
                                                            onnx_model_folder_path_,
                                                            detailed_build_log_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
