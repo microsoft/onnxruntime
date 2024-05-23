@@ -166,9 +166,9 @@ TEST(LSTMTest, BackwardCompute) {
   test.AddOutput<float>(
       "dX", {sequence_length, batch_size, input_size},
       {9.02288f, 9.77558f, 4.23378f, 4.6432f, 1.92046f, 2.09879f, 1.87627f, 2.06453f},
-       false,
-       1e-02,
-       1e-02);
+      false,
+      1e-02,
+      1e-02);
   test.AddOutput<float>(
       "dW", {directions, 4 * hidden_size, input_size},
       {0.030251f, 0.0453894f,
@@ -183,9 +183,9 @@ TEST(LSTMTest, BackwardCompute) {
        0.0477309f, 0.0758698f,
        0.230594f, 0.623739f,
        0.231839f, 0.440448f},
-       false,
-       1e-02,
-       1e-02);
+      false,
+      1e-02,
+      1e-02);
   test.AddOutput<float>(
       "dR", {directions, 4 * hidden_size, hidden_size},
       {0.000595693f, 0.000601335f, 0.000602285f,
@@ -200,17 +200,17 @@ TEST(LSTMTest, BackwardCompute) {
        0.00346555f, 0.00349401f, 0.00349843f,
        0.0081494f, 0.00821467f, 0.00822465f,
        0.0104138f, 0.0104568f, 0.0104593f},
-       false,
-       1e-02,
-       1e-02);
+      false,
+      1e-02,
+      1e-02);
   test.AddOutput<float>(
       "dB", {directions, 8 * hidden_size},
       {0.00756918f, 0.00939937f, 0.0522473f, 0.117724f, 0.444431f, 0.579753f, 0.00210701f, 0.00200243f,
        0.0174995f, 0.0140694f, 0.196573f, 0.104304f, 0.00756918f, 0.00939937f, 0.0522473f, 0.117724f,
        0.444431f, 0.579753f, 0.00210701f, 0.00200243f, 0.0174995f, 0.0140694f, 0.196573f, 0.104304f},
-       false,
-       1e-02,
-       1e-02);
+      false,
+      1e-02,
+      1e-02);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
