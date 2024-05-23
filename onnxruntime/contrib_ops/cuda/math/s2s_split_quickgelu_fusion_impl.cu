@@ -38,9 +38,9 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
     uint curr_in = offset_in1 + i;
     int curr_half = curr_in / dim;
     if (curr_half %2 == 0){
-      T v = input[offset_in1 + i] * alpha_val;
+      T v = input[offset_in2] * alpha_val;
       T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-      T quickgelu_out = input[offset_in1 + i] * sigmoid;
+      T quickgelu_out = input[offset_in2] * sigmoid;
       output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
     }
   }
