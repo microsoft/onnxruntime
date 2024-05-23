@@ -170,13 +170,13 @@ GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
     const std::vector<int64_t>& zero_points,
     const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& zero_point_types,
     const std::vector<float>& scales,
-    int graph_output_index,
+    size_t graph_output_index,
     bool use_contrib_qdq) {
   const size_t num_nodes = zero_points.size();
   bool valid_inputs = (num_nodes >= 4) &&
                       (zero_point_types.size() == num_nodes) &&
                       (scales.size() == num_nodes) &&
-                      (graph_output_index >= 0 && graph_output_index < 4);
+                      (graph_output_index < 4);
   if (!valid_inputs) {
     ORT_THROW("Invalid inputs for call to BuildDoubleQDQTestCaseWithDuplicateLastDQs()");
   }

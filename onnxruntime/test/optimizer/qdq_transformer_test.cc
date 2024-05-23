@@ -1240,7 +1240,7 @@ static void RunDoubleQDQWithDuplicateLastDQs(int expected_Q_count, int expected_
                                              const std::vector<int64_t>& zero_points,
                                              const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& zero_point_types,
                                              const std::vector<float>& scales,
-                                             int graph_output_index,
+                                             size_t graph_output_index,
                                              bool use_contrib_qdq = false,
                                              int opset = 19) {
   auto graph_checker = [&](InferenceSessionWrapper& session) {
@@ -1287,7 +1287,7 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_DuplicateLastDQs) {
   //               |
   //               +--> DQ2'' -> outputN
   for (auto quant_type : quant_types) {
-    for (size_t num_dq2s = 1; num_dq2s <= 1; num_dq2s++) {
+    for (size_t num_dq2s = 1; num_dq2s <= 3; num_dq2s++) {
       const size_t num_nodes = 3 + num_dq2s;
       std::vector<int64_t> zp_vals(num_nodes, 1);
       std::vector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, quant_type);
@@ -1304,8 +1304,8 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_DuplicateLastDQs) {
 
   // Should not remove QDQ pair because the middle nodes produce a graph output.
   for (auto quant_type : quant_types) {
-    for (int output_index = 0; output_index < 3; output_index++) {
-      for (size_t num_dq2s = 1; num_dq2s <= 1; num_dq2s++) {
+    for (size_t output_index = 0; output_index < 3; output_index++) {
+      for (size_t num_dq2s = 1; num_dq2s <= 3; num_dq2s++) {
         const size_t num_nodes = 3 + num_dq2s;
         std::vector<int64_t> zp_vals(num_nodes, 1);
         std::vector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, quant_type);
@@ -1322,6 +1322,36 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_DuplicateLastDQs) {
       }
     }
   }
+
+  // Should not remove any nodes because the Q -> DQ pairs are of different quant types.
+  for (size_t num_dq2s = 1; num_dq2s <= 2; num_dq2s++) {
+    const size_t num_nodes = 3 + num_dq2s;
+    std::vector<int64_t> zp_vals(num_nodes, 1);
+    std::vector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, int8_type);
+    for (size_t i = 2; i < num_nodes; i++) {
+      // Q2 -> DQ2* have a different type
+      zp_types[i] = int16_type;
+    }
+    std::vector<float> scale_vals(num_nodes, 0.1f);
+
+    const int expected_q_nodes = 2;
+    const int expected_dq_nodes = 1 + static_cast<int>(num_dq2s);
+    RunDoubleQDQWithDuplicateLastDQs(expected_q_nodes, expected_dq_nodes, shape, input_data, zp_vals, zp_types,
+                                     scale_vals, 3, false, 21);
+  }
+
+  // Should not remove nodes because 1 of the ending DQ2s has a different zero_point.
+  const size_t num_dq2s = 2;
+  const size_t num_nodes = 3 + num_dq2s;
+  std::vector<int64_t> zp_vals(num_nodes, 1);
+  std::vector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, int8_type);
+  zp_vals[num_nodes - 1] = 2;  // Last DQ2 has a different zero-point.
+  std::vector<float> scale_vals(num_nodes, 0.1f);
+
+  const int expected_q_nodes = 2;
+  const int expected_dq_nodes = 1 + static_cast<int>(num_dq2s);
+  RunDoubleQDQWithDuplicateLastDQs(expected_q_nodes, expected_dq_nodes, shape, input_data, zp_vals, zp_types,
+                                   scale_vals, 3, false, 21);
 }
 
 // Runs a test that checks if DQ -> Split -> Q (many) is replaced with just Split.

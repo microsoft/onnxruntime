@@ -478,7 +478,7 @@ GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
     const std::vector<int64_t>& zero_points,
     const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& zero_point_types,
     const std::vector<float>& scales,
-    int graph_output_index,
+    size_t graph_output_index,
     bool use_contrib_qdq = false);
 
 template <typename T>
