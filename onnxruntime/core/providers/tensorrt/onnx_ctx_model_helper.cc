@@ -244,6 +244,14 @@ bool IsRelativePathToParentPath(const std::string& path_string) {
 #endif
 }
 
+// Get the refitted engine cache path 
+std::string GetRefittedEnginePath(std::string engine_cache_path) {
+  std::filesystem::path full_engine_cache_path(engine_cache_path);
+  // The weight-stripped engine has the naming of xxx.stripped.engine
+  std::string refitted_engine_cache_path = full_engine_cache_path.stem().stem().string() + ".engine";
+  return refitted_engine_cache_path;
+}
+
 Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer) {
   if (!ValidateEPCtxNode(graph_viewer)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EP Context node");
@@ -266,17 +274,6 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     // Get engine from cache file.
     std::string cache_path = attrs.at(EP_CACHE_CONTEXT).s();
 
-    // If the serialized refitted engine is preset, directly use it without needed to refit it again
-    if (weight_stripped_engine_refit_) {
-      // The weight-stripped engine has the naming of xxx.stripped.engine
-      std::filesystem::path stripped_cache_path(cache_path);
-      std::string weight_stripped_cache_path = stripped_cache_path.stem().stem().string() + ".engine";
-      if (std::filesystem::exists(weight_stripped_cache_path)) {
-        cache_path = weight_stripped_cache_path;
-        weight_stripped_engine_refit_ = false;
-      }
-    }
-
     // For security purpose, in the case of running context model, TRT EP won't allow
     // engine cache path to be the relative path like "../file_path" or the absolute path.
     // It only allows the engine cache to be in the same directory or sub directory of the context model.
@@ -290,6 +287,15 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     // The engine cache and context model (current model) should be in the same directory
     std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
     auto engine_cache_path = ctx_model_dir.append(cache_path);
+
+    // If the serialized refitted engine is present, use it directly without refitting the engine again
+    if (weight_stripped_engine_refit_) {
+      std::string refitted_engine_cache_path = GetRefittedEnginePath(engine_cache_path.string());
+      if (std::filesystem::exists(refitted_engine_cache_path)) {
+        engine_cache_path = refitted_engine_cache_path;
+        weight_stripped_engine_refit_ = false;
+      }
+    }
 
     if (!std::filesystem::exists(engine_cache_path)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -342,6 +348,15 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+    }
+
+    // serialize the refitted engine to disk
+    if (embed_mode == 0) {
+      std::string cache_path = attrs.at(EP_CACHE_CONTEXT).s();
+      std::string refitted_cache_path = GetRefittedEnginePath(cache_path);
+      nvinfer1::IHostMemory* serialized_engine = (*trt_engine_)->serialize();
+      std::ofstream engine_file(refitted_cache_path, std::ios::binary | std::ios::out);
+      engine_file.write(reinterpret_cast<const char*>(serialized_engine->data()), serialized_engine->size());
     }
 #else
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");
