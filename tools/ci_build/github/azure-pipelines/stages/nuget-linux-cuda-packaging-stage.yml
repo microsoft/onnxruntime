@@ -6,10 +6,6 @@ parameters:
   type: string
 - name: linux_trt_version
   type: string
-- name: buildJava
-  type: boolean
-- name: buildNodejs
-  type: boolean
 
 stages:
 - stage: Linux_C_API_Packaging_GPU
@@ -114,23 +110,6 @@ stages:
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_tensorrt_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build TensorRT C API Package'
-
-    - ${{ if eq(parameters.buildJava, true) }}:
-      - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
-        parameters:
-          arch: 'linux-x64'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-x64-tensorrt'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
-
-    - ${{ if eq(parameters.buildNodejs, 'true') }}:
-      - template: ../templates/nodejs-artifacts-package-and-publish-steps-posix.yml
-        parameters:
-          arch: 'x64'
-          os: 'linux'
-          artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
