@@ -261,7 +261,7 @@ stages:
             popd ; \
             popd ; \
             '
-      displayName: 'Check the generated image'
+      displayName: 'Check if the generated image is wierd'
       workingDirectory: $(Build.SourcesDirectory)
       continueOnError: true
 
