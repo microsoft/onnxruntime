@@ -33,6 +33,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
   uint offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
   T one = static_cast<T>(1.f);
   T zero = static_cast<T>(0.f);
+  float alpha = 1.702f;
   T alpha_val = static_cast<T>(alpha);
   for (uint i = 0; i < kElementsPerThread; i++){
     uint curr_in = offset_in1 + i;
