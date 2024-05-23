@@ -61,6 +61,10 @@ class OpKernelContext {
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
+  bool OutputTensorAllocated(int index) {
+    return GetOutputMLValue(index) != nullptr && GetOutputMLValue(index)->IsTensor();
+  }
+
   // In the case that memory allocation has not been done for an output tensor,
   // The memory allocation will be done on-the-fly with given tensor shape.
   // Return nullptr if the output is an unused optional output.
