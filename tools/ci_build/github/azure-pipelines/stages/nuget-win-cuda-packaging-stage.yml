@@ -78,6 +78,8 @@ stages:
 
 # Windows CUDA Combined Testing and Publishing
 - stage: Windows_Packaging_combined_GPU
+# Because Java Jar is published only after Testing, we need to depend on the Testing stages
+# TODO: change Windows_Packaging_*_Testing to Windows_Packaging_* once we finish PRODUCT BACKLOG ITEM 34666
   ${{ if eq(parameters.buildJava, true) }}:
     dependsOn:
     - Windows_Packaging_CUDA_Testing
