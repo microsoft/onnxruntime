@@ -14,7 +14,7 @@ def arg_parser():
     parser.add_argument("--image1", type=str, help="Path to image 1")
     parser.add_argument("--image2", type=str, help="Path to image 2")
     parser.add_argument("--cache_dir", type=str, help="Path to model cache directory")
-    parser.add_argument("--negative", type=str, help="match the unexpected image, for testing purpose")
+    parser.add_argument("--negative", action="store_true", help="match the unexpected image, for testing purpose")
     args = parser.parse_args()
     return args
 
