@@ -19,9 +19,6 @@ parameters:
   type: string
   default: '11.8'
 
-- name: buildJava
-  type: boolean
-
 - name: win_cuda_home
   type: string
 
@@ -37,6 +34,9 @@ parameters:
   displayName: Specific Artifact's BuildId
   type: string
   default: '0'
+  
+- name: buildJava
+  type: boolean
 
 stages:
 # Windows CUDA without TensorRT Packaging
@@ -78,16 +78,9 @@ stages:
 
 # Windows CUDA Combined Testing and Publishing
 - stage: Windows_Packaging_combined_GPU
-# Because Java Jar is published only after Testing, we need to depend on the Testing stages
-# TODO: change Windows_Packaging_*_Testing to Windows_Packaging_* once we finish PRODUCT BACKLOG ITEM 34666
-  ${{ if eq(parameters.buildJava, true) }}:
-    dependsOn:
-    - Windows_Packaging_CUDA_Testing
-    - Windows_Packaging_TensorRT_Testing
-  ${{ else }}:
-    dependsOn:
-      - Windows_Packaging_CUDA
-      - Windows_Packaging_TensorRT
+  dependsOn:
+    - Windows_Packaging_CUDA
+    - Windows_Packaging_TensorRT
   condition: succeeded()
 
   jobs:
