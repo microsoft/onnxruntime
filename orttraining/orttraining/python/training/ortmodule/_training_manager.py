@@ -179,7 +179,7 @@ class TrainingManager(GraphExecutionManager):
                     if grad_output is None:
                         shape, device, dtype = ctx.run_info.output_info[idx]
                         if idx in self._graph_info.output_grad_indices_require_full_shape:
-                            grad_output = torch.zeros(shape, device=device, dtype=dtype)  # noqa: PLW2901
+                            grad_output = torch.zeros(1, device=device, dtype=dtype).expand(shape)  # noqa: PLW2901
                         else:
                             grad_output = torch.tensor(0.0, device=device, dtype=dtype)  # noqa: PLW2901
                     elif not grad_output.is_contiguous():

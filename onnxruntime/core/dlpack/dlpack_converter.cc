@@ -154,26 +154,26 @@ const char* GetOrtDeviceName(const OrtDevice& device) {
   }
 }
 
-bool IsContiguousTensor(const DLTensor& tensor) {
-  if (!tensor.strides) {
-    return true;
-  }
+// bool IsContiguousTensor(const DLTensor& tensor) {
+//   if (!tensor.strides) {
+//     return true;
+//   }
 
-  int64_t running_size = 1;
-  for (int i = tensor.ndim - 1; i >= 0; i--) {
-    if (tensor.shape[i] == 0) {
-      return true;
-    }
+//   int64_t running_size = 1;
+//   for (int i = tensor.ndim - 1; i >= 0; i--) {
+//     if (tensor.shape[i] == 0) {
+//       return true;
+//     }
 
-    if (tensor.shape[i] != 1 && tensor.strides[i] != running_size) {
-      return false;
-    }
+//     if (tensor.shape[i] != 1 && tensor.strides[i] != running_size) {
+//       return false;
+//     }
 
-    running_size *= tensor.shape[i];
-  }
+//     running_size *= tensor.shape[i];
+//   }
 
-  return true;
-}
+//   return true;
+// }
 
 }  // namespace
 
@@ -240,13 +240,16 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
 #endif
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   // ORT only supports contiguous tensor for now.
-  ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
+  // ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
   OrtDevice device = GetOrtDevice(dlpack->dl_tensor.device);
   MLDataType data_type = GetOrtValueDataType(dlpack->dl_tensor.dtype, is_bool_tensor);
+  const std::vector<int64_t> strides = dlpack->dl_tensor.strides != nullptr
+                                           ? std::vector<int64_t>(dlpack->dl_tensor.strides, dlpack->dl_tensor.strides + dlpack->dl_tensor.ndim)
+                                           : std::vector<int64_t>();
   OrtMemoryInfo info(GetOrtDeviceName(device), OrtDeviceAllocator, device, device.Id());
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
       data_type, TensorShape(dlpack->dl_tensor.shape, static_cast<size_t>(dlpack->dl_tensor.ndim)),
-      dlpack->dl_tensor.data, info);
+      dlpack->dl_tensor.data, info, 0, strides);
 
   OrtValue ort_value;
   std::function<void(void*)> deleter = [dlpack](void* p) {
