@@ -196,7 +196,6 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
 
   if (q2 == nullptr ||
       q2->OpType() != "QuantizeLinear" ||
-      q2->GetOutputEdgesCount() == 0 ||
       graph.NodeProducesGraphOutput(*q2) ||
       !GetQNodeZeroPointType(graph, *q2, quant_type_2) ||
       quant_type != quant_type_2) {
@@ -243,12 +242,9 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
   graph.RemoveEdge(dq1_index, q2_index, 0, 0);  // Disconnect DQ1 -> Q2
 
   // Disconnect Q2 --> DQ2(s)
-  for (auto* dq2 : dq2_nodes) {
-    graph.RemoveEdge(q2_index, dq2->Index(), 0, 0);
-  }
-
   // Connect Q1 -> DQ2(s)
   for (auto* dq2 : dq2_nodes) {
+    graph.RemoveEdge(q2_index, dq2->Index(), 0, 0);
     graph.AddEdge(q1_index, dq2->Index(), 0, 0);
   }
 
