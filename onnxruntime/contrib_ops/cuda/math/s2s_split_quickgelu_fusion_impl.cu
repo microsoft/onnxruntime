@@ -36,6 +36,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
   float alpha = 1.702f;
   T alpha_val = static_cast<T>(alpha);
   printf("Curr kElementsPerThread %d\n", kElementsPerThread);
+  printf("Curr blockIdx.x %d\n", blockIdx.x);
   printf("Curr threadIdx.x %d\n", threadIdx.x);
   printf("Curr offset_in1 %d\n", offset_in1);
   printf("Curr offset_in2 %d\n", offset_in2);
@@ -54,7 +55,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
       T quickgelu_out = input[offset_in2+i] * sigmoid;
       output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
       printf("Current output idx %d\n", offset_out + i);
-      printf("Current output value %f\n", output[offset_out + i]);
+      // printf("Current output value %f\n", output[offset_out + i]);
     }
   }
 
