@@ -12,6 +12,34 @@
 
 namespace onnxruntime {
 
+/// <summary>
+/// Returns the zero-point type from the given QuantizeLinear node.
+/// </summary>
+/// <param name="graph">Graph</param>
+/// <param name="q_node">QuantizeLinear node</param>
+/// <param name="zp_data_type">Output parameter to store the zero-point data type</param>
+/// <returns>True if successfully extracted the zero-point data type</returns>
+static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node, /*out*/ int64_t& zp_data_type) {
+  assert(q_node.OpType() == "QuantizeLinear");
+  const auto& input_defs = q_node.InputDefs();
+
+  if (QDQ::InputIndex::ZERO_POINT_ID >= input_defs.size() || !input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Exists()) {
+    // If a zero_point input is absent, get the type from the "output_dtype" attribute or default to uint8.
+    // The "output_dtype" attribute was added in ONNX opset 21.
+    const auto* attr = graph_utils::GetNodeAttribute(q_node, "output_dtype");
+    zp_data_type = attr != nullptr ? attr->i() : static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+    return true;
+  }
+
+  const auto* zp_proto = graph.GetConstantInitializer(input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Name(), true);
+  if (zp_proto == nullptr) {
+    return false;
+  }
+
+  zp_data_type = zp_proto->data_type();
+  return true;
+}
+
 // Applies a new zero point or scale as the input for a Q/DQ node.
 template <typename T>
 static void ApplyNewInputValue(Graph& graph, Node& node, QDQ::InputIndex index, T value) {
@@ -114,34 +142,6 @@ static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, Node& q1, const Nod
     ApplyNewInputValue(graph, *dq2, QDQ::InputIndex::ZERO_POINT_ID, new_zero_point);
   }
 
-  return true;
-}
-
-/// <summary>
-/// Returns the zero-point type from the given QuantizeLinear node.
-/// </summary>
-/// <param name="graph">Graph</param>
-/// <param name="q_node">QuantizeLinear node</param>
-/// <param name="zp_data_type">Output parameter to store the zero-point data type</param>
-/// <returns>True if successfully extracted the zero-point data type</returns>
-static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node, /*out*/ int64_t& zp_data_type) {
-  assert(q_node.OpType() == "QuantizeLinear");
-  const auto& input_defs = q_node.InputDefs();
-
-  if (QDQ::InputIndex::ZERO_POINT_ID >= input_defs.size() || !input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Exists()) {
-    // If a zero_point input is absent, get the type from the "output_dtype" attribute or default to uint8.
-    // The "output_dtype" attribute was added in ONNX opset 21.
-    const auto* attr = graph_utils::GetNodeAttribute(q_node, "output_dtype");
-    zp_data_type = attr != nullptr ? attr->i() : static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-    return true;
-  }
-
-  const auto* zp_proto = graph.GetConstantInitializer(input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Name(), true);
-  if (zp_proto == nullptr) {
-    return false;
-  }
-
-  zp_data_type = zp_proto->data_type();
   return true;
 }
 
