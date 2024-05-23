@@ -321,6 +321,17 @@ struct FuncAtomicAdd {
   const size_t numel_;
 };
 
+template <>
+struct FuncAtomicAdd<BFloat16> {
+    const size_t numel_;
+
+    FuncAtomicAdd(const size_t numel) : numel_(numel) {}
+
+    __device__ __inline__ void operator()(BFloat16* start_addr, size_t index, BFloat16 value) const {
+        atomic_add(start_addr + index, value); 
+    }
+};
+
 template <typename T, typename TIndex>
 Status GatherElementsGradNonDeterministicImpl(cudaStream_t stream, const TIndex* indices_data, const T* updates_data,
                                               T* output_data,
@@ -344,6 +355,7 @@ Status GatherElementsGradNonDeterministicImpl(cudaStream_t stream, const TIndex*
   GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, int32_t)   \
   GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, int64_t)
 
+GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(BFloat16);
 GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(half)
 GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(float)
 GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(double)

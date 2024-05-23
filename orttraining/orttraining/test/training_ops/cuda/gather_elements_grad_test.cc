@@ -12,6 +12,8 @@
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
+#include "test/common/cuda_op_test_utils.h"
+
 namespace onnxruntime {
 namespace cuda {
 namespace test {
@@ -26,6 +28,11 @@ void Add(T* a, const T* b) {
 template <>
 void Add<MLFloat16>(MLFloat16* a, const MLFloat16* b) {
   *a = MLFloat16((*a).ToFloat() + (*b).ToFloat());
+}
+
+template <>
+void Add<BFloat16>(BFloat16* a, const BFloat16* b) {
+  *a = BFloat16((*a).ToFloat() + (*b).ToFloat());
 }
 
 template <typename T, typename TIndex>
@@ -185,6 +192,21 @@ TEST(GatherElementsGrad, float) { RunTestWrapper<float>(); }
 TEST(GatherElementsGrad, double) { RunTestWrapper<double>(); }
 
 TEST(GatherElementsGrad, MLFloat16) { RunTestWrapper<MLFloat16>(); }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+
+TEST(GatherElementsGrad, BFloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!onnxruntime::test::HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does not support BFP16";
+    return;
+  }
+#endif
+
+  RunTestWrapper<BFloat16>();
+}
+#endif
 
 TEST(GatherElementsGrad, IndicesUpdatesDontMatch) {
   onnxruntime::test::OpTester test("GatherElementsGrad", 1, kMSDomain);
