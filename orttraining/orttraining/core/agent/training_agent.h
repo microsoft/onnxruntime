@@ -32,7 +32,7 @@ class TrainingAgent {
                          int local_rank = 0);
   ~TrainingAgent();
   // For ORTModule.forward()
-  [[nodiscard]] common::Status RunForward( std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunForward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                           PartialGraphExecutionState& state, const OrtValueCachePtr& cache);
 
   // For ORTModule.backward()

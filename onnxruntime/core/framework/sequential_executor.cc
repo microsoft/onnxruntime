@@ -631,7 +631,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           int32_t partial_graph_index) {
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
-  feeds.clear(); // Release the feeds at the earliest convenience.
+  feeds.clear();  // Release the feeds at the earliest convenience.
   auto* plan = session_state.GetExecutionPlan();
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));

@@ -898,9 +898,9 @@ void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
     // don't trace the output tensors or external outputs.
     auto& allocation_plan = GetAllocationPlan(ort_value_idx);
     if (allocation_plan.alloc_kind == AllocKind::kAllocateOutput
-    //  ||
-    //     allocation_plan.alloc_kind == AllocKind::kAllocatedExternally
-        ) {
+        //  ||
+        //     allocation_plan.alloc_kind == AllocKind::kAllocatedExternally
+    ) {
       return;
     }
     auto status = planner_->TraceAllocation(ort_value_idx, size);

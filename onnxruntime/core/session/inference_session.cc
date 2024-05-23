@@ -2302,7 +2302,7 @@ common::Status InferenceSession::ValidateOutputs(gsl::span<const std::string> ou
 
 #ifdef ENABLE_TRAINING
 Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
-                                     std::vector<OrtValue>& feeds,
+                                    std::vector<OrtValue>& feeds,
                                     std::vector<OrtValue>& fetches,
                                     PartialGraphExecutionState& state,
                                     FeedsFetchesManager& feeds_fetches_manager,

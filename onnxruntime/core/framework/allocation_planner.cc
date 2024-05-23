@@ -330,8 +330,8 @@ class PlannerImpl {
             // we cannot.
             const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
             if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
-            *reusable_input = Index(p_input_arg->Name());
-            return true;
+              *reusable_input = Index(p_input_arg->Name());
+              return true;
             } else {
               ORT_ENFORCE(false, "Node ", node.Name(), " cannot reuse input buffer for node ", producer_node->Name(), " as it has external outputs");
             }
@@ -357,7 +357,6 @@ class PlannerImpl {
             return true;
           } else {
             ORT_ENFORCE(false, "Node ", node.Name(), " cannot reuse input buffer for node ", producer_node->Name(), " as it has external outputs");
-
           }
         }
       }
@@ -372,24 +371,23 @@ class PlannerImpl {
             auto input_arg_index = Index(p_input_arg->Name());
             auto original = Buffer(input_arg_index);
             if (1 == UseCount(original)) {
-                  // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
-          // we cannot.
-          const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
-          if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
-              if (SameSize(*p_input_arg, *p_output_arg)) {
-                // we can reuse this input since it is its last use and permitted for in-place update
-                *reusable_input = input_arg_index;  // or original; both should be okay
-                return true;
+              // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
+              // we cannot.
+              const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
+              if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
+                if (SameSize(*p_input_arg, *p_output_arg)) {
+                  // we can reuse this input since it is its last use and permitted for in-place update
+                  *reusable_input = input_arg_index;  // or original; both should be okay
+                  return true;
+                }
+              } else {
+                std::cout << "Node " << node.Name() << " cannot reuse input buffer for node " << producer_node->Name() << " as it has external outputs" << std::endl;
               }
-          } else {
-            std::cout  << "Node " << node.Name()<< " cannot reuse input buffer for node " << producer_node->Name()<< " as it has external outputs" << std::endl;
-          }
-            }
             }
           }
         }
       }
-
+    }
 
 #ifdef ENABLE_STRIDED_TENSORS
     // If any output of the kernel can support strided tensor, and all its consumers' inputs also support
@@ -1159,19 +1157,19 @@ class PlannerImpl {
                 // Otherwise, we cannot reuse the buffer.
                 const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
                 if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
-                OrtValueIndex reusable_input{};
-                if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() /*&&
-                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate*/
-                ) {
-                  std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
-                  allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
-                  allocation_plan[output_idx_global].reused_buffer = reusable_input;
-                  value_consumer_map[reusable_input].insert(value_consumer_map[output_idx_global].begin(),
-                                                            value_consumer_map[output_idx_global].end());
-                  reused.insert(reusable_input);
-                  found_reusable = true;
-                  break;
-                }
+                  OrtValueIndex reusable_input{};
+                  if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() /*&&
+                      allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate*/
+                  ) {
+                    std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
+                    allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
+                    allocation_plan[output_idx_global].reused_buffer = reusable_input;
+                    value_consumer_map[reusable_input].insert(value_consumer_map[output_idx_global].begin(),
+                                                              value_consumer_map[output_idx_global].end());
+                    reused.insert(reusable_input);
+                    found_reusable = true;
+                    break;
+                  }
                 } else {
                   ORT_ENFORCE(false, "Cannot reuse input buffer for ", p_output_arg->Name(), " as input ", p_input_arg->Name());
                 }
@@ -1194,24 +1192,24 @@ class PlannerImpl {
             auto p_input_arg = input_args[alias_input_index];
 
             if (p_input_arg->Exists()) {
-             // If the producer node does not has external outputs, we can reuse the input buffer;
-                // Otherwise, we cannot reuse the buffer.
-                const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
-                if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
-              OrtValueIndex reusable_input{};
-              if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
-                  allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
-                allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
-                allocation_plan[output_idx_global].reused_buffer = reusable_input;
-                value_consumer_map[reusable_input].insert(value_consumer_map[output_idx_global].begin(),
-                                                          value_consumer_map[output_idx_global].end());
-                reused.insert(reusable_input);
-                continue;
-              }  // if
-                } else {
-                  ORT_ENFORCE(false, "Cannot reuse input buffer for ", p_output_arg->Name(), " as input ", p_input_arg->Name());
-                }
-            }    // if
+              // If the producer node does not has external outputs, we can reuse the input buffer;
+              // Otherwise, we cannot reuse the buffer.
+              const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
+              if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
+                OrtValueIndex reusable_input{};
+                if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
+                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
+                  allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
+                  allocation_plan[output_idx_global].reused_buffer = reusable_input;
+                  value_consumer_map[reusable_input].insert(value_consumer_map[output_idx_global].begin(),
+                                                            value_consumer_map[output_idx_global].end());
+                  reused.insert(reusable_input);
+                  continue;
+                }  // if
+              } else {
+                ORT_ENFORCE(false, "Cannot reuse input buffer for ", p_output_arg->Name(), " as input ", p_input_arg->Name());
+              }
+            }  // if
           }
         }
 
@@ -1222,24 +1220,23 @@ class PlannerImpl {
             if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
               auto p_input_arg = input_args[pair.first];
               if (p_input_arg->Exists()) {
-                 // If the producer node does not has external outputs, we can reuse the input buffer;
+                // If the producer node does not has external outputs, we can reuse the input buffer;
                 // Otherwise, we cannot reuse the buffer.
                 const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
                 if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
-                OrtValueIndex input_arg_index{};
-                if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
-                    allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
-                  if (value_consumer_map[input_arg_index].size() == 1 && SameSize(*p_input_arg, *p_output_arg)) {
-                    allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
-                    allocation_plan[output_idx_global].reused_buffer = input_arg_index;
-                    value_consumer_map[input_arg_index].insert(value_consumer_map[output_idx_global].begin(),
-                                                               value_consumer_map[output_idx_global].end());
-                    reused.insert(input_arg_index);
+                  OrtValueIndex input_arg_index{};
+                  if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
+                      allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
+                    if (value_consumer_map[input_arg_index].size() == 1 && SameSize(*p_input_arg, *p_output_arg)) {
+                      allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
+                      allocation_plan[output_idx_global].reused_buffer = input_arg_index;
+                      value_consumer_map[input_arg_index].insert(value_consumer_map[output_idx_global].begin(),
+                                                                 value_consumer_map[output_idx_global].end());
+                      reused.insert(input_arg_index);
+                    }
                   }
-                }
                 } else {
-                  std:: cout <<  "Cannot reuse input buffer for " << p_output_arg->Name() << " as input " << p_input_arg->Name() << std::endl;
-
+                  std::cout << "Cannot reuse input buffer for " << p_output_arg->Name() << " as input " << p_input_arg->Name() << std::endl;
                 }
               }
             }

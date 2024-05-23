@@ -431,7 +431,7 @@ void addObjectMethodsForTraining(py::module& m) {
           throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("run_backward", [](TrainingAgent* agent,  std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
+      .def("run_backward", [](TrainingAgent* agent, std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
         // std::vector<OrtValue> feeds_cloned = feeds;
         // feeds.clear(); // Release the input feeds at the earliest convenience.
         Status status = agent->RunBackward(feeds, fetches, *state);
