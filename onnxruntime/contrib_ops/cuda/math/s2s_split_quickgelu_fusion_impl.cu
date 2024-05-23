@@ -12,12 +12,12 @@ namespace cuda {
 
 namespace {
 
-// constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
-// #ifdef USE_ROCM
-// constexpr int kThreadsPerBlock = 512;
-// #else
-// constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
-// #endif
+constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
+#ifdef USE_ROCM
+constexpr int kThreadsPerBlock = 512;
+#else
+constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
+#endif
 
 }  // namespace
 
@@ -26,20 +26,40 @@ namespace {
 template <typename T>
 __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* input, T* output) {
   uint dim = 2;
-  // uint max_len = 16;
-  float alpha = 1.702f;
-  uint max_dim = 5;
-  // uint twice_dim = 2*dim;
+  uint input_line_stride = dim * 2;
+  uint output_line_stride = dim;
+  uint offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
+  uint offset_in2 = offset_in1 + dim;
+  uint offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
   T one = static_cast<T>(1.f);
   T zero = static_cast<T>(0.f);
-  for (uint i = 0; i < max_dim; i++){
-    for (uint j = 0; j < dim; j++){
-      T v = input[dim + i*max_dim+j] * static_cast<T>(alpha);
+  T alpha_val = static_cast<T>(alpha);
+  for (uint i = 0; i < kElementsPerThread; i++){
+    uint curr_in = offset_in1 + i;
+    int curr_half = curr_in / dim;
+    if (curr_half %2 == 0){
+      T v = input[offset_in1 + i] * alpha_val;
       T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-      T quickgelu_out = input[dim + i*max_dim+j] * sigmoid;
-      output[i*max_dim/2+j] = input[i*max_dim+j] * quickgelu_out;
+      T quickgelu_out = input[offset_in1 + i] * sigmoid;
+      output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
     }
   }
+
+  // uint dim = 2;
+  // // uint max_len = 16;
+  // float alpha = 1.702f;
+  // uint max_dim = 5;
+  // // uint twice_dim = 2*dim;
+  // T one = static_cast<T>(1.f);
+  // T zero = static_cast<T>(0.f);
+  // for (uint i = 0; i < max_dim; i++){
+  //   for (uint j = 0; j < dim; j++){
+  //     T v = input[dim + i*max_dim+j] * static_cast<T>(alpha);
+  //     T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+  //     T quickgelu_out = input[dim + i*max_dim+j] * sigmoid;
+  //     output[i*max_dim/2+j] = input[i*max_dim+j] * quickgelu_out;
+  //   }
+  // }
   // for (uint i = 0; i < max_len / 2; i++) {
   //   T v = input[dim + i] * static_cast<T>(alpha);
   //   T one = static_cast<T>(1.f);
