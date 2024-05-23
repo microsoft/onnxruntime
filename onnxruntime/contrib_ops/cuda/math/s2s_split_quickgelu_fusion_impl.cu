@@ -36,6 +36,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
   float alpha = 1.702f;
   T alpha_val = static_cast<T>(alpha);
   printf("Curr kElementsPerThread %d\n", kElementsPerThread);
+  printf("Curr threadIdx.x %d\n", threadIdx.x);
   printf("Curr offset_in1 %d\n", offset_in1);
   printf("Curr offset_in2 %d\n", offset_in2);
   printf("Curr offset_out %d\n", offset_out);
@@ -102,7 +103,7 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int num_outputs, co
   // fast_divmod block_size_including_axis_dim_div = fast_divmod(block_size_including_axis_dim);
   // fast_divmod block_size_inside_axis_dim_div = fast_divmod(block_size_inside_axis_dim);
   // fast_divmod split_size_div = fast_divmod(static_cast<int>(split_size));
-  S2SModelSplitQuickGeluKernel<T><<<1, 1, 0, stream>>>(num_outputs, input_data, output_data);
+  S2SModelSplitQuickGeluKernel<T><<<1, 16, 0, stream>>>(num_outputs, input_data, output_data);
 
 
 
