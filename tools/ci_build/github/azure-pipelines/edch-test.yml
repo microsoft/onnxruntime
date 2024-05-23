@@ -1,9 +1,10 @@
 jobs:
 - job: j
-  pool: onnxruntime-Win-CPU-2022
+  pool:
+    vmImage: macos-latest-internal
   
   steps:
   - checkout: none
 
   - script:
-      az login --identity
+      uname -a
