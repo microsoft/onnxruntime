@@ -257,6 +257,27 @@ stages:
             pushd test; \
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py generate image; \
+            python3 -u check_image.py --image1 astronaut_riding_error.png --image2 $image2 --cache_dir /model_cache --negative; \
+            popd ; \
+            popd ; \
+            '
+      displayName: 'Check if the generated image is wierd'
+      workingDirectory: $(Build.SourcesDirectory)
+      continueOnError: true
+
+    - script: |
+        docker run --rm --gpus all -v $PWD:/workspace \
+          -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
+          nvcr.io/nvidia/pytorch:22.11-py3 \
+          bash -c '
+            set -ex; \
+            python3 --version; \
+            python3 -m pip install --upgrade pip; \
+            pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/; \
+            image2=$(find $(pwd) -name "astronaut_riding_a_h*.png") ; \
+            pushd test; \
+            python3 -m pip install -r requirements.txt; \
+            echo check demo_txt2image.py generate image; \
             python3 -u check_image.py --image1 astronaut_riding_txt2image-DDIM-50.png --image2 $image2 --cache_dir /model_cache ; \
             popd ; \
             popd ; \
