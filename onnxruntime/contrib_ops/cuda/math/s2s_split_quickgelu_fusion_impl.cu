@@ -25,49 +25,49 @@ constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
 
 template <typename T>
 __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* input, T* output) {
-  uint dim = 2;
-  uint input_line_stride = dim * 2;
-  uint output_line_stride = dim;
-  uint offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
-  uint offset_in2 = offset_in1 + dim;
-  uint offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
-  T one = static_cast<T>(1.f);
-  T zero = static_cast<T>(0.f);
-  float alpha = 1.702f;
-  T alpha_val = static_cast<T>(alpha);
-  printf("Curr kElementsPerThread %d\n", kElementsPerThread);
-  printf("Curr threadIdx.x %d\n", threadIdx.x);
-  printf("Curr offset_in1 %d\n", offset_in1);
-  printf("Curr offset_in2 %d\n", offset_in2);
-  printf("Curr offset_out %d\n", offset_out);
-  // std::cout << "Curr kElementsPerThread:" << kElementsPerThread << std::endl;
-  for (uint i = 0; i < kElementsPerThread; i++){
-    uint curr_in = offset_in1 + i;
-    int curr_half = curr_in / dim;
-    if (curr_half %2 == 0){
-      // std::cout << "Curr curr_in:" << curr_in << std::endl;
-      T v = input[offset_in2+i] * alpha_val;
-      T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-      T quickgelu_out = input[offset_in2+i] * sigmoid;
-      output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
-    }
-  }
-
   // uint dim = 2;
-  // // uint max_len = 16;
-  // float alpha = 1.702f;
-  // uint max_dim = 5;
-  // // uint twice_dim = 2*dim;
+  // uint input_line_stride = dim * 2;
+  // uint output_line_stride = dim;
+  // uint offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
+  // uint offset_in2 = offset_in1 + dim;
+  // uint offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
   // T one = static_cast<T>(1.f);
   // T zero = static_cast<T>(0.f);
-  // for (uint i = 0; i < max_dim; i++){
-  //   for (uint j = 0; j < dim; j++){
-  //     T v = input[dim + i*max_dim+j] * static_cast<T>(alpha);
+  // float alpha = 1.702f;
+  // T alpha_val = static_cast<T>(alpha);
+  // printf("Curr kElementsPerThread %d\n", kElementsPerThread);
+  // printf("Curr threadIdx.x %d\n", threadIdx.x);
+  // printf("Curr offset_in1 %d\n", offset_in1);
+  // printf("Curr offset_in2 %d\n", offset_in2);
+  // printf("Curr offset_out %d\n", offset_out);
+  // // std::cout << "Curr kElementsPerThread:" << kElementsPerThread << std::endl;
+  // for (uint i = 0; i < kElementsPerThread; i++){
+  //   uint curr_in = offset_in1 + i;
+  //   int curr_half = curr_in / dim;
+  //   if (curr_half %2 == 0){
+  //     // std::cout << "Curr curr_in:" << curr_in << std::endl;
+  //     T v = input[offset_in2+i] * alpha_val;
   //     T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-  //     T quickgelu_out = input[dim + i*max_dim+j] * sigmoid;
-  //     output[i*max_dim/2+j] = input[i*max_dim+j] * quickgelu_out;
+  //     T quickgelu_out = input[offset_in2+i] * sigmoid;
+  //     output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
   //   }
   // }
+
+  uint dim = 2;
+  float alpha = 1.702f;
+  uint twice_dim = 2*dim;
+  uint max_dim = 5;
+  // uint twice_dim = 2*dim;
+  T one = static_cast<T>(1.f);
+  T zero = static_cast<T>(0.f);
+  for (uint i = 0; i < max_dim; i++){
+    for (uint j = 0; j < dim; j++){
+      T v = input[dim + i*twice_dim+j] * static_cast<T>(alpha);
+      T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+      T quickgelu_out = input[dim + i*twice_dim+j] * sigmoid;
+      output[i*dim+j] = input[i*twice_dim+j] * quickgelu_out;
+    }
+  }
   // for (uint i = 0; i < max_len / 2; i++) {
   //   T v = input[dim + i] * static_cast<T>(alpha);
   //   T one = static_cast<T>(1.f);
@@ -103,7 +103,7 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int num_outputs, co
   // fast_divmod block_size_including_axis_dim_div = fast_divmod(block_size_including_axis_dim);
   // fast_divmod block_size_inside_axis_dim_div = fast_divmod(block_size_inside_axis_dim);
   // fast_divmod split_size_div = fast_divmod(static_cast<int>(split_size));
-  S2SModelSplitQuickGeluKernel<T><<<1, 16, 0, stream>>>(num_outputs, input_data, output_data);
+  S2SModelSplitQuickGeluKernel<T><<<1, 1, 0, stream>>>(num_outputs, input_data, output_data);
 
 
 
