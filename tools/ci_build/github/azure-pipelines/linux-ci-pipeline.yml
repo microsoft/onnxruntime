@@ -58,8 +58,8 @@ stages:
 
       - template: templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
+          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
           Repository: onnxruntimecpubuildcentos8x64
 
