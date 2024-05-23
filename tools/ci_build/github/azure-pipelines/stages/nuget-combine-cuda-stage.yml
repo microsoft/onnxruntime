@@ -29,6 +29,12 @@ parameters:
 - name: RunOnnxRuntimeTests
   type: boolean
 
+- name: buildJava
+  type: boolean
+
+- name: buildNodejs
+  type: boolean
+
 - name: SpecificArtifact
   type: boolean
 
@@ -41,6 +47,8 @@ stages:
     CudaVersion: ${{ parameters.CudaVersion }}
     docker_base_image: ${{ parameters.docker_base_image }}
     linux_trt_version: ${{ parameters.linux_trt_version }}
+    buildJava: ${{ parameters.buildJava }}
+    buildNodejs: ${{ parameters.buildNodejs }}
 
 - template: nuget-win-cuda-packaging-stage.yml
   parameters:
