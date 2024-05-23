@@ -46,13 +46,15 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
     uint curr_in = offset_in1 + i;
     int curr_half = curr_in / dim;
     printf("Curr Inp Outside %d\n", curr_in);
-    if (curr_half %2 == 0 && curr_inp < max_inp){
+    if (curr_half %2 == 0 && curr_in < max_inp){
       printf("Curr Inp inside %d\n", curr_in);
       // std::cout << "Curr curr_in:" << curr_in << std::endl;
       T v = input[offset_in2+i] * alpha_val;
       T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
       T quickgelu_out = input[offset_in2+i] * sigmoid;
       output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
+      printf("Current output idx %d\n", offset_out + i);
+      printf("Current output value %f\n", output[offset_out + i]);
     }
   }
 
