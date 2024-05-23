@@ -129,3 +129,5 @@ stages:
       IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
+      buildJava: false
+      buildNodejs: false
