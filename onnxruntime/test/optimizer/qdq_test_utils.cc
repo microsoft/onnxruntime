@@ -164,5 +164,48 @@ std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph, bo
   return op_types;
 }
 
+GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
+    const std::vector<int64_t>& input_shape,
+    const std::vector<float>& input_data,
+    const std::vector<int64_t>& zero_points,
+    const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& zero_point_types,
+    const std::vector<float>& scales,
+    int graph_output_index,
+    bool use_contrib_qdq) {
+  const size_t num_nodes = zero_points.size();
+  bool valid_inputs = (num_nodes >= 4) &&
+                      (zero_point_types.size() == num_nodes) &&
+                      (scales.size() == num_nodes) &&
+                      (graph_output_index >= 0 && graph_output_index < 4);
+  if (!valid_inputs) {
+    ORT_THROW("Invalid inputs for call to BuildDoubleQDQTestCaseWithDuplicateLastDQs()");
+  }
+
+  return [=](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, input_data);
+    std::vector<NodeArg*> node_outputs(num_nodes);
+
+    for (size_t i = 0; i < num_nodes; i++) {
+      if (i == graph_output_index || i >= 3) {
+        node_outputs[i] = builder.MakeOutput();
+      } else {
+        node_outputs[i] = builder.MakeIntermediate();
+      }
+    }
+
+    builder.AddQuantizeLinearNode(input_arg, scales[0], zero_points[0], zero_point_types[0], node_outputs[0],
+                                  use_contrib_qdq);
+    builder.AddDequantizeLinearNode(node_outputs[0], scales[1], zero_points[1], zero_point_types[1], node_outputs[1],
+                                    use_contrib_qdq);
+    builder.AddQuantizeLinearNode(node_outputs[1], scales[2], zero_points[2], zero_point_types[2], node_outputs[2],
+                                  use_contrib_qdq);
+
+    for (size_t i = 3; i < num_nodes; i++) {
+      builder.AddDequantizeLinearNode(node_outputs[2], scales[i], zero_points[i], zero_point_types[i],
+                                      node_outputs[i], use_contrib_qdq);
+    }
+  };
+}
+
 }  // namespace test
 }  // namespace onnxruntime

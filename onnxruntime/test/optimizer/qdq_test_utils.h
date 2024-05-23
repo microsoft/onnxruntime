@@ -460,6 +460,27 @@ GetQDQTestCaseFn BuildDoubleQDQTestCases(Type1 zp_1, Type2 zp_2, Type3 zp_3, Typ
   };
 }
 
+/// <summary>
+/// Returns a function that builds a model with a double QDQ sequence (Q1 -> DQ1 -> Q2 -> DQ2*),
+/// where DQ2 can be repeated. Must provide at least 4 zero-point and scale values.
+/// </summary>
+/// <param name="input_shape">Shape of input float data.</param>
+/// <param name="input_data">Input float data.</param>
+/// <param name="zero_points">Ordered list of zero-point values for each node in the sequence.</param>
+/// <param name="zero_point_types">Ordered list of zero-point types for each node in the sequence.</param>
+/// <param name="zero_points">Ordered list of scale values for each node in the sequence.</param>
+/// <param name="graph_output_index">Index of the node that provides a graph output.</param>
+/// <param name="use_contrib_qdq">Set to true to use the 'com.microsoft' domain for Q and DQ ops.</param>
+/// <returns>A function for building the model</returns>
+GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
+    const std::vector<int64_t>& input_shape,
+    const std::vector<float>& input_data,
+    const std::vector<int64_t>& zero_points,
+    const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& zero_point_types,
+    const std::vector<float>& scales,
+    int graph_output_index,
+    bool use_contrib_qdq = false);
+
 template <typename T>
 GetQDQTestCaseFn BuildDoubleQDQWithoutLastOutput(int output_index, bool use_contrib_qdq = false) {
   return [=](ModelTestBuilder& builder) {

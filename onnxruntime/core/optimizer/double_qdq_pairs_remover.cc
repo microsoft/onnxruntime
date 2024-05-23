@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 #include "core/optimizer/double_qdq_pairs_remover.h"
 #include <cassert>
+#include <string>
+#include <vector>
 
 #include "core/common/gsl.h"
 #include "core/graph/graph_utils.h"
@@ -88,7 +90,8 @@ static bool FindNewZeroPointAndScale(const Graph& graph, const Node& node1, cons
 // After removing the middle two nodes, the zero point and scale of the final (outer) ops must be recomputed
 // for correctness.
 template <typename ZeroPointType>
-static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, Node& q1, const Node& dq1, const Node& q2, gsl::span<Node*> dq2s) {
+static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, Node& q1, const Node& dq1, const Node& q2,
+                                               gsl::span<Node*> dq2s) {
   if (dq2s.empty()) {
     return false;
   }
