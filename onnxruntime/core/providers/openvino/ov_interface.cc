@@ -88,7 +88,7 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
   }
 }
 
-OVExeNetwork OVCore::CompileModel(const std::string onnx_model_path,
+OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
                                   std::string& hw_target,
                                   std::string precision,
                                   std::string cache_dir,
@@ -97,13 +97,13 @@ OVExeNetwork OVCore::CompileModel(const std::string onnx_model_path,
   ov::CompiledModel obj;
   try {
     if (hw_target == "AUTO:GPU,CPU") {
-      obj = oe.compile_model(onnx_model_path,
+      obj = oe.compile_model(onnx_model, ov::Tensor(),
                              "AUTO",
                              ov::device::priorities("GPU", "CPU"),
                              ov::device::properties("GPU", {ov::cache_dir(cache_dir),
                                                             ov::hint::inference_precision(precision)}));
     } else {
-      obj = oe.compile_model(onnx_model_path, hw_target, device_config);
+      obj = oe.compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
     }
 #ifndef NDEBUG
     printDebugInfo(obj);

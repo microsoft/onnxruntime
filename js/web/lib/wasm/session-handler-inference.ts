@@ -6,6 +6,7 @@ import {InferenceSession, InferenceSessionHandler, SessionHandler, Tensor, TRACE
 import {SerializableInternalBuffer, TensorMetadata} from './proxy-messages';
 import {copyFromExternalBuffer, createSession, endProfiling, releaseSession, run} from './proxy-wrapper';
 import {isGpuBufferSupportedType} from './wasm-common';
+import {isNode} from './wasm-utils-env';
 import {loadFile} from './wasm-utils-load-file';
 
 export const encodeTensorMetadata = (tensor: Tensor, getName: () => string): TensorMetadata => {
@@ -52,7 +53,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
     let model: Parameters<typeof createSession>[0];
 
     if (typeof pathOrBuffer === 'string') {
-      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      if (isNode) {
         // node
         model = await loadFile(pathOrBuffer);
       } else {

@@ -1,14 +1,59 @@
 {
   "devDependencies": {
-    "@chiragrupani/karma-chromium-edge-launcher": "^2.2.2",
-    "fs-extra": "^11.1.0",
-    "globby": "^13.1.3",
-    "karma": "^6.4.1",
-    "karma-chrome-launcher": "^3.1.1",
+    "@chiragrupani/karma-chromium-edge-launcher": "^2.3.1",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "copy-webpack-plugin": "^12.0.2",
+    "fs-extra": "^11.2.0",
+    "globby": "^14.0.1",
+    "karma": "^6.4.3",
+    "karma-chrome-launcher": "^3.2.0",
     "karma-mocha": "^2.0.1",
     "karma-mocha-reporter": "^2.2.5",
     "light-server": "^2.9.1",
-    "minimist": "^1.2.7",
-    "mocha": "^10.2.0"
+    "minimist": "^1.2.8",
+    "mocha": "^10.4.0",
+    "parcel": "^2.12.0",
+    "parcel-reporter-static-files-copy": "^1.5.3",
+    "rollup": "^4.13.2",
+    "rollup-plugin-copy": "^3.5.0",
+    "webpack-cli": "^5.1.4"
+  },
+  "scripts": {
+    "build:w:esmjs": "webpack --mode=production --config webpack.config.esm-js.js",
+    "build:w:umdjs": "webpack --mode=production --config webpack.config.umd-js.js",
+    "build:w": "npm run build:w:esmjs && npm run build:w:umdjs",
+    "build:r:esmjs": "rollup -c rollup.config.esm-js.js",
+    "build:r:umdjs": "rollup -c rollup.config.umd-js.js",
+    "build:r": "npm run build:r:esmjs && npm run build:r:umdjs",
+    "build:p:esmjs": "parcel build --no-autoinstall --target esm && node ./bundler.esm.postprocess.js ./dist/parcel_esm_js/main.js",
+    "build:p:umdjs": "parcel build --no-autoinstall --target umd",
+    "build:p": "npm run build:p:esmjs && npm run build:p:umdjs",
+    "build": "npm run build:w && npm run build:r && npm run build:p"
+  },
+  "@parcel/resolver-default": {
+    "packageExports": true
+  },
+  "targets": {
+    "esm": {
+      "context": "browser",
+      "outputFormat": "esmodule",
+      "distDir": "dist/parcel_esm_js",
+      "source": "src/esm-js/main.js"
+    },
+    "umd": {
+      "context": "browser",
+      "outputFormat": "global",
+      "distDir": "dist/parcel_umd_js",
+      "source": "src/cjs-js/main.js"
+    }
+  },
+  "staticFiles": {
+    "staticPath": "node_modules/onnxruntime-web/dist/"
+  },
+  "alias": {
+    "process": false,
+    "buffer": false
   }
 }

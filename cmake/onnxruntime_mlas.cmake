@@ -38,6 +38,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
   ${MLAS_SRC_DIR}/sqnbitgemm.h
   ${MLAS_SRC_DIR}/sqnbitgemm.cpp
+  ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
 )
 
 target_sources(onnxruntime_mlas PRIVATE

@@ -3,6 +3,8 @@
 
 import type {Tensor} from 'onnxruntime-common';
 
+/* eslint-disable @typescript-eslint/naming-convention */
+
 export declare namespace JSEP {
   type BackendType = unknown;
   type AllocFunction = (size: number) => number;
@@ -61,7 +63,7 @@ export declare namespace JSEP {
     _JsepGetNodeName(kernel: number): number;
 
     /**
-     * [exported from js_internal_api.js] Register a user GPU buffer for usage of a session's input or output.
+     * [exported from pre-jsep.js] Register a user GPU buffer for usage of a session's input or output.
      *
      * @param sessionId - specify the session ID.
      * @param index - specify an integer to represent which input/output it is registering for. For input, it is the
@@ -73,14 +75,14 @@ export declare namespace JSEP {
      */
     jsepRegisterBuffer: (sessionId: number, index: number, buffer: GPUBuffer, size: number) => number;
     /**
-     * [exported from js_internal_api.js] Get the GPU buffer by GPU data ID.
+     * [exported from pre-jsep.js] Get the GPU buffer by GPU data ID.
      *
      * @param dataId - specify the GPU data ID
      * @returns the GPU buffer.
      */
     jsepGetBuffer: (dataId: number) => GPUBuffer;
     /**
-     * [exported from js_internal_api.js] Create a function to be used to create a GPU Tensor.
+     * [exported from pre-jsep.js] Create a function to be used to create a GPU Tensor.
      *
      * @param gpuBuffer - specify the GPU buffer
      * @param size - specify the original data size in byte.
@@ -91,13 +93,13 @@ export declare namespace JSEP {
         (gpuBuffer: GPUBuffer, size: number,
          type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
     /**
-     *  [exported from js_internal_api.js] Called when InferenceSession.run started. This function will be called before
+     *  [exported from pre-jsep.js] Called when InferenceSession.run started. This function will be called before
      * _OrtRun[WithBinding]() is called.
      * @param sessionId - specify the session ID.
      */
     jsepOnRunStart: (sessionId: number) => void;
     /**
-     * [exported from js_internal_api.js] Release a session. This function will be called before _OrtReleaseSession() is
+     * [exported from pre-jsep.js] Release a session. This function will be called before _OrtReleaseSession() is
      * called.
      * @param sessionId - specify the session ID.
      * @returns
@@ -190,6 +192,9 @@ export interface OrtTrainingAPIs {
   _OrtTrainingReleaseSession(trainingHandle: number): void;
 }
 
+/**
+ * The interface of the WebAssembly module for ONNX Runtime, compiled from C++ source code by Emscripten.
+ */
 export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Partial<OrtTrainingAPIs>,
                                        Partial<JSEP.Module> {
   // #region emscripten functions
@@ -204,9 +209,5 @@ export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Parti
 
   // #region config
   numThreads?: number;
-  mainScriptUrlOrBlob?: string|Blob;
   // #endregion
 }
-
-declare const moduleFactory: EmscriptenModuleFactory<OrtWasmModule>;
-export default moduleFactory;
