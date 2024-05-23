@@ -35,13 +35,15 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
   T zero = static_cast<T>(0.f);
   float alpha = 1.702f;
   T alpha_val = static_cast<T>(alpha);
+  std::cout << "Curr kElementsPerThread:" << kElementsPerThread << std::endl;
   for (uint i = 0; i < kElementsPerThread; i++){
     uint curr_in = offset_in1 + i;
     int curr_half = curr_in / dim;
     if (curr_half %2 == 0){
-      T v = input[offset_in2] * alpha_val;
+      std::cout << "Curr curr_in:" << curr_in << std::endl;
+      T v = input[offset_in2+i] * alpha_val;
       T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-      T quickgelu_out = input[offset_in2] * sigmoid;
+      T quickgelu_out = input[offset_in2+i] * sigmoid;
       output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
     }
   }
