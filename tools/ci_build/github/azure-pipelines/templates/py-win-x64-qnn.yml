@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.19.2.240210
+  default: 2.21.0.240401
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -127,7 +127,7 @@ jobs:
           FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: true
-          Pattern: '*.pyd,*.dll'
+          Pattern: '*.pyd'
 
       - task: PythonScript@0
         displayName: 'Build wheel'

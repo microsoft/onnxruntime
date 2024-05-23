@@ -3,7 +3,7 @@
 
 import {Env} from 'onnxruntime-common';
 
-import {OrtWasmModule} from '../binding/ort-wasm';
+import type {OrtWasmModule} from '../wasm-types';
 import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
@@ -154,11 +154,11 @@ class ComputeContextImpl implements ComputeContext {
  * - "webnn"
  *
  * For WebGPU, this function expects:
- *  - WebGPU is enabled in build (BUILD_DEFS.DISABLE_WEBGPU === false).
+ *  - WebGPU is enabled in build (BUILD_DEFS.DISABLE_JSEP === false).
  *  - WebGPU is available in current environment. (a valid GPUAdapter is passed in)
  *
  * For WebNN, this function expects:
- * - WebNN is enabled in build (BUILD_DEFS.DISABLE_WEBGPU === false).
+ * - WebNN is enabled in build (BUILD_DEFS.DISABLE_JSEP === false).
  * - WebNN is available in current environment. (navigator.ml is not undefined)
  *
  * If the WebAssembly module is not built with JSEP support, this function will throw an error. This will invalidate

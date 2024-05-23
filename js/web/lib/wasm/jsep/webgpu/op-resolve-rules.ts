@@ -18,6 +18,7 @@ import {fastGelu} from './ops/fast-gelu';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gatherElements, parseGatherElementsAttributes} from './ops/gather-elements';
 import {gemm, parseGemmAttributes} from './ops/gemm';
+import {groupQueryAttention, parseGroupQueryAttentionAttributes} from './ops/group-query-attention';
 import {instanceNorm} from './ops/instance-norm';
 import {layerNorm} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
@@ -88,6 +89,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['GlobalMaxPool', [pool.globalMaxPool, pool.parseGlobalMaxPoolAttributes]],
   ['Greater', [binaryOps.greater]],
   ['GreaterOrEqual', [binaryOps.greaterOrEqual]],
+  ['GroupQueryAttention', [groupQueryAttention, parseGroupQueryAttentionAttributes]],
   ['HardSigmoid', [unaryOps.hardSigmoid, unaryOps.parseHardSigmoidAttributes]],
   ['InstanceNormalization', [instanceNorm]],
   ['LayerNormalization', [layerNorm]],

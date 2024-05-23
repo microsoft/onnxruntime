@@ -19,7 +19,8 @@ Status CheckInputs(void* params,
                    const Tensor* past_value,
                    const Tensor* cos_cache,
                    const Tensor* sin_cache,
-                   const Tensor* block_mask,
+                   const Tensor* block_row_indices,
+                   const Tensor* block_col_indices,
                    const Tensor* seqlens_k_total,
                    const Tensor* total_seq_len) {
   // No packing for q/k/v:
@@ -31,14 +32,14 @@ Status CheckInputs(void* params,
   //   key                  nullptr
   //   value                nullptr
   // Shape for other inputs:
-  //   past_key             (batch_size, kv_num_heads, max_sequence_length, head_size) or nullptr
-  //   past_value           (batch_size, kv_num_heads, max_sequence_length, head_size) or nullptr
-  //   block_mask           (num_heads, max_blocks, max_blocks) or (1, max_blocks, max_blocks)
-  //                                    where max_blocks = max_sequence_length / sparse_block_size
+  //   past_key             (batch_size, kv_num_heads, max_cache_sequence_length, head_size)
+  //   past_value           (batch_size, kv_num_heads, max_cache_sequence_length, head_size)
+  //   block_row_indices    (num_layout, max_blocks + 1), where max_blocks = max_sequence_length / sparse_block_size
+  //   block_col_indices    (num_layout, max_nnz)
   //   seqlens_k_total      (batch_size) when do_rotary is True, optional otherwise
   //   total_seq_len        (1)
-  //   cos_cache            (max_sequence_length, rotary_dim / 2) when do_rotary is true.
-  //   sin_cache            (max_sequence_length, rotary_dim / 2) when do_rotary is true.
+  //   cos_cache            (max_rotary_sequence_length, rotary_dim / 2) when do_rotary is true.
+  //   sin_cache            (max_rotary_sequence_length, rotary_dim / 2) when do_rotary is true.
 
   assert(params != nullptr);
   SparseAttentionParameters* parameters = reinterpret_cast<SparseAttentionParameters*>(params);
@@ -121,57 +122,78 @@ Status CheckInputs(void* params,
     kv_hidden_size = head_size * kv_num_heads;
   }
 
-  const auto& block_mask_dim = block_mask->Shape().GetDims();
-  if (!(block_mask_dim.size() == 3 && block_mask_dim[1] == block_mask_dim[2] &&
-        (static_cast<int64_t>(num_heads) % block_mask_dim[0] == 0L))) {
+  if (!onnxruntime::IsScalarOr1ElementVector(total_seq_len)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "total_sequence_length tensor must be of one element.");
+  }
+  int total_sequence_length = *((*total_seq_len).template Data<int32_t>());
+
+  // Check block_row_indices
+  const auto& block_row_indices_dim = block_row_indices->Shape().GetDims();
+  if (!(block_row_indices_dim.size() == 2 &&
+        block_row_indices_dim[1] > 1 &&
+        (static_cast<int64_t>(num_heads) % block_row_indices_dim[0] == 0L))) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
-        "block_mask must have shape (num_layout, max_blocks, max_blocks) where num_heads is divisible by num_layout.");
+        "block_row_indices must have shape (num_layout, max_blocks + 1) where num_heads is divisible by num_layout.");
+  }
+  int max_blocks = static_cast<int>(block_row_indices_dim[1]) - 1;
+
+  // Check block_col_indices
+  const auto& block_col_indices_dim = block_col_indices->Shape().GetDims();
+  if (!(block_col_indices_dim.size() == 2 &&
+        block_col_indices_dim[0] == block_row_indices_dim[0] &&
+        block_col_indices_dim[1] <= max_blocks * max_blocks)) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "block_col_indices must have shape (num_layout, max_nnz), "
+        "where max_nnz <= max_blocks * max_blocks.");
   }
 
-  int max_blocks = static_cast<int>(block_mask_dim[1]);
   int max_sequence_length = max_blocks * parameters->sparse_block_size;
-
-  // Check past-present KV
-  if (past_key != nullptr && past_value != nullptr) {
-    if (past_key->Shape() != past_value->Shape()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'past_value' shall have same shape");
-    }
-
-    const auto& past_key_dims = past_key->Shape().GetDims();
-    if (past_key_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' is expected to have 4 dimensions, got ",
-                             past_key_dims.size());
-    }
-
-    if (past_key_dims[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' dimension 0 should be batch_size ", batch_size, ", got ",
-                             past_key_dims[0]);
-    }
-
-    if (past_key_dims[is_past_bsnh ? 2 : 1] != kv_num_heads) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' shall have kv_num_heads");
-    }
-
-    int max_cache_sequence_length = static_cast<int>(past_key_dims[is_past_bsnh ? 1 : 2]);
-    if (max_cache_sequence_length != max_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'block_mask' should have the same sequence length:",
-                             "max_sequence_length deduced from past_key is ", max_cache_sequence_length,
-                             "; max_sequence_length deduced from block_mask is ", max_sequence_length);
-    }
-
-    if (past_key_dims[3] != head_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' dimension 3 should be same as head_size, got ",
-                             past_key_dims[3]);
-    }
-  } else if (past_key != nullptr || past_value != nullptr) {
+  if (max_sequence_length < total_sequence_length) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' and 'past_value' shall be both present or both absent.");
+                           "max_sequence_length should be no less than total_sequence_length:",
+                           total_sequence_length,
+                           ", max_sequence_length deduced from block_row_indices:", max_sequence_length);
+  }
+
+  // Check kv cache
+  ORT_ENFORCE(past_key != nullptr && past_value != nullptr);
+  if (past_key->Shape() != past_value->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'past_key' and 'past_value' shall have same shape");
+  }
+
+  const auto& past_key_dims = past_key->Shape().GetDims();
+  if (past_key_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'past_key' is expected to have 4 dimensions, got ",
+                           past_key_dims.size());
+  }
+
+  if (past_key_dims[0] != batch_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'past_key' dimension 0 should be batch_size ", batch_size, ", got ",
+                           past_key_dims[0]);
+  }
+
+  if (past_key_dims[is_past_bsnh ? 2 : 1] != kv_num_heads) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' shall have kv_num_heads");
+  }
+
+  int max_cache_sequence_length = static_cast<int>(past_key_dims[is_past_bsnh ? 1 : 2]);
+  if (max_cache_sequence_length < total_sequence_length) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "max_cache_sequence_length should be no less than total_sequence_length:",
+                           total_sequence_length,
+                           ", max_cache_sequence_length:", max_cache_sequence_length);
+  }
+
+  if (past_key_dims[3] != head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'past_key' dimension 3 should be same as head_size, got ",
+                           past_key_dims[3]);
   }
 
   // Check the shape of total_key_sequence_lengths. We do not check the values here.
@@ -181,13 +203,8 @@ Status CheckInputs(void* params,
                            "key_total_sequence_lengths must have shape (batch_size).");
   }
 
-  if (!onnxruntime::IsScalarOr1ElementVector(total_seq_len)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "total_sequence_length tensor must be of one element.");
-  }
-  int total_sequence_length = *((*total_seq_len).template Data<int32_t>());
-
   int rotary_dim = 0;
+  int max_rotary_sequence_length = 0;
   if (do_rotary) {
     if (cos_cache == nullptr || sin_cache == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -202,14 +219,19 @@ Status CheckInputs(void* params,
                              "head_size shall be a multiple of 16. Got head_size = ",
                              head_size);
     }
-    if (cos_dims[0] < max_sequence_length) {
+    if (cos_dims[0] != sin_dims[0]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "cos_cache dimension 0 should be of max_sequence_length.");
+                             "cos_cache and sin_cache dimension 0 should be same size.");
     }
-    if (sin_dims[0] < max_sequence_length) {
+
+    max_rotary_sequence_length = static_cast<int>(cos_dims[0]);
+    if (max_rotary_sequence_length < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "sin_cache dimension 0 should be of max_sequence_length.");
+                             "max_rotary_sequence_length should be no less than total_sequence_length:",
+                             total_sequence_length,
+                             ", max_rotary_sequence_length:", max_rotary_sequence_length);
     }
+
     if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8.");
@@ -229,12 +251,16 @@ Status CheckInputs(void* params,
   parameters->sequence_length = sequence_length;
   parameters->total_sequence_length = total_sequence_length;
   parameters->max_sequence_length = max_sequence_length;
+  parameters->max_cache_sequence_length = max_cache_sequence_length;
+  parameters->max_rotary_sequence_length = max_rotary_sequence_length;
   parameters->hidden_size = q_hidden_size;
   parameters->head_size = head_size;
   parameters->kv_hidden_size = kv_hidden_size;
   parameters->rotary_dim = rotary_dim;
   parameters->is_packed_qkv = is_packed_qkv;
-  parameters->num_sparse_layout = static_cast<int>(block_mask_dim[0]);
+  parameters->num_sparse_layout = static_cast<int>(block_row_indices_dim[0]);
+  parameters->stride_row_indices = static_cast<int>(block_row_indices_dim[1]);
+  parameters->stride_col_indices = static_cast<int>(block_col_indices_dim[1]);
 
   return Status::OK();
 }
