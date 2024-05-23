@@ -48,7 +48,7 @@ dotnet add package Microsoft.ML.OnnxRuntimeGenAI.Cuda --prerelease
 For the package that has been optimized for DirectML:
 
 ```bash
-dotnet add package Microsoft.ML.OnnxRuntimeGenAI.Cuda --prerelease
+dotnet add package Microsoft.ML.OnnxRuntimeGenAI.DirectML --prerelease
 ```
 
 
