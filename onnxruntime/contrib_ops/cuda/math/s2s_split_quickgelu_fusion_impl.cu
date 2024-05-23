@@ -12,7 +12,7 @@ namespace cuda {
 
 namespace {
 
-constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
+// constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
 // #ifdef USE_ROCM
 // constexpr int kThreadsPerBlock = 512;
 // #else
