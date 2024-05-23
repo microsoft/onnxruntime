@@ -35,6 +35,10 @@ __global__ void S2SModelSplitQuickGeluKernel(const int num_outputs, const T* inp
   T zero = static_cast<T>(0.f);
   float alpha = 1.702f;
   T alpha_val = static_cast<T>(alpha);
+  printf("Curr kElementsPerThread %d\n", kElementsPerThread);
+  printf("Curr offset_in1 %d\n", offset_in1);
+  printf("Curr offset_in2 %d\n", offset_in2);
+  printf("Curr offset_out %d\n", offset_out);
   // std::cout << "Curr kElementsPerThread:" << kElementsPerThread << std::endl;
   for (uint i = 0; i < kElementsPerThread; i++){
     uint curr_in = offset_in1 + i;
