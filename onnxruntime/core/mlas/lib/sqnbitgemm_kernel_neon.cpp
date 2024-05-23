@@ -891,7 +891,7 @@ QuantizeBlock(
 
     int8_t* QuantAData = Q8BlkData(QuantA);
 
-    int32_t& QuantABlkSum = Q8BlkSum(QuantA);
+    float& QuantABlkSum = Q8BlkSum(QuantA);
     QuantABlkSum = 0;
 
     for (k = 0; k < ElementCount; k += SubBlkLen) {
@@ -923,7 +923,7 @@ QuantizeBlock(
             }
         }
 
-        QuantABlkSum += vaddvq_s32(a_s32[0]);
+        QuantABlkSum += static_cast<float>(vaddvq_s32(a_s32[0]));
     }
 
     //
@@ -1326,7 +1326,7 @@ SQ4BitGemmM1Kernel_CompInt8_Impl_BlkLenGreaterThan32(
                 }
             }();
 
-            acc_scaled_bzp_ablksum_product += scale * bzp * Q8BlkSum(QuantAPtr);
+            acc_scaled_bzp_ablksum_product += scale * Q8BlkSum(QuantAPtr) * bzp;
 
             const int8_t* QuantADataPtr = Q8BlkData(QuantAPtr);
 
