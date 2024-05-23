@@ -70,7 +70,6 @@ stages:
           --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
           --build-arg TRT_VERSION=${{ parameters.trt_version }}
           --build-arg BUILD_UID=$( id -u )
-          --build-arg PLATFORM=${{ parameters.arch }}
           "
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
