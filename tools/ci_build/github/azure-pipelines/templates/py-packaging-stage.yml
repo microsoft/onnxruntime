@@ -475,6 +475,8 @@ stages:
           docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_ubi8_gcc8:20240522.3
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+          trt_version: '10.0.1.6-1.cuda11.8'
+          cuda_version: '11.8'
 
   - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
     - stage: Python_Packaging_Windows_ARM64_QNN
