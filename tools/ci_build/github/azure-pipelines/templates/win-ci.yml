@@ -309,6 +309,7 @@ stages:
           condition : 'succeeded'
   - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
     - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
+      dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
       jobs:
       - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
         dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
