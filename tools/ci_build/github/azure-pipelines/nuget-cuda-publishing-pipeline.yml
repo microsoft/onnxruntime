@@ -67,7 +67,7 @@ stages:
             GdnBreakPolicy: M365
             GdnBreakPolicyMinSev: Error
 
-        - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
+        - template: nuget/templates/get-nuget-package-version-as-variable.yml
           parameters:
             packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
         #This task must be run on a Windows machine
