@@ -72,7 +72,7 @@ stages:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
     #This task must be run on a Windows machine
     - task: NuGetCommand@2
-      displayName: 'NuGet push ${{ parameters.artifact_feed }}'
+      displayName: 'NuGet push to feed'
       inputs:
         command: push
         packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
