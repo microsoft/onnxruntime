@@ -308,92 +308,94 @@ stages:
         parameters :
           condition : 'succeeded'
   - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-    - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
-      dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
-      workspace:
-        clean: all
-      pool: ${{ parameters.ort_build_pool_name }}
-      timeoutInMinutes: 180
-      steps:
-        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-          displayName: 'Clean Agent Directories'
-          condition: always()
+    - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
+      jobs:
+      - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
+        dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
+        workspace:
+          clean: all
+        pool: ${{ parameters.ort_build_pool_name }}
+        timeoutInMinutes: 180
+        steps:
+          - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+            displayName: 'Clean Agent Directories'
+            condition: always()
 
-        - checkout: self
-          clean: true
-          submodules: none
+          - checkout: self
+            clean: true
+            submodules: none
 
-        - template: flex-downloadPipelineArtifact.yml
-          parameters:
-            ArtifactName: "Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts"
-            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
-            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
-
-        - powershell: |
-            tree /f
-            $drive = (Get-Location).Drive.Name
-            $file = 'CTestTestfile.cmake'
-            (Get-Content $file ) -replace 'C:\\a', -join($drive, ':\\a') | Set-Content $file
-            (Get-Content $file ) -replace 'C:/a', -join($drive, ':/a') | Set-Content $file
-          displayName: 'List built files and update CTestTestfile.cmake drive letter'
-          workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/'
-
-        - template: telemetry-steps.yml
-
-        - template: set-version-number-variables-step.yml
-
-        - ${{ if eq(parameters['buildJava'], 'true') }}:
-          - task: JavaToolInstaller@0
-            inputs:
-              versionSpec: "11"
-              jdkArchitectureOption: ${{ parameters.buildArch }}
-              jdkSourceOption: 'PreInstalled'
-
-        - task: UsePythonVersion@0
-          inputs:
-            versionSpec: '3.8'
-            addToPath: true
-            architecture: ${{ parameters.buildArch }}
-
-        - task: NodeTool@0
-          condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
-          inputs:
-            versionSpec: '18.x'
-
-        - ${{ if ne(parameters.CudaVersion, '') }}:
-          - template: jobs/download_win_gpu_library.yml
+          - template: flex-downloadPipelineArtifact.yml
             parameters:
-              CudaVersion: ${{ parameters.CudaVersion }}
-              ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-                DownloadCUDA: true
-              ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
-                DownloadCUDA: true
-                DownloadTRT: true
+              ArtifactName: "Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts"
+              StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
+              TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
+              SpecificArtifact: ${{ parameters.SpecificArtifact }}
+              BuildId: ${{ parameters.BuildId }}
 
-        - powershell: |
-            Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
-          displayName: 'Append dotnet x86  Directory to PATH'
-          condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
+          - powershell: |
+              tree /f
+              $drive = (Get-Location).Drive.Name
+              $file = 'CTestTestfile.cmake'
+              (Get-Content $file ) -replace 'C:\\a', -join($drive, ':\\a') | Set-Content $file
+              (Get-Content $file ) -replace 'C:/a', -join($drive, ':/a') | Set-Content $file
+            displayName: 'List built files and update CTestTestfile.cmake drive letter'
+            workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/'
 
-        - task: PythonScript@0
-          displayName: 'test'
-          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
-          inputs:
-            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
-            workingDirectory: '$(Build.BinariesDirectory)'
+          - template: telemetry-steps.yml
 
-        - ${{ if eq(parameters.buildJava, 'true') }}:
-          - template: make_java_win_binaries.yml
-            parameters:
-              msbuildPlatform: ${{ parameters.msbuildPlatform }}
-              java_artifact_id: ${{ parameters.java_artifact_id }}
+          - template: set-version-number-variables-step.yml
 
-          - task: PublishBuildArtifacts@1
-            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-            displayName: 'Publish Java temp binaries'
+          - ${{ if eq(parameters['buildJava'], 'true') }}:
+            - task: JavaToolInstaller@0
+              inputs:
+                versionSpec: "11"
+                jdkArchitectureOption: ${{ parameters.buildArch }}
+                jdkSourceOption: 'PreInstalled'
+
+          - task: UsePythonVersion@0
             inputs:
-              pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-              artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+              versionSpec: '3.8'
+              addToPath: true
+              architecture: ${{ parameters.buildArch }}
+
+          - task: NodeTool@0
+            condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
+            inputs:
+              versionSpec: '18.x'
+
+          - ${{ if ne(parameters.CudaVersion, '') }}:
+            - template: jobs/download_win_gpu_library.yml
+              parameters:
+                CudaVersion: ${{ parameters.CudaVersion }}
+                ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+                  DownloadCUDA: true
+                ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+                  DownloadCUDA: true
+                  DownloadTRT: true
+
+          - powershell: |
+              Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
+            displayName: 'Append dotnet x86  Directory to PATH'
+            condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
+
+          - task: PythonScript@0
+            displayName: 'test'
+            condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+              workingDirectory: '$(Build.BinariesDirectory)'
+
+          - ${{ if eq(parameters.buildJava, 'true') }}:
+            - template: make_java_win_binaries.yml
+              parameters:
+                msbuildPlatform: ${{ parameters.msbuildPlatform }}
+                java_artifact_id: ${{ parameters.java_artifact_id }}
+
+            - task: PublishBuildArtifacts@1
+              condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+              displayName: 'Publish Java temp binaries'
+              inputs:
+                pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+                artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'

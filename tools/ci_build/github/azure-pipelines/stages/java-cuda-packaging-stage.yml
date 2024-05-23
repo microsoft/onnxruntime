@@ -10,8 +10,8 @@ stages:
 - stage: Jar_Packaging_GPU
   dependsOn:
   - Linux_C_API_Packaging_GPU
-  - Windows_Packaging_CUDA
-  - Windows_Packaging_TensorRT
+  - Windows_Packaging_CUDA_Testing
+  - Windows_Packaging_TensorRT_Testing
   - Download_Java_Tools
   jobs:
   - job: Jar_Packaging_GPU
