@@ -3,12 +3,12 @@
 # --docker-build-args ' --build-arg BASEIMAGE=other_base_image --build-arg TRT_VERSION=other_trt_version etc...'
 # for other cuda version and TRT version
 ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-ARG TRT_VERSION=10.0.1.6-1.cuda11.8
 
 FROM $BASEIMAGE
+ARG TRT_VERSION=10.0.1.6-1.cuda11.8
 
 #Install TensorRT only if TRT_VERSION is not empty
-RUN if [ -n "$TRT_VERSION" ]; then  \
+RUN if [ -n "${TRT_VERSION}" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
     dnf -y install  \
     libnvinfer10-${TRT_VERSION}  \
@@ -29,7 +29,7 @@ RUN if [ -n "$TRT_VERSION" ]; then  \
     libnvinfer-headers-plugin-devel-${TRT_VERSION} && \
     dnf clean dbcache ; \
 else \
-    echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
+    echo "TRT_VERSION is x${TRT_VERSION} skipping Tensor RT Installation" ; \
 fi
 
 ENV PATH /usr/local/cuda/bin:$PATH
