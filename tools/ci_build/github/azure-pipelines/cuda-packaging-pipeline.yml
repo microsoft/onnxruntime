@@ -126,8 +126,8 @@ stages:
       win_trt_home: ${{ variables.win_trt_home }}
       win_cuda_home: ${{ variables.win_cuda_home }}
       DoEsrp: ${{ parameters.DoEsrp }}
+      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
       buildJava: false
       buildNodejs: false
-      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
