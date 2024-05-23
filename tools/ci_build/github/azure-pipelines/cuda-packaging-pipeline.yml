@@ -57,14 +57,6 @@ parameters:
     values:
       - 11.8
       - 12.2
-  - name: buildJava
-    displayName: Build Java API
-    type: boolean
-    default: false
-  - name: buildNodejs
-    displayName: Build Node.js API
-    type: boolean
-    default: false
 
 variables:
   - name: ReleaseVersionSuffix
@@ -135,7 +127,7 @@ stages:
       win_cuda_home: ${{ variables.win_cuda_home }}
       DoEsrp: ${{ parameters.DoEsrp }}
       IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-      buildJava: ${{ parameters.buildJava }}
-      buildNodejs: ${{ parameters.buildNodejs }}
+      buildJava: false
+      buildNodejs: false
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
