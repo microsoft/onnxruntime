@@ -1361,6 +1361,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         weight_stripped_engine_enable_ = std::stoi(weight_stripped_engine_enable_env) != 0;
       }
 
+      const std::string onnx_model_folder_path_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kOnnxModelFolderPath);
+      if (!onnx_model_folder_path_env.empty()) {
+        onnx_model_folder_path_ = onnx_model_folder_path_env;
+      }
+
       const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
       if (!timing_cache_enable_env.empty()) {
         timing_cache_enable_ = (std::stoi(timing_cache_enable_env) == 0 ? false : true);
@@ -2907,7 +2912,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
   const std::string profile_cache_path = cache_path_prefix + ".profile";
 
-  // If weight-stripped engine is enabled and serialized refitted engine cache is not present, the engine cache will have ".stripped.engine" appended to the end
+  // TRT EP uses the engine cache with ".stripped.engine" appended to the end if following three conditions are all true:
+  // - engine cache is enabled
+  // - weight-stripped engine is enabled
+  // - the refitted engine cache is not present
+  //
+  // This means the weight-stripped engine cache need to be refitted and the refitted engine cache is not yet created
   if (engine_cache_enable_ && weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
     engine_cache_path = cache_path_prefix + ".stripped.engine";
     weight_stripped_engine_refit_ = true;
@@ -3251,7 +3261,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
     }
 
-    // If weight-stripped engine is enabled and serialized refitted engine cache is not present, the engine cache will have ".stripped.engine" appended to the end
+    // TRT EP uses the engine cache with ".stripped.engine" appended to the end if following three conditions are all true:
+    // - engine cache is enabled
+    // - weight-stripped engine is enabled
+    // - the refitted engine cache is not present
+    //
+    // This means the weight-stripped engine cache need to be refitted and the refitted engine cache is not yet created
     if (engine_cache_enable_ && weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
       engine_cache_path = cache_path_prefix + ".stripped.engine";
       weight_stripped_engine_refit_ = true;
