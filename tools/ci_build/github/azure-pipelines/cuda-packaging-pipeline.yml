@@ -131,3 +131,11 @@ stages:
       buildNodejs: false
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
+
+  - template: stages/download-java-tools-stage.yml
+
+  - template: stages/java-cuda-packaging-stage.yml
+    parameters:
+      CudaVersion: ${{ parameters.CudaVersion }}
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
