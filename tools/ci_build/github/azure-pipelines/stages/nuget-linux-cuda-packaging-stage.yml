@@ -39,8 +39,8 @@ stages:
     - template: ../templates/set-version-number-variables-step.yml
     - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/gpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/default/gpu
         DockerBuildArgs: "
         --build-arg BUILD_UID=$( id -u )
         --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
