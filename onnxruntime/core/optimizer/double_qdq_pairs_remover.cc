@@ -21,7 +21,7 @@ namespace onnxruntime {
 /// <returns>True if successfully extracted the zero-point data type</returns>
 static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node, /*out*/ int64_t& zp_data_type) {
   assert(q_node.OpType() == "QuantizeLinear");
-  const auto& input_defs = q_node.InputDefs();
+  const auto input_defs = q_node.InputDefs();
 
   if (QDQ::InputIndex::ZERO_POINT_ID >= input_defs.size() || !input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Exists()) {
     // If a zero_point input is absent, get the type from the "output_dtype" attribute or default to uint8.
@@ -152,7 +152,7 @@ static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, Node& q1, const Nod
 /// </summary>
 /// <param name="graph">Graph to modify</param>
 /// <param name="q1_index">Index of potential Q1 node</param>
-/// <returns>True if the double QDQ sequece was reduced</returns>
+/// <returns>True if the double QDQ sequence was reduced</returns>
 static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
   const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
     return graph.GetConstantInitializer(initializer_name, true);
