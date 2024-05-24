@@ -322,7 +322,7 @@
     ]
   },
   {
-    "name": "MultiHeadAttention Basic, one head and head-size=1 with pastKey and pastValue",
+    "name": "MultiHeadAttention Basic, one head and head-size=1 with optional RelativePositionBias, pastKey, pastValue inputs and optional presentKey, presentValue outputs",
     "operator": "MultiHeadAttention",
     "opset": { "domain": "com.microsoft", "version": 1 },
     "attributes": [{ "name": "num_heads", "data": 1, "type": "int" }],
@@ -397,7 +397,7 @@
     ]
   },
   {
-    "name": "MultiHeadAttention Basic, one head and head-size=4 with pastKey and pastValue",
+    "name": "MultiHeadAttention Basic, one head and head-size=4 with RelativePositionBias, pastKey, pastValue inputs and optional presentKey, presentValue outputs",
     "operator": "MultiHeadAttention",
     "opset": { "domain": "com.microsoft", "version": 1 },
     "attributes": [{ "name": "num_heads", "data": 1, "type": "int" }],
@@ -474,7 +474,7 @@
     ]
   },
   {
-    "name": "MultiHeadAttention Basic, one head and head-size=1 with pastKey and pastValue",
+    "name": "MultiHeadAttention Basic, one head and head-size=1 with relativePositionBias, pastKey and pastValue",
     "operator": "MultiHeadAttention",
     "opset": { "domain": "com.microsoft", "version": 1 },
     "attributes": [{ "name": "num_heads", "data": 1, "type": "int" }],
@@ -512,7 +512,8 @@
           },
           // RelativePositionBias
           {
-            "data": null,
+            "data": [10, 20],
+            "dims": [1, 1, 1, 2],
             "type": "float32"
           },
           // PastKey
@@ -539,7 +540,7 @@
     ]
   },
   {
-    "name": "MultiHeadAttention Basic, one head and head-size=4 with pastKey and pastValue",
+    "name": "MultiHeadAttention Basic, one head and head-size=4 with relativePositionBias,  and pastValue",
     "operator": "MultiHeadAttention",
     "opset": { "domain": "com.microsoft", "version": 1 },
     "attributes": [{ "name": "num_heads", "data": 1, "type": "int" }],
@@ -577,7 +578,8 @@
           },
           // RelativePositionBias
           {
-            "data": null,
+            "data": [100, 200],
+            "dims": [1, 1, 1, 2],
             "type": "float32"
           },
           // PastKey
@@ -841,7 +843,7 @@
     ]
   },
   {
-    "name": "MultiHeadAttention Basic, one head and head-size=4 with RelativePositionBias, PastKey, PastValue, PresentKey and PresentValue",
+    "name": "MultiHeadAttention Basic, one head and head-size=4 with RelativePositionBias, PastKey, PastValue inputs and PresentKey and PresentValue outputs",
     "operator": "MultiHeadAttention",
     "opset": { "domain": "com.microsoft", "version": 1 },
     "attributes": [{ "name": "num_heads", "data": 1, "type": "int" }],
@@ -976,7 +978,7 @@
         ],
         "outputs": [
           {
-            "data": [3.0006706714630127],
+            "data": [3],
             "dims": [1, 1, 1],
             "type": "float32"
           },
@@ -1052,7 +1054,7 @@
         ],
         "outputs": [
           {
-            "data": [9.000362396240234, 10.00036334991455, 11.000362396240234, 12.000362396240234],
+            "data": [9, 10, 11, 12],
             "dims": [1, 1, 4],
             "type": "float32"
           },
