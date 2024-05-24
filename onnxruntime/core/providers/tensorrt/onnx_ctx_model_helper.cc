@@ -290,9 +290,9 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
 
     // If the serialized refitted engine is present, use it directly without refitting the engine again
     if (weight_stripped_engine_refit_) {
-      std::string refitted_engine_cache_path = GetRefittedEnginePath(engine_cache_path.string());
+      const std::filesystem::path refitted_engine_cache_path = GetRefittedEnginePath(engine_cache_path.string());
       if (std::filesystem::exists(refitted_engine_cache_path)) {
-        engine_cache_path = refitted_engine_cache_path;
+        engine_cache_path = refitted_engine_cache_path.string();
         weight_stripped_engine_refit_ = false;
       }
     }

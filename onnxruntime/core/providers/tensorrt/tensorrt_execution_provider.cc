@@ -2920,7 +2920,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // If weight-stripped engine is enabled and refitted engine cache is not present,
   // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
-  if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
+  const std::filesystem::path engine_cache_fs_path = engine_cache_path;
+  if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_fs_path)) {
     engine_cache_path = cache_path_prefix + ".stripped.engine";
     weight_stripped_engine_refit_ = true;
   }
@@ -3265,7 +3266,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     // If weight-stripped engine is enabled and refitted engine cache is not present,
     // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
-    if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
+    const std::filesystem::path engine_cache_fs_path = engine_cache_path;
+    if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_fs_path)) {
       engine_cache_path = cache_path_prefix + ".stripped.engine";
       weight_stripped_engine_refit_ = true;
     }
