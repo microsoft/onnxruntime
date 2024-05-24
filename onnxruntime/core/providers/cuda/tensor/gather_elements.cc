@@ -102,6 +102,23 @@ void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indic
 
 // GatherElementsGrad needs atomic_add which supports float types only, so use half, float and double for 16, 32, and 64
 // bits data respectively.
+ONNX_NAMESPACE::TensorProto_DataType GetElementType(size_t element_size) {
+  switch (element_size) {
+    case sizeof(int8_t):
+      return ONNX_NAMESPACE::TensorProto_DataType_INT8;
+    case sizeof(MLFloat16):
+      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+    case sizeof(float):
+      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    case sizeof(double):
+      return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+    // should not reach here as we validate if the all relevant types are supported in the Compute method
+    default:
+      return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  }
+}
+
+// Get Element Type by DataTypeImpl
 ONNX_NAMESPACE::TensorProto_DataType GetElementType(const DataTypeImpl* dtype) {
   if (dtype == DataTypeImpl::GetType<int8_t>()) {
     return ONNX_NAMESPACE::TensorProto_DataType_INT8;
@@ -184,7 +201,8 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
 #endif
   CoalesceDimensions(input_shape_vec, indices_shape_vec, p_indices_strides_vec, axis, args);
 
-  int dtype = GetElementType(input_tensor->DataType());
+  // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.
+  int dtype = GetElementType(input_tensor->DataType()->Size());
   if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
     ORT_THROW("Unsupported element size by the GatherElements CUDA kernel");
   }
