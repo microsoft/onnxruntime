@@ -21,7 +21,9 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include <cuda_fp16.h>
 
-namespace ort_trtllm {
+namespace onnxruntime {
+namespace cuda {
+namespace collective {
 
 #if defined(USE_MPI) || defined(USE_NCCL)
 
@@ -74,4 +76,6 @@ AllReduceStrategyType SelectImplementation(size_t message_size, int rank, int wo
 
 #endif
 
-}  // namespace ort_trtllm
+}  // namespace collective
+}  // namespace cuda
+}  // namespace onnxruntime

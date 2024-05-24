@@ -17,6 +17,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "custom_reduce_impl.h"
 #include <algorithm>
@@ -24,23 +25,14 @@
 #include <tuple>
 #include <type_traits>
 
-namespace ort_trtllm {
+namespace onnxruntime {
+namespace cuda {
+namespace collective {
 
 #if defined(USE_MPI) || defined(USE_NCCL)
 
 using namespace onnxruntime;
 using namespace onnxruntime::cuda;
-
-// Calculates ceil(a / b). User must be careful to ensure that there
-// is no overflow or underflow in the calculation.
-template <typename T>
-constexpr T divUp(T a, T b) { return (a + b - (T)1) / b; }
-
-// Rounds a up to the next highest multiple of b. User must be careful
-// to ensure that there is no overflow or underflow in the calculation
-// of divUp.
-template <typename T>
-constexpr T roundUp(T a, T b) { return divUp<T>(a, b) * b; }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -147,7 +139,7 @@ __inline__ __device__ void block_barrier(uint32_t** signals, uint32_t const flag
 }
 
 #if defined(_MSC_VER)
-#pragma diag_suppress 177
+#pragma diag_suppress 177  // To suppress the false alert indicating a variable was declared but never referenced
 #endif
 
 template <typename T, int RANKS_PER_NODE, bool COPY_INPUT = true, bool PUSH_MODE = false>
@@ -641,4 +633,6 @@ AllReduceStrategyType SelectImplementation(size_t message_size, int rank, int wo
 
 #endif
 
-}  // namespace ort_trtllm
+}  // namespace collective
+}  // namespace cuda
+}  // namespace onnxruntime

@@ -19,7 +19,9 @@
 #include "ipc_utils.h"
 #include "mpi_include.h"
 
-namespace ort_trtllm {
+namespace onnxruntime {
+namespace cuda {
+namespace collective {
 
 #if defined(USE_MPI) || defined(USE_NCCL)
 
@@ -124,4 +126,6 @@ IPCMemoryResourcePack& GlobalIPCMemoryResourcePack::GetIPCMemoryResourcePack() {
 
 #endif
 
-}  // namespace ort_trtllm
+}  // namespace collective
+}  // namespace cuda
+}  // namespace onnxruntime

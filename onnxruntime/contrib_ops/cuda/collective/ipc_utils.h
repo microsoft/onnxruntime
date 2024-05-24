@@ -21,7 +21,9 @@
 
 #include "custom_reduce_impl.h"
 
-namespace ort_trtllm {
+namespace onnxruntime {
+namespace cuda {
+namespace collective {
 
 #if defined(USE_MPI) || defined(USE_NCCL)
 
@@ -64,4 +66,6 @@ class GlobalIPCMemoryResourcePack {
 
 #endif
 
-}  // namespace ort_trtllm
+}  // namespace collective
+}  // namespace cuda
+}  // namespace onnxruntime

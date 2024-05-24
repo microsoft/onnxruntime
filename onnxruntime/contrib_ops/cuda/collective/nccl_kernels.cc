@@ -436,28 +436,31 @@ Status FuncCustomAllReduce(
     void* output_data,
     int64_t input_count,
     onnxruntime::MLDataType data_type,
-    ort_trtllm::IPCMemoryResourcePack& ipc_mem_res_pack) {
+    onnxruntime::cuda::collective::IPCMemoryResourcePack& ipc_mem_res_pack) {
   int rank = nccl->Rank();
   int world_size = nccl->Size();
 
-  ort_trtllm::AllReduceStrategyType runtime_strategy =
-      ort_trtllm::SelectImplementation(input_count, rank, world_size, data_type);
+  onnxruntime::cuda::collective::AllReduceStrategyType runtime_strategy =
+      onnxruntime::cuda::collective::SelectImplementation(input_count, rank, world_size, data_type);
 
-  if (runtime_strategy == ort_trtllm::AllReduceStrategyType::NCCL) {
+  if (runtime_strategy == onnxruntime::cuda::collective::AllReduceStrategyType::NCCL) {
     ncclDataType_t dtype = GetNcclDataType(data_type);
     NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl->Comm(), stream));
 
     return Status::OK();
   }
 
-  ort_trtllm::AllReduceStrategyConfig m_config = ort_trtllm::AllReduceStrategyConfig::USE_MEMCPY;
+  onnxruntime::cuda::collective::AllReduceStrategyConfig m_config =
+      onnxruntime::cuda::collective::AllReduceStrategyConfig::USE_MEMCPY;
 
   static std::mutex s_mutex;
   std::unique_lock<std::mutex> lock(s_mutex);
-  ORT_RETURN_IF_ERROR(ort_trtllm::GetCustomAllReduceWorkspace(rank, world_size, input_count * data_type->Size(),
-                                                              ipc_mem_res_pack));
+  ORT_RETURN_IF_ERROR(onnxruntime::cuda::collective::GetCustomAllReduceWorkspace(rank,
+                                                                                 world_size,
+                                                                                 input_count * data_type->Size(),
+                                                                                 ipc_mem_res_pack));
 
-  ort_trtllm::AllReduceParams params = ort_trtllm::AllReduceParams::deserialize(
+  onnxruntime::cuda::collective::AllReduceParams params = onnxruntime::cuda::collective::AllReduceParams::deserialize(
       reinterpret_cast<const int32_t*>(ipc_mem_res_pack.m_comm_ptrs.data()),
       world_size,
       rank,
@@ -470,7 +473,7 @@ Status FuncCustomAllReduce(
   params.local_input_buffer_ptr = input_data;
   params.elts_total = input_count;
 
-  ort_trtllm::CustomAllReduce(params, data_type, runtime_strategy, m_config, stream);
+  onnxruntime::cuda::collective::CustomAllReduce(params, data_type, runtime_strategy, m_config, stream);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   return Status::OK();

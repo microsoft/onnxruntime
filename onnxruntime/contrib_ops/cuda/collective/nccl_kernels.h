@@ -80,7 +80,7 @@ class AllReduce final : public NcclKernel {
 
 #ifndef USE_ROCM
  private:
-  mutable ort_trtllm::GlobalIPCMemoryResourcePack g_ipc_mem_res_pack_;
+  mutable onnxruntime::cuda::collective::GlobalIPCMemoryResourcePack g_ipc_mem_res_pack_;
 #endif
 };
 
@@ -120,7 +120,7 @@ Status FuncCustomAllReduce(
     void* output_data,
     int64_t input_count,
     onnxruntime::MLDataType data_type,
-    ort_trtllm::IPCMemoryResourcePack& ipc_mem_res_pack);
+    onnxruntime::cuda::collective::IPCMemoryResourcePack& ipc_mem_res_pack);
 #endif
 
 void FuncAllGather(
