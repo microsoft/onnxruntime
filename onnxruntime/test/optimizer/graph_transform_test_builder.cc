@@ -26,27 +26,27 @@ static InlinedVector<std::byte> GetZeroPointBytes(int64_t zero_point, ONNX_NAMES
   switch (type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       int8_t val = static_cast<int8_t>(zero_point);
-      auto span = ReinterpretAsSpan<const std::byte, const int8_t>(gsl::make_span(&val, 1));
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
       return InlinedVector<std::byte>(span.begin(), span.end());
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       uint8_t val = static_cast<uint8_t>(zero_point);
-      auto span = ReinterpretAsSpan<const std::byte, const uint8_t>(gsl::make_span(&val, 1));
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
       return InlinedVector<std::byte>(span.begin(), span.end());
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       int16_t val = static_cast<int16_t>(zero_point);
-      auto span = ReinterpretAsSpan<const std::byte, const int16_t>(gsl::make_span(&val, 1));
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
       return InlinedVector<std::byte>(span.begin(), span.end());
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
       uint16_t val = static_cast<uint16_t>(zero_point);
-      auto span = ReinterpretAsSpan<const std::byte, const uint16_t>(gsl::make_span(&val, 1));
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
       return InlinedVector<std::byte>(span.begin(), span.end());
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       int32_t val = static_cast<int32_t>(zero_point);
-      auto span = ReinterpretAsSpan<const std::byte, const int32_t>(gsl::make_span(&val, 1));
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
       return InlinedVector<std::byte>(span.begin(), span.end());
     }
     default:

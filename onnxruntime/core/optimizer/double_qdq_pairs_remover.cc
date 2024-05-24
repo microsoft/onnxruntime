@@ -19,7 +19,8 @@ namespace onnxruntime {
 /// <param name="q_node">QuantizeLinear node</param>
 /// <param name="zp_data_type">Output parameter to store the zero-point data type</param>
 /// <returns>True if successfully extracted the zero-point data type</returns>
-static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node, /*out*/ int64_t& zp_data_type) {
+static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node,
+                                  /*out*/ ONNX_NAMESPACE::TensorProto_DataType& zp_data_type) {
   assert(q_node.OpType() == "QuantizeLinear");
   const auto input_defs = q_node.InputDefs();
 
@@ -27,7 +28,8 @@ static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node, /*out*
     // If a zero_point input is absent, get the type from the "output_dtype" attribute or default to uint8.
     // The "output_dtype" attribute was added in ONNX opset 21.
     const auto* attr = graph_utils::GetNodeAttribute(q_node, "output_dtype");
-    zp_data_type = attr != nullptr ? attr->i() : static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+    zp_data_type = attr != nullptr ? static_cast<ONNX_NAMESPACE::TensorProto_DataType>(attr->i())
+                                   : ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     return true;
   }
 
@@ -36,7 +38,7 @@ static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node, /*out*
     return false;
   }
 
-  zp_data_type = zp_proto->data_type();
+  zp_data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(zp_proto->data_type());
   return true;
 }
 
@@ -119,7 +121,7 @@ static bool FindNewZeroPointAndScale(const Graph& graph, const Node& node1, cons
 // for correctness.
 template <typename ZeroPointType>
 static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, Node& q1, const Node& dq1, const Node& q2,
-                                               gsl::span<Node*> dq2s) {
+                                               gsl::span<gsl::not_null<Node*>> dq2s) {
   if (dq2s.empty()) {
     return false;
   }
@@ -137,7 +139,7 @@ static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, Node& q1, const Nod
   ApplyNewInputValue(graph, q1, QDQ::InputIndex::SCALE_ID, new_scale);
   ApplyNewInputValue(graph, q1, QDQ::InputIndex::ZERO_POINT_ID, new_zero_point);
 
-  for (auto* dq2 : dq2s) {
+  for (gsl::not_null<Node*> dq2 : dq2s) {
     ApplyNewInputValue(graph, *dq2, QDQ::InputIndex::SCALE_ID, new_scale);
     ApplyNewInputValue(graph, *dq2, QDQ::InputIndex::ZERO_POINT_ID, new_zero_point);
   }
@@ -183,8 +185,8 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
     return false;
   }
 
-  int64_t quant_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  if (!GetQNodeZeroPointType(graph, *q1, quant_type)) {
+  auto q1_quant_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  if (!GetQNodeZeroPointType(graph, *q1, q1_quant_type)) {
     return false;
   }
 
@@ -192,18 +194,18 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
   // is equal to q1's.
   NodeIndex q2_index = dq1->OutputEdgesBegin()->GetNode().Index();
   const Node* q2 = graph.GetNode(q2_index);
-  int64_t quant_type_2 = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  auto q2_quant_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
 
   if (q2 == nullptr ||
       q2->OpType() != "QuantizeLinear" ||
       graph.NodeProducesGraphOutput(*q2) ||
-      !GetQNodeZeroPointType(graph, *q2, quant_type_2) ||
-      quant_type != quant_type_2) {
+      !GetQNodeZeroPointType(graph, *q2, q2_quant_type) ||
+      q1_quant_type != q2_quant_type) {
     return false;
   }
 
   // All of q2's children should be DQ nodes with zero-point and scale values equal to those of q2.
-  InlinedVector<Node*> dq2_nodes;
+  InlinedVector<gsl::not_null<Node*>> dq2_nodes;
   dq2_nodes.reserve(q2->GetOutputEdgesCount());
 
   for (auto it = q2->OutputEdgesBegin(); it != q2->OutputEdgesEnd(); it++) {
@@ -224,13 +226,13 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
   }
 
   bool can_recompute = false;
-  if (quant_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+  if (q1_quant_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     can_recompute = RecomputeOuterQDQZeroPointAndScale<uint8_t>(graph, *q1, *dq1, *q2, dq2_nodes);
-  } else if (quant_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+  } else if (q1_quant_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     can_recompute = RecomputeOuterQDQZeroPointAndScale<int8_t>(graph, *q1, *dq1, *q2, dq2_nodes);
-  } else if (quant_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+  } else if (q1_quant_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
     can_recompute = RecomputeOuterQDQZeroPointAndScale<uint16_t>(graph, *q1, *dq1, *q2, dq2_nodes);
-  } else if (quant_type == ONNX_NAMESPACE::TensorProto_DataType_INT16) {
+  } else if (q1_quant_type == ONNX_NAMESPACE::TensorProto_DataType_INT16) {
     can_recompute = RecomputeOuterQDQZeroPointAndScale<int16_t>(graph, *q1, *dq1, *q2, dq2_nodes);
   }
 
@@ -243,7 +245,7 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
 
   // Disconnect Q2 --> DQ2(s)
   // Connect Q1 -> DQ2(s)
-  for (auto* dq2 : dq2_nodes) {
+  for (gsl::not_null<Node*> dq2 : dq2_nodes) {
     graph.RemoveEdge(q2_index, dq2->Index(), 0, 0);
     graph.AddEdge(q1_index, dq2->Index(), 0, 0);
   }
