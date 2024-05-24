@@ -2471,7 +2471,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 }
 
 /**
- * Refit the weight-stripped engine 
+ * Refit the weight-stripped engine
  */
 common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                                       std::string& onnx_model_folder_path,
@@ -2481,47 +2481,47 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                                                       bool serialize_refitted_engine,
                                                       bool detailed_build_log) {
 #if NV_TENSORRT_MAJOR >= 10
-    std::filesystem::path onnx_model_path{onnx_model_folder_path};
-    onnx_model_path.append(onnx_model_filename);
-    if (path_check && IsAbsolutePath(onnx_model_path.string())) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "For security purpose, the ONNX model path should be set with "
-                             "a relative path, but it is an absolute path: " +
-                                 onnx_model_path.string());
-    }
-    if (path_check && IsRelativePathToParentPath(onnx_model_path.string())) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "The ONNX model path has '..'. For security purpose, it's not "
-                             "allowed to point outside the directory.");
-    }
+  std::filesystem::path onnx_model_path{onnx_model_folder_path};
+  onnx_model_path.append(onnx_model_filename);
+  if (path_check && IsAbsolutePath(onnx_model_path.string())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "For security purpose, the ONNX model path should be set with "
+                           "a relative path, but it is an absolute path: " +
+                               onnx_model_path.string());
+  }
+  if (path_check && IsRelativePathToParentPath(onnx_model_path.string())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "The ONNX model path has '..'. For security purpose, it's not "
+                           "allowed to point outside the directory.");
+  }
 
-    // weight-stripped engine refit logic
-    TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log);
-    auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(*trt_engine, trt_logger));
-    auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
-        nvonnxparser::createParserRefitter(*refitter, trt_logger));
-    if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
-    }
-    if (refitter->refitCudaEngine()) {
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weight-stripped engine.";
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
-    }
+  // weight-stripped engine refit logic
+  TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log);
+  auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(*trt_engine, trt_logger));
+  auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
+      nvonnxparser::createParserRefitter(*refitter, trt_logger));
+  if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+  }
+  if (refitter->refitCudaEngine()) {
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weight-stripped engine.";
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "TensorRT EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+  }
 
-    // serialize the refitted engine to disk
-    if (serialize_refitted_engine) {
-      std::string refitted_engine_cache = GetRefittedEnginePath(weight_stripped_engine_cath_path);
-      nvinfer1::IHostMemory* serialized_engine = trt_engine->serialize();
-      std::ofstream engine_file(refitted_engine_cache, std::ios::binary | std::ios::out);
-      engine_file.write(reinterpret_cast<const char*>(serialized_engine->data()), serialized_engine->size());
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialize the refitted engine to " << refitted_engine_cache;
-    }
-    return Status::OK();
+  // serialize the refitted engine to disk
+  if (serialize_refitted_engine) {
+    std::string refitted_engine_cache = GetRefittedEnginePath(weight_stripped_engine_cath_path);
+    nvinfer1::IHostMemory* serialized_engine = trt_engine->serialize();
+    std::ofstream engine_file(refitted_engine_cache, std::ios::binary | std::ios::out);
+    engine_file.write(reinterpret_cast<const char*>(serialized_engine->data()), serialized_engine->size());
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialize the refitted engine to " << refitted_engine_cache;
+  }
+  return Status::OK();
 #else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");
 #endif
 }
 
@@ -3073,7 +3073,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                 trt_engine.get(),
                                 true /* serialize refitted engine to disk */,
                                 detailed_build_log_);
-      if(status != Status::OK()) {
+      if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
     }
@@ -3503,7 +3503,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                 trt_engine,
                                 true /* serialize refitted engine to disk */,
                                 detailed_build_log_);
-      if(status != Status::OK()) {
+      if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
     }

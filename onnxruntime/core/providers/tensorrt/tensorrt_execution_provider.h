@@ -219,7 +219,7 @@ struct SubGraphContext {
 
 using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>;
 using DDSOutputAllocatorMap = std::unordered_map<std::string, std::unique_ptr<OutputAllocator>>;
-std::string GetRefittedEnginePath(std::string engine_cache_path); 
+std::string GetRefittedEnginePath(std::string engine_cache_path);
 
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
@@ -267,7 +267,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   Status ReplayGraph(int graph_annotation_id) override;
 
   /**
-   * Refit the weight-stripped engine 
+   * Refit the weight-stripped engine
    */
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
@@ -275,7 +275,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                     bool path_check,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool serialize_refitted_engine,
-                                    bool detailed_build_log); 
+                                    bool detailed_build_log);
 
  private:
   mutable TensorrtExecutionProviderInfo info_;
@@ -576,6 +576,5 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
-
 };
 }  // namespace onnxruntime

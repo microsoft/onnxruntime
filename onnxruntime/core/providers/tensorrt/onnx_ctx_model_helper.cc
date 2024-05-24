@@ -244,7 +244,7 @@ bool IsRelativePathToParentPath(const std::string& path_string) {
 #endif
 }
 
-// Get the refitted engine cache path 
+// Get the refitted engine cache path
 std::string GetRefittedEnginePath(std::string engine_cache) {
   std::filesystem::path engine_cache_path(engine_cache);
   // The weight-stripped engine has the naming of xxx.stripped.engine
@@ -318,7 +318,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
 
     if (weight_stripped_engine_refit_) {
       const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
-      std::string weight_stripped_engine_cache = engine_cache_path.string(); 
+      std::string weight_stripped_engine_cache = engine_cache_path.string();
       auto status = TensorrtExecutionProvider::RefitEngine(onnx_model_filename,
                                                            onnx_model_folder_path_,
                                                            weight_stripped_engine_cache,
@@ -326,7 +326,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            (*trt_engine_).get(),
                                                            true /* serialize refitted engine to disk */,
                                                            detailed_build_log_);
-      if(status != Status::OK()) {
+      if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
     }
