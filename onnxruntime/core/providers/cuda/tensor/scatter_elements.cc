@@ -136,8 +136,7 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
     ORT_THROW("Unsupported reduction type for ScatterElements.");
   }
 
-  // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.
-  int dtype = GetElementType(input_tensor->DataType()->Size());
+  int dtype = GetElementType(input_tensor->DataType());
   if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
     ORT_THROW("Unsupported element size by the ScatterElements CUDA kernel");
   }

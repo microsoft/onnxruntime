@@ -22,7 +22,7 @@ struct GatherScatterElementsArgs;
 // dim-1 and dim-2 is contiguous (20==4*5), but dim-0 and dim-1 is not contiguous (0!=3*20).
 void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indices_shape,
                         TensorShapeVector* p_indices_strides, int64_t axis, GatherScatterElementsArgs& args);
-ONNX_NAMESPACE::TensorProto_DataType GetElementType(size_t element_size);
+ONNX_NAMESPACE::TensorProto_DataType GetElementType(const DataTypeImpl* dtype);
 
 class GatherElements final : public CudaKernel {
  public:

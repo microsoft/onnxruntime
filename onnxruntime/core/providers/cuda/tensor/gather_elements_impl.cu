@@ -321,17 +321,6 @@ struct FuncAtomicAdd {
   const size_t numel_;
 };
 
-template <>
-struct FuncAtomicAdd<BFloat16> {
-    const size_t numel_;
-
-    FuncAtomicAdd(const size_t numel) : numel_(numel) {}
-
-    __device__ __inline__ void operator()(BFloat16* start_addr, size_t index, BFloat16 value) const {
-        atomic_add(start_addr + index, value); 
-    }
-};
-
 template <typename T, typename TIndex>
 Status GatherElementsGradNonDeterministicImpl(cudaStream_t stream, const TIndex* indices_data, const T* updates_data,
                                               T* output_data,

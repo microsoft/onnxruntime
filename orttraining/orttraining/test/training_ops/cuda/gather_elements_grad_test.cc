@@ -225,6 +225,18 @@ TEST(GatherElementsGrad, Strided_float) { RunKernelComputeTestWrapper<float>(); 
 TEST(GatherElementsGrad, Strided_double) { RunKernelComputeTestWrapper<double>(); }
 
 TEST(GatherElementsGrad, Strided_MLFloat16) { RunKernelComputeTestWrapper<MLFloat16>(); }
+
+TEST(GatherElementsGrad, Strided_BFloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!onnxruntime::test::HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does not support BFP16";
+    return;
+  }
+#endif
+  RunKernelComputeTestWrapper<BFloat16>();
+}
+
 #endif
 
 }  // namespace test
