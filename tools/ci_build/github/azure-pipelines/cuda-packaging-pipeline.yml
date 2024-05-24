@@ -102,7 +102,7 @@ stages:
       PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
   # this is needed for certain artifacts to be published
-  - stage: Linux_C_API_Packaging_CPU_x64
+  - stage: Linux_C_API_Packaging_CPU
     dependsOn: [ ]
     jobs:
     - template: templates/c-api-linux-cpu.yml
