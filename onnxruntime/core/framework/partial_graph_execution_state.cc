@@ -59,8 +59,10 @@ DeviceStreamCollection* PartialGraphExecutionState::GetDeviceStreamCollection(co
   return device_stream_collection_.get();
 }
 
-StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
-                                                                        gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
+StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs,
+                                                                        std::vector<OrtValue>& feeds,
+                                                                        gsl::span<const int>& fetch_mlvalue_idxs,
+                                                                        std::vector<OrtValue>& fetches,
                                                                         const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                                                         const SessionState& session_state,
                                                                         const logging::Logger& sess_logger,
