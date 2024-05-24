@@ -1259,6 +1259,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dump_ep_context_model_ = info.dump_ep_context_model;
     ep_context_file_path_ = info.ep_context_file_path;
     ep_context_embed_mode_ = info.ep_context_embed_mode;
+    // incase the EP context is dumped the engine cache has to be enabled
+    if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
+      engine_cache_enable_ = true;
+    }
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
       cache_prefix_ = info.engine_cache_prefix;
@@ -1385,6 +1389,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string ep_context_embed_mode_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextEmbedMode);
       if (!ep_context_embed_mode_env.empty()) {
         ep_context_embed_mode_ = std::stoi(ep_context_embed_mode_env);
+      }
+
+      // incase the EP context is dumped the engine cache has to be enabled
+      if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
+        engine_cache_enable_ = true;
       }
 
       if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
