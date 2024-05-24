@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
+#include <utility>
 
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/pass/constant_folding.hpp"

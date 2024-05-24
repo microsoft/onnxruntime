@@ -1,6 +1,7 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 #include <filesystem>
+#include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"

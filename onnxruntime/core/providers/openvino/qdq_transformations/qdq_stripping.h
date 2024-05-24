@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <memory>
 #include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {

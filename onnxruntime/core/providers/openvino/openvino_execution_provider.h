@@ -10,6 +10,7 @@
 #include <memory>
 #include <vector>
 #include <set>
+#include <utility>
 
 #include "core/providers/openvino/backend_manager.h"
 
@@ -79,7 +80,8 @@ struct OpenVINOExecutionProviderInfo {
   explicit OpenVINOExecutionProviderInfo(std::string dev_type, std::string precision, bool enable_npu_fast_compile,
                                          size_t num_of_threads, std::string cache_dir, std::string model_priority,
                                          int num_streams, void* context, bool enable_opencl_throttling,
-                                         bool disable_dynamic_shapes, bool export_ep_ctx_blob, bool enable_qdq_optimizer)
+                                         bool disable_dynamic_shapes, bool export_ep_ctx_blob,
+                                         bool enable_qdq_optimizer)
       : precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),

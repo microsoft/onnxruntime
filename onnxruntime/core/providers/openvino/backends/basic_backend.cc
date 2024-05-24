@@ -373,7 +373,11 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       }
 
       size_t batch_size = 1;
-      Ort::UnownedValue tensor = GetOutputTensor(context, batch_size, infer_request, output_name, subgraph_context_.output_names);
+      Ort::UnownedValue tensor = GetOutputTensor(context,
+                                                 batch_size,
+                                                 infer_request,
+                                                 output_name,
+                                                 subgraph_context_.output_names);
       auto mem_info = tensor.GetTensorMemoryInfo();
       // Check if ORT Value wraps a device pointer
       if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
@@ -455,7 +459,10 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
       for (const auto& item : const_outputs_map_) {
         const auto& out_name = item.first;
         auto node = item.second;
-        Ort::UnownedValue output_tensor = GetOutputTensor(context, std::move(out_name), subgraph_context_.output_names, node);
+        Ort::UnownedValue output_tensor = GetOutputTensor(context,
+                                                          std::move(out_name),
+                                                          subgraph_context_.output_names,
+                                                          node);
         auto mem_info = output_tensor.GetTensorMemoryInfo();
         if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
           ORT_THROW(log_tag + "IO Buffering is not supported for constant subgraphs");
@@ -482,7 +489,10 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
       std::string out_name = item.first;
       std::shared_ptr<ov::Node> node = item.second;
       try {
-        Ort::UnownedValue output_tensor = GetOutputTensor(context, std::move(out_name), subgraph_context_.output_names, node);
+        Ort::UnownedValue output_tensor = GetOutputTensor(context,
+                                                          std::move(out_name),
+                                                          subgraph_context_.output_names,
+                                                          node);
         FillOutputsWithConstantData(std::move(node), output_tensor);
       } catch (std::string const& msg) {
         ORT_THROW(msg);

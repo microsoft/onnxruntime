@@ -2,7 +2,10 @@
 // Licensed under the MIT License
 
 #include <array>
+#include <set>
+#include <memory>
 #include <vector>
+#include <string>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
@@ -513,7 +516,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
         if (!IsConnectedQPresent(src_graph, dst_graph.Nodes(), dq_node, input_defs)) continue;
 
         std::string target_arg_name = dq_node->OutputDefs().at(0)->Name();
-        // erase from the first occurence of the search string till the end of the target arg name
+        // erase from the first occurrence of the search string till the end of the target arg name
         target_arg_name.erase(target_arg_name.find(DuplicateDQ), std::string::npos);
         dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
                                      &dst_graph.GetOrCreateNodeArg(target_arg_name,
@@ -640,10 +643,10 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   dst_graph.SetInputs(dst_graph_inputs);
   dst_graph.SetOutputs(dst_graph_outputs);
 
-  // TODO: add Graph::SetName() provider api
+  // TODO(sspintel): add Graph::SetName() provider api
   // dst_graph.SetName(src_graph.Name());
 
-  // TODO: add Graph::SetDescription() and GraphViewer::Description() to provider api
+  // TODO(sspintel): add Graph::SetDescription() and GraphViewer::Description() to provider api
   // dst_graph.SetDescription(src_graph.Description());
 
   // Mark outer scope NodeArgs
