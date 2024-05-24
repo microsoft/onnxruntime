@@ -193,7 +193,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
 }  // namespace webnn
 
 bool PadOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                                             const logging::Logger& logger) const {
+                                          const logging::Logger& logger) const {
   const auto& input = *node.InputDefs()[0];
   const auto& op_type = node.OpType();
   int32_t input_type;

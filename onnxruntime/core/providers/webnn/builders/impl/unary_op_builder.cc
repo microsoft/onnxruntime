@@ -90,7 +90,7 @@ bool UnaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceT
     supported_data_types = {
         ONNX_NAMESPACE::TensorProto_DataType_BOOL,
     };
-  } else { // Others only support float32, float16 input data types.
+  } else {  // Others only support float32, float16 input data types.
     supported_data_types = {
         ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
         ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
