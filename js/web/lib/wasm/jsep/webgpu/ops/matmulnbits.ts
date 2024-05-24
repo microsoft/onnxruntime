@@ -273,7 +273,7 @@ export const createMatMulNBitsProgramInfo =
               }` :
                                                           ''}
             }
-            let output_offset = global_idx + ${outputNumber} * row;
+            var output_offset = global_idx + ${outputNumber} * row;
             for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
               ${output.setByOffset('output_offset', 'output_values[k]')};
               output_offset++;
