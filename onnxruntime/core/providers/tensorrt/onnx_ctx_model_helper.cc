@@ -331,54 +331,6 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       }
     }
   }
-
-/*
-  if (weight_stripped_engine_refit_) {
-#if NV_TENSORRT_MAJOR >= 10
-    const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
-    std::filesystem::path onnx_model_path{onnx_model_folder_path_};
-    onnx_model_path.append(onnx_model_filename);
-    if (IsAbsolutePath(onnx_model_path.string())) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "For security purpose, the ONNX model path should be set with "
-                             "a relative path, but it is an absolute path: " +
-                                 onnx_model_path.string());
-    }
-    if (IsRelativePathToParentPath(onnx_model_path.string())) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "The ONNX model path has '..'. For security purpose, it's not "
-                             "allowed to point outside the directory.");
-    }
-
-    // weight-stripped engine refit logic
-    TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
-    auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(**trt_engine_, trt_logger));
-    auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
-        nvonnxparser::createParserRefitter(*refitter, trt_logger));
-    if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
-    }
-    if (refitter->refitCudaEngine()) {
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weight-stripped engine.";
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
-    }
-
-    // serialize the refitted engine to disk
-    if (embed_mode == 0) {
-      std::string cache_path = attrs.at(EP_CACHE_CONTEXT).s();
-      std::string refitted_cache_path = GetRefittedEnginePath(cache_path);
-      nvinfer1::IHostMemory* serialized_engine = (*trt_engine_)->serialize();
-      std::ofstream engine_file(refitted_cache_path, std::ios::binary | std::ios::out);
-      engine_file.write(reinterpret_cast<const char*>(serialized_engine->data()), serialized_engine->size());
-    }
-#else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");
-#endif
-  }
-*/
   return Status::OK();
 }
 
