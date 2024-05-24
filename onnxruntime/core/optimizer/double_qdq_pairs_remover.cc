@@ -3,9 +3,9 @@
 #include "core/optimizer/double_qdq_pairs_remover.h"
 #include <cassert>
 #include <string>
-#include <vector>
 
-#include "core/common/gsl.h"
+#include "core/common/span_utils.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
@@ -203,7 +203,7 @@ static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
   }
 
   // All of q2's children should be DQ nodes with zero-point and scale values equal to those of q2.
-  std::vector<Node*> dq2_nodes;
+  InlinedVector<Node*> dq2_nodes;
   dq2_nodes.reserve(q2->GetOutputEdgesCount());
 
   for (auto it = q2->OutputEdgesBegin(); it != q2->OutputEdgesEnd(); it++) {

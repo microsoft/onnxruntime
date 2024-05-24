@@ -7,7 +7,8 @@
 #include <string>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include "core/common/inlined_containers_fwd.h"
+#include "core/common/span_utils.h"
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "test/compare_ortvalue.h"
@@ -21,32 +22,32 @@
 namespace onnxruntime {
 namespace test {
 
-static std::vector<std::byte> GetZeroPointBytes(int64_t zero_point, ONNX_NAMESPACE::TensorProto_DataType type) {
+static InlinedVector<std::byte> GetZeroPointBytes(int64_t zero_point, ONNX_NAMESPACE::TensorProto_DataType type) {
   switch (type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       int8_t val = static_cast<int8_t>(zero_point);
       auto span = ReinterpretAsSpan<const std::byte, const int8_t>(gsl::make_span(&val, 1));
-      return std::vector<std::byte>(span.begin(), span.end());
+      return InlinedVector<std::byte>(span.begin(), span.end());
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       uint8_t val = static_cast<uint8_t>(zero_point);
       auto span = ReinterpretAsSpan<const std::byte, const uint8_t>(gsl::make_span(&val, 1));
-      return std::vector<std::byte>(span.begin(), span.end());
+      return InlinedVector<std::byte>(span.begin(), span.end());
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       int16_t val = static_cast<int16_t>(zero_point);
       auto span = ReinterpretAsSpan<const std::byte, const int16_t>(gsl::make_span(&val, 1));
-      return std::vector<std::byte>(span.begin(), span.end());
+      return InlinedVector<std::byte>(span.begin(), span.end());
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
       uint16_t val = static_cast<uint16_t>(zero_point);
       auto span = ReinterpretAsSpan<const std::byte, const uint16_t>(gsl::make_span(&val, 1));
-      return std::vector<std::byte>(span.begin(), span.end());
+      return InlinedVector<std::byte>(span.begin(), span.end());
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       int32_t val = static_cast<int32_t>(zero_point);
       auto span = ReinterpretAsSpan<const std::byte, const int32_t>(gsl::make_span(&val, 1));
-      return std::vector<std::byte>(span.begin(), span.end());
+      return InlinedVector<std::byte>(span.begin(), span.end());
     }
     default:
       ORT_THROW("Unhandled zero-point type ", type, ".");
@@ -81,7 +82,7 @@ Node& ModelTestBuilder::AddQuantizeLinearNode(NodeArg* input_arg,
   input_args.push_back(input_arg);
   input_args.push_back(MakeScalarInitializer<float>(input_scale));
 
-  std::vector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
+  InlinedVector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
   input_args.push_back(MakeInitializer({}, zero_point_type, zp_bytes));
 
   std::string domain = use_ms_domain ? kMSDomain : "";
@@ -98,7 +99,7 @@ Node& ModelTestBuilder::AddDequantizeLinearNode(NodeArg* input_arg,
   input_args.push_back(input_arg);
   input_args.push_back(MakeScalarInitializer<float>(input_scale));
 
-  std::vector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
+  InlinedVector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
   input_args.push_back(MakeInitializer({}, zero_point_type, zp_bytes));
 
   std::string domain = use_ms_domain ? kMSDomain : "";

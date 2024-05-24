@@ -5,6 +5,8 @@
 #include <type_traits>
 #include <utility>
 #include "core/common/common.h"
+#include "core/common/inlined_containers_fwd.h"
+#include "core/common/span_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -165,11 +167,11 @@ std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph, bo
 }
 
 GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
-    const std::vector<int64_t>& input_shape,
-    const std::vector<float>& input_data,
-    const std::vector<int64_t>& zero_points,
-    const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& zero_point_types,
-    const std::vector<float>& scales,
+    gsl::span<const int64_t> input_shape,
+    gsl::span<const float> input_data,
+    gsl::span<const int64_t> zero_points,
+    gsl::span<const ONNX_NAMESPACE::TensorProto_DataType> zero_point_types,
+    gsl::span<const float> scales,
     size_t graph_output_index,
     bool use_contrib_qdq) {
   const size_t num_nodes = zero_points.size();
@@ -182,8 +184,12 @@ GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
   }
 
   return [=](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<float>(input_shape, input_data);
-    std::vector<NodeArg*> node_outputs(num_nodes);
+    // TODO(adrianlizarraga): Clean up ModelTestBuilder functions (like MakeInput) to work with gsl::span inputs.
+    // For now, we have to copy data into a std::vector if we want this outer function to take in span inputs.
+    std::vector<int64_t> input_shape_copy(input_shape.begin(), input_shape.end());
+    std::vector<float> input_data_copy(input_data.begin(), input_data.end());
+    auto* input_arg = builder.MakeInput<float>(input_shape_copy, input_data_copy);
+    InlinedVector<NodeArg*> node_outputs(num_nodes);
 
     for (size_t i = 0; i < num_nodes; i++) {
       if (i == graph_output_index || i >= 3) {

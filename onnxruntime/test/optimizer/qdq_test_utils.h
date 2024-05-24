@@ -8,6 +8,7 @@
 
 #include "graph_transform_test_builder.h"
 
+#include "core/common/span_utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/session/inference_session.h"
 
@@ -473,11 +474,11 @@ GetQDQTestCaseFn BuildDoubleQDQTestCases(Type1 zp_1, Type2 zp_2, Type3 zp_3, Typ
 /// <param name="use_contrib_qdq">Set to true to use the 'com.microsoft' domain for Q and DQ ops.</param>
 /// <returns>A function for building the model</returns>
 GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
-    const std::vector<int64_t>& input_shape,
-    const std::vector<float>& input_data,
-    const std::vector<int64_t>& zero_points,
-    const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& zero_point_types,
-    const std::vector<float>& scales,
+    gsl::span<const int64_t> input_shape,
+    gsl::span<const float> input_data,
+    gsl::span<const int64_t> zero_points,
+    gsl::span<const ONNX_NAMESPACE::TensorProto_DataType> zero_point_types,
+    gsl::span<const float> scales,
     size_t graph_output_index,
     bool use_contrib_qdq = false);
 

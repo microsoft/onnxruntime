@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include "core/common/span_utils.h"
 #include "core/common/type_utils.h"
 #include "core/graph/graph.h"
 #include "core/framework/framework_common.h"

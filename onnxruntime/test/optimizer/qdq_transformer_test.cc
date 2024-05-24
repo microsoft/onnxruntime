@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <type_traits>
+#include "core/common/inlined_containers_fwd.h"
+#include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/node_unit.h"
 #include "core/graph/model.h"
@@ -1234,12 +1236,15 @@ TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
   RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(3, 1, 1, !use_ms_qdq, 21);
 }
 
+// Utility function that runs a model with a double QDQ sequence (with duplicate end DQs) through
+// the DoubleQDQPairsRemover transformer and checks that the resulting graph contains the expected nodes.
+// Also checks that the output from the unmodified model matches the output from the modified model.
 static void RunDoubleQDQWithDuplicateLastDQs(int expected_Q_count, int expected_DQ_count,
-                                             const std::vector<int64_t>& input_shape,
-                                             const std::vector<float>& input_data,
-                                             const std::vector<int64_t>& zero_points,
-                                             const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& zero_point_types,
-                                             const std::vector<float>& scales,
+                                             gsl::span<const int64_t> input_shape,
+                                             gsl::span<const float> input_data,
+                                             gsl::span<const int64_t> zero_points,
+                                             gsl::span<const ONNX_NAMESPACE::TensorProto_DataType> zero_point_types,
+                                             gsl::span<const float> scales,
                                              size_t graph_output_index,
                                              bool use_contrib_qdq = false,
                                              int opset = 19) {
@@ -1265,14 +1270,14 @@ static void RunDoubleQDQWithDuplicateLastDQs(int expected_Q_count, int expected_
 
 // Test QDQDoublePairsRemover when the sequence ends with duplicate DQs.
 TEST(QDQTransformerTests, DoubleQDQPairsRemover_DuplicateLastDQs) {
-  std::vector<int64_t> shape = {1, 2, 2, 2};
-  std::vector<float> input_data = {-3.0f, -2.0f, -1.0f, 0.0f, 0.5f, 1.0f, 2.0f, 3.0f};
+  InlinedVector<int64_t> shape = {1, 2, 2, 2};
+  InlinedVector<float> input_data = {-3.0f, -2.0f, -1.0f, 0.0f, 0.5f, 1.0f, 2.0f, 3.0f};
 
   constexpr auto int8_type = ONNX_NAMESPACE::TensorProto_DataType_INT8;
   constexpr auto uint8_type = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
   constexpr auto int16_type = ONNX_NAMESPACE::TensorProto_DataType_INT16;
   constexpr auto uint16_type = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-  std::vector<ONNX_NAMESPACE::TensorProto_DataType> quant_types = {int8_type, uint8_type, int16_type, uint16_type};
+  InlinedVector<ONNX_NAMESPACE::TensorProto_DataType> quant_types = {int8_type, uint8_type, int16_type, uint16_type};
 
   // Input graph:
   // input -> Q1 -> DQ1 -> Q2 --+--> DQ2 -> output0
@@ -1289,9 +1294,9 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_DuplicateLastDQs) {
   for (auto quant_type : quant_types) {
     for (size_t num_dq2s = 1; num_dq2s <= 3; num_dq2s++) {
       const size_t num_nodes = 3 + num_dq2s;
-      std::vector<int64_t> zp_vals(num_nodes, 1);
-      std::vector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, quant_type);
-      std::vector<float> scale_vals(num_nodes, 0.1f);
+      InlinedVector<int64_t> zp_vals(num_nodes, 1);
+      InlinedVector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, quant_type);
+      InlinedVector<float> scale_vals(num_nodes, 0.1f);
 
       const int expected_q_nodes = 1;
       const int expected_dq_nodes = static_cast<int>(num_dq2s);
@@ -1307,9 +1312,9 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_DuplicateLastDQs) {
     for (size_t output_index = 0; output_index < 3; output_index++) {
       for (size_t num_dq2s = 1; num_dq2s <= 3; num_dq2s++) {
         const size_t num_nodes = 3 + num_dq2s;
-        std::vector<int64_t> zp_vals(num_nodes, 1);
-        std::vector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, quant_type);
-        std::vector<float> scale_vals(num_nodes, 0.1f);
+        InlinedVector<int64_t> zp_vals(num_nodes, 1);
+        InlinedVector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, quant_type);
+        InlinedVector<float> scale_vals(num_nodes, 0.1f);
 
         const int expected_q_nodes = 2;
         int expected_dq_nodes = 1 + static_cast<int>(num_dq2s);
@@ -1326,13 +1331,13 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_DuplicateLastDQs) {
   // Should not remove any nodes because the Q -> DQ pairs are of different quant types.
   for (size_t num_dq2s = 1; num_dq2s <= 2; num_dq2s++) {
     const size_t num_nodes = 3 + num_dq2s;
-    std::vector<int64_t> zp_vals(num_nodes, 1);
-    std::vector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, int8_type);
+    InlinedVector<int64_t> zp_vals(num_nodes, 1);
+    InlinedVector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, int8_type);
     for (size_t i = 2; i < num_nodes; i++) {
       // Q2 -> DQ2* have a different type
       zp_types[i] = int16_type;
     }
-    std::vector<float> scale_vals(num_nodes, 0.1f);
+    InlinedVector<float> scale_vals(num_nodes, 0.1f);
 
     const int expected_q_nodes = 2;
     const int expected_dq_nodes = 1 + static_cast<int>(num_dq2s);
@@ -1343,10 +1348,10 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_DuplicateLastDQs) {
   // Should not remove nodes because 1 of the ending DQ2s has a different zero_point.
   const size_t num_dq2s = 2;
   const size_t num_nodes = 3 + num_dq2s;
-  std::vector<int64_t> zp_vals(num_nodes, 1);
-  std::vector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, int8_type);
+  InlinedVector<int64_t> zp_vals(num_nodes, 1);
+  InlinedVector<ONNX_NAMESPACE::TensorProto_DataType> zp_types(num_nodes, int8_type);
   zp_vals[num_nodes - 1] = 2;  // Last DQ2 has a different zero-point.
-  std::vector<float> scale_vals(num_nodes, 0.1f);
+  InlinedVector<float> scale_vals(num_nodes, 0.1f);
 
   const int expected_q_nodes = 2;
   const int expected_dq_nodes = 1 + static_cast<int>(num_dq2s);
