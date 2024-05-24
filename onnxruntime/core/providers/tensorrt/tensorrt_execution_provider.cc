@@ -2509,6 +2509,12 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                            "allowed to point outside the directory.");
   }
 
+  if (!std::filesystem::exists(onnx_model_path)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "The ONNX model " + onnx_model_path.string() +
+                               " does not exist.");
+  }
+
   // weight-stripped engine refit logic
   TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log);
   auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(*trt_engine, trt_logger));
@@ -2912,13 +2918,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
   const std::string profile_cache_path = cache_path_prefix + ".profile";
 
-  // TRT EP uses the engine cache with ".stripped.engine" appended to the end if following three conditions are all true:
-  // - engine cache is enabled
-  // - weight-stripped engine is enabled
-  // - the refitted engine cache is not present
-  //
-  // This means the weight-stripped engine cache need to be refitted and the refitted engine cache is not yet created
-  if (engine_cache_enable_ && weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
+  // If weight-stripped engine is enabled and refitted engine cache is not present,
+  // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
+  if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
     engine_cache_path = cache_path_prefix + ".stripped.engine";
     weight_stripped_engine_refit_ = true;
   }
@@ -3261,13 +3263,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
     }
 
-    // TRT EP uses the engine cache with ".stripped.engine" appended to the end if following three conditions are all true:
-    // - engine cache is enabled
-    // - weight-stripped engine is enabled
-    // - the refitted engine cache is not present
-    //
-    // This means the weight-stripped engine cache need to be refitted and the refitted engine cache is not yet created
-    if (engine_cache_enable_ && weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
+    // If weight-stripped engine is enabled and refitted engine cache is not present,
+    // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
+    if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
       engine_cache_path = cache_path_prefix + ".stripped.engine";
       weight_stripped_engine_refit_ = true;
     }
@@ -3517,18 +3515,18 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         DumpCtxModel(model_proto_.get(), ctx_model_path_);
       }
       context_update = true;
-    }
 
-    if (weight_stripped_engine_refit_) {
-      auto status = RefitEngine(model_path_,
-                                onnx_model_folder_path_,
-                                engine_cache_path,
-                                false /* path check for security */,
-                                trt_engine,
-                                true /* serialize refitted engine to disk */,
-                                detailed_build_log_);
-      if (status != Status::OK()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+      if (weight_stripped_engine_refit_) {
+        auto status = RefitEngine(model_path_,
+                                  onnx_model_folder_path_,
+                                  engine_cache_path,
+                                  false /* path check for security */,
+                                  trt_engine,
+                                  true /* serialize refitted engine to disk */,
+                                  detailed_build_log_);
+        if (status != Status::OK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+        }
       }
     }
 
