@@ -1,3 +1,4 @@
+stages:
 - stage: Download_Java_Tools
   dependsOn: []
   jobs:
