@@ -57,10 +57,13 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  // if (parameters.sequence_length > parameters.max_sequence_length) {
-  //   // Launch update_cos_sin_cache kernel with scale
-  //   ORT_NOT_IMPLEMENTED("Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported");
-  // }
+  if (parameters.sequence_length > parameters.max_sequence_length) {
+    // Launch update_cos_sin_cache kernel with scale
+    LOGS(context->Logger() , WARN) << ("WARNNING: This behavior might lead to error output."
+    " if the input_ids is not packed together, this means sequense is loger than "
+    "the max_seq_len for sin/cos cache and updating cos_cache and sin_cache in RotaryEmbedding"
+    " is not currently supported");
+  }
 
   // Launch rotary embedding kernel
   typedef typename ToCudaType<T>::MappedType CudaT;
