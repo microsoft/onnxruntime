@@ -191,19 +191,22 @@ stages:
           createLogFile: true
 
       # For CPU job, tests are run in the same machine as building
-      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
-        - ${{ if eq(parameters.buildJava, 'true') }}:
-          - template: make_java_win_binaries.yml
-            parameters:
-              msbuildPlatform: ${{ parameters.msbuildPlatform }}
-              java_artifact_id: ${{ parameters.java_artifact_id }}
+      - ${{ if eq(parameters.buildJava, 'true') }}:
+        - template: make_java_win_binaries.yml
+          parameters:
+            msbuildPlatform: ${{ parameters.msbuildPlatform }}
+            java_artifact_id: ${{ parameters.java_artifact_id }}
+            ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
+              assembleOnly: false
+            ${{ else }}:
+              assembleOnly: true
 
-          - task: PublishBuildArtifacts@1
-            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-            displayName: 'Publish Java temp binaries'
-            inputs:
-              pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-              artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+        - task: PublishBuildArtifacts@1
+          condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+          displayName: 'Publish Java temp binaries'
+          inputs:
+            pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+            artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
         - task: PythonScript@0
           displayName: 'test'
           condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
@@ -392,10 +395,4 @@ stages:
             parameters:
               msbuildPlatform: ${{ parameters.msbuildPlatform }}
               java_artifact_id: ${{ parameters.java_artifact_id }}
-
-          - task: PublishBuildArtifacts@1
-            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-            displayName: 'Publish Java temp binaries'
-            inputs:
-              pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-              artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+              assembleOnly: false
