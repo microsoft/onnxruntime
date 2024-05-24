@@ -216,5 +216,6 @@ SPECIALIZED_COMPUTE(int64_t)
 SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double_t)
 SPECIALIZED_COMPUTE(MLFloat16)
+SPECIALIZED_COMPUTE(BFloat16)
 }  // namespace cuda
 }  // namespace onnxruntime

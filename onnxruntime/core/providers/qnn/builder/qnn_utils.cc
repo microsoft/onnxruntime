@@ -216,6 +216,31 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
     if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
       out << " scale=" << quantize_params.scaleOffsetEncoding.scale;
       out << " offset=" << quantize_params.scaleOffsetEncoding.offset;
+    } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
+      out << " axis=" << quantize_params.axisScaleOffsetEncoding.axis;
+      size_t num_elems = quantize_params.axisScaleOffsetEncoding.numScaleOffsets;
+      out << " scales=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.axisScaleOffsetEncoding.scaleOffset[i].scale << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ") offsets=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.axisScaleOffsetEncoding.scaleOffset[i].offset << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ")";
+    } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
+      out << " axis=" << quantize_params.bwAxisScaleOffsetEncoding.axis;
+      out << " bw=" << quantize_params.bwAxisScaleOffsetEncoding.bitwidth;
+      size_t num_elems = quantize_params.bwAxisScaleOffsetEncoding.numElements;
+      out << " scales=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.bwAxisScaleOffsetEncoding.scales[i] << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ") offsets=(";
+      for (size_t i = 0; i < num_elems; i++) {
+        out << quantize_params.bwAxisScaleOffsetEncoding.offsets[i] << (i == num_elems - 1 ? "" : " ");
+      }
+      out << ")";
     } else {
       out << " encoding not supported.";
     }
@@ -303,6 +328,12 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
     } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_32 ||
                GetQnnTensorDataType(tensor) == QNN_DATATYPE_SFIXED_POINT_32) {
       operator<< <int32_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_16 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_16) {
+      operator<< <uint16_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_16 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_SFIXED_POINT_16) {
+      operator<< <int16_t>(out, GetQnnTensorClientBuf(tensor));
     } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_8 ||
                GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_8) {
       operator<< <uint8_t>(out, GetQnnTensorClientBuf(tensor));
@@ -376,6 +407,15 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
   return Status::OK();
 }
 
+const std::string& GetNodeName(const NodeUnit& node_unit) {
+  const std::string& node_name = node_unit.Name();
+  if (node_name.empty()) {
+    return node_unit.Outputs()[0].node_arg.Name();
+  }
+
+  return node_name;
+}
+
 bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized) {
   const std::unordered_map<int32_t, Qnn_DataType_t> onnx_to_qnn_data_type = {
       {ONNX_NAMESPACE::TensorProto_DataType_INT8, QNN_DATATYPE_INT_8},
@@ -421,6 +461,75 @@ bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn
   } else {
     return do_type_mapping(onnx_to_qnn_data_type, onnx_data_type, qnn_data_type);
   }
+}
+
+std::pair<float, float> CheckMinMax(float rmin, float rmax) {
+  // Ensure a minimum range of 0.0001 (required by QNN)
+  rmax = std::max(rmax, rmin + 0.0001f);
+
+  // Both QNN and ORT require the range to include 0.0f
+  rmin = std::min(rmin, 0.0f);
+  rmax = std::max(rmax, 0.0f);
+
+  return std::make_pair(rmin, rmax);
+}
+
+template <typename T>
+Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
+                   T& qmin,
+                   T& qmax) {
+  if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
+    qmin = static_cast<T>(std::numeric_limits<int8_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<int8_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_8) {
+    qmin = static_cast<T>(std::numeric_limits<uint8_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<uint8_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16) {
+    qmin = static_cast<T>(std::numeric_limits<int16_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<int16_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
+    qmin = static_cast<T>(std::numeric_limits<uint16_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<uint16_t>::max());
+  } else {
+    ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
+  }
+  return Status::OK();
+}
+
+Status GetQuantParams(float rmin,
+                      float rmax,
+                      const Qnn_DataType_t qnn_data_type,
+                      float& scale,
+                      int& zero_point) {
+  std::tie(rmin, rmax) = CheckMinMax(rmin, rmax);
+  float qmin = 0.0f;
+  float qmax = 255.0f;
+  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
+
+  scale = (rmax - rmin) / (qmax - qmin);
+  const float initial_zero_point = qmin - (rmin / scale);
+  zero_point = static_cast<int>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
+  // To match QNN quantization definition
+  zero_point = 0 - zero_point;
+  return Status::OK();
+}
+
+double Dequantize(int32_t offset, float scale, const double quant_value) {
+  double offset_d = static_cast<double>(offset);
+  double scale_d = static_cast<double>(scale);
+  return (quant_value + offset_d) * scale_d;
+}
+
+Status Quantize(const double double_value,
+                const float scale,
+                const int zero_point,
+                const Qnn_DataType_t qnn_data_type,
+                int& quant_value) {
+  int qmin = 0;
+  int qmax = 255;
+  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
+  quant_value = Saturate(qmax, qmin, static_cast<int>(std::round((double_value / scale) - zero_point)));
+  return Status::OK();
 }
 
 }  // namespace utils

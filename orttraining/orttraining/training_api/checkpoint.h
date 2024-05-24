@@ -30,7 +30,15 @@ struct CheckpointState {
   ModuleCheckpointState module_checkpoint_state;
   OptimizerCheckpointState optimizer_checkpoint_state;
   PropertyBag property_bag;
+  bool has_external_data = false;
 };
+
+/**
+ * @brief Get the external data path for a given checkpoint path.
+ *
+ * @param checkpoint_path file where checkpoint is stored.
+ */
+PathString ExternalCheckpointDataPath(const PathString& checkpoint_path);
 
 /**
  * @brief Save training states as ORT checkpoint.
@@ -49,11 +57,19 @@ Status SaveCheckpoint(const CheckpointState& state, const PathString& checkpoint
  * @param trainable_tensor_protos trainable parameters in TensorProto format.
  * @param non_trainable_tensor_protos non-trainable parameters in TensorProto format.
  * @param checkpoint_path file where checkpoint is saved.
+ * @param nominal_checkpoint flag indicating whether to save the complete checkpoint or the nominal checkpoint.
+ * @param external_data_threshold optional threshold in bytes for external data. If the size of the data of the
+ *                                TensorProtos exceeds this threshold, then we save the data in an external data file.
+ * @remarks The calculation of total size required to save a model is in-exact as we only look at the size of the
+ *          initializer data. That ignores things like initializer names and shapes. Due to this the external data
+ *          threshold should include a buffer to allow for this, which is why we default to 1.8GB to avoid creating a
+ *          checkpoint file that is >2GB (which would fail due to the usage of 32-bit offsets).
  * @return Status
  */
 Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
                       gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
-                      const PathString& checkpoint_path);
+                      const PathString& checkpoint_path, const bool nominal_checkpoint,
+                      const size_t external_data_threshold = 1800 * 1024 * 1024);  // 1.8GB default
 #endif
 
 /**

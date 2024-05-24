@@ -16,7 +16,7 @@ from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import unflatten_user_output
-from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
+from ._logger import ORTModuleInitPhase, TrackTime
 from ._utils import save_tuning_results, set_tuning_results
 from .options import DebugOptions, _SkipCheck
 
@@ -28,8 +28,7 @@ class InferenceManager(GraphExecutionManager):
     """
 
     def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger):
-        super().__init__(model, debug_options, fallback_manager, logger)
-        self._export_mode = torch.onnx.TrainingMode.EVAL
+        super().__init__(model, debug_options, torch.onnx.TrainingMode.EVAL, fallback_manager, logger)
 
     @staticmethod
     def execution_session_run_forward(
@@ -122,10 +121,9 @@ class InferenceManager(GraphExecutionManager):
 
                 # Build the inference graph
                 if build_graph:
-                    graph_transformer_config = self._get_graph_transformer_config()
-                    # Set the config according to input inspection.
-                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+                    self._detect_from_inputs(inputs, kwargs)
 
+                    graph_transformer_config = self._get_graph_transformer_config()
                     # Build the graph
                     self._build_graph(graph_transformer_config)
 
@@ -162,7 +160,7 @@ class InferenceManager(GraphExecutionManager):
             if self._runtime_options.enable_zero_stage3_support:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+            prepared_input_list = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
                 self._input_info,
@@ -207,7 +205,6 @@ class InferenceManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
     @TrackTime(ORTModuleInitPhase.BUILD_GRAPH)
-    @SuppressLogs(ORTModuleInitPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
 
@@ -221,7 +218,6 @@ class InferenceManager(GraphExecutionManager):
             )
 
     @TrackTime(ORTModuleInitPhase.CREATE_SESSION)
-    @SuppressLogs(ORTModuleInitPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 

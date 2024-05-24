@@ -6,6 +6,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
+#include <filesystem>
 #include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/platform/path_lib.h>
@@ -31,7 +32,7 @@ class ITestCase {
   virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
                             std::unordered_map<std::string, Ort::Value>& name_data_map,
                             bool is_input) const = 0;
-  virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
+  virtual const std::filesystem::path& GetModelUrl() const = 0;
   virtual const std::string& GetNodeName() const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const = 0;
@@ -50,14 +51,9 @@ class ITestCase {
 
 class TestModelInfo {
  public:
-  virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
-  virtual std::basic_string<PATH_CHAR_TYPE> GetDir() const {
-    std::basic_string<PATH_CHAR_TYPE> test_case_dir;
-    auto st = onnxruntime::GetDirNameFromFilePath(GetModelUrl(), test_case_dir);
-    if (!st.IsOK()) {
-      ORT_THROW("GetDirNameFromFilePath failed");
-    }
-    return test_case_dir;
+  virtual const std::filesystem::path& GetModelUrl() const = 0;
+  virtual std::filesystem::path GetDir() const {
+    return GetModelUrl().parent_path();
   }
   virtual const std::string& GetNodeName() const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const = 0;
@@ -70,10 +66,10 @@ class TestModelInfo {
   virtual ~TestModelInfo() = default;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  static std::unique_ptr<TestModelInfo> LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);
+  static std::unique_ptr<TestModelInfo> LoadOnnxModel(const std::filesystem::path& model_url);
 #endif
 
-  static std::unique_ptr<TestModelInfo> LoadOrtModel(_In_ const PATH_CHAR_TYPE* model_url);
+  static std::unique_ptr<TestModelInfo> LoadOrtModel(const std::filesystem::path& model_url);
 
   static const std::string unknown_version;
 };

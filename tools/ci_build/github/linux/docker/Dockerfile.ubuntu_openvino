@@ -1,8 +1,8 @@
 ARG UBUNTU_VERSION=20.04
 FROM ubuntu:${UBUNTU_VERSION}
 
-ARG OPENVINO_VERSION=2023.0.0
-ARG PYTHON_VERSION=3.8
+ARG OPENVINO_VERSION=2024.0.0
+ARG PYTHON_VERSION=3.9
 
 ADD scripts /tmp/scripts
 RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} -d EdgeDevice && \
@@ -14,15 +14,14 @@ RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 && \
 
 ENV INTEL_OPENVINO_DIR /opt/intel/openvino_${OPENVINO_VERSION}
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64:$INTEL_OPENVINO_DIR/runtime/3rdparty/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
-ENV InferenceEngine_DIR $INTEL_OPENVINO_DIR/runtime/cmake
-ENV ngraph_DIR $INTEL_OPENVINO_DIR/runtime/cmake
+ENV OpenVINO_DIR $INTEL_OPENVINO_DIR/runtime/cmake
 ENV IE_PLUGINS_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN cd /opt && mkdir -p intel && cd intel && \
-    wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2023.0/linux/l_openvino_toolkit_ubuntu20_2023.0.0.10926.b4452d56304_x86_64.tgz && \
-    tar xzf l_openvino_toolkit_ubuntu20_2023.0.0.10926.b4452d56304_x86_64.tgz && rm -rf l_openvino_toolkit_ubuntu20_2023.0.0.10926.b4452d56304_x86_64.tgz && \
-    mv l_openvino_toolkit_ubuntu20_2023.0.0.10926.b4452d56304_x86_64 openvino_2023.0.0 && \
+    wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2024.0/linux/l_openvino_toolkit_ubuntu20_2024.0.0.14509.34caeefd078_x86_64.tgz && \
+    tar xzf l_openvino_toolkit_ubuntu20_2024.0.0.14509.34caeefd078_x86_64.tgz && rm -rf l_openvino_toolkit_ubuntu20_2024.0.0.14509.34caeefd078_x86_64.tgz && \
+    mv l_openvino_toolkit_ubuntu20_2024.0.0.14509.34caeefd078_x86_64 openvino_2024.0.0 && \
     cd $INTEL_OPENVINO_DIR/install_dependencies && ./install_openvino_dependencies.sh -y
 
 WORKDIR /root

@@ -4,6 +4,7 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
@@ -97,8 +98,8 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
   ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
 
-  OnnxInputInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], input_info));
+  TensorInfo input_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input_info));
   const size_t input_rank = input_info.shape.size();
 
   // If the axis attribute refers to the last dimension, then process the input as normal.
@@ -139,9 +140,9 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                          do_op_validation,
                                                          is_graph_input));
 
-  Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, op_input_name);
-  QnnTensorWrapper input_tensorwrapper(op_input_name, tensor_type, input_info.qnn_data_type, input_info.quant_param,
-                                       std::move(op_input_shape), {});
+  Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(op_input_name);
+  QnnTensorWrapper input_tensorwrapper(op_input_name, tensor_type, input_info.qnn_data_type,
+                                       std::move(input_info.quant_param), std::move(op_input_shape), {});
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
 
   return Status::OK();
@@ -161,8 +162,8 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
   Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
   ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
 
-  OnnxInputInfo output_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(outputs[0], output_info));
+  TensorInfo output_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[0], output_info));
   const size_t output_rank = output_info.shape.size();
   const bool axis_is_last_dim = static_cast<size_t>(axis) == output_rank - 1;
 
@@ -199,10 +200,10 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
   op_output_shape[output_rank - 1] = output_info.shape[axis];
   op_output_shape[axis] = output_info.shape[output_rank - 1];
 
-  QnnTensorWrapper output_tensorwrapper(op_output_name, QNN_TENSOR_TYPE_NATIVE, output_info.qnn_data_type, output_info.quant_param,
-                                        std::vector<uint32_t>(op_output_shape));
+  QnnTensorWrapper output_tensorwrapper(op_output_name, QNN_TENSOR_TYPE_NATIVE, output_info.qnn_data_type,
+                                        output_info.quant_param.Copy(), std::vector<uint32_t>(op_output_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),

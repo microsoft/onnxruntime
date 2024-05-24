@@ -61,24 +61,12 @@ std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   return std::make_unique<TensorrtExecutionProvider>(info_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
-  TensorrtExecutionProviderInfo info;
-  info.device_id = device_id;
-  info.has_trt_options = false;
-  return std::make_shared<onnxruntime::TensorrtProviderFactory>(info);
-}
-
 struct Tensorrt_Provider : Provider {
   void* GetInfo() override { return &g_info; }
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     TensorrtExecutionProviderInfo info;
     info.device_id = device_id;
     info.has_trt_options = false;
-
-    common::Status status = CreateTensorRTCustomOpDomainList(info);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
-    }
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }
@@ -108,6 +96,7 @@ struct Tensorrt_Provider : Provider {
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
     info.layer_norm_fp32_fallback = options.trt_layer_norm_fp32_fallback != 0;
     info.timing_cache_enable = options.trt_timing_cache_enable != 0;
+    info.timing_cache_path = options.trt_timing_cache_path == nullptr ? "" : options.trt_timing_cache_path;
     info.force_timing_cache = options.trt_force_timing_cache != 0;
     info.detailed_build_log = options.trt_detailed_build_log != 0;
     info.build_heuristics_enable = options.trt_build_heuristics_enable != 0;
@@ -120,11 +109,10 @@ struct Tensorrt_Provider : Provider {
     info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
     info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
     info.cuda_graph_enable = options.trt_cuda_graph_enable != 0;
-
-    common::Status status = CreateTensorRTCustomOpDomainList(info);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration.";
-    }
+    info.dump_ep_context_model = options.trt_dump_ep_context_model != 0;
+    info.ep_context_file_path = options.trt_ep_context_file_path == nullptr ? "" : options.trt_ep_context_file_path;
+    info.ep_context_embed_mode = options.trt_ep_context_embed_mode;
+    info.engine_cache_prefix = options.trt_engine_cache_prefix == nullptr ? "" : options.trt_engine_cache_prefix;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }

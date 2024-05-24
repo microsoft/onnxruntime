@@ -13,7 +13,10 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
 #include "core/graph/function.h"
+#include "core/graph/function_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 // #define COUNT_NON_CUDA_OPS
@@ -129,6 +132,21 @@ struct GetCapabilityForEPParams {
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
+
+auto get_capabilities = [](const IExecutionProvider& ep,
+                           const GraphViewer& graph_viewer,
+                           const IExecutionProvider::IKernelLookup& kernel_lookup) {
+  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
+
+  // In theory an EP could return an empty capability. Remove those.
+  capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
+                                    [](const std::unique_ptr<ComputeCapability>& capability) {
+                                      return !capability || !capability->sub_graph;
+                                    }),
+                     capabilities.end());
+
+  return capabilities;
+};
 }  // namespace
 
 static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
@@ -142,21 +160,6 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
     return Status::OK();
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-  auto get_capabilities = [](const IExecutionProvider& ep,
-                             const GraphViewer& graph_viewer,
-                             const IExecutionProvider::IKernelLookup& kernel_lookup) {
-    auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
-
-    // In theory an EP could return an empty capability. Remove those.
-    capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
-                                      [](const std::unique_ptr<ComputeCapability>& capability) {
-                                        return !capability || !capability->sub_graph;
-                                      }),
-                       capabilities.end());
-
-    return capabilities;
-  };
 
   const auto& kernel_registry_mgr = params.kernel_registry_mgr.get();
   const auto kernel_registries_for_ep = kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type);
@@ -239,6 +242,26 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+// This function queries the capabilities for a given EP, but it does not assign the nodes.
+// It also does not perform layout transformation. This will be done during normal partitioning.
+static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
+                                               const KernelRegistryManager& kernel_registry_mgr,
+                                               const IExecutionProvider& current_ep,
+                                               std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
+  const auto& ep_type = current_ep.Type();
+
+  const auto kernel_registries_for_ep = kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type);
+  const KernelLookup kernel_lookup{ep_type,
+                                   kernel_registries_for_ep,
+                                   kernel_registry_mgr.GetKernelTypeStrResolver()};
+
+  // TODO: Provide EP with a capability to look inside the functions.
+  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
+
+  return Status::OK();
+}
+
 /**
  * Check if a node can be placed on a specific provider.
  * Do nothing if the node is already assigned
@@ -518,7 +541,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
   // successfully inlined, we re-run the partitioner on the modified graph.
   // NOTE: Inlining the function will change the nodes in the Graph instance, so we can't do that while iterating
   // using graph.Nodes().
-  std::vector<Node*> nodes_to_inline;
+  InlinedVector<Node*> nodes_to_inline;
   for (auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType().empty() && node.CanBeInlined()) {
       nodes_to_inline.push_back(&node);
@@ -529,6 +552,177 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
     modified_graph = true;
   }
+
+  return Status::OK();
+}
+
+static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
+                                     const KernelRegistryManager& kernel_registry_mgr,
+                                     Graph& graph,
+                                     InlinedHashSet<std::string>& not_inlined,
+                                     size_t& inlined_count) {
+  // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
+  // doing it here saves all providers checking for this in GetCapability
+  if (graph.NumberOfNodes() == 0) {
+    return Status::OK();
+  }
+
+  for (auto& node : graph.Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      // we pass through the FuncManager from the top level graph
+      ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
+                                                 kernel_registry_mgr,
+                                                 *subgraph,
+                                                 not_inlined,
+                                                 inlined_count));
+    }
+  }
+
+  // Gather the candidates
+  InlinedVector<NodeIndex> inline_candidates;
+  for (auto& node : graph.Nodes()) {
+    if (node.CanBeInlined()) {
+      inline_candidates.push_back(node.Index());
+    }
+  }
+
+  if (inline_candidates.empty()) {
+    return Status::OK();
+  }
+
+  // Find out all the nodes that are already taken
+  const GraphViewer graph_viewer(graph);
+
+  InlinedHashSet<NodeIndex> claimed_by_ep;
+  for (const auto& ep : execution_providers) {
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, capabilities));
+    for (auto& capability : capabilities) {
+      const auto& nodes = capability->sub_graph->nodes;
+      if (nodes.size() == 1) {
+        // Single node capability.
+        ORT_IGNORE_RETURN_VALUE(claimed_by_ep.insert(nodes[0]));
+      } else {
+        // Make sure none is claimed by other EPs mirroring the logic in PartitionOnnxFormatModelImpl.
+        if (std::all_of(nodes.cbegin(), nodes.cend(), [&claimed_by_ep](NodeIndex node_index) {
+              return claimed_by_ep.count(node_index) == 0;
+            })) {
+          claimed_by_ep.insert(nodes.cbegin(), nodes.cend());
+        }
+      }
+    }
+  }
+
+  // TODO: Insert version check. We need to collect all the versions
+  // that imported by the model. If the version is not supported by
+  // the model, we can not inline it.
+
+  for (auto node_index : inline_candidates) {
+    auto* node = graph.GetNode(node_index);
+    if (node != nullptr) {
+      if (claimed_by_ep.count(node_index) == 0) {
+        ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
+        ++inlined_count;
+      } else {
+        // OpType is the same as function name.
+        auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType());
+        ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
+                                   const Graph& graph,
+                                   const std::string& ep_context_path,
+                                   const logging::Logger& logger) {
+  InlinedVector<const Node*> all_ep_context_nodes;
+  for (const auto& ep : execution_providers) {
+    const InlinedVector<const Node*> ep_context_nodes = ep->GetEpContextNodes();
+    all_ep_context_nodes.insert(all_ep_context_nodes.begin(), ep_context_nodes.begin(), ep_context_nodes.end());
+  }
+
+  if (all_ep_context_nodes.size() < 1) {
+    return Status::OK();
+  }
+
+  auto get_ep_context_node = [&all_ep_context_nodes](const std::string& node_name) -> std::pair<bool, const Node*> {
+    for (auto& node : all_ep_context_nodes) {
+      if (node_name == node->Name()) {
+        return std::make_pair(true, node);
+      }
+    }
+    return std::make_pair(false, static_cast<const Node*>(nullptr));
+  };
+
+  onnxruntime::PathString context_cache_path;
+  PathString model_pathstring = graph.ModelPath().ToPathString();
+
+  if (!ep_context_path.empty()) {
+    context_cache_path = ToPathString(ep_context_path);
+  } else if (!model_pathstring.empty()) {
+    context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
+  }
+
+  {
+#ifdef _WIN32
+    std::wifstream fs(context_cache_path);
+#else
+    std::ifstream fs(context_cache_path);
+#endif
+    ORT_RETURN_IF(fs.good(), "Failed to generate EP context model since the file exist already.");
+  }
+
+  Model ep_context_model(graph.Name(), false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                         graph.DomainToVersionMap(), {}, logger);
+  auto& ep_graph = ep_context_model.MainGraph();
+  ep_graph.SetDescription(graph.Description());
+
+  // Set inputs outputs explicitly to make sure the order is same as the user model.
+  auto inputs = graph.GetInputs();
+  auto outputs = graph.GetOutputs();
+
+  InlinedVector<const NodeArg*> ep_graph_inputs;
+  ep_graph_inputs.reserve(inputs.size());
+  for (auto& input : inputs) {
+    auto input_arg = graph.GetNodeArg(input->Name());
+    auto& ep_graph_input_arg = ep_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+    ep_graph_inputs.push_back(&ep_graph_input_arg);
+  }
+
+  InlinedVector<const NodeArg*> ep_graph_outputs;
+  ep_graph_outputs.reserve(outputs.size());
+  for (auto& output : outputs) {
+    auto output_arg = graph.GetNodeArg(output->Name());
+    auto& ep_graph_output_arg = ep_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+    ep_graph_outputs.push_back(&ep_graph_output_arg);
+  }
+
+  ep_graph.SetInputs(ep_graph_inputs);
+  ep_graph.SetOutputs(ep_graph_outputs);
+
+  for (const auto& node : graph.Nodes()) {
+    // the fused node and EPContext node has same node name
+    auto ep_context_node = get_ep_context_node(node.Name());
+    // Use EpContext node created by the EPs if name matched, otherwise use node from original model
+    if (ep_context_node.first) {
+      ep_graph.AddNode(*ep_context_node.second);
+    } else {
+      ep_graph.AddNode(node);
+    }
+  }
+
+  // handle initializers
+  for (const auto& initialized_tensor : graph.GetAllInitializedTensors()) {
+    if (ep_graph.GetNodeArg(initialized_tensor.first) != nullptr) {
+      ep_graph.AddInitializedTensor(*initialized_tensor.second);
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
 
   return Status::OK();
 }
@@ -693,8 +887,54 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
   return Status::OK();
 }
 
+#ifndef ORT_MINIMAL_BUILD
+
+Status GraphPartitioner::InlineFunctionsAOT(Model& model,
+                                            const ExecutionProviders& execution_providers,
+                                            const KernelRegistryManager& kernel_registry_manager,
+                                            const logging::Logger& logger) const {
+  const auto local_functions_num = model.GetModelLocalFunctionTemplates().size();
+  const bool is_there_local_functions = local_functions_num > 0;
+
+  if (!is_there_local_functions) {
+    LOGS(logger, INFO) << "This model does not have any local functions defined. AOT Inlining is not performed";
+    return Status::OK();
+  }
+
+  auto& graph = model.MainGraph();
+  InlinedHashSet<std::string> not_inlined;
+  do {
+    size_t inlined_count = 0;
+    ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
+                                               kernel_registry_manager,
+                                               graph,
+                                               not_inlined,
+                                               inlined_count));
+
+    if (inlined_count == 0) {
+      break;
+    }
+
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+  } while (true);
+
+  model.RemoveLocalFunctionsProtos(not_inlined);
+
+  LOGS(logger, INFO)
+      << "AOT inlining completed. (" << (local_functions_num - model.GetModelLocalFunctionTemplates().size())
+      << ") functions of ("
+      << local_functions_num
+      << ") pruned.";
+
+  return Status::OK();
+}
+
+#endif
+
 Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
+                                   const ConfigOptions& config_options,
+                                   const logging::Logger& logger,
                                    Mode mode,
                                    const layout_transformation::DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
@@ -741,7 +981,15 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode,
                                                  providers_, kernel_registry_mgr_));
+
+    bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
+    std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    if (ep_context_enabled) {
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, logger));
+    }
 #else
+    ORT_UNUSED_PARAMETER(config_options);
+    ORT_UNUSED_PARAMETER(logger);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {

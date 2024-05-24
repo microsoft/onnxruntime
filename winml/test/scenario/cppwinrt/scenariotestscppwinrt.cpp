@@ -510,7 +510,8 @@ static void Scenario9LoadBindEvalInputTensorGPU() {
 
   UINT64 bufferbytesize = 720 * 720 * 3 * sizeof(float);
   D3D12_HEAP_PROPERTIES heapProperties = {
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0
+  };
   D3D12_RESOURCE_DESC resourceDesc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,
@@ -983,7 +984,8 @@ static void Scenario22ImageBindingAsGPUTensor() {
   // 3 is number of channels we use. R G B without alpha.
   UINT64 bufferbytesize = 3 * sizeof(float) * softwareBitmap.PixelWidth() * softwareBitmap.PixelHeight();
   D3D12_HEAP_PROPERTIES heapProperties = {
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0
+  };
   D3D12_RESOURCE_DESC resourceDesc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,
@@ -1085,7 +1087,8 @@ static void Scenario23NominalPixelRange() {
   std::vector<std::wstring> modelPaths = {// Normalized_0_1 and image output
                                           modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
                                           // Normalized_1_1 and image output
-                                          modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
+                                          modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
+  };
 
   for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
     // load model and create session

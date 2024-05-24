@@ -20,7 +20,7 @@ class CudnnLRNDescriptor final {
   cudnnLRNDescriptor_t desc_;
 };
 
-template <typename T>
+template <typename T, bool Layout>
 class LRN : public CudaKernel {
  public:
   LRN(const OpKernelInfo& info);

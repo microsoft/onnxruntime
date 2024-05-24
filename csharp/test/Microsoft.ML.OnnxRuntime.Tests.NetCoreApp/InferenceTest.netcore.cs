@@ -145,7 +145,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void CanRunInferenceOnAModelWithTensorRT()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            
+
             int deviceId = 0;
             string deviceIdStr = System.Environment.GetEnvironmentVariable("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
             if (!string.IsNullOrEmpty(deviceIdStr) && int.TryParse(deviceIdStr, out int parsedValue) && parsedValue >= 0)

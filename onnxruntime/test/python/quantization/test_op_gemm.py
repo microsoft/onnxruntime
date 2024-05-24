@@ -192,24 +192,9 @@ class TestOpGemm(unittest.TestCase):
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
         data_reader.rewind()
         if activation_type_str == "f8e4m3fn" and weight_type_str == "f8e4m3fn":
-            # QGemm is not implemented for CPU.
-            try:
-                check_model_correctness(
-                    self,
-                    model_fp32_path,
-                    model_int8_path,
-                    data_reader.get_next(),
-                    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-                    is_gemm=True,
-                )
-            except Exception as e:
-                if (
-                    "Type 'tensor(float8e4m3fn)' of input parameter (input_quantized) of operator (QGemm) in node () is invalid."
-                    in str(e)
-                ):
-                    warnings.warn("Fix this test when QGemm is implemented.")
-                    return
-                raise e
+            # QGemm for float 8 is not implemented. The test should be updated when it is.
+            warnings.warn("Fix this test when QGemm is implemented for float 8 types.")
+            return
         else:
             check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next(), is_gemm=True)
 
@@ -333,7 +318,8 @@ class TestOpGemm(unittest.TestCase):
             weight_type=QuantType.QUInt8,
         )
 
-    def test_quantize_gemm_s8s8(self):
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
+    def test_quantize_qop_gemm_s8s8(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
         self.construct_model_gemm(model_fp32_path)
@@ -346,6 +332,17 @@ class TestOpGemm(unittest.TestCase):
             weight_type=QuantType.QInt8,
             extra_options={"ActivationSymmetric": True},
         )
+
+        # dynamic quantization doesn't support activation:int8
+        # self.dynamic_quant_test(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
+        #                        extra_options={'ActivationSymmetric': True})
+
+    def test_quantize_qdq_gemm_s8s8(self):
+        np.random.seed(1)
+        model_fp32_path = "gemm_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
         self.static_quant_test_qdq(
             model_fp32_path,
             data_reader,
@@ -354,11 +351,7 @@ class TestOpGemm(unittest.TestCase):
             extra_options={"ActivationSymmetric": True},
         )
 
-        # dynamic quantization doesn't support activation:int8
-        # self.dynamic_quant_test(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
-        #                        extra_options={'ActivationSymmetric': True})
-
-    def test_quantize_gemm_e4m3fn_same(self):
+    def test_quantize_qdq_gemm_e4m3fn_same(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
         self.construct_model_gemm(model_fp32_path, add_clip=False)
@@ -372,6 +365,14 @@ class TestOpGemm(unittest.TestCase):
             extra_options={"scenario": "same"},
             calibrate_method=CalibrationMethod.Distribution,
         )
+
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
+    def test_quantize_qop_gemm_e4m3fn_same(self):
+        np.random.seed(1)
+        model_fp32_path = "gemm_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path, add_clip=False)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
         self.static_quant_test(
             model_fp32_path,
             data_reader,
@@ -381,7 +382,7 @@ class TestOpGemm(unittest.TestCase):
             calibrate_method=CalibrationMethod.Distribution,
         )
 
-    def test_quantize_gemm_e4m3fn_p3(self):
+    def test_quantize_qdq_gemm_e4m3fn_p3(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
         self.construct_model_gemm(model_fp32_path, add_clip=False)
@@ -395,6 +396,14 @@ class TestOpGemm(unittest.TestCase):
             extra_options={"scenario": "p3"},
             calibrate_method=CalibrationMethod.Distribution,
         )
+
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
+    def test_quantize_qop_gemm_e4m3fn_p3(self):
+        np.random.seed(1)
+        model_fp32_path = "gemm_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path, add_clip=False)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
         self.static_quant_test(
             model_fp32_path,
             data_reader,
@@ -774,6 +783,52 @@ class TestOpGemm(unittest.TestCase):
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
         assert_allclose(expected, got)
+
+    def test_dynamic_quantization(self):
+        # dummy_model.onnx from Olive
+        model = helper.make_model(
+            helper.make_graph(
+                [
+                    helper.make_node(
+                        "Gemm", ["input", "fc1.weight", "fc1.bias"], ["gemm0"], alpha=1.0, beta=1.0, transB=1
+                    ),
+                    helper.make_node("Relu", ["gemm0"], ["output"]),
+                ],
+                "g",
+                [helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 1])],
+                [helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 10])],
+                [
+                    onnx.numpy_helper.from_array(np.random.randn(10, 1).astype(np.float32), name="fc1.weight"),
+                    onnx.numpy_helper.from_array(np.random.randn(10).astype(np.float32), name="fc1.bias"),
+                ],
+            ),
+            opset_imports=[helper.make_opsetid("", 18)],
+            ir_version=9,
+        )
+        onnx.checker.check_model(model)
+        run_config = {
+            "weight_type": QuantType.QInt8,
+            "op_types_to_quantize": None,
+            "nodes_to_quantize": None,
+            "nodes_to_exclude": None,
+            "per_channel": False,
+            "reduce_range": False,
+            "extra_options": {
+                "extra.Sigmoid.nnapi": False,
+                "ActivationSymmetric": False,
+                "WeightSymmetric": True,
+                "EnableSubgraph": False,
+                "ForceQuantizeNoInputCheck": False,
+                "MatMulConstBOnly": True,
+            },
+        }
+        model_path = "test_dynamic_quantization.onnx"
+        with open(model_path, "wb") as f:
+            f.write(model.SerializeToString())
+        qpath = "test_dynamic_quantization.quantized.onnx"
+        quantize_dynamic(model_input=model_path, model_output=qpath, use_external_data_format=True, **run_config)
+        onx = onnx.load(qpath)
+        self.assertIn("DynamicQuantizeLinear", set(n.op_type for n in onx.graph.node))
 
 
 if __name__ == "__main__":

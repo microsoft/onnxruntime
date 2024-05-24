@@ -28,7 +28,7 @@ stages:
         artifactName: 'onnxruntime-android-full-aar'
         job_name_suffix: 'Full'
         publish_executables: '1'
-        pool_name: 'onnxruntime-Ubuntu2004-AMD-CPU'
+        pool_name: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
 # build Python packages
 # Linux GPU only
@@ -40,5 +40,4 @@ stages:
       enable_windows_cpu: false
       enable_windows_gpu: false
       enable_mac_cpu: false
-      enable_mac_silicon: false
       enable_linux_arm: false

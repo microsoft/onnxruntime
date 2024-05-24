@@ -25,6 +25,7 @@
 #include "core/providers/cpu/tensor/tile.h"
 #include "core/providers/cpu/tensor/gather_elements.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/upsamplebase.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/bert/attention_base.h"
@@ -62,6 +63,7 @@
 #endif
 
 #include "cpu_provider_shared.h"
+#include <limits>
 
 namespace onnxruntime {
 // The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
@@ -87,7 +89,13 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                        const TensorShape& indice_shape,
                                        const TensorShape& update_shape) override { return ScatterND::ValidateShapes(input_shape, indice_shape, update_shape); }
   // From cpu/tensor/padbase.h (direct)
-  Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
+  Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
+
+  void PadBase__ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                            PadsVector& pads) override {
+    PadBase::ComputePads(ctx, data_rank, pads_data, pads);
+  }
+
   // From cpu/tensor/split.h (direct)
   Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                       int& after_dims_including_split_axis, int& after_dims_excluding_split,
@@ -285,6 +293,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) override { p->contrib::transformers::Sampling::Init(info); }
   Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) override { return p->contrib::transformers::Sampling::Compute(ctx); }
   Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::Sampling::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+
+  void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
+                                              gsl::span<const int64_t> input_dims,
+                                              InlinedVector<float>& scales) const override {
+    p->AdjustOutputSizeAsPolicy(output_dims, input_dims, scales);
+  }
 
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }

@@ -53,8 +53,14 @@ namespace Microsoft.ML.OnnxRuntime
             static OrtTrainingApi trainingApi_;
             static IntPtr trainingApiPtr;
 
+#if NETSTANDARD2_0
+            [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+            public delegate IntPtr DOrtGetApi(UInt32 version);
+#else
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate ref OrtApi DOrtGetApi(UInt32 version);
+#endif
+
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /* OrtTrainingApi* */ DOrtGetTrainingApi(UInt32 version);
@@ -62,13 +68,25 @@ namespace Microsoft.ML.OnnxRuntime
 
         static NativeTrainingMethods()
             {
+#if NETSTANDARD2_0
+                IntPtr ortApiBasePtr = NativeMethods.OrtGetApiBase();
+                OrtApiBase ortApiBase = (OrtApiBase)Marshal.PtrToStructure(ortApiBasePtr, typeof(OrtApiBase));
+                DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(ortApiBase.GetApi, typeof(DOrtGetApi));
+#else
                 DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(NativeMethods.OrtGetApiBase().GetApi, typeof(DOrtGetApi));
+#endif
 
+                const uint ORT_API_VERSION = 19;
+#if NETSTANDARD2_0
+                IntPtr ortApiPtr = OrtGetApi(ORT_API_VERSION);
+                api_ = (OrtApi)Marshal.PtrToStructure(ortApiPtr, typeof(OrtApi));
+#else
                 // TODO: Make this save the pointer, and not copy the whole structure across
-                api_ = (OrtApi)OrtGetApi(17 /*ORT_API_VERSION*/);
+                api_ = (OrtApi)OrtGetApi(ORT_API_VERSION);
+#endif
 
                 OrtGetTrainingApi = (DOrtGetTrainingApi)Marshal.GetDelegateForFunctionPointer(api_.GetTrainingApi, typeof(DOrtGetTrainingApi));
-                trainingApiPtr = OrtGetTrainingApi(17 /*ORT_API_VERSION*/);
+                trainingApiPtr = OrtGetTrainingApi(ORT_API_VERSION);
                 if (trainingApiPtr != IntPtr.Zero)
                 {
                     trainingApi_ = (OrtTrainingApi)Marshal.PtrToStructure(trainingApiPtr, typeof(OrtTrainingApi));

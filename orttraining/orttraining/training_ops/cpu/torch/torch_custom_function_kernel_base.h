@@ -149,6 +149,8 @@ class PythonOpBase {
   // Output types of MyReLU.apply(...).
   std::vector<int64_t> output_tensor_types_;
 
+  bool safe_run_mode_enabled_{true};
+
  private:
   void AddPrimitiveTypeScalarArgs();
   void AddInputTupleArgs();
@@ -192,6 +194,8 @@ class PythonOpGradBase {
 
   // Memory reuse map for all outputs.
   std::vector<int64_t> all_output_to_tensor_input_reuse_map_;
+
+  bool safe_run_mode_enabled_{true};
 
  private:
   void SetPositions();

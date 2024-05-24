@@ -3,7 +3,7 @@ parameters:
 stages:
 - stage: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
   dependsOn:
-  - Nodejs_Packaging_CPU
+  - Nodejs_Packaging
   condition: succeeded()
   jobs:
   - job:
@@ -11,7 +11,7 @@ stages:
       clean: all
     timeoutInMinutes:  120
     pool:
-      vmImage: 'macOS-13'
+      vmImage: 'macOS-latest'
 
     variables:
     - name: OnnxRuntimeBuildDirectory

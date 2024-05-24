@@ -24,7 +24,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(MatMulFpQ4, MatMul2DSym) {
-  // (100 x 41) X (41 x 288)
+  // (100 x 52) X (52 x 288)
   constexpr int64_t M = 100;
   constexpr int64_t N = 288;
   constexpr int64_t K = 52;

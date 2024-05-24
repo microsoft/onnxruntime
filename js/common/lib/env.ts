@@ -4,15 +4,32 @@
 import {env as envImpl} from './env-impl.js';
 
 export declare namespace Env {
-  export type WasmPrefixOrFilePaths = string|{
-    /* eslint-disable @typescript-eslint/naming-convention */
-    'ort-wasm.wasm'?: string;
-    'ort-wasm-threaded.wasm'?: string;
-    'ort-wasm-simd.wasm'?: string;
-    'ort-training-wasm-simd.wasm'?: string;
-    'ort-wasm-simd-threaded.wasm'?: string;
-    /* eslint-enable @typescript-eslint/naming-convention */
-  };
+  export type WasmPathPrefix = string;
+  export interface WasmFilePaths {
+    /**
+     * Specify the override path for the main .wasm file.
+     *
+     * This path should be an absolute path.
+     *
+     * If not modified, the filename of the .wasm file is:
+     * - `ort-wasm-simd-threaded.wasm` for default build
+     * - `ort-wasm-simd-threaded.jsep.wasm` for JSEP build (with WebGPU and WebNN)
+     * - `ort-training-wasm-simd-threaded.wasm` for training build
+     */
+    wasm?: URL|string;
+    /**
+     * Specify the override path for the main .mjs file.
+     *
+     * This path should be an absolute path.
+     *
+     * If not modified, the filename of the .mjs file is:
+     * - `ort-wasm-simd-threaded.mjs` for default build
+     * - `ort-wasm-simd-threaded.jsep.mjs` for JSEP build (with WebGPU and WebNN)
+     * - `ort-training-wasm-simd-threaded.mjs` for training build
+     */
+    mjs?: URL|string;
+  }
+  export type WasmPrefixOrFilePaths = WasmPathPrefix|WasmFilePaths;
   export interface WebAssemblyFlags {
     /**
      * set or get number of thread(s). If omitted or set to 0, number of thread(s) will be determined by system. If set
@@ -29,9 +46,19 @@ export declare namespace Env {
      *
      * This setting is available only when WebAssembly SIMD feature is available in current context.
      *
+     * @deprecated This property is deprecated. Since SIMD is supported by all major JavaScript engines, non-SIMD
+     * build is no longer provided. This property will be removed in future release.
      * @defaultValue `true`
      */
     simd?: boolean;
+
+    /**
+     * set or get a boolean value indicating whether to enable trace.
+     *
+     * @deprecated Use `env.trace` instead. If `env.trace` is set, this property will be ignored.
+     * @defaultValue `false`
+     */
+    trace?: boolean;
 
     /**
      * Set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds. A zero
@@ -42,8 +69,8 @@ export declare namespace Env {
     initTimeout?: number;
 
     /**
-     * Set a custom URL prefix to the .wasm files or a set of overrides for each .wasm file. The override path should be
-     * an absolute path.
+     * Set a custom URL prefix to the .wasm/.mjs files, or an object of overrides for both .wasm/.mjs file. The override
+     * path should be an absolute path.
      */
     wasmPaths?: WasmPrefixOrFilePaths;
 
@@ -92,18 +119,95 @@ export declare namespace Env {
     async?: boolean;
   }
 
+  export interface WebGpuProfilingDataV1TensorMetadata {
+    dims: readonly number[];
+    dataType: string;
+  }
+  export interface WebGpuProfilingDataV1 {
+    version: 1;
+    inputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    outputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    kernelId: number;
+    kernelType: string;
+    kernelName: string;
+    programName: string;
+    startTime: number;
+    endTime: number;
+  }
+
+  export type WebGpuProfilingData = WebGpuProfilingDataV1;
+
   export interface WebGpuFlags {
     /**
      * Set or get the profiling mode.
+     *
+     * @deprecated Use `env.webgpu.profiling.mode` instead. If `env.webgpu.profiling.mode` is set, this property will be
+     * ignored.
      */
     profilingMode?: 'off'|'default';
     /**
+     * Set or get the profiling configuration.
+     */
+    profiling?: {
+      /**
+       * Set or get the profiling mode.
+       *
+       * @defaultValue `'off'`
+       */
+      mode?: 'off'|'default';
+
+      /**
+       * Set or get a callback function when a profiling data is received. If not set, the profiling data will be
+       * printed to console.
+       */
+      ondata?: (data: WebGpuProfilingData) => void;
+    };
+    /**
+     * Set or get the power preference.
+     *
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as options for `navigator.gpu.requestAdapter()`.
+     *
+     * See {@link https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions} for more details.
+     *
+     * @defaultValue `undefined`
+     */
+    powerPreference?: 'low-power'|'high-performance';
+    /**
+     * Set or get the force fallback adapter flag.
+     *
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as options for `navigator.gpu.requestAdapter()`.
+     *
+     * See {@link https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions} for more details.
+     *
+     * @defaultValue `undefined`
+     */
+    forceFallbackAdapter?: boolean;
+    /**
+     * Set or get the adapter for WebGPU.
+     *
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used as the GPU adapter for the underlying WebGPU backend to create GPU device.
+     *
+     * If this property is not set, it will be available to get after the first WebGPU inference session is created. The
+     * value will be the GPU adapter that created by the underlying WebGPU backend.
+     *
+     * When use with TypeScript, the type of this property is `GPUAdapter` defined in "@webgpu/types".
+     * Use `const adapter = env.webgpu.adapter as GPUAdapter;` in TypeScript to access this property with correct type.
+     *
+     * see comments on {@link Tensor.GpuBufferType}
+     */
+    adapter: unknown;
+    /**
      * Get the device for WebGPU.
+     *
+     * This property is only available after the first WebGPU inference session is created.
      *
      * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
      * Use `const device = env.webgpu.device as GPUDevice;` in TypeScript to access this property with correct type.
      *
-     * see comments on {@link GpuBufferType} for more details about why not use types defined in "@webgpu/types".
+     * see comments on {@link Tensor.GpuBufferType} for more details about why not use types defined in "@webgpu/types".
      */
     readonly device: unknown;
     /**
@@ -122,12 +226,20 @@ export interface Env {
    * @defaultValue `'warning'`
    */
   logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
+
   /**
    * Indicate whether run in debug mode.
    *
    * @defaultValue `false`
    */
   debug?: boolean;
+
+  /**
+   * set or get a boolean value indicating whether to enable trace.
+   *
+   * @defaultValue `false`
+   */
+  trace?: boolean;
 
   /**
    * Get version of the current package.

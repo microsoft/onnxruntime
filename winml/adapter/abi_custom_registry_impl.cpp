@@ -51,11 +51,12 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
   _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
   _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
   bool isInternalOperator,
-  bool canAliasFirstInput,
   bool supportsGraph,
   const uint32_t* requiredInputCountForGraph,
   _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
-  uint32_t constantCpuInputCount
+  uint32_t constantCpuInputCount,
+  _In_reads_(aliasCount) const std::pair<uint32_t, uint32_t>* aliases,
+  uint32_t aliasCount
 ) const noexcept try {
 #ifdef LAYERING_DONE
   // Log a custom op telemetry if the operator is not a built-in DML operator
@@ -73,11 +74,12 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
     shapeInferrer,
     supportQuery,
     isInternalOperator,
-    canAliasFirstInput,
     supportsGraph,
     requiredInputCountForGraph,
     requiredConstantCpuInputs,
-    constantCpuInputCount
+    constantCpuInputCount,
+    aliases,
+    aliasCount
   );
 }
 CATCH_RETURN();

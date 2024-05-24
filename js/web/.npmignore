@@ -4,6 +4,7 @@
 
 /dist/**/*.report.html
 
+
 /types/
 
 karma.conf.js

@@ -27,19 +27,17 @@ typedef struct IDMLDevice IDMLDevice;
 #include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
-extern "C" {
-#endif
 
-enum OrtDmlPerformancePreference {
-  Default = 0,
-  HighPerformance = 1,
-  MinimumPower = 2
-};
+extern "C" {
 
 enum OrtDmlDeviceFilter : uint32_t {
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
   Any = 0xffffffff,
   Gpu = 1 << 0,
   Npu = 1 << 1,
+#else
+  Gpu = 1 << 0,
+#endif
 };
 
 inline OrtDmlDeviceFilter operator~(OrtDmlDeviceFilter a) { return (OrtDmlDeviceFilter) ~(int)a; }
@@ -50,10 +48,32 @@ inline OrtDmlDeviceFilter& operator|=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter 
 inline OrtDmlDeviceFilter& operator&=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter&)((int&)a &= (int)b); }
 inline OrtDmlDeviceFilter& operator^=(OrtDmlDeviceFilter& a, OrtDmlDeviceFilter b) { return (OrtDmlDeviceFilter&)((int&)a ^= (int)b); }
 
+#else
+
+typedef enum OrtDmlDeviceFilter {
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
+  Any = 0xffffffff,
+  Gpu = 1 << 0,
+  Npu = 1 << 1,
+#else
+  Gpu = 1 << 0,
+#endif
+} OrtDmlDeviceFilter;
+
+#endif
+
+typedef enum OrtDmlPerformancePreference {
+  Default = 0,
+  HighPerformance = 1,
+  MinimumPower = 2
+} OrtDmlPerformancePreference;
+
 struct OrtDmlDeviceOptions {
   OrtDmlPerformancePreference Preference;
   OrtDmlDeviceFilter Filter;
 };
+
+typedef struct OrtDmlDeviceOptions OrtDmlDeviceOptions;
 
 /**
  * [[deprecated]]
@@ -128,7 +148,7 @@ struct OrtDmlApi {
   /**
    * SessionOptionsAppendExecutionProvider_DML2
    * Creates a DirectML Execution Provider given the supplied device options that contain a performance preference
-   * (high power, low power, or defult) and a device filter (None, GPU, or NPU).
+   * (high power, low power, or default) and a device filter (None, GPU, or NPU).
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
 };

@@ -67,6 +67,8 @@ class IExecutionFrame {
 
                      const std::unordered_map<int, OrtValue>& initializers);
   Status GetOutputs(gsl::span<const int> fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
+  // if OOM happens, then release all values, so session can run next batch.
+  void ReleaseAllMLValues();
 #endif
 
   // TO DO: make it thread safe

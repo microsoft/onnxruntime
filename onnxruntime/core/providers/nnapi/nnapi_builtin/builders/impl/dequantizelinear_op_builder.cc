@@ -38,9 +38,9 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
   }
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+      const GraphViewer& graph_viewer, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override {
-    return IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kInput);
+    return IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kInput);
   }
 };
 
@@ -61,7 +61,7 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   float scale = 0.0;
   int32_t zero_point = 0;
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-      model_builder.GetInitializerTensors(), node_unit.Inputs()[0], node_unit.ModelPath(), scale, zero_point));
+      model_builder.GetGraphViewer(), node_unit.Inputs()[0], node_unit.ModelPath(), scale, zero_point));
 
   ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
 

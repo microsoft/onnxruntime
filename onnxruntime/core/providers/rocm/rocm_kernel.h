@@ -101,6 +101,10 @@ class RocmKernel : public OpKernel {
     return static_cast<tunable::RocmTuningContext*>(provider_->GetTuningContext());
   }
 
+  bool UseTF32() const {
+    return false;
+  }
+
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
   template <typename T>
@@ -173,15 +177,15 @@ class RocmKernel : public OpKernel {
     return provider_->PerThreadDefaultMiopenHandle();
   }
 
+  inline Status CopyTensor(const Tensor& src, Tensor& dst, onnxruntime::Stream& stream) const {
+    auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(src.Location().device, dst.Location().device);
+    return gpu_data_transfer->CopyTensorAsync(src, dst, stream);
+  }
+
  protected:
   template <typename T>
   inline const T* GetConstOnes(size_t count, hipStream_t stream) const {
     return provider_->template GetConstOnes<T>(count, stream);
-  }
-
-  inline Status CopyTensor(const Tensor& src, Tensor& dst, onnxruntime::Stream& stream) const {
-    auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(src.Location().device, dst.Location().device);
-    return gpu_data_transfer->CopyTensorAsync(src, dst, stream);
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }

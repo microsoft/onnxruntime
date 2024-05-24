@@ -1,7 +1,7 @@
 -r requirements.txt
 
 # Official onnxruntime-gpu 1.16.1 is built with CUDA 11.8.
-onnxruntime-gpu>=1.16.1
+onnxruntime-gpu>=1.16.2
 
 py3nvml
 
@@ -12,7 +12,8 @@ cuda-python==11.8.0
 # For windows, cuda-python need the following
 pywin32; platform_system == "Windows"
 
-nvtx
+# For windows, run `conda install -c conda-forge nvtx` instead
+nvtx; platform_system != "Windows"
 
 # Please install PyTorch 2.1 or above for CUDA 11.8 using one of the following commands:
 # pip3 install torch --index-url https://download.pytorch.org/whl/cu118

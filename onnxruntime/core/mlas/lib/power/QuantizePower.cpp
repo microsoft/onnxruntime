@@ -86,11 +86,11 @@ Return Value:
 
         if constexpr (std::is_same_v<OutputType, uint8_t> || std::is_same_v<OutputType, int8_t>) {
             auto CharVector = vec_pack(ShortVector0, ShortVector1);
-            vec_xst(CharVector, 0, Output);
+            vec_xst(CharVector, 0, (int8_t *)Output);
         } else {
             static_assert(std::is_same_v<OutputType, uint16_t> || std::is_same_v<OutputType, int16_t>);
-            vec_xst(ShortVector0, 0, Output);
-            vec_xst(ShortVector1, 0, &Output[8]);
+            vec_xst(ShortVector0, 0, (int16_t *)Output);
+            vec_xst(ShortVector1, 0, (int16_t *)&Output[8]);
         }
 
         Output += 16;

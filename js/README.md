@@ -247,15 +247,15 @@ By default, the WebAssembly artifacts from onnxruntime-web package allows use of
 
 #### Reduced JavaScript bundle file fize
 
-By default, the main bundle file `ort.min.js` of ONNX Runtime Web contains all features. However, its size is over 500kB and for some scenarios we want a smaller sized bundle file, if we don't use all the features. The following table lists all available bundles with their support status of features.
+By default, the main bundle file `ort.all.min.js` of ONNX Runtime Web contains all features. However, its size is over 500kB and for some scenarios we want a smaller sized bundle file, if we don't use all the features. The following table lists all available bundles with their support status of features.
 
-| bundle file name     | file size | file size (gzipped) | WebGL | WASM-core | WASM-proxy | WASM-threads | ES5 backward compatibility |
-| -------------------- | --------- | ------------------- | ----- | --------- | ---------- | ------------ | -------------------------- |
-| ort.es5.min.js       | 594.15KB  | 134.25KB            | O     | O         | O          | O            | O                          |
-| ort.min.js           | 526.02KB  | 125.07KB            | O     | O         | O          | O            | X                          |
-| ort.webgl.min.js     | 385.25KB  | 83.83KB             | O     | X         | X          | X            | X                          |
-| ort.wasm.min.js      | 148.56    | 44KB                | X     | O         | O          | O            | X                          |
-| ort.wasm-core.min.js | 40.56KB   | 12.74KB             | X     | O         | X          | X            | X                          |
+| bundle file name  | file size | file size (gzipped) | WebGL | WASM | WebGPU |
+| ----------------- | --------- | ------------------- | ----- | ---- | ------ |
+| ort.all.min.js    | 682 KB    | 166 KB              | O     | O    | O      |
+| ort.min.js        | 434 KB    | 102 KB              | O     | O    | X      |
+| ort.webgl.min.js  | 411 KB    | 93.6 KB             | O     | X    | X      |
+| ort.webgpu.min.js | 293 KB    | 80.1 KB             | X     | O    | O      |
+| ort.wasm.min.js   | 46 KB     | 14.8 KB             | X     | O    | X      |
 
 #### Build ONNX Runtime as a WebAssembly static library
 
@@ -344,13 +344,13 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
       Full build:
 
       ```sh
-      python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_full_ios_framework_build_settings.json --config Release
+      python tools/ci_build/github/apple/build_apple_framework.py tools/ci_build/github/apple/default_full_apple_framework_build_settings.json --config Release
       ```
 
       Reduced size build:
 
       ```sh
-      python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
+      python tools/ci_build/github/apple/build_apple_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
       ```
 
       The build creates `Headers`, `LICENSE`, and `onnxruntime.xcframework` in `build/iOS_framework/framework_out` directory. From `framework_out` directory, create an archive file named `onnxruntime-c.zip` for a full build or `onnxruntime-mobile-c.zip` for a reduced size build and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.

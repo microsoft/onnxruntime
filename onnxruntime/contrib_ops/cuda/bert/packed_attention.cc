@@ -268,6 +268,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   PackedAttentionParameters parameters;
+  parameters.use_tf32 = UseTF32();
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
@@ -303,17 +304,17 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = parameters.token_count;
   int n = parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size;
   int k = parameters.input_hidden_size;
-  gemm_buffer = this->GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  gemm_buffer = this->template GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
-  // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.
+  // The bias part is not included here since we fuse bias, transpose and output 3 matrices into one cuda kernel.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop, UseTF32()));
 
   constexpr size_t element_size = sizeof(T);
   constexpr bool no_qkv_workspace = false;  // need workspace to add bias
@@ -327,7 +328,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    false,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
-  auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   PackedAttentionData<CudaT> data;

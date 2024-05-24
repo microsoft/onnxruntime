@@ -35,8 +35,12 @@ Status LogicalOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     output = model_builder.GetBuilder().call<emscripten::val>("equal", input0, input1);
   } else if (op_type == "Greater") {
     output = model_builder.GetBuilder().call<emscripten::val>("greater", input0, input1);
+  } else if (op_type == "GreaterOrEqual") {
+    output = model_builder.GetBuilder().call<emscripten::val>("greaterOrEqual", input0, input1);
   } else if (op_type == "Less") {
     output = model_builder.GetBuilder().call<emscripten::val>("lesser", input0, input1);
+  } else if (op_type == "LessOrEqual") {
+    output = model_builder.GetBuilder().call<emscripten::val>("lesserOrEqual", input0, input1);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "LogicalOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -54,7 +58,9 @@ void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& 
       {
           "Equal",
           "Greater",
+          "GreaterOrEqual",
           "Less",
+          "LessOrEqual",
       };
 
   op_registrations.builders.push_back(std::make_unique<LogicalOpBuilder>());

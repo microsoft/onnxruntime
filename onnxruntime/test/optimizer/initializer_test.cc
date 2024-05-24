@@ -19,6 +19,7 @@
 
 namespace onnxruntime {
 namespace test {
+#if !defined(__wasm__)
 namespace {
 template <typename T>
 Status WriteExternalDataFile(gsl::span<const T> data, const PathString& path, ScopedFileDeleter& file_deleter) {
@@ -106,6 +107,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
     EXPECT_THROW(Initializer i(tensor_proto, tensor_data_dir_path), OnnxRuntimeException);
   }
 }
+#endif
 
 template <typename T>
 constexpr ONNX_NAMESPACE::TensorProto_DataType GetTensorProtoDataType();

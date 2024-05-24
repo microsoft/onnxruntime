@@ -33,7 +33,7 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   ORT_CATCH(const OnnxRuntimeException& ex) {
     // overflow in calculating the size thrown by SafeInt.
     ORT_HANDLE_EXCEPTION([&]() {
-      LOGS_DEFAULT(ERROR) << ex.what();
+      LOGS_DEFAULT(ERROR) << ex.what() << " nmemb=" << nmemb << " size=" << size << " alignment=" << alignment;
       ok = false;
     });
   }

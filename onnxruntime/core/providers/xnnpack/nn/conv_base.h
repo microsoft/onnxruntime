@@ -39,14 +39,6 @@ class ConvBase : public XnnpackKernel {
   std::optional<std::pair<float, float>> clip_min_max_;
 
   XnnpackOperator op0_ = nullptr;
-  // we can't have the definition here because we can't import xnnpack/cache.h
-#ifdef XNN_CACHE_ENABLE
-#if XNN_PLATFORM_JIT
-  xnn_code_cache code_cache_;
-#endif
-  xnn_caches xnn_caches_ = {0, 0};
-  xnn_weights_cache weights_cache_;
-#endif
   OpQuantParam quant_param_;
   OpComputeType conv_type_ = OpComputeType::op_compute_type_invalid;
 };

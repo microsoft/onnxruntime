@@ -6,6 +6,7 @@
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
 #include "core/common/gsl.h"
+#include <optional>
 
 #ifdef ORT_NO_EXCEPTIONS
 #define ML_CHECK_BOOL(x) ORT_THROW_HR_IF(E_INVALIDARG, !(x))
@@ -111,25 +112,27 @@ inline uint32_t ComputeElementCountFromDimensions(gsl::span<const uint32_t> dime
 
 #pragma warning(push)
 #pragma warning(disable:4702)
-inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
+inline size_t GetBitSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
 {
     switch (tensorDataType)
     {
-    case MLOperatorTensorDataType::Float: return 4;
-    case MLOperatorTensorDataType::UInt8: return 1;
-    case MLOperatorTensorDataType::Int8: return 1;
-    case MLOperatorTensorDataType::UInt16: return 2;
-    case MLOperatorTensorDataType::Int16: return 2;
-    case MLOperatorTensorDataType::Int32: return 4;
-    case MLOperatorTensorDataType::Int64: return 8;
+    case MLOperatorTensorDataType::Float: return 32;
+    case MLOperatorTensorDataType::UInt4: return 4;
+    case MLOperatorTensorDataType::Int4: return 4;
+    case MLOperatorTensorDataType::UInt8: return 8;
+    case MLOperatorTensorDataType::Int8: return 8;
+    case MLOperatorTensorDataType::UInt16: return 16;
+    case MLOperatorTensorDataType::Int16: return 16;
+    case MLOperatorTensorDataType::Int32: return 32;
+    case MLOperatorTensorDataType::Int64: return 64;
     case MLOperatorTensorDataType::String: ORT_THROW_HR(E_INVALIDARG);
-    case MLOperatorTensorDataType::Bool: return 1;
-    case MLOperatorTensorDataType::Float16: return 2;
-    case MLOperatorTensorDataType::Double: return 8;
-    case MLOperatorTensorDataType::UInt32: return 4;
-    case MLOperatorTensorDataType::UInt64: return 8;
-    case MLOperatorTensorDataType::Complex64: return 8;
-    case MLOperatorTensorDataType::Complex128: return 16;
+    case MLOperatorTensorDataType::Bool: return 8;
+    case MLOperatorTensorDataType::Float16: return 16;
+    case MLOperatorTensorDataType::Double: return 64;
+    case MLOperatorTensorDataType::UInt32: return 32;
+    case MLOperatorTensorDataType::UInt64: return 64;
+    case MLOperatorTensorDataType::Complex64: return 64;
+    case MLOperatorTensorDataType::Complex128: return 128;
     case MLOperatorTensorDataType::Undefined:
     default:
         ORT_THROW_HR(E_INVALIDARG);
@@ -457,7 +460,7 @@ public:
 
     size_t GetUnalignedTensorByteSize() const
     {
-        return GetTotalElementCount() * GetByteSizeFromMlDataType(GetTensorDataType());
+        return (GetTotalElementCount() * GetBitSizeFromMlDataType(GetTensorDataType()) + CHAR_BIT - 1) / CHAR_BIT;
     }
 
     MLOperatorTensorDataType GetTensorDataType() const noexcept
@@ -602,6 +605,18 @@ public:
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
         ORT_THROW_IF_FAILED(m_implPrivate->GetConstantInputTensor(inputIndex, &tensor));
         return MLOperatorTensor(tensor.Get());
+    }
+
+    std::optional<MLOperatorTensor> TryGetConstantCpuInputTensor(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
+        ORT_THROW_IF_FAILED(m_implPrivate->TryGetConstantInputTensor(inputIndex, &tensor));
+        if (tensor && tensor->IsCpuData())
+        {
+            return MLOperatorTensor(tensor.Get());
+        }
+
+        return std::nullopt;
     }
 
     uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const

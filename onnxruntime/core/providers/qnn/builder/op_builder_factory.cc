@@ -63,6 +63,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("SpaceToDepth", *this);
 
     CreateSimpleOpBuilder("GridSample", *this);
+
+    CreateSimpleOpBuilder("LpNormalization", *this);
   }
 
   {
@@ -160,6 +162,14 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreatePadOpBuilder("Pad", *this);
+  }
+
+  {
+    CreateExpandOpBuilder("Expand", *this);
+  }
+
+  {
+    CreateHardSigmoidOpBuilder("HardSigmoid", *this);
   }
 }
 

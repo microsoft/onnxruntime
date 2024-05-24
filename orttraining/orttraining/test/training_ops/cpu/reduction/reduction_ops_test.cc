@@ -275,7 +275,6 @@ void TestMultiTensorReduce(
   test.SetDeterminism(use_determinism);
 
   // Set up random number generator.
-  std::random_device random_device;
   std::mt19937 random_engine(0);
   std::uniform_real_distribution<float> dist(min, max);
   std::uniform_int_distribution<int64_t> dist_int(min_tensor_size, max_tensor_size);
