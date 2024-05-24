@@ -245,10 +245,10 @@ bool IsRelativePathToParentPath(const std::string& path_string) {
 }
 
 // Get the refitted engine cache path 
-std::string GetRefittedEnginePath(std::string engine_cache_path) {
-  std::filesystem::path full_engine_cache_path(engine_cache_path);
+std::string GetRefittedEnginePath(std::string engine_cache) {
+  std::filesystem::path engine_cache_path(engine_cache);
   // The weight-stripped engine has the naming of xxx.stripped.engine
-  std::string refitted_engine_cache_path = full_engine_cache_path.stem().stem().string() + ".engine";
+  std::string refitted_engine_cache_path = engine_cache_path.stem().stem().string() + ".engine";
   return refitted_engine_cache_path;
 }
 
@@ -315,8 +315,24 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                              "TensorRT EP could not deserialize engine from cache: " + engine_cache_path.string());
     }
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
+
+    if (weight_stripped_engine_refit_) {
+      const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
+      std::string weight_stripped_engine_cache = engine_cache_path.string(); 
+      auto status = TensorrtExecutionProvider::RefitEngine(onnx_model_filename,
+                                                           onnx_model_folder_path_,
+                                                           weight_stripped_engine_cache,
+                                                           true /* path check for security */,
+                                                           (*trt_engine_).get(),
+                                                           true /* serialize refitted engine to disk */,
+                                                           detailed_build_log_);
+      if(status != Status::OK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+      }
+    }
   }
 
+/*
   if (weight_stripped_engine_refit_) {
 #if NV_TENSORRT_MAJOR >= 10
     const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
@@ -362,6 +378,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");
 #endif
   }
+*/
   return Status::OK();
 }
 

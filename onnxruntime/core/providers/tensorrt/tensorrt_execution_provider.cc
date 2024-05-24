@@ -2470,6 +2470,61 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   return result;
 }
 
+/**
+ * Refit the weight-stripped engine 
+ */
+common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_filename,
+                                                      std::string& onnx_model_folder_path,
+                                                      std::string& weight_stripped_engine_cath_path,
+                                                      bool path_check,
+                                                      nvinfer1::ICudaEngine* trt_engine,
+                                                      bool serialize_refitted_engine,
+                                                      bool detailed_build_log) {
+#if NV_TENSORRT_MAJOR >= 10
+    std::filesystem::path onnx_model_path{onnx_model_folder_path};
+    onnx_model_path.append(onnx_model_filename);
+    if (path_check && IsAbsolutePath(onnx_model_path.string())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "For security purpose, the ONNX model path should be set with "
+                             "a relative path, but it is an absolute path: " +
+                                 onnx_model_path.string());
+    }
+    if (path_check && IsRelativePathToParentPath(onnx_model_path.string())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "The ONNX model path has '..'. For security purpose, it's not "
+                             "allowed to point outside the directory.");
+    }
+
+    // weight-stripped engine refit logic
+    TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log);
+    auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(*trt_engine, trt_logger));
+    auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
+        nvonnxparser::createParserRefitter(*refitter, trt_logger));
+    if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+    }
+    if (refitter->refitCudaEngine()) {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weight-stripped engine.";
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT EP's IRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+    }
+
+    // serialize the refitted engine to disk
+    if (serialize_refitted_engine) {
+      std::string refitted_engine_cache = GetRefittedEnginePath(weight_stripped_engine_cath_path);
+      nvinfer1::IHostMemory* serialized_engine = trt_engine->serialize();
+      std::ofstream engine_file(refitted_engine_cache, std::ios::binary | std::ios::out);
+      engine_file.write(reinterpret_cast<const char*>(serialized_engine->data()), serialized_engine->size());
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialize the refitted engine to " << refitted_engine_cache;
+    }
+    return Status::OK();
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");
+#endif
+}
+
 common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
@@ -2839,9 +2894,15 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
   const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
-  const std::string engine_cache_path = (weight_stripped_engine_enable_) ? cache_path_prefix + ".stripped.engine" : cache_path_prefix + ".engine";
+  std::string engine_cache_path = cache_path_prefix + ".engine";
   const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
   const std::string profile_cache_path = cache_path_prefix + ".profile";
+
+  // If weight-stripped engine is enabled and serialized refitted engine cache is not present, the engine cache will have ".stripped.engine" appended to the end
+  if (engine_cache_enable_ && weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
+    engine_cache_path = cache_path_prefix + ".stripped.engine";
+    weight_stripped_engine_refit_ = true;
+  }
 
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {
@@ -2882,6 +2943,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not deserialize engine from cache: " + engine_cache_path);
         }
+
       } else if (engine_decryption_enable_ && engine_cache_enable_ && std::filesystem::exists(encrypted_engine_cache_path) && !engine_update) {
         // Decrypt engine
         size_t engine_size = 0;
@@ -3000,6 +3062,19 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                                                                  GetLogger())};
           DumpCtxModel(model_proto.get(), ctx_model_path_);
         }
+      }
+    }
+
+    if (weight_stripped_engine_refit_) {
+      auto status = RefitEngine(model_path_,
+                                onnx_model_folder_path_,
+                                engine_cache_path,
+                                false /* path check for security */,
+                                trt_engine.get(),
+                                true /* serialize refitted engine to disk */,
+                                detailed_build_log_);
+      if(status != Status::OK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
     }
 
@@ -3159,12 +3234,18 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
     }
     const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
-    const std::string engine_cache_path = (weight_stripped_engine_enable_) ? cache_path_prefix + ".stripped.engine" : cache_path_prefix + ".engine";
+    std::string engine_cache_path = cache_path_prefix + ".engine";
     const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
     const std::string profile_cache_path = cache_path_prefix + ".profile";
     std::string timing_cache_path = "";
     if (timing_cache_enable_) {
       timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
+    }
+
+    // If weight-stripped engine is enabled and serialized refitted engine cache is not present, the engine cache will have ".stripped.engine" appended to the end
+    if (engine_cache_enable_ && weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_path)) {
+      engine_cache_path = cache_path_prefix + ".stripped.engine";
+      weight_stripped_engine_refit_ = true;
     }
 
     // Load serialized engine
@@ -3195,6 +3276,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
         trt_engine = trt_state->engine->get();
         context_update = true;
+
       } else if (trt_state->engine_decryption_enable && std::filesystem::exists(encrypted_engine_cache_path) && profile_file) {
         shape_ranges = DeserializeProfileV2(profile_file);
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
@@ -3411,6 +3493,19 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         DumpCtxModel(model_proto_.get(), ctx_model_path_);
       }
       context_update = true;
+    }
+
+    if (weight_stripped_engine_refit_) {
+      auto status = RefitEngine(model_path_,
+                                onnx_model_folder_path_,
+                                engine_cache_path,
+                                false /* path check for security */,
+                                trt_engine,
+                                true /* serialize refitted engine to disk */,
+                                detailed_build_log_);
+      if(status != Status::OK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+      }
     }
 
     if (context_update) {
