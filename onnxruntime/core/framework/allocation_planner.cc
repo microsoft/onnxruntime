@@ -1237,7 +1237,7 @@ class PlannerImpl {
                     }
                   }
                 } else {
-                  LOGS_DEFAULT(VERBOSE) << "Node " << node.Name() << " cannot reuse input buffer for node "
+                  LOGS_DEFAULT(VERBOSE) << "Node " << node->Name() << " cannot reuse input buffer for node "
                                         << producer_node->Name() << " as it has external outputs";
                 }
               }
