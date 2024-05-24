@@ -16,10 +16,12 @@ stages:
     - Setup
     - Windows_Packaging_CUDA
     - Windows_Packaging_TensorRT
-    - Linux_C_API_Packaging_Combined_CUDA
+    - Linux_C_API_Packaging_GPU
+#    This is need for Download Linux CustomOp TestData
+    - Linux_C_API_Packaging_CPU
   condition: succeeded()
   jobs:
-    - job:
+    - job: NuGet_Packaging_GPU
       workspace:
         clean: all
       pool: 'Onnxruntime-Win-CPU-2022'
@@ -55,12 +57,6 @@ stages:
             StepName: 'Download Pipeline Artifact - NuGet'
             ArtifactName: 'onnxruntime-linux-x64-tensorrt'
             TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-        - template: ../templates/flex-downloadPipelineArtifact.yml
-          parameters:
-            StepName: 'Download Pipeline Artifact - NuGet'
-            ArtifactName: 'drop-extra'
-            TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
 
         # Reconstruct the build dir
         - task: PowerShell@2
