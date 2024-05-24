@@ -57,6 +57,7 @@ stages:
     CudaVersion: ${{ parameters.CudaVersion }}
     win_trt_home: ${{ parameters.win_trt_home }}
     win_cuda_home: ${{ parameters.win_cuda_home }}
+    buildJava: ${{ parameters.buildJava }}
 
 - template: nuget-cuda-packaging-stage.yml
   parameters:
