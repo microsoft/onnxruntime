@@ -18,7 +18,10 @@ We previously shared optimization support for [Phi-3 mini](https://onnxruntime.a
 
 **Phi-3-Medium** is a 14B parameter language model. It is available in short-(4K) and long-(128K) context variants. You can now find the **Phi-3-medium-4k-instruct-onnx** and **Phi-3-medium-128K-instruct-onnx** optimized models with **ONNX Runtime and DML** on Huggingface! Check the [Phi-3 Collection](https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3) for the ONNX models.
 
-We also have added support for **Phi-3 Small** models for CUDA capable Nvidia GPUs, other variants coming soon. We have added **Phi-3 Small** models for CUDA capable Nvidia GPUs, other variants coming soon. Support for small in ONNX Generate() API coming soon!
+We also have added support for **Phi-3 Small** models for CUDA capable Nvidia GPUs, other variants coming soon. We have added **Phi-3 Small** models for CUDA capable Nvidia GPUs, other variants coming soon. We also have added support for
+Phi-3 Small
+models for CUDA capable Nvidia GPUs, other variants coming soon. This includes support for Block Sparse kernel in the newly released
+ONNX Runtime 1.18 release via in ONNX Runtime generate() API. 
 
 **ONNXRuntime 1.18** adds new features like improved 4bit quantization support, improved MultiheadAttention performance on CPU, and ONNX Runtime generate() API enhancements to enable easier and efficient run across devices. 
 
@@ -27,18 +30,17 @@ We also have added support for **Phi-3 Small** models for CUDA capable Nvidia GP
 -->
 We are also happy to share that the new optimized ONNX Phi-3-mini for web deployment is available now. You can run Phi3-mini-4K entirely in the browser! Please check out the model [here](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx-web). What’s more, we now have updated the optimized ONNX version for [CPU and mobile](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/tree/main/cpu_and_mobile) with even better performance. And don’t miss [this blog](https://huggingface.co/blog/Emma-N/enjoy-the-power-of-phi-3-with-onnx-runtime) about how to run Phi-3 on your phone and in the browser.
 
+## How to run Phi-3-Medium and Small with ONNX Runtime
 
-## How to run Phi-3-Medium with ONNX Runtime
-
-You can utilize the ONNX Runtime generate() API to run these models seamlessly on any hardware. You can see the detailed instructions [here](https://aka.ms/run-phi3-med-onnx). You can also run the [chat app](https://github.com/microsoft/onnxruntime-genai/tree/main/examples/chat_app) locally.
+You can utilize the ONNX Runtime generate() API to run these models seamlessly. You can see the detailed instructions [here](https://aka.ms/run-phi3-med-onnx). You can also run the [chat app](https://github.com/microsoft/onnxruntime-genai/tree/main/examples/chat_app) locally.
 
 Only one package and model combination is required based on your hardware.
 
 ## 3 easy steps to run
 
-- 1. Download the model
-- 2. Install the generate() API
-- 3. Run the model with [phi3-qa.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3-qa.py)
+ 1. Download the model
+ 2. Install the generate() API
+ 3. Run the model with [phi3-qa.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3-qa.py)
 
 Only execute the steps needed for your hardware.
 
