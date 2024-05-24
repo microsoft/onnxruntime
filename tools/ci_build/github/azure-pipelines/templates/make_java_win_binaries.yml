@@ -15,7 +15,7 @@ steps:
       call gradlew.bat assemble
     workingDirectory: $(Build.SourcesDirectory)\java
     failOnStderr: true
-  condition: eq( $(parameters.assembleOnly), true )
+  condition: eq(${{ parameters.assembleOnly }}, true)
 
 - task: CmdLine@2
   displayName: 'Gradle assemble and check cmake'
@@ -25,7 +25,7 @@ steps:
       call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
     workingDirectory: $(Build.SourcesDirectory)\java
     failOnStderr: true
-  condition: ne( $(parameters.assembleOnly), true )
+  condition: ne(${{ parameters.assembleOnly }}, true)
 
 - task: CmdLine@2
   displayName: 'Copy onnxruntime jar and pom files'
@@ -76,7 +76,7 @@ steps:
       jar cvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
     workingDirectory: $(Build.SourcesDirectory)\java\build\classes\java\test
     failOnStderr: true
-  condition: ne( $(parameters.assembleOnly), true )
+  condition: ne(${{ parameters.assembleOnly }}, true)
 
 - task: CmdLine@2
   displayName: 'Update new testing jar'
@@ -86,7 +86,7 @@ steps:
       jar uvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
     workingDirectory: $(Build.SourcesDirectory)\java\build\resources\test
     failOnStderr: true
-  condition: ne( $(parameters.assembleOnly), true )
+  condition: ne(${{ parameters.assembleOnly }}, true)
 
 - task: CmdLine@2
   displayName: 'clean up the build directory'
