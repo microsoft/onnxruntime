@@ -27,7 +27,7 @@ steps:
     failOnStderr: true
   condition: ne( parameters.assembleOnly, true )
 
-- task:
+- task: CmdLine@2
   displayName: 'Copy onnxruntime jar and pom files'
   inputs:
     script: |
@@ -37,7 +37,7 @@ steps:
       copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
     workingDirectory: $(Build.BinariesDirectory)\RelWithDebInfo
 
-- task:
+- task: CmdLine@2
   displayName: 'Extract onnxruntime jar pom file'
   inputs:
     script: |
