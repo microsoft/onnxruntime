@@ -23,7 +23,6 @@ struct GatherScatterElementsArgs;
 void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indices_shape,
                         TensorShapeVector* p_indices_strides, int64_t axis, GatherScatterElementsArgs& args);
 ONNX_NAMESPACE::TensorProto_DataType GetElementType(size_t element_size);
-ONNX_NAMESPACE::TensorProto_DataType GetElementType(const DataTypeImpl* dtype);
 
 class GatherElements final : public CudaKernel {
  public:

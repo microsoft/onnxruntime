@@ -97,7 +97,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
 #endif
   CoalesceDimensions(data_shape_vec, indices_shape_vec, p_indices_strides_vec, axis, args);
 
-  int dtype = GetElementType(dY->DataType());
+  const int dtype = dY->GetElementType();
   // GatherElementsGrad supports half, bfloat16, float and double only for now, it's element size will not but INT8.
   if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED || dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     ORT_THROW("Unsupported element size by the GatherElementsGrad CUDA kernel");

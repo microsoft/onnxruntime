@@ -118,24 +118,6 @@ ONNX_NAMESPACE::TensorProto_DataType GetElementType(size_t element_size) {
   }
 }
 
-// Get Element Type by DataTypeImpl
-ONNX_NAMESPACE::TensorProto_DataType GetElementType(const DataTypeImpl* dtype) {
-  if (dtype == DataTypeImpl::GetType<int8_t>()) {
-    return ONNX_NAMESPACE::TensorProto_DataType_INT8;
-  } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
-    return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-  } else if (dtype == DataTypeImpl::GetType<float>()) {
-    return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-  } else if (dtype == DataTypeImpl::GetType<double>()) {
-    return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-  } else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
-    return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-  } else {
-    // should not reach here as we validate if the all relevant types are supported in the Compute method
-    return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  }
-}
-
 #define CASE_GATHER_ELEMENTS_IMPL(type)                                         \
   case sizeof(type): {                                                          \
     const type* indices_data = reinterpret_cast<const type*>(indices_data_raw); \

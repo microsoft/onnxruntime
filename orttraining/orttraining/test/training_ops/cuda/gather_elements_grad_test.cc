@@ -233,8 +233,8 @@ TEST(GatherElementsGrad, Strided_BFloat16) {
     LOGS_DEFAULT(WARNING) << "Hardware does not support BFP16";
     return;
   }
-#endif
   RunKernelComputeTestWrapper<BFloat16>();
+#endif
 }
 
 #endif
