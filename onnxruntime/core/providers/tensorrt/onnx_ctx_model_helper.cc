@@ -252,6 +252,11 @@ std::string GetRefittedEnginePath(std::string engine_cache) {
   return refitted_engine_cache_path;
 }
 
+bool IsWeightStrippedEngineCache(std::filesystem::path& engine_cache_path) {
+  // The weight-stripped engine cache has the naming of xxx.stripped.engine
+  return engine_cache_path.stem().extension().string() == ".stripped";
+}
+
 Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer) {
   if (!ValidateEPCtxNode(graph_viewer)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EP Context node");
@@ -287,6 +292,11 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     // The engine cache and context model (current model) should be in the same directory
     std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
     auto engine_cache_path = ctx_model_dir.append(cache_path);
+
+    // If it's a weight-stripped engine cache, it needs to be refitted even though the refit flag is not enabled
+    if (!weight_stripped_engine_refit_) {
+      weight_stripped_engine_refit_ = IsWeightStrippedEngineCache(engine_cache_path);
+    }
 
     // If the serialized refitted engine is present, use it directly without refitting the engine again
     if (weight_stripped_engine_refit_) {
