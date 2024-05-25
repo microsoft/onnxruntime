@@ -1235,7 +1235,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
 
   // incase the EP context is dumped the engine cache has to be enabled
-  auto enable_engine_cache_for_ep_context_model = [this] () {
+  auto enable_engine_cache_for_ep_context_model = [this]() {
     if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
       engine_cache_enable_ = true;
     }
