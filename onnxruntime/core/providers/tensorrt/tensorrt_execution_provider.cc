@@ -1234,6 +1234,13 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
 
+  // incase the EP context is dumped the engine cache has to be enabled
+  auto enable_engine_cache_for_ep_context_model = [this] () {
+    if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
+      engine_cache_enable_ = true;
+    }
+  };
+
   // Get environment variables
   if (info.has_trt_options) {
     max_partition_iterations_ = info.max_partition_iterations;
@@ -1259,10 +1266,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dump_ep_context_model_ = info.dump_ep_context_model;
     ep_context_file_path_ = info.ep_context_file_path;
     ep_context_embed_mode_ = info.ep_context_embed_mode;
-    // incase the EP context is dumped the engine cache has to be enabled
-    if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
-      engine_cache_enable_ = true;
-    }
+    enable_engine_cache_for_ep_context_model();
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
       cache_prefix_ = info.engine_cache_prefix;
@@ -1396,10 +1400,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         ep_context_embed_mode_ = std::stoi(ep_context_embed_mode_env);
       }
 
-      // incase the EP context is dumped the engine cache has to be enabled
-      if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
-        engine_cache_enable_ = true;
-      }
+      enable_engine_cache_for_ep_context_model();
 
       if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
         const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
