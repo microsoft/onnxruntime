@@ -24,64 +24,36 @@ SQ4BitGemmPackQuantBDataSize(
 }
 
 static void
-SQ4BitGemmPackQuantBDataAndBlkSum(
-    size_t N,
-    size_t K,
-    size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    const std::byte* QuantBDataBegin,
-    std::byte* PackedQuantBDataBegin,
-    const float* QuantBScaleBegin,
-    const std::byte* QuantBZPBegin,
-    float* BlockSumBegin,
-    MLAS_THREADPOOL* ThreadPool
-)
+PackQuantB(
+  const std::byte* QuantBDataBegin,
+  std::byte* PackedQuantBDataBegin,
+  MLAS_THREADPOOL* ThreadPool,
+  const size_t N,
+  const size_t BlockCountK,
+  const size_t BlkLen,
+  const size_t SubBlkLen)
 {
     constexpr size_t BlkBitWidth = 4;
-
-    assert(BlkLen >= 16 && BlkLen % 16 == 0);
-
-    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-    const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t BlkBytePairCount = BlkLen / 4;
-
-    size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
-    if (BlkLen == 32 && ComputeType == CompInt8) {
-        SubBlkLen = 64;
-    }
+    const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
 
     const size_t SubBlkDataSize = SubBlkLen / 2;
     const size_t SubBlkBytePairCount = SubBlkLen / 4;
     const size_t SubBlkCountK = MlasDivRoundup(BlockCountK * BlkLen, SubBlkLen);
     const size_t Iterations = N * SubBlkCountK;  // one iteration per sub block
 
-    //
-    // For SubBlkLen == 16, pack 16 4-bit values (8 bytes) at a time like this:
-    //
-    // src: | v0 v1 | v2 v3 | v4 v5 | v6 v7 | v8 v9 | vA vB | vC vD | vE vF |
-    //   =>
-    // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
-    //
+    // for avx2
+    // dst: | v0 v32 | v1 v33 | ... | v30 v62 | v31 v63 |
+    // for the remaining blk, it shall be:
+    // dst blklen32: | v0 v16 | v1 v17 | ... | v14 v30 | v15 v31 |
+    // dst blklen16: | v0 v8 | v1 v9 | v2 v11 | v3 v12 | v4 v13 | v5 v14 | v6 v15 | v7 v16 |
 
-    //
-    // For SubBlkLen == 32, pack 32 4-bit values (16 bytes) at a time like this:
-    //
-    // src: | v0  v1  | v2  v3  | ... | v28 v29 | v30 v31 |
-    //   =>
-    // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
-    //
-
-    //
-    // For SubBlkLen == 64, pack 32 4-bit values (16 bytes) at a time like this:
-    //
-    // src: | v0  v1  | v2  v3  | ... | v60 v61 | v62 v63 |
-    //   =>
-    // dst: | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
-    //
-    // When BlkLen = 32 for the remaining blk, it shall be:
-    // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
-    //
-
+    // for avx512
+    // dst: | v0 v64 | v1 v65 | ... | v62 v126 | v63 v127 |
+    // for the remaining blk, it shall be:
+    // dst blklen64: | v0 v32 | v1 v33 | ... | v30 v62 | v31 v63 |
+    // dst blklen32: | v0 v16 | v1 v17 | ... | v14 v30 | v15 v31 |
+    // dst blklen16: | v0 v8 | v1 v9 | v2 v11 | v3 v12 | v4 v13 | v5 v14 | v6 v15 | v7 v16 |
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
         [&](ptrdiff_t tid) {
@@ -94,31 +66,52 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 
             size_t PackBytePairCount = SubBlkBytePairCount;
             size_t PackDataSize = SubBlkDataSize;
-            if (SubBlkLen > BlkLen && k_subblk == SubBlkCountK - 1) {
-              // this is the last subblk of the column. check if it extends out of the
-              // BlockCountK. If it does, we shall pack per blocks so that can compute
-              // on each block instead of each subblk.
-                if (SubBlkLen * SubBlkCountK > BlkLen * BlockCountK) {
-                  PackBytePairCount = BlkBytePairCount;
-                    PackDataSize = BlkDataSize;
-                }
-            }
 
-            for (size_t byte_pair_idx = 0; byte_pair_idx < PackBytePairCount; ++byte_pair_idx) {
+            auto pack_subblk = [](
+              const std::byte* QuantBData, std::byte* PackedQuantBData,
+              size_t pack_byte_pair_count, size_t pack_data_size) {
+            for (size_t byte_pair_idx = 0; byte_pair_idx < pack_byte_pair_count; ++byte_pair_idx) {
                 const std::byte src0 = QuantBData[byte_pair_idx];
-                const std::byte src1 = QuantBData[byte_pair_idx + PackDataSize / 2];
+                const std::byte src1 = QuantBData[byte_pair_idx + pack_data_size / 2];
 
                 std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
                 std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
 
                 dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
                 dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
+            } };
+
+            if (SubBlkLen > BlkLen && k_subblk == SubBlkCountK - 1 &&
+                SubBlkLen * SubBlkCountK > BlkLen * BlockCountK) {
+                // this is the last subblk of the column. check if it extends out of the
+                // BlockCountK. If it does, we shall pack per blocks so that can compute
+                // on each block instead of each subblk.
+                PackBytePairCount = BlkBytePairCount;
+                PackDataSize = BlkDataSize;
+                const size_t k_blks_remaining = BlockCountK - (SubBlkCountK - 1) * SubBlkLen / BlkLen;
+                for (size_t k = 0; k < k_blks_remaining; k++) {
+                    pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData + k * BlkLen / 2, PackBytePairCount, PackDataSize);
+                }
             }
+            else
+            {
+                pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
+            }
+
         }
     );
+}
 
-    MlasTrySimpleParallel(
-        ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
+static void
+ComputePackBlkSum(
+  size_t N,
+  const float* QuantBScaleBegin,
+  const std::byte* QuantBZPBegin,
+  float* BlockSumBegin,
+  MLAS_THREADPOOL* ThreadPool,
+  const size_t BlockCountK)
+{
+    MlasTrySimpleParallel(ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
             const size_t n = tid / BlockCountK;
             const size_t k_blk = tid % BlockCountK;
 
@@ -392,6 +385,19 @@ hsum_float_8(const __m256 x)
     return _mm_cvtss_f32(res);
 }
 
+static inline float
+hsum_float_16(const __m512 x)
+{
+    __m256 hi = _mm512_extractf32x8_ps(x, 1);
+    __m256 lo = _mm512_castps512_ps256(x);
+    hi = _mm256_add_ps(hi, lo);
+    __m128 hi128 = _mm256_extractf128_ps(hi, 1);
+    __m128 lo128 = _mm256_castps256_ps128(hi);
+    hi128 = _mm_add_ps(hi128, lo128);
+    hi128 = _mm_add_ps(hi128, _mm_movehl_ps(hi128, hi128));
+    hi128 = _mm_add_ss(hi128, _mm_movehdup_ps(hi128));
+    return _mm_cvtss_f32(hi128);
+}
 /**
  * @brief Horizontally sum 4 vectors and store
  *        the results in the returned vector
@@ -423,5 +429,28 @@ FoldAccumulators(const __m512& acc0, const __m512& acc1, const __m512& acc2, con
     __m256 acc_y =
         _mm256_add_ps(_mm512_extractf32x8_ps(acc_lo0123, 0), _mm512_extractf32x8_ps(acc_lo0123, 1));
     return _mm_add_ps(_mm256_extractf32x4_ps(acc_y, 0), _mm256_extractf32x4_ps(acc_y, 1));
+}
+
+static MLAS_FORCEINLINE __m128i
+convert_2_ps_to_epi8(__m256 v0, __m256 v1)
+{
+    __m256i v0_8_epi32 = _mm256_cvtps_epi32(v0);
+    __m256i v1_8_epi32 = _mm256_cvtps_epi32(v1);
+
+    __m128i v0_8_epi16 = _mm_packs_epi32(_mm256_extractf128_si256(v0_8_epi32, 0), _mm256_extractf128_si256(v0_8_epi32, 1));
+    __m128i v1_8_epi16 = _mm_packs_epi32(_mm256_extractf128_si256(v1_8_epi32, 0), _mm256_extractf128_si256(v1_8_epi32, 1));
+
+    return _mm_packs_epi16(v0_8_epi16, v1_8_epi16);
+}
+
+// horizontally add 8 int32_t
+static MLAS_FORCEINLINE int
+hsum_8_epi32(const __m256i a_8_epi32)
+{
+    const __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(a_8_epi32), _mm256_extractf128_si256(a_8_epi32, 1));
+    const __m128i hi64 = _mm_unpackhi_epi64(sum128, sum128);
+    const __m128i sum64 = _mm_add_epi32(hi64, sum128);
+    const __m128i hi32 = _mm_shuffle_epi32(sum64, _MM_SHUFFLE(2, 3, 0, 1));
+    return _mm_cvtsi128_si32(_mm_add_epi32(sum64, hi32));
 }
 }  // namespace

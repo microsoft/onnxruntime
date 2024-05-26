@@ -1048,29 +1048,6 @@ SQ4BitGemmM1Kernel_CompFp32_avx2(
     }
 }
 
-MLAS_FORCEINLINE __m128i
-convert_2_ps_to_epi8(__m256 v0, __m256 v1)
-{
-    __m256i v0_8_epi32 = _mm256_cvtps_epi32(v0);
-    __m256i v1_8_epi32 = _mm256_cvtps_epi32(v1);
-
-    __m128i v0_8_epi16 = _mm_packs_epi32(_mm256_extractf128_si256(v0_8_epi32, 0), _mm256_extractf128_si256(v0_8_epi32, 1));
-    __m128i v1_8_epi16 = _mm_packs_epi32(_mm256_extractf128_si256(v1_8_epi32, 0), _mm256_extractf128_si256(v1_8_epi32, 1));
-
-    return _mm_packs_epi16(v0_8_epi16, v1_8_epi16);
-}
-
-// horizontally add 8 int32_t
-static inline int
-hsum_8_epi32(const __m256i a_8_epi32)
-{
-    const __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(a_8_epi32), _mm256_extractf128_si256(a_8_epi32, 1));
-    const __m128i hi64 = _mm_unpackhi_epi64(sum128, sum128);
-    const __m128i sum64 = _mm_add_epi32(hi64, sum128);
-    const __m128i hi32 = _mm_shuffle_epi32(sum64, _MM_SHUFFLE(2, 3, 0, 1));
-    return _mm_cvtsi128_si32(_mm_add_epi32(sum64, hi32));
-}
-
 void MLASCALL
 QuantizeARow_CompInt8_avx2(
     size_t BlkLen,
@@ -1149,6 +1126,37 @@ QuantizeARow_CompInt8_avx2(
         *AScaledBlkSum = scale * hsum_8_epi32(sum_8_epi32);
         AScaledBlkSum++;
         blob += BlkLen;
+    }
+}
+
+static void
+SQ4BitGemmPackQuantBDataAndBlkSum(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    const float* QuantBScaleBegin,
+    const std::byte* QuantBZPBegin,
+    float* BlockSumBegin,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    assert(BlkLen >= 16 && BlkLen % 16 == 0);
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+
+    // TODO: always use SubBlkLen = 64 in CompInt8
+    size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
+    if (BlkLen == 32 && ComputeType == CompInt8) {
+        SubBlkLen = 64;
+    }
+
+    PackQuantB(QuantBDataBegin, PackedQuantBDataBegin, ThreadPool, N, BlockCountK, BlkLen, SubBlkLen);
+
+    if (QuantBScaleBegin) {
+        ComputePackBlkSum(N, QuantBScaleBegin, QuantBZPBegin, BlockSumBegin, ThreadPool, BlockCountK);
     }
 }
 

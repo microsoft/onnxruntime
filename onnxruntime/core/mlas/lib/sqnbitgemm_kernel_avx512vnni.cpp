@@ -238,12 +238,44 @@ SQ4BitGemmM1Kernel_CompInt8_avx512vnni(
 }
 
 void MLASCALL
-MlasQ80BlkQuantRow_avx512(
+QuantizeARow_CompInt8_avx512(
     size_t BlkLen,
     const float* A,
     size_t CountK,
-    std::byte* QuantA
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum  // scale_k * Sum_blklen(a_i)
 );
+
+static void
+SQ4BitGemmPackQuantBDataAndBlkSum(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    const float* QuantBScaleBegin,
+    const std::byte* QuantBZPBegin,
+    float* BlockSumBegin,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    assert(BlkLen >= 16 && BlkLen % 16 == 0);
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+
+    size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
+    if (BlkLen == 32 && ComputeType == CompInt8) {
+        SubBlkLen = 64;
+    }
+
+    PackQuantB(QuantBDataBegin, PackedQuantBDataBegin, ThreadPool, N, BlockCountK, BlkLen, SubBlkLen);
+
+    if (QuantBScaleBegin) {
+        ComputePackBlkSum(N, QuantBScaleBegin, QuantBZPBegin, BlockSumBegin, ThreadPool, BlockCountK);
+    }
+}
 
 //
 // Kernel dispatch structure definition.
@@ -259,7 +291,8 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
     d.SQ4BitGemmM1Kernel_CompInt8 = SQ4BitGemmM1Kernel_CompInt8_avx512vnni;
-    d.QuantizeARow_CompInt8 = MlasQ80BlkQuantRow_avx512;
+    d.QuantizeARow_CompInt8 = nullptr;
+    d.QuantizeARow_CompInt8_2 = QuantizeARow_CompInt8_avx512;
 
     return d;
 }();

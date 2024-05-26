@@ -7,7 +7,7 @@
 #include "sqnbitgemm_kernel_avx_common.h"
 
 
-__m256
+MLAS_FORCEINLINE __m256
 load_and_broadcast_4_scale_2(const float* scale)
 {
     // 3 2 1 0 3 2 1 0 (7)
@@ -506,7 +506,6 @@ Q4Int8GemmR1xC4BlkLen16Avx2(
             }
 
             while (k_blks_remaining-- > 0) {
-                // load A
                 const std::byte* QuantABlk0 = QuantAPtr;
                 const __m256i av_00_epi8 = load_16_epi8_as_epi16(QuantABlk0);
 
@@ -614,7 +613,6 @@ Q4Int8GemmR1xC1BlkLen16Avx2(
                 QuantBScalePtr += PerAccuBlk4;
             }
 
-            // TODO: use a loop in case PerAccuBlk2 is not 2.
             while (k_blks_remaining-- > 0) {
                 const __m256i av_16_epi16 = load_16_epi8_as_epi16(QuantAPtr);
                 const float& scale_a00 = *QuantAScalePtr;
