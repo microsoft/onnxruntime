@@ -292,6 +292,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     // The engine cache and context model (current model) should be in the same directory
     std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
     auto engine_cache_path = ctx_model_dir.append(cache_path);
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] GetEpContextFromGraph engine_cache_path: " + engine_cache_path.string();
 
     // If it's a weight-stripped engine cache, it needs to be refitted even though the refit flag is not enabled
     if (!weight_stripped_engine_refit_) {
@@ -302,6 +303,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     if (weight_stripped_engine_refit_) {
       const std::filesystem::path refitted_engine_cache_path = GetRefittedEnginePath(engine_cache_path.string());
       if (std::filesystem::exists(refitted_engine_cache_path)) {
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " + refitted_engine_cache_path.string() + " exists.";
         engine_cache_path = refitted_engine_cache_path.string();
         weight_stripped_engine_refit_ = false;
       }
