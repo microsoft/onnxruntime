@@ -244,11 +244,20 @@ bool IsRelativePathToParentPath(const std::string& path_string) {
 #endif
 }
 
-// Get the refitted engine cache path
-std::string GetRefittedEnginePath(std::string engine_cache) {
-  std::filesystem::path engine_cache_path(engine_cache);
-  // The weight-stripped engine has the naming of xxx.stripped.engine
-  std::string refitted_engine_cache_path = engine_cache_path.stem().stem().string() + ".engine";
+/*
+ * Get the weight-refitted engine cache path from a weight-stripped engine cache path
+ *
+ * Weight-stipped engine:
+ * An engine with weights stripped and its size is smaller than a regualr engine.
+ * The cache name of weight-stripped engine is TensorrtExecutionProvider_TRTKernel_XXXXX.stripped.engine
+ *
+ * Weight-refitted engine:
+ * An engine that its weights have been refitted and it's simply a regular engine.
+ * The cache name of weight-refitted engine is TensorrtExecutionProvider_TRTKernel_XXXXX.engine
+ */
+std::string GetWeightRefittedEnginePath(std::string stripped_engine_cache) {
+  std::filesystem::path stripped_engine_cache_path(stripped_engine_cache);
+  std::string refitted_engine_cache_path = stripped_engine_cache_path.stem().stem().string() + ".engine";
   return refitted_engine_cache_path;
 }
 
@@ -301,7 +310,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
 
     // If the serialized refitted engine is present, use it directly without refitting the engine again
     if (weight_stripped_engine_refit_) {
-      const std::filesystem::path refitted_engine_cache_path = GetRefittedEnginePath(engine_cache_path.string());
+      const std::filesystem::path refitted_engine_cache_path = GetWeightRefittedEnginePath(engine_cache_path.string());
       if (std::filesystem::exists(refitted_engine_cache_path)) {
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " + refitted_engine_cache_path.string() + " exists.";
         engine_cache_path = refitted_engine_cache_path.string();

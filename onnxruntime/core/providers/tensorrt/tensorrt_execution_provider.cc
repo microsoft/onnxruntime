@@ -2534,7 +2534,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
 
   // serialize the refitted engine to disk
   if (serialize_refitted_engine) {
-    std::string refitted_engine_cache = GetRefittedEnginePath(weight_stripped_engine_cath_path);
+    std::string refitted_engine_cache = GetWeightRefittedEnginePath(weight_stripped_engine_cath_path);
     nvinfer1::IHostMemory* serialized_engine = trt_engine->serialize();
     std::ofstream engine_file(refitted_engine_cache, std::ios::binary | std::ios::out);
     engine_file.write(reinterpret_cast<const char*>(serialized_engine->data()), serialized_engine->size());
