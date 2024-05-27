@@ -61,6 +61,7 @@ class DataOps {
   std::set<Pairs> supported_types_cpu_;
   std::set<Pairs> supported_types_gpu_;
   std::set<Pairs> supported_types_initializer_;
+  bool npu_qdq_optimizer_enabled_;
 
  protected:
   void populate_op_mode_supported();
@@ -73,8 +74,11 @@ class DataOps {
 
  public:
   DataOps(const GraphViewer& graph_viewer_param, VersionNum ver,
-          const std::string dev_id)
-      : graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id) {
+          const std::string dev_id, const bool npu_qdq_optimizer_enabled)
+      : graph_viewer_(graph_viewer_param),
+        version_id_(ver),
+        device_id_(dev_id),
+        npu_qdq_optimizer_enabled_(npu_qdq_optimizer_enabled) {
     populate_op_mode_supported();
     populate_types_supported();
   }
