@@ -6,7 +6,6 @@ parameters:
 - name: assembleOnly
   type: boolean
 steps:
-
 - task: CmdLine@2
   displayName: 'Gradle assemble'
   inputs:
