@@ -254,10 +254,17 @@ export declare namespace InferenceSession {
    *
    * @see https://www.w3.org/TR/webnn/#dictdef-mlcontextoptions
    */
-  export interface WebNNContextOptions extends WebNNExecutionProviderName {
+  export interface WebNNContextOptions {
     deviceType?: 'cpu'|'gpu'|'npu';
     numThreads?: number;
     powerPreference?: 'default'|'low-power'|'high-performance';
+  }
+
+  /**
+   * Represents a set of options for WebNN execution provider without MLContext.
+   */
+  export interface WebNNOptionsWithoutMLContext extends WebNNExecutionProviderName, WebNNContextOptions {
+    context?: never;
   }
 
   /**
@@ -287,7 +294,7 @@ export declare namespace InferenceSession {
   /**
    * Options for WebNN execution provider.
    */
-  export type WebNNExecutionProviderOption = WebNNContextOptions|WebNNOptionsWithMLContext|WebNNOptionsWebGpu;
+  export type WebNNExecutionProviderOption = WebNNOptionsWithoutMLContext|WebNNOptionsWithMLContext|WebNNOptionsWebGpu;
 
   // #endregion
 
