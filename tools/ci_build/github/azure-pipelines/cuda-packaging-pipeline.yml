@@ -102,7 +102,7 @@ stages:
       PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
   # this is needed for certain artifacts to be published
-  - stage: Linux_C_API_Packaging_CPU_x64
+  - stage: Linux_C_API_Packaging_CPU
     dependsOn: [ ]
     jobs:
     - template: templates/c-api-linux-cpu.yml
@@ -127,7 +127,15 @@ stages:
       win_cuda_home: ${{ variables.win_cuda_home }}
       DoEsrp: ${{ parameters.DoEsrp }}
       IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-      buildJava: false
+      buildJava: true
       buildNodejs: false
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
+
+  - template: stages/download-java-tools-stage.yml
+
+  - template: stages/java-cuda-packaging-stage.yml
+    parameters:
+      CudaVersion: ${{ parameters.CudaVersion }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}

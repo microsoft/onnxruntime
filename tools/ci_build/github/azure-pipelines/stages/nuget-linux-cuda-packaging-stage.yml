@@ -8,13 +8,11 @@ parameters:
   type: string
 - name: buildJava
   type: boolean
-  default: false
 - name: buildNodejs
   type: boolean
-  default: false
 
 stages:
-- stage: Linux_C_API_Packaging_Combined_CUDA
+- stage: Linux_C_API_Packaging_GPU
   dependsOn: []
   jobs:
   - job: Linux_C_API_Packaging_CUDA
@@ -39,8 +37,8 @@ stages:
     - template: ../templates/set-version-number-variables-step.yml
     - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/gpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/default/gpu
         DockerBuildArgs: "
         --build-arg BUILD_UID=$( id -u )
         --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
@@ -51,14 +49,16 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build CUDA C API Package'
 
-    - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-        arch: 'linux-x64'
-        buildConfig: 'Release'
-        artifactName: 'onnxruntime-java-linux-x64-cuda'
-        version: '$(OnnxRuntimeVersion)'
-        libraryName: 'libonnxruntime.so'
-        nativeLibraryName: 'libonnxruntime4j_jni.so'
+    - ${{ if eq(parameters.buildJava, true) }}:
+      - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
+        parameters:
+          arch: 'linux-x64'
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-java-linux-x64-cuda'
+          version: '$(OnnxRuntimeVersion)'
+          libraryName: 'libonnxruntime.so'
+          nativeLibraryName: 'libonnxruntime4j_jni.so'
+
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
@@ -147,10 +147,11 @@ stages:
         condition: 'succeeded'
     - template: ../templates/clean-agent-build-directory-step.yml
   # Linux CUDA Combined Testing and Publishing
+- stage: Linux_Packaging_combined_CUDA
+  dependsOn:
+  - Linux_C_API_Packaging_GPU
+  jobs:
   - job: Linux_Packaging_combined_CUDA
-    dependsOn:
-    - Linux_C_API_Packaging_CUDA
-    - Linux_C_API_Packaging_TensorRT
     condition: succeeded()
     workspace:
       clean: all
