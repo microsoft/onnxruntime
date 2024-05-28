@@ -11,6 +11,7 @@ parameters:
 
 trigger: none
 
+stages:
 - template: templates/py-packaging-stage.yml
   parameters:
     build_py_parameters: --enable_training
