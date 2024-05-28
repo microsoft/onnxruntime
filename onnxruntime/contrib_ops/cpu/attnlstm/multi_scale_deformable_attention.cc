@@ -14,11 +14,11 @@ MultiScaleDeformableAttention::MultiScaleDeformableAttention(const OpKernelInfo&
 }
 
 Status MultiScaleDeformableAttention::Compute(_Inout_ OpKernelContext* context) const {
-  const auto* value = context->Input<Tensor>(0);
-  const auto* value_spatial_shapes = context->Input<Tensor>(1);
-  const auto* reference_points = context->Input<Tensor>(2);
-  const auto* sampling_locations = context->Input<Tensor>(3);
-  const auto* attention_weights = context->Input<Tensor>(4);
+  const auto* value = context->Input<Tensor>(0);  // Shape: [1, S, M, D]
+  const auto* value_spatial_shapes = context->Input<Tensor>(1); // Shape: [L, 2]
+  const auto* reference_points = context->Input<Tensor>(2); // Shape: [1, L, Q, 2]
+  const auto* sampling_locations = context->Input<Tensor>(3); // Shape: [1, L, Q, M, P, 2]
+  const auto* attention_weights = context->Input<Tensor>(4);  // Shape: [1, L, Q, M, P]
 
   const auto& value_input_shape = value->Shape();
   const auto& value_spatial_shapes_input_shape = value_spatial_shapes->Shape();
@@ -30,7 +30,7 @@ Status MultiScaleDeformableAttention::Compute(_Inout_ OpKernelContext* context) 
   const int64_t P = attention_weights_input_shape[4];
   const int64_t Q = attention_weights_input_shape[2];
 
-  auto* output = context->Output(0, { 1, Q, M*D });
+  auto* output = context->Output(0, { 1, Q, M*D }); // Shape: [1, Q, M*D]
   float * output_ptr = output->MutableData<float>();
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
@@ -40,7 +40,7 @@ Status MultiScaleDeformableAttention::Compute(_Inout_ OpKernelContext* context) 
   if(D == 16 && M == 8 && P == 4) {
     // TODO: check AVX512 availability
     // AVX512 implementation
-    ComputeInternal(
+    ComputeAVX512(
       value->Data<float>(),
       value_spatial_shapes->Data<int64_t>(),
       reference_points->Data<float>(),

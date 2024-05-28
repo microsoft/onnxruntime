@@ -13,7 +13,7 @@ class MultiScaleDeformableAttention final : public OpKernel {
   MultiScaleDeformableAttention(const OpKernelInfo& info);
   [[nodiscard]] Status Compute(_Inout_ OpKernelContext* context) const override;
   private:
-  void ComputeInternal(
+  void ComputeAVX512(
     const float* value,
     const int64_t* value_spatial_shapes,
     const float* reference_points,

@@ -23,7 +23,7 @@
 
 namespace onnxruntime {
 namespace contrib {
-  void MultiScaleDeformableAttention::ComputeInternal(
+  void MultiScaleDeformableAttention::ComputeAVX512(
     const float* value,
     const int64_t* value_spatial_shapes,
     const float* reference_points,
