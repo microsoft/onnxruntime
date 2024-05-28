@@ -34,6 +34,9 @@ parameters:
   displayName: Specific Artifact's BuildId
   type: string
   default: '0'
+  
+- name: buildJava
+  type: boolean
 
 stages:
 # Windows CUDA without TensorRT Packaging
@@ -49,7 +52,7 @@ stages:
     CudaVersion: ${{ parameters.CudaVersion }}
     buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: true
+    buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
@@ -67,7 +70,7 @@ stages:
     packageName: x64-tensorrt
     buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }}  --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: true
+    buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}

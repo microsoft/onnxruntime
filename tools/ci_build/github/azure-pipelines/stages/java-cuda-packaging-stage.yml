@@ -7,11 +7,13 @@ parameters:
   type: string
 
 stages:
-- stage: Java_GPU_Packaging
+- stage: Jar_Packaging_GPU
   dependsOn:
-  - Linux_C_API_Packaging_Combined_CUDA
-  - Windows_Packaging_CUDA
-  - Windows_Packaging_TensorRT
+  - Linux_C_API_Packaging_GPU
+# Because Java Jar is published only after Windows Packaging GPU Testing stage we need to depend on the Testing stages
+# TODO: change Windows_Packaging_*_Testing to Windows_Packaging_* once we finish PRODUCT BACKLOG ITEM 34666
+  - Windows_Packaging_CUDA_Testing
+  - Windows_Packaging_TensorRT_Testing
   - Download_Java_Tools
   jobs:
   - job: Jar_Packaging_GPU
