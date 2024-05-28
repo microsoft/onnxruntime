@@ -4,6 +4,7 @@ plugins {
 	id 'signing'
 	id 'jacoco'
 	id "com.diffplug.spotless" version "6.25.0"
+	id 'net.linguica.maven-settings' version '0.5'
 }
 
 allprojects {
@@ -253,13 +254,13 @@ if (!publishToAdo) {
 		}
 	}
 } else {
-def systemBuildDir = System.properties['Build.BinariesDirectory']
-def customJarPath = "$systemBuildDir/final-jar/onnxruntime-java-gpu.jar"
+def artifactPath = System.properties['artifactPath']
+def customJarPath = "$artifactPath/bundle.jar"
 	publishing {
 		publications {
 			maven(MavenPublication) {
 				groupId = project.group
-				artifactId = mavenArtifactId
+				artifactId = 'onnxruntime_gpu'
 				artifact(customJarPath)
 				pom {
 					name = onnx-runtime

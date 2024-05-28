@@ -214,8 +214,11 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/final-jar'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
-    - task: Gradle@3
-      inputs:
-        tasks: 'publish'
+    - powershell: |
+        $artifactPath = "$(Build.BinariesDirectory)/final-jar"
+        del $artifactPath\testing.jar
+        jar cvf bundle.jar -C $artifactPath $artifactPath
+        ./gradlew publish
+      workingDirectory: '$(Build.SourcesDirectory)/java'
 
 
