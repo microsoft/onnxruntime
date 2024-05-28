@@ -152,6 +152,7 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
     endif()
   elseif (CMAKE_CROSSCOMPILING)
     message("CMAKE_HOST_SYSTEM_NAME: ${CMAKE_HOST_SYSTEM_NAME}")
+    set(HOST_CAN_COMPILE_PROTOC OFF)
     if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
       if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
         FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win64} URL_HASH SHA1=${DEP_SHA1_protoc_win64})
@@ -159,6 +160,11 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
       elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
         FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
         FetchContent_Populate(protoc_binary)
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "ARM64" AND onnxruntime_target_platform STREQUAL "ARM64EC")
+	# ARM64 host can compile arm64ec binaries, so allow it to compile protoc.
+	# Alternatively, ARM64EC is also compatible with x64 binaries, so we could instead download the
+	# protoc_win64 executable.
+	set(HOST_CAN_COMPILE_PROTOC ON)
       endif()
 
       if(protoc_binary_SOURCE_DIR)
@@ -185,9 +191,10 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
       endif()
     endif()
 
-    if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
+    if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT HOST_CAN_COMPILE_PROTOC)
       message(FATAL_ERROR "ONNX_CUSTOM_PROTOC_EXECUTABLE must be set to cross-compile.")
     endif()
+    unset(HOST_CAN_COMPILE_PROTOC)
   endif()
 endif()
 
