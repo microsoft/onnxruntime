@@ -1547,6 +1547,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled as GPU arch < 80. ";
       engine_hw_compatible_ = false;
     }
+    else if (std::stoi(compute_capability_) == 87) {
+      LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled on Jetson Orin. ";
+      engine_hw_compatible_ = false;
+    }
 #else
     LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled as TRT < 8.6. ";
     engine_hw_compatible_ = false;
