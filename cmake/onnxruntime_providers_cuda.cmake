@@ -200,10 +200,18 @@
     endif()
 
     if (onnxruntime_USE_TRITON_KERNEL)
-      # compile triton kernel, generate .a and .h files
-      include(onnxruntime_compile_triton_kernel.cmake)
-      compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
-      add_dependencies(${target} onnxruntime_triton_kernel)
+      set(triton_kernel_obj_file "${REPO_ROOT}/precompiled_triton_kernels/triton_kernel_infos.a")
+      set(triton_kernel_header "${REPO_ROOT}/precompiled_triton_kernels/triton_kernel_infos.h")
+      set(triton_kernel_header_dir "${REPO_ROOT}/precompiled_triton_kernels")
+
+      # If the triton kernels were not precompiled, compile them,
+      # generate .a and .h files, and overwrite paths to results.
+      if (NOT EXISTS ${triton_kernel_obj_file} or NOT EXISTS ${triton_kernel_header})
+          include(onnxruntime_compile_triton_kernel.cmake)
+          compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
+          add_dependencies(${target} onnxruntime_triton_kernel)
+      endif()
+
       target_compile_definitions(${target} PRIVATE USE_TRITON_KERNEL)
       target_include_directories(${target} PRIVATE ${triton_kernel_header_dir})
       target_link_libraries(${target} PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
