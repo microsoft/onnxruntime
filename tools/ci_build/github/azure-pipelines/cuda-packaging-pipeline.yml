@@ -146,7 +146,7 @@ stages:
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
       publishToADO: ${{ parameters.PublishToADO }}
-      ${{ if eq(parameters.IsReleaseBuild, True) }}:
+      ${{ if eq(parameters.IsReleaseBuild, true) }}:
         ADOFeedName: 'onnxruntime-cuda-12'
-      $ {{ else }}:
+      ${{ if ne(parameters.IsReleaseBuild, true) }}:
         ADOFeedName: 'ort-cuda-12-nightly'
