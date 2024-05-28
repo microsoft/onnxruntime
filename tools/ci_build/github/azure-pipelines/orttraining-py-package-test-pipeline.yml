@@ -17,7 +17,7 @@ stages:
 # if final job not extecuted, it will not run nightlly build
 - stage: Final
   dependsOn:
-    - Linux_Test_GPU_x86_64_stage
+    - Linux_Test_CPU_x86_64_stage
   jobs:
   - job: Final
     # Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
