@@ -25,22 +25,13 @@ def _run(command: list[str], **kwargs):
 
 
 def upload_pod_archive(pod_archive_path: Path):
-    env = os.environ.copy()
-    env.update(
-        {
-            # configure azcopy to use managed identity
-            "AZCOPY_AUTO_LOGIN_TYPE": "MSI",
-            "AZCOPY_MSI_CLIENT_ID": "63b63039-6328-442f-954b-5a64d124e5b4",
-        }
-    )
-
     storage_account_name = "onnxruntimepackages"
     storage_account_container_name = "$web"
     dest_url = f"https://{storage_account_name}.blob.core.windows.net/{storage_account_container_name}/"
 
-    upload_command = ["azcopy", "cp", str(pod_archive_path), dest_url]
+    upload_command = ["azcopy", "cp", str(pod_archive_path), dest_url, "--overwrite", "false"]
 
-    _run(upload_command, env=env)
+    _run(upload_command)
 
 
 def update_podspec(pod_archive_path: Path, podspec_path: Path):
