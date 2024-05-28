@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <thread>
 #include <utility>
 
 #include "core/common/safeint.h"
@@ -67,10 +68,6 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
                                   fc3_experts_weights_optional, fc3_experts_bias_optional));
 
   ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0, "num_experts should be divisible by world_size");
-
-  if (moe_params.parallel_type == MoEParallelType::EP || moe_params.parallel_type == MoEParallelType::EPAndTP) {
-    ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
-  }
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm, fc3_experts_weights_optional != nullptr,
                                                                      normalize_routing_weights_);
@@ -148,9 +145,15 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
     size_t stride_bytes = stride_count * sizeof(CudaT);
     int64_t total_past_rows = 0;
     int64_t total_covered_rows = 0;
+
+    static std::mutex s_mutex;
+    std::unique_lock<std::mutex> lock(s_mutex);
+    ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
     if (copy_event != nullptr) {
       CUDA_RETURN_IF_ERROR(cudaEventSynchronize(copy_event));
     }
+    lock.unlock();
+
     NCCL_RETURN_IF_ERROR(ncclGroupStart());
     for (int rank = 0; rank < nccl_->Size(); ++rank) {
       int64_t experts_start_index = rank_to_experts_start_index_[rank];

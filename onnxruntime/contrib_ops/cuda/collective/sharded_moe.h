@@ -27,7 +27,7 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
 
   int64_t local_experts_start_index_;
   int64_t tensor_shards_;
-  mutable std::vector<int64_t> rank_to_experts_start_index_;
+  mutable InlinedVector<int64_t> rank_to_experts_start_index_;
 
   mutable onnxruntime::cuda::collective::GlobalIPCMemoryResourcePack g_ipc_mem_res_pack_;
 };
