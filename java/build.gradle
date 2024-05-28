@@ -26,9 +26,6 @@ def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
 def cmakeNativeTestDir = "${cmakeJavaDir}/native-test"
 def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 
-def mavenUser = System.properties['mavenUser']
-def mavenPwd = System.properties['mavenPwd']
-
 def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name
 def mavenArtifactId = (useCUDA == null && useROCM == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
 
@@ -202,80 +199,109 @@ jacocoTestReport {
 	}
 }
 
-publishing {
-	publications {
-		maven(MavenPublication) {
-			groupId = project.group
-			artifactId = mavenArtifactId
 
-			from components.java
-			pom {
-				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
-				description = enableTrainingApis ? trainingDescription : defaultDescription
-				url = 'https://microsoft.github.io/onnxruntime/'
-				licenses {
-					license {
-						name = 'MIT License'
-						url = 'https://opensource.org/licenses/MIT'
+def adoFeedName = System.properties['ADOFeedName']
+def publishToAdo = adoFeedName != '' && adoFeedName != null
+
+if (!publishToAdo) {
+	def mavenUser = System.properties['mavenUser']
+	def mavenPwd = System.properties['mavenPwd']
+	publishing {
+		publications {
+			maven(MavenPublication) {
+				groupId = project.group
+				artifactId = mavenArtifactId
+
+				from components.java
+				pom {
+					name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
+					description = enableTrainingApis ? trainingDescription : defaultDescription
+					url = 'https://microsoft.github.io/onnxruntime/'
+					licenses {
+						license {
+							name = 'MIT License'
+							url = 'https://opensource.org/licenses/MIT'
+						}
+					}
+					organization {
+						name = 'Microsoft'
+						url = 'https://www.microsoft.com'
+					}
+					scm {
+						connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
+						developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
+						url = 'https://github.com/microsoft/onnxruntime'
+					}
+					developers {
+						developer {
+							id = 'onnxruntime'
+							name = 'ONNX Runtime'
+							email = 'onnxruntime@microsoft.com'
+						}
 					}
 				}
-				organization {
-					name = 'Microsoft'
-					url = 'https://www.microsoft.com'
+			}
+		}
+		repositories {
+			maven {
+				url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+				credentials {
+					username mavenUser
+					password mavenPwd
 				}
-				scm {
-					connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
-					developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
-					url = 'https://github.com/microsoft/onnxruntime'
-				}
-				developers {
-					developer {
-						id = 'onnxruntime'
-						name = 'ONNX Runtime'
-						email = 'onnxruntime@microsoft.com'
+			}
+		}
+	}
+} else {
+def systemBuildDir = System.properties['Build.BinariesDirectory']
+def customJarPath = "$systemBuildDir/final-jar/onnxruntime-java-gpu.jar"
+	publishing {
+		publications {
+			maven(MavenPublication) {
+				groupId = project.group
+				artifactId = mavenArtifactId
+				artifact(customJarPath)
+				pom {
+					name = onnx-runtime
+					description = defaultDescription
+					url = 'https://microsoft.github.io/onnxruntime/'
+					licenses {
+						license {
+							name = 'MIT License'
+							url = 'https://opensource.org/licenses/MIT'
+						}
+					}
+					organization {
+						name = 'Microsoft'
+						url = 'https://www.microsoft.com'
+					}
+					scm {
+						connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
+						developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
+						url = 'https://github.com/microsoft/onnxruntime'
+					}
+					developers {
+						developer {
+							id = 'onnxruntime'
+							name = 'ONNX Runtime'
+							email = 'onnxruntime@microsoft.com'
+						}
 					}
 				}
 			}
 		}
-	}
-	repositories {
-		maven {
-			url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
-			credentials {
-				username mavenUser
-				password mavenPwd
-            }
-		}
-		maven {
-			url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/maven/v1'
-			name 'onnxruntime-cuda-12'
-			authentication {
-				basic(BasicAuthentication)
+		repositories {
+			maven {
+				url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/$adoFeedName/maven/v1"
+				name adoFeedName
+				authentication {
+					basic(BasicAuthentication)
+				}
+				credentials {
+					username aiinfra
+					password System.properties['SYSTEM_ACCESSTOKEN']
+				}
 			}
-		}
-		maven {
-			url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/maven/v1'
-			name 'ort-cuda-12-nightly'
-			authentication {
-				basic(BasicAuthentication)
-			}
-		}
-	}
-}
-
-repositories {
-	maven {
-		url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/maven/v1'
-		name 'onnxruntime-cuda-12'
-		authentication {
-			basic(BasicAuthentication)
-		}
-	}
-	maven {
-		url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/maven/v1'
-		name 'ort-cuda-12-nightly'
-		authentication {
-			basic(BasicAuthentication)
 		}
 	}
 }
@@ -291,4 +317,3 @@ signing {
 	useInMemoryPgpKeys(signingKey, signingPassword)
 	sign publishing.publications.maven
 }
-

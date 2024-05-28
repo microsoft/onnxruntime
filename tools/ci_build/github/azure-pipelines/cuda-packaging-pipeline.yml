@@ -58,6 +58,11 @@ parameters:
       - 11.8
       - 12.2
 
+  - name: PublishToADO
+    displayName: Publish to ADO?
+    type: boolean
+    default: false
+
 variables:
   - name: ReleaseVersionSuffix
     value: ''
@@ -81,6 +86,7 @@ variables:
       value: $(Agent.TempDirectory)\v11.8
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
       value: $(Agent.TempDirectory)\v12.2
+
 resources:
   repositories:
     - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -139,3 +145,8 @@ stages:
       CudaVersion: ${{ parameters.CudaVersion }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
+      publishToADO: ${{ parameters.PublishToADO }}
+      ${{ if eq(parameters.IsReleaseBuild, True) }}:
+        ADOFeedName: 'onnxruntime-cuda-12'
+      $ {{ else }}:
+        ADOFeedName: 'ort-cuda-12-nightly'
