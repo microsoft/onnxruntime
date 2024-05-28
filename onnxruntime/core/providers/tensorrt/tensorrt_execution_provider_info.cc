@@ -29,7 +29,6 @@ constexpr const char* kEngineCacheEnable = "trt_engine_cache_enable";
 constexpr const char* kEngineCachePath = "trt_engine_cache_path";
 constexpr const char* kWeightStrippedEngineEnable = "trt_weight_stripped_engine_enable";
 constexpr const char* kOnnxModelFolderPath = "trt_onnx_model_folder_path";
-constexpr const char* kEngineCachePrefix = "trt_engine_cache_prefix";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
 constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine_build";
