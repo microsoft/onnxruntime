@@ -29,6 +29,7 @@ constexpr const char* kEngineCacheEnable = "trt_engine_cache_enable";
 constexpr const char* kEngineCachePath = "trt_engine_cache_path";
 constexpr const char* kWeightStrippedEngineEnable = "trt_weight_stripped_engine_enable";
 constexpr const char* kOnnxModelFolderPath = "trt_onnx_model_folder_path";
+constexpr const char* kEngineCachePrefix = "trt_engine_cache_prefix";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
 constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine_build";
@@ -52,7 +53,6 @@ constexpr const char* kCudaGraphEnable = "trt_cuda_graph_enable";
 constexpr const char* kEpContextEmbedMode = "trt_ep_context_embed_mode";
 constexpr const char* kEpContextFilePath = "trt_ep_context_file_path";
 constexpr const char* kDumpEpContextModel = "trt_dump_ep_context_model";
-constexpr const char* kEngineCachePrefix = "trt_engine_cache_prefix";
 constexpr const char* kEngineHwCompatible = "trt_engine_hw_compatible";
 
 }  // namespace provider_option_names

@@ -1546,8 +1546,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (std::stoi(compute_capability_) < 80) {
       LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled as GPU arch < 80. ";
       engine_hw_compatible_ = false;
-    }
-    else if (std::stoi(compute_capability_) == 87) {
+    } else if (std::stoi(compute_capability_) == 87) {
       LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled on Jetson Orin. ";
       engine_hw_compatible_ = false;
     }
@@ -2935,20 +2934,18 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
   }
 
-  std::string cache_hw_compat = "";
+  std::string cache_hw_compat = "_sm" + compute_capability_;
   // Enable hardware compatility mode if assigned
   if (engine_cache_enable_ && engine_hw_compatible_) {
     trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
     cache_hw_compat = "_sm80+";
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Hardware compatibility is enabled when loading and capturing engine cache.";
-  } else {
-    cache_hw_compat = "_sm" + compute_capability_;
   }
 
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
   const std::string cache_path_prefix = cache_path + cache_hw_compat;
-  const std::string engine_cache_path = cache_path_prefix + ".engine";
+  std::string engine_cache_path = cache_path_prefix + ".engine";
   const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
   const std::string profile_cache_path = cache_path_prefix + ".profile";
 
@@ -3221,11 +3218,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
           input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
-          dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
-          runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
-          dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
-          global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
-          builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_};
+          dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision,
+          engine_cache_enable_, cache_path_, runtime_.get(), profiles_[context->node_name],
+          context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
+          engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
+          detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
+          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_};
     *state = p.release();
     return 0;
   };
@@ -3290,18 +3288,16 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     }
 
     // Enable hardware compatility mode if assigned
-    std::string cache_hw_compat = "";
+    std::string cache_hw_compat = "_sm" + compute_capability_;
     if (engine_cache_enable_ && engine_hw_compatible_) {
       cache_hw_compat = "_sm80+";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Hardware compatibility is enabled when loading and capturing engine cache.";
-    } else {
-      cache_hw_compat = "_sm" + compute_capability_;
     }
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
     const std::string cache_path_prefix = cache_path + cache_hw_compat;
-    const std::string engine_cache_path = cache_path_prefix + ".engine";
+    std::string engine_cache_path = cache_path_prefix + ".engine";
     const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
     const std::string profile_cache_path = cache_path_prefix + ".profile";
     std::string timing_cache_path = "";
