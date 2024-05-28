@@ -244,7 +244,38 @@ publishing {
 			credentials {
 				username mavenUser
 				password mavenPwd
+            }
+		}
+		maven {
+			url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/maven/v1'
+			name 'onnxruntime-cuda-12'
+			authentication {
+				basic(BasicAuthentication)
 			}
+		}
+		maven {
+			url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/maven/v1'
+			name 'ort-cuda-12-nightly'
+			authentication {
+				basic(BasicAuthentication)
+			}
+		}
+	}
+}
+
+repositories {
+	maven {
+		url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/maven/v1'
+		name 'onnxruntime-cuda-12'
+		authentication {
+			basic(BasicAuthentication)
+		}
+	}
+	maven {
+		url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/maven/v1'
+		name 'ort-cuda-12-nightly'
+		authentication {
+			basic(BasicAuthentication)
 		}
 	}
 }
@@ -260,3 +291,4 @@ signing {
 	useInMemoryPgpKeys(signingKey, signingPassword)
 	sign publishing.publications.maven
 }
+
