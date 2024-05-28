@@ -155,6 +155,8 @@ struct Path;
 struct Node;
 struct NodeArg;
 struct NodeAttributes;
+struct NodeUnitIODef;
+struct NodeUnit;
 class OpKernel;
 struct OpKernelContext;
 struct OpKernelInfo;
@@ -265,7 +267,7 @@ constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
 template <typename T>
-using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
+using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept { return g_host->CreateStatus(code, msg); }
 
@@ -346,6 +348,13 @@ template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
 #endif
 }  // namespace utils
+
+namespace QDQ {
+inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+GetAllNodeUnits(const GraphViewer* graph_viewer) {
+  return g_host->QDQ__GetAllNodeUnits(graph_viewer);
+}
+}  // namespace QDQ
 
 // This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.
 // So the C API (and C++) becomes available when ORT_API_MANUAL_INIT is used.

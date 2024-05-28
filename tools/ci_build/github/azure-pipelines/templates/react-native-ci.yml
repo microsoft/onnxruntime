@@ -52,6 +52,7 @@ stages:
 
     variables:
       runCodesignValidationInjection: false
+      ComponentDetection.Timeout: 660
       TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       ORT_CACHE_DIR: '$(Pipeline.Workspace)/ccache_ort'
 
