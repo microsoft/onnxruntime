@@ -636,6 +636,10 @@ class QDQQuantizer(BaseQuantizer):
                                 |        +-> <Graph output>
                                 |
                                 +-> DQ1' ---> Q2 ---> DQ2 ---> <Consumers of converted type>
+
+        5) Tensor T is a graph output that is not consumed by any other nodes.
+
+            <Producer> ---> Q1 ---> DQ1 ---> Q2 ---> DQ2 ---> <Graph output>
         """
         tensor_recv_nodes = set([node.name for node in self.tensor_to_its_receiving_nodes.get(tensor_name, [])])
 
