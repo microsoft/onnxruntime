@@ -167,7 +167,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Concat", {"concat", true}},
     {"Conv", {"conv2d", true}},
     {"ConvInteger", {"conv2dInteger", false}},
-    {"ConvTranspose", {"convTranspose2d", true}},
+    {"ConvTranspose", {"convTranspose2d", false}},
     {"Cos", {"cos", false}},
     {"Div", {"div", true}},
     {"DequantizeLinear", {"dequantizeLinear", false}},
@@ -236,6 +236,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Tan", {"tan", false}},
     {"Tanh", {"tanh", true}},
     {"Transpose", {"transpose", true}},
+    {"Trilu", {"triangular", false}},
     {"Unsqueeze", {"reshape", true}},
     {"Where", {"where", false}},
 };

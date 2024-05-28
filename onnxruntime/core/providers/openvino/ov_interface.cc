@@ -60,8 +60,11 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
     FE = manager.load_by_model(params);
     if (FE) {
       inputModel = FE->load(params);
+      return FE->convert(inputModel);
+    } else {
+      ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
+      return NULL;
     }
-    return FE->convert(inputModel);
   } catch (const Exception& e) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
   } catch (...) {
@@ -70,8 +73,8 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
 }
 
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
-                                  std::string& hw_target,
-                                  ov::AnyMap& device_config,
+                                  std::string hw_target,
+                                  const ov::AnyMap& device_config,
                                   std::string name) {
   ov::CompiledModel obj;
   try {
@@ -88,22 +91,22 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
   }
 }
 
-OVExeNetwork OVCore::CompileModel(const std::string onnx_model_path,
-                                  std::string& hw_target,
+OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
+                                  std::string hw_target,
                                   std::string precision,
                                   std::string cache_dir,
-                                  ov::AnyMap& device_config,
+                                  const ov::AnyMap& device_config,
                                   std::string name) {
   ov::CompiledModel obj;
   try {
     if (hw_target == "AUTO:GPU,CPU") {
-      obj = oe.compile_model(onnx_model_path,
+      obj = oe.compile_model(onnx_model, ov::Tensor(),
                              "AUTO",
                              ov::device::priorities("GPU", "CPU"),
                              ov::device::properties("GPU", {ov::cache_dir(cache_dir),
                                                             ov::hint::inference_precision(precision)}));
     } else {
-      obj = oe.compile_model(onnx_model_path, hw_target, device_config);
+      obj = oe.compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
     }
 #ifndef NDEBUG
     printDebugInfo(obj);
@@ -118,8 +121,8 @@ OVExeNetwork OVCore::CompileModel(const std::string onnx_model_path,
 }
 
 OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
-                                 std::string& hw_target,
-                                 ov::AnyMap& device_config,
+                                 std::string hw_target,
+                                 const ov::AnyMap& device_config,
                                  std::string name) {
   try {
     auto obj = oe.import_model(*model_stream, hw_target, device_config);
@@ -143,7 +146,7 @@ void OVCore::SetCache(std::string cache_dir_path, std::string device_type) {
 
 #ifdef IO_BUFFER_ENABLED
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
-                                  OVRemoteContextPtr context, std::string& name) {
+                                  OVRemoteContextPtr context, std::string name) {
   try {
     auto obj = oe.compile_model(model, *context);
 #ifndef NDEBUG
@@ -157,7 +160,7 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
   }
 }
 OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
-                                 OVRemoteContextPtr context, std::string& name) {
+                                 OVRemoteContextPtr context, std::string name) {
   try {
     auto obj = oe.import_model(*model_stream, *context);
 #ifndef NDEBUG
@@ -185,7 +188,7 @@ void OVCore::SetStreams(const std::string& device_type, int num_streams) {
 OVInferRequest OVExeNetwork::CreateInferRequest() {
   try {
     auto infReq = obj.create_infer_request();
-    OVInferRequest inf_obj(infReq);
+    OVInferRequest inf_obj(std::move(infReq));
     return inf_obj;
   } catch (const Exception& e) {
     ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
@@ -206,7 +209,7 @@ OVTensorPtr OVInferRequest::GetTensor(const std::string& input_name) {
   }
 }
 
-void OVInferRequest::SetTensor(const std::string& name, OVTensorPtr& blob) {
+void OVInferRequest::SetTensor(std::string name, OVTensorPtr& blob) {
   try {
     ovInfReq.set_tensor(name, *(blob.get()));
   } catch (const Exception& e) {

@@ -462,7 +462,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.57", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.59", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -1240,19 +1240,7 @@ def generate_build_tree(
         ]
 
     # VitisAI and OpenVINO providers currently only support full_protobuf option.
-    # TensorRT provider only requires it if built with oss_parser, and
-    # it implicitly uses oss_parser with debug build on Windows.
-    #
-    # Note: oss_parser will support protobuf-lite in TRT 10 GA, so TRT EP will fully
-    # support protobuf-lite then.
-    if (
-        args.use_full_protobuf
-        or (args.use_tensorrt and args.use_tensorrt_oss_parser)
-        or (args.use_tensorrt and is_windows() and "Debug" in args.config)
-        or args.use_openvino
-        or args.use_vitisai
-        or args.gen_doc
-    ):
+    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_tvm and args.llvm_path is not None:

@@ -110,13 +110,6 @@ stages:
       parameters:
         xcodeVersion: 14.2
 
-    - script: |
-        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-          $(Build.SourcesDirectory) \
-          $(Build.BinariesDirectory)/protobuf \
-          $(Build.BinariesDirectory)/protobuf_install
-      displayName: Build Host Protoc
-
     - template: download-deps.yml
 
     - task: PythonScript@0
@@ -130,7 +123,6 @@ stages:
         set -e -x
         python3 tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
-          --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
           tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
         mkdir $(Build.BinariesDirectory)/artifacts
         mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
@@ -306,6 +298,8 @@ stages:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
@@ -443,7 +437,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentTime=$(BuildTime) -p:CurrentDate=$(BuildDate)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2
@@ -517,7 +511,7 @@ stages:
   - Windows_CI_GPU_DML_Dev
   - Windows_CI_GPU_DML_Dev_arm64
   - Linux_C_API_Packaging_CPU
-  - Linux_C_API_Packaging_GPU_TensorRT_x64
+  - Linux_C_API_Packaging_GPU
   - MacOS_C_API_Package_Publish
   condition: succeeded()
   jobs:
