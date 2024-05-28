@@ -694,7 +694,7 @@ class RunQueue {
 
 static std::atomic<uint32_t> next_tag{1};
 
-template <typename Environment>
+template <typename Environment, bool kIsHybrid>
 class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInterface {
  private:
   struct PerThread;
@@ -765,6 +765,29 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
   typedef RunQueue<Task, Tag, 1024> Queue;
+
+  // Class for waiting w/ exponential backoff.
+  // Template argument is maximum number of spins in backoff loop.
+  template <unsigned kMaxBackoff>
+  class ThreadPoolWaiter {
+    // Current number if spins in backoff loop
+    unsigned pause_time_;
+
+   public:
+    void wait() {
+      // If kMaxBackoff is zero don't do any pausing.
+      if constexpr (kMaxBackoff == 1) {
+        onnxruntime::concurrency::SpinPause();
+      } else if constexpr (kMaxBackoff > 1) {
+        // Exponential backoff
+        unsigned pause_time = pause_time_ + 1U;
+        for (unsigned i = 0; i < pause_time; ++i) {
+          onnxruntime::concurrency::SpinPause();
+        }
+        pause_time_ = (pause_time * 2U) % kMaxBackoff;
+      }
+    }
+  };
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
@@ -907,8 +930,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // finish dispatch work.  This avoids new tasks being started
     // concurrently with us attempting to end the parallel section.
     if (ps.dispatch_q_idx != -1) {
+      ThreadPoolWaiter<4> waiter{};
       while (!ps.dispatch_done.load(std::memory_order_acquire)) {
-        onnxruntime::concurrency::SpinPause();
+        waiter.wait();
       }
     }
 
@@ -930,15 +954,17 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     // Wait for the dispatch task's own work...
     if (ps.dispatch_q_idx > -1) {
+      ThreadPoolWaiter<kIsHybrid ? 0 : 1> waiter{};
       while (!ps.work_done.load(std::memory_order_acquire)) {
-        onnxruntime::concurrency::SpinPause();
+        waiter.wait();
       }
     }
 
     // ...and wait for any other tasks not revoked to finish their work
     auto tasks_to_wait_for = tasks_started - ps.tasks_revoked;
+    ThreadPoolWaiter<kIsHybrid ? 0 : 1> waiter{};
     while (ps.tasks_finished < tasks_to_wait_for) {
-      onnxruntime::concurrency::SpinPause();
+      waiter.wait();
     }
 
     // Clear status to allow the ThreadPoolParallelSection to be
@@ -1256,9 +1282,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // Increase the worker count if needed.  Each worker will pick up
     // loops to execute from the current parallel section.
     std::function<void(unsigned)> worker_fn = [&ps](unsigned par_idx) {
+      ThreadPoolWaiter<kIsHybrid ? 4 : 0> waiter{};
       while (ps.active) {
         if (ps.current_loop.load() == nullptr) {
-          onnxruntime::concurrency::SpinPause();
+          waiter.wait();
         } else {
           ps.workers_in_loop++;
           ThreadPoolLoop* work_item = ps.current_loop;
@@ -1279,8 +1306,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     // Wait for workers to exit the loop
     ps.current_loop = 0;
+    ThreadPoolWaiter<kIsHybrid ? 1 : 4> waiter{};
     while (ps.workers_in_loop) {
-      onnxruntime::concurrency::SpinPause();
+      waiter.wait();
     }
     profiler_.LogEnd(ThreadPoolProfiler::WAIT);
   }
@@ -1535,13 +1563,30 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    constexpr int log2_spin = 20;
-    const int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
-    const int steal_count = spin_count / 100;
+    // The exact value of spin_count and steal_count are arbitrary and
+    // were experimentally determined. These numbers yielded the best
+    // performance across a range of workloads and
+    // machines. Generally, the goal of tuning spin_count is to make
+    // the number as small as possible while ensuring there is enough
+    // slack so that if each core is doing the same amount of work it
+    // won't sleep before they have all finished. The idea here is
+    // that in pipelined workloads, it won't sleep during each stage
+    // if it's done a bit faster than its neighbors, but that if there
+    // are non-equal sizes of work distributed, it won't take too long
+    // to reach sleep giving power (and thus frequency/performance) to
+    // its neighbors.  Since hybrid has P/E cores, a lower value is
+    // chosen. On hybrid systems, even with equal sized workloads
+    // distributed the compute time won't stay synced. Typically in
+    // the hybrid case the P cores finish first (and are thus waiting)
+    // which is essentially a priority inversion.
+    constexpr int pref_spin_count = kIsHybrid ? 5000 : 10000;
+    const int spin_count = allow_spinning_ ? pref_spin_count : 0;
+    constexpr int steal_count = pref_spin_count / (kIsHybrid ? 25 : 100);
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
 
+    ThreadPoolWaiter<kIsHybrid ? 1 : 8> waiter{};
     while (!should_exit) {
       Task t = q.PopFront();
       if (!t) {
@@ -1557,7 +1602,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
           }
-          onnxruntime::concurrency::SpinPause();
+          waiter.wait();
         }
 
         // Attempt to block
