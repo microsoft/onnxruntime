@@ -63,6 +63,7 @@ jobs:
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildlort
+      CheckOutManyLinux: true
 
   - task: CmdLine@2
     displayName: 'Build ORT for Python 3.9'
