@@ -10,6 +10,8 @@
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "contrib_ops/cpu/flash_attention/flash_attention_api.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -77,7 +79,8 @@ class AttentionCPUBase : public AttentionBase {
     float scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
 
     // Use Flash Attention if possible
-    if (relative_position_bias == nullptr && v_head_size == qk_head_size && past == nullptr) {
+    constexpr bool use_flash_attention = true;
+    if (use_flash_attention && relative_position_bias == nullptr && v_head_size == qk_head_size && past == nullptr) {
       auto data_type = DataTypeImpl::GetType<T>();
 
       OrtValue logSumExp;
@@ -98,6 +101,8 @@ class AttentionCPUBase : public AttentionBase {
       Tensor mask(data_type,
                   TensorShape({batch_size, 1, sequence_length, total_sequence_length}),
                   const_cast<void*>(reinterpret_cast<const void*>(mask_data)), allocator->Info());
+
+      printf("Use CPU Flash Attention!\n");
 
       constexpr bool is_q_bnsh = true;
       constexpr bool is_kv_bnsh = true;
@@ -252,12 +257,21 @@ class AttentionCPUBase : public AttentionBase {
       });
     }
 
+    DUMP_CPU_TENSOR_INIT();
+    DUMP_CPU_TENSOR("query", Q, batch_size, num_heads_, sequence_length, head_size);
+    if (nullptr != present_key) {
+      DUMP_CPU_TENSOR("present_key", present_key, batch_size, num_heads_, total_sequence_length, head_size);
+    }
+    DUMP_CPU_TENSOR("QK", attention_probs, batch_size, num_heads_, sequence_length, total_sequence_length);
+
     // attention_probs(B, N, S, T) = Softmax(attention_probs)
     {
       const int N = batch_size * num_heads_ * sequence_length;
       const int D = total_sequence_length;
       ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
     }
+
+    DUMP_CPU_TENSOR("Softmax(QK)", attention_probs, batch_size, num_heads_, sequence_length, total_sequence_length);
   }
 
   template <typename T>
@@ -336,6 +350,9 @@ class AttentionCPUBase : public AttentionBase {
         }
       }
     });
+
+    DUMP_CPU_TENSOR_INIT();
+    DUMP_CPU_TENSOR("output", output, batch_size, num_heads_, sequence_length, v_head_size);
   }
 };
 

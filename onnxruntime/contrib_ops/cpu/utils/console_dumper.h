@@ -21,10 +21,17 @@ class IConsoleDumper {
   virtual void Print(const char* name, const size_t* tensor, int dim0, int dim1) const = 0;
   virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1) const = 0;
   virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1) const = 0;
+
   virtual void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const = 0;
   virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const = 0;
   virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const = 0;
   virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const = 0;
+
+  virtual void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2, int dim3) const = 0;
+  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2, int dim3) const = 0;
+  virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2, int dim3) const = 0;
+  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2, int dim3) const = 0;
+
   virtual void Print(const char* name, const Tensor& value) const = 0;
   virtual void Print(const char* name, const OrtValue& value) const = 0;
   virtual void Print(const char* name, int index, bool end_line) const = 0;

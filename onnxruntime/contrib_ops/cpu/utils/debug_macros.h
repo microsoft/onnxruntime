@@ -3,12 +3,12 @@
 // #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
 
 #ifdef DEBUG_GENERATION
-#define DUMP_CPU_TENSOR_LEVEL 2
 #define DUMP_TENSOR_LEVEL 2
 #else
-#define DUMP_CPU_TENSOR_LEVEL 2  // change it to 1 or 2 if want to enable cpu dumping for code not in generation.
-#define DUMP_TENSOR_LEVEL 0      // change it to 1 or 2 if want to enable gpu dumping for code not in generation.
+#define DUMP_TENSOR_LEVEL 2      // change it to 1 or 2 if want to enable dumping for code not in generation.
 #endif
+
+#define DUMP_CPU_TENSOR_LEVEL DUMP_TENSOR_LEVEL
 
 // For CPU tensor dumping.
 #if DUMP_CPU_TENSOR_LEVEL > 0
