@@ -3104,13 +3104,16 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
             auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
             ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
           }
-
+          std::string compute_capability_hw_compat = compute_capability_;
+          if (engine_cache_enable_ && engine_hw_compatible_) {
+            compute_capability_hw_compat = "80+";
+          }
           std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
                                                                                  ep_cache_context_attr_,
                                                                                  reinterpret_cast<char*>(serialized_engine->data()),
                                                                                  serialized_engine->size(),
                                                                                  ep_context_embed_mode_,
-                                                                                 compute_capability_,
+                                                                                 compute_capability_hw_compat,
                                                                                  model_path_,
                                                                                  GetLogger())};
           DumpCtxModel(model_proto.get(), ctx_model_path_);
@@ -3191,12 +3194,16 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
       ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
     }
+    std::string compute_capability_hw_compat = compute_capability_;
+    if (engine_cache_enable_ && engine_hw_compatible_) {
+      compute_capability_hw_compat = "80+";
+    }
     model_proto_.reset(CreateCtxModel(graph_body_viewer,
                                       ep_cache_context_attr_,
                                       nullptr,
                                       0,
                                       ep_context_embed_mode_,
-                                      compute_capability_,
+                                      compute_capability_hw_compat,
                                       model_path_,
                                       GetLogger()));
     if (ep_context_embed_mode_ == 0) {
