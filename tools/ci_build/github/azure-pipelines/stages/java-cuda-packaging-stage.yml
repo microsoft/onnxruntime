@@ -193,32 +193,32 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-  ${{ if eq(parameters.PublishToADO, true) }}:
-  - job: JAR_Publish_GPU
-    dependsOn:
-    - Jar_Packaging_GPU
-    workspace:
-      clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
-    variables:
-    - name: SYSTEM_ACCESSTOKEN
-      value: $(System.AccessToken)
-    - name: ADOFeedName
-      value: ${{ parameters.AdoFeedName }}
+  - ${{ if eq(parameters.PublishToADO, true) }}:
+    - job: JAR_Publish_GPU
+      dependsOn:
+      - Jar_Packaging_GPU
+      workspace:
+        clean: all
+      pool: 'onnxruntime-Win-CPU-2022'
+      variables:
+      - name: SYSTEM_ACCESSTOKEN
+        value: $(System.AccessToken)
+      - name: ADOFeedName
+        value: ${{ parameters.AdoFeedName }}
 
-    steps:
-    - template: ../templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Final Jar'
-        ArtifactName: onnxruntime-java-gpu
-        TargetPath: '$(Build.BinariesDirectory)/final-jar'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-    - powershell: |
-        $artifactPath = "$(Build.BinariesDirectory)/final-jar"
-        del $artifactPath\testing.jar
-        jar cvf bundle.jar -C $artifactPath $artifactPath
-        ./gradlew publish
-      workingDirectory: '$(Build.SourcesDirectory)/java'
+      steps:
+      - template: ../templates/flex-downloadPipelineArtifact.yml
+        parameters:
+          StepName: 'Download Final Jar'
+          ArtifactName: onnxruntime-java-gpu
+          TargetPath: '$(Build.BinariesDirectory)/final-jar'
+          SpecificArtifact: ${{ parameters.specificArtifact }}
+          BuildId: ${{ parameters.BuildId }}
+      - powershell: |
+          $artifactPath = "$(Build.BinariesDirectory)/final-jar"
+          del $artifactPath\testing.jar
+          jar cvf bundle.jar -C $artifactPath $artifactPath
+          ./gradlew publish
+        workingDirectory: '$(Build.SourcesDirectory)/java'
 
 
