@@ -2036,7 +2036,7 @@ common::Status InferenceSession::Initialize() {
       } else {
         const std::string optimized_model_external_initializers_file_name =
             session_options_.config_options.GetConfigOrDefault(
-                kOrtSessionOptionsOptimizedModelExternalInitializersFileName, "");
+                kOrtSessionOptionsOptimizedModelExternalInitializersFileName, "phi2_5_transformer_simp_surgery_no_attn_mask.all.quant.opt.onnx.data");
         if (optimized_model_external_initializers_file_name.empty()) {
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
         } else {
