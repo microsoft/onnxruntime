@@ -234,28 +234,12 @@ void QnnLogging(const char* format,
                 QnnLog_Level_t level,
                 uint64_t timestamp,
                 va_list argument_parameter) {
+  ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
+  const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
-
-  ::onnxruntime::logging::Severity severity;
-  switch (level) {
-    case QNN_LOG_LEVEL_ERROR:
-      severity = ::onnxruntime::logging::Severity::kERROR;
-      break;
-    case QNN_LOG_LEVEL_WARN:
-      severity = ::onnxruntime::logging::Severity::kWARNING;
-      break;
-    case QNN_LOG_LEVEL_INFO:
-      severity = ::onnxruntime::logging::Severity::kINFO;
-      break;
-    case QNN_LOG_LEVEL_VERBOSE:
-    case QNN_LOG_LEVEL_DEBUG:  // Treat DEBUG as VERBOSE in ORT
-    default:
-      severity = ::onnxruntime::logging::Severity::kVERBOSE;
-      break;
-  }
 
   if (logger.OutputIsEnabled(severity, data_type)) {
     ::onnxruntime::logging::Capture(logger,
