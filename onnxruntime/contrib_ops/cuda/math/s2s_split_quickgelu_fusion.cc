@@ -18,7 +18,7 @@ template <typename T>
 void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, int dim, int64_t input_size,
                                                                    const Tensor& input, Tensor& output) const {
   using CudaT = typename ToCudaType<T>::MappedType;
-  LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, dim, reinterpret_cast<const CudaT*>(input.template Data<T>()),
+  LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, dim, input_size, reinterpret_cast<const CudaT*>(input.template Data<T>()),
                                             reinterpret_cast<CudaT*>(output.template MutableData<T>()));
 }
 
