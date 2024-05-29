@@ -26,7 +26,7 @@ stages:
       displayName: 'Download Pipeline Artifact - $(artifactName)'
       artifact: '$(artifactName)'
 
-    - CopyFiles@2:
+    - task: CopyFiles@2
       inputs:
         SourceFolder: '$(Pipeline.Workspace)/build/$(artifactName)'
         Contents: |
@@ -44,8 +44,7 @@ stages:
             onnxruntime_gpu-$(OnnxRuntimeVersion).jar `
             onnxruntime_gpu-$(OnnxRuntimeVersion)-javadoc.jar `
             onnxruntime_gpu-$(OnnxRuntimeVersion)-sources.jar
-
-      workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
+        workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
     - task: CodeSign@1
       displayName: 'Run Codesign Validation'
 
