@@ -41,7 +41,7 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          $file = Get-ChildItem -Path $directory -Filter "onnxruntime_gpu*.jar"
+          $file = Get-ChildItem -Path . -Filter "onnxruntime_gpu*.jar"
           $fileName = $file.Name
           if ($fileName -match "onnxruntime_gpu(\d+\.\d+\.\d+)\.jar") {
               $versionNumber = $matches[1]
@@ -49,6 +49,7 @@ stages:
           } else {
               Write-Output "No version number found in the filename."
           }
+          Write-Host "$versionNumber"
           Write-Host "##vso[task.setvariable variable=ORT_VERSION;]$versionNumber"
         workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
 
