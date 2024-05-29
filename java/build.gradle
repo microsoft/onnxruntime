@@ -45,22 +45,38 @@ def trainingDescription = 'ONNX Runtime Training is a training and inference pac
 	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
+def mavenSettingsFilePath = "${projectDir}/settings.xml"
 def securitySettingsFilePath =  "${projectDir}/settings-security.xml"
 
-// Set system properties for Maven settings and security settings files
-gradle.taskGraph.whenReady { taskGraph ->
-    allprojects {
-        tasks.withType(JavaCompile) {
-            doFirst {
-                System.setProperty('org.apache.maven.security.settingsFile', securitySettingsFilePath)
-            }
+println(mavenSettingsFilePath)
+// Configure system properties early in the build process
+gradle.beforeProject { project ->
+    project.ext {
+        mavenSettingsFile = mavenSettingsFilePath
+        securitySettingsFile = securitySettingsFilePath
+    }
+
+    project.tasks.withType(JavaCompile) {
+        doFirst {
+            System.setProperty('org.gradle.maven.settings.location', mavenSettingsFile)
+            System.setProperty('org.apache.maven.security.settingsFile', securitySettingsFile)
+        }
+    }
+
+    project.tasks.withType(Exec) {
+        doFirst {
+            System.setProperty('org.gradle.maven.settings.location', mavenSettingsFile)
+            System.setProperty('org.apache.maven.security.settingsFile', securitySettingsFile)
         }
     }
 }
-// Ensure that the properties are set before any Maven-related tasks
-tasks.withType(PublishToMavenRepository) {
+// Ensure the properties are set before running the autobuild task
+tasks.register('codeqlAutobuild', Exec) {
+    dependsOn 'replaceTokenInSettingsXml'
+    commandLine 'codeql', 'database', 'create', 'my-database', '--language=java', '--source-root=.', '--run=autobuild'
     doFirst {
-        System.setProperty('org.apache.maven.security.settingsFile', securitySettingsFilePath)
+        System.setProperty('org.gradle.maven.settings.location', mavenSettingsFile)
+        System.setProperty('org.apache.maven.security.settingsFile', securitySettingsFile)
     }
 }
 
