@@ -21,6 +21,8 @@ stages:
       value: onnxruntime-java-gpu
 
     steps:
+    - script: mkdir "$(GDN_CODESIGN_TARGETDIRECTORY)"
+
     - download: build
       displayName: 'Download Pipeline Artifact - $(artifactName)'
       artifact: '$(artifactName)'
