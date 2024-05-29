@@ -7,6 +7,7 @@
 
 #include <array>
 #include <bitset>
+#include <cstdlib>
 #include <memory>
 
 namespace onnxruntime {
@@ -80,7 +81,26 @@ Status MultiScaleDeformableAttention::Compute(_Inout_ OpKernelContext* context) 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  if(route == ImplementationRoute::AVX512 && D == 16 && M == 8 && P == 4 && false) {
+  bool useGeneric;
+  {
+    char * env;
+    #ifdef _WIN32
+    _dupenv_s(&env, nullptr, "ORT_USE_GENERIC");
+    #else
+    env = std::getenv("ORT_USE_GENERIC");
+    #endif
+    if(env == nullptr || std::atoi(env) == 0){
+      useGeneric = false;
+    }
+    else{
+      useGeneric = true;
+    }
+    #ifdef _WIN32
+    free(env);
+    #endif
+  }
+
+  if(route == ImplementationRoute::AVX512 && D == 16 && M == 8 && P == 4 && !useGeneric) {
     // AVX512 implementation
     ComputeAVX512(
       value->Data<float>(),
