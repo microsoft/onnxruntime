@@ -51,3 +51,4 @@ stages:
         gradleWrapperFile: '$(Build.SourcesDirectory)/java/gradlew.bat'
         workingDirectory: '$(Build.SourcesDirectory)/java'
         tasks: 'publishToADO'
+        options: '-PvstsMavenAccessToken=$(SYSTEM_ACCESSTOKEN)'
