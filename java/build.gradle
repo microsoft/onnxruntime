@@ -23,9 +23,8 @@ def useROCM = System.properties['USE_ROCM']
 
 def adoArtifact = project.findProperty('adoArtifact')
 def adoAccessToken = project.findProperty('adoAccessToken')
-def adoUsername = project.findProperty('adoUsername')
-// Only publish to ADO feed if all three properties are set
-def publishToAdo = adoArtifact != null && adoAccessToken != null && adoUsername != null
+// Only publish to ADO feed if all two properties are set
+def publishToAdo = adoArtifact != null && adoAccessToken != null
 
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 def cmakeJavaDir = "${cmakeBuildDir}/java"
@@ -266,7 +265,7 @@ publishing {
 					basic(BasicAuthentication)
 				}
 				credentials {
-					username  "${project.findProperty('adoUsername')}"
+					username  'aiinfra'
 					password "${project.findProperty('adoAccessToken')}"
 				}
 			}
