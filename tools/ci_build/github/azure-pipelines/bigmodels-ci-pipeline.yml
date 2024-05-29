@@ -39,6 +39,7 @@ parameters:
   default: 0
 
 resources:
+  repositories:
   - repository: LLaMa2Onnx
     type: Github
     endpoint: Microsoft
