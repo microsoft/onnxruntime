@@ -1,0 +1,65 @@
+parameters:
+- name: artifact_feed
+  type: string
+- name: BuildId
+  type: string
+
+stages:
+- stage: JAR_Publish_GPU
+  jobs:
+  - job: JAR_Publish_GPU
+    workspace:
+      clean: all
+    pool: 'onnxruntime-Win-CPU-2022'
+    variables:
+    - name: SYSTEM_ACCESSTOKEN
+      value: $(System.AccessToken)
+    - name: ADOFeedName
+      value: ${{ parameters.artifact_feed }}
+    - name: GDN_CODESIGN_TARGETDIRECTORY
+      value: '$(Build.BinariesDirectory)/final-package'
+    - name: artifactName
+      value: onnxruntime-java-gpu
+
+    steps:
+    - download: build
+      displayName: 'Download Pipeline Artifact - $(artifactName)'
+      artifact: '$(artifactName)'
+
+    - CopyFiles@2:
+      inputs:
+        SourceFolder: '$(Pipeline.Workspace)/build/$(artifactName)'
+        Contents: |
+          onnxruntime_gpu*.jar
+          onnxruntime_gpu*.pom
+        TargetFolder: '$(GDN_CODESIGN_TARGETDIRECTORY)'
+        CleanTargetFolder: true
+    - task: PowerShell@2
+      displayName: 'PowerShell Script'
+      inputs:
+        targetType: 'inline'
+        script: |
+          jar cvf bundle.jar `
+            onnxruntime_gpu-$(OnnxRuntimeVersion).pom `
+            onnxruntime_gpu-$(OnnxRuntimeVersion).jar `
+            onnxruntime_gpu-$(OnnxRuntimeVersion)-javadoc.jar `
+            onnxruntime_gpu-$(OnnxRuntimeVersion)-sources.jar
+
+      workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
+    - task: CodeSign@1
+      displayName: 'Run Codesign Validation'
+
+    - task: PublishSecurityAnalysisLogs@3
+      displayName: 'Publish Security Analysis Logs'
+      continueOnError: true
+
+    - task: PostAnalysis@2
+      inputs:
+        GdnBreakAllTools: true
+        GdnBreakPolicy: M365
+        GdnBreakPolicyMinSev: Error
+
+    - task: Gradle@3
+      inputs:
+        workingDirectory: '$(Build.SourcesDirectory)/java'
+        tasks: 'publishToADO'

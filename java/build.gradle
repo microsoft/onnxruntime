@@ -4,12 +4,26 @@ plugins {
 	id 'signing'
 	id 'jacoco'
 	id "com.diffplug.spotless" version "6.25.0"
-	id 'net.linguica.maven-settings' version '0.5'
+	id "net.linguica.maven-settings" version "0.5"
 }
 
 allprojects {
 	repositories {
 		mavenCentral()
+		maven {
+			url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/maven/v1'
+			name 'onnxruntime-cuda-12'
+			authentication {
+				basic(BasicAuthentication)
+			}
+		}
+		maven {
+			url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/maven/v1'
+			name 'ort-cuda-12-nightly'
+			authentication {
+				basic(BasicAuthentication)
+			}
+		}
 	}
 }
 
@@ -26,6 +40,9 @@ def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
 def cmakeNativeTestDir = "${cmakeJavaDir}/native-test"
 def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
+
+def mavenUser = System.properties['mavenUser']
+def mavenPwd = System.properties['mavenPwd']
 
 def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name
 def mavenArtifactId = (useCUDA == null && useROCM == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
@@ -200,113 +217,114 @@ jacocoTestReport {
 	}
 }
 
+publishing {
+	publications {
+		maven(MavenPublication) {
+			groupId = project.group
+			artifactId = mavenArtifactId
 
-def adoFeedName = System.properties['ADOFeedName']
-def publishToAdo = adoFeedName != '' && adoFeedName != null
-
-if (!publishToAdo) {
-	def mavenUser = System.properties['mavenUser']
-	def mavenPwd = System.properties['mavenPwd']
-	publishing {
-		publications {
-			maven(MavenPublication) {
-				groupId = project.group
-				artifactId = mavenArtifactId
-
-				from components.java
-				pom {
-					name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
-					description = enableTrainingApis ? trainingDescription : defaultDescription
-					url = 'https://microsoft.github.io/onnxruntime/'
-					licenses {
-						license {
-							name = 'MIT License'
-							url = 'https://opensource.org/licenses/MIT'
-						}
+			from components.java
+			pom {
+				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
+				description = enableTrainingApis ? trainingDescription : defaultDescription
+				url = 'https://microsoft.github.io/onnxruntime/'
+				licenses {
+					license {
+						name = 'MIT License'
+						url = 'https://opensource.org/licenses/MIT'
 					}
-					organization {
-						name = 'Microsoft'
-						url = 'https://www.microsoft.com'
-					}
-					scm {
-						connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
-						developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
-						url = 'https://github.com/microsoft/onnxruntime'
-					}
-					developers {
-						developer {
-							id = 'onnxruntime'
-							name = 'ONNX Runtime'
-							email = 'onnxruntime@microsoft.com'
-						}
+				}
+				organization {
+					name = 'Microsoft'
+					url = 'https://www.microsoft.com'
+				}
+				scm {
+					connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
+					developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
+					url = 'https://github.com/microsoft/onnxruntime'
+				}
+				developers {
+					developer {
+						id = 'onnxruntime'
+						name = 'ONNX Runtime'
+						email = 'onnxruntime@microsoft.com'
 					}
 				}
 			}
 		}
-		repositories {
-			maven {
-				url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
-				credentials {
-					username mavenUser
-					password mavenPwd
+		mavenAdo(MavenPublication) {
+			groupId = project.group
+			artifactId = 'onnxruntime_gpu'
+			artifact "${System.getenv('GDN_CODESIGN_TARGETDIRECTORY')}/bundle.jar"
+
+			from components.java
+			pom {
+				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
+				description = enableTrainingApis ? trainingDescription : defaultDescription
+				url = 'https://microsoft.github.io/onnxruntime/'
+				licenses {
+					license {
+						name = 'MIT License'
+						url = 'https://opensource.org/licenses/MIT'
+					}
+				}
+				organization {
+					name = 'Microsoft'
+					url = 'https://www.microsoft.com'
+				}
+				scm {
+					connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
+					developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
+					url = 'https://github.com/microsoft/onnxruntime'
+				}
+				developers {
+					developer {
+						id = 'onnxruntime'
+						name = 'ONNX Runtime'
+						email = 'onnxruntime@microsoft.com'
+					}
 				}
 			}
 		}
 	}
-} else {
-def artifactPath = System.properties['artifactPath']
-def customJarPath = "$artifactPath/bundle.jar"
-	publishing {
-		publications {
-			maven(MavenPublication) {
-				groupId = project.group
-				artifactId = 'onnxruntime_gpu'
-				artifact(customJarPath)
-				pom {
-					name = onnx-runtime
-					description = defaultDescription
-					url = 'https://microsoft.github.io/onnxruntime/'
-					licenses {
-						license {
-							name = 'MIT License'
-							url = 'https://opensource.org/licenses/MIT'
-						}
-					}
-					organization {
-						name = 'Microsoft'
-						url = 'https://www.microsoft.com'
-					}
-					scm {
-						connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
-						developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
-						url = 'https://github.com/microsoft/onnxruntime'
-					}
-					developers {
-						developer {
-							id = 'onnxruntime'
-							name = 'ONNX Runtime'
-							email = 'onnxruntime@microsoft.com'
-						}
-					}
-				}
+	repositories {
+		maven {
+			url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+			credentials {
+				username mavenUser
+				password mavenPwd
 			}
 		}
-		repositories {
-			maven {
-				url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/$adoFeedName/maven/v1"
-				name adoFeedName
-				authentication {
-					basic(BasicAuthentication)
-				}
-				credentials {
-					username aiinfra
-					password System.properties['SYSTEM_ACCESSTOKEN']
-				}
+		maven {
+			url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
+			name System.getenv('ADOFeedName')
+			authentication {
+				basic(BasicAuthentication)
+			}
+			credentials {
+				username 'aiinfra'
+				password System.getenv('SYSTEM_ACCESSTOKEN')
 			}
 		}
 	}
 }
 
+tasks.register('publishToADO', PublishToMavenRepository) {
+	publication = publishing.publications.mavenAdo
+	repository = publishing.repositories {
+		maven {
+			url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
+			name System.getenv('ADOFeedName')
+			authentication {
+				basic(BasicAuthentication)
+			}
+			credentials {
+				username 'aiinfra'
+				password System.getenv('SYSTEM_ACCESSTOKEN')
+			}
+		}
+	}
+}
 // Generates a task signMavenPublication that will
 // build all artifacts.
 signing {
