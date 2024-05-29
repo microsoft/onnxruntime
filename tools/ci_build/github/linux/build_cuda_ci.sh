@@ -1,5 +1,7 @@
 #!/bin/bash
 set -ex
+#Every cuda container has this $CUDA_VERSION env var set.
+SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
 
 BUILD_ARGS=('--config' 'Release' '--update' '--build'
               '--skip_submodule_sync'
@@ -8,9 +10,9 @@ BUILD_ARGS=('--config' 'Release' '--update' '--build'
               '--build_wheel'
               '--enable_onnx_tests'
 	      '--use_cuda'
-	      "--cuda_version=$CUDA_VERSION"
-	      "--cuda_home=/usr/local/cuda-$CUDA_VERSION"
-	      "--cudnn_home=/usr/local/cuda-$CUDA_VERSION"
+	      "--cuda_version=$SHORT_CUDA_VERSION"
+	      "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
+	      "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
               "--enable_cuda_profiling"
 	      "--enable_cuda_nhwc_ops"
               "--enable_pybind"
