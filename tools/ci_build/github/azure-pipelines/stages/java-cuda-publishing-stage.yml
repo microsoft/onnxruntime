@@ -39,10 +39,8 @@ stages:
         targetType: 'inline'
         script: |
           jar cvf bundle.jar `
-            onnxruntime_gpu-$(OnnxRuntimeVersion).pom `
-            onnxruntime_gpu-$(OnnxRuntimeVersion).jar `
-            onnxruntime_gpu-$(OnnxRuntimeVersion)-javadoc.jar `
-            onnxruntime_gpu-$(OnnxRuntimeVersion)-sources.jar
+            onnxruntime_gpu-*.pom `
+            onnxruntime_gpu-*.jar
         workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
     - task: CodeSign@1
       displayName: 'Run Codesign Validation'
