@@ -72,7 +72,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, const T* input, T* o
   // What about this condition? (Removing if condition should improve Warp Divergence?)
   // for (uint i = 0; i < kElementsPerThread; i++) {
   for (uint i = 0; i < kElementsPerThread && threadIdx.x*kElementsPerThread + i < dim; i++){
-    uint curr_in = offset_in1 + i;
+    // uint curr_in = offset_in1 + i;
     // int curr_half = curr_in / dim;
     // printf("Curr Inp Outside %d\n", curr_in);
     // if (curr_half %2 == 0 && curr_in < max_inp){
