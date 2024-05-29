@@ -34,7 +34,7 @@ auto ort_value = Ort::Value::CreateTensor(
         ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
 ```
 
-If copying data into an `Ort::Value` is undesired external allocated data can also be wrappt to an `Ort::Value` without copying it:
+External allocated data can also be wrapped to an `Ort::Value` without copying it:
 ```c++
 Ort::MemoryInfo memory_info_cuda("Cuda", OrtArenaAllocator, device_id,
                                  OrtMemTypeDefault);
@@ -50,10 +50,10 @@ auto ort_value = Ort::Value::CreateTensor(
 
 These allocated tensors can then be used as [I/O Binding](../performance/tune-performance/iobinding.md) to eliminate copy ops on the network and move the responsibility to the user.
 With such IO bindings more performance tunings are possible:
-- due to the fixed tensor adress a CUDA graph can be captured to reduce CUDA launch latency on CPU
-- due to either having fully asynchronous downloads to pinned memory or eliminating memory copies du to using device local tensor CUDA can run [fully asynchronous via a run option](../execution-providers/CUDA-ExecutionProvider.md#performance-Tuning) on its given stream
+- due to the fixed tensor address, a CUDA graph can be captured to reduce CUDA launch latency on CPU
+- due to either having fully asynchronous downloads to pinned memory or eliminating memory copies by using device local tensor, CUDA can run [fully asynchronous via a run option](../execution-providers/CUDA-ExecutionProvider.md#performance-Tuning) on its given stream
 
-To set the custom compute strem for CUDA refer to the V2 option API exposing the `Ort[CUDA|TensorRT]ProviderOptionsV2*`opaque struct pointer and the function `Update[CUDA|TensorRT]ProviderOptionsWithValue(options, "user_compute_stream", cuda_stream);` to set it's stream member.
+To set the custom compute stream for CUDA, refer to the V2 option API exposing the `Ort[CUDA|TensorRT]ProviderOptionsV2*`opaque struct pointer and the function `Update[CUDA|TensorRT]ProviderOptionsWithValue(options, "user_compute_stream", cuda_stream);` to set it's stream member.
 More details can be found in each execution provider doc.
 
 If you want to verify your optimizations Nsight System helps to correlate CPU API and GPU execution of CUDA operations.
