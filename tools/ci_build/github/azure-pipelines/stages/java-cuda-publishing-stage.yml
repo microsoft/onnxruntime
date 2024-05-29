@@ -1,8 +1,6 @@
 parameters:
 - name: artifact_feed
   type: string
-- name: BuildId
-  type: string
 
 stages:
 - stage: JAR_Publish_GPU
