@@ -5,11 +5,6 @@ parameters:
   type: string
 - name: BuildId
   type: string
-- name: PublishToADO
-  type: boolean
-- name: AdoFeedName
-  type: string
-  default: ''
 
 stages:
 - stage: Jar_Packaging_GPU
@@ -192,33 +187,3 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-
-  - ${{ if eq(parameters.PublishToADO, true) }}:
-    - job: JAR_Publish_GPU
-      dependsOn:
-      - Jar_Packaging_GPU
-      workspace:
-        clean: all
-      pool: 'onnxruntime-Win-CPU-2022'
-      variables:
-      - name: SYSTEM_ACCESSTOKEN
-        value: $(System.AccessToken)
-      - name: ADOFeedName
-        value: ${{ parameters.AdoFeedName }}
-
-      steps:
-      - template: ../templates/flex-downloadPipelineArtifact.yml
-        parameters:
-          StepName: 'Download Final Jar'
-          ArtifactName: onnxruntime-java-gpu
-          TargetPath: '$(Build.BinariesDirectory)/final-jar'
-          SpecificArtifact: ${{ parameters.specificArtifact }}
-          BuildId: ${{ parameters.BuildId }}
-      - powershell: |
-          $artifactPath = "$(Build.BinariesDirectory)/final-jar"
-          del $artifactPath\testing.jar
-          jar cvf bundle.jar -C $artifactPath $artifactPath
-          ./gradlew publish
-        workingDirectory: '$(Build.SourcesDirectory)/java'
-
-
