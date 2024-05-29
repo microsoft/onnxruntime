@@ -286,20 +286,6 @@ publishing {
 	}
 }
 
-task publishToADO(type: PublishToMavenRepository) {
-	publication = publishing.publications.mavenAdo as MavenPublication
-	repository = publishing.repositories.maven {
-		url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
-		name System.getenv('ADOFeedName')
-		authentication {
-			basic(BasicAuthentication)
-		}
-		credentials {
-			username 'aiinfra'
-			password "${project.findProperty('adoAccessToken')}"
-		}
-	}
-}
 // Generates a task signMavenPublication that will
 // build all artifacts.
 signing {
