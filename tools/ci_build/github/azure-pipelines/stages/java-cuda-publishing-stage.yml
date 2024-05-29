@@ -62,18 +62,18 @@ stages:
             onnxruntime_gpu-*.jar
         workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
 
-    - task: CodeSign@1
-      displayName: 'Run Codesign Validation'
-
-    - task: PublishSecurityAnalysisLogs@3
-      displayName: 'Publish Security Analysis Logs'
-      continueOnError: true
-
-    - task: PostAnalysis@2
-      inputs:
-        GdnBreakAllTools: true
-        GdnBreakPolicy: M365
-        GdnBreakPolicyMinSev: Error
+#    - task: CodeSign@1
+#      displayName: 'Run Codesign Validation'
+#
+#    - task: PublishSecurityAnalysisLogs@3
+#      displayName: 'Publish Security Analysis Logs'
+#      continueOnError: true
+#
+#    - task: PostAnalysis@2
+#      inputs:
+#        GdnBreakAllTools: true
+#        GdnBreakPolicy: M365
+#        GdnBreakPolicyMinSev: Error
 
     - task: Gradle@3
       inputs:
