@@ -1335,6 +1335,58 @@ class TestQDQMixedPrecision(TestQDQFormat):
 
                 self.assertIn("op_0_out", graph_outputs)
 
+    def test_add_tensor_qdq_ops_case_5(self):
+        """
+        Tensor T is a graph output without any consumers.
+        <Producer> ---> Q1 ---> DQ1 ---> Q2 ---> DQ2 ---> <Graph output>
+        """
+        float_model_path = os.path.join(self._tmp_dir_path, "case_5.onnx")
+        qdq_model_path = os.path.join(self._tmp_dir_path, "case_5.qdq.onnx")
+
+        # Build model with input_0 -> op_0 -> op_0_out
+        # The graph output has no consumers.
+        float_model = self.build_test_model_for_add_qdq_ops(0, True)
+        onnx.save_model(float_model, float_model_path)
+
+        data_reader = self.input_feeds(3, {"input_0": (1, 2, 3)}, np.float32)
+
+        mixed_prec_overrides = {
+            "input_0": [{"quant_type": QuantType.QUInt16}],
+            "op_0_out": [
+                {
+                    "quant_type": QuantType.QUInt16,
+                    "convert": {"quant_type": QuantType.QUInt8},
+                }
+            ],
+        }
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            activation_type=QuantType.QUInt8,
+            op_types_to_quantize=[node.op_type for node in float_model.graph.node],
+            extra_options={
+                "TensorQuantOverrides": mixed_prec_overrides,
+            },
+        )
+
+        # Expect the following QDQ model:
+        # input_0 --> Q_16 --> DQ_16 --> op_0 --> Q_16 --> DQ_16 --> Q_8 --> DQ_8 --> output_0
+        qdq_node_counts = {"QuantizeLinear": 3, "DequantizeLinear": 3}
+        check_op_type_count(self, qdq_model_path, **qdq_node_counts)
+
+        qdq_model = onnx.load_model(qdq_model_path)
+        onnx.checker.check_model(qdq_model, True)
+
+        initializers = {init.name: init for init in qdq_model.graph.initializer}
+
+        # Check zero-point data types
+        orig_zp_init = initializers["op_0_out_zero_point"]
+        self.assertEqual(orig_zp_init.data_type, onnx.TensorProto.UINT16)
+        convert_zp_init = initializers["op_0_out_zero_point_convert"]
+        self.assertEqual(convert_zp_init.data_type, onnx.TensorProto.UINT8)
+
     def build_test_model_1(self, shape):
         """
         Returns the following float32 model.
