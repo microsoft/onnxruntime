@@ -46,7 +46,7 @@ def trainingDescription = 'ONNX Runtime Training is a training and inference pac
 
 // We need to have a custom settings.xml so codeql can bypass the need for settings.security.xml
 mavenSettings {
-    userSettingsFileName = "${projectDir}/settings.xml"
+	userSettingsFileName = "${projectDir}/settings.xml"
 }
 
 java {
