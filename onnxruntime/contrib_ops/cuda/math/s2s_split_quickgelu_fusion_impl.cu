@@ -80,7 +80,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, const T* input, T* o
     if (threadIdx.x*kElementsPerThread + i < dim) {
       printf("Curr Inp inside %d\n", curr_in);
       // std::cout << "Curr curr_in:" << curr_in << std::endl;
-      output[offset_out + i] = QuickGeluCompute(input[offset_in1 + i], input[offset_in2+i], alpha_val)
+      output[offset_out + i] = QuickGeluCompute(input[offset_in1 + i], input[offset_in2+i], alpha_val);
       // T v = input[offset_in2+i] * alpha_val;
       // T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
       // T quickgelu_out = input[offset_in2+i] * sigmoid;
