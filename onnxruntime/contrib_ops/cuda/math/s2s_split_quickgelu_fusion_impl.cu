@@ -23,7 +23,7 @@ constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 
 // Need to use SplitSameSplitDimImpl (the other one works for different split sizes)
 template <typename T>
-__device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha) {
+__device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha_val) {
   T v = inp2 * alpha_val;
   T one = static_cast<T>(1.f);
   T zero = static_cast<T>(0.f);
