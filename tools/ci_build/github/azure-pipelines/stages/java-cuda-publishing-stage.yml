@@ -4,6 +4,7 @@ parameters:
 
 stages:
 - stage: JAR_Publish_GPU
+  dependsOn: []
   jobs:
   - job: JAR_Publish_GPU
     workspace:
