@@ -45,6 +45,25 @@ def trainingDescription = 'ONNX Runtime Training is a training and inference pac
 	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
+def securitySettingsFilePath =  "${projectDir}/settings-security.xml"
+
+// Set system properties for Maven settings and security settings files
+gradle.taskGraph.whenReady { taskGraph ->
+    allprojects {
+        tasks.withType(JavaCompile) {
+            doFirst {
+                System.setProperty('org.apache.maven.security.settingsFile', securitySettingsFilePath)
+            }
+        }
+    }
+}
+// Ensure that the properties are set before any Maven-related tasks
+tasks.withType(PublishToMavenRepository) {
+    doFirst {
+        System.setProperty('org.apache.maven.security.settingsFile', securitySettingsFilePath)
+    }
+}
+
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
 	targetCompatibility = JavaVersion.VERSION_1_8
