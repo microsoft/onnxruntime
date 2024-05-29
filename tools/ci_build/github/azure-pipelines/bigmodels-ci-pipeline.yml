@@ -180,7 +180,7 @@ stages:
       GenerateImage_DIR: $(Agent.TempDirectory)/images
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-A10-12G
+    pool: Onnxruntime-Linux-GPU-A100-WUS3
     steps:
     - checkout: self
       clean: true
