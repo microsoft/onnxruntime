@@ -47,7 +47,9 @@ def trainingDescription = 'ONNX Runtime Training is a training and inference pac
 
 def mavenSettingsFilePath = "${projectDir}/settings.xml"
 def securitySettingsFilePath =  "${projectDir}/settings-security.xml"
-
+mavenSettings {
+    userSettingsFileName = "${projectDir}/settings.xml"
+}
 println(mavenSettingsFilePath)
 // Configure system properties early in the build process
 gradle.beforeProject { project ->
