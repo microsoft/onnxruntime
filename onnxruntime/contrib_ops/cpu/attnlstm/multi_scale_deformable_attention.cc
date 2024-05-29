@@ -197,7 +197,7 @@ void MultiScaleDeformableAttention::ComputeGeneric(
               return h >= 0 && h < feature_map_height && w >= 0 && w < feature_map_width;
             };
             auto access = [&](int h, int w, int d) -> float {
-              return value_begin[(h * feature_map_width + w) * M + im * D + d];
+              return value_begin[((h * feature_map_width + w) * M + im) * D + d];
             };
 
             if(inbound(h_low, w_low)){
