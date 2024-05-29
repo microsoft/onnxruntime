@@ -169,54 +169,54 @@ Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,      
 
 ### Scenario
 
-| Scenario                                           | TensorRT EP Session Option            | Type   |
-| :------------------------------------------------- | :------------------------------------ | :----- |
-| **Device and Compute Configuration**               |                                       |        |
-| Specify GPU id for execution                       | device_id                             | int    |
-| Set custom compute stream for GPU operations       | user_compute_stream                   | string |
-|                                                    |                                       |        |
-| **Engine Caching and Compatibility**               |                                       |        |
-| Enable caching of TensorRT engines                 | trt_engine_cache_enable               | bool   |
-| Set path to store cached TensorRT engines          | trt_engine_cache_path                 | string |
-| Set prefix for cached engine files                 | trt_engine_cache_prefix               | string |
-| Maximize engine compatibility across Ampere+ GPUs  | trt_engine_hw_compatible              | bool   |
-|                                                    |                                       |        |
-| **Precision and Performance**                      |                                       |        |
-| Set TensorRT EP GPU memory usage limit             | trt_max_workspace_size                | int    |
-| Enable FP16 precision for faster performance       | trt_fp16_enable                       | bool   |
-| Enable INT8 precision for quantized inference      | trt_int8_enable                       | bool   |
-| Name INT8 calibration table for non-QDQ models     | trt_int8_calibration_table_name       | string |
-| Use native TensorRT calibration tables             | trt_int8_use_native_calibration_table | bool   |
-| Use heuristics to speed up engine builds           | trt_build_heuristics_enable           | bool   |
-| Enable sparsity to leverage zero values            | trt_sparsity_enable                   | bool   |
-| Enable Deep Learning Accelerator (DLA) on edge SoC | trt_dla_enable                        | bool   |
-| Specify which DLA core to use                      | trt_dla_core                          | int    |
-|                                                    |                                       |        |
-| **Subgraph and Graph Optimization**                |                                       |        |
-| Limit partitioning iterations for model conversion | trt_max_partition_iterations          | int    |
-| Set minimum size for subgraphs in partitioning     | trt_min_subgraph_size                 | int    |
-| Dump optimized subgraphs for debugging             | trt_dump_subgraphs                    | bool   |
-| Force sequential engine builds under multi-GPU     | trt_force_sequential_engine_build     | bool   |
-|                                                    |                                       |        |
-| **Advanced Configuration and Profiling**           |                                       |        |
-| Enable sharing of context memory between subgraphs | trt_context_memory_sharing_enable     | bool   |
-| Force layer norm calculations to FP32              | trt_layer_norm_fp32_fallback          | bool   |
-| Capture CUDA graph for reduced launch overhead     | trt_cuda_graph_enable                 | bool   |
-| Set optimization level for TensorRT builder        | trt_builder_optimization_level        | int    |
-| Set number of auxiliary streams for computation    | trt_auxiliary_streams                 | int    |
-| Specify tactics sources for TensorRT               | trt_tactic_sources                    | string |
-| Add additional plugin library paths for TensorRT   | trt_extra_plugin_lib_paths            | string |
-| Enable detailed logging of build steps             | trt_detailed_build_log                | bool   |
-|                                                    |                                       |        |
-| **Timing cache**                                   |                                       |        |
-| Enable use of timing cache to speed up builds      | trt_timing_cache_enable               | bool   |
-| Set path for storing timing cache                  | trt_timing_cache_path                 | string |
-| Force use of timing cache regardless of GPU match  | trt_force_timing_cache                | bool   |
-|                                                    |                                       |        |
-| **Dynamic Shape Profiling**                        |                                       |        |
-| Define min shapes                                  | trt_profile_min_shapes                | string |
-| Define max shapes                                  | trt_profile_max_shapes                | string |
-| Define optimal shapes                              | trt_profile_opt_shapes                | string |
+| Scenario                                           | TensorRT EP Session Option                                                                 | Type   |
+| :------------------------------------------------- | :----------------------------------------------------------------------------------------- | :----- |
+| **Device and Compute Configuration**               |                                                                                            |        |
+| Specify GPU id for execution                       | [device_id](./TensorRT-ExecutionProvider.md#device_id)                                     | int    |
+| Set custom compute stream for GPU operations       | [user_compute_stream](./TensorRT-ExecutionProvider.md#user_compute_stream)                 | string |
+|                                                    |                                                                                            |        |
+| **Engine Caching and Compatibility**               |                                                                                            |        |
+| Enable caching of TensorRT engines                 | [trt_engine_cache_enable](./TensorRT-ExecutionProvider.md#trt_engine_cache_enable)         | bool   |
+| Set path to store cached TensorRT engines          | [trt_engine_cache_path](./TensorRT-ExecutionProvider.md#trt_engine_cache_path)             | string |
+| Set prefix for cached engine files                 | [trt_engine_cache_prefix](./TensorRT-ExecutionProvider.md#trt_engine_cache_prefix)         | string |
+| Maximize engine compatibility across Ampere+ GPUs  | [trt_engine_hw_compatible](./TensorRT-ExecutionProvider.md#trt_engine_hw_compatible)       | bool   |
+|                                                    |                                                                                            |        |
+| **Precision and Performance**                      |                                                                                            |        |
+| Set TensorRT EP GPU memory usage limit             | [trt_max_workspace_size](./TensorRT-ExecutionProvider.md#trt_max_workspace_size)           | int    |
+| Enable FP16 precision for faster performance       | [trt_fp16_enable](./TensorRT-ExecutionProvider.md#trt_fp16_enable)                         | bool   |
+| Enable INT8 precision for quantized inference      | [trt_int8_enable](./TensorRT-ExecutionProvider.md#trt_int8_enable)                         | bool   |
+| Name INT8 calibration table for non-QDQ models     | [trt_int8_calibration_table_name](./TensorRT-ExecutionProvider.md#trt_int8_calibration_table_name) | string |
+| Use native TensorRT calibration tables             | [trt_int8_use_native_calibration_table](./TensorRT-ExecutionProvider.md#trt_int8_use_native_calibration_table) | bool   |
+| Use heuristics to speed up engine builds           | [trt_build_heuristics_enable](./TensorRT-ExecutionProvider.md#trt_build_heuristics_enable) | bool   |
+| Enable sparsity to leverage zero values            | [trt_sparsity_enable](./TensorRT-ExecutionProvider.md#trt_sparsity_enable)                 | bool   |
+| Enable Deep Learning Accelerator (DLA) on edge SoC | [trt_dla_enable](./TensorRT-ExecutionProvider.md#trt_dla_enable)                           | bool   |
+| Specify which DLA core to use                      | [trt_dla_core](./TensorRT-ExecutionProvider.md#trt_dla_core)                               | int    |
+|                                                    |                                                                                            |        |
+| **Subgraph and Graph Optimization**                |                                                                                            |        |
+| Limit partitioning iterations for model conversion | [trt_max_partition_iterations](./TensorRT-ExecutionProvider.md#trt_max_partition_iterations) | int    |
+| Set minimum size for subgraphs in partitioning     | [trt_min_subgraph_size](./TensorRT-ExecutionProvider.md#trt_min_subgraph_size)             | int    |
+| Dump optimized subgraphs for debugging             | [trt_dump_subgraphs](./TensorRT-ExecutionProvider.md#trt_dump_subgraphs)                   | bool   |
+| Force sequential engine builds under multi-GPU     | [trt_force_sequential_engine_build](./TensorRT-ExecutionProvider.md#trt_force_sequential_engine_build) | bool   |
+|                                                    |                                                                                            |        |
+| **Advanced Configuration and Profiling**           |                                                                                            |        |
+| Enable sharing of context memory between subgraphs | [trt_context_memory_sharing_enable](./TensorRT-ExecutionProvider.md#trt_context_memory_sharing_enable) | bool   |
+| Force layer norm calculations to FP32              | [trt_layer_norm_fp32_fallback](./TensorRT-ExecutionProvider.md#trt_layer_norm_fp32_fallback) | bool   |
+| Capture CUDA graph for reduced launch overhead     | [trt_cuda_graph_enable](./TensorRT-ExecutionProvider.md#trt_cuda_graph_enable)             | bool   |
+| Set optimization level for TensorRT builder        | [trt_builder_optimization_level](./TensorRT-ExecutionProvider.md#trt_builder_optimization_level) | int    |
+| Set number of auxiliary streams for computation    | [trt_auxiliary_streams](./TensorRT-ExecutionProvider.md#trt_auxiliary_streams)             | int    |
+| Specify tactics sources for TensorRT               | [trt_tactic_sources](./TensorRT-ExecutionProvider.md#trt_tactic_sources)                   | string |
+| Add additional plugin library paths for TensorRT   | [trt_extra_plugin_lib_paths](./TensorRT-ExecutionProvider.md#trt_extra_plugin_lib_paths)   | string |
+| Enable detailed logging of build steps             | [trt_detailed_build_log](./TensorRT-ExecutionProvider.md#trt_detailed_build_log)           | bool   |
+|                                                    |                                                                                            |        |
+| **Timing cache**                                   |                                                                                            |        |
+| Enable use of timing cache to speed up builds      | [trt_timing_cache_enable](./TensorRT-ExecutionProvider.md#trt_timing_cache_enable)         | bool   |
+| Set path for storing timing cache                  | [trt_timing_cache_path](./TensorRT-ExecutionProvider.md#trt_timing_cache_path)             | string |
+| Force use of timing cache regardless of GPU match  | [trt_force_timing_cache](./TensorRT-ExecutionProvider.md#trt_force_timing_cache)           | bool   |
+|                                                    |                                                                                            |        |
+| **Dynamic Shape Profiling**                        |                                                                                            |        |
+| Define min shapes                                  | [trt_profile_min_shapes](./TensorRT-ExecutionProvider.md#trt_profile_min_shapes)           | string |
+| Define max shapes                                  | [trt_profile_max_shapes](./TensorRT-ExecutionProvider.md#trt_profile_max_shapes)           | string |
+| Define optimal shapes                              | [trt_profile_opt_shapes](./TensorRT-ExecutionProvider.md#trt_profile_opt_shapes)           | string |
 
 > Note: for bool type options, assign them with **True**/**False** in python, or **1**/**0** in C++.
 

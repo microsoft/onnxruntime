@@ -188,7 +188,7 @@ These instructions are for the latest [JetPack SDK 6](https://developer.nvidia.c
       
       2. Jetpack 6.0 users can download latest TensorRT 10 TAR package for jetpack on [TensorRT SDK website](https://developer.nvidia.com/tensorrt/download/10x).
       
-      3. Check [here](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements) for TensorRT/CUDA support matrix among all ONNX Runtime versions.
+      3. Check [here](../execution-providers/TensorRT-ExecutionProvider.md#requirements) for TensorRT/CUDA support matrix among all ONNX Runtime versions.
 
 3. Install the ONNX Runtime build dependencies on the Jetpack host:
 
