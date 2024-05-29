@@ -11,17 +11,14 @@ allprojects {
 	repositories {
 		mavenCentral()
 		maven {
-			url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/maven/v1'
-			name 'onnxruntime-cuda-12'
+			url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
+			name System.getenv('ADOFeedName')
 			authentication {
 				basic(BasicAuthentication)
 			}
-		}
-		maven {
-			url 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/maven/v1'
-			name 'ort-cuda-12-nightly'
-			authentication {
-				basic(BasicAuthentication)
+			credentials {
+				username 'aiinfra'
+				password System.getenv('SYSTEM_ACCESSTOKEN')
 			}
 		}
 	}
