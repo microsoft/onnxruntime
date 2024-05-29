@@ -22,6 +22,15 @@ constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 }  // namespace
 
 // Need to use SplitSameSplitDimImpl (the other one works for different split sizes)
+template <typename T>
+__device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha) {
+  T v = inp2 * alpha_val;
+  T one = static_cast<T>(1.f);
+  T zero = static_cast<T>(0.f);
+  T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+  T quickgelu_out = inp2 * sigmoid;
+  return inp1 * quickgelu_out;
+}
 
 template <typename T>
 __global__ void S2SModelSplitQuickGeluKernel(const int dim, const T* input, T* output) {
@@ -71,10 +80,11 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, const T* input, T* o
     if (threadIdx.x*kElementsPerThread + i < dim) {
       printf("Curr Inp inside %d\n", curr_in);
       // std::cout << "Curr curr_in:" << curr_in << std::endl;
-      T v = input[offset_in2+i] * alpha_val;
-      T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
-      T quickgelu_out = input[offset_in2+i] * sigmoid;
-      output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
+      output[offset_out + i] = QuickGeluCompute(input[offset_in1 + i], input[offset_in2+i], alpha_val)
+      // T v = input[offset_in2+i] * alpha_val;
+      // T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+      // T quickgelu_out = input[offset_in2+i] * sigmoid;
+      // output[offset_out + i] = input[offset_in1 + i] * quickgelu_out;
       printf("Current output idx %d\n", offset_out + i);
       // printf("Current output value %f\n", quickgelu_out);
     }
