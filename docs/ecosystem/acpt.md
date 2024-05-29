@@ -31,10 +31,10 @@ Most recent image releases (last updated 4/25/2024):
 
 | Environment Name            | OS             | GPU Version | Python Version | PyTorch Version | ORT-training Version | DeepSpeed Version | torch-ort Version | Nebula Version |
 |-----------------------------|----------------|-------------|----------------|-----------------|---------------------|-------------------|-------------------|----------------|
-| acpt-pytorch-2.2-cuda12.1   | Ubuntu 20.04   | cu121       | 3.10           | 2.2.2           | 1.18.0                 | 0.14.2            | 1.17.3            | 0.16.11        |
-| acpt-pytorch-2.1-cuda12.1   | Ubuntu 20.04   | cu121       | 3.10           | 2.1.2           | 1.18.0                 | 0.14.2            | 1.17.3            | 0.16.11        |
-| acpt-pytorch-2.0-cuda11.7   | Ubuntu 20.04   | cu117       | 3.10           | 2.0.1           | 1.18.0                 | 0.14.2            | 1.17.3            | 0.16.11        |
-| acpt-pytorch-1.13-cuda11.7  | Ubuntu 20.04   | cu117       | 3.10           | 1.13.1          | 1.18.0                 | 0.14.2            | 1.17.3            | 0.16.11        |
+| acpt-pytorch-2.2-cuda12.1   | Ubuntu 20.04   | cu121       | 3.10           | 2.2.2           | 1.18.0               | 0.14.2            | 1.17.3            | 0.16.11        |
+| acpt-pytorch-2.1-cuda12.1   | Ubuntu 20.04   | cu121       | 3.10           | 2.1.2           | 1.18.0               | 0.14.2            | 1.17.3            | 0.16.11        |
+| acpt-pytorch-2.0-cuda11.7   | Ubuntu 20.04   | cu117       | 3.10           | 2.0.1           | 1.18.0               | 0.14.2            | 1.17.3            | 0.16.11        |
+| acpt-pytorch-1.13-cuda11.7  | Ubuntu 20.04   | cu117       | 3.10           | 1.13.1          | 1.18.0               | 0.14.2            | 1.17.3            | 0.16.11        |
 
 Other packages like fairscale, horovod, msccl, protobuf, pyspark, pytest, pytorch-lightning, tensorboard, NebulaML, torchvision, and torchmetrics are provided to support all training needs.
 
