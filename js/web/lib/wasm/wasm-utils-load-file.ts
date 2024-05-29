@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import * as fs from 'fs';
-import {readFile} from 'node:fs/promises';
+import {isNode} from './wasm-utils-env';
 
 /**
  * Load a file into a Uint8Array.
@@ -12,14 +11,16 @@ import {readFile} from 'node:fs/promises';
  */
 export const loadFile = async(file: string|Blob|ArrayBufferLike|Uint8Array): Promise<Uint8Array> => {
   if (typeof file === 'string') {
-    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+    if (isNode) {
       // load file into ArrayBuffer in Node.js
       try {
+        const {readFile} = require('node:fs/promises');
         return new Uint8Array(await readFile(file));
       } catch (e) {
         if (e.code === 'ERR_FS_FILE_TOO_LARGE') {
           // file is too large, use fs.createReadStream instead
-          const stream = fs.createReadStream(file);
+          const {createReadStream} = require('node:fs');
+          const stream = createReadStream(file);
           const chunks: Uint8Array[] = [];
           for await (const chunk of stream) {
             chunks.push(chunk);

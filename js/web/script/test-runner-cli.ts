@@ -569,7 +569,7 @@ async function main() {
         chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
       }
       if (webnn) {
-        chromiumFlags.push('--enable-experimental-web-platform-features');
+        chromiumFlags.push('--enable-features=WebMachineLearningNeuralNetwork');
       }
       if (process.argv.includes('--karma-debug')) {
         karmaArgs.push('--log-level debug');

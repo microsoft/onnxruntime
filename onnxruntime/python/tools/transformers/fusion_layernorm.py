@@ -38,6 +38,7 @@ class FusionLayerNormalization(Fusion):
               |                      |
               +----------------------+
         """
+        subgraph_nodes = []
         children = self.model.get_children(node, input_name_to_nodes)
         if len(children) == 0 or len(children) > 2:
             return
@@ -53,9 +54,16 @@ class FusionLayerNormalization(Fusion):
 
         div_node = None
         for child in children:
-            div_node = self.model.find_first_child_by_type(child, "Div", input_name_to_nodes, recursive=False)
-            if div_node is not None:
-                break
+            # Check if Sub --> Div exists
+            div_node_1 = self.model.find_first_child_by_type(child, "Div", input_name_to_nodes, recursive=False)
+
+            # Check if Sub --> Cast --> Div
+            div_node_2 = self.model.match_child_path(child, ["Cast", "Div"], exclude=[])
+
+            if div_node_1 is not None:
+                div_node = div_node_1
+            elif div_node_2 is not None:
+                div_node = div_node_2[-1]
         if div_node is None:
             return
 
@@ -63,10 +71,7 @@ class FusionLayerNormalization(Fusion):
             div_node,
             [
                 (["Sqrt", "Add", "ReduceMean", "Pow", "Sub"], [1, 0, 0, 0, 0]),
-                (
-                    ["Sqrt", "Add", "ReduceMean", "Pow", "Cast", "Sub"],
-                    [1, 0, 0, 0, 0, 0],
-                ),
+                (["Sqrt", "Add", "ReduceMean", "Pow", "Cast", "Sub"], [1, 0, 0, 0, 0, 0]),
             ],
             output_name_to_node,
         )
@@ -87,7 +92,14 @@ class FusionLayerNormalization(Fusion):
         if self.model.find_constant_input(pow_node, 2.0) != 1:
             return
 
-        mul_node = input_name_to_nodes[div_node.output[0]][0]
+        temp_node = input_name_to_nodes[div_node.output[0]][0]
+        if temp_node.op_type == "Cast":
+            # Div --> Cast --> Mul
+            subgraph_nodes.append(temp_node)  # add Cast node to list of subgraph nodes
+            mul_node = input_name_to_nodes[temp_node.output[0]][0]
+        else:
+            # Div --> Mul
+            mul_node = temp_node
         if mul_node.op_type != "Mul":
             return
 
@@ -95,7 +107,7 @@ class FusionLayerNormalization(Fusion):
         if last_add_node.op_type != "Add":
             return
 
-        subgraph_nodes = [node]
+        subgraph_nodes.append(node)
         subgraph_nodes.extend(children)
         subgraph_nodes.extend(parent_nodes[:-1])
 
@@ -109,7 +121,8 @@ class FusionLayerNormalization(Fusion):
             logger.debug("It is not safe to fuse LayerNormalization node. Skip")
             return
 
-        weight_input = mul_node.input[1 - self.model.input_index(div_node.output[0], mul_node)]
+        node_before_weight = div_node if temp_node.op_type != "Cast" else temp_node
+        weight_input = mul_node.input[1 - self.model.input_index(node_before_weight.output[0], mul_node)]
         if not self.model.is_constant_with_specified_dimension(weight_input, 1, "layernorm weight"):
             return
 

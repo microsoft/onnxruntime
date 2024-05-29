@@ -59,17 +59,9 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.19.2.240210
+  default: 2.21.0.240401
 
 trigger: none
-
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
 - template: templates/py-packaging-stage.yml

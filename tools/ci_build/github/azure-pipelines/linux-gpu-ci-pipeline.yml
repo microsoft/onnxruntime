@@ -62,15 +62,15 @@ variables:
 
   - name: linux_trt_version
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: 8.6.1.6-1.cuda11.8
+      value: 10.0.1.6-1.cuda11.8
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: 8.6.1.6-1.cuda12.0
+      value: 10.0.1.6-1.cuda12.4
 
   - name: Repository
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: 'onnxruntimecuda11build'
+      value: 'onnxruntimecuda11manylinuxbuild'
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: 'onnxruntimecuda12build'
+      value: 'onnxruntimecuda12manylinuxbuild'
 
 stages:
 - stage: Linux_Build
@@ -262,7 +262,7 @@ stages:
               cd /tmp; \
               /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
-                --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
+                --enable_transformers_tool_test --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
                 --enable_pybind --build_java --ctest_path "" ; \
               '
       displayName: 'Run Tests'

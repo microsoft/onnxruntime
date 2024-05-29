@@ -103,17 +103,13 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   if (packed_qkv) {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size, query, Q));
-  } else if (sequence_length > 1) {
+  } else {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, num_heads_, sequence_length, head_size, query, Q));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, kv_num_heads_, sequence_length, head_size, key, K));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, kv_num_heads_, sequence_length, head_size, value, V));
-  } else {
-    Tensor::InitOrtValue(std::move(const_cast<Tensor&>(*query)), Q);
-    Tensor::InitOrtValue(std::move(const_cast<Tensor&>(*key)), K);
-    Tensor::InitOrtValue(std::move(const_cast<Tensor&>(*value)), V);
   }
 
   if (do_rotary_) {

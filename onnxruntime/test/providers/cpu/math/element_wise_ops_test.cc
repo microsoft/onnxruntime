@@ -1198,7 +1198,7 @@ TEST(MathOpTest, Sum_6) {
 #if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1225,7 +1225,7 @@ TEST(MathOpTest, Sum_6_double) {
 #if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1452,7 +1452,7 @@ TEST(MathOpTest, Min_6) {
                         {1.0f, 0.0f, 1.0f,
                          -3.0f, 1.1f, -100.0f,
                          -5.4f, 0.01f, -10000.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 }
 
 TEST(MathOpTest, Min_8) {
@@ -1708,7 +1708,7 @@ TEST(MathOpTest, Max_6) {
                         {1.0f, 0.0f, 3.0f,
                          -1.0f, 3.3f, 64.0f,
                          5.4f, 0.03f, 10000.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 }
 
 TEST(MathOpTest, Max_8_Float) {
@@ -2718,8 +2718,7 @@ TEST(MathOpTest, Mean_6) {
                         {1.0f, 0.0f, 2.0f,
                          -2.0f, 2.2f, 10.0f,
                          -3.0f, 0.02f, -4.0f});
-  // OpenVINO: Disabled due to accuracy mismatch
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 }
 
 TEST(MathOpTest, Mean_8) {

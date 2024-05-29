@@ -286,7 +286,7 @@ const addBiasTranspose =
           {inputs: [qkv, bias], outputs: [-1]})[0];
     };
 
-const maybeTransposeToBNSHAndAddBias =
+export const maybeTransposeToBNSHAndAddBias =
     (context: ComputeContext, batchSize: number, numHeads: number, sequenceLength: number, headSize: number,
      input: TensorView, bias?: TensorView, biasOffset?: number) => {
       // const newDims = [];
