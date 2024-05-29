@@ -20,9 +20,13 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
 def useROCM = System.properties['USE_ROCM']
+
 def adoArtifact = project.findProperty('adoArtifact')
 def adoAccessToken = project.findProperty('adoAccessToken')
-def publishToAdo = adoArtifact != null && adoAccessToken != null
+def adoUsername = project.findProperty('adoUsername')
+// Only publish to ADO feed if all three properties are set
+def publishToAdo = adoArtifact != null && adoAccessToken != null && adoUsername != null
+
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
@@ -257,7 +261,7 @@ publishing {
 					basic(BasicAuthentication)
 				}
 				credentials {
-					username 'aiinfra'
+					username  "${project.findProperty('adoUsername')}"
 					password "${project.findProperty('adoAccessToken')}"
 				}
 			}
