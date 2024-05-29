@@ -10,17 +10,6 @@ plugins {
 allprojects {
 	repositories {
 		mavenCentral()
-		maven {
-			url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
-			name System.getenv('ADOFeedName')
-			authentication {
-				basic(BasicAuthentication)
-			}
-			credentials {
-				username 'aiinfra'
-				password System.getenv('SYSTEM_ACCESSTOKEN')
-			}
-		}
 	}
 }
 
@@ -252,15 +241,14 @@ publishing {
 		mavenAdo(MavenPublication) {
 			groupId = project.group
 			artifactId = 'onnxruntime_gpu'
-
 			artifact ("${System.getenv('GDN_CODESIGN_TARGETDIRECTORY')}/bundle.jar") {
 				classifier 'cuda12'
 			}
 
 			from components.java
 			pom {
-				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
-				description = enableTrainingApis ? trainingDescription : defaultDescription
+				name = 'onnx-runtime'
+				description = defaultDescription
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {
 					license {
@@ -295,17 +283,6 @@ publishing {
 				password mavenPwd
 			}
 		}
-		maven {
-			url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
-			name System.getenv('ADOFeedName')
-			authentication {
-				basic(BasicAuthentication)
-			}
-			credentials {
-				username 'aiinfra'
-				password System.getenv('SYSTEM_ACCESSTOKEN')
-			}
-		}
 	}
 }
 
@@ -319,7 +296,8 @@ task publishToADO(type: PublishToMavenRepository) {
 		}
 		credentials {
 			username 'aiinfra'
-			password System.getenv('SYSTEM_ACCESSTOKEN')
+			password "${System.getenv('SYSTEM_ACCESSTOKEN')}"
+
 		}
 	}
 }

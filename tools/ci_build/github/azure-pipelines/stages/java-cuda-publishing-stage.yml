@@ -3,10 +3,10 @@ parameters:
   type: string
 
 stages:
-- stage: JAR_Publish_GPU
+- stage: JAR_Publishing_GPU
   dependsOn: []
   jobs:
-  - job: JAR_Publish_GPU
+  - job: JAR_Publishing_GPU
     workspace:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'
