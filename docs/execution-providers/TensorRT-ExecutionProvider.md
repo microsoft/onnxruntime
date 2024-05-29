@@ -71,7 +71,7 @@ sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider'
 ## Configurations
 There are two ways to configure TensorRT settings, either by [TensorRT Execution Provider Session Option](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#execution-provider-options) or [Environment Variables(deprecated)](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#environment-variablesdeprecated).
 
-Here are examples and different scenarios to set TensorRT EP session options:
+Here are examples and different [scenarios](./TensorRT-ExecutionProvider.md#scenario) to set TensorRT EP session options:
 
 #### Click below for Python API example:
 
@@ -167,6 +167,8 @@ Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,      
 </details>
 
 
+### Scenario
+
 | Scenario                                           | TensorRT EP Session Option            | Type   |
 | :------------------------------------------------- | :------------------------------------ | :----- |
 | **Device and Compute Configuration**               |                                       |        |
@@ -217,6 +219,7 @@ Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,      
 | Define optimal shapes                              | trt_profile_opt_shapes                | string |
 
 > Note: for bool type options, assign them with **True**/**False** in python, or **1**/**0** in C++.
+
 
 ### Execution Provider Options
 
