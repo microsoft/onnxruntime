@@ -115,7 +115,7 @@ stages:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e CCACHE_DIR=/cache -w /onnxruntime_src \
-          $(Repository) /tools/ci_build/github/linux/build_cuda_ci.sh
+          $(Repository) tools/ci_build/github/linux/build_cuda_ci.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: Build Onnxruntime
 
