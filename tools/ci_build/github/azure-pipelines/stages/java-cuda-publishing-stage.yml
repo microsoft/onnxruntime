@@ -37,23 +37,6 @@ stages:
         CleanTargetFolder: true
 
     - task: PowerShell@2
-      displayName: 'Get Jar version number and set variable'
-      inputs:
-        targetType: 'inline'
-        script: |
-          $file = Get-ChildItem -Path . -Filter "onnxruntime_gpu*.jar"
-          $fileName = $file.Name
-          if ($fileName -match "onnxruntime_gpu(\d+\.\d+\.\d+)\.jar") {
-              $versionNumber = $matches[1]
-              Write-Output "Version number: $versionNumber"
-          } else {
-              Write-Output "No version number found in the filename."
-          }
-          Write-Host "$versionNumber"
-          Write-Host "##vso[task.setvariable variable=ORT_VERSION;]$versionNumber"
-        workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
-
-    - task: PowerShell@2
       displayName: 'Bundle Jar and POM files into a single jar file'
       inputs:
         targetType: 'inline'
