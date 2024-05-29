@@ -1720,6 +1720,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_ep_context_file_path = "";
   trt_options_converted.trt_ep_context_embed_mode = 0;
   trt_options_converted.trt_engine_cache_prefix = "";
+  trt_options_converted.trt_engine_hw_compatible = 0;
 
   return trt_options_converted;
 }

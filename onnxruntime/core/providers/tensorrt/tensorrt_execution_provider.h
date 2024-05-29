@@ -193,6 +193,7 @@ struct TensorrtFuncState {
   bool cuda_graph_enable = 0;
   std::string cache_prefix;
   std::string cache_suffix;
+  bool engine_hw_compatible = false;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -320,6 +321,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
   std::string cache_prefix_;
+  bool engine_hw_compatible_ = false;
 
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.
