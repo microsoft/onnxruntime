@@ -178,6 +178,7 @@ stages:
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
+        ScriptName: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/get_docker_image.py
         Dockerfile: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/gpu/Dockerfile
         Context: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/gpu
         DockerBuildArgs: "
