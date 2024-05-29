@@ -262,11 +262,7 @@ inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn
   return true;
 }
 
-constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 1> supported_cpu_data_types = {
-    ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-};
-
-constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 9> supported_gpu_data_types = {
+static const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> webnn_supported_data_types = {
     ONNX_NAMESPACE::TensorProto_DataType_BOOL,
     ONNX_NAMESPACE::TensorProto_DataType_INT8,
     ONNX_NAMESPACE::TensorProto_DataType_UINT8,
@@ -278,7 +274,8 @@ constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 9> supported_gpu_data
     ONNX_NAMESPACE::TensorProto_DataType_UINT64,
 };
 
-bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_type);
+bool IsSupportedDataType(const int32_t data_type,
+                         const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>& supported_data_types);
 
 bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
                                       std::vector<int64_t>& shape_b,
