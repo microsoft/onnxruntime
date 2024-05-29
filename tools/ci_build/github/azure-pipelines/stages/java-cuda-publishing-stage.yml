@@ -64,6 +64,6 @@ stages:
 
     - task: Gradle@3
       inputs:
-        gradleWrapperFile: '$(Build.SourcesDirectory)/java/java/gradlew.bat'
+        gradleWrapperFile: '$(Build.SourcesDirectory)/java/gradlew.bat'
         workingDirectory: '$(Build.SourcesDirectory)/java'
         tasks: 'publishToADO'
