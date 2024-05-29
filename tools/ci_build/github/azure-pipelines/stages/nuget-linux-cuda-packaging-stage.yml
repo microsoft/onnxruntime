@@ -102,8 +102,8 @@ stages:
       submodules: recursive
     - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-        Context: tools/ci_build/github/linux/docker
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/gpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/default/gpu
         DockerBuildArgs: "
           --network=host
           --build-arg BASEIMAGE=${{ variables.docker_base_image }}
