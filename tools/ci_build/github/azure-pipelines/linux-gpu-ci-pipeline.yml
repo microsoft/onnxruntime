@@ -143,14 +143,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
       displayName: Build Onnxruntime
 
-    - task: CmdLine@2
-      inputs:
-        script: |
-          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-          rm -f $(Build.BinariesDirectory)/Release/models
-          find $(Build.BinariesDirectory)/Release/_deps -mindepth 1 ! -regex '^$(Build.BinariesDirectory)/Release/_deps/onnx-src\(/.*\)?' -delete
-          cd $(Build.BinariesDirectory)/Release
-          find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
+    - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/delete_unused_files_before_upload.sh
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
@@ -191,7 +184,6 @@ stages:
         DockerBuildArgs: "
         --network=host
         --build-arg BASEIMAGE=$(docker_base_image)
-        --build-arg TRT_VERSION=$(linux_trt_version)
         --build-arg BUILD_UID=$( id -u )
         "
         Repository: $(Repository)
