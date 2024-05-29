@@ -21,6 +21,8 @@ def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
 def useROCM = System.properties['USE_ROCM']
 def adoArtifact = project.findProperty('adoArtifact')
+def adoAccessToken = project.findProperty('adoAccessToken')
+def publishToAdo = adoArtifact != null && adoAccessToken != null
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
@@ -208,15 +210,14 @@ publishing {
 	publications {
 		maven(MavenPublication) {
 			groupId = project.group
-			if(adoArtifact != null) {
-				artifact (adoArtifact) {
-					classifier = 'cuda12'
-				}
+			// if -PadoArtifact is passed in from the command line, we only publish to ADO feed
+			if(publishToAdo) {
 				artifactId = 'onnxruntime_gpu'
+				artifact (adoArtifact)
 			} else {
 				artifactId = mavenArtifactId
+				from components.java
 			}
-			from components.java
 			pom {
 				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
 				description = enableTrainingApis ? trainingDescription : defaultDescription
@@ -248,7 +249,7 @@ publishing {
 	}
 	repositories {
 		// When there -PadoAccessToken is passed, we publish to ADO feed
-		if (project.findProperty('adoAccessToken') != null) {
+		if (publishToAdo) {
 			maven {
 				url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
 				name System.getenv('ADOFeedName')
