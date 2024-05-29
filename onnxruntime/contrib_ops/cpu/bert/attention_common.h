@@ -126,11 +126,15 @@ struct SparseAttentionParameters {
   bool rotary_interleaved;         // whether to use interleaved rotary embedding
   int rotary_dim;                  // rotary embedding dimension
   int sparse_block_size;           // block size for sparse attention
-  int num_sparse_layout;           // number of sparse layout, or the first dimension of block_mask
+  int num_sparse_layout;           // number of sparse layout
+  int stride_col_indices;          // shape of block_col_indices is [num_sparse_layout, stride_col_indices]
+  int stride_row_indices;          // shape of block_row_indices is [num_sparse_layout, stride_row_indices]
   float scale;                     // scaling factor applied prior to softmax
   bool is_packed_qkv;              // whether qkv is packed
   int total_sequence_length;       // maximum total sequence length (past_sequence_length + sequence_length) among keys
-  int max_sequence_length;         // max sequence length allowed
+  int max_sequence_length;         // max sequence length for sparse layout
+  int max_rotary_sequence_length;  // max sequence length for rotary cos/sin cache
+  int max_cache_sequence_length;   // max sequence length for kv cache buffer
   bool past_present_share_buffer;  // whether past_key and present_key share buffer, so is past_value and present_value
 };
 

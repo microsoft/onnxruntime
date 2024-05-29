@@ -201,6 +201,7 @@ export declare namespace InferenceSession {
     webgl: WebGLExecutionProviderOption;
     webgpu: WebGpuExecutionProviderOption;
     webnn: WebNNExecutionProviderOption;
+    qnn: QnnExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
   }
 
@@ -246,6 +247,10 @@ export declare namespace InferenceSession {
     deviceType?: 'cpu'|'gpu'|'npu';
     numThreads?: number;
     powerPreference?: 'default'|'low-power'|'high-performance';
+  }
+  export interface QnnExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'qnn';
+    // TODO add flags
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'coreml';

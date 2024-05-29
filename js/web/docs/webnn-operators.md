@@ -22,7 +22,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | ✓ | ✓ | |
 | Conv | ai.onnx(7-10, 11+) | conv2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU requires the 'W' (weight) input to be a constant |
-| ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU requires the 'W' (weight) input to be a constant |
+| ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✓ | ✗ | Only supports 3-D or 4-D input and 'W' (weight). |
 | Cos | ai.onnx(7+) | cos | ✗ | ✓ | |
 | Div | ai.onnx(7-12, 13, 14+) | div | ✓ | ✓ | |
 | Elu | ai.onnx(7+) | elu | ✓ | ✓ | |
@@ -88,5 +88,6 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Tan | ai.onnx(7+) | tan | ✗ | ✓ | |
 | Tanh | ai.onnx(7-12, 13+) | tanh | ✓ | ✓ | |
 | Transpose | ai.onnx(7-12, 13-20, 21+) | transpose | ✓ | ✓ | |
+| Trilu | ai.onnx(14+) | triangular | ✗ | ✓ | Input 'k' (option 'diagonal' for WebNN) if present should be a constant |
 | Unsqueeze | ai.onnx(7-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
 | Where | ai.onnx(7-8, 9-15, 16+) | where | ✗ | ✓ | |
