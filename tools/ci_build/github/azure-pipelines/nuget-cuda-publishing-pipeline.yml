@@ -9,13 +9,13 @@ resources:
     branch: main
 
 parameters:
-  - name: nightly
+  - name: isReleaseBuild
     type: boolean
-    default: true
+    default: false
 
 variables:
   - name: ArtifactFeed
-    ${{ if eq(parameters.nightly, true) }}:
+    ${{ if eq(parameters.isReleaseBuild, false) }}:
       value: ort-cuda-12-nightly
     ${{ else }}:
       value: onnxruntime-cuda-12
