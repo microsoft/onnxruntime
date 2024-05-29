@@ -32,7 +32,7 @@ __device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha_v
 }
 
 template <typename T>
-__global__ void S2SModelSplitQuickGeluKernel(const int dim, const T* input, T* output) {
+__global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T* input, T* output) {
   // Can remove num_outputs parameter
   // CHange dim to be part of input
   // uint dim = 2;
@@ -48,7 +48,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, const T* input, T* o
   T one = static_cast<T>(1.f);
   T zero = static_cast<T>(0.f);
   // Specify alpha here or outside (is this an input )
-  float alpha = 1.702f;
+  // float alpha = 1.702f;
   T alpha_val = static_cast<T>(alpha);
   // Separate QuickGelu code in another fn
   // printf("Curr kElementsPerThread %d\n", kElementsPerThread);
@@ -91,13 +91,13 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, const T* input, T* o
 }
 
 template <typename T>
-void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int dim, int64_t input_size, const T* input_data, T* output_data) {
+void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int dim, int64_t input_size, float alpha, const T* input_data, T* output_data) {
   CUDA_LONG N = static_cast<CUDA_LONG>(input_size);
   int num_threads_per_block = std::min<int>(static_cast<int>(CeilDiv(dim, kElementsPerThread)), kThreadsPerBlock);
   int num_blocks = static_cast<int>(N/(2*dim));
   // printf("Final number threads per block %d\n", num_threads_per_block);
   // printf("Final num blocks %d\n", num_blocks);
-  S2SModelSplitQuickGeluKernel<T><<<num_blocks, num_threads_per_block, 0, stream>>>(dim, input_data, output_data);
+  S2SModelSplitQuickGeluKernel<T><<<num_blocks, num_threads_per_block, 0, stream>>>(dim, alpha, input_data, output_data);
   // S2SModelSplitQuickGeluKernel<T><<<5, 1, 0, stream>>>(dim, input_data, output_data);
   // 4x10
   // output_dim = 5
@@ -109,7 +109,7 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int dim, int64_t in
 // explicit instantiations
 #define SPECIALIZED_SplitQuickGelu_IMPL(T)                                                   \
   template void LaunchS2SModelSplitQuickGeluKernel<T>(cudaStream_t stream, int dim, int64_t input_size, \
-                                                      const T* input_data, T* output_data)
+                                                      float alpha, const T* input_data, T* output_data)
 
 SPECIALIZED_SplitQuickGelu_IMPL(float);
 SPECIALIZED_SplitQuickGelu_IMPL(half);

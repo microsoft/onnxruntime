@@ -16,9 +16,9 @@ ONNX_OPERATOR_KERNEL_EX(
 
 template <typename T>
 void S2SModelSplitQuickGelu::KernelLaunchDispatcher<T>::operator()(cudaStream_t stream, int dim, int64_t input_size,
-                                                                   const Tensor& input, Tensor& output) const {
+                                                                   float alpha, const Tensor& input, Tensor& output) const {
   using CudaT = typename ToCudaType<T>::MappedType;
-  LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, dim, input_size, reinterpret_cast<const CudaT*>(input.template Data<T>()),
+  LaunchS2SModelSplitQuickGeluKernel<CudaT>(stream, dim, input_size, alpha, reinterpret_cast<const CudaT*>(input.template Data<T>()),
                                             reinterpret_cast<CudaT*>(output.template MutableData<T>()));
 }
 
@@ -34,7 +34,7 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   const auto input_size = input_shape.Size();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, BFloat16> dispatcher{input->GetElementType()};
-  dispatcher.Invoke<KernelLaunchDispatcher>(Stream(context), dim, input_size, *input, *output);
+  dispatcher.Invoke<KernelLaunchDispatcher>(Stream(context), dim, input_size, alpha, *input, *output);
 
   return Status::OK();
 
