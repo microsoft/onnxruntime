@@ -69,41 +69,152 @@ sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider'
 ```
 
 ## Configurations
-There are two ways to configure TensorRT settings, either by **TensorRT Execution Provider Session Options** or **Environment Variables(deprecated)** shown as below:
+There are two ways to configure TensorRT settings, either by [TensorRT Execution Provider Session Option](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#execution-provider-options) or [Environment Variables(deprecated)](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#environment-variablesdeprecated).
+
+Here are examples and different scenarios to set TensorRT EP session options:
+
+#### Click below for Python API example:
+
+<details>
+
+```python
+import onnxruntime as ort
+
+model_path = '<path to model>'
+
+# note: for bool type options in python API, set them as False/True
+providers = [
+    ('TensorrtExecutionProvider', {
+        'device_id': 0,                       # Select GPU to execute
+        'trt_max_workspace_size': 2147483648, # Set GPU memory usage limit
+        'trt_fp16_enable': True,              # Enable FP16 precision for faster inference  
+    }),
+    ('CUDAExecutionProvider', {
+        'device_id': 0,
+        'arena_extend_strategy': 'kNextPowerOfTwo',
+        'gpu_mem_limit': 2 * 1024 * 1024 * 1024,
+        'cudnn_conv_algo_search': 'EXHAUSTIVE',
+        'do_copy_in_default_stream': True,
+    })
+]
+
+sess_opt = ort.SessionOptions()
+sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=providers)
+```
+
+</details>
+
+#### Click below for C++ API example:
+
+<details>
+
+```c++
+Ort::SessionOptions session_options;
+
+const auto& api = Ort::GetApi();
+OrtTensorRTProviderOptionsV2* tensorrt_options;
+Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
+
+std::vector<const char*> option_keys = {
+    "device_id",
+    "trt_max_workspace_size",
+    "trt_max_partition_iterations",
+    "trt_min_subgraph_size",
+    "trt_fp16_enable",
+    "trt_int8_enable",
+    "trt_int8_use_native_calibration_table",
+    "trt_dump_subgraphs",
+    // below options are strongly recommended !
+    "trt_engine_cache_enable",
+    "trt_engine_cache_path",
+    "trt_timing_cache_enable",
+    "trt_timing_cache_path",
+};
+std::vector<const char*> option_values = {
+    "1",
+    "2147483648",
+    "10",
+    "5",
+    "1",
+    "1",
+    "1",
+    "1",
+    "1",
+    "1",
+    "/path/to/cache",
+    "1",
+    "/path/to/cache", // can be same as the engine cache folder
+};
+
+Ort::ThrowOnError(api.UpdateTensorRTProviderOptions(tensorrt_options,
+                                                    option_keys.data(), option_values.data(), option_keys.size()));
 
 
-| TensorRT EP Session Options           | Environment Variables(deprecated)              | Type   |
-|:--------------------------------------|:-----------------------------------------------|:-------|
-| trt_max_workspace_size                | ORT_TENSORRT_MAX_WORKSPACE_SIZE                | int    |
-| trt_max_partition_iterations          | ORT_TENSORRT_MAX_PARTITION_ITERATIONS          | int    |
-| trt_min_subgraph_size                 | ORT_TENSORRT_MIN_SUBGRAPH_SIZE                 | int    |
-| trt_fp16_enable                       | ORT_TENSORRT_FP16_ENABLE                       | bool   |
-| trt_int8_enable                       | ORT_TENSORRT_INT8_ENABLE                       | bool   |
-| trt_int8_calibration_table_name       | ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME       | string |
-| trt_int8_use_native_calibration_table | ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE | bool   |
-| trt_dla_enable                        | ORT_TENSORRT_DLA_ENABLE                        | bool   |
-| trt_dla_core                          | ORT_TENSORRT_DLA_CORE                          | int    |
-| trt_engine_cache_enable               | ORT_TENSORRT_ENGINE_CACHE_ENABLE               | bool   |
-| trt_engine_cache_path                 | ORT_TENSORRT_CACHE_PATH                        | string |
-| trt_engine_cache_prefix               | ORT_TENSORRT_CACHE_PREFIX                      | string |
-| trt_dump_subgraphs                    | ORT_TENSORRT_DUMP_SUBGRAPHS                    | bool   |
-| trt_force_sequential_engine_build     | ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD     | bool   |
-| trt_context_memory_sharing_enable     | ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE     | bool   |
-| trt_layer_norm_fp32_fallback          | ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK          | bool   |
-| trt_timing_cache_enable               | ORT_TENSORRT_TIMING_CACHE_ENABLE               | bool   |
-| trt_timing_cache_path                 | ORT_TENSORRT_TIMING_CACHE_PATH                 | string |
-| trt_force_timing_cache                | ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE         | bool   |
-| trt_detailed_build_log                | ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE         | bool   |
-| trt_build_heuristics_enable           | ORT_TENSORRT_BUILD_HEURISTICS_ENABLE           | bool   |
-| trt_sparsity_enable                   | ORT_TENSORRT_SPARSITY_ENABLE                   | bool   |
-| trt_builder_optimization_level        | ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL        | int    |
-| trt_auxiliary_streams                 | ORT_TENSORRT_AUXILIARY_STREAMS                 | int    |
-| trt_tactic_sources                    | ORT_TENSORRT_TACTIC_SOURCES                    | string |
-| trt_extra_plugin_lib_paths            | ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS            | string |
-| trt_profile_min_shapes                | ORT_TENSORRT_PROFILE_MIN_SHAPES                | string |
-| trt_profile_max_shapes                | ORT_TENSORRT_PROFILE_MAX_SHAPES                | string |
-| trt_profile_opt_shapes                | ORT_TENSORRT_PROFILE_OPT_SHAPES                | string |
-| trt_cuda_graph_enable                 | ORT_TENSORRT_CUDA_GRAPH_ENABLE                 | bool   |
+cudaStream_t cuda_stream;
+cudaStreamCreate(&cuda_stream);
+// this implicitly sets "has_user_compute_stream"
+Ort::ThrowOnError(api.UpdateTensorRTProviderOptionsWithValue(cuda_options, "user_compute_stream", cuda_stream))
+
+session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
+/// below code can be used to print all options
+OrtAllocator* allocator;
+char* options;
+Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
+Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,          allocator, &options));
+
+```
+
+</details>
+
+
+| Scenario                                           | TensorRT EP Session Option            | Type   |
+| :------------------------------------------------- | :------------------------------------ | :----- |
+| **Device and Compute Configuration**               |                                       |        |
+| Specify GPU id for execution                       | device_id                             | int    |
+| Set custom compute stream for GPU operations       | user_compute_stream                   | string |
+|                                                    |                                       |        |
+| **Engine Caching and Compatibility**               |                                       |        |
+| Enable caching of TensorRT engines                 | trt_engine_cache_enable               | bool   |
+| Set path to store cached TensorRT engines          | trt_engine_cache_path                 | string |
+| Set prefix for cached engine files                 | trt_engine_cache_prefix               | string |
+| Maximize engine compatibility across Ampere+ GPUs  | trt_engine_hw_compatible              | bool   |
+|                                                    |                                       |        |
+| **Precision and Performance**                      |                                       |        |
+| Set TensorRT EP GPU memory usage limit             | trt_max_workspace_size                | int    |
+| Enable FP16 precision for faster performance       | trt_fp16_enable                       | bool   |
+| Enable INT8 precision for quantized inference      | trt_int8_enable                       | bool   |
+| Name INT8 calibration table for non-QDQ models     | trt_int8_calibration_table_name       | string |
+| Use native TensorRT calibration tables             | trt_int8_use_native_calibration_table | bool   |
+| Use heuristics to speed up engine builds           | trt_build_heuristics_enable           | bool   |
+| Enable sparsity to leverage zero values            | trt_sparsity_enable                   | bool   |
+| Enable Deep Learning Accelerator (DLA) on edge SoC | trt_dla_enable                        | bool   |
+| Specify which DLA core to use                      | trt_dla_core                          | int    |
+|                                                    |                                       |        |
+| **Subgraph and Graph Optimization**                |                                       |        |
+| Limit partitioning iterations for model conversion | trt_max_partition_iterations          | int    |
+| Set minimum size for subgraphs in partitioning     | trt_min_subgraph_size                 | int    |
+| Dump optimized subgraphs for debugging             | trt_dump_subgraphs                    | bool   |
+| Force sequential engine builds under multi-GPU     | trt_force_sequential_engine_build     | bool   |
+|                                                    |                                       |        |
+| **Advanced Configuration and Profiling**           |                                       |        |
+| Enable sharing of context memory between subgraphs | trt_context_memory_sharing_enable     | bool   |
+| Force layer norm calculations to FP32              | trt_layer_norm_fp32_fallback          | bool   |
+| Capture CUDA graph for reduced launch overhead     | trt_cuda_graph_enable                 | bool   |
+| Set optimization level for TensorRT builder        | trt_builder_optimization_level        | int    |
+| Set number of auxiliary streams for computation    | trt_auxiliary_streams                 | int    |
+| Specify tactics sources for TensorRT               | trt_tactic_sources                    | string |
+| Add additional plugin library paths for TensorRT   | trt_extra_plugin_lib_paths            | string |
+| Enable detailed logging of build steps             | trt_detailed_build_log                | bool   |
+|                                                    |                                       |        |
+| **Timing cache**                                   |                                       |        |
+| Enable use of timing cache to speed up builds      | trt_timing_cache_enable               | bool   |
+| Set path for storing timing cache                  | trt_timing_cache_path                 | string |
+| Force use of timing cache regardless of GPU match  | trt_force_timing_cache                | bool   |
+|                                                    |                                       |        |
+| **Dynamic Shape Profiling**                        |                                       |        |
+| Define min shapes                                  | trt_profile_min_shapes                | string |
+| Define max shapes                                  | trt_profile_max_shapes                | string |
+| Define optimal shapes                              | trt_profile_opt_shapes                | string |
 
 > Note: for bool type options, assign them with **True**/**False** in python, or **1**/**0** in C++.
 
@@ -243,101 +354,11 @@ TensorRT configurations can be set by execution provider options. It's useful wh
     * These three flags should all be provided in order to enable explicit profile shapes feature.
   * Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) and TRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
 
+* `trt_engine_hw_compatible`: Enable Ampere+ hardware compatibility if `trt_engine_cache_enable` is enabled 
+  * Hardware-compatible engines can be reused across all Ampere+ GPU environments (may have lower throughput and/or higher latency).
+  * Engines will be generated and loaded with `sm80+` name suffix, instead of actual compute capacity.
+  * Turing and former Nvidia GPU architecture and Nvidia Jetson Orin platform are not eligble to this option.
 
-Besides, `device_id` can also be set by execution provider option.
-
-#### Click below for C++ API example:
-
-<details>
-
-```c++
-Ort::SessionOptions session_options;
-
-const auto& api = Ort::GetApi();
-OrtTensorRTProviderOptionsV2* tensorrt_options;
-Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
-
-std::vector<const char*> option_keys = {
-    "device_id",
-    "trt_max_workspace_size",
-    "trt_max_partition_iterations",
-    "trt_min_subgraph_size",
-    "trt_fp16_enable",
-    "trt_int8_enable",
-    "trt_int8_use_native_calibration_table",
-    "trt_dump_subgraphs",
-    // below options are strongly recommended !
-    "trt_engine_cache_enable",
-    "trt_engine_cache_path",
-    "trt_timing_cache_enable",
-    "trt_timing_cache_path",
-};
-std::vector<const char*> option_values = {
-    "1",
-    "2147483648",
-    "10",
-    "5",
-    "1",
-    "1",
-    "1",
-    "1",
-    "1",
-    "1",
-    "/path/to/cache",
-    "1",
-    "/path/to/cache", // can be same as the engine cache folder
-};
-
-Ort::ThrowOnError(api.UpdateTensorRTProviderOptions(tensorrt_options,
-                                                    option_keys.data(), option_values.data(), option_keys.size()));
-
-
-cudaStream_t cuda_stream;
-cudaStreamCreate(&cuda_stream);
-// this implicitly sets "has_user_compute_stream"
-Ort::ThrowOnError(api.UpdateTensorRTProviderOptionsWithValue(cuda_options, "user_compute_stream", cuda_stream))
-
-session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
-/// below code can be used to print all options
-OrtAllocator* allocator;
-char* options;
-Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
-Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,          allocator, &options));
-
-```
-
-</details>
-
-#### Click below for Python API example:
-
-<details>
-
-```python
-import onnxruntime as ort
-
-model_path = '<path to model>'
-
-# note: for bool type options in python API, set them as False/True
-providers = [
-    ('TensorrtExecutionProvider', {
-        'device_id': 0,
-        'trt_max_workspace_size': 2147483648,
-        'trt_fp16_enable': True,
-    }),
-    ('CUDAExecutionProvider', {
-        'device_id': 0,
-        'arena_extend_strategy': 'kNextPowerOfTwo',
-        'gpu_mem_limit': 2 * 1024 * 1024 * 1024,
-        'cudnn_conv_algo_search': 'EXHAUSTIVE',
-        'do_copy_in_default_stream': True,
-    })
-]
-
-sess_opt = ort.SessionOptions()
-sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=providers)
-```
-
-</details>
 
 ### Environment Variables(deprecated)
 
