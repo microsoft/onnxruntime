@@ -44,7 +44,7 @@ def trainingDescription = 'ONNX Runtime Training is a training and inference pac
 	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
-// This is needed to bypass the needs for security settings
+// We need to have a custom settings.xml so codeql can bypass the need for settings.security.xml
 mavenSettings {
     userSettingsFileName = "${projectDir}/settings.xml"
 }
@@ -218,7 +218,6 @@ publishing {
 	publications {
 		maven(MavenPublication) {
 			groupId = project.group
-			// if -PadoArtifact is passed in from the command line, we only publish to ADO feed
 			if(publishToAdo) {
 				artifactId = 'onnxruntime_gpu'
 				artifact (adoArtifact)
@@ -256,7 +255,6 @@ publishing {
 		}
 	}
 	repositories {
-		// When there -PadoAccessToken is passed, we publish to ADO feed
 		if (publishToAdo) {
 			maven {
 				url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
