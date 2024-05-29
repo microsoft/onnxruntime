@@ -499,6 +499,8 @@ $./onnxruntime_perf_test -e tensorrt -r 1 /model_database/transformer_model/mode
 * One constraint is that the entire model needs to be TRT eligible
 * When running the embedded engine model, the default setting is `trt_ep_context_embed_mode=0`, where the engine cache path is embedded and TRT EP will look for the engine cache on the disk. Alternatively, users can set `trt_ep_context_embed_mode=1`, embedding the entire engine binary data as a string in the model. However, this mode increases initialization time due to ORT graph optimization hashing the long string. Therefore, we recommend using `trt_ep_context_embed_mode=0`.
 * The default name of an embedded engine model will have `_ctx.onnx` appended to the end. Users can specify `trt_ep_context_file_path=my_ep_context_model.onnx` to overwrite this default name.
+* If an embedded engine is used the library **`nvinfer_builder_resource` of TensorRT is not required**, which is by far the largest library. This enables the case of shipping a minimal set of libraries in the case that a fixed set of models is used which are packaged as precompield engine.
+* Besides everything that embedded engines enable to accelerate the load time, they also **enable pacakging an externally compiled engine** using e.g. `trtexec`. A [python script](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/tensorrt/gen_trt_engine_wrapper_onnx_model.py) that is capable of packaging such a precompiled engine into an ONNX file is included in the python tools.
 
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)
