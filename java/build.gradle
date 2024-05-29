@@ -255,6 +255,7 @@ publishing {
 		mavenAdo(MavenPublication) {
 			groupId = project.group
 			artifactId = 'onnxruntime_gpu'
+			version = $System.getenv('ORT_VERSION')
 			artifact "${System.getenv('GDN_CODESIGN_TARGETDIRECTORY')}/bundle.jar"
 
 			from components.java

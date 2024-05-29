@@ -33,8 +33,25 @@ stages:
           onnxruntime_gpu*.pom
         TargetFolder: '$(GDN_CODESIGN_TARGETDIRECTORY)'
         CleanTargetFolder: true
+
     - task: PowerShell@2
-      displayName: 'PowerShell Script'
+      displayName: 'Get Jar version number and set variable'
+      inputs:
+        targetType: 'inline'
+        script: |
+          $file = Get-ChildItem -Path $directory -Filter "onnxruntime_gpu*.jar"
+          $fileName = $file.Name
+          if ($fileName -match "onnxruntime_gpu(\d+\.\d+\.\d+)\.jar") {
+              $versionNumber = $matches[1]
+              Write-Output "Version number: $versionNumber"
+          } else {
+              Write-Output "No version number found in the filename."
+          }
+          Write-Host "##vso[task.setvariable variable=ORT_VERSION;]$versionNumber"
+        workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
+
+    - task: PowerShell@2
+      displayName: 'Bundle Jar and POM files into a single jar file'
       inputs:
         targetType: 'inline'
         script: |
@@ -42,6 +59,7 @@ stages:
             onnxruntime_gpu-*.pom `
             onnxruntime_gpu-*.jar
         workingDirectory: '$(GDN_CODESIGN_TARGETDIRECTORY)'
+
     - task: CodeSign@1
       displayName: 'Run Codesign Validation'
 
