@@ -307,19 +307,17 @@ publishing {
 	}
 }
 
-tasks.register('publishToADO', PublishToMavenRepository) {
-	publication = publishing.publications.mavenAdo
-	repository = publishing.repositories {
-		maven {
-			url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
-			name System.getenv('ADOFeedName')
-			authentication {
-				basic(BasicAuthentication)
-			}
-			credentials {
-				username 'aiinfra'
-				password System.getenv('SYSTEM_ACCESSTOKEN')
-			}
+task publishToADO(type: PublishToMavenRepository) {
+	publication = publishing.publications.mavenAdo as MavenPublication
+	repository = publishing.repositories.maven {
+		url = "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
+		name = System.getenv('ADOFeedName')
+		authentication {
+			basic(BasicAuthentication)
+		}
+		credentials {
+			username 'aiinfra'
+			password System.getenv('SYSTEM_ACCESSTOKEN')
 		}
 	}
 }
