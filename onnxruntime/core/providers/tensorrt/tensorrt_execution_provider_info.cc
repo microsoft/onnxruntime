@@ -53,6 +53,8 @@ constexpr const char* kCudaGraphEnable = "trt_cuda_graph_enable";
 constexpr const char* kEpContextEmbedMode = "trt_ep_context_embed_mode";
 constexpr const char* kEpContextFilePath = "trt_ep_context_file_path";
 constexpr const char* kDumpEpContextModel = "trt_dump_ep_context_model";
+constexpr const char* kEngineHwCompatible = "trt_engine_hw_compatible";
+
 }  // namespace provider_option_names
 }  // namespace tensorrt
 
@@ -119,6 +121,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kDumpEpContextModel, info.dump_ep_context_model)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextFilePath, info.ep_context_file_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextEmbedMode, info.ep_context_embed_mode)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEngineHwCompatible, info.engine_hw_compatible)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
@@ -169,6 +172,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.dump_ep_context_model)},
       {tensorrt::provider_option_names::kEpContextFilePath, MakeStringWithClassicLocale(info.ep_context_file_path)},
       {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.ep_context_embed_mode)},
+      {tensorrt::provider_option_names::kEngineHwCompatible, MakeStringWithClassicLocale(info.engine_hw_compatible)},
   };
   return options;
 }
@@ -229,6 +233,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kEpContextFilePath, kEpContextFilePath_},
       {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.trt_dump_ep_context_model)},
       {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.trt_ep_context_embed_mode)},
+      {tensorrt::provider_option_names::kEngineHwCompatible, MakeStringWithClassicLocale(info.trt_engine_hw_compatible)},
   };
   return options;
 }
@@ -330,5 +335,6 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_dump_ep_context_model = internal_options.dump_ep_context_model;
   trt_provider_options_v2.trt_ep_context_embed_mode = internal_options.ep_context_embed_mode;
   trt_provider_options_v2.trt_ep_context_file_path = copy_string_if_needed(internal_options.ep_context_file_path);
+  trt_provider_options_v2.trt_engine_hw_compatible = internal_options.engine_hw_compatible;
 }
 }  // namespace onnxruntime
