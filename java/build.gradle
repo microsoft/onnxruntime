@@ -253,7 +253,9 @@ publishing {
 			groupId = project.group
 			artifactId = 'onnxruntime_gpu'
 
-			artifact "${System.getenv('GDN_CODESIGN_TARGETDIRECTORY')}/bundle.jar"
+			artifact ("${System.getenv('GDN_CODESIGN_TARGETDIRECTORY')}/bundle.jar") {
+				classifier 'cuda12'
+			}
 
 			from components.java
 			pom {
