@@ -296,8 +296,7 @@ task publishToADO(type: PublishToMavenRepository) {
 		}
 		credentials {
 			username 'aiinfra'
-			password "${System.getenv('SYSTEM_ACCESSTOKEN')}"
-
+			password "${project.findProperty('adoAccessToken')}"
 		}
 	}
 }
