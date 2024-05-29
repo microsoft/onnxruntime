@@ -13,11 +13,11 @@ namespace cuda {
 namespace {
 
 constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
-// #ifdef USE_ROCM
-// constexpr int kThreadsPerBlock = 512;
-// #else
-// constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
-// #endif
+#ifdef USE_ROCM
+constexpr int kThreadsPerBlock = 512;
+#else
+constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
+#endif
 
 }  // namespace
 
