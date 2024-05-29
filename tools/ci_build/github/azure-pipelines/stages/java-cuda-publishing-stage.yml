@@ -50,5 +50,5 @@ stages:
       inputs:
         gradleWrapperFile: '$(Build.SourcesDirectory)/java/gradlew.bat'
         workingDirectory: '$(Build.SourcesDirectory)/java'
-        tasks: 'publish'
+        tasks: 'publishToADO'
         options: '-PadoAccessToken=$(SYSTEM_ACCESSTOKEN)'
