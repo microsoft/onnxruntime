@@ -52,13 +52,6 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   // auto* output_tensor = context->Output(0, output_shape);
 
 
-
-
-  // int before_dims = 0;
-  // int block_size_including_axis_dim = 0;
-  // int block_size_inside_axis_dim = 0;
-  // std::vector<int64_t> split_sizes(num_outputs);
-
   // const Tensor* split_tensor = context->Input<Tensor>(1);
   // if (split_tensor) {
   //   ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "A split tensor must be a vector tensor.");
@@ -92,14 +85,6 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   //     axis_dimension_input_output_mapping.at(index++) = i;
   //   }
   // }
-
-  // size_t element_size = input_tensor->DataType()->Size();
-  // TArray<void*, 32> output_ptr_array(num_outputs);
-  // for (int i = 0; i < num_outputs; ++i) output_ptr_array[i] = output_ptr_span[i];
-  // ORT_RETURN_IF_ERROR(LaunchS2SModelSplitQuickGeluKernel(Stream(context), element_size, block_size_including_axis_dim,
-  //                                                        block_size_inside_axis_dim, split_sizes[0], num_outputs,
-  //                                                        input_data, output_ptr_array,
-  //                                                        static_cast<size_t>(input_shape.Size())));
 
 }
 
