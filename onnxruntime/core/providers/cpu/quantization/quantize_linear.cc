@@ -36,6 +36,7 @@ class DequantizeLinear final : public OpKernel {
  private:
   int64_t axis_;
   int64_t block_size_;
+  int64_t quant_block_size_;
 };
 
 template <typename T>
@@ -65,15 +66,17 @@ class QuantizeLinear final : public OpKernel {
   int64_t axis_;
   int64_t saturate_;
   int64_t block_size_;
+  int64_t quant_block_size_;
 };
 
 static void PrepareForQDQ(const TensorShape& input_shape,
                           const Tensor& scale,
                           const Tensor* zero_point_ptr,
                           int64_t axis,
-                          int64_t& quant_block_count,  // A "quant block" is a block of elems with the same scale/zp
-                          int64_t& axis_dim_val,
-                          int64_t& quant_block_size) {
+                          int64_t quant_block_size,
+                          int64_t& block_count,
+                          int64_t& broadcast_dim,
+                          int64_t& block_size) {
   if (IsScalarOr1ElementVector(&scale)) {  // per-tensor QuantizeLinear/DequantizeLinear
     quant_block_count = 1;
     axis_dim_val = 1;
@@ -82,20 +85,39 @@ static void PrepareForQDQ(const TensorShape& input_shape,
     // enforce that zero point are scalars
     ORT_ENFORCE(zero_point_ptr == nullptr || IsScalarOr1ElementVector(zero_point_ptr),
                 "x_zero_point must be null or a scalar or 1D tensor or size 1.");
-  } else {  // per-channel QuantizeLinear/DequantizeLinear
+    ORT_ENFORCE(quant_block_size == 0, "block_size must be 0 for per-tensor quantization.");
+  } else {  // per-axis or blocked QuantizeLinear/DequantizeLinear
     const int64_t axis_no_neg = HandleNegativeAxis(axis, input_shape.NumDimensions());
     quant_block_count = input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis_no_neg));
     axis_dim_val = input_shape[onnxruntime::narrow<size_t>(axis_no_neg)];
     quant_block_size = input_shape.SizeFromDimension(SafeInt<size_t>(axis_no_neg) + 1);
 
     // if an axis was specified, ensure the scale and zero point are compatible
-    ORT_ENFORCE(scale.Shape().NumDimensions() == 1 && scale.Shape()[0] == axis_dim_val,
-                "scale must be 1D tensor with size ",
-                axis_dim_val);
-    ORT_ENFORCE(zero_point_ptr == nullptr ||
-                    (zero_point_ptr->Shape().NumDimensions() == 1 && zero_point_ptr->Shape()[0] == axis_dim_val),
-                "x_zero_point must be null or 1D tensor with size ",
-                axis_dim_val);
+    if (quant_block_size) {  // blocked quantization
+      ORT_ENFORCE(scale.Shape().NumDimensions() == input_shape.NumDimensions(),
+                  "x_scale and x must have the same rank for blocked quantization");
+      ORT_ENFORCE(zero_point_ptr == nullptr || zero_point_ptr->Shape().NumDimensions() == input_shape.NumDimensions(),
+                  "x_zero_point must be null or have the same rank as x for blocked quantization");
+
+      for (size_t i = 0, ndim = input_shape.NumDimensions(); i < ndim; ++i) {
+        ORT_ENFORCE(scale.Shape()[i] == (i == axis_no_neg ? (input_shape[i] + quant_block_size - 1) / quant_block_size : input_shape[i]),
+                    i == axis_no_neg ?
+                    "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization" :
+                    "x_scale and x must have the same shape despite the quantize axis for blocked quantization");
+
+        if (zero_point_ptr) {
+          ORT_ENFORCE(zero_point_ptr->Shape()[i] == scale.Shape()[i],
+                      "x_zero_point and x_scale must have the same shape for blocked quantization");
+        }
+      }
+    } else { // per-axis quantization
+      ORT_ENFORCE(scale.Shape().NumDimensions() == 1 && scale.Shape()[0] == broadcast_dim,
+                  "scale must be 1D tensor with size for per axis quantization",
+                  broadcast_dim);
+      ORT_ENFORCE(zero_point_ptr == nullptr || (zero_point_ptr->Shape().NumDimensions() == 1 && zero_point_ptr->Shape()[0] == broadcast_dim),
+                  "x_zero_point must be null or 1D tensor with size for per axis quantization",
+                  broadcast_dim);
+    }
   }
 }
 
@@ -261,7 +283,8 @@ struct DequantizeLinearApply<T, OutT, false> {
   /// </param>
   /// <param name="output">same shape as input</param>
   /// <param name="zero_point">same shape as scale</param>
-  void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+  void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input,
+    const OutT* scale, OutT* output, const T* zero_point) {
     for (size_t n = 0; n < static_cast<size_t>(N); n++) {
       for (size_t bd = 0; bd < static_cast<size_t>(axis_dim_val); bd++) {
         auto zp = zero_point ? static_cast<int32_t>(zero_point[bd]) : 0;
@@ -440,7 +463,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   int64_t axis_dim_val;
   int64_t quant_block_size;
 
-  PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, axis_dim_val, quant_block_size);
+  PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, quant_block_size_, N, broadcast_dim, block_size);
 
   const T* zero_point = x_zero_point ? x_zero_point->Data<T>() : nullptr;
 
@@ -462,11 +485,19 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   if (to == ONNX_NAMESPACE::TensorProto::FLOAT) {
     const float* scale = x_scale.Data<float>();
     float* output = y.MutableData<float>();
-    DequantizeLinearApply<T, float>().op(N, axis_dim_val, quant_block_size, input, scale, output, zero_point);
+    if (quant_block_size_) {
+      DequantizeLinearApply<T, float, true>().op(N, broadcast_dim, block_size, quant_block_size_, input, scale, output, zero_point);
+    } else {
+      DequantizeLinearApply<T, float, false>().op(N, broadcast_dim, block_size, input, scale, output, zero_point);
+    }
   } else if (to == ONNX_NAMESPACE::TensorProto::FLOAT16) {
     const MLFloat16* scale = x_scale.Data<MLFloat16>();
     MLFloat16* output = y.MutableData<MLFloat16>();
-    DequantizeLinearApply<T, MLFloat16>().op(N, axis_dim_val, quant_block_size, input, scale, output, zero_point);
+    if (quant_block_size_) {
+      DequantizeLinearApply<T, MLFloat16, true>().op(N, broadcast_dim, block_size, quant_block_size_, input, scale, output, zero_point);
+    } else {
+      DequantizeLinearApply<T, MLFloat16, false>().op(N, broadcast_dim, block_size, input, scale, output, zero_point);
+    }
   } else if (to == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
     ORT_THROW("DequantizeLinear into BFLOAT16 is not implemented yet.");
   } else {
@@ -725,9 +756,9 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   auto& y = *ctx->Output(0, x_shape);
 
   int64_t N;
-  int64_t axis_dim_val;
-  int64_t quant_block_size;
-  PrepareForQDQ(x.Shape(), y_scale, y_zero_point, axis_, N, axis_dim_val, quant_block_size);
+  int64_t broadcast_dim;
+  int64_t block_size;
+  PrepareForQDQ(x.Shape(), y_scale, y_zero_point, axis_, quant_block_size_, N, broadcast_dim, block_size);
 
   const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
   T* output = y.MutableData<T>();
