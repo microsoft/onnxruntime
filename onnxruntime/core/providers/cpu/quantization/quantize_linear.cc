@@ -311,49 +311,52 @@ struct DequantizeLinearApplyBlocked {
   /// <param name="output">same shape as input</param>
   /// <param name="zero_point">same shape as scale</param>
   void op(int64_t N, int64_t broadcast_dim, int64_t block_size, int64_t quant_block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+    auto qblock = static_cast<size_t>(quant_block_size);
+    auto bdim = static_cast<size_t>(broadcast_dim);
+    auto bsiz = static_cast<size_t>(block_size);
+
     if (zero_point) {
       for (size_t n = 0; n < static_cast<size_t>(N); n++) {
-        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd += quant_block_size) {
-          size_t bd_stop = bd + quant_block_size > broadcast_dim ? broadcast_dim : bd + quant_block_size;
+        for (size_t bd = 0; bd < bdim; bd += qblock) {
+          size_t bd_q_stop = bd + qblock > bdim ? bdim : bd + qblock;
 
-          for (size_t qb = bd; qb < bd_stop; ++qb) {
-            for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {
-              auto zp = static_cast<int32_t>(*zero_point++);
-              auto sc = static_cast<float>(*scale++);
-              *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
-            }
-
+          for (size_t qb = bd; qb < bd_q_stop; ++qb) {
             // within the quantize block along axis i, the zero point and scale are the same at the same
             // indices after axis i.
-            zero_point -= block_size;
-            scale -= block_size;
+            auto q_zero_point = zero_point;
+            auto q_scale = scale;
+
+            for (size_t bs = 0; bs < bsiz; bs++) {
+              auto zp = static_cast<int32_t>(*q_zero_point++);
+              auto sc = static_cast<float>(*q_scale++);
+              *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
+            }
           }
 
           // move to the next quantize block along axis i
-          zero_point += block_size;
-          scale += block_size;
+          zero_point += bsiz;
+          scale += bsiz;
         }
       }
 
     } else {
-      auto zp = static_cast<int32_t>(0);
       for (size_t n = 0; n < static_cast<size_t>(N); n++) {
-        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd += quant_block_size) {
-          size_t bd_stop = bd + quant_block_size > broadcast_dim ? broadcast_dim : bd + quant_block_size;
+        for (size_t bd = 0; bd < bdim; bd += qblock) {
+          size_t bd_q_stop = bd + qblock > bdim ? bdim : bd + qblock;
 
-          for (size_t qb = bd; qb < bd_stop; ++qb) {
-            for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {
-              auto sc = static_cast<float>(*scale++);
-              *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
-            }
-
+          for (size_t qb = bd; qb < bd_q_stop; ++qb) {
             // within the quantize block along axis i, the scales are the same at the same
             // indices after axis i.
-            scale -= block_size;
+            auto q_scale = scale;
+
+            for (size_t bs = 0; bs < bsiz; bs++) {
+              auto sc = static_cast<float>(*q_scale++);
+              *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++)) * sc);
+            }
           }
 
           // move to the next quantize block along axis i
-          scale += block_size;
+          scale += bsiz;
         }
       }
     }
