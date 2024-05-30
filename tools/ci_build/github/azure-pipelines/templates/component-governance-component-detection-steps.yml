@@ -33,5 +33,3 @@ steps:
         $(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,
         $(Build.SourcesDirectory)/onnxruntime-inference-examples,
         $(Build.BinariesDirectory)'
-      verbosity: Verbose
-    timeoutInMinutes: 30
