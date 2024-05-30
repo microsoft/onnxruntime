@@ -81,7 +81,7 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
 
    For example: `Describe the image`
 
-   ![sushi for sale](sushi.png)
+   ![coffee](coffee.jpg)
 
    ```
    The image shows a package of California Salad Roll SP from Metropolitan Market.
