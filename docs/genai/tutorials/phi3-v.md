@@ -68,7 +68,12 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
    pip install --pre onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
    ```
 
-3. Run the model
+3. Setup your CUDA environment
+
+   Please follow the steps [here](../howto/setup-cuda-env.md) to setup the CUDA environment.
+
+
+4. Run the model
 
    Run the model with [phi3v.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3v.py).
 
