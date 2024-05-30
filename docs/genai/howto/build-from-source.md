@@ -7,7 +7,7 @@ grand_parent: Generate API (Preview)
 nav_order: 2
 ---
 
-# Build onnxruntime-genai from source
+# Build the generate() API from source
 {: .no_toc }
 
 * TOC placeholder
@@ -26,18 +26,30 @@ cd onnxruntime-genai
 
 ## Install ONNX Runtime
 
-By default, the onnxruntime-genai build expects to find the ONNX Runtime include and binaries in a folder called `ort` in the root directory of onnxruntime-genai. You can put the ONNX Runtime files in a different location and specify this location to the onnxruntime-genai build. These instructions use `ORT_HOME` as the location.
+By default, the onnxruntime-genai build expects to find the ONNX Runtime include and binaries in a folder called `ort` in the root directory of onnxruntime-genai. You can put the ONNX Runtime files in a different location and specify this location to the onnxruntime-genai build via the --ort_home command line argument.
 
 ### Option 1: Install from release
 
-These instructions are for the Linux GPU build of ONNX Runtime. Replace `linux-gpu` with your target of choice.
+These instructions assume you are in the `onnxruntime-genai` folder.
+
+#### Windows
+
+These instruction use `win-x64`. Replace this if you are using a different architecture.
 
 ```bash
-cd <ORT_HOME>
-curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-linux-x64-gpu-1.17.1.tgz
-tar xvzf onnxruntime-linux-x64-gpu-1.17.1.tgz 
-mv onnxruntime-linux-x64-gpu-1.17.1/include .
-mv onnxruntime-linux-x64-gpu-1.17.1/lib .
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.18.0/onnxruntime-win-x64-1.18.0.zip -o onnxruntime-win-x64-1.18.0.zip
+tar xvf onnxruntime-win-x64-1.18.0.zip
+move onnxruntime-win-x64-1.18.0 ort 
+```
+
+#### Linux and Mac
+
+These instruction use `linux-x64-gpu`. Replace this if you are using a different architecture.
+
+```bash
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.18.0/onnxruntime-linux-x64-gpu-1.18.0.tgz -o onnxruntime-linux-x64-gpu-1.18.0.tgz
+tar xvzf onnxruntime-linux-x64-gpu-1.18.0.tgz
+mv onnxruntime-linux-x64-gpu-1.18.0 ort 
 ```
 
 ### Option 2: Install from nightly
@@ -50,55 +62,72 @@ Extract the nuget package.
 tar xvf Microsoft.ML.OnnxRuntime.1.18.0-dev-20240322-0323-ca825cb6e6.nupkg
 ```
   
-Copy the include and lib files into `ORT_HOME`.
+Copy the include and lib files into `ort`.
   
 On Windows
   
 Example is given for `win-x64`. Change this to your architecture if different.
 
 ```cmd
-copy build\native\include\onnxruntime_c_api.h <ORT_HOME>\include
-copy runtimes\win-x64\native\*.dll <ORT_HOME>\lib
+copy build\native\include\onnxruntime_c_api.h ort\include
+copy runtimes\win-x64\native\*.dll ort\lib
 ```
 
 On Linux
 
+Example is given for `linux-x64`. Change this to your architecture if different.
+
 ```cmd
-cp build/native/include/onnxruntime_c_api.h <ORT_HOME>/include
-cp build/linux-x64/native/libonnxruntime*.so* <ORT_HOME>/lib
+cp build/native/include/onnxruntime_c_api.h ort/include
+cp build/linux-x64/native/libonnxruntime*.so* ort/lib
 ```      
       
 ### Option 3: Build from source
 
-#### Clone the repo 
+#### Clone the onnxruntime repo 
 
 ```bash
+cd ..
 git clone https://github.com/microsoft/onnxruntime.git
 cd onnxruntime
-```
-
-#### Build ONNX Runtime for DirectML on Windows
-
-```bash
-build.bat --build_shared_lib --skip_tests --parallel --use_dml --config Release
 ```
 
 #### Build ONNX Runtime for CPU on Windows
 
 ```bash
 build.bat --build_shared_lib --skip_tests --parallel --config Release
+copy include\onnxruntime\core\session\onnxruntime_c_api.h ..\onnxruntime-genai\ort\include
+copy build\Windows\Release\Release\*.dll ..\onnxruntime-genai\ort\lib
+copy build\Windows\Release\Release\onnxruntime.lib ..\onnxruntime-genai\ort\lib
 ```
+
+#### Build ONNX Runtime for DirectML on Windows
+
+```bash
+build.bat --build_shared_lib --skip_tests --parallel --use_dml --config Release
+copy include\onnxruntime\core\session\onnxruntime_c_api.h ..\onnxruntime-genai\ort\include
+copy include\onnxruntime\core\providers\dml\dml_provider_factory.h ..\onnxruntime-genai\include
+copy build\Windows\Release\Release\*.dll ..\onnxruntime-genai\ort\lib
+copy build\Windows\Release\Release\onnxruntime.lib ..\onnxruntime-genai\ort\lib
+```
+
 
 #### Build ONNX Runtime for CUDA on Windows
 
 ```bash
 build.bat --build_shared_lib --skip_tests --parallel --use_cuda --config Release
+copy include\onnxruntime\core\session\onnxruntime_c_api.h ..\onnxruntime-genai\ort\include
+copy include\onnxruntime\core\providers\cuda\*.h ..\onnxruntime-genai\ort\include
+copy build\Windows\Release\Release\*.dll ..\onnxruntime-genai\ort\lib
+copy build\Windows\Release\Release\onnxruntime.lib ..\onnxruntime-genai\ort\lib
 ```
 
-#### Build ONNX Runtine on Linux
+#### Build ONNX Runtime on Linux
 
 ```bash
 ./build.sh --build_shared_lib --skip_tests --parallel [--use_cuda] --config Release
+cp include/onnxruntime/core/session/onnxruntime_c_api.h ../onnxruntime-genai/ort/include
+cp build/Linux/Release/libonnxruntime*.so* ../onnxruntime-genai/ort/lib
 ```
 
 You may need to provide extra command line options for building with CUDA on Linux. An example full command is as follows.
@@ -113,48 +142,48 @@ Replace the values given above for different versions and locations of CUDA.
 
 ```bash
 ./build.sh --build_shared_lib --skip_tests --parallel --config Release
+cp include/onnxruntime/core/session/onnxruntime_c_api.h ../onnxruntime-genai/ort/include
+cp build/MacOS/Release/libonnxruntime*.dylib* ../onnxruntime-genai/ort/lib
 ```
 
 ## Build the generate() API
 
-### Build on Windows
-
-If building for DirectML
+This step assumes that you are in the root of the onnxruntime-genai repo, and you have followed the previos steps to copy the onnxruntime headers and binaries into the folder specified by <ORT_HOME>, which defaults to `onnxruntime-genai/ort`.
 
 ```bash
-copy ..\onnxruntime\include\onnxruntime\core\providers\dml\dml_provider_factory.h ort\include
+cd ../onnxruntime-genai
 ```
 
+### Build for Windows CPU
+
 ```bash
-copy ..\onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h ort\include
-copy ..\onnxruntime\build\Windows\Release\Release\*.dll ort\lib
-copy ..\onnxruntime\build\Windows\Release\Release\onnxruntime.lib ort\lib
-python build.py [--use_dml | --use_cuda]
+python build.py
+```
+
+### Build for Windows DirectML
+
+```bash
+python build.py --use_dml
 ```
 
 ### Build on Linux
 
 ```bash
-cp ../onnxruntime/include/onnxruntime/core/session/onnxruntime_c_api.h ort/include
-cp ../onnxruntime/build/Linux/Release/libonnxruntime*.so* ort/lib
-python build.py [--use_cuda]
+python build.py
+```
+
+### Build on Linux with CUDA
+
+```bash
+python build.py --use_cuda
 ```
 
 ### Build on Mac
 
 ```bash
-cp ../onnxruntime/include/onnxruntime/core/session/onnxruntime_c_api.h ort/include
-cp ../onnxruntime/build/MacOS/Release/libonnxruntime*.dylib* ort/lib
 python build.py
 ```
-
-### Build for DirectML
-
-```bash
-cd ..
-python build.py --use_dml
-```
-   
+  
 ## Install the library into your application
 
 ### Install Python wheel
@@ -166,7 +195,7 @@ pip install *.whl
 
 ### Install Nuget package
 
-_Coming soon_
+
 
 ### Install C/C++ header file and library
 
