@@ -122,12 +122,5 @@ namespace DmlGraphFusionHelper
         IExecutionProvider* provider,
         IUnknown* persistentResourceAllocatorUnknown,
         bool keepTemporaryResourceAlive);
-
-    void ExecuteOperator(
-        Dml::IExecutionProvider* provider,
-        IDMLCompiledOperator* op,
-        _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
-        gsl::span<ID3D12Resource*> inputTensors,
-        gsl::span<IMLOperatorTensor*> outputTensors);
 }
 }

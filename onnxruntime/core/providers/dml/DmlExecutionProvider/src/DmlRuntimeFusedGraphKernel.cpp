@@ -251,6 +251,8 @@ namespace Dml
                 // Keep the temporary resource alive since we won't call ExecuteReusableCommandList again, but will merely replay
                 // the graph in the future. Therefore, all executions of the graph will use the same temporary resource that was
                 // allocated here the first time.
+                constexpr bool keepTemporaryResourceAlive = true;
+
                 DmlGraphFusionHelper::ExecuteReusableCommandList(
                     kernelContext,
                     *reusableCommandList,
@@ -263,7 +265,7 @@ namespace Dml
                     m_winmlProvider.Get(),
                     m_provider.Get(),
                     m_persistentResourceAllocatorUnknown.Get(),
-                    true);
+                    keepTemporaryResourceAlive);
 
                 providerImpl->AppendCapturedGraph(providerImpl->GetCurrentGraphAnnotationId(), std::move(reusableCommandList));
             }
@@ -281,6 +283,10 @@ namespace Dml
                     m_reusedCommandLists.push_front(std::move(reusableCommandList));
                 }
 
+                // We don't need to keep a reference on the temporary resource once we have recorded into the command list, so the
+                // memory can be reused by the allocator
+                constexpr bool keepTemporaryResourceAlive = false;
+
                 DmlGraphFusionHelper::ExecuteReusableCommandList(
                     kernelContext,
                     *m_reusedCommandLists.front(),
@@ -293,7 +299,7 @@ namespace Dml
                     m_winmlProvider.Get(),
                     m_provider.Get(),
                     m_persistentResourceAllocatorUnknown.Get(),
-                    false);
+                    keepTemporaryResourceAlive);
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
                 m_reusedCommandLists.pop_front();
