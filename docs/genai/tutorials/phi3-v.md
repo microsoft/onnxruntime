@@ -84,10 +84,8 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
    ![coffee](coffee.jpg)
 
    ```
-   The image shows a cup of coffee with a latte art
-   design on top. The coffee is a light brown color,
-   and the art is white with a leaf-like pattern.
-   The cup is white and has a handle on one side.</s>
+   The image shows a cup of coffee with a latte art design on top. The coffee is a light brown color,
+   and the art is white with a leaf-like pattern. The cup is white and has a handle on one side.</s>
    ```
 
 ## Run on CPU
