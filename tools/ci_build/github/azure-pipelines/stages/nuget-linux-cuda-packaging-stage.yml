@@ -186,7 +186,8 @@ stages:
           --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
           --build-arg BUILD_UID=$( id -u )
           "
-        Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build   
+        Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
+        UpdateDepsTxt: false
 
     - template: ../templates/set-version-number-variables-step.yml
       parameters:
