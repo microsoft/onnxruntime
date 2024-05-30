@@ -81,7 +81,7 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
 
    For example: `Describe the image`
 
-   <img src="sushi.png" height=300 alt="sushi for sale>
+   <img src="sushi.png" height=300 alt="sushi for sale"/>
 
    ```
    The image shows a package of California Salad Roll SP from Metropolitan Market.
