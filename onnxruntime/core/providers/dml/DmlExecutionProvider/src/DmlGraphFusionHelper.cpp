@@ -935,7 +935,8 @@ namespace DmlGraphFusionHelper
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
         IExecutionProvider* provider,
-        IUnknown* persistentResourceAllocatorUnknown)
+        IUnknown* persistentResourceAllocatorUnknown,
+        bool keepTemporaryResourceAlive)
     {
         DML_BINDING_PROPERTIES execBindingProps = compiledExecutionPlanOperator->GetBindingProperties();
 
@@ -1042,6 +1043,11 @@ namespace DmlGraphFusionHelper
             }
 
             commandListState.tempBindingAllocId = tempAllocId;
+
+            if (keepTemporaryResourceAlive)
+            {
+                commandListState.temporaryResource = std::move(tempResource);
+            }
         }
 
         // Execute the command list and if it succeeds, update the fence value at which this command may be
@@ -1066,6 +1072,70 @@ namespace DmlGraphFusionHelper
         winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(commandListState.heap).Get());
         winmlProvider->QueueReference(commandListState.bindingTable.Get());
         winmlProvider->QueueReference(persistentResourceAllocatorUnknown);
+    }
+
+    void ExecuteOperator(
+        Dml::IExecutionProvider* provider,
+        IDMLCompiledOperator* op,
+        _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
+        gsl::span<ID3D12Resource*> inputTensors,
+        gsl::span<IMLOperatorTensor*> outputTensors)
+    {
+        auto FillBindingsFromTensors = [provider](auto& bufferBindings, auto& bindingDescs,  gsl::span<IMLOperatorTensor*>& tensors)
+        {
+            for (IMLOperatorTensor* tensor : tensors)
+            {
+                if (tensor)
+                {
+                    assert(tensor->IsDataInterface());
+                    ID3D12Resource* resource = provider->DecodeResource(MLOperatorTensor(tensor).GetDataInterface().Get());
+                    D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
+                    bufferBindings.push_back({ resource, 0, resourceDesc.Width });
+                    bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
+                }
+                else
+                {
+                    bufferBindings.push_back({ nullptr, 0, 0 });
+                    bindingDescs.push_back({ DML_BINDING_TYPE_NONE, nullptr });
+                }
+            }
+        };
+
+        auto FillBindingsFromBuffers = [](auto& bufferBindings, auto& bindingDescs,  gsl::span<ID3D12Resource*>& resources)
+        {
+            for (ID3D12Resource* resource : resources)
+            {
+                if (resource)
+                {
+                    D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
+                    bufferBindings.push_back({ resource, 0, resourceDesc.Width });
+                    bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
+                }
+                else
+                {
+                    bufferBindings.push_back({ nullptr, 0, 0 });
+                    bindingDescs.push_back({ DML_BINDING_TYPE_NONE, nullptr });
+                }
+            }
+        };
+
+        std::vector<DML_BUFFER_BINDING> inputBufferBindings;
+        inputBufferBindings.reserve(inputTensors.size());
+        std::vector<DML_BINDING_DESC> inputBindings;
+        inputBindings.reserve(inputTensors.size());
+        FillBindingsFromBuffers(inputBufferBindings, inputBindings, inputTensors);
+
+        std::vector<DML_BUFFER_BINDING> outputBufferBindings;
+        outputBufferBindings.reserve(outputTensors.size());
+        std::vector<DML_BINDING_DESC> outputBindings;
+        outputBindings.reserve(outputTensors.size());
+        FillBindingsFromTensors(outputBufferBindings, outputBindings, outputTensors);
+
+        ORT_THROW_IF_FAILED(provider->ExecuteOperator(
+            op,
+            persistentResourceBinding,
+            inputBindings,
+            outputBindings));
     }
 }
 }

@@ -120,6 +120,14 @@ namespace DmlGraphFusionHelper
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
         IExecutionProvider* provider,
-        IUnknown* persistentResourceAllocatorUnknown);
+        IUnknown* persistentResourceAllocatorUnknown,
+        bool keepTemporaryResourceAlive);
+
+    void ExecuteOperator(
+        Dml::IExecutionProvider* provider,
+        IDMLCompiledOperator* op,
+        _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
+        gsl::span<ID3D12Resource*> inputTensors,
+        gsl::span<IMLOperatorTensor*> outputTensors);
 }
 }

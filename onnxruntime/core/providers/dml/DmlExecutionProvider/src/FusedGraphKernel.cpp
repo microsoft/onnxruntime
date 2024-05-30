@@ -138,7 +138,8 @@ namespace Dml
                 }
 
                 auto aux = contextWrapper.GetOutputTensors(m_outputShapes);
-                ExecuteOperator(
+                DmlGraphFusionHelper::ExecuteOperator(
+                    m_provider.Get(),
                     m_compiledExecutionPlanOperator.Get(),
                     m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                     inputPtrs,
@@ -175,7 +176,8 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnknown.Get());
+                    m_persistentResourceAllocatorUnknown.Get(),
+                    false);
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
                 m_reusedCommandLists.pop_front();
@@ -183,69 +185,6 @@ namespace Dml
 
             return onnxruntime::Status::OK();
         }
-
-        void ExecuteOperator(
-            IDMLCompiledOperator* op,
-            _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
-            gsl::span<ID3D12Resource*> inputTensors,
-            gsl::span<IMLOperatorTensor*> outputTensors) const
-        {
-            auto FillBindingsFromTensors = [this](auto& bufferBindings, auto& bindingDescs,  gsl::span<IMLOperatorTensor*>& tensors)
-            {
-                for (IMLOperatorTensor* tensor : tensors)
-                {
-                    if (tensor)
-                    {
-                        assert(tensor->IsDataInterface());
-                        ID3D12Resource* resource = m_provider->DecodeResource(MLOperatorTensor(tensor).GetDataInterface().Get());
-                        D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
-                        bufferBindings.push_back({ resource, 0, resourceDesc.Width });
-                        bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
-                    }
-                    else
-                    {
-                        bufferBindings.push_back({ nullptr, 0, 0 });
-                        bindingDescs.push_back({ DML_BINDING_TYPE_NONE, nullptr });
-                    }
-                }
-            };
-
-            auto FillBindingsFromBuffers = [](auto& bufferBindings, auto& bindingDescs,  gsl::span<ID3D12Resource*>& resources)
-            {
-                for (ID3D12Resource* resource : resources)
-                {
-                    if (resource)
-                    {
-                        D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
-                        bufferBindings.push_back({ resource, 0, resourceDesc.Width });
-                        bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
-                    }
-                    else
-                    {
-                        bufferBindings.push_back({ nullptr, 0, 0 });
-                        bindingDescs.push_back({ DML_BINDING_TYPE_NONE, nullptr });
-                    }
-                }
-            };
-
-            std::vector<DML_BUFFER_BINDING> inputBufferBindings;
-            inputBufferBindings.reserve(inputTensors.size());
-            std::vector<DML_BINDING_DESC> inputBindings;
-            inputBindings.reserve(inputTensors.size());
-            FillBindingsFromBuffers(inputBufferBindings, inputBindings, inputTensors);
-
-            std::vector<DML_BUFFER_BINDING> outputBufferBindings;
-            outputBufferBindings.reserve(outputTensors.size());
-            std::vector<DML_BINDING_DESC> outputBindings;
-            outputBindings.reserve(outputTensors.size());
-            FillBindingsFromTensors(outputBufferBindings, outputBindings, outputTensors);
-
-            ORT_THROW_IF_FAILED(m_provider->ExecuteOperator(
-                op,
-                persistentResourceBinding,
-                inputBindings,
-                outputBindings));
-            }
 
     private:
         ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
