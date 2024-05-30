@@ -59,18 +59,18 @@ TensorProto ToScalarTensor(TensorProto_DataType datatype, int32_t value) {
     return t;                                                                             \
   }
 
-#define TO_TENSOR_ORT_TYPE_INT4(TYPE)                                                     \
-  template <>                                                                             \
-  TensorProto ToTensor<onnxruntime::TYPE>(const onnxruntime::TYPE& value) {               \
-    return ToScalarTensor(ToTensorProtoElementType<onnxruntime::TYPE>(), value.ToBits()); \
-  }                                                                                       \
-  template <>                                                                             \
-  TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) { \
-    TensorProto t = ToTensorInitialize(ToTensorProtoElementType<onnxruntime::TYPE>());    \
-    for (const onnxruntime::TYPE& val : values) {                                         \
-      t.add_int32_data(val.ToBits());                                                     \
-    }                                                                                     \
-    return t;                                                                             \
+#define TO_TENSOR_ORT_TYPE_INT4(TYPE)                                                                           \
+  template <>                                                                                                   \
+  TensorProto ToTensor<onnxruntime::TYPE>(const onnxruntime::TYPE& value) {                                     \
+    return ToScalarTensor(ToTensorProtoElementType<onnxruntime::TYPE>(), static_cast<int32_t>(value.ToBits())); \
+  }                                                                                                             \
+  template <>                                                                                                   \
+  TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) {                       \
+    TensorProto t = ToTensorInitialize(ToTensorProtoElementType<onnxruntime::TYPE>());                          \
+    for (const onnxruntime::TYPE& val : values) {                                                               \
+      t.add_int32_data(static_cast<int32_t>(val.ToBits()));                                                     \
+    }                                                                                                           \
+    return t;                                                                                                   \
   }
 
 namespace ONNX_NAMESPACE {
@@ -689,7 +689,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
                       "UnpackTensor: the pre-allocated size does not match the size in proto");             \
                                                                                                             \
     for (int i = 0; i < static_cast<int>(tensor.int32_data_size()); i++) {                                  \
-      p_data[i] = INT4_TYPE(static_cast<uint8_t>(tensor.int32_data()[i]));                                  \
+      p_data[i] = INT4_TYPE(static_cast<std::byte>(tensor.int32_data()[i]));                                \
     }                                                                                                       \
                                                                                                             \
     return Status::OK();                                                                                    \

@@ -338,7 +338,7 @@ DEFINE_UNPACK_TENSOR_FLOAT8(Float8E5M2FNUZ, TensorProto_DataType_FLOAT8E5M2FNUZ)
     }                                                                                                     \
                                                                                                           \
     for (int i = 0; i < static_cast<int>(tensor.int32_data_size()); i++) {                                \
-      p_data[i] = INT4_TYPE(static_cast<uint8_t>(tensor.int32_data()[i]));                                \
+      p_data[i] = INT4_TYPE(static_cast<std::byte>(tensor.int32_data()[i]));                              \
     }                                                                                                     \
   }
 

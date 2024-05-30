@@ -163,7 +163,7 @@ ParQuantizeLinearStd(const float* Input,
     /* If starting at an int4 element in the middle of a byte, quantize it by itself. */                         \
     if (out_start & 0x1) {                                                                                       \
       int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_start] / Scale)) +                           \
-                     static_cast<int32_t>(ZeroPoint.GetElem0());                                                 \
+                     static_cast<int32_t>(ZeroPoint.GetElem(0));                                                 \
       size_t output_index = out_start >> 1;                                                                      \
                                                                                                                  \
       INT4_TYPE::UnpackedType quant_val = static_cast<INT4_TYPE::UnpackedType>(                                  \
@@ -178,7 +178,7 @@ ParQuantizeLinearStd(const float* Input,
     /* If ending at element that ends in the middle of a byte, quantize it by itself. */                         \
     if (out_end & 0x1) {                                                                                         \
       int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_end - 1] / Scale)) +                         \
-                     static_cast<int32_t>(ZeroPoint.GetElem0());                                                 \
+                     static_cast<int32_t>(ZeroPoint.GetElem(0));                                                 \
       size_t output_index = (out_end - 1) >> 1;                                                                  \
                                                                                                                  \
       INT4_TYPE::UnpackedType quant_val = static_cast<INT4_TYPE::UnpackedType>(                                  \
@@ -220,7 +220,7 @@ ParQuantizeLinearStd(const float* Input,
                     reinterpret_cast<uint8_t*>(&(Output[out_idx >> 1])),                                         \
                     end_idx - begin_idx,                                                                         \
                     Scale,                                                                                       \
-                    static_cast<int8_t>(ZeroPoint.GetElem0()));                                                  \
+                    static_cast<int8_t>(ZeroPoint.GetElem(0)));                                                  \
         });                                                                                                      \
   }
 

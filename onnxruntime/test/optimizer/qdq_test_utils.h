@@ -518,8 +518,8 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(const std::vector<int64_t>& input_shape,
 
     if constexpr (std::is_same_v<InputType, Int4x2> || std::is_same_v<InputType, UInt4x2>) {
       input_arg = builder.MakeInputInt4<InputType>(input_shape, InputType::min_val, InputType::max_val);
-      dq_zp = InputType(static_cast<uint8_t>(InputType::max_val / 2));
-      q_zp = OutputType(static_cast<uint8_t>(OutputType::max_val / 2));
+      dq_zp = InputType(static_cast<std::byte>(InputType::max_val / 2));
+      q_zp = OutputType(static_cast<std::byte>(OutputType::max_val / 2));
     } else {
       input_arg = builder.MakeInput<InputType>(input_shape, std::numeric_limits<InputType>::min(),
                                                std::numeric_limits<InputType>::max());
