@@ -2552,11 +2552,11 @@ MlasSetInt4Element(uint8_t* Output, size_t ElemIndex, UnpackedType Value)
 
     const size_t OutputIndex = ElemIndex >> 1;  // which byte
     const size_t NibbleIndex = ElemIndex & 0x1; // which 4-bit elem in the byte
-    const uint8_t Shift = static_cast<uint8_t>(4 * NibbleIndex);
-    const uint8_t Mask = static_cast<uint8_t>(0xF << Shift);
+    const uint8_t Shift = static_cast<uint8_t>(NibbleIndex << 2); // Either 0 or 4
+    const uint8_t Mask = static_cast<uint8_t>(0xF0 >> Shift);
     uint8_t* Dst = &Output[OutputIndex];
 
-    *Dst &= ~Mask; // Clear 4-bit lane
+    *Dst &= Mask; // Clear 4-bit lane
     *Dst |= static_cast<uint8_t>((Value & 0xF) << Shift); // Set 4-bit lane
 }
 
