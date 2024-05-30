@@ -81,7 +81,7 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
 
    For example: `Describe the image`
 
-   ![coffee](coffee.jpg)
+   ![coffee](coffee.png)
 
    ```
    The image shows a cup of coffee with a latte art design on top. The coffee is a light brown color,
