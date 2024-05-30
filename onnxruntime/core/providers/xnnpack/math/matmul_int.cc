@@ -70,6 +70,7 @@ bool MatMulIntegerCommon::IsOnnxNodeSupported(const NodeUnit& node_unit, const G
   return supported;
 }
 
+template<>
 Status MatMulInteger<int8_t>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                        /*out*/ bool& is_packed,
                        /*out*/ PrePackedWeights* /*Not used*/) {
@@ -136,6 +137,7 @@ Status MatMulInteger<int8_t>::PrePack(const Tensor& tensor, int input_idx, Alloc
   return Status::OK();
 }
 
+template<>
 Status MatMulInteger<uint8_t>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                        /*out*/ bool& is_packed,
                        /*out*/ PrePackedWeights* /*Not used*/) {
@@ -204,6 +206,7 @@ Status MatMulInteger<uint8_t>::PrePack(const Tensor& tensor, int input_idx, Allo
   return Status::OK();
 }
 
+template<>
 Status MatMulInteger<int8_t>::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
   pthreadpool_t threadpool = GetThreadPool();
@@ -249,6 +252,7 @@ Status MatMulInteger<int8_t>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+template<>
 Status MatMulInteger<uint8_t>::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
   pthreadpool_t threadpool = GetThreadPool();
