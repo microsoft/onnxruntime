@@ -17,7 +17,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | ArgMin | ai.onnx(7-10, 11, 12, 13+) | argMin | ✗ | ✓ | |
 | AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | ✓ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'count_include_pad' value is 0 |
 | BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | ✗ | ✓ | Only supports 'training_mode' value is 0, one output |
-| Cast | ai.onnx(7-8, 9-12, 13-18, 19-20, 21+) | cast | ✗ | ✓ | |
+| Cast | ai.onnx(7-8, 9-12, 13-18, 19-20, 21+) | cast | ✓ | ✓ | WebNN CPU backend doesn't support casting to uint64 data type |
 | Ceil | ai.onnx(7-12, 13+) | ceil | ✓ | ✓ | |
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | ✓ | ✓ | |

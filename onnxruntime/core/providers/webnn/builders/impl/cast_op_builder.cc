@@ -22,7 +22,7 @@ class CastOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -80,13 +80,19 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool CastOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                       const Node& node,
-                                      const WebnnDeviceType /* device_type */,
+                                      const WebnnDeviceType device_type,
                                       const logging::Logger& logger) const {
   NodeAttrHelper helper(node);
   // Check cast output type.
   const auto to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED);
+
+  // WebNN CPU backend doesn't support casting to uint64 data type.
+  if (device_type == WebnnDeviceType::CPU && to_type == ONNX_NAMESPACE::TensorProto_DataType_UINT64) {
+    LOGS(logger, VERBOSE) << "Cast to uint64 is not supported for WebNN CPU backend.";
+    return false;
+  }
   if (!IsSupportedDataType(to_type, webnn_supported_data_types)) {
-    LOGS(logger, VERBOSE) << "Invalid cast to type " << to_type << ".";
+    LOGS(logger, VERBOSE) << "WebNN doesn't support casting to type " << to_type << ".";
     return false;
   }
 

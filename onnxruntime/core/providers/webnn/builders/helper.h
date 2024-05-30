@@ -161,7 +161,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"ArgMin", {"argMin", false}},
     {"AveragePool", {"averagePool2d", true}},
     {"BatchNormalization", {"batchNormalization", false}},
-    {"Cast", {"cast", false}},
+    {"Cast", {"cast", true}},
     {"Ceil", {"ceil", true}},
     {"Clip", {"clamp", true}},
     {"Concat", {"concat", true}},
