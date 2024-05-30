@@ -77,7 +77,7 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
    python phi3v.py -m cuda-int4-rtn-block-32 
    ```
 
-   You enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.
+   Enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.
 
    For example: `Describe the image`
 
@@ -113,7 +113,7 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
    python phi3v.py -m cpu-int4-rtn-block-32-acc-level-4
    ```
 
-   You enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.
+   Enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.
 
    For example: `Convert this image to markdown format`
 

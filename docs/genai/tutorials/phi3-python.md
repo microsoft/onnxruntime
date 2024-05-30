@@ -1,5 +1,5 @@
 ---
-title: Python phi-3 tutorial
+title: Phi-3 tutorial
 description: Small but mighty. Run Phi-3 with ONNX Runtime.
 has_children: false
 parent: Tutorials

@@ -1,5 +1,5 @@
 ---
-title: Python phi-2 tutorial
+title: Phi-2 tutorial
 description: Learn how to write a language generation application with ONNX Runtime generate() API in Python using the phi-2 model
 has_children: false
 parent: Tutorials
