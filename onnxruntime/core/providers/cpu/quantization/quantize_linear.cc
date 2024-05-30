@@ -288,6 +288,78 @@ struct DequantizeLinearApply {
 DEQUANTIZE_LINEAR_APPLY_INT4(Int4x2);
 DEQUANTIZE_LINEAR_APPLY_INT4(UInt4x2);
 
+/// <summary>
+/// Blocked quantization op of DequantizeLinear.
+/// </summary>
+/// <typeparam name="T">Input type {int8, uint8, int16, uint16, int32}</typeparam>
+/// <typeparam name="OutT">Output type {float16, float}</typeparam>
+template <typename T, typename OutT>
+struct DequantizeLinearApplyBlocked {
+
+  /// <summary>
+  /// Calculate blocked quantization of DequantizeLinear. The indexing of scale/zero_point on the quantize axis is
+  /// repeated quant_block_size times, compared to the indexing of input/output.
+  /// </summary>
+  /// <param name="N">size of axes before the quantize axis</param>
+  /// <param name="broadcast_dim">size on the quantize axis</param>
+  /// <param name="block_size">size of axes after the quantize axis</param>
+  /// <param name="quant_block_size">quantize block size along the quantize axis</param>
+  /// <param name="input">one dimension array of flattened [D0, ..., Di, ..., Dn] </param>
+  /// <param name="scale">
+  /// one dimension array of flattened [D0, ..., ceil(Di/quant_block_size), ..., Dn]. i is the quantize axis.
+  /// </param>
+  /// <param name="output">same shape as input</param>
+  /// <param name="zero_point">same shape as scale</param>
+  void op(int64_t N, int64_t broadcast_dim, int64_t block_size, int64_t quant_block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+    if (zero_point) {
+      for (size_t n = 0; n < static_cast<size_t>(N); n++) {
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd += quant_block_size) {
+          size_t bd_stop = bd + quant_block_size > broadcast_dim ? broadcast_dim : bd + quant_block_size;
+
+          for (size_t qb = bd; qb < bd_stop; ++qb) {
+            for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {
+              auto zp = static_cast<int32_t>(*zero_point++);
+              auto sc = static_cast<float>(*scale++);
+              *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
+            }
+
+            // within the quantize block along axis i, the zero point and scale are the same at the same
+            // indices after axis i.
+            zero_point -= block_size;
+            scale -= block_size;
+          }
+
+          // move to the next quantize block along axis i
+          zero_point += block_size;
+          scale += block_size;
+        }
+      }
+
+    } else {
+      auto zp = static_cast<int32_t>(0);
+      for (size_t n = 0; n < static_cast<size_t>(N); n++) {
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd += quant_block_size) {
+          size_t bd_stop = bd + quant_block_size > broadcast_dim ? broadcast_dim : bd + quant_block_size;
+
+          for (size_t qb = bd; qb < bd_stop; ++qb) {
+            for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++) {
+              auto sc = static_cast<float>(*scale++);
+              *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
+            }
+
+            // within the quantize block along axis i, the scales are the same at the same
+            // indices after axis i.
+            scale -= block_size;
+          }
+
+          // move to the next quantize block along axis i
+          scale += block_size;
+        }
+      }
+    }
+  }
+};
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 #define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T)                                                                 \
