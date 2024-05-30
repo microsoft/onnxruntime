@@ -99,7 +99,7 @@ jobs:
                   -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
                   -e NIGHTLY_BUILD \
                   -e BUILD_BUILDNUMBER \
-                  -e CCACHE_DIR=/cache \
+                  -e CCACHE_DIR=/cache -w /onnxruntime_src \
                   onnxruntimetensorrt86gpubuild tools/ci_build/github/linux/build_tensorrt_ci.sh
             workingDirectory: $(Build.SourcesDirectory)
 
