@@ -8,7 +8,7 @@ if [ "$os_major_version" -gt 7 ]; then
     PACKAGE_MANAGER="dnf"
     $PACKAGE_MANAGER install -y which redhat-lsb-core expat-devel tar unzip zlib-devel make bzip2 bzip2-devel perl-IPC-Cmd openssl-devel wget
 fi
-if[! -f /etc/yum.repos.d/microsoft-prod.repo ]; then
+if [! -f /etc/yum.repos.d/microsoft-prod.repo ]; then
   rpm -Uvh https://packages.microsoft.com/config/centos/$os_major_version/packages-microsoft-prod.rpm
 fi
 # Install Java
