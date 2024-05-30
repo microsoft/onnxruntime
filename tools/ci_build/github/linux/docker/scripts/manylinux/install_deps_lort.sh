@@ -19,13 +19,13 @@ fi
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 PYTHON_EXE=/opt/python/cp39-cp39/bin/python3.9
-# This may install PyTorch, which will be overrided by the PyTorch local build below.
-$PYTHON_EXE -m pip install transformers
 
+echo "Installing Pytorch requirements"
+# This may install PyTorch, which will be overrided by the PyTorch local build below.
 # beartype is installed here so that onnxscript installation step won't
 # install a version PyTorch doesn't like. Once beartype fixes this problem.
 # We can remove this line.
-$PYTHON_EXE -m pip install beartype==0.15.0
+$PYTHON_EXE -m pip install -r /tmp/scripts/lort/requirements.txt
 
 cd /usr/local/
 echo "Cloning ONNX Script"
@@ -38,9 +38,7 @@ cd /usr/local
 echo "Cloning Pytorch"
 git clone --recursive https://github.com/pytorch/pytorch.git
 cd pytorch
-echo "Installing Pytorch requirements"
-$PYTHON_EXE -m pip install -r requirements.txt
-$PYTHON_EXE -m pip install flatbuffers cerberus h5py onnx
+
 echo "Building and installing Pytorch"
 VERBOSE=1 BUILD_LAZY_TS_BACKEND=1 $PYTHON_EXE setup.py install
 cd ~ && $PYTHON_EXE -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
