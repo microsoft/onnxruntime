@@ -657,7 +657,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
   auto attributes = SrcNodeAttributes();
   std::vector<AttributeProto> new_attributes;
   if (attributes.empty()) {
-    TensorShapeProto input_shape = I(0).type_proto->tensor_type().shape();
+    const TensorShapeProto& input_shape = I(0).type_proto->tensor_type().shape();
     if (input_shape.dim_size() > 0) {  // input_shape is available
       size_t n = static_cast<size_t>(input_shape.dim_size()) - 1;
       bw_perm.resize(n + 1);
