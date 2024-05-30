@@ -100,8 +100,8 @@ static void PrepareForQDQ(const TensorShape& input_shape,
                   "x_zero_point must be null or have the same rank as x for blocked quantization");
 
       for (size_t i = 0, ndim = input_shape.NumDimensions(); i < ndim; ++i) {
-        ORT_ENFORCE(scale.Shape()[i] == (i == axis_no_neg ? (input_shape[i] + quant_block_size - 1) / quant_block_size : input_shape[i]),
-                    i == axis_no_neg ?
+        ORT_ENFORCE(scale.Shape()[i] == (i == SafeInt<size_t>(axis_no_neg) ? (input_shape[i] + quant_block_size - 1) / quant_block_size : input_shape[i]),
+                    i == SafeInt<size_t>(axis_no_neg) ?
                     "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization" :
                     "x_scale and x must have the same shape despite the quantize axis for blocked quantization");
 
