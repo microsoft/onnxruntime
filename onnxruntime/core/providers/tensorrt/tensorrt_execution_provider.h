@@ -27,7 +27,9 @@ static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
-// As a timing cache can be used across multiple ONNX files it makes sense to have a seperate cache path
+static const std::string kWeightStrippedEngineEnable = "ORT_TENSORRT_WEIGHT_STRIPPED_ENGINE_ENABLE";
+static const std::string kOnnxModelFolderPath = "ORT_TENSORRT_ONNX_MODEL_FOLDER_PATH";
+// As a timing cache can be used across multiple ONNX files it makes sense to have a separate cache path
 static const std::string kTimingCachePath = "ORT_TENSORRT_GLOBAL_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
@@ -140,6 +142,10 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
   std::vector<int64_t> output_shapes;
 };
 
+/*
+ * This map saves the dimension range of the shape of the shape tensor or execution tensor:
+ * tensor name -> ( dimension -> [min, max, opt] )
+ */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
 // Information to construct kernel function state.
@@ -187,6 +193,7 @@ struct TensorrtFuncState {
   bool cuda_graph_enable = 0;
   std::string cache_prefix;
   std::string cache_suffix;
+  bool engine_hw_compatible = false;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -213,6 +220,7 @@ struct SubGraphContext {
 
 using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>;
 using DDSOutputAllocatorMap = std::unordered_map<std::string, std::unique_ptr<OutputAllocator>>;
+std::string GetWeightRefittedEnginePath(std::string engine_cache_path);
 
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
@@ -259,6 +267,17 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
 
+  /**
+   * Refit the weight-stripped engine
+   */
+  static common::Status RefitEngine(std::string onnx_model_filename,
+                                    std::string& onnx_model_folder_path,
+                                    std::string& weight_stripped_engine_cath_path,
+                                    bool path_check,
+                                    nvinfer1::ICudaEngine* trt_engine,
+                                    bool serialize_refitted_engine,
+                                    bool detailed_build_log);
+
  private:
   mutable TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
@@ -276,6 +295,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
+  bool weight_stripped_engine_enable_ = false;
+  bool weight_stripped_engine_refit_ = false;
+  std::string onnx_model_folder_path_;
   bool build_heuristics_enable_ = false;
   bool sparsity_enable_ = false;
   int builder_optimization_level_ = 3;
@@ -299,6 +321,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
   std::string cache_prefix_;
+  bool engine_hw_compatible_ = false;
 
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.

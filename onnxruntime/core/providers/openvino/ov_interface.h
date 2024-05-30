@@ -5,6 +5,9 @@
 
 #include <vector>
 #include <memory>
+#include <fstream>
+#include <sstream>
+#include <utility>
 
 #include "openvino/openvino.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
@@ -38,22 +41,31 @@ class OVCore {
 
  public:
   std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream, const std::string& model_path) const;
-  OVExeNetwork LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network,
-                           std::string& hw_target,
-                           ov::AnyMap& device_config,
+  OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
+                            std::string hw_target,
+                            const ov::AnyMap& device_config,
+                            std::string name);
+  OVExeNetwork CompileModel(const std::string& onnx_model,
+                            std::string hw_target,
+                            std::string precision,
+                            std::string cache_dir,
+                            const ov::AnyMap& device_config,
+                            std::string name);
+  OVExeNetwork ImportModel(std::shared_ptr<std::istringstream> model_stream,
+                           std::string hw_target,
+                           const ov::AnyMap& device_config,
                            std::string name);
-  OVExeNetwork LoadNetwork(const std::string model_path,
-                           std::string& hw_target,
-                           ov::AnyMap& device_config,
-                           std::string name);
-  void SetCache(std::string cache_dir_path);
 #ifdef IO_BUFFER_ENABLED
-  OVExeNetwork LoadNetwork(std::shared_ptr<OVNetwork>& model, OVRemoteContextPtr context, std::string& name);
+  OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& model,
+                            OVRemoteContextPtr context,
+                            std::string name);
+  OVExeNetwork ImportModel(std::shared_ptr<std::istringstream> model_stream,
+                           OVRemoteContextPtr context,
+                           std::string name);
 #endif
   std::vector<std::string> GetAvailableDevices();
-  ov::Core& Get() {
-    return oe;
-  }
+  void SetCache(std::string cache_dir_path, std::string device_type);
+  ov::Core& Get() { return oe; }
   void SetStreams(const std::string& device_type, int num_streams);
 };
 
@@ -61,8 +73,8 @@ class OVExeNetwork {
   ov::CompiledModel obj;
 
  public:
-  explicit OVExeNetwork(ov::CompiledModel md) { obj = md; }
-  OVExeNetwork() { obj = ov::CompiledModel(); }
+  explicit OVExeNetwork(ov::CompiledModel md) : obj(md) {}
+  OVExeNetwork() : obj(ov::CompiledModel()) {}
   ov::CompiledModel& Get() { return obj; }
   OVInferRequest CreateInferRequest();
 };
@@ -72,13 +84,13 @@ class OVInferRequest {
 
  public:
   OVTensorPtr GetTensor(const std::string& name);
-  void SetTensor(const std::string& name, OVTensorPtr& blob);
+  void SetTensor(std::string name, OVTensorPtr& blob);
   void StartAsync();
   void Infer();
   void WaitRequest();
   void QueryStatus();
-  explicit OVInferRequest(ov::InferRequest obj) { ovInfReq = obj; }
-  OVInferRequest() { ovInfReq = ov::InferRequest(); }
+  explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(std::move(obj)) {}
+  OVInferRequest() : ovInfReq(ov::InferRequest()) {}
   ov::InferRequest& GetNewObj() {
     return ovInfReq;
   }

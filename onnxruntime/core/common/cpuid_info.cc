@@ -40,7 +40,7 @@
 
 #if _WIN32
 
-#include "Windows.h"
+#include <Windows.h>
 
 #define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 
@@ -63,16 +63,17 @@ void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
 #include "core/common/cpuid_uarch.h"
 #endif  // CPUINFO_SUPPORTED
 
-namespace onnxruntime {
-
-#ifdef CPUIDINFO_ARCH_X86
-
-#include <memory>
+#if defined(CPUIDINFO_ARCH_X86)
 #if defined(_MSC_VER)
 #include <intrin.h>
 #elif defined(__GNUC__)
 #include <cpuid.h>
 #endif
+#endif  // defined(CPUIDINFO_ARCH_X86)
+
+namespace onnxruntime {
+
+#if defined(CPUIDINFO_ARCH_X86)
 
 static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 #if defined(_MSC_VER)
@@ -140,59 +141,61 @@ void CPUIDInfo::X86Init() {
   }
 }
 
-#endif /* CPUIDINFO_ARCH_X86 */
+#endif  // defined(CPUIDINFO_ARCH_X86)
 
 #if defined(CPUIDINFO_ARCH_ARM)
-#ifdef __linux__
+
+#if defined(__linux__)
 
 void CPUIDInfo::ArmLinuxInit() {
-  // Pytorch CPUINFO only works on ARM linux or android
   // Assuming no hyper-threading, no NUMA groups
-#ifdef CPUINFO_SUPPORTED
-  is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
-  has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
-  has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
-  has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
-  has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
-  has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+#if defined(CPUINFO_SUPPORTED)
+  if (pytorch_cpuinfo_init_) {
+    is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+    has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
+    has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
+    has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
 
-  const uint32_t core_cnt = cpuinfo_get_cores_count();
-  core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
-  is_armv8_narrow_ld_.resize(core_cnt, false);
-  for (uint32_t c = 0; c < core_cnt; c++) {
-    const struct cpuinfo_processor* proc = cpuinfo_get_processor(c);
-    if (proc == nullptr) {
-      continue;
+    const uint32_t core_cnt = cpuinfo_get_cores_count();
+    core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
+    is_armv8_narrow_ld_.resize(core_cnt, false);
+    for (uint32_t c = 0; c < core_cnt; c++) {
+      const struct cpuinfo_processor* proc = cpuinfo_get_processor(c);
+      if (proc == nullptr) {
+        continue;
+      }
+      const struct cpuinfo_core* corep = proc->core;
+      if (corep == nullptr) {
+        continue;
+      }
+      auto coreid = proc->linux_id;
+      auto uarch = corep->uarch;
+      core_uarchs_[coreid] = uarch;
+      if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
+          uarch == cpuinfo_uarch_cortex_a55) {
+        is_armv8_narrow_ld_[coreid] = true;
+      }
     }
-    const struct cpuinfo_core* corep = proc->core;
-    if (corep == nullptr) {
-      continue;
-    }
-    auto coreid = proc->linux_id;
-    auto uarch = corep->uarch;
-    core_uarchs_[coreid] = uarch;
-    if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
-        uarch == cpuinfo_uarch_cortex_a55) {
-      is_armv8_narrow_ld_[coreid] = true;
-    }
+  } else
+#endif  // defined(CPUINFO_SUPPORTED)
+  {
+    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+    has_fp16_ |= has_arm_neon_dot_;
+
+    has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
+    has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
+
+    has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
   }
-#else
-  pytorch_cpuinfo_init_ = false;
-  has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
-  has_fp16_ |= has_arm_neon_dot_;
-
-  has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
-  has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
-
-  has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
-#endif
 }
 
-#elif defined(_WIN32)
+#elif defined(_WIN32)  // ^ defined(__linux__)
 
 void CPUIDInfo::ArmWindowsInit() {
 // ARM32 certainly doesn't have fp16, so we will skip the logic to avoid using RegGetValueA Windows API
-#ifndef _M_ARM
+#if !defined(_M_ARM)
 #pragma region Application Family or OneCore Family
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
   // Read MIDR from windows registry
@@ -241,19 +244,22 @@ void CPUIDInfo::ArmWindowsInit() {
       lastUarch = uarch;
     }
   }
-#endif /* Application Family or OneCore Family */
+#endif  // WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
 
   has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#else
+#else   // ^ !defined(_M_ARM) / v defined(_M_ARM)
   has_arm_neon_dot_ = false;
-#endif
+#endif  // defined(_M_ARM)
 
+#if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
-  } else {
+  } else
+#endif  // defined(CPUINFO_SUPPORTED)
+  {
     has_fp16_ = false;
     has_arm_neon_i8mm_ = false;
     has_arm_sve_i8mm_ = false;
@@ -261,8 +267,29 @@ void CPUIDInfo::ArmWindowsInit() {
   }
 }
 
-#endif /* (arm or arm64) and windows */
-#endif /* arm or arm64*/
+#elif defined(__APPLE__)  // ^ defined(_WIN32)
+
+void CPUIDInfo::ArmAppleInit() {
+#if defined(CPUINFO_SUPPORTED)
+  if (pytorch_cpuinfo_init_) {
+    is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+    has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
+    has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
+    has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+
+    // TODO figure out how to set core_uarchs_ and is_armv8_narrow_ld_
+  } else
+#endif  // defined(CPUINFO_SUPPORTED)
+  {
+    // No fallback detection attempted now. Add if needed.
+  }
+}
+
+#endif  // defined(__APPLE__)
+
+#endif  // defined(CPUIDINFO_ARCH_ARM)
 
 uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
 #ifdef _WIN32
@@ -278,21 +305,25 @@ uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
   return 0xFFFFFFFF;  // don't know how to get core index
 #endif
 }
+
 CPUIDInfo::CPUIDInfo() {
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();
 #elif defined(CPUIDINFO_ARCH_ARM)
-#if CPUINFO_SUPPORTED
+#if defined(CPUINFO_SUPPORTED)
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
   if (!pytorch_cpuinfo_init_) {
-    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
+    LOGS_DEFAULT(WARNING) << "Failed to initialize PyTorch cpuinfo library. May cause CPU EP performance degradation "
+                             "due to undetected CPU features.";
   }
-#endif
-#ifdef __linux__
+#endif  // defined(CPUINFO_SUPPORTED)
+#if defined(__linux__)
   ArmLinuxInit();
 #elif defined(_WIN32)
   ArmWindowsInit();
-#endif /* (arm or arm64) and windows */
+#elif defined(__APPLE__)
+  ArmAppleInit();
 #endif
+#endif  // defined(CPUIDINFO_ARCH_ARM)
 }
 }  // namespace onnxruntime

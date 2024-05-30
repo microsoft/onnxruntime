@@ -23,7 +23,7 @@ module.exports = function(config) {
       {pattern: distPrefix + ORT_MAIN},
       {pattern: './common.js'},
       {pattern: TEST_MAIN},
-      {pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true},
+      {pattern: './node_modules/onnxruntime-web/dist/*.*', included: false, nocache: true},
       {pattern: './data/*', included: false},
     ],
     plugins: [require('@chiragrupani/karma-chromium-edge-launcher'), ...config.plugins],

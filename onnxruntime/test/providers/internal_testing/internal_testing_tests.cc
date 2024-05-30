@@ -201,49 +201,59 @@ TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
 }
 
 TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
-  // the internal NHWC domain supports opset 11 and later
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model_opset11.onnx";
+  auto run_test = [&](const ORTCHAR_T* model_path) {
+    SCOPED_TRACE("model path: " + ToUTF8String(model_path));
 
-  SessionOptions so;
-  // set this if you want to manually inspect the optimized model
-  // so.optimized_model_filepath = ORT_MODEL_FOLDER "squeezenet/model.test_output.onnx";
-  InferenceSessionWrapper session(so, GetEnvironment());
+    SessionOptions so;
+    // set this if you want to manually inspect the optimized model
+    // so.optimized_model_filepath = ORT_MODEL_FOLDER "squeezenet/model.test_output.onnx";
+    InferenceSessionWrapper session(so, GetEnvironment());
 
-  const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
-  auto ep = std::make_unique<InternalTestingExecutionProvider>(supported_ops,
-                                                               std::unordered_set<std::string>{},
-                                                               DataLayout::NHWC);
-  ep->EnableStaticKernels();
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+    const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
+    auto ep = std::make_unique<InternalTestingExecutionProvider>(supported_ops,
+                                                                 std::unordered_set<std::string>{},
+                                                                 DataLayout::NHWC);
+    ep->EnableStaticKernels();
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
 
-  ASSERT_STATUS_OK(session.Load(ort_model_path));
-  ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Load(model_path));
+    ASSERT_STATUS_OK(session.Initialize());
 
-  const auto& graph = session.GetGraph();
+    const auto& graph = session.GetGraph();
 
-  // all Conv nodes should have been converted to NHWC versions and
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "Conv") {
-      ASSERT_EQ(node.Domain(), kMSInternalNHWCDomain);
+    // all Conv nodes should have been converted to NHWC versions and
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv") {
+        ASSERT_EQ(node.Domain(), kMSInternalNHWCDomain);
+      }
     }
-  }
 
-  TensorShape input_shape_x{1, 3, 224, 224};
-  std::vector<float> input_x(input_shape_x.Size(), 1.f);
-  OrtValue ml_value_x;
-  CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+    TensorShape input_shape_x{1, 3, 224, 224};
+    std::vector<float> input_x(input_shape_x.Size(), 1.f);
+    OrtValue ml_value_x;
+    CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
 
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("data_0", ml_value_x));
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("data_0", ml_value_x));
 
-  // prepare outputs
-  std::vector<std::string> output_names;
-  output_names.push_back("softmaxout_1");
-  std::vector<OrtValue> fetches;
+    // prepare outputs
+    std::vector<std::string> output_names;
+    output_names.push_back("softmaxout_1");
+    std::vector<OrtValue> fetches;
 
-  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Run(feeds, output_names, &fetches),
-                                      "Non-zero status code returned while running Conv node. Name:'Conv' "
-                                      "Status Message: TODO: add NHWC implementation here.");
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Run(feeds, output_names, &fetches),
+                                        "Non-zero status code returned while running Conv node. Name:'Conv' "
+                                        "Status Message: TODO: add NHWC implementation here.");
+  };
+
+  // the internal NHWC domain supports opset 11 and later
+  const ORTCHAR_T* onnx_model_path = ORT_MODEL_FOLDER "squeezenet/model_opset11.onnx";
+  run_test(onnx_model_path);
+
+  // Note: Using ORT format model with runtime optimizations so that the Conv nodes are preserved in the graph,
+  // not converted into FusedConv nodes. The InternalTestingExecutionProvider handles Conv nodes.
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model_opset11.with_runtime_opt.ort";
+  run_test(ort_model_path);
 }
 
 // This test can be deprecated now as the code logic has been changed so the model is not applicable

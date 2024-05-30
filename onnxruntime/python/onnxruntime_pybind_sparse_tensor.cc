@@ -305,18 +305,7 @@ void addSparseTensorMethods(pybind11::module& m) {
         if (sparse_tensor.IsDataTypeString()) {
           // Strings can not be on GPU and require conversion UTF-8 to Python UNICODE
           // We need to create a copy.
-          const int numpy_type = OnnxRuntimeTensorToNumpyType(DataTypeImpl::GetType<std::string>());
-          ORT_ENFORCE(NPY_OBJECT == numpy_type, "We are expecting to map strings to NPY_OBJECT type");
-          const auto& values_shape = sparse_tensor.Values().Shape();
-          py::dtype dtype("object");
-          py::array result(dtype, values_shape.GetDims(), {});
-          auto* out_ptr = static_cast<py::object*>(
-              PyArray_DATA(reinterpret_cast<PyArrayObject*>(result.ptr())));
-          const std::string* src = sparse_tensor.Values().Data<std::string>();
-          for (int64_t i = 0, size = values_shape.Size(); i < size; ++i, src++) {
-            out_ptr[i] = py::cast(*src);
-          }
-          return result;
+          return StringTensorToNumpyArray(sparse_tensor.Values());
         } else {
           utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
               t_disp(sparse_tensor.GetElementType());
@@ -386,7 +375,7 @@ void addSparseTensorMethods(pybind11::module& m) {
       })
       .def("dense_shape", [](const PySparseTensor* py_tensor) -> py::list {
         const SparseTensor& st = py_tensor->Instance();
-        const auto& dims = st.DenseShape().GetDims();
+        const auto dims = st.DenseShape().GetDims();
         // We create a copy of dimensions, it is small
         py::list py_dims;
         for (auto d : dims) {
