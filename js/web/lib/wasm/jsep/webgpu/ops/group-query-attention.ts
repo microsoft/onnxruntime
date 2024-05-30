@@ -13,12 +13,15 @@ import {maybeTransposeToBNSHAndAddBias} from './multihead-attention';
 import {createTileProgramInfo} from './tile';
 import {createTransposeProgramInfo, TransposeAttributes} from './transpose';
 
+const getInput = (inputs: readonly TensorView[], i: number) =>
+    (inputs.length > i) && (inputs[i].dims.length > 0) && (ShapeUtil.size(inputs[i].dims)) > 0 ? inputs[i] : undefined;
+
 export const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttrs): AttentionParameters => {
   const query = inputs[0];
-  const key = inputs[1];
-  const value = inputs[2];
-  const pastKey = inputs[3];
-  const pastValue = inputs[4];
+  const key = getInput(inputs, 1);
+  const value = getInput(inputs, 2);
+  const pastKey = getInput(inputs, 3);
+  const pastValue = getInput(inputs, 4);
 
   // Abbreviation and Meanings:
   //   B:    batch_size
@@ -338,9 +341,11 @@ export const groupQueryAttention = (context: ComputeContext, attributes: Attenti
   const Q = maybeTransposeToBNSHAndAddBias(
       context, params.batchSize, params.numHeads, params.sequenceLength, params.headSize, context.inputs[0], undefined,
       0);
-  const pastKey = context.inputs[3] && context.inputs[3].dims.length !== 0 ? context.inputs[3] : undefined;
-  const pastValue = context.inputs[4] && context.inputs[4].dims.length !== 0 ? context.inputs[4] : undefined;
-  const K = maybeExpandAndTransposeToBNSH(context, context.inputs[1], pastKey, params, 1);
-  const V = maybeExpandAndTransposeToBNSH(context, context.inputs[2], pastValue, params, 2);
+  const key = getInput(context.inputs, 1);
+  const value = getInput(context.inputs, 2);
+  const pastKey = getInput(context.inputs, 3);
+  const pastValue = getInput(context.inputs, 4);
+  const K = key ? maybeExpandAndTransposeToBNSH(context, key, pastKey, params, 1) : pastKey;
+  const V = value ? maybeExpandAndTransposeToBNSH(context, value, pastValue, params, 2) : pastValue;
   applyAttention(context, Q, K, V, undefined, undefined, undefined, undefined, undefined, params, attributes);
 };
