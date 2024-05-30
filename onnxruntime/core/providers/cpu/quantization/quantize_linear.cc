@@ -244,10 +244,24 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
 }  // namespace contrib
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
+template<typename T, typename OutT, bool blocked_quantize>
+struct DequantizeLinearApply;
+
 template <typename T, typename OutT>
-struct DequantizeLinearApply {
-  void op(int64_t N, int64_t axis_dim_val, int64_t quant_block_size, const T* input, const OutT* scale, OutT* output,
-          const T* zero_point) {
+struct DequantizeLinearApply<T, OutT, false> {
+  /// <summary>
+  /// Calculate per-tensor/layer or per-axis quantization of DequantizeLinear.
+  /// </summary>
+  /// <param name="N">size of axes before the quantize axis</param>
+  /// <param name="broadcast_dim">size on the quantize axis</param>
+  /// <param name="block_size">size of axes after the quantize axis</param>
+  /// <param name="input">1D array of flattened [D0, ..., Di, ..., Dn]</param>
+  /// <param name="scale">
+  ///   scalar for per-tensor/layer quantization and 1D array [Di] for per-axis quantization. i is the quantize axis.
+  /// </param>
+  /// <param name="output">same shape as input</param>
+  /// <param name="zero_point">same shape as scale</param>
+  void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) {
     for (size_t n = 0; n < static_cast<size_t>(N); n++) {
       for (size_t bd = 0; bd < static_cast<size_t>(axis_dim_val); bd++) {
         auto zp = zero_point ? static_cast<int32_t>(zero_point[bd]) : 0;
@@ -262,7 +276,7 @@ struct DequantizeLinearApply {
 
 #define DEQUANTIZE_LINEAR_APPLY_INT4(T)                                                                   \
   template <typename OutT>                                                                                \
-  struct DequantizeLinearApply<T, OutT> {                                                                 \
+  struct DequantizeLinearApply<T, OutT, false> {                                                          \
     void op(int64_t N, int64_t axis_dim_val, int64_t quant_block_size, const T* input, const OutT* scale, \
             OutT* output, const T* zero_point) {                                                          \
       size_t input_index = 0;                                                                             \
@@ -288,14 +302,8 @@ struct DequantizeLinearApply {
 DEQUANTIZE_LINEAR_APPLY_INT4(Int4x2);
 DEQUANTIZE_LINEAR_APPLY_INT4(UInt4x2);
 
-/// <summary>
-/// Blocked quantization op of DequantizeLinear.
-/// </summary>
-/// <typeparam name="T">Input type {int8, uint8, int16, uint16, int32}</typeparam>
-/// <typeparam name="OutT">Output type {float16, float}</typeparam>
 template <typename T, typename OutT>
-struct DequantizeLinearApplyBlocked {
-
+struct DequantizeLinearApply<T, OutT, true> {
   /// <summary>
   /// Calculate blocked quantization of DequantizeLinear. The indexing of scale/zero_point on the quantize axis is
   /// repeated quant_block_size times, compared to the indexing of input/output.
@@ -304,13 +312,14 @@ struct DequantizeLinearApplyBlocked {
   /// <param name="broadcast_dim">size on the quantize axis</param>
   /// <param name="block_size">size of axes after the quantize axis</param>
   /// <param name="quant_block_size">quantize block size along the quantize axis</param>
-  /// <param name="input">one dimension array of flattened [D0, ..., Di, ..., Dn] </param>
+  /// <param name="input">1D array of flattened [D0, ..., Di, ..., Dn] </param>
   /// <param name="scale">
-  /// one dimension array of flattened [D0, ..., ceil(Di/quant_block_size), ..., Dn]. i is the quantize axis.
+  ///   1D array of flattened [D0, ..., ceil(Di/quant_block_size), ..., Dn]. i is the quantize axis.
   /// </param>
   /// <param name="output">same shape as input</param>
   /// <param name="zero_point">same shape as scale</param>
-  void op(int64_t N, int64_t broadcast_dim, int64_t block_size, int64_t quant_block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+  void op(int64_t N, int64_t broadcast_dim, int64_t block_size, int64_t quant_block_size, const T* input,
+    const OutT* scale, OutT* output, const T* zero_point) {
     auto qblock = static_cast<size_t>(quant_block_size);
     auto bdim = static_cast<size_t>(broadcast_dim);
     auto bsiz = static_cast<size_t>(block_size);
@@ -322,7 +331,7 @@ struct DequantizeLinearApplyBlocked {
 
           for (size_t qb = bd; qb < bd_q_stop; ++qb) {
             // within the quantize block along axis i, the zero point and scale are the same at the same
-            // indices after axis i.
+            // indices excluding axis i.
             auto q_zero_point = zero_point;
             auto q_scale = scale;
 
@@ -338,7 +347,6 @@ struct DequantizeLinearApplyBlocked {
           scale += bsiz;
         }
       }
-
     } else {
       for (size_t n = 0; n < static_cast<size_t>(N); n++) {
         for (size_t bd = 0; bd < bdim; bd += qblock) {
@@ -365,26 +373,56 @@ struct DequantizeLinearApplyBlocked {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T)                                                                 \
-  template <typename OutT>                                                                                \
-  struct DequantizeLinearApply<T, OutT> {                                                                 \
-    void op(int64_t N, int64_t axis_dim_val, int64_t quant_block_size, const T* input, const OutT* scale, \
-            OutT* output, const T*) {                                                                     \
-      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                               \
-        for (size_t bd = 0; bd < static_cast<size_t>(axis_dim_val); bd++) {                               \
-          auto sc = scale[bd];                                                                            \
-          for (size_t bs = 0; bs < static_cast<size_t>(quant_block_size); bs++, input++) {                \
-            *output++ = static_cast<OutT>(input->ToFloat() * sc);                                         \
-          }                                                                                               \
-        }                                                                                                 \
-      }                                                                                                   \
-    }                                                                                                     \
+#define DEQUANTIZE_LINEAR_UNBLOCKED_APPLY_FLOAT8(T)                                                   \
+  template <typename OutT>                                                                            \
+  struct DequantizeLinearApply<T, OutT, false> {                                                      \
+    void op(int64_t N, int64_t broadcast_dim, int64_t block_size, const T* input, const OutT* scale,  \
+            OutT* output, const T*) {                                                                 \
+      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                           \
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                          \
+          auto sc = scale[bd];                                                                        \
+          for (size_t bs = 0; bs < static_cast<size_t>(block_size); bs++, input++) {                  \
+            *output++ = static_cast<OutT>(input->ToFloat() * sc);                                     \
+          }                                                                                           \
+        }                                                                                             \
+      }                                                                                               \
+    }                                                                                                 \
   };
 
-DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E4M3FN)
-DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E4M3FNUZ)
-DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2)
-DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2FNUZ)
+DEQUANTIZE_LINEAR_UNBLOCKED_APPLY_FLOAT8(Float8E4M3FN)
+DEQUANTIZE_LINEAR_UNBLOCKED_APPLY_FLOAT8(Float8E4M3FNUZ)
+DEQUANTIZE_LINEAR_UNBLOCKED_APPLY_FLOAT8(Float8E5M2)
+DEQUANTIZE_LINEAR_UNBLOCKED_APPLY_FLOAT8(Float8E5M2FNUZ)
+
+#define DEQUANTIZE_LINEAR_BLOCKED_APPLY_FLOAT8(T)                                                            \
+  template <typename OutT>                                                                                   \
+  struct DequantizeLinearApply<T, OutT, true> {                                                              \
+    void op(int64_t N, int64_t broadcast_dim, int64_t block_size, int64_t quant_block_size, const T* input,  \
+      const OutT* scale, OutT* output, const T*) {                                                           \
+      auto qblock = static_cast<size_t>(quant_block_size);                                                   \
+      auto bdim = static_cast<size_t>(broadcast_dim);                                                        \
+      auto bsiz = static_cast<size_t>(block_size);                                                           \
+                                                                                                             \
+      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                                  \
+        for (size_t bd = 0; bd < bdim; bd += qblock) {                                                       \
+          size_t bd_q_stop = bd + qblock > bdim ? bdim : bd + qblock;                                        \
+          for (size_t qb = bd; qb < bd_q_stop; ++qb) {                                                       \
+            auto q_scale = scale;                                                                            \
+            for (size_t bs = 0; bs < bsiz; bs++, input++) {                                                  \
+              auto sc = static_cast<float>(*q_scale++);                                                      \
+              *output++ = static_cast<OutT>(input->ToFloat() * sc);                                          \
+            }                                                                                                \
+          }                                                                                                  \
+          scale += bsiz;                                                                                     \
+        }                                                                                                    \
+      }                                                                                                      \
+    }                                                                                                        \
+  };
+
+DEQUANTIZE_LINEAR_BLOCKED_APPLY_FLOAT8(Float8E4M3FN)
+DEQUANTIZE_LINEAR_BLOCKED_APPLY_FLOAT8(Float8E4M3FNUZ)
+DEQUANTIZE_LINEAR_BLOCKED_APPLY_FLOAT8(Float8E5M2)
+DEQUANTIZE_LINEAR_BLOCKED_APPLY_FLOAT8(Float8E5M2FNUZ)
 
 #endif
 
