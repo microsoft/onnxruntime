@@ -67,7 +67,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuildlort \
-            /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/tools/ci_build/build.py \
+            python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Release \
               --skip_submodule_sync \
