@@ -151,7 +151,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ### Build Instructions
 {: .no_toc }
 
-These instructions are for the latest [JetPack SDK 6.0](https://developer.nvidia.com/embedded/jetpack-sdk-60dp) for Jetson Orin.
+These instructions are for the latest [JetPack SDK 6](https://developer.nvidia.com/embedded/jetpack) for Jetson Orin.
 
 1. Clone the ONNX Runtime repo on the Jetson host
 
@@ -161,11 +161,13 @@ These instructions are for the latest [JetPack SDK 6.0](https://developer.nvidia
 
 2. Specify the CUDA compiler, or add its location to the PATH.
 
-   1. Starting with **CUDA 11.8**, Jetson users on **JetPack 5.0+** can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). CUDA version 11.8 with JetPack 5.1.2 has been tested on Jetson when building ONNX Runtime 1.16. 
+   1. Starting with **CUDA 11.8**, Jetson users on **JetPack 5.0+** can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). 
+    
+      1. For JetPack 5.x users, CUDA 11.8 and GCC 11 are required to be updated, in order to build latest ONNX Runtime locally. 
 
-      1. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA upgrade instruction.
+      2. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA upgrade instruction.
 
-      2. CUDA 12.x is only available to Jetson Orin and newer series (CUDA compute capability >= 8.7). Check [here](https://developer.nvidia.com/cuda-gpus#collapse5) for compute capability datasheet.
+      3. CUDA 12.x is only available to Jetson Orin and newer series (CUDA compute capability >= 8.7). Check [here](https://developer.nvidia.com/cuda-gpus#collapse5) for compute capability datasheet.
          JetPack 6.0 comes preinstalled with CUDA 12.2
 
    2. CMake can't automatically find the correct `nvcc` if it's not in the `PATH`. `nvcc` can be added to `PATH` via:
@@ -179,6 +181,14 @@ These instructions are for the latest [JetPack SDK 6.0](https://developer.nvidia
       ```bash
       export CUDACXX="/usr/local/cuda/bin/nvcc"
       ```
+
+   3. Update TensorRT libraries
+      
+      1. Jetpack 5.x supports up to TensorRT 8.5. Jetpack 6.0 is equipped with TensorRT 8.6 and can support TensorRT 10.
+      
+      2. Jetpack 6.0 users can download latest TensorRT 10 TAR package for jetpack on [TensorRT SDK website](https://developer.nvidia.com/tensorrt/download/10x).
+      
+      3. Check [here](../execution-providers/TensorRT-ExecutionProvider.md#requirements) for TensorRT/CUDA support matrix among all ONNX Runtime versions.
 
 3. Install the ONNX Runtime build dependencies on the Jetpack host:
 
@@ -194,9 +204,9 @@ These instructions are for the latest [JetPack SDK 6.0](https://developer.nvidia
       and follow [https://cmake.org/install/](https://cmake.org/install/) to build from source. 
    2. (Ubuntu) Install deb package via apt repository: e.g [https://apt.kitware.com/](https://apt.kitware.com/)
 
-5. Build the ONNX Runtime Python wheel (update path to CUDA/CUDNN/TensorRT libraries if necessary):
+5. Build the ONNX Runtime Python wheel:
 
-   1. Build `onnxruntime-gpu` wheel with CUDA and TensorRT support:
+   1. Build `onnxruntime-gpu` wheel with CUDA and TensorRT support (update paths to CUDA/CUDNN/TensorRT libraries if necessary):
 
       ```bash
       ./build.sh --config Release --update --build --parallel --build_wheel \
