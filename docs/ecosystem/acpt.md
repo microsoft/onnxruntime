@@ -25,22 +25,7 @@ Azure Container for PyTorch (ACPT) is a lightweight, standalone environment that
 * **Latest training optimization technologies:** Make use of ONNX Runtime, DeepSpeed, MSCCL, and more.
 
 ## Supported configurations for Azure Container for PyTorch (ACPT)
-The following configurations are supported in the Microsoft Container Registry (MCR):
-
-| OS | GPU Type | Python Version | PyTorch Version | ORT-training version | DeepSpeed version | torch-ort Version | Nebula Version |
-| - | - | - | - | - | - | - | - |
-|ubuntu2004|cu117|3.8|1.13.1|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu117|3.9|1.13.1|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu117|3.10|1.13.1|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu118|3.8|2.0.1|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu118|3.10|2.0.1|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu118|3.8|2.2.2|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu118|3.10|2.2.2|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu121|3.8|2.2.2|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu121|3.10|2.2.2|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu118|3.10|2.3.0|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu121|3.10|2.3.0|1.18.0|0.14.2|1.17.0|0.16.13|
-|ubuntu2004|cu121|3.8|2.1.2|1.18.0|0.14.2|1.17.0|0.16.13|
+The following configurations are supported in the Microsoft Container Registry (MCR): [ptca_image_list.md](./ptca_image_list.md).
 
 Other packages like fairscale, horovod, msccl, protobuf, pyspark, pytest, pytorch-lightning, tensorboard, NebulaML, torchvision, and torchmetrics are provided to support all training needs.
 
