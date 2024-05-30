@@ -12,12 +12,12 @@ nav_order: 1
 
 The Phi-3 vision model is a small, but powerful multi modal model that allows you to use both image and text to output text. It is used in scenarios such as describing the content of images in detail.
 
-The Phi-3 vision model is supported by versions of onnxruntime-genai 0.3.0 and later.
+The Phi-3 vision model is supported by versions of onnxruntime-genai 0.3.0-rc2 and later.
 
 You can download the models here:
 
-* https://microsoft/Phi-3-vision-128k-instruct-onnx-cpu
-* https://microsoft/Phi-3-vision-128k-instruct-onnx-cuda
+* [https://microsoft/Phi-3-vision-128k-instruct-onnx-cpu](https://microsoft/Phi-3-vision-128k-instruct-onnx-cpu)
+* [https://microsoft/Phi-3-vision-128k-instruct-onnx-cuda](https://microsoft/Phi-3-vision-128k-instruct-onnx-cuda)
 
 Support for DirectML is coming soon!
 
