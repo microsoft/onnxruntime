@@ -84,7 +84,10 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
    ![Sushi](sushi.png) 
 
    ```
-   The image shows a package of California Salad Roll SP from Metropolitan Market. The package is transparent, allowing the view of the salad rolls inside. The label on the package indicates the net weight as 340 Calories and the price as $7.49. The package is marked 'Sell By 05/05'
+   The image shows a package of California Salad Roll SP from Metropolitan Market.
+   The package is transparent, allowing the view of the salad rolls inside.
+   The label on the package indicates the net weight as 340 Calories and the price as $7.49.
+   The package is marked 'Sell By 05/05'
    ```
 
 ## Run on CPU
@@ -130,5 +133,7 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
    | Chocolate Biscuits  | $943.89    | $349.60    | $1,293.49   |
    | Total               | $14,181.59 | $8,127.78  | $22,309.37  |
 
-   The table lists various products along with their sales figures for Qtr 1, Qtr 2, and the Grand Total. The products include Chocolade, Gummibarchen, Scottish Longbreads, Sir Rodney's Scones, Tarte au sucre, and Chocolate Biscuits. The Grand Total column sums up the sales for each product across the two quarters.</s>
+   The table lists various products along with their sales figures for Qtr 1, Qtr 2, and the Grand Total.
+   The products include Chocolade, Gummibarchen, Scottish Longbreads, Sir Rodney's Scones, Tarte au sucre,
+   and Chocolate Biscuits. The Grand Total column sums up the sales for each product across the two quarters.</s>
    ```
