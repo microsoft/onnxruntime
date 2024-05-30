@@ -293,7 +293,7 @@
 
 		<p class="mb-4">
 			Here is a <a
-				href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/models/llama2/LLaMA-2%20E2E%20Notebook.ipynb"
+				href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/models/llama/LLaMA-2%20E2E%20Notebook.ipynb"
 				class="text-blue-500">sample notebook</a
 			> that shows you an end-to-end example of how you can use the above ONNX Runtime optimizations
 			in your application.

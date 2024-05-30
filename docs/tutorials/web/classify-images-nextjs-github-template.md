@@ -291,10 +291,10 @@ module.exports = {
     new CopyPlugin({
       patterns: [
         {
-          from: './node_modules/onnxruntime-web/dist/ort-wasm.wasm',
+          from: './node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm',
           to: 'static/chunks/pages',
         },             {
-          from: './node_modules/onnxruntime-web/dist/ort-wasm-simd.wasm',
+          from: './node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs',
           to: 'static/chunks/pages',
         },          
           {

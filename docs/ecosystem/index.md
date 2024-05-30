@@ -16,9 +16,12 @@ ONNX Runtime functions as part of an ecosystem of tools and platforms to deliver
 {:toc}
 
 
+## Azure Container for PyTorch (ACPT)
+* [Azure Container for PyTorch (ACPT) docs](https://onnxruntime.ai/docs/ecosystem/acpt.html){:target="_blank"}
+* [Azure Container for PyTorch (ACPT) - Azure Machine Learning](https://learn.microsoft.com/en-us/azure/machine-learning/resource-azure-container-for-pytorch?view=azureml-api-2){:target="_blank"}
+
 ## Azure Machine Learning Services
 * [Azure Container Instance: BERT](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers/notebooks/Inference_Bert_with_OnnxRuntime_on_AzureML.ipynb){:target="_blank"}
-* [Azure Container Instance: Image classification (Resnet)](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb){:target="_blank"}
 * [Azure Kubernetes Services: FER+](https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb){:target="_blank"}
 * [Azure IoT Sedge (Intel UP2 device with OpenVINO)](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/AzureML-OpenVINO/README.md){:target="_blank"}
 * [Automated Machine Learning](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/automated-machine-learning/classification-bank-marketing-all-features/auto-ml-classification-bank-marketing-all-features.ipynb){:target="_blank"}

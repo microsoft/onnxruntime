@@ -7,7 +7,7 @@ grand_parent: Generate API (Preview)
 nav_order: 3
 ---
 
-# Language generation in Python with phi-2
+# Language generation in Python with Phi-2
 
 ## Setup and installation
 

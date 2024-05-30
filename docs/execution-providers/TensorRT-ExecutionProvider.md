@@ -69,182 +69,40 @@ sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider'
 ```
 
 ## Configurations
-There are two ways to configure TensorRT settings, either by **TensorRT Execution Provider Session Options** or **Environment Variables(deprecated)** shown as below:
+There are two ways to configure TensorRT settings, either by [TensorRT Execution Provider Session Option](./TensorRT-ExecutionProvider.md#execution-provider-options) or [Environment Variables(deprecated)](./TensorRT-ExecutionProvider.md#environment-variablesdeprecated).
 
+Here are examples and different [scenarios](./TensorRT-ExecutionProvider.md#scenario) to set TensorRT EP session options:
 
-| TensorRT EP Session Options           | Environment Variables(deprecated)              | Type   |
-|:--------------------------------------|:-----------------------------------------------|:-------|
-| trt_max_workspace_size                | ORT_TENSORRT_MAX_WORKSPACE_SIZE                | int    |
-| trt_max_partition_iterations          | ORT_TENSORRT_MAX_PARTITION_ITERATIONS          | int    |
-| trt_min_subgraph_size                 | ORT_TENSORRT_MIN_SUBGRAPH_SIZE                 | int    |
-| trt_fp16_enable                       | ORT_TENSORRT_FP16_ENABLE                       | bool   |
-| trt_int8_enable                       | ORT_TENSORRT_INT8_ENABLE                       | bool   |
-| trt_int8_calibration_table_name       | ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME       | string |
-| trt_int8_use_native_calibration_table | ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE | bool   |
-| trt_dla_enable                        | ORT_TENSORRT_DLA_ENABLE                        | bool   |
-| trt_dla_core                          | ORT_TENSORRT_DLA_CORE                          | int    |
-| trt_engine_cache_enable               | ORT_TENSORRT_ENGINE_CACHE_ENABLE               | bool   |
-| trt_engine_cache_path                 | ORT_TENSORRT_CACHE_PATH                        | string |
-| trt_engine_cache_prefix               | ORT_TENSORRT_CACHE_PREFIX                      | string |
-| trt_dump_subgraphs                    | ORT_TENSORRT_DUMP_SUBGRAPHS                    | bool   |
-| trt_force_sequential_engine_build     | ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD     | bool   |
-| trt_context_memory_sharing_enable     | ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE     | bool   |
-| trt_layer_norm_fp32_fallback          | ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK          | bool   |
-| trt_timing_cache_enable               | ORT_TENSORRT_TIMING_CACHE_ENABLE               | bool   |
-| trt_timing_cache_path                 | ORT_TENSORRT_TIMING_CACHE_PATH                 | string |
-| trt_force_timing_cache                | ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE         | bool   |
-| trt_detailed_build_log                | ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE         | bool   |
-| trt_build_heuristics_enable           | ORT_TENSORRT_BUILD_HEURISTICS_ENABLE           | bool   |
-| trt_sparsity_enable                   | ORT_TENSORRT_SPARSITY_ENABLE                   | bool   |
-| trt_builder_optimization_level        | ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL        | int    |
-| trt_auxiliary_streams                 | ORT_TENSORRT_AUXILIARY_STREAMS                 | int    |
-| trt_tactic_sources                    | ORT_TENSORRT_TACTIC_SOURCES                    | string |
-| trt_extra_plugin_lib_paths            | ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS            | string |
-| trt_profile_min_shapes                | ORT_TENSORRT_PROFILE_MIN_SHAPES                | string |
-| trt_profile_max_shapes                | ORT_TENSORRT_PROFILE_MAX_SHAPES                | string |
-| trt_profile_opt_shapes                | ORT_TENSORRT_PROFILE_OPT_SHAPES                | string |
-| trt_cuda_graph_enable                 | ORT_TENSORRT_CUDA_GRAPH_ENABLE                 | bool   |
+#### Click below for Python API example:
 
-> Note: for bool type options, assign them with **True**/**False** in python, or **1**/**0** in C++.
+<details>
 
-### Execution Provider Options
+```python
+import onnxruntime as ort
 
-TensorRT configurations can be set by execution provider options. It's useful when each model and inference session have their own configurations. In this case, execution provider option settings will override any environment variable settings. All configurations should be set explicitly, otherwise default value will be taken.
+model_path = '<path to model>'
 
-* `device_id`: The device ID.
-    * Default value: 0
+# note: for bool type options in python API, set them as False/True
+providers = [
+    ('TensorrtExecutionProvider', {
+        'device_id': 0,                       # Select GPU to execute
+        'trt_max_workspace_size': 2147483648, # Set GPU memory usage limit
+        'trt_fp16_enable': True,              # Enable FP16 precision for faster inference  
+    }),
+    ('CUDAExecutionProvider', {
+        'device_id': 0,
+        'arena_extend_strategy': 'kNextPowerOfTwo',
+        'gpu_mem_limit': 2 * 1024 * 1024 * 1024,
+        'cudnn_conv_algo_search': 'EXHAUSTIVE',
+        'do_copy_in_default_stream': True,
+    })
+]
 
-* `user_compute_stream`: Defines the compute stream for the inference to run on. It implicitly sets the `has_user_compute_stream` option. It cannot be set through `UpdateTensorRTProviderOptions`, but rather `UpdateTensorRTProviderOptionsWithValue`.
+sess_opt = ort.SessionOptions()
+sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=providers)
+```
 
-    * This cannot be used in combination with an external allocator.
-
-    * This can also be set using the python API.  
-
-      * i.e The cuda stream captured from pytorch can be passed into ORT-TRT. Click below to check sample code: 
-      
-        <Details>
-
-        ```python
-        import onnxruntime as ort
-        import torch
-        ...
-        sess = ort.InferenceSession('model.onnx')
-        if torch.cuda.is_available():
-            s = torch.cuda.Stream()
-            option = {"user_compute_stream": str(s.cuda_stream)}
-            sess.set_providers(["TensorrtExecutionProvider"], [option])
-            options = sess.get_provider_options()
-      
-            assert "TensorrtExecutionProvider" in options
-            assert options["TensorrtExecutionProvider"].get("user_compute_stream", "") == str(s.cuda_stream)
-            assert options["TensorrtExecutionProvider"].get("has_user_compute_stream", "") == "1"
-        ...
-        ```
-        </Details>
-    * To take advantage of user compute stream, it is recommended to use [I/O Binding](https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device) to bind inputs and outputs to tensors in device.
-
-
-* `trt_max_workspace_size`: maximum workspace size for TensorRT engine.
-    * Default value: 1073741824 (1GB).
-
-* `trt_max_partition_iterations`: maximum number of iterations allowed in model partitioning for TensorRT.
-    * If target model can't be successfully partitioned when the maximum number of iterations is reached, the whole model will fall back to other execution providers such as CUDA or CPU.
-    * Default value: 1000.
-
-* `trt_min_subgraph_size`: minimum node size in a subgraph after partitioning.
-  * Subgraphs with smaller size will fall back to other execution providers.
-  * Default value: 1.
-
-* `trt_fp16_enable`: Enable FP16 mode in TensorRT.
-    > Note: not all Nvidia GPUs support FP16 precision.
-
-* `trt_int8_enable`: Enable INT8 mode in TensorRT.
-    > Note:  not all Nvidia GPUs support INT8 precision.
-
-* `trt_int8_calibration_table_name`: Specify INT8 calibration table file for non-QDQ models in INT8 mode.
-    > Note: calibration table should not be provided for QDQ model because TensorRT doesn't allow calibration table to be loded if there is any Q/DQ node in the model. By default the name is empty.
-
-* `trt_int8_use_native_calibration_table`: Select what calibration table is used for non-QDQ models in INT8 mode.
-  * If `True`, native TensorRT generated calibration table is used;
-  * If `False`, ONNXRUNTIME tool generated calibration table is used.
-  > Note: Please copy up-to-date calibration table file to `trt_engine_cache_path` before inference. Calibration table is specific to models and calibration data sets. Whenever new calibration table is generated, old file in the path should be cleaned up or be replaced.
-
-* `trt_dla_enable`: Enable DLA (Deep Learning Accelerator).
-    > Note: Not all Nvidia GPUs support DLA.
-
-* `trt_dla_core`: Specify DLA core to execute on. Default value: 0.
-
-
-* `trt_engine_cache_enable`: Enable TensorRT engine caching.
-
-    * The purpose of using engine caching is to save engine build time in the case that TensorRT may take long time to optimize and build engine.
-
-    * Engine will be cached when it's built for the first time so next time when new inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache).
-
-        * Note each engine is created for specific settings such as model path/name, precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engine needs to be rebuilt and cached again.
-
-  > **Warning: Please clean up any old engine and profile cache files (.engine and .profile) if any of the following changes:**
-  >
-  >    * Model changes (if there are any changes to the model topology, opset version, operators etc.)
-  >    * ORT version changes (i.e. moving from ORT version 1.8 to 1.9)
-  >    * TensorRT version changes (i.e. moving from TensorRT 7.0 to 8.0)
-
-* `trt_engine_cache_path`: Specify path for TensorRT engine and profile files if `trt_engine_cache_enable` is `True`, or path for INT8 calibration table file if `trt_int8_enable` is `True`.
-
-* `trt_engine_cache_prefix`: Customize engine cache prefix when `trt_engine_cache_enable` is `True`.
-
-    * ORT-TRT will only reuse existing engine cache with customized prefix if the same prefix is assigned in `trt_engine_cache_prefix`. If this option is empty, new engine cache with default prefix will be generated.
-
-* `trt_dump_subgraphs`: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem.
-  * This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser.
-
-* `trt_force_sequential_engine_build`: Sequentially build TensorRT engines across provider instances in multi-GPU environment.
-
-* `trt_context_memory_sharing_enable`: Share execution context memory between TensorRT subgraphs.
-
-* `trt_layer_norm_fp32_fallback`: Force Pow + Reduce ops in layer norm to FP32.
-
-* `trt_timing_cache_enable`: Enable TensorRT timing cache.
-  * Check [Timing cache](#timing-cache) for details.
-
-* `trt_timing_cache_path`: Specify path for TensorRT timing cache if `trt_timing_cache_enable` is `True`.
-  * Not specifying a `trt_timing_cache_path` will result in using the working directory  
-
-* `trt_force_timing_cache`: Force the TensorRT timing cache to be used even if device profile does not match.
-    * A perfect match is only the exact same GPU model as the on that produced the timing cache.
-
-* `trt_detailed_build_log`: Enable detailed build step logging on TensorRT EP with timing for each engine build.
-
-* `trt_build_heuristics_enable`: Build engine using heuristics to reduce build time.
-
-* `trt_cuda_graph_enable`: This will capture a [CUDA graph](https://developer.nvidia.com/blog/cuda-graphs/) which can drastically help for a network with many small layers as it reduces launch overhead on the CPU.
-
-* `trt_sparsity_enable`: Control if sparsity can be used by TRT.
-  * Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
-
-* `trt_builder_optimization_level`: Set the builder optimization level.
-  > WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
-
-* `trt_auxiliary_streams`: Set maximum number of auxiliary streams per inference stream.
-  * Setting this value to 0 will lead to optimal memory usage.
-  * Default -1 = heuristics.
-  * Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
-
-* `trt_tactic_sources`: Specify the tactics to be used by adding (+) or removing (-) tactics from the default tactic sources (default = all available tactics)
-  * e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS", "CUBLAS_LT", "CUDNN" or "EDGE_MASK_CONVOLUTIONS".
-
-* `trt_extra_plugin_lib_paths`: Specify extra TensorRT plugin library paths.
-  * ORT TRT by default supports any TRT plugins registered in TRT registry in TRT plugin library (i.e., `libnvinfer_plugin.so`).
-  * Moreover, if users want to use other TRT plugins that are not in TRT plugin library,
-    * for example, FasterTransformer has many TRT plugin implementations for different models, user can specify like this `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS=libvit_plugin.so;libvit_int8_plugin.so`.
-
-* `trt_profile_min_shapes`, `trt_profile_max_shapes` and `trt_profile_opt_shapes` : Build with dynamic shapes using a profile with the min/max/opt shapes provided.
-  * The format of the profile shapes is `input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,...`
-    * These three flags should all be provided in order to enable explicit profile shapes feature.
-  * Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) and TRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
-
-
-Besides, `device_id` can also be set by execution provider option.
+</details>
 
 #### Click below for C++ API example:
 
@@ -308,36 +166,303 @@ Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,      
 
 </details>
 
-#### Click below for Python API example:
 
-<details>
+### Scenario
 
-```python
-import onnxruntime as ort
+| Scenario                                           | TensorRT EP Session Option                                                                 | Type   |
+| :------------------------------------------------- | :----------------------------------------------------------------------------------------- | :----- |
+| **Device and Compute Configuration**               |                                                                                            |        |
+| Specify GPU id for execution                       | [device_id](./TensorRT-ExecutionProvider.md#device_id)                                     | int    |
+| Set custom compute stream for GPU operations       | [user_compute_stream](./TensorRT-ExecutionProvider.md#user_compute_stream)                 | string |
+|                                                    |                                                                                            |        |
+| **Engine Caching and Compatibility**               |                                                                                            |        |
+| Enable caching of TensorRT engines                 | [trt_engine_cache_enable](./TensorRT-ExecutionProvider.md#trt_engine_cache_enable)         | bool   |
+| Set path to store cached TensorRT engines          | [trt_engine_cache_path](./TensorRT-ExecutionProvider.md#trt_engine_cache_path)             | string |
+| Set prefix for cached engine files                 | [trt_engine_cache_prefix](./TensorRT-ExecutionProvider.md#trt_engine_cache_prefix)         | string |
+| Maximize engine compatibility across Ampere+ GPUs  | [trt_engine_hw_compatible](./TensorRT-ExecutionProvider.md#trt_engine_hw_compatible)       | bool   |
+|                                                    |                                                                                            |        |
+| **Precision and Performance**                      |                                                                                            |        |
+| Set TensorRT EP GPU memory usage limit             | [trt_max_workspace_size](./TensorRT-ExecutionProvider.md#trt_max_workspace_size)           | int    |
+| Enable FP16 precision for faster performance       | [trt_fp16_enable](./TensorRT-ExecutionProvider.md#trt_fp16_enable)                         | bool   |
+| Enable INT8 precision for quantized inference      | [trt_int8_enable](./TensorRT-ExecutionProvider.md#trt_int8_enable)                         | bool   |
+| Name INT8 calibration table for non-QDQ models     | [trt_int8_calibration_table_name](./TensorRT-ExecutionProvider.md#trt_int8_calibration_table_name) | string |
+| Use native TensorRT calibration tables             | [trt_int8_use_native_calibration_table](./TensorRT-ExecutionProvider.md#trt_int8_use_native_calibration_table) | bool   |
+| Use heuristics to speed up engine builds           | [trt_build_heuristics_enable](./TensorRT-ExecutionProvider.md#trt_build_heuristics_enable) | bool   |
+| Enable sparsity to leverage zero values            | [trt_sparsity_enable](./TensorRT-ExecutionProvider.md#trt_sparsity_enable)                 | bool   |
+| Enable Deep Learning Accelerator (DLA) on edge SoC | [trt_dla_enable](./TensorRT-ExecutionProvider.md#trt_dla_enable)                           | bool   |
+| Specify which DLA core to use                      | [trt_dla_core](./TensorRT-ExecutionProvider.md#trt_dla_core)                               | int    |
+|                                                    |                                                                                            |        |
+| **Subgraph and Graph Optimization**                |                                                                                            |        |
+| Limit partitioning iterations for model conversion | [trt_max_partition_iterations](./TensorRT-ExecutionProvider.md#trt_max_partition_iterations) | int    |
+| Set minimum size for subgraphs in partitioning     | [trt_min_subgraph_size](./TensorRT-ExecutionProvider.md#trt_min_subgraph_size)             | int    |
+| Dump optimized subgraphs for debugging             | [trt_dump_subgraphs](./TensorRT-ExecutionProvider.md#trt_dump_subgraphs)                   | bool   |
+| Force sequential engine builds under multi-GPU     | [trt_force_sequential_engine_build](./TensorRT-ExecutionProvider.md#trt_force_sequential_engine_build) | bool   |
+|                                                    |                                                                                            |        |
+| **Advanced Configuration and Profiling**           |                                                                                            |        |
+| Enable sharing of context memory between subgraphs | [trt_context_memory_sharing_enable](./TensorRT-ExecutionProvider.md#trt_context_memory_sharing_enable) | bool   |
+| Force layer norm calculations to FP32              | [trt_layer_norm_fp32_fallback](./TensorRT-ExecutionProvider.md#trt_layer_norm_fp32_fallback) | bool   |
+| Capture CUDA graph for reduced launch overhead     | [trt_cuda_graph_enable](./TensorRT-ExecutionProvider.md#trt_cuda_graph_enable)             | bool   |
+| Set optimization level for TensorRT builder        | [trt_builder_optimization_level](./TensorRT-ExecutionProvider.md#trt_builder_optimization_level) | int    |
+| Set number of auxiliary streams for computation    | [trt_auxiliary_streams](./TensorRT-ExecutionProvider.md#trt_auxiliary_streams)             | int    |
+| Specify tactics sources for TensorRT               | [trt_tactic_sources](./TensorRT-ExecutionProvider.md#trt_tactic_sources)                   | string |
+| Add additional plugin library paths for TensorRT   | [trt_extra_plugin_lib_paths](./TensorRT-ExecutionProvider.md#trt_extra_plugin_lib_paths)   | string |
+| Enable detailed logging of build steps             | [trt_detailed_build_log](./TensorRT-ExecutionProvider.md#trt_detailed_build_log)           | bool   |
+|                                                    |                                                                                            |        |
+| **Timing cache**                                   |                                                                                            |        |
+| Enable use of timing cache to speed up builds      | [trt_timing_cache_enable](./TensorRT-ExecutionProvider.md#trt_timing_cache_enable)         | bool   |
+| Set path for storing timing cache                  | [trt_timing_cache_path](./TensorRT-ExecutionProvider.md#trt_timing_cache_path)             | string |
+| Force use of timing cache regardless of GPU match  | [trt_force_timing_cache](./TensorRT-ExecutionProvider.md#trt_force_timing_cache)           | bool   |
+|                                                    |                                                                                            |        |
+| **Dynamic Shape Profiling**                        |                                                                                            |        |
+| Define min shapes                                  | [trt_profile_min_shapes](./TensorRT-ExecutionProvider.md#trt_profile_min_shapes)           | string |
+| Define max shapes                                  | [trt_profile_max_shapes](./TensorRT-ExecutionProvider.md#trt_profile_max_shapes)           | string |
+| Define optimal shapes                              | [trt_profile_opt_shapes](./TensorRT-ExecutionProvider.md#trt_profile_opt_shapes)           | string |
 
-model_path = '<path to model>'
+> Note: for bool type options, assign them with **True**/**False** in python, or **1**/**0** in C++.
 
-# note: for bool type options in python API, set them as False/True
-providers = [
-    ('TensorrtExecutionProvider', {
-        'device_id': 0,
-        'trt_max_workspace_size': 2147483648,
-        'trt_fp16_enable': True,
-    }),
-    ('CUDAExecutionProvider', {
-        'device_id': 0,
-        'arena_extend_strategy': 'kNextPowerOfTwo',
-        'gpu_mem_limit': 2 * 1024 * 1024 * 1024,
-        'cudnn_conv_algo_search': 'EXHAUSTIVE',
-        'do_copy_in_default_stream': True,
-    })
-]
 
-sess_opt = ort.SessionOptions()
-sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=providers)
-```
+### Execution Provider Options
 
-</details>
+TensorRT configurations can be set by execution provider options. It's useful when each model and inference session have their own configurations. In this case, execution provider option settings will override any environment variable settings. All configurations should be set explicitly, otherwise default value will be taken.
+
+##### device_id 
+
+* Description: GPU device ID.
+* Default value: 0
+
+##### user_compute_stream
+
+* Description: define the compute stream for the inference to run on. It implicitly sets the `has_user_compute_stream` option. It cannot be set through `UpdateTensorRTProviderOptions`, but rather `UpdateTensorRTProviderOptionsWithValue`.
+
+* This cannot be used in combination with an external allocator.
+
+* This can also be set using the python API.  
+
+  * i.e The cuda stream captured from pytorch can be passed into ORT-TRT. Click below to check sample code: 
+
+    <Details>
+
+
+    ```python
+    import onnxruntime as ort
+    import torch
+    ...
+    sess = ort.InferenceSession('model.onnx')
+    if torch.cuda.is_available():
+        s = torch.cuda.Stream()
+        option = {"user_compute_stream": str(s.cuda_stream)}
+        sess.set_providers(["TensorrtExecutionProvider"], [option])
+        options = sess.get_provider_options()
+    
+        assert "TensorrtExecutionProvider" in options
+        assert options["TensorrtExecutionProvider"].get("user_compute_stream", "") == str(s.cuda_stream)
+        assert options["TensorrtExecutionProvider"].get("has_user_compute_stream", "") == "1"
+    ...
+    ```
+
+    </Details>
+
+* To take advantage of user compute stream, it is recommended to use [I/O Binding](https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device) to bind inputs and outputs to tensors in device.
+
+##### trt_max_workspace_size
+
+* Description: maximum workspace size for TensorRT engine.
+
+* Default value: 1073741824 (1GB).
+
+##### trt_max_partition_iterations
+
+
+* Description: maximum number of iterations allowed in model partitioning for TensorRT.
+* If target model can't be successfully partitioned when the maximum number of iterations is reached, the whole model will fall back to other execution providers such as CUDA or CPU.
+* Default value: 1000.
+
+##### trt_min_subgraph_size
+
+* Description: minimum node size in a subgraph after partitioning.
+
+* Subgraphs with smaller size will fall back to other execution providers.
+* Default value: 1.
+
+##### trt_fp16_enable
+
+
+* Description: enable FP16 mode in TensorRT.
+
+  > Note: not all Nvidia GPUs support FP16 precision.
+
+##### trt_int8_enable
+
+* Description:  enable INT8 mode in TensorRT.
+
+  > Note:  not all Nvidia GPUs support INT8 precision.
+
+##### trt_int8_calibration_table_name 
+
+
+* Description: specify INT8 calibration table file for non-QDQ models in INT8 mode.
+
+  > Note: calibration table should not be provided for QDQ model because TensorRT doesn't allow calibration table to be loded if there is any Q/DQ node in the model. By default the name is empty.
+
+##### trt_int8_use_native_calibration_table
+
+
+* Description: select what calibration table is used for non-QDQ models in INT8 mode.
+
+  * If `True`, native TensorRT generated calibration table is used;
+  * If `False`, ONNXRUNTIME tool generated calibration table is used.
+
+  > Note: Please copy up-to-date calibration table file to `trt_engine_cache_path` before inference. Calibration table is specific to models and calibration data sets. Whenever new calibration table is generated, old file in the path should be cleaned up or be replaced.
+
+##### trt_dla_enable 
+
+
+* Description: enable DLA (Deep Learning Accelerator).
+
+  > Note: Not all Nvidia GPUs support DLA.
+
+##### trt_dla_core
+
+
+* Description: specify DLA core to execute on. Default value: 0.
+
+##### trt_engine_cache_enable 
+
+
+* Description: enable TensorRT engine caching.
+
+* The purpose of using engine caching is to save engine build time in the case that TensorRT may take long time to optimize and build engine.
+
+* Engine will be cached when it's built for the first time so next time when new inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache).
+
+  * Note each engine is created for specific settings such as model path/name, precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engine needs to be rebuilt and cached again.
+
+  > **Warning: Please clean up any old engine and profile cache files (.engine and .profile) if any of the following changes:**
+  >
+  >    * Model changes (if there are any changes to the model topology, opset version, operators etc.)
+  >    * ORT version changes (i.e. moving from ORT version 1.8 to 1.9)
+  >    * TensorRT version changes (i.e. moving from TensorRT 7.0 to 8.0)
+
+##### trt_engine_cache_path
+
+
+* Description: specify path for TensorRT engine and profile files if `trt_engine_cache_enable` is `True`, or path for INT8 calibration table file if `trt_int8_enable` is `True`.
+
+##### trt_engine_cache_prefix 
+
+
+* Description: customize engine cache prefix when `trt_engine_cache_enable` is `True`.
+  * ORT-TRT will only reuse existing engine cache with customized prefix if the same prefix is assigned in `trt_engine_cache_prefix`. If this option is empty, new engine cache with default prefix will be generated.
+
+##### trt_dump_subgraphs
+
+
+* Description: dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem.
+  * This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser.
+
+##### trt_force_sequential_engine_build
+
+
+* Description: sequentially build TensorRT engines across provider instances in multi-GPU environment.
+
+##### trt_context_memory_sharing_enable
+
+
+* Description: share execution context memory between TensorRT subgraphs.
+
+##### trt_layer_norm_fp32_fallback
+
+
+* Description: force Pow + Reduce ops in layer norm to FP32.
+
+##### trt_timing_cache_enable
+
+
+* Description: enable TensorRT timing cache.
+  * Check [Timing cache](#timing-cache) for details.
+
+##### trt_timing_cache_path
+
+
+* Description: specify path for TensorRT timing cache if `trt_timing_cache_enable` is `True`.
+  * Not specifying a `trt_timing_cache_path` will result in using the working directory  
+
+##### trt_force_timing_cache
+
+
+* Description: force the TensorRT timing cache to be used even if device profile does not match.
+  * A perfect match is only the exact same GPU model as the on that produced the timing cache.
+
+##### trt_detailed_build_log
+
+
+* Description: enable detailed build step logging on TensorRT EP with timing for each engine build.
+
+##### trt_build_heuristics_enable
+
+
+* Description: build engine using heuristics to reduce build time.
+
+##### trt_cuda_graph_enable
+
+
+* Description: this will capture a [CUDA graph](https://developer.nvidia.com/blog/cuda-graphs/) which can drastically help for a network with many small layers as it reduces launch overhead on the CPU.
+
+##### trt_sparsity_enable
+
+
+* Description: control if sparsity can be used by TRT.
+  * Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+
+##### trt_builder_optimization_level
+
+
+* Description: set the builder optimization level.
+
+  > WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+
+##### trt_auxiliary_streams
+
+
+* Description: set maximum number of auxiliary streams per inference stream.
+  * Setting this value to 0 will lead to optimal memory usage.
+  * Default -1 = heuristics.
+  * Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+
+##### trt_tactic_sources
+
+
+* Description: specify the tactics to be used by adding (+) or removing (-) tactics from the default tactic sources (default = all available tactics)
+  * e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS", "CUBLAS_LT", "CUDNN" or "EDGE_MASK_CONVOLUTIONS".
+
+##### trt_extra_plugin_lib_paths
+
+
+* Description: specify extra TensorRT plugin library paths.
+  * ORT TRT by default supports any TRT plugins registered in TRT registry in TRT plugin library (i.e., `libnvinfer_plugin.so`).
+  * Moreover, if users want to use other TRT plugins that are not in TRT plugin library,
+    * for example, FasterTransformer has many TRT plugin implementations for different models, user can specify like this `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS=libvit_plugin.so;libvit_int8_plugin.so`.
+
+##### trt_profile_min_shapes
+
+##### trt_profile_max_shapes
+
+##### trt_profile_opt_shapes
+
+
+* Description: build with dynamic shapes using a profile with the min/max/opt shapes provided.
+  * The format of the profile shapes is `input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,...`
+    * These three flags should all be provided in order to enable explicit profile shapes feature.
+  * Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) and TRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
+
+##### trt_engine_hw_compatible
+
+
+* Description: enable Ampere+ hardware compatibility if `trt_engine_cache_enable` is enabled 
+  * Hardware-compatible engines can be reused across all Ampere+ GPU environments (may have lower throughput and/or higher latency).
+  * Engines will be generated and loaded with `sm80+` name suffix, instead of actual compute capacity.
+  * Turing and former Nvidia GPU architecture and Nvidia Jetson Orin platform are not eligble to this option.
+
 
 ### Environment Variables(deprecated)
 
@@ -438,6 +563,67 @@ export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
 ```
 
 </details>
+
+## TensorRT EP Caches
+There are three major TRT EP cahces:
+* TRT timing cache
+* TRT engine cache
+* Embedded engine model / EPContext model
+
+### Caches can help reduce session creation time from minutes to seconds
+
+Following numbers are measured from initializing session with TRT EP for SD UNet model.
+* No cache (default)  – 384 seconds
+  - The first run (warmup) can be very long because building engine involves exhaustive profiling for every kernels to select the optimal one.
+* Timing cache used – 42 seconds
+  - Keep layer-profiling information and reuse them to expedite build time
+  - Timing cache can be shared across multiple models if layers are the same
+* Engine cache used – 9 seconds
+  - Serialize engine from memory to disk for later use
+  - Skip entire engine build and deserialize engine cache to memory
+* Embedded engine used (no builder instantiation) - 1.9 seconds
+  - The serialized engine cache is wrapped inside an ONNX model
+  - No builder will be instantiated, nor engine will be built
+  - Quickly load engine with less processes needed
+
+![image](https://github.com/microsoft/onnxruntime/assets/54722500/ef1ce168-74f7-4df4-beac-b14bf2cb3e00)
+
+### How to set caches
+* Use Timing cache (.timing):
+  - `trt_timing_cache_enable = true`
+  - `trt_timing_cache_path = .\`
+  - `trt_force_timing_cache = true (accept slight GPU mismatch within CC)`
+* Use Engine Cache (.engine):
+  - `trt_engine_cache_enable = true`
+  - `trt_engine_cache_path = .\trt_engines`
+* Use Embed Engine (_ctx.onnx):
+  - Get the embed engine model via warmup run with the original model
+  - `trt_engine_cache_enable = true`
+  - `trt_dump_ep_context_model = true`
+  - `trt_ep_context_file_path = .\`
+  - Will be generated with inputs/outputs identical to original model
+  - Run the embed engine model as the original model !
+
+The folder structure of the caches:
+
+![image](https://github.com/microsoft/onnxruntime/assets/54722500/5be4a087-79c8-4d34-af8b-75138642079c)
+
+
+With the following command, the embedded engine model (`model_ctx.onnx`) will be generated along with the engine cache in the same directory.
+
+Note: The example does not specify `trt_engine_cache_path` because `onnxruntime_perf_test` requires a specific folder structure to run the inference. However, we still recommend specifying `trt_engine_cache_path` to better organize the caches.
+```bash
+$./onnxruntime_perf_test -e tensorrt -r 1 -i "trt_engine_cache_enable|true trt_dump_ep_context_model|true" /model_database/transformer_model/model.onnx
+```
+Once the inference is complete, the embedded engine model is saved to disk. User can then run this model just like the original one, but with a significantly quicker session creation time.
+```bask
+$./onnxruntime_perf_test -e tensorrt -r 1 /model_database/transformer_model/model_ctx.onnx
+```
+
+### More about Embedded engine model / EPContext model
+* One constraint is that the entire model needs to be TRT eligible
+* When running the embedded engine model, the default setting is `trt_ep_context_embed_mode=0`, where the engine cache path is embedded and TRT EP will look for the engine cache on the disk. Alternatively, users can set `trt_ep_context_embed_mode=1`, embedding the entire engine binary data as a string in the model. However, this mode increases initialization time due to ORT graph optimization hashing the long string. Therefore, we recommend using `trt_ep_context_embed_mode=0`.
+* The default name of an embedded engine model will have `_ctx.onnx` appended to the end. Users can specify `trt_ep_context_file_path=my_ep_context_model.onnx` to overwrite this default name.
 
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)

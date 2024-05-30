@@ -6,11 +6,11 @@
 	import { fade } from 'svelte/transition';
 	import { page } from '$app/stores';
 	export let data;
+	const url = 'https://onnxruntime.ai';
 </script>
 
 <svelte:head>
 	{@html oneLight}
-
 	<title
 		>ONNX Runtime | {data.pathname == '/'
 			? 'Home'
@@ -22,24 +22,24 @@
 			? 'Home'
 			: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}"
 	/>
-	<meta
-		name="description"
-		content="Cross-platform accelerated machine learning. Built-in optimizations speed up training and inferencing with your existing technology stack."
-	/>
+	<meta name="title" content={"ONNX Runtime |" + data.pathname == '/'
+		? 'Home'
+		: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)} />
+	<meta property="twitter:title" content={"ONNX Runtime |" + data.pathname == '/'
+	? 'Home'
+	: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)} />
+	<meta property="twitter:url" content={url + data.pathname} />
+	<meta property="og:url" content={url + data.pathname} />
+
 	<meta http-equiv="X-UA-Compatible" content="ie=edge" />
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<meta name="theme-color" content="#B2B2B2" />
 	<meta name="msapplication-TileColor" content="#B2B2B2" />
 	<meta name="theme-color" content="#B2B2B2" />
-	<!-- OpenGraph meta tags -->
-	<meta
-		property="og:description"
-		content="Cross-platform accelerated machine learning. Built-in optimizations speed up training and inferencing with your existing technology stack."
-	/>
-	<meta property="og:image" content="https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png" />
-	<meta property="og:url" content="https://onnxruntime.ai" />
 	<meta property="og:type" content="website" />
+	
+	
 </svelte:head>
 <div class="selection:bg-info">
 	{#if !$page.url.pathname.startsWith('/blogs/')}

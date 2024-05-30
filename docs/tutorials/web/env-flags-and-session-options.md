@@ -79,24 +79,12 @@ The default value is `0`, which means it will be determined by ONNX Runtime Web 
 
 Setting it to `1` will force disable multi-threading. Otherwize, ONNX Runtime Web will perform a check for whether the environment supports multi-threading. Only when the browser supports WebAssembly multi-threading and `crossOriginIsolated` mode is enabled, multi-threading will be enabled. See [Cross Origin Isolation Guide](https://web.dev/cross-origin-isolation-guide/) for more info.
 
-When multi-threading is enabled, ONNX Runtime Web will load the multi-threaded WebAssembly binary file. The corresponding file name will include `-threaded`.
-
 ```js
 // Disable multi-threading
 ort.env.wasm.numThreads = 1;
 ```
 
 For more information, see [API reference: env.wasm.numThreads](https://onnxruntime.ai/docs/api/js/interfaces/Env.WebAssemblyFlags.html#numThreads).
-
-#### `env.wasm.simd`
-
-The `env.wasm.simd` flag is used to enable/disable the SIMD (Single Instruction, Multiple Data) feature. It is enabled by default.
-
-When SIMD is enabled, ONNX Runtime Web will perform a check for whether the environment supports SIMD. If the environment supports SIMD, ONNX Runtime Web will load the SIMD WebAssembly binary file. The corresponding file name will include `-simd`.
-
-It is not recommended to set this flag to `false` unless you are sure that the environment does not support SIMD.
-
-For more information, see [API reference: env.wasm.simd](https://onnxruntime.ai/docs/api/js/interfaces/Env.WebAssemblyFlags.html#simd).
 
 #### `env.wasm.proxy`
 

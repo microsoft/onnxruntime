@@ -16,6 +16,7 @@
 	import WebGPUImage from '../../images/blogs/webgpu_blog_thumbnail.jpg';
 	import WebTrainingImage from '../../images/blogs/webtraining_blog_thumbnail.png';
 	import Phi3OnDeviceImage from '../../images/blogs/phi-3-on-device_blog_thumbnail.png';
+	import Phi3SmallMediumImage from '../../images/blogs/accelerating-phi-3-medium-thumbnail.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -44,11 +45,21 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Phi-3 Small and Medium Models are now Optimized with ONNX Runtime and DirectML',
+			date: 'May 21th, 2024',
+			blurb:
+				"You can now run the Phi-3 medium, small models on device of your choice.",
+			link: 'blogs/accelerating-phi-3-small-medium',
+			image: Phi3SmallMediumImage,
+			imgalt:
+				'Chart comparing model size (in GB) of ONNX Phi-3-medium between PyTorch and ONNX Runtime'
+		},
+		{
 			title: 'Enjoy the Power of Phi-3 with ONNX Runtime on your device',
 			date: 'May 20th, 2024',
 			blurb:
 				"Harness ONNX Runtime to run Phi-3-mini on mobile phones and in the browser.",
-			link: 'blogs/phi-3-on-device',
+			link: 'https://huggingface.co/blog/Emma-N/enjoy-the-power-of-phi-3-with-onnx-runtime',
 			image: Phi3OnDeviceImage,
 			imgalt:
 				'Chart comparing model size (in GB) of ONNX Phi-3-mini for web and mobile with original Phi-3-mini'
@@ -62,7 +73,9 @@
 			image: Phi3Image,
 			imgalt:
 				'Phi-3 + ONNX Runtime with the prompt "Tell me a joke" and Phi-3 answering: "Why don\'t scientists trust atoms?" "Because they make up everything!"'
-		},
+		}	
+	];
+	let blogs = [
 		{
 			title: 'ONNX Runtime Web unleashes generative AI in the browser using WebGPU',
 			date: 'February 29th, 2024',
@@ -72,9 +85,7 @@
 			image: WebGPUImage,
 			imgalt:
 				'Comparison of ONNX Runtime Web with WebGPU EP on GPU vs. WASM EP on CPU for segment anything example'
-		}
-	];
-	let blogs = [
+		}, 
 		{
 			title: 'ONNX Runtime 1.17: CUDA 12 support, Phi-2 optimizations, WebGPU, and more!',
 			date: 'February 28th, 2024',
@@ -362,13 +373,26 @@
 			link: 'https://www.linkedin.com/pulse/hcm-sentence-similarity-language-model-using-java-jonathon-palmieri-tdlpc%3FtrackingId=CN2PPVO4Toqh8r6JsAYMIw%253D%253D/?trackingId=ByNomo0pQFKM%2F%2BWEknVs7Q%3D%3D'
 		}
 	];
+	let description = 'ONNX Runtime Blogs - your source for staying updated on the latest ONNX Runtime updated and information.'
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let authors = ['']
+	let keywords = 'onnxruntime, onnx runtime blogs, onnx runtime community blogs, onnx runtime community posts, onnx runtime community announcements'
 </script>
-
 <svelte:head>
-	<meta
-		name="description"
-		content="ONNX Runtime Blogs - your source for staying updated on the latest ONNX Runtime updated and information."
-	/>
+	<!-- Dynamic meta tags -->
+	<meta name="description" content={description} />
+	<meta name="image" content={image} />
+	<meta name="author" content={authors.join(', ')} />
+	<meta name="keywords" content={keywords} />
+	<!-- Open Graph / Facebook -->
+	<meta property="og:description" content={description}/>
+	<meta property="og:image" content={image} />
+	
+	<!-- Twitter -->
+	<meta property="twitter:description" content={description} />
+	<meta property="twitter:image" content={image} />
+	<meta property="twitter:card" content={imageSquare} />
 </svelte:head>
 <div class="container mx-auto">
 	<div class="flex">

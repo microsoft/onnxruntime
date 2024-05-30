@@ -2,13 +2,26 @@
 	import Table from './table.svelte';
 	import githublogo from '../../images/logos/GitHub-Logo.svg';
 	import ImageTutorials from '../../images/undraw/image_tutorials.svelte';
+	let description = 'Quickly ramp up with ONNX Runtime, using a variety of platforms to deploy on hardware of your choice.'
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
+	let authors = ['']
+	let keywords = 'getting started, getting started onnx runtime, onnxruntime getting started, onnxruntime tutorial, onnxruntime tutorials, onnxruntime quick start, onnxruntime quickstart, onnxruntime quick start guide, onnxruntime quickstart guide, onnxruntime quick start tutorials, onnxruntime quickstart tutorials, onnxruntime quick start tutorial, onnxruntime quickstart tutorial, onnxruntime quick start documentation, onnxruntime quickstart documentation, onnxruntime quick start instructions, onnxruntime quickstart instructions, onnxruntime quick start guide, onnxruntime quickstart guide, onnxruntime quick start tutorials, onnxruntime quickstart tutorials, onnxruntime quick start tutorial, onnxruntime quickstart tutorial, onnxruntime quick start documentation, onnxruntime quickstart documentation, onnxruntime quick start instructions, onnxruntime quickstart instructions'
 </script>
-
 <svelte:head>
-	<meta
-		name="description"
-		content="Quickly ramp up with ONNX Runtime, using a variety of platforms to deploy on hardware of your choice."
-	/>
+	<!-- Dynamic meta tags -->
+	<meta name="description" content={description} />
+	<meta name="image" content={image} />
+	<meta name="author" content={authors.join(', ')} />
+	<meta name="keywords" content={keywords} />
+	<!-- Open Graph / Facebook -->
+	<meta property="og:description" content={description}/>
+	<meta property="og:image" content={image} />
+	
+	<!-- Twitter -->
+	<meta property="twitter:description" content={description} />
+	<meta property="twitter:image" content={image} />
+	<meta property="twitter:card" content={imageSquare} />
 </svelte:head>
 
 <div class="container mx-auto px-10 my-10">
