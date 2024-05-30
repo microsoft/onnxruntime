@@ -340,7 +340,13 @@ class BaseQuantizer:
                             f"\nraw={str(q_weight_initializer)[:200]}."
                         )
             elif qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
-                q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, q_weight_data)
+                # TODO: Use simpler make_tensor call when ONNX bug that does not store negative weights packed
+                # within int32_data is fixed.
+                # q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, q_weight_data)
+                packed_data = onnx.helper.pack_float32_to_4bit(q_weight_data.flatten(), qType == onnx.TensorProto.INT4)
+                q_weight_initializer = onnx.helper.make_tensor(
+                    q_weight_name, qType, weight.dims, packed_data.tobytes(), raw=True
+                )
             else:
                 q_weight_data = np.asarray(q_weight_data, dtype=onnx.helper.tensor_dtype_to_np_dtype(qType)).reshape(
                     weight.dims
@@ -477,8 +483,16 @@ class BaseQuantizer:
 
         if not keep_float_weight:
             if weight_qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
+                # TODO: Use simpler make_tensor call when ONNX bug that does not store negative weights packed
+                # within int32_data is fixed.
+                # q_weight_initializer = onnx.helper.make_tensor(
+                #     q_weight_name, weight_qType, weights_shape, quantized_weights
+                # )
+                packed_data = onnx.helper.pack_float32_to_4bit(
+                    quantized_weights.flatten(), weight_qType == onnx.TensorProto.INT4
+                )
                 q_weight_initializer = onnx.helper.make_tensor(
-                    q_weight_name, weight_qType, weights_shape, quantized_weights
+                    q_weight_name, weight_qType, weights_shape, packed_data.tobytes(), raw=True
                 )
                 self.model.initializer_extend([q_weight_initializer])
             else:
