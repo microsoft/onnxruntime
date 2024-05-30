@@ -28,13 +28,13 @@ Support for DirectML is coming soon!
 
 1. Install the git large file system extension
 
-  HuggingFace uses `git` for version control. To download the ONNX models you need `git lfs` to be installed, if you do not already have it.
+   HuggingFace uses `git` for version control. To download the ONNX models you need `git lfs` to be installed, if you do not already have it.
 
-  * Windows: `winget install -e --id GitHub.GitLFS` (If you don't have winget, download and run the `exe` from the [official source](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage?platform=windows))
-  * Linux: `apt-get install git-lfs`
-  * MacOS: `brew install git-lfs`
+   * Windows: `winget install -e --id GitHub.GitLFS` (If you don't have winget, download and run the `exe` from the [official source](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage?platform=windows))
+   * Linux: `apt-get install git-lfs`
+   * MacOS: `brew install git-lfs`
 
-  Then run `git lfs install`
+   Then run `git lfs install`
 
 2. Install the HuggingFace CLI
 
