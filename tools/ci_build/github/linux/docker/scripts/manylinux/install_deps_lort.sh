@@ -3,8 +3,8 @@ set -e -x
 
 # Development tools and libraries
 dnf -y install \
-    graphviz
-
+    graphviz xz gcc-toolset-13-gcc-c++ gcc-toolset-13-gcc gcc-toolset-13-libstdc++-devel cmake python39-devel git
+source /opt/rh/gcc-toolset-13/enable
 mkdir -p /tmp/src
 
 cd /tmp/src
@@ -18,8 +18,7 @@ fi
 
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-export PATH=/opt/python/cp39-cp39/bin:$PATH
-PYTHON_EXE=/opt/python/cp39-cp39/bin/python3.9
+PYTHON_EXE=/usr/bin/python3.9
 
 echo "Installing Pytorch requirements"
 # This may install PyTorch, which will be overrided by the PyTorch local build below.
