@@ -89,9 +89,9 @@ jobs:
           onnxruntimecpubuildlort \
             bash -c "
               export PYTHONPATH=/build/Release && \
-              /opt/python/cp39-cp39/bin/python3.9 -m pip install /build/Release/dist/*.whl && \
-              /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort.py && \
-              cd /build/Release && /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort_custom_ops.py"
+              python3 -m pip install /build/Release/dist/*.whl && \
+              python3 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort.py && \
+              cd /build/Release && python3 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort_custom_ops.py"
       workingDirectory: $(Build.SourcesDirectory)
       condition: succeededOrFailed()
 
