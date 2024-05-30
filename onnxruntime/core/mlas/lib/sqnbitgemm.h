@@ -22,6 +22,8 @@ Abstract:
 
 #pragma once
 
+#include <cassert>
+
 #include "mlas_qnbit.h"
 #include "mlasi.h"
 
@@ -73,6 +75,21 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
+
+    typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const std::byte* QuantBDataBegin,
+        std::byte* PackedQuantBDataBegin,
+        const float* QuantBScaleBegin,
+        const std::byte* QuantBZPBegin,
+        float* BlockSumBegin,  // BlockCountK by N => (BlockCountK * N) / 16 by 16
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+    SQ4BitGemmPackQuantBDataAndSumBlk_Fn* SQ4BitGemmPackQuantBDataAndBlkSum = nullptr;
 
     //
     // Workspace size calculation function prototypes.
@@ -213,6 +230,24 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
 
     SQ4BitGemmM1Kernel_CompInt8_Fn* SQ4BitGemmM1Kernel_CompInt8 = nullptr;
 
+    typedef void(SQ4BitGemmKernel_CompInt8_Fn)(
+        const size_t BlkLen,
+        const std::byte* QuantA,
+        const float* QuantAScale,
+        const std::byte* QuantBData,
+        const float* QuantBScale,
+        float* C,
+        size_t CountM,
+        size_t CountN,
+        size_t CountK,
+        size_t BlockCountK,
+        const float* Bias,
+        size_t lda,
+        size_t ldc
+    );
+
+    SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
+
     /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
      *
@@ -230,4 +265,14 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     );
 
     QuantizeARow_CompInt8_Fn* QuantizeARow_CompInt8 = nullptr;
+
+    typedef void(QuantizeARow_CompInt8_Fn2)(
+        size_t BlkLen,
+        const float* A,
+        size_t CountK,
+        std::byte* QuantA,
+        float* QuantAScale,
+        float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
+    );
+    QuantizeARow_CompInt8_Fn2* QuantizeARow_CompInt8_2 = nullptr;
 };
