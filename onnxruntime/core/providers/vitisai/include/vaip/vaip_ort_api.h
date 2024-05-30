@@ -12,6 +12,9 @@ struct OrtApi;
 
 namespace vaip_core {
 
+#define VAIP_ORT_API_MAJOR (2u)
+#define VAIP_ORT_API_MINOR (0u)
+#define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
   uint32_t magic;  // 'VAIP' or something else to make sure the following field
                    // are not garbage.
@@ -191,8 +194,10 @@ struct OrtApiForVaip {
   gsl::span<const char> (*tensor_proto_as_raw)(
       const TensorProto& tensor);  // [79]
 
-  DllSafe<std::string> (*get_lib_id)();    // [80]
-  DllSafe<std::string> (*get_lib_name)();  // [81]
+  DllSafe<std::string> (*get_lib_id)();                                           // [80]
+  DllSafe<std::string> (*get_lib_name)();                                         // [81]
+                                                                                  /** new API after 2.0 */
+  void (*graph_add_initialized_tensor)(Graph& graph, const TensorProto& tensor);  // [82]
 };
 
 #ifndef USE_VITISAI
