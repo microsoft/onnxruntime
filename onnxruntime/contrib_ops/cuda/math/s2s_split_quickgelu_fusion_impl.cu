@@ -33,20 +33,15 @@ __device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha_v
 
 template <typename T>
 __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T* input, T* output) {
-  // Can remove num_outputs parameter
-  // CHange dim to be part of input
-  // uint dim = 2;
-  // printf("Output dim is %d\n", dim);
-  uint input_line_stride = dim * 2;
-  uint output_line_stride = dim;
-  uint offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
+  // TODO: Should I use long int?
+  int input_line_stride = dim * 2;
+  int output_line_stride = dim;
+  int offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
   // 10 el (dim = 5)
   // 0 idx, 5 idx
   //
-  uint offset_in2 = offset_in1 + dim;
-  uint offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
-  T one = static_cast<T>(1.f);
-  T zero = static_cast<T>(0.f);
+  int offset_in2 = offset_in1 + dim;
+  int offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
   // Specify alpha here or outside (is this an input )
   // float alpha = 1.702f;
   T alpha_val = static_cast<T>(alpha);
@@ -70,9 +65,9 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   // if threadIdx.x*kElementsPerThread < dim
   // int max_inp = 20 - dim;
   // What about this condition? (Removing if condition should improve Warp Divergence?)
-  // for (uint i = 0; i < kElementsPerThread; i++) {
-  for (uint i = 0; i < kElementsPerThread && threadIdx.x*kElementsPerThread + i < dim; i++){
-    // uint curr_in = offset_in1 + i;
+  // for (int i = 0; i < kElementsPerThread; i++) {
+  for (int i = 0; i < kElementsPerThread && threadIdx.x*kElementsPerThread + i < dim; i++){
+    // int curr_in = offset_in1 + i;
     // int curr_half = curr_in / dim;
     // printf("Curr Inp Outside %d\n", curr_in);
     // if (curr_half %2 == 0 && curr_in < max_inp){
