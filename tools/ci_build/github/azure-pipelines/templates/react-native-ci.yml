@@ -399,10 +399,6 @@ stages:
         targetFolder: $(Build.ArtifactStagingDirectory)
       displayName: Create Artifacts onnxruntime-react-native
 
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
     - task: PublishPipelineArtifact@1
       inputs:
         artifact: e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
