@@ -19,7 +19,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | ✗ | ✓ | Only supports 'training_mode' value is 0, one output |
 | Cast | ai.onnx(7-8, 9-12, 13-18, 19-20, 21+) | cast | ✗ | ✓ | |
 | Ceil | ai.onnx(7-12, 13+) | ceil | ✓ | ✓ | |
-| Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | |
+| Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | WebNN CPU backend only supports 3 specific ranges: [0.0, infinity], [-1.0, 1.0], [0.0, 6.0] |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | ✓ | ✓ | |
 | Conv | ai.onnx(7-10, 11+) | conv2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU requires the 'W' (weight) input to be a constant |
 | ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✓ | ✗ | Only supports 3-D or 4-D input and 'W' (weight). |
