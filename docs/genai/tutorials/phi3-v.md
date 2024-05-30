@@ -84,10 +84,10 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
    ![coffee](coffee.jpg)
 
    ```
-   The image shows a package of California Salad Roll SP from Metropolitan Market.
-   The package is transparent, allowing the view of the salad rolls inside.
-   The label on the package indicates the net weight as 340 Calories and the price as $7.49.
-   The package is marked 'Sell By 05/05'
+   The image shows a cup of coffee with a latte art
+   design on top. The coffee is a light brown color,
+   and the art is white with a leaf-like pattern.
+   The cup is white and has a handle on one side.</s>
    ```
 
 ## Run on CPU
