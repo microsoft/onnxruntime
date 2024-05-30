@@ -18,6 +18,7 @@ fi
 
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+export PATH=/opt/python/cp39-cp39/bin:$PATH
 PYTHON_EXE=/opt/python/cp39-cp39/bin/python3.9
 
 echo "Installing Pytorch requirements"
