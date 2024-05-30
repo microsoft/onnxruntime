@@ -34,7 +34,7 @@ class IpcMemory {
   IpcMemory(int rank, int world_size, std::size_t buffer_size);
   ~IpcMemory();
 
-  std::vector<void*> const& GetCommPtrsTensor() const {
+  InlinedVector<void*> const& GetCommPtrsTensor() const {
     return m_comm_ptrs_;
   }
 
@@ -44,14 +44,14 @@ class IpcMemory {
 
   int rank_;
   int world_size_;
-  std::vector<void*> m_comm_ptrs_;
+  InlinedVector<void*> m_comm_ptrs_;
   std::size_t mbuffer_size_;
   void* m_buffer_ptr_{nullptr};
 };
 
 struct IPCMemoryResourcePack {
-  mutable std::vector<std::shared_ptr<IpcMemory>> m_ipc_momery_handles;
-  mutable std::vector<const void*> m_comm_ptrs;
+  mutable InlinedVector<std::shared_ptr<IpcMemory>> m_ipc_momery_handles;
+  mutable InlinedVector<const void*> m_comm_ptrs;
   mutable size_t max_input_size{0};
   mutable uint32_t counter{0};
 };

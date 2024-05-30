@@ -40,7 +40,7 @@ Status IpcMemory::AllocateIpcMemory() {
   CUDA_RETURN_IF_ERROR(cudaIpcGetMemHandle(&local_handle, m_buffer_ptr_));
 
   // Assume no pipeline parallelism.
-  std::vector<char> serial_handles(CUDA_IPC_HANDLE_SIZE * world_size_, 0);
+  InlinedVector<char> serial_handles(CUDA_IPC_HANDLE_SIZE * world_size_, 0);
 
 #ifdef USE_MPI
   MPI_CHECK(MPI_Allgather(local_handle.reserved, CUDA_IPC_HANDLE_SIZE, MPI_BYTE, serial_handles.data(),
@@ -50,7 +50,7 @@ Status IpcMemory::AllocateIpcMemory() {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please compile ORT with USE_MPI.");
 #endif
 
-  std::vector<cudaIpcMemHandle_t> handles(world_size_);
+  InlinedVector<cudaIpcMemHandle_t> handles(world_size_);
   for (size_t i = 0; i < handles.size(); ++i) {
     memcpy(handles[i].reserved, &serial_handles[i * CUDA_IPC_HANDLE_SIZE], CUDA_IPC_HANDLE_SIZE);
   }
@@ -92,7 +92,7 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
 
   const std::size_t buffer_size = world_size * input_size;
 
-  std::vector<std::shared_ptr<IpcMemory>>& m_ipc_memory_handles = ipc_mem_res_pack.m_ipc_momery_handles;
+  InlinedVector<std::shared_ptr<IpcMemory>>& m_ipc_memory_handles = ipc_mem_res_pack.m_ipc_momery_handles;
   const size_t handles_size{m_ipc_memory_handles.size()};
   constexpr size_t k_num_handles{3};
 
@@ -103,7 +103,7 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
       std::make_shared<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-  std::vector<const void*>& m_comm_ptrs = ipc_mem_res_pack.m_comm_ptrs;
+  InlinedVector<const void*>& m_comm_ptrs = ipc_mem_res_pack.m_comm_ptrs;
   m_comm_ptrs.reserve(k_num_handles * world_size);
   m_comm_ptrs.resize(k_num_handles * world_size);
 
