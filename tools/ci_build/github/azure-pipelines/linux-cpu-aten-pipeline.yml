@@ -53,7 +53,6 @@ jobs:
       Repository: 'onnxruntimecpubuildaten'
       UseImageCacheContainerRegistry: true
       UsePipelineCache: false
-      CheckOutManyLinux: true
 
   - template: templates/linux-build-step-with-cache.yml
     parameters:
