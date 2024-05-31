@@ -9,6 +9,3 @@ onnx==1.16.0
 protobuf==4.21.12
 sympy==1.12
 flatbuffers
-psutil
-triton
-torch
