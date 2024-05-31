@@ -5,6 +5,7 @@ has_children: false
 parent: Tutorials
 grand_parent: Generate API (Preview)
 nav_order: 1
+image: /images/coffee.png
 ---
 
 # Run the Phi-3 vision model with the ONNX Runtime generate() API
@@ -86,7 +87,7 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
 
    For example: `Describe the image`
 
-   ![coffee](coffee.png)
+   ![coffee](../../../images/coffee.png)
 
    ```
    The image shows a cup of coffee with a latte art design on top. The coffee is a light brown color,
@@ -123,7 +124,7 @@ Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
 
    For example: `Convert this image to markdown format`
 
-   ![Excel table with cookie sales figures](table.png)
+   ![Excel table with cookie sales figures](../../../images/table.png)
 
    ```
    | Product             | Qtr 1      | Qtr 2      | Grand Total |
