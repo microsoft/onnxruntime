@@ -9,7 +9,7 @@ stages:
   - job:
     pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     variables:
-      artifact_name: onnxruntime_gpu
+      artifact_name: 'onnxruntime_gpu'
     steps:
     - checkout: none
     - download: build
