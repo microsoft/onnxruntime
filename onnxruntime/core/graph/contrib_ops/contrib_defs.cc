@@ -2815,6 +2815,28 @@ void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MyTritonKernel)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("MyTritonKernel")
+      .Attr("input_size",
+            "The number of elements in the input vector",
+            AttributeProto::INT, static_cast<int64_t>(128))
+      .Attr("block_size",
+            "Kernel block size",
+            AttributeProto::INT, static_cast<int64_t>(64))
+      .Input(0, "X", "Input data tensor", "T")
+      .Output(0, "Y", "Output data tensor.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain input X type to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)
@@ -3637,31 +3659,6 @@ Having this op allows runtime to do operator re-ordering to reduce compute FLOPs
 #ifdef ORT_USE_NCCL
   RegisterCollectiveOps();
 #endif
-
-#ifdef USE_TRITON_KERNEL
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MyTritonKernel)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("MyTritonKernel")
-      .Attr("input_size",
-            "The number of elements in the input vector",
-            AttributeProto::INT, static_cast<int64_t>(128))
-      .Attr("block_size",
-            "Kernel block size",
-            AttributeProto::INT, static_cast<int64_t>(64))
-      .Input(0, "X", "Input data tensor", "T")
-      .Output(0, "Y", "Output data tensor.", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)"},
-          "Constrain input X type to float tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        propagateShapeFromInputToOutput(ctx, 0, 0);
-      });
-
-#endif // USE_TRITON_KERNEL
 }
 
 }  // namespace contrib
