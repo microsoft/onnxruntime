@@ -83,9 +83,6 @@ class AttentionCPUBase : public AttentionBase {
     if (use_flash_attention && relative_position_bias == nullptr && v_head_size == qk_head_size && past == nullptr) {
       auto data_type = DataTypeImpl::GetType<T>();
 
-      OrtValue logSumExp;
-      Tensor::InitOrtValue(data_type, TensorShape({batch_size, sequence_length, num_heads_}), allocator, logSumExp);
-
       Tensor query(data_type,
                    TensorShape({batch_size, num_heads_, sequence_length, qk_head_size}),
                    const_cast<void*>(reinterpret_cast<const void*>(Q)), allocator->Info());
@@ -102,13 +99,17 @@ class AttentionCPUBase : public AttentionBase {
                   TensorShape({batch_size, 1, sequence_length, total_sequence_length}),
                   const_cast<void*>(reinterpret_cast<const void*>(mask_data)), allocator->Info());
 
+      // output is 3D, we reshape it to 4D here.
+      Tensor out(data_type,
+                 TensorShape({batch_size, sequence_length, num_heads_, v_head_size}),
+                 const_cast<void*>(reinterpret_cast<const void*>(output->MutableData<T>())), allocator->Info());
+
       printf("Use CPU Flash Attention!\n");
 
       constexpr bool is_q_bnsh = true;
       constexpr bool is_kv_bnsh = true;
       cpu_flash_attention(
-          *output,
-          *(logSumExp.GetMutable<Tensor>()),
+          out,
           query,
           present_key == nullptr ? key :*present_key,
           present_value == nullptr ? value :*present_value,

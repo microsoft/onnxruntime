@@ -113,7 +113,7 @@ inline void fill_stub(scalar_t* data, scalar_t val, int64_t size) {
 template <typename scalar_t, int64_t q_split_size, int64_t kv_split_size>
 void cpu_flash_attention(
     Tensor& output,          // batch x q_seq_len  x num_heads  x head_size
-    Tensor& logsumexp,       // batch x q_seq_len  x num_heads
+    //Tensor& logsumexp,       // batch x q_seq_len  x num_heads
     const Tensor& query,     // batch x q_seq_len  x num_heads  x head_size or
                              // batch x num_heads  x q_seq_len  x head_size (when is_q_bnsh is True)
     const Tensor& key,       // batch x kv_seq_len x num_heads  x head_size or
@@ -123,7 +123,7 @@ void cpu_flash_attention(
     bool is_causal,
     const Tensor* attn_mask, // batch x num_heads q_seq_len x kv_seq_len, optional
     double scale,
-    concurrency::ThreadPool* thread_pool,
+    [[maybe_unused]] concurrency::ThreadPool* thread_pool,
     AllocatorPtr allocator,
     bool is_q_bnsh,
     bool is_kv_bnsh) {
@@ -137,8 +137,14 @@ void cpu_flash_attention(
                                ? static_cast<accum_t>(scale)
                                : static_cast<accum_t>(1.0f / sqrtf(static_cast<float>(query.Size(-1))));
 
-  ORT_ENFORCE((query.Size(3) == value.Size(3)) && (key.Size(3) == value.Size(3)),
-        "Q/K/V should have the same head size");
+  ORT_ENFORCE(query.Dim() == 4);
+  ORT_ENFORCE(key.Dim() == 4);
+  ORT_ENFORCE(value.Dim() == 4);
+  ORT_ENFORCE(output.Dim() == 4);
+  ORT_ENFORCE((query.Size(0) == value.Size(0)) && (key.Size(0) == value.Size(0) && query.Size(0) == output.Size(0)),
+        "Q/K/V/Output should have the same batch size");
+  ORT_ENFORCE((query.Size(3) == value.Size(3)) && (key.Size(3) == value.Size(3) && query.Size(3) == output.Size(3)),
+        "Q/K/V/Output should have the same head size");
 
   int64_t batchSize = query.Size(0);
   int64_t qSize = query.Size(is_q_bnsh ? 2 : 1);
@@ -162,9 +168,7 @@ void cpu_flash_attention(
   int64_t oStrideB = output.Stride(0);
   int64_t oStrideM = output.Stride(1);
   int64_t oStrideH = output.Stride(2);
-  int64_t lStrideB = logsumexp.Stride(0);
-  int64_t lStrideM = logsumexp.Stride(1);
-  int64_t lStrideH = logsumexp.Stride(2);
+
   int64_t mStrideB =
       (has_attn_mask && attn_mask->Size(0) > 1)
       ? attn_mask->Stride(0)
@@ -200,24 +204,29 @@ void cpu_flash_attention(
   const scalar_t* v_data = value.Data<scalar_t>();
   const accum_t* mask_data = has_attn_mask ? attn_mask->Data<accum_t>() : nullptr;
   scalar_t* out_data = output.MutableData<scalar_t>();
-  accum_t* lse_data = logsumexp.MutableData<accum_t>();
   // accum_t* buf_data = buf.MutableData<accum_t>();
   // scalar_t* buf_reduced_data = is_reduced_type ? buf_reduced.data_ptr<scalar_t>() : nullptr;
 
+#if DUMP_CPU_TENSOR_LEVEL > 0
   DUMP_CPU_TENSOR_INIT();
   DUMP_CPU_TENSOR("query", query);
   DUMP_CPU_TENSOR("key", key);
   DUMP_CPU_TENSOR("value", value);
-#if DUMP_CPU_TENSOR_LEVEL > 0
   if (attn_mask != nullptr){
     DUMP_CPU_TENSOR("attn_mask", *attn_mask);
   }
   printf("is_q_bnsh=%d, is_kv_bnsh=%d, scale=%f\n", is_q_bnsh, is_kv_bnsh, static_cast<float>(scale));
 #endif
 
+#if DUMP_CPU_TENSOR_LEVEL == 0
   double cost_per_slice = 1.0;
   concurrency::ThreadPool::TryParallelFor(
     thread_pool, batchSize * num_head * qSlice, cost_per_slice, [&](ptrdiff_t begin, ptrdiff_t end) {
+#else
+  ptrdiff_t begin = 0;
+  ptrdiff_t end = batchSize * num_head * qSlice;
+  {
+#endif
     int64_t i = 0, j = 0, k = 0;
     vec::data_index_init(begin, i, batchSize, j, num_head, k, qSlice);
 
@@ -242,60 +251,32 @@ void cpu_flash_attention(
       int64_t num_keys = is_causal ? std::min(m + qBlockSize, kvSize) : kvSize;
       for (int64_t n = 0; n < num_keys; n += kvSplitSize) {
         int64_t kvBlockSize = std::min(kvSplitSize, kvSize - n);
-        // Calculate scale * q @ k.T
 
-        // // Compute Q*K' + AttentionMask
-        // //                     original                 transposed             each iteration
-        // // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
-        // // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
-        // // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
-        // math::Gemm<T, ThreadPool>(CblasNoTrans,                  // transA
-        //                           CblasTrans,                    // transB
-        //                           sequence_length,               // m
-        //                           total_sequence_length,         // n
-        //                           head_size,                     // k
-        //                           alpha,                         // alpha
-        //                           Q + q_input_chunk_length * i,  // A
-        //                           k,                             // B
-        //                           mask_data != nullptr ? 1.0f : 0.0f, // beta
-        //                           output,                          // C
-        //                           nullptr);
-
-        // cpublas::gemm(
-        //     TransposeType::Transpose,     // transa
-        //     TransposeType::NoTranspose,   // transb
-        //     kvBlockSize,                  // m
-        //     qBlockSize,                   // n
-        //     headSize,                     // k
-        //     static_cast<accum_t>(1),      // alpha
-        //     k_data + i * kStrideB + j * kStrideH + n * kStrideN, // a
-        //     kStrideN,                                            // lda  (stride of a)
-        //     q_data + i * qStrideB + j * qStrideH + m * qStrideM, // b
-        //     qStrideM,                                            // ldb  (stride of b)
-        //     static_cast<accum_t>(0),                             // beta
-        //     qk_data,                                             // c
-        //     kvBlockSize);                                        // ldc  (stride of c)
-
-
-        //                     original                 transposed             each iteration
-        // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
-        // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
-        // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
+        //              Loops          Size-per-loop
+        // A: Q         (B x N x Nq)   Sq x H  (Nq is number of Q blocks, Sq is Q block size)
+        // B: K'        (B x N x Nk)   Tk x H  (transposed H x Tk: Nk is number of K blocks, Tk is K block size)
+        // C: QxK'                     Sq x Tk
         math::GemmEx<scalar_t, concurrency::ThreadPool>(
-            CblasNoTrans,
-            CblasTrans,
-            qBlockSize,
-            kvBlockSize,
-            headSize,
-            static_cast<accum_t>(1),
-            q_data + i * qStrideB + j * qStrideH + m * qStrideM,
-            static_cast<int>(qStrideM),
-            k_data + i * kStrideB + j * kStrideH + n * kStrideN,
-            static_cast<int>(kStrideN),
-            static_cast<accum_t>(0),
-            qk_data,
-            static_cast<int>(kvBlockSize),
-            nullptr);  // thread pool
+            CblasNoTrans,                                         // transA
+            CblasTrans,                                           // transB
+            qBlockSize,                                           // m
+            kvBlockSize,                                          // n
+            headSize,                                             // k
+            static_cast<accum_t>(1),                              // alpha
+            q_data + i * qStrideB + j * qStrideH + m * qStrideM,  // A
+            static_cast<int>(qStrideM),                           // lda (stride of a)
+            k_data + i * kStrideB + j * kStrideH + n * kStrideN,  // B
+            static_cast<int>(kStrideN),                           // ldb (stride of b)
+            static_cast<accum_t>(0),                              // beta
+            qk_data,                                              // C
+            static_cast<int>(kvBlockSize),                        // ldc (stride of c)
+            nullptr);                                             // thread pool
+
+#if DUMP_CPU_TENSOR_LEVEL > 0
+        DUMP_CPU_TENSOR_INIT();
+        printf("batch_i=%d, head_j=%d, q_block_k=%d, z=%d\n", static_cast<int>(i), static_cast<int>(j), static_cast<int>(k), static_cast<int>(z));
+        DUMP_CPU_TENSOR("QK", qk_data, qBlockSize, kvBlockSize);
+#endif
 
         // Apply causal mask, fill unused with -inf
         if (is_causal && num_keys - n <= kvSplitSize) {
@@ -306,10 +287,10 @@ void cpu_flash_attention(
           }
         }
 
-        // Update attention weights with attention mask
-        // And apply scaling factor
-        // qk <- qk * scaling + attn_mask
         if (has_attn_mask) {
+          // Update attention weights with attention mask
+          // And apply scaling factor
+          // qk <- qk * scaling + attn_mask
           for (int64_t row = 0; row < qBlockSize; ++row) {
             onnxruntime::vec::map2<accum_t>(
                 [scaling_factor](Vec x, Vec y) {
@@ -341,19 +322,28 @@ void cpu_flash_attention(
                 tmp_max);
           }
           tmp_max = qk_max_data[row] > tmp_max ? qk_max_data[row] : tmp_max;
+
+#if DUMP_CPU_TENSOR_LEVEL > 0
+          printf("row=%d, tmp_max=%f\n", static_cast<int>(row), static_cast<float>(tmp_max));
+#endif
+
           // qk <- exp(qk - max) and sum per row
           tmp_sum = tmp_max;
           _exp_reduce_sum_fusion_kernel(
               qk_data + row * kvBlockSize,
               static_cast<int>(kvBlockSize),
-              qk_data + row * kvBlockSize, //conditional_data_ptr(qk_data, qk_reduced_data) + row * kvBlockSize,
+              qk_data + row * kvBlockSize,
               tmp_sum);
+
           // exp_tmp <- exp(max[row] - max)
           exp_tmp = std::exp(qk_max_data[row] - tmp_max);
+
           // sum[row] <- sum + exp_tmp * sum[row]
           qk_sum_data[row] = tmp_sum + exp_tmp * qk_sum_data[row];
+
           // max[row] <- max
           qk_max_data[row] = tmp_max;
+
           // dst <- dst * exp_tmp
           if (n > 0) {
             vec::map<accum_t>(
@@ -361,64 +351,53 @@ void cpu_flash_attention(
               dst_data + row * headSize, dst_data + row * headSize, headSize);
           }
         }
-        // Calculate Softmax(q @ k.T) @ v
-        // cpublas::gemm(
-        //     TransposeType::NoTranspose,
-        //     TransposeType::NoTranspose,
-        //     headSize,
-        //     qBlockSize,
-        //     kvBlockSize,
-        //     static_cast<accum_t>(1),
-        //     v_data + i * vStrideB + j * vStrideH + n * vStrideN,
-        //     vStrideN,
-        //     qk_data, // conditional_data_ptr(qk_data, qk_reduced_data),
-        //     kvBlockSize,
-        //     n == 0 ? static_cast<accum_t>(0) : static_cast<accum_t>(1),
-        //     dst_data,
-        //     headSize);
 
-        //  math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
-        //                 attention_probs + attention_probs_offset,
-        //                 v, current_tmp_data, nullptr);
+        DUMP_CPU_TENSOR("dst_data", dst_data, qBlockSize, headSize);
         math::GemmEx<scalar_t, concurrency::ThreadPool>(
             CblasNoTrans,
             CblasNoTrans,
             qBlockSize,
-            headSize,
+            headSize, // v_head_size
             kvBlockSize,
             static_cast<accum_t>(1),
-            qk_data,  // conditional_data_ptr(qk_data, qk_reduced_data),
+            qk_data,                                                 // conditional_data_ptr(qk_data, qk_reduced_data),
             static_cast<int>(kvBlockSize),
             v_data + i * vStrideB + j * vStrideH + n * vStrideN,
-            static_cast<int>(kStrideN),
+            static_cast<int>(vStrideN),
             n == 0 ? static_cast<accum_t>(0) : static_cast<accum_t>(1),
             dst_data,
             static_cast<int>(headSize),
             nullptr);  // thread pool
       }
+
+      DUMP_CPU_TENSOR("dst_data", dst_data, qBlockSize, headSize);
+
       // dst <- dst / sum[row]
       // reorder MHA output with strides
       for (int64_t row = 0; row < qBlockSize; ++row) {
         accum_t sum_reciprocal = 1 / qk_sum_data[row];
         vec::map<scalar_t>(
           [sum_reciprocal](Vec x) { return x * Vec(sum_reciprocal); },
-          out_data + i * oStrideB + j * oStrideH + m * oStrideM + row * oStrideM,
+          out_data + i * oStrideB + j * oStrideH + (m + row) * oStrideM,
           dst_data + row * headSize,
           headSize);
       }
-      // Store logsumexp for backward
-      accum_t* lse_ptr = lse_data + i * lStrideB + j * lStrideH + m * lStrideM;
-      for (int64_t row =0; row < qBlockSize; row++) {
-        lse_ptr[row * lStrideM] = qk_max_data[row]
-            + std::log(qk_sum_data[row]);
+
+#if DUMP_CPU_TENSOR_LEVEL > 0
+      for (int64_t row = 0; row < qBlockSize; ++row) {
+        printf("out_data row %d:\n", static_cast<int>(row));
+        DUMP_CPU_TENSOR("out_data", out_data + (i * oStrideB + j * oStrideH + (m + row) * oStrideM), 1, headSize);
       }
+#endif
 
       // Move to the next query
       vec::data_index_step(i, batchSize, j, num_head, k, qSlice);
     }
-  });
+  }
+#if DUMP_CPU_TENSOR_LEVEL == 0
+  );
+#endif
 
-  DUMP_CPU_TENSOR("logsumexp", logsumexp);
   DUMP_CPU_TENSOR("output", output);
 }
 } // anonymous namespace
@@ -430,7 +409,6 @@ namespace CPU_CAPABILITY {
 
 void flash_attention_kernel_impl(
     Tensor& output,
-    Tensor& logsumexp,
     const Tensor& query,
     const Tensor& key,
     const Tensor& value,
@@ -446,15 +424,15 @@ void flash_attention_kernel_impl(
   if (query.IsDataType<float>()) {
     if (q_seq_len >= 768) {
       cpu_flash_attention<float, 256, 512>(
-          output, logsumexp, query, key, value,
+          output, query, key, value,
           is_causal, attn_mask, scale, thread_pool, allocator, is_q_bnsh, is_kv_bnsh);
     } else if (q_seq_len >= 192) {
       cpu_flash_attention<float, 64, 512>(
-          output, logsumexp, query, key, value,
+          output, query, key, value,
           is_causal, attn_mask, scale, thread_pool, allocator, is_q_bnsh, is_kv_bnsh);
     } else {
       cpu_flash_attention<float, 32, 512>(
-          output, logsumexp, query, key, value,
+          output, query, key, value,
           is_causal, attn_mask, scale, thread_pool, allocator, is_q_bnsh, is_kv_bnsh);
     }
   }

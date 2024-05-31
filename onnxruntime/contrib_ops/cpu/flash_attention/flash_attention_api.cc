@@ -5,7 +5,6 @@ namespace onnxruntime::contrib {
 namespace cpu_default {
 void flash_attention_kernel_impl(
     Tensor& output,
-    Tensor& logsumexp,
     const Tensor& query,
     const Tensor& key,
     const Tensor& value,
@@ -20,7 +19,6 @@ void flash_attention_kernel_impl(
 
 void cpu_flash_attention(
     Tensor& output,
-    Tensor& logsumexp,
     const Tensor& query,
     const Tensor& key,
     const Tensor& value,
@@ -34,7 +32,6 @@ void cpu_flash_attention(
         // TODO: dispatch to different kernels according to cpu capabilities (like AVX2, AVX512 etc.)
         return cpu_default::flash_attention_kernel_impl(
             output,
-            logsumexp,
             query,
             key,
             value,

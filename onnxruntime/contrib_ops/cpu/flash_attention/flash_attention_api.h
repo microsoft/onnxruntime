@@ -8,7 +8,6 @@ namespace onnxruntime::contrib {
 
 void cpu_flash_attention(
     Tensor& output,
-    Tensor& logsumexp,
     const Tensor& query,
     const Tensor& key,
     const Tensor& value,
