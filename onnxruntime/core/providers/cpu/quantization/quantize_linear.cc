@@ -262,18 +262,17 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
 
 template <typename T, typename OutT>
 struct DequantizeLinearApply {
-  /// <summary>
-  /// Calculate per-tensor/layer or per-axis quantization of DequantizeLinear.
-  /// </summary>
-  /// <param name="process_block_count">size of axes before the quantize axis</param>
-  /// <param name="broadcast_dim">size on the quantize axis</param>
-  /// <param name="process_block_size">size of axes after the quantize axis</param>
-  /// <param name="input">1D array of flattened [D0, ..., Di, ..., Dn]</param>
-  /// <param name="scale">
-  ///   scalar for per-tensor/layer quantization and 1D array [Di] for per-axis quantization. i is the quantize axis.
-  /// </param>
-  /// <param name="output">same shape as input</param>
-  /// <param name="zero_point">same shape as scale</param>
+  /**
+   * @brief Calculate per-tensor/layer or per-axis quantization of DequantizeLinear.
+   * @param[in]    process_block_count    size of axes before the quantize axis
+   * @param[in]    broadcast_dim          size on the quantize axis
+   * @param[in]    process_block_size     size of axes after the quantize axis
+   * @param[in]    input                  1D array of flattened [D0, ..., Di, ..., Dn]
+   * @param[in]    scale                  scalar for per-tensor/layer quantization and 1D array [Di] 
+   *                                      for per-axis quantization. i is the quantize axis.
+   * @param[out]   output                 same shape as input
+   * @param[in]    zero_point             same shape as scale
+   */
   void op(int64_t process_block_count, int64_t broadcast_dim, int64_t process_block_size, const T* input,
     const OutT* scale, OutT* output, const T* zero_point) {
     for (size_t n = 0; n < static_cast<size_t>(process_block_count); n++) {
@@ -286,21 +285,20 @@ struct DequantizeLinearApply {
       }
     }
   }
-
-  /// <summary>
-  /// Calculate blocked quantization of DequantizeLinear. The indexing of scale/zero_point on the quantize axis is
-  /// repeated quant_block_size times, compared to the indexing of input/output.
-  /// </summary>
-  /// <param name="process_block_count">size of axes before the quantize axis</param>
-  /// <param name="broadcast_dim">size on the quantize axis</param>
-  /// <param name="process_block_size">size of axes after the quantize axis</param>
-  /// <param name="quant_block_size">quantize block size along the quantize axis</param>
-  /// <param name="input">1D array of flattened [D0, ..., Di, ..., Dn] </param>
-  /// <param name="scale">
-  ///   1D array of flattened [D0, ..., ceil(Di/quant_block_size), ..., Dn]. i is the quantize axis.
-  /// </param>
-  /// <param name="output">same shape as input</param>
-  /// <param name="zero_point">same shape as scale</param>
+  
+  /**
+   * @brief Calculate blocked quantization of DequantizeLinear. The indexing of scale/zero_point on the 
+   *        quantize axis is repeated quant_block_size times, compared to the indexing of input/output.
+   * @param[in]    process_block_count    size of axes before the quantize axis
+   * @param[in]    broadcast_dim          size on the quantize axis
+   * @param[in]    process_block_size     size of axes after the quantize axis
+   * @param[in]    quant_block_size       quantize block size along the quantize axis
+   * @param[in]    input                  1D array of flattened [D0, ..., Di, ..., Dn]
+   * @param[in]    scale                  1D array of flattened [D0, ..., ceil(Di/quant_block_size), ..., Dn].
+   *                                      i is the quantize axis.
+   * @param[out]   output                 same shape as input
+   * @param[in]    zero_point             same shape as scale
+   */
   void op(int64_t process_block_count, int64_t broadcast_dim, int64_t process_block_size,
           int64_t quant_block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) {
     auto qbsiz = static_cast<size_t>(quant_block_size);
@@ -395,16 +393,17 @@ DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2FNUZ)
 
 #endif
 
-// TODO(fajin): for 4bit and rank 2 tensor, utilize multi-threading in MlasDequantizeBlockwise
+// TODO(fajin): if the input is 4bit, x is rank 2 tensor and block_size is 2's power in [16, 256], 
+// utilize multi-threading in MlasDequantizeBlockwise
 #define DEQUANTIZE_LINEAR_APPLY_INT4(T)                                                                       \
   template <typename OutT>                                                                                    \
   struct DequantizeLinearApply<T, OutT> {                                                                     \
     /* per-tensor/layer or per-axis quantization */                                                           \
-    void op(int64_t process_block_count, int64_t broardcast_dim, int64_t process_block_size,                  \
+    void op(int64_t process_block_count, int64_t broadcast_dim, int64_t process_block_size,                  \
             const T* input, const OutT* scale, OutT* output, const T* zero_point) {                           \
       size_t input_index = 0;                                                                                 \
       for (size_t n = 0; n < static_cast<size_t>(process_block_count); n++) {                                 \
-        for (size_t bd = 0; bd < static_cast<size_t>(broardcast_dim); bd++) {                                 \
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                                 \
           size_t bd_i = bd >> 1;  /*bd / 2*/                                                                  \
           size_t bd_j = bd & 0x1; /*bd % 2*/                                                                  \
           auto zp = zero_point ? static_cast<int32_t>(zero_point[bd_i].GetElem(bd_j)) : 0;                    \
@@ -418,14 +417,14 @@ DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2FNUZ)
           }                                                                                                   \
         }                                                                                                     \
       }                                                                                                       \
-      assert(input_index == static_cast<size_t>(process_block_count * broardcast_dim * process_block_size));  \
+      assert(input_index == static_cast<size_t>(process_block_count * broadcast_dim * process_block_size));  \
     }                                                                                                         \
     /*TODO: blocked quantization */                                                                           \
-    void op(int64_t process_block_count, int64_t broardcast_dim, int64_t process_block_size,                  \
+    void op(int64_t process_block_count, int64_t broadcast_dim, int64_t process_block_size,                  \
             int64_t quant_block_size, const T* input, const OutT* scale, OutT* output, const T* zero_point) { \
       size_t input_index = 0;                                                                                 \
       for (size_t n = 0; n < static_cast<size_t>(process_block_count); n++) {                                 \
-        for (size_t bd = 0; bd < static_cast<size_t>(broardcast_dim); bd++) {                                 \
+        for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {                                 \
           size_t bd_i = bd >> 1;  /*bd / 2*/                                                                  \
           size_t bd_j = bd & 0x1; /*bd % 2*/                                                                  \
           auto zp = zero_point ? static_cast<int32_t>(zero_point[bd_i].GetElem(bd_j)) : 0;                    \
@@ -439,12 +438,63 @@ DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2FNUZ)
           }                                                                                                   \
         }                                                                                                     \
       }                                                                                                       \
-      assert(input_index == static_cast<size_t>(process_block_count * broardcast_dim * process_block_size));  \
+      assert(input_index == static_cast<size_t>(process_block_count * broadcast_dim * process_block_size));  \
     }                                                                                                         \
   };
 
-DEQUANTIZE_LINEAR_APPLY_INT4(Int4x2);
-DEQUANTIZE_LINEAR_APPLY_INT4(UInt4x2);
+void DequantizeLinearApply<Int4x2, float>::op(int64_t process_block_count, int64_t broadcast_dim, int64_t process_block_size,
+                                             int64_t quant_block_size, const Int4x2* input, const float* scale, float* output, const Int4x2* zero_point) {
+  size_t input_index = 0;
+  auto qbsiz = static_cast<size_t>(quant_block_size);
+  auto bdim = static_cast<size_t>(broadcast_dim);
+  auto pbsiz = static_cast<size_t>(process_block_size);
+
+  if (zero_point) {
+    size_t zp_index = 0;
+
+    for (size_t n = 0; n < static_cast<size_t>(process_block_count); n++) {
+      for (size_t bd = 0; bd < bdim; bd += qbsiz) {
+        size_t qb_stop = bd + qbsiz > bdim ? bdim : bd + qbsiz;
+
+        for (size_t qb = bd; qb < qb_stop; ++qb) {
+          auto q_zp_index = zp_index;
+          for (size_t bs = 0; bs < pbsiz; ++bs, ++input_index, ++q_zp_index) {
+            auto zp = static_cast<int32_t>(zero_point[q_zp_index >> 1].GetElem(q_zp_index & 0x1));
+            auto sc = static_cast<float>(scale[bs]);
+
+            int32_t val = static_cast<int32_t>(input[input_index >> 1].GetElem(input_index & 0x1));
+            *output++ = static_cast<float>(static_cast<float>(val - zp) * sc);
+          }
+        }
+
+        scale += pbsiz;
+        zp_index += pbsiz;
+      }
+    }
+  } else {
+    for (size_t n = 0; n < static_cast<size_t>(process_block_count); n++) {
+      for (size_t bd = 0; bd < bdim; bd += qbsiz) {
+        size_t qb_stop = bd + qbsiz > bdim ? bdim : bd + qbsiz;
+
+        for (size_t qb = bd; qb < qb_stop; ++qb) {
+          for (size_t bs = 0; bs < pbsiz; ++bs, ++input_index) {
+            auto sc = static_cast<float>(scale[bs]);
+
+            int32_t val = static_cast<int32_t>(input[input_index >> 1].GetElem(input_index & 0x1));
+            *output++ = static_cast<float>(static_cast<float>(val) * sc);
+          }
+        }
+
+        scale += pbsiz;
+      }
+    }
+  }
+  
+  assert(input_index == static_cast<size_t>(process_block_count * broadcast_dim * process_block_size));
+}
+
+//DEQUANTIZE_LINEAR_APPLY_INT4(Int4x2);
+//DEQUANTIZE_LINEAR_APPLY_INT4(UInt4x2);
 
 // formula is Y = (X - ZeroPoint) * Scale
 template <typename T>
