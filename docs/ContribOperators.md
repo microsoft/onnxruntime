@@ -1373,7 +1373,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16), tensor(int32)</dt>
+<dt><tt>T1</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16), tensor(int32), tensor(int4), tensor(uint4)</dt>
 <dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, 16-bit integer tensors, or 32-bit signed integer tensors.</dd>
 <dt><tt>T2</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'y', 'x_scale' to float tensors.</dd>
@@ -4832,7 +4832,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T1</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'x', 'y_scale' to float tensors.</dd>
-<dt><tt>T2</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16)</dt>
+<dt><tt>T2</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16), tensor(int4), tensor(uint4)</dt>
 <dd>Constrain 'y_zero_point' and 'y' to 8-bit and 16-bit integer tensors.</dd>
 </dl>
 
