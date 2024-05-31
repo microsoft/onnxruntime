@@ -25,19 +25,15 @@ ONNX Runtime is not explicitly tested with every variation/combination of enviro
 
 * Windows
 
-  * Tested with Windows 10 and Windows Server 2019
-  * May be compatible with Windows 7+
-  * Windows Machine Learning ([Windows](../get-started/with-windows.md))
-    * CPU: Windows 8.1+
-    * GPU: Windows 10 1709+
+  * Tested with Windows 10 and Windows Server 2022. When building the official packages, the [WINVER](https://learn.microsoft.com/en-us/cpp/porting/modifying-winver-and-win32-winnt?view=msvc-170) macro is defined as 0x0A00 which maps to Windows 10.     
 
 * Linux
-  * Tested with CentOS 7
-  * Should be compatible with [distributions supported by .NET Core](https://docs.microsoft.com/en-us/dotnet/core/install/linux)
+  * Tested with UBI8 (which is equivalent to Red Hat Enterprise Linux 8)
+  * The running environment should have Glibc library with version >= 2.28. For example, Debian 10 and newer, Red Hat Enterprise Linux 8 and newer, Ubuntu 18.10 and newer, AzureLinux(Mariner Linux 2), Fedora 29 and newer. 
 
 * Mac
-  * Tested with 10.14 (Mojave)
-  * May be compatible with 10.12+ (Sierra)
+  * Tested with 13 and 14
+  * May be compatible with 11+
 
 * Android
   * Tested with API level 28 (v9 "Pie")
@@ -48,8 +44,8 @@ ONNX Runtime is not explicitly tested with every variation/combination of enviro
   * May be compatible with any 64bit iOS version (5S+)
 
 ### Compilers
-* Windows 10: Visual C++ 2019
-* Linux: gcc>=4.8
+* Windows 10: Visual C++ 2022
+* Linux: gcc>=9
 
 ### Dependent Libraries
 * [Submodules](https://github.com/microsoft/onnxruntime/tree/main/cgmanifests)
