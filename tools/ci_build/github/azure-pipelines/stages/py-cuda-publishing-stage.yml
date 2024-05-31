@@ -24,7 +24,7 @@ stages:
       inputs:
         artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
     - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --config-file $(PYPIRC_PATH) --non-interactive --skip-existing *.whl'
-      workingDirectory: '$(Pipeline.Workspace)/build/'$(artifact_name)'
+      workingDirectory: '$(Pipeline.Workspace)/build/$(artifact_name)'
       displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
       retryCountOnTaskFailure: 3
       env:
