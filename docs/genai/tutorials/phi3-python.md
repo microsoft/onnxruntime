@@ -4,7 +4,7 @@ description: Small but mighty. Run Phi-3 with ONNX Runtime in 3 easy steps.
 has_children: false
 parent: Tutorials
 grand_parent: Generate API (Preview)
-nav_order: 1
+nav_order: 2
 ---
 
 # Run Phi-3 language models with the ONNX Runtime generate() API
