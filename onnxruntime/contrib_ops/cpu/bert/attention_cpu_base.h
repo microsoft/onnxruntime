@@ -111,8 +111,8 @@ class AttentionCPUBase : public AttentionBase {
       cpu_flash_attention(
           out,
           query,
-          present_key == nullptr ? key :*present_key,
-          present_value == nullptr ? value :*present_value,
+          present_key == nullptr ? key : *present_key,
+          present_value == nullptr ? value : *present_value,
           is_unidirectional_,
           mask_data == nullptr ? nullptr : &mask,
           static_cast<double>(scale),
@@ -122,7 +122,6 @@ class AttentionCPUBase : public AttentionBase {
           is_kv_bnsh);
       return Status::OK();
     }
-
 
     const T* past_data = past != nullptr ? past->Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->MutableData<T>() : nullptr;
@@ -166,23 +165,23 @@ class AttentionCPUBase : public AttentionBase {
   //                                1 x mask_data(B, N, S, T)
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
   template <typename T>
-  void ComputeAttentionProbs(T* attention_probs,                        // output buffer with size BxNxSxT
-                             const T* Q,                                // Q data. Its size is BxNxSxH
-                             const T* K,                                // k data. Its size is BxNxLxH
-                             T* mask_data,                              // buffer for mask data.
-                             bool causal,                               // has causal (unidirectional) mask
-                             int batch_size,                            // batch size of self-attention
-                             int sequence_length,                       // sequence length of self-attention (S)
-                             int kv_sequence_length,                    // sequence length of cross-attention (L)
-                             int past_sequence_length,                  // sequence length of past state
-                             int head_size,                             // head size of self-attention
-                             const T* past,                             // past state
-                             const T* past_key,                         // past key only (if not using past state)
-                             T* present,                                // present state
-                             T* present_key,                            // present key only (if not using present state)
-                             ThreadPool* tp,                            // thread pool
-                             float scale,                               // scale factor
-                             const T* relative_position_bias_data       // bias addition matrix with shape BxNxSxT
+  void ComputeAttentionProbs(T* attention_probs,                   // output buffer with size BxNxSxT
+                             const T* Q,                           // Q data. Its size is BxNxSxH
+                             const T* K,                           // k data. Its size is BxNxLxH
+                             T* mask_data,                         // buffer for mask data.
+                             bool causal,                          // has causal (unidirectional) mask
+                             int batch_size,                       // batch size of self-attention
+                             int sequence_length,                  // sequence length of self-attention (S)
+                             int kv_sequence_length,               // sequence length of cross-attention (L)
+                             int past_sequence_length,             // sequence length of past state
+                             int head_size,                        // head size of self-attention
+                             const T* past,                        // past state
+                             const T* past_key,                    // past key only (if not using past state)
+                             T* present,                           // present state
+                             T* present_key,                       // present key only (if not using present state)
+                             ThreadPool* tp,                       // thread pool
+                             float scale,                          // scale factor
+                             const T* relative_position_bias_data  // bias addition matrix with shape BxNxSxT
   ) const {
     const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;    // P x H

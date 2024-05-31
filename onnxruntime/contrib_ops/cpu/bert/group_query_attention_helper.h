@@ -273,7 +273,6 @@ Status PackVIntoRotaryQKV(concurrency::ThreadPool* tp,
                           int head_size,
                           const T* input,
                           T* output) {
-
   int seq_stride = head_size;
   int head_stride = sequence_length * seq_stride;
   int batch_stride = (num_heads + 2 * kv_num_heads) * head_stride;

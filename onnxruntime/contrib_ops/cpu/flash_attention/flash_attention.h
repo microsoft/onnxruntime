@@ -112,25 +112,24 @@ inline void fill_stub(scalar_t* data, scalar_t val, int64_t size) {
 
 template <typename scalar_t, int64_t q_split_size, int64_t kv_split_size>
 void cpu_flash_attention(
-    Tensor& output,          // batch x q_seq_len  x num_heads  x head_size
-    //Tensor& logsumexp,       // batch x q_seq_len  x num_heads
-    const Tensor& query,     // batch x q_seq_len  x num_heads  x head_size or
-                             // batch x num_heads  x q_seq_len  x head_size (when is_q_bnsh is True)
-    const Tensor& key,       // batch x kv_seq_len x num_heads  x head_size or
-                             // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
-    const Tensor& value,     // batch x kv_seq_len x num_heads  x head_size or
-                             // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
+    Tensor& output,  // batch x q_seq_len  x num_heads  x head_size
+    // Tensor& logsumexp,       // batch x q_seq_len  x num_heads
+    const Tensor& query,  // batch x q_seq_len  x num_heads  x head_size or
+                          // batch x num_heads  x q_seq_len  x head_size (when is_q_bnsh is True)
+    const Tensor& key,    // batch x kv_seq_len x num_heads  x head_size or
+                          // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
+    const Tensor& value,  // batch x kv_seq_len x num_heads  x head_size or
+                          // batch x num_heads  x kv_seq_len x head_size (when is_kv_bnsh is True)
     bool is_causal,
-    const Tensor* attn_mask, // batch x num_heads q_seq_len x kv_seq_len, optional
+    const Tensor* attn_mask,  // batch x num_heads q_seq_len x kv_seq_len, optional
     double scale,
     [[maybe_unused]] concurrency::ThreadPool* thread_pool,
     AllocatorPtr allocator,
     bool is_q_bnsh,
     bool is_kv_bnsh) {
-
   constexpr bool is_reduced_type = vec::is_reduced_floating_point_v<scalar_t>;
   static_assert(!is_reduced_type);
-  using accum_t = scalar_t; // Need update this for reduced type.
+  using accum_t = scalar_t;  // Need update this for reduced type.
 
   using Vec = vec::Vectorized<accum_t>;
   accum_t scaling_factor = scale > 0
@@ -142,9 +141,9 @@ void cpu_flash_attention(
   ORT_ENFORCE(value.Dim() == 4);
   ORT_ENFORCE(output.Dim() == 4);
   ORT_ENFORCE((query.Size(0) == value.Size(0)) && (key.Size(0) == value.Size(0) && query.Size(0) == output.Size(0)),
-        "Q/K/V/Output should have the same batch size");
+              "Q/K/V/Output should have the same batch size");
   ORT_ENFORCE((query.Size(3) == value.Size(3)) && (key.Size(3) == value.Size(3) && query.Size(3) == output.Size(3)),
-        "Q/K/V/Output should have the same head size");
+              "Q/K/V/Output should have the same head size");
 
   int64_t batchSize = query.Size(0);
   int64_t qSize = query.Size(is_q_bnsh ? 2 : 1);
@@ -171,19 +170,19 @@ void cpu_flash_attention(
 
   int64_t mStrideB =
       (has_attn_mask && attn_mask->Size(0) > 1)
-      ? attn_mask->Stride(0)
-      : 0;
+          ? attn_mask->Stride(0)
+          : 0;
   int64_t mStrideH =
       (has_attn_mask && attn_mask->Size(1) > 1)
-      ? attn_mask->Stride(1)
-      : 0;
+          ? attn_mask->Stride(1)
+          : 0;
   int64_t mStrideM =
       has_attn_mask ? attn_mask->Stride(2) : 0;
 
   int64_t qSplitSize = q_split_size > qSize ? qSize : q_split_size;
   int64_t kvSplitSize = kv_split_size > kvSize ? kvSize : kv_split_size;
   int64_t qSlice = (qSize - 1) / qSplitSize + 1;
-  //int64_t num_thread = concurrency::ThreadPool::DegreeOfParallelism(thread_pool);
+  // int64_t num_thread = concurrency::ThreadPool::DegreeOfParallelism(thread_pool);
 
   // const auto dtype = query.scalar_type();
   // const auto accumulate_dtype = toOpMathType(dtype);
@@ -212,7 +211,7 @@ void cpu_flash_attention(
   DUMP_CPU_TENSOR("query", query);
   DUMP_CPU_TENSOR("key", key);
   DUMP_CPU_TENSOR("value", value);
-  if (attn_mask != nullptr){
+  if (attn_mask != nullptr) {
     DUMP_CPU_TENSOR("attn_mask", *attn_mask);
   }
   printf("is_q_bnsh=%d, is_kv_bnsh=%d, scale=%f\n", is_q_bnsh, is_kv_bnsh, static_cast<float>(scale));
@@ -221,186 +220,186 @@ void cpu_flash_attention(
 #if DUMP_CPU_TENSOR_LEVEL == 0
   double cost_per_slice = 1.0;
   concurrency::ThreadPool::TryParallelFor(
-    thread_pool, batchSize * num_head * qSlice, cost_per_slice, [&](ptrdiff_t begin, ptrdiff_t end) {
+      thread_pool, batchSize * num_head * qSlice, cost_per_slice, [&](ptrdiff_t begin, ptrdiff_t end) {
 #else
   ptrdiff_t begin = 0;
   ptrdiff_t end = batchSize * num_head * qSlice;
   {
 #endif
-    int64_t i = 0, j = 0, k = 0;
-    vec::data_index_init(begin, i, batchSize, j, num_head, k, qSlice);
+        int64_t i = 0, j = 0, k = 0;
+        vec::data_index_init(begin, i, batchSize, j, num_head, k, qSlice);
 
-    // We cannot get current thread ID from thread pool so we have to allocate in each thread.
-    // int thread_id = thread_pool->CurrentThreadId();
-    // accum_t* buf_ptr = buf_data + thread_id * size_per_thread;
-    void* buffer = allocator->Alloc(sizeof(accum_t) * size_per_thread);
-    BufferUniquePtr thread_buffer(buffer, BufferDeleter(std::move(allocator)));
+        // We cannot get current thread ID from thread pool so we have to allocate in each thread.
+        // int thread_id = thread_pool->CurrentThreadId();
+        // accum_t* buf_ptr = buf_data + thread_id * size_per_thread;
+        void* buffer = allocator->Alloc(sizeof(accum_t) * size_per_thread);
+        BufferUniquePtr thread_buffer(buffer, BufferDeleter(std::move(allocator)));
 
-    accum_t* qk_data = reinterpret_cast<accum_t*>(buffer);
-    accum_t* qk_max_data = qk_data + qSplitSize * kvSplitSize;
-    accum_t* qk_sum_data = qk_max_data + qSplitSize;
-    accum_t* dst_data = qk_sum_data + qSplitSize;
-    // scalar_t* qk_reduced_data = is_reduced_type ? buf_reduced_data + ompIdx * qSplitSize * kvSplitSize : nullptr;
+        accum_t* qk_data = reinterpret_cast<accum_t*>(buffer);
+        accum_t* qk_max_data = qk_data + qSplitSize * kvSplitSize;
+        accum_t* qk_sum_data = qk_max_data + qSplitSize;
+        accum_t* dst_data = qk_sum_data + qSplitSize;
+        // scalar_t* qk_reduced_data = is_reduced_type ? buf_reduced_data + ompIdx * qSplitSize * kvSplitSize : nullptr;
 
-    for (int64_t z = begin; z < end; z++) {
-      int64_t m = k * qSplitSize;
-      int64_t qBlockSize = std::min(qSplitSize, qSize - m);
-      // Initialize max and sum
-      fill_stub(qk_max_data, -std::numeric_limits<accum_t>::infinity(), qBlockSize);
-      fill_stub(qk_sum_data, static_cast<accum_t>(0), qBlockSize);
-      int64_t num_keys = is_causal ? std::min(m + qBlockSize, kvSize) : kvSize;
-      for (int64_t n = 0; n < num_keys; n += kvSplitSize) {
-        int64_t kvBlockSize = std::min(kvSplitSize, kvSize - n);
+        for (int64_t z = begin; z < end; z++) {
+          int64_t m = k * qSplitSize;
+          int64_t qBlockSize = std::min(qSplitSize, qSize - m);
+          // Initialize max and sum
+          fill_stub(qk_max_data, -std::numeric_limits<accum_t>::infinity(), qBlockSize);
+          fill_stub(qk_sum_data, static_cast<accum_t>(0), qBlockSize);
+          int64_t num_keys = is_causal ? std::min(m + qBlockSize, kvSize) : kvSize;
+          for (int64_t n = 0; n < num_keys; n += kvSplitSize) {
+            int64_t kvBlockSize = std::min(kvSplitSize, kvSize - n);
 
-        //              Loops          Size-per-loop
-        // A: Q         (B x N x Nq)   Sq x H  (Nq is number of Q blocks, Sq is Q block size)
-        // B: K'        (B x N x Nk)   Tk x H  (transposed H x Tk: Nk is number of K blocks, Tk is K block size)
-        // C: QxK'                     Sq x Tk
-        math::GemmEx<scalar_t, concurrency::ThreadPool>(
-            CblasNoTrans,                                         // transA
-            CblasTrans,                                           // transB
-            qBlockSize,                                           // m
-            kvBlockSize,                                          // n
-            headSize,                                             // k
-            static_cast<accum_t>(1),                              // alpha
-            q_data + i * qStrideB + j * qStrideH + m * qStrideM,  // A
-            static_cast<int>(qStrideM),                           // lda (stride of a)
-            k_data + i * kStrideB + j * kStrideH + n * kStrideN,  // B
-            static_cast<int>(kStrideN),                           // ldb (stride of b)
-            static_cast<accum_t>(0),                              // beta
-            qk_data,                                              // C
-            static_cast<int>(kvBlockSize),                        // ldc (stride of c)
-            nullptr);                                             // thread pool
+            //              Loops          Size-per-loop
+            // A: Q         (B x N x Nq)   Sq x H  (Nq is number of Q blocks, Sq is Q block size)
+            // B: K'        (B x N x Nk)   Tk x H  (transposed H x Tk: Nk is number of K blocks, Tk is K block size)
+            // C: QxK'                     Sq x Tk
+            math::GemmEx<scalar_t, concurrency::ThreadPool>(
+                CblasNoTrans,                                         // transA
+                CblasTrans,                                           // transB
+                qBlockSize,                                           // m
+                kvBlockSize,                                          // n
+                headSize,                                             // k
+                static_cast<accum_t>(1),                              // alpha
+                q_data + i * qStrideB + j * qStrideH + m * qStrideM,  // A
+                static_cast<int>(qStrideM),                           // lda (stride of a)
+                k_data + i * kStrideB + j * kStrideH + n * kStrideN,  // B
+                static_cast<int>(kStrideN),                           // ldb (stride of b)
+                static_cast<accum_t>(0),                              // beta
+                qk_data,                                              // C
+                static_cast<int>(kvBlockSize),                        // ldc (stride of c)
+                nullptr);                                             // thread pool
 
 #if DUMP_CPU_TENSOR_LEVEL > 0
-        DUMP_CPU_TENSOR_INIT();
-        printf("batch_i=%d, head_j=%d, q_block_k=%d, z=%d\n", static_cast<int>(i), static_cast<int>(j), static_cast<int>(k), static_cast<int>(z));
-        DUMP_CPU_TENSOR("QK", qk_data, qBlockSize, kvBlockSize);
+            DUMP_CPU_TENSOR_INIT();
+            printf("batch_i=%d, head_j=%d, q_block_k=%d, z=%d\n", static_cast<int>(i), static_cast<int>(j), static_cast<int>(k), static_cast<int>(z));
+            DUMP_CPU_TENSOR("QK", qk_data, qBlockSize, kvBlockSize);
 #endif
 
-        // Apply causal mask, fill unused with -inf
-        if (is_causal && num_keys - n <= kvSplitSize) {
-          for (int64_t row =0; row < qBlockSize; row++) {
-            int64_t last_col = m + row - n;
-            accum_t* row_ptr = qk_data + row * kvBlockSize;
-            fill_stub(row_ptr + last_col + 1, -std::numeric_limits<accum_t>::infinity(), kvBlockSize - last_col - 1);
-          }
-        }
+            // Apply causal mask, fill unused with -inf
+            if (is_causal && num_keys - n <= kvSplitSize) {
+              for (int64_t row = 0; row < qBlockSize; row++) {
+                int64_t last_col = m + row - n;
+                accum_t* row_ptr = qk_data + row * kvBlockSize;
+                fill_stub(row_ptr + last_col + 1, -std::numeric_limits<accum_t>::infinity(), kvBlockSize - last_col - 1);
+              }
+            }
 
-        if (has_attn_mask) {
-          // Update attention weights with attention mask
-          // And apply scaling factor
-          // qk <- qk * scaling + attn_mask
-          for (int64_t row = 0; row < qBlockSize; ++row) {
-            onnxruntime::vec::map2<accum_t>(
-                [scaling_factor](Vec x, Vec y) {
-                  return x * Vec(scaling_factor) + y;
-                },
-                qk_data + row * kvBlockSize,
-                qk_data + row * kvBlockSize,
-                mask_data + i * mStrideB + j * mStrideH + (m + row) * mStrideM + n,
-                kvBlockSize);
-          }
-        }
+            if (has_attn_mask) {
+              // Update attention weights with attention mask
+              // And apply scaling factor
+              // qk <- qk * scaling + attn_mask
+              for (int64_t row = 0; row < qBlockSize; ++row) {
+                onnxruntime::vec::map2<accum_t>(
+                    [scaling_factor](Vec x, Vec y) {
+                      return x * Vec(scaling_factor) + y;
+                    },
+                    qk_data + row * kvBlockSize,
+                    qk_data + row * kvBlockSize,
+                    mask_data + i * mStrideB + j * mStrideH + (m + row) * mStrideM + n,
+                    kvBlockSize);
+              }
+            }
 
-        // Update coefficients with Softmax
-        accum_t tmp_max = 0, tmp_sum = 0, exp_tmp = 0;
-        for (int64_t row = 0; row < qBlockSize; ++row) {
-          if (has_attn_mask) {
-            // max per row
-            tmp_max = onnxruntime::vec::reduce_all<accum_t>(
-                [](Vec& x, Vec& y) { return onnxruntime::vec::maximum(x, y); },
-                qk_data + row * kvBlockSize,
-                kvBlockSize);
-          } else {
-            // apply scaling factor and max per row in fusion
-            _mul_reduce_max_fusion_kernel(
-                qk_data + row * kvBlockSize,
-                scaling_factor,
+            // Update coefficients with Softmax
+            accum_t tmp_max = 0, tmp_sum = 0, exp_tmp = 0;
+            for (int64_t row = 0; row < qBlockSize; ++row) {
+              if (has_attn_mask) {
+                // max per row
+                tmp_max = onnxruntime::vec::reduce_all<accum_t>(
+                    [](Vec& x, Vec& y) { return onnxruntime::vec::maximum(x, y); },
+                    qk_data + row * kvBlockSize,
+                    kvBlockSize);
+              } else {
+                // apply scaling factor and max per row in fusion
+                _mul_reduce_max_fusion_kernel(
+                    qk_data + row * kvBlockSize,
+                    scaling_factor,
+                    static_cast<int>(kvBlockSize),
+                    qk_data + row * kvBlockSize,
+                    tmp_max);
+              }
+              tmp_max = qk_max_data[row] > tmp_max ? qk_max_data[row] : tmp_max;
+
+#if DUMP_CPU_TENSOR_LEVEL > 0
+              printf("row=%d, tmp_max=%f\n", static_cast<int>(row), static_cast<float>(tmp_max));
+#endif
+
+              // qk <- exp(qk - max) and sum per row
+              tmp_sum = tmp_max;
+              _exp_reduce_sum_fusion_kernel(
+                  qk_data + row * kvBlockSize,
+                  static_cast<int>(kvBlockSize),
+                  qk_data + row * kvBlockSize,
+                  tmp_sum);
+
+              // exp_tmp <- exp(max[row] - max)
+              exp_tmp = std::exp(qk_max_data[row] - tmp_max);
+
+              // sum[row] <- sum + exp_tmp * sum[row]
+              qk_sum_data[row] = tmp_sum + exp_tmp * qk_sum_data[row];
+
+              // max[row] <- max
+              qk_max_data[row] = tmp_max;
+
+              // dst <- dst * exp_tmp
+              if (n > 0) {
+                vec::map<accum_t>(
+                    [exp_tmp](Vec x) { return x * Vec(exp_tmp); },
+                    dst_data + row * headSize, dst_data + row * headSize, headSize);
+              }
+            }
+
+            DUMP_CPU_TENSOR("dst_data", dst_data, qBlockSize, headSize);
+            math::GemmEx<scalar_t, concurrency::ThreadPool>(
+                CblasNoTrans,
+                CblasNoTrans,
+                qBlockSize,
+                headSize,  // v_head_size
+                kvBlockSize,
+                static_cast<accum_t>(1),
+                qk_data,  // conditional_data_ptr(qk_data, qk_reduced_data),
                 static_cast<int>(kvBlockSize),
-                qk_data + row * kvBlockSize,
-                tmp_max);
+                v_data + i * vStrideB + j * vStrideH + n * vStrideN,
+                static_cast<int>(vStrideN),
+                n == 0 ? static_cast<accum_t>(0) : static_cast<accum_t>(1),
+                dst_data,
+                static_cast<int>(headSize),
+                nullptr);  // thread pool
           }
-          tmp_max = qk_max_data[row] > tmp_max ? qk_max_data[row] : tmp_max;
+
+          DUMP_CPU_TENSOR("dst_data", dst_data, qBlockSize, headSize);
+
+          // dst <- dst / sum[row]
+          // reorder MHA output with strides
+          for (int64_t row = 0; row < qBlockSize; ++row) {
+            accum_t sum_reciprocal = 1 / qk_sum_data[row];
+            vec::map<scalar_t>(
+                [sum_reciprocal](Vec x) { return x * Vec(sum_reciprocal); },
+                out_data + i * oStrideB + j * oStrideH + (m + row) * oStrideM,
+                dst_data + row * headSize,
+                headSize);
+          }
 
 #if DUMP_CPU_TENSOR_LEVEL > 0
-          printf("row=%d, tmp_max=%f\n", static_cast<int>(row), static_cast<float>(tmp_max));
+          for (int64_t row = 0; row < qBlockSize; ++row) {
+            printf("out_data row %d:\n", static_cast<int>(row));
+            DUMP_CPU_TENSOR("out_data", out_data + (i * oStrideB + j * oStrideH + (m + row) * oStrideM), 1, headSize);
+          }
 #endif
 
-          // qk <- exp(qk - max) and sum per row
-          tmp_sum = tmp_max;
-          _exp_reduce_sum_fusion_kernel(
-              qk_data + row * kvBlockSize,
-              static_cast<int>(kvBlockSize),
-              qk_data + row * kvBlockSize,
-              tmp_sum);
-
-          // exp_tmp <- exp(max[row] - max)
-          exp_tmp = std::exp(qk_max_data[row] - tmp_max);
-
-          // sum[row] <- sum + exp_tmp * sum[row]
-          qk_sum_data[row] = tmp_sum + exp_tmp * qk_sum_data[row];
-
-          // max[row] <- max
-          qk_max_data[row] = tmp_max;
-
-          // dst <- dst * exp_tmp
-          if (n > 0) {
-            vec::map<accum_t>(
-              [exp_tmp](Vec x) { return x * Vec(exp_tmp); },
-              dst_data + row * headSize, dst_data + row * headSize, headSize);
-          }
+          // Move to the next query
+          vec::data_index_step(i, batchSize, j, num_head, k, qSlice);
         }
-
-        DUMP_CPU_TENSOR("dst_data", dst_data, qBlockSize, headSize);
-        math::GemmEx<scalar_t, concurrency::ThreadPool>(
-            CblasNoTrans,
-            CblasNoTrans,
-            qBlockSize,
-            headSize, // v_head_size
-            kvBlockSize,
-            static_cast<accum_t>(1),
-            qk_data,                                                 // conditional_data_ptr(qk_data, qk_reduced_data),
-            static_cast<int>(kvBlockSize),
-            v_data + i * vStrideB + j * vStrideH + n * vStrideN,
-            static_cast<int>(vStrideN),
-            n == 0 ? static_cast<accum_t>(0) : static_cast<accum_t>(1),
-            dst_data,
-            static_cast<int>(headSize),
-            nullptr);  // thread pool
       }
-
-      DUMP_CPU_TENSOR("dst_data", dst_data, qBlockSize, headSize);
-
-      // dst <- dst / sum[row]
-      // reorder MHA output with strides
-      for (int64_t row = 0; row < qBlockSize; ++row) {
-        accum_t sum_reciprocal = 1 / qk_sum_data[row];
-        vec::map<scalar_t>(
-          [sum_reciprocal](Vec x) { return x * Vec(sum_reciprocal); },
-          out_data + i * oStrideB + j * oStrideH + (m + row) * oStrideM,
-          dst_data + row * headSize,
-          headSize);
-      }
-
-#if DUMP_CPU_TENSOR_LEVEL > 0
-      for (int64_t row = 0; row < qBlockSize; ++row) {
-        printf("out_data row %d:\n", static_cast<int>(row));
-        DUMP_CPU_TENSOR("out_data", out_data + (i * oStrideB + j * oStrideH + (m + row) * oStrideM), 1, headSize);
-      }
-#endif
-
-      // Move to the next query
-      vec::data_index_step(i, batchSize, j, num_head, k, qSlice);
-    }
-  }
 #if DUMP_CPU_TENSOR_LEVEL == 0
   );
 #endif
 
   DUMP_CPU_TENSOR("output", output);
 }
-} // anonymous namespace
+}  // anonymous namespace
 
 namespace contrib {
 
@@ -440,4 +439,4 @@ void flash_attention_kernel_impl(
 }  // namespace CPU_CAPABILITY
 }  // namespace contrib
 
-} // onnxruntime
+}  // namespace onnxruntime

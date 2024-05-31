@@ -148,8 +148,6 @@ void CpuTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int 
   DumpCpuTensor<int32_t>(name, tensor, dim0, dim1, dim2);
 }
 
-
-
 void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1, int dim2, int dim3) const {
   if (!is_enabled_)
     return;
@@ -173,7 +171,6 @@ void CpuTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int 
     return;
   DumpCpuTensor<int32_t>(name, tensor, dim0 * dim1, dim2, dim3);
 }
-
 
 void CpuTensorConsoleDumper::Print(const char* name, const Tensor& tensor) const {
   if (!is_enabled_)

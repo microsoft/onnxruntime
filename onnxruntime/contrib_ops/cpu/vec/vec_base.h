@@ -10,7 +10,6 @@
 #include <climits>
 #include <complex>
 
-
 #include "contrib_ops/cpu/vec/math.h"
 #include "contrib_ops/cpu/vec/intrinsics.h"
 
@@ -621,8 +620,7 @@ inline Vectorized<T> fmsub(const Vectorized<T>& a, const Vectorized<T>& b, const
 }
 
 template <int64_t scale = 1, typename T = void>
-std::enable_if_t<scale == 1 || scale == 2 || scale == 4 || scale == 8, Vectorized<T>>
-inline gather(T const* base_addr, const Vectorized<int_same_size_t<T>>& vindex) {
+std::enable_if_t<scale == 1 || scale == 2 || scale == 4 || scale == 8, Vectorized<T>> inline gather(T const* base_addr, const Vectorized<int_same_size_t<T>>& vindex) {
   static constexpr int size = Vectorized<T>::size();
   int_same_size_t<T> index_arr[size];
   vindex.store(static_cast<void*>(index_arr));

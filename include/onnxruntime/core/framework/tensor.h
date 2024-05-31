@@ -276,12 +276,11 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
-
   int64_t NumberOfElements() const {
 #ifdef ENABLE_STRIDED_TENSORS
     ORT_ENFORCE(IsContiguous());
 #endif
-  return shape_.Size();
+    return shape_.Size();
   }
 
   size_t Dim() const {

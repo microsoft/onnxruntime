@@ -28,19 +28,19 @@ void cpu_flash_attention(
     concurrency::ThreadPool* thread_pool,
     AllocatorPtr allocator,
     bool is_q_bnsh,
-    bool is_kv_bnsh){
-        // TODO: dispatch to different kernels according to cpu capabilities (like AVX2, AVX512 etc.)
-        return cpu_default::flash_attention_kernel_impl(
-            output,
-            query,
-            key,
-            value,
-            is_causal,
-            attn_mask,
-            scale,
-            thread_pool,
-            allocator,
-            is_q_bnsh,
-            is_kv_bnsh);
-    }
+    bool is_kv_bnsh) {
+  // TODO: dispatch to different kernels according to cpu capabilities (like AVX2, AVX512 etc.)
+  return cpu_default::flash_attention_kernel_impl(
+      output,
+      query,
+      key,
+      value,
+      is_causal,
+      attn_mask,
+      scale,
+      thread_pool,
+      allocator,
+      is_q_bnsh,
+      is_kv_bnsh);
+}
 }  // namespace onnxruntime::contrib

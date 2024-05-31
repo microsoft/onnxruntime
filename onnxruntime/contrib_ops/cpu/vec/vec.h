@@ -27,9 +27,12 @@ inline Vectorized<bool> Vectorized<bool>::loadu(const void* ptr, int64_t count) 
 }
 
 template <typename VT>
-struct VecHoldType { using hold_type = typename VT::value_type; };
+struct VecHoldType {
+  using hold_type = typename VT::value_type;
+};
 
 template <typename VT>
 using vechold_type = typename VecHoldType<VT>::hold_type;
 
-}} // namespace onnxruntime::vec::CPU_CAPABILITY
+}  // namespace CPU_CAPABILITY
+}  // namespace onnxruntime::vec

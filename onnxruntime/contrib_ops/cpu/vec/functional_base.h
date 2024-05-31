@@ -51,7 +51,7 @@ struct VecReduceAllSIMD<float, Op> {
     return _mm256_cvtss_f32(v);
   }
 };
-#endif // defined(CPU_CAPABILITY_AVX2)
+#endif  // defined(CPU_CAPABILITY_AVX2)
 
 #if defined(CPU_CAPABILITY_AVX512)
 template <typename Op>
@@ -74,11 +74,11 @@ struct VecReduceAllSIMD<float, Op> {
     return _mm512_cvtss_f32(v);
   }
 };
-#endif // defined(CPU_CAPABILITY_AVX512)
+#endif  // defined(CPU_CAPABILITY_AVX512)
 
-#endif // defined(__GNUC__) && (__GNUC__ > 5) && !defined(_MSC_VER)
+#endif  // defined(__GNUC__) && (__GNUC__ > 5) && !defined(_MSC_VER)
 
-#if defined(__aarch64__)  && !defined(__CUDACC__)
+#if defined(__aarch64__) && !defined(__CUDACC__)
 template <typename Op>
 struct VecReduceAllSIMD<float, Op> {
   static inline float apply(const Op& vec_fun, const Vectorized<float>& acc_vec) {
@@ -105,7 +105,7 @@ struct VecReduceAllSIMD<float, Op> {
     return v.get_low()[0];
   }
 };
-#endif // defined(__aarch64__)
+#endif  // defined(__aarch64__)
 
 template <typename scalar_t, typename Op>
 inline scalar_t vec_reduce_all(const Op& vec_fun, const Vectorized<scalar_t>& acc_vec) {
@@ -174,4 +174,4 @@ inline void map2(
   }
 }
 
-} // namespace onnxruntime::vec
+}  // namespace onnxruntime::vec

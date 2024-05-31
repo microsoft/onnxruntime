@@ -358,6 +358,7 @@ def run_cross_batch1_headsize_8():
         hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length
     )
 
+
 def run_cross_batch2_headsize_40():
     hidden_dim = 80
     q_head_size = 40
