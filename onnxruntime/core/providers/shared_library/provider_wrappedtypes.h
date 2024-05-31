@@ -589,6 +589,14 @@ struct KernelRegistry final {
 struct PrimitiveDataTypeBase final {
   int32_t GetDataType() const { return g_host->PrimitiveDataTypeBase__GetDataType(this); }
 
+  int32_t GetNumSubElems() const {
+    return g_host->PrimitiveDataTypeBase__GetNumSubElems(this);
+  }
+
+  bool HasSubElems() const {
+    return g_host->PrimitiveDataTypeBase__HasSubElems(this);
+  }
+
   PROVIDER_DISALLOW_ALL(PrimitiveDataTypeBase)
 };
 

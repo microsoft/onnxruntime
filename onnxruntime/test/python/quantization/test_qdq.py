@@ -651,7 +651,9 @@ class TestQDQFormatConvRelu(TestQDQFormat):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def construct_model_conv_relu(self, output_model_path, input_shape, weight_shape, output_shape):
+    def construct_model_conv_relu(
+        self, output_model_path, input_shape, weight_shape, output_shape, opset=13, ir_version=7
+    ):
         #    (input)
         #      |
         #     Conv
@@ -686,19 +688,31 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             [output_tensor],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = 7  # use stable onnx ir version
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+        model.ir_version = ir_version
 
         onnx.save(model, output_model_path)
 
-    def verify_qdq(self, per_channel, activation_type, weight_type, extra_options=None):
+    def verify_qdq(
+        self,
+        per_channel,
+        activation_type,
+        weight_type,
+        extra_options=None,
+        opset=13,
+        ir_version=7,
+        rtol=1e-2,
+        atol=0.05,
+    ):
         np.random.seed(1)
         model_fp32_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_fp32.{per_channel}.onnx")
         model_qdq_path = str(
             Path(self._tmp_model_dir.name) / f"conv_relu_quant_qdq.{activation_type}.{weight_type}.{per_channel}.onnx"
         )
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
-        self.construct_model_conv_relu(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31])
+        self.construct_model_conv_relu(
+            model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31], opset=opset, ir_version=ir_version
+        )
         quantize_static(
             model_fp32_path,
             model_qdq_path,
@@ -724,7 +738,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
                 "DequantizeLinear",
             ],
         )
-        check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next())
+        check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next(), rtol=rtol, atol=atol)
 
         # If the model uses Q/DQ ops with "com.microsoft" domain (e.g., for int16 support),
         # then ensure the model has the appropriate opset import.
@@ -776,6 +790,16 @@ class TestQDQFormatConvRelu(TestQDQFormat):
         self.verify_qdq(True, QuantType.QInt16, QuantType.QInt16, {"UseQDQContribOps": True})
         self.verify_qdq(True, QuantType.QUInt16, QuantType.QUInt8, {"UseQDQContribOps": True})
         self.verify_qdq(True, QuantType.QInt16, QuantType.QInt8, {"UseQDQContribOps": True})
+
+        # 4-bit QDQ
+        self.verify_qdq(False, QuantType.QInt16, QuantType.QInt4, opset=21, ir_version=10, atol=0.4)  # per-tensor
+        self.verify_qdq(True, QuantType.QInt16, QuantType.QInt4, opset=21, ir_version=10)  # per-channel
+        self.verify_qdq(
+            False, QuantType.QInt16, QuantType.QInt4, {"UseQDQContribOps": True}, opset=21, ir_version=10, atol=0.4
+        )  # per-tensor
+        self.verify_qdq(
+            True, QuantType.QInt16, QuantType.QInt4, {"UseQDQContribOps": True}, opset=21, ir_version=10
+        )  # per-channel
 
     def test_quantize_relu_conv(self):
         float_model_path = str(Path(self._tmp_model_dir.name) / "float_relu_convs_model.onnx")
@@ -1489,6 +1513,184 @@ class TestQDQMixedPrecision(TestQDQFormat):
         check_model_correctness(self, f32_model_path, qdq_mixed_model_path, data_reader.get_next())
         data_reader.rewind()
         check_model_correctness(self, f32_model_path, qdq_model_path, data_reader.get_next())
+
+
+class TestQDQ4bit(TestQDQFormat):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.qdq.4bit_")
+
+        # Note: swap with the commented line if you want to see the models in local test dir.
+        cls._tmp_dir_path = cls._tmp_model_dir.name
+        # cls._tmp_dir_path = "."
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
+    def build_conv_test_model(
+        self,
+        inp_shape: list[int],
+        weight_data: np.ndarray,
+        bias_data: np.ndarray,
+    ):
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, inp_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx.TensorProto.FLOAT, None)
+        weight = onnx.numpy_helper.from_array(weight_data, "weight")
+        bias = onnx.numpy_helper.from_array(bias_data, "bias")
+
+        conv_node = onnx.helper.make_node("Conv", ["input_0", "weight", "bias"], ["output_0"], name="Conv0")
+        graph = onnx.helper.make_graph(
+            [conv_node],
+            "Convf32",
+            [input_0],
+            [output_0],
+            initializer=[weight, bias],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+
+        return onnx.shape_inference.infer_shapes(model)
+
+    def test_int4_qdq_conv(self):
+        """
+        Test quantization of int4 conv weight.
+        """
+        float_model_path = os.path.join(self._tmp_dir_path, "conv_int4.f32.onnx")
+        qdq_model_path = os.path.join(self._tmp_dir_path, "conv_int4.qdq.onnx")
+
+        inp_shape = [1, 2, 100, 100]
+        weight_shape = [2, 2, 20, 20]
+
+        # range = 3.0, scale = 3/15, zp = 0
+        weight_data = np.linspace(-1.5, 1.5, num=1600, dtype=np.float32).reshape(weight_shape)
+        bias_data = np.array([-10.0, 10.0], dtype=np.float32)
+        float_model = self.build_conv_test_model(inp_shape, weight_data, bias_data)
+
+        onnx.checker.check_model(float_model, True)
+        onnx.save_model(float_model, float_model_path)
+
+        data_reader = self.input_feeds(3, {"input_0": inp_shape}, np.float32)
+
+        tensor_quant_overrides = {
+            "weight": [{"quant_type": QuantType.QInt4}],  # Quantize weights to INT4
+        }
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            activation_type=QuantType.QUInt16,
+            weight_type=QuantType.QUInt8,
+            op_types_to_quantize=[node.op_type for node in float_model.graph.node],
+            extra_options={
+                "TensorQuantOverrides": tensor_quant_overrides,
+            },
+        )
+
+        qdq_node_counts = {"QuantizeLinear": 2, "DequantizeLinear": 4}
+        check_op_type_count(self, qdq_model_path, **qdq_node_counts)
+
+        qdq_model = onnx.load_model(qdq_model_path)
+        onnx.checker.check_model(qdq_model, True)
+
+        initializers = {init.name: init for init in qdq_model.graph.initializer}
+
+        # Check the the weight's zero-point data type is INT4 and has expected value
+        zp_val = 0
+        weight_zp_init = initializers["weight_zero_point"]
+        self.assertEqual(weight_zp_init.data_type, onnx.TensorProto.INT4)
+        self.assertEqual(weight_zp_init.int32_data[0], zp_val)
+
+        # Check for the expected scale value
+        weight_scale_init = initializers["weight_scale"]
+        scale_val = np.float32(3.0 / 15)
+        self.assertEqual(weight_scale_init.data_type, onnx.TensorProto.FLOAT)
+        self.assertEqual(weight_scale_init.float_data[0], scale_val)
+
+        # Check that INT4 weights take up approximately 50% the size of INT8 weights.
+        # Using protobuf's ByteSize() is not exact because it includes other fields in the proto message.
+        unpacked_size = 1
+        for dim in weight_shape:
+            unpacked_size *= dim
+
+        weight_quant_init = initializers["weight_quantized"]
+        size_ratio = weight_quant_init.ByteSize() / unpacked_size
+        self.assertLess(size_ratio, 0.55)
+
+        # Check that the quantized weight values are correct.
+        if weight_quant_init.HasField("raw_data"):
+            float_data = weight_data.flatten().tolist()
+            for index, float_val in enumerate(float_data):
+                expected_int4_val = np.clip(np.float32(float_val / scale_val).round() + zp_val, -8, 7)
+                int4_pair = onnx.subbyte.unpack_single_4bitx2(weight_quant_init.raw_data[index >> 1], True)
+                int4_val = int4_pair[index & 0x1]
+
+                self.assertEqual(np.float32(int4_val), expected_int4_val)
+
+    def test_int4_qdq_per_channel_conv(self):
+        """
+        Test per-channel quantization of int4 conv weight.
+        """
+        float_model_path = os.path.join(self._tmp_dir_path, "conv_int4_per_chan.f32.onnx")
+        qdq_model_path = os.path.join(self._tmp_dir_path, "conv_int4_per_chan.qdq.onnx")
+
+        inp_shape = [1, 2, 100, 100]
+        weight_shape = [2, 2, 20, 20]
+
+        weight_data = np.linspace(-1.5, 1.5, num=1600, dtype=np.float32).reshape(weight_shape)
+        bias_data = np.array([-10.0, 10.0], dtype=np.float32)
+        float_model = self.build_conv_test_model(inp_shape, weight_data, bias_data)
+
+        onnx.checker.check_model(float_model, True)
+        onnx.save_model(float_model, float_model_path)
+
+        data_reader = self.input_feeds(3, {"input_0": inp_shape}, np.float32)
+
+        per_chan_axis = 0
+        tensor_quant_overrides = {
+            "weight": [{"quant_type": QuantType.QInt4, "axis": per_chan_axis}],  # Quantize weight to INT4 (per-channel)
+        }
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            activation_type=QuantType.QUInt16,
+            weight_type=QuantType.QUInt8,
+            op_types_to_quantize=[node.op_type for node in float_model.graph.node],
+            extra_options={
+                "TensorQuantOverrides": tensor_quant_overrides,
+            },
+        )
+
+        qdq_node_counts = {"QuantizeLinear": 2, "DequantizeLinear": 4}
+        check_op_type_count(self, qdq_model_path, **qdq_node_counts)
+
+        qdq_model = onnx.load_model(qdq_model_path)
+        onnx.checker.check_model(qdq_model, True)
+
+        initializers = {init.name: init for init in qdq_model.graph.initializer}
+
+        # Check that the weight's zero-point data type is INT4 and has 2 elems
+        weight_zp_init = initializers["weight_zero_point"]
+        self.assertEqual(weight_zp_init.data_type, onnx.TensorProto.INT4)
+        self.assertEqual(weight_zp_init.dims[0], 2)
+
+        # Check that the weight's scale data type is FLOAT and has 2 elems
+        weight_scale_init = initializers["weight_scale"]
+        self.assertEqual(weight_scale_init.data_type, onnx.TensorProto.FLOAT)
+        self.assertEqual(weight_scale_init.dims[0], 2)
+
+        # Check that INT4 weights take up approximately 50% the size of INT8 weights.
+        # Using protobuf's ByteSize() is not exact because it includes other fields in the proto message.
+        unpacked_size = 1
+        for dim in weight_shape:
+            unpacked_size *= dim
+
+        weight_quant_init = initializers["weight_quantized"]
+        size_ratio = weight_quant_init.ByteSize() / unpacked_size
+        self.assertLess(size_ratio, 0.55)
 
 
 if __name__ == "__main__":

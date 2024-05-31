@@ -6,6 +6,7 @@
 #include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/node_unit.h"
+#include "core/framework/int4.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
@@ -1362,19 +1363,21 @@ TEST(QDQTransformerTests, DoubleQDQPairsRemover_DuplicateLastDQs) {
 // Runs a test that checks if DQ -> Split -> Q (many) is replaced with just Split.
 template <typename QuantType>
 static void RunDropSplitQDQTestCase(const std::vector<int64_t>& input_shape, int64_t axis,
-                                    bool all_same_quant_params, bool use_contrib_qdq = false) {
-  auto check_graph = [all_same_quant_params, use_contrib_qdq](InferenceSessionWrapper& session) {
+                                    bool all_same_quant_params, bool use_contrib_qdq = false,
+                                    bool should_not_drop = false) {
+  auto check_graph = [all_same_quant_params, use_contrib_qdq, should_not_drop](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
-    int expected_q_ops = all_same_quant_params ? 0 : 3;
-    int expected_dq_ops = all_same_quant_params ? 0 : 1;
+    int expected_q_ops = all_same_quant_params && !should_not_drop ? 0 : 3;
+    int expected_dq_ops = all_same_quant_params && !should_not_drop ? 0 : 1;
     EXPECT_EQ(op_to_count["Split"], 1);
     EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], expected_q_ops);
     EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expected_dq_ops);
   };
 
   std::vector<int> opsets = {12, 13, 18, 19, 21};
-  if constexpr (std::is_same_v<QuantType, uint16_t> || std::is_same_v<QuantType, int16_t>) {
+  if constexpr (std::is_same_v<QuantType, uint16_t> || std::is_same_v<QuantType, int16_t> ||
+                std::is_same_v<QuantType, Int4x2> || std::is_same_v<QuantType, UInt4x2>) {
     opsets = std::vector<int>{21};
   }
 
@@ -1402,6 +1405,11 @@ TEST(QDQTransformerTests, Split) {
     RunDropSplitQDQTestCase<uint16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
     RunDropSplitQDQTestCase<int16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, !USE_CONTRIB_QDQ_OPS);
     RunDropSplitQDQTestCase<uint16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, !USE_CONTRIB_QDQ_OPS);
+
+    // Do not yet support int4 Split, so should not drop
+    constexpr bool SHOULD_NOT_DROP = true;
+    RunDropSplitQDQTestCase<Int4x2>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, !USE_CONTRIB_QDQ_OPS, SHOULD_NOT_DROP);
+    RunDropSplitQDQTestCase<UInt4x2>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, !USE_CONTRIB_QDQ_OPS, SHOULD_NOT_DROP);
   }
 
   // Test cases that DO NOT drop Q/DQ ops from DQ -> Split -> Q (many)

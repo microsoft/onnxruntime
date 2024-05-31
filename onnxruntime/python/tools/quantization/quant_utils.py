@@ -21,7 +21,7 @@ from onnx.reference import ReferenceEvaluator
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 
 try:
-    from onnx.reference.custom_element_types import float8e4m3fn
+    from onnx.reference.custom_element_types import float8e4m3fn, int4, uint4
 except ImportError:
     float8e4m3fn = None
 
@@ -81,6 +81,8 @@ class QuantType(Enum):
     QFLOAT8E4M3FN = 2
     QInt16 = 3
     QUInt16 = 4
+    QInt4 = 5
+    QUInt4 = 6
 
     def __str__(self):
         return self.name
@@ -104,6 +106,10 @@ class QuantType(Enum):
             return TensorProto.INT16
         if self == QuantType.QFLOAT8E4M3FN:
             return TensorProto.FLOAT8E4M3FN
+        if self == QuantType.QUInt4:
+            return TensorProto.UINT4
+        if self == QuantType.QInt4:
+            return TensorProto.INT4
         raise ValueError(f"Unexpected value qtype={self!r}.")
 
 
@@ -128,6 +134,8 @@ ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.INT16: numpy.dtype("int16"),
     onnx_proto.TensorProto.UINT16: numpy.dtype("uint16"),
     onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
+    onnx_proto.TensorProto.INT4: int4,
+    onnx_proto.TensorProto.UINT4: uint4,
 }
 
 ONNX_INT_TYPE_RANGE = {
@@ -135,6 +143,8 @@ ONNX_INT_TYPE_RANGE = {
     onnx_proto.TensorProto.INT8: (numpy.array(-128, dtype=numpy.int8), numpy.array(127, dtype=numpy.int8)),
     onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(65535, dtype=numpy.uint16)),
     onnx_proto.TensorProto.INT16: (numpy.array(-32768, dtype=numpy.int16), numpy.array(32767, dtype=numpy.int16)),
+    onnx_proto.TensorProto.UINT4: (numpy.array(0, dtype=uint4), numpy.array(15, dtype=uint4)),
+    onnx_proto.TensorProto.INT4: (numpy.array(-8, dtype=int4), numpy.array(7, dtype=int4)),
 }
 
 ONNX_INT_TYPE_SYMMETRIC_RANGE = {
@@ -202,6 +212,35 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         )
         ref = ReferenceEvaluator(onnx_model)
         return _check_type(ref.run(None, {"X": arr, "scale": scale})[0])
+    elif qType in (
+        onnx_proto.TensorProto.INT4,
+        onnx_proto.TensorProto.UINT4,
+    ):
+        if arr.dtype == numpy.float32:
+            onnx_type = TensorProto.FLOAT
+        elif arr.dtype == numpy.float16:
+            onnx_type = TensorProto.FLOAT16
+        else:
+            raise ValueError(f"Unexpected dtype {arr.dtype}.")
+        onnx_model = make_model(
+            make_graph(
+                [
+                    make_node("QuantizeLinear", ["X", "scale", "zero_point"], ["Y"]),
+                ],
+                "qu",
+                [
+                    make_tensor_value_info("X", onnx_type, None),
+                    make_tensor_value_info("scale", onnx_type, None),
+                    make_tensor_value_info("zero_point", qType, None),
+                ],
+                [make_tensor_value_info("Y", qType, None)],
+            )
+        )
+        # The reference ONNX implementation of QuantizeLinear<int4> returns "unpacked" int8 numpy values
+        # because numpy cannot represent 4bit values (although ONNX TensorProto has no problem with this).
+        # These "unpacked" int8 values are correctly re-packed when passed to onnx.make_tensor().
+        ref = ReferenceEvaluator(onnx_model)
+        return _check_type(ref.run(None, {"X": arr, "scale": scale, "zero_point": zero_point})[0])
     else:
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
@@ -372,7 +411,14 @@ def quantize_data(
             )
         return _check_type(rmin, rmax, zero_point, scale, quantized_data, zero_point_index=2)
 
-    if qType in (TensorProto.INT8, TensorProto.UINT8, TensorProto.INT16, TensorProto.UINT16):
+    if qType in (
+        TensorProto.INT8,
+        TensorProto.UINT8,
+        TensorProto.INT16,
+        TensorProto.UINT16,
+        TensorProto.INT4,
+        TensorProto.UINT4,
+    ):
         if len(data):
             qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
             zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
