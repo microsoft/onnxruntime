@@ -9,10 +9,10 @@ nav_order: 6
 Using device tensors can be a crucial part in building efficient AI pipelines, especially on heterogenous memory systems.
 A typical example of such systems is any PC with a dedicated GPU.
 While a [recent GPU](https://www.techpowerup.com/gpu-specs/geforce-rtx-4090.c3889) itself has a memory bandwidth of about 1TB/s, the interconnect [PCI 4.0 x16](https://de.wikipedia.org/wiki/PCI_Express) to the CPU can often be the limiting factor with only ~32GB/s.
-Therefore it is often best to keep data local to the GPU as much as possible or hide slow memory traffic behind computation as the GPU is able to execute compute and PCI memory traffic simultaneous.
+Therefore it is often best to keep data local to the GPU as much as possible or hide slow memory traffic behind computation as the GPU is able to execute compute and PCI memory traffic simultaneously.
 
 A typical use case for these scenarios where memory is already local to the inference device would be a GPU accelerated video processing of an encoded video stream which can be decoded with GPU decoders.
-Another common case are iterative network like diffusion networks or large language models for which intermediate tensors do not have to be copied back to CPU.
+Another common case are iterative networks like diffusion networks or large language models for which intermediate tensors do not have to be copied back to CPU.
 Tile based inference for high resolution images is another use-case where custom memory management is important to reduce GPU idle times during PCI copies. Rather than doing sequential processing of each tile it is possible to overlap PCI copies and processing on the GPU and pipeline work in that matter.
 
 <img src="../../images/pipeline_pci_processing.png" alt="Image of sequential PCI->Processing->PCI and another image of it being interleaved."/>
@@ -78,12 +78,12 @@ Enabling asynchronous execution in python is possible through the same [run opti
 
 ## DirectML
 
-Acheiving the same behaviour is possible through DirectX resources.
-To run asynchronous processing it is crucial to do the same manamgemnt of execution streams as needed with CUDA.
-For DirectX this means managing the device and it's command queue which is possible through the C API.
-Details of how to set the compute command queue are documented with the usaged of [`SessionOptionsAppendExecutionProvider_DML1`](../execution-providers/DirectML-ExecutionProvider.md#usage).
+Achieving the same behavior is possible through DirectX resources.
+To run asynchronous processing, it is crucial to do the same management of execution streams as needed with CUDA.
+For DirectX, this means managing the device and its command queue, which is possible through the C API.
+Details of how to set the compute command queue are documented with the usage of [`SessionOptionsAppendExecutionProvider_DML1`](../execution-providers/DirectML-ExecutionProvider.md#usage).
 
-If separate command queues are used for copy and compute it is possible to overlap PCI copies and execution as well as make execution asynchronous.
+If separate command queues are used for copy and compute, it is possible to overlap PCI copies and execution as well as make execution asynchronous.
 
 ```c++
 #include <onnxruntime/dml_provider_factory.h>
@@ -113,7 +113,7 @@ A [single file sample](https://github.com/ankan-ban/HelloOrtDml/blob/main/Main.c
 
 ### Python API
 
-Although allocating DirectX inputs from python might not be a big use case the API is available as well. For intermediate network caches e.g. KV caching in LLMs this can be very beneficial.
+Although allocating DirectX inputs from Python might not be a major use case, the API is available. This can prove to be very beneficial, especially for intermediate network caches, such as key-value caching in large language models (LLMs).
 
 ```python
 import onnxruntime as ort

@@ -31,7 +31,7 @@ Following are code snippets in various languages demonstrating the usage of this
 
    Notice that in the above code sample the output tensor is not allocated before binding it, rather an `Ort::MemoryInfo` is bound as output.
 This is an effective way to let the session allocate the tensor depending on the needed shapes.
-Especially for date dependent shapes or dynamic shapes this can be a great solution to get the right allocation.
+Especially for data dependent shapes or dynamic shapes this can be a great solution to get the right allocation.
 However in case the output shape is known and the output tensor should be reused it is beneficial to bind an `Ort::Value` to the output as well. This can be allocated using the session allocator or external memory. Please refer to the [device tensor docs](../device-tensor.md) for more details:
 
    ```c++
