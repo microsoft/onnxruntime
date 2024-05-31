@@ -40,12 +40,6 @@ parameters:
 
 resources:
   repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
   - repository: LLaMa2Onnx
     type: Github
     endpoint: Microsoft
@@ -55,7 +49,7 @@ resources:
 variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
-    value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240530.3
   - name: linux_trt_version
     value: 10.0.1.6-1.cuda11.8
   - name: Repository
@@ -113,7 +107,7 @@ stages:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+          docker run -e --rm \
             --volume /data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
