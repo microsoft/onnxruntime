@@ -4,8 +4,6 @@ parameters:
   default: '11.8'
 - name: docker_base_image
   type: string
-- name: linux_trt_version
-  type: string
 - name: buildJava
   type: boolean
 - name: buildNodejs
@@ -102,10 +100,9 @@ stages:
       submodules: recursive
     - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-        Context: tools/ci_build/github/linux/docker
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/gpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/default/gpu
         DockerBuildArgs: "
-          --network=host
           --build-arg BASEIMAGE=${{ variables.docker_base_image }}
           --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
           --build-arg BUILD_UID=$( id -u )
@@ -162,38 +159,34 @@ stages:
         value: '11'
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
         value: '12'
+    - name: linux_trt_version
+      ${{ if eq(parameters.CudaVersion, '11.8') }}:
+        value: 10.0.1.6-1.cuda11.8
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        value: 10.0.1.6-1.cuda12.4
+    - name: docker_base_image
+      ${{ if eq(parameters.CudaVersion, '11.8') }}:
+        value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
       submodules: false
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
-      submodules: false
-    - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux
       submodules: false
 
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
 
-    - script: |
-        set -e -x
-        cd $(Build.SourcesDirectory)
-        mv manylinux onnxruntime
-        ls
-
-    - template: ../templates/with-container-registry-steps.yml
+    - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Steps:
-        - script: |
-            tools/ci_build/get_docker_image.py \
-              --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda \
-              --context tools/ci_build/github/linux/docker \
-              --docker-build-args "--network=host --build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ parameters.linux_trt_version }} --build-arg BUILD_UID=$( id -u )" \
-              --container-registry onnxruntimebuildcache \
-              --multiple_repos \
-              --repository onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
-          displayName: "Get onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda"
-          workingDirectory: $(Build.SourcesDirectory)/onnxruntime
-        ContainerRegistry: onnxruntimebuildcache
+        ScriptName: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/get_docker_image.py
+        Dockerfile: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/gpu/Dockerfile
+        Context: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/gpu
+        DockerBuildArgs: "--build-arg BASEIMAGE=${{ variables.docker_base_image }} --build-arg TRT_VERSION=${{ variables.linux_trt_version }} --build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
+        UpdateDepsTxt: false
 
     - template: ../templates/set-version-number-variables-step.yml
       parameters:
