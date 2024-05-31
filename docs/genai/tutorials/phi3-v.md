@@ -49,7 +49,7 @@ If you have an NVIDIA GPU, that will give the best performance right now.
 
 The models will also run on CPU, but they will be slower.
 
-Support for Windows machines with GPUs other than NVIDIA ones is coming soon!
+Support for Windows machines with GPUs other than NVIDIA is coming soon!
  
 **Note: Only one package and model is required based on your hardware. That is, only execute the steps for one of the following sections**
 
