@@ -4,7 +4,7 @@ In some scenarios, kernels written in Triton can be more performant than CUDA or
 
 ## Write and compile a Triton kernel
 ### As a new ONNX Runtime operator
-We first need a simple kernel written in Triton – which we've placed in [`onnxruntime/contrib_ops/cuda/my_triton_kernel.py`](onnxruntime/contrib_ops/cuda/my_triton_kernel.py):
+We first need a simple kernel written in Triton – which we've placed in [`onnxruntime/contrib_ops/cuda/my_triton_kernel.py`](../onnxruntime/contrib_ops/cuda/my_triton_kernel.py):
 
 ```python
 @triton.jit
@@ -39,7 +39,7 @@ endif()
 
 Now, if you build ONNX Runtime with the `--use_triton_kernel` flag, this Triton softmax kernel will be compiled and combined into `libonnxruntime_providers_rocm.so` for ROCm or `libonnxruntime_providers_cuda.so` for CUDA, but will _not_ yet be available in any operator.
 
-To do that, we have to write some wrapper code in C++ that defines and registers an operator, and calls the compiled Triton kernel when run. In our example, this code is found in [`onnxruntime/contrib_ops/cuda/my_triton_kernel.h`](onnxruntime/contrib_ops/cuda/my_triton_kernel.h):
+To do that, we have to write some wrapper code in C++ that defines and registers an operator, and calls the compiled Triton kernel when run. In our example, this code is found in [`onnxruntime/contrib_ops/cuda/my_triton_kernel.h`](../onnxruntime/contrib_ops/cuda/my_triton_kernel.h):
 
 ```cpp
 // my_triton_kernel.h
@@ -64,7 +64,7 @@ class MyTritonKernel final : public onnxruntime::cuda::CudaKernel {
 }  // namespace onnxruntime
 ```
 
-… and in [`onnxruntime/contrib_ops/cuda/my_triton_kernel.cc`](onnxruntime/contrib_ops/cuda/my_triton_kernel.cc)
+… and in [`onnxruntime/contrib_ops/cuda/my_triton_kernel.cc`](../onnxruntime/contrib_ops/cuda/my_triton_kernel.cc)
 ```cpp
 // my_triton_kernel.cc
 #include "contrib_ops/cuda/my_triton_kernel.h"
@@ -148,7 +148,7 @@ Status MyTritonKernel<T>::ComputeInternal(OpKernelContext* ctx) const {
 
 This operator then must be registered in two other files, so that ONNX Runtime is aware of it.
 
-First, in [`onnxruntime/contrib_ops/cuda/cuda_contrib_kernels.cc`](onnxruntime/contrib_ops/cuda/cuda_contrib_kernels.cc):
+First, in [`onnxruntime/contrib_ops/cuda/cuda_contrib_kernels.cc`](../onnxruntime/contrib_ops/cuda/cuda_contrib_kernels.cc):
 ```cpp
 namespace onnxruntime {
 namespace contrib {
@@ -173,7 +173,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
 }  // namespace onnxruntime
 ```
 
-Then in [`onnxruntime/core/graph/contrib_ops/contrib_defs.cc`](onnxruntime/core/graph/contrib_ops/contrib_defs.cc):
+Then in [`onnxruntime/core/graph/contrib_ops/contrib_defs.cc`](../onnxruntime/core/graph/contrib_ops/contrib_defs.cc):
 ```cpp
 void RegisterContribSchemas() {
   ...
@@ -267,7 +267,7 @@ When compiling ONNX Runtime with `--use_triton_kernel` flag, this Triton softmax
 
 The next step we need is to implement a C++ operator that will actually call these Triton kernels.
 
-Just as with `TunableOp`s with CUDA kernels, we implement a function that returns a list of all implemented variations of the Triton kernel. We do this in [`onnxruntime/core/providers/rocm/math/softmax_triton.cuh`](onnxruntime/core/providers/rocm/math/softmax_triton.cuh):
+Just as with `TunableOp`s with CUDA kernels, we implement a function that returns a list of all implemented variations of the Triton kernel. We do this in [`onnxruntime/core/providers/rocm/math/softmax_triton.cuh`](../onnxruntime/core/providers/rocm/math/softmax_triton.cuh):
 
 ```cpp
 template <typename T, typename OutputT>
@@ -292,7 +292,7 @@ auto GetSoftmaxTritonOps() {
 }
 ```
 
-We then register this list of kernels with the main softmax `TunableOp`, defined in [`onnxruntime/core/providers/rocm/math/softmax_tunable_op.cuh`](onnxruntime/core/providers/rocm/math/softmax_tunable_op.cuh):
+We then register this list of kernels with the main softmax `TunableOp`, defined in [`onnxruntime/core/providers/rocm/math/softmax_tunable_op.cuh`](../onnxruntime/core/providers/rocm/math/softmax_tunable_op.cuh):
 ```cpp
 template <typename InputT, typename OutputT, typename AccT>
 class SoftmaxTunableOp : public tunable::TunableOp<SoftmaxParams<InputT, OutputT>> {
