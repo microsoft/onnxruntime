@@ -11,7 +11,7 @@ stages:
         steps:
           - checkout: none
           - download: build
-            displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+            displayName: 'Download Pipeline Artifact - onnxruntime_gpu'
             artifact: 'onnxruntime_gpu'
           - task: UsePythonVersion@0
             displayName: 'Use Python 3.x'
