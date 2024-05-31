@@ -1,32 +1,32 @@
 parameters:
-  - name: artifact_feed
-    type: string
-    default: 'onnxruntime-cuda-12'
+- name: artifact_feed
+  type: string
+  default: 'onnxruntime-cuda-12'
 
 stages:
-  - stage: Python_Publishing_GPU
-    jobs:
-      - job:
-        pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-        variables:
-            artifact_name: 'onnxruntime_gpu'
-        steps:
-          - checkout: none
-          - download: build
-            displayName: 'Download Pipeline Artifact - Python Wheels'
-            artifact: '$(artifact_name)'
-          - task: UsePythonVersion@0
-            displayName: 'Use Python 3.x'
-          - script: 'pip install twine==3.4.2'
-            displayName: 'Install Twine'
-          - task: TwineAuthenticate@1
-            displayName: 'Twine Authenticate '
-            inputs:
-              artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
-          - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --config-file $(PYPIRC_PATH) --non-interactive --skip-existing *.whl'
-            workingDirectory: '$(Pipeline.Workspace)/build/'$(artifact_name)'
-            displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
-            retryCountOnTaskFailure: 3
-            env:
-              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+- stage: Python_Publishing_GPU
+  jobs:
+  - job:
+    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    variables:
+      artifact_name: onnxruntime_gpu
+    steps:
+    - checkout: none
+    - download: build
+      displayName: 'Download Pipeline Artifact - Python Wheels'
+      artifact: '$(artifact_name)'
+    - task: UsePythonVersion@0
+      displayName: 'Use Python 3.x'
+    - script: 'pip install twine==3.4.2'
+      displayName: 'Install Twine'
+    - task: TwineAuthenticate@1
+      displayName: 'Twine Authenticate '
+      inputs:
+        artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
+    - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --config-file $(PYPIRC_PATH) --non-interactive --skip-existing *.whl'
+      workingDirectory: '$(Pipeline.Workspace)/build/'$(artifact_name)'
+      displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
+      retryCountOnTaskFailure: 3
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
