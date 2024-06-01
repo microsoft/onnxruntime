@@ -30,15 +30,16 @@ else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
 
-ENV PATH /usr/lib/jvm/msopenjdk-11/bin:$PATH
+
 
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
-ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
+
 ENV CUDAHOSTCXX /opt/rh/gcc-toolset-12/root/usr/bin/g++
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
-
+RUN dnf install -y msopenjdk-11 && cd /tmp/scripts && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
+ENV PATH /usr/lib/jvm/msopenjdk-11/bin:$PATH
+ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
