@@ -625,12 +625,11 @@ Q4Int8GemmR1xC1BlkLen16Avx2(
                 QuantBScalePtr++;
             }
 
-            *SumPtr = hsum_float_8(acc0) - *SumPtr;
+             *SumPtr = hsum_float_8(acc0) - *SumPtr;
             if (BiasPtr) {
                 *SumPtr += *BiasPtr;
             }
 
-            // move to next column
             QuantBDataColPtr += StrideQuantBData;
             QuantBScaleColPtr += StrideQuantBScale;
             BiasPtr += BiasPtr != nullptr ? 1 : 0;

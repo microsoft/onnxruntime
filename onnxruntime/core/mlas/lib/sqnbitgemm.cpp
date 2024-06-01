@@ -194,22 +194,6 @@ MlasSQNBitGemmPackQuantBDataSize(
     return 0;
 }
 
-struct PackedQuantBDataStruct {
-    PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
-        : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
-    {
-        constexpr size_t BlkBitWidth = 4;
-        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        PackedQuantBData = (std::byte*)PackedQuantBWorkspace;
-        QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
-    }
-    std::byte* PackedQuantBData;
-    float* QuantBBlkSum;
-
-    void* QuantBWorkspace_;
-    size_t N_, BlockCountK_, BlkLen_;
-};
-
 struct PerGemmQuantAWorkspace {
     PerGemmQuantAWorkspace(void* PerGemmWorkspace, size_t M, size_t BlockCountK, size_t BlkLen)
         : PerGemmWorkspace_(PerGemmWorkspace), M_(M), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
@@ -235,6 +219,7 @@ MlasSQNBitGemmPackQuantBData(
     const void* QuantBData,
     void* PackedQuantBDataAndOrBlkSum,
     const void* QuantBScale,
+    bool has_zp_input,
     const void* QuantBZeroPoint,
     MLAS_THREADPOOL* ThreadPool
 )
@@ -261,8 +246,6 @@ MlasSQNBitGemmPackQuantBData(
         } else if (Dispatch->SQ4BitGemmPackQuantBDataAndBlkSum != nullptr) {
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
             PackedQuantBDataStruct packed_quant_b(PackedQuantBDataAndOrBlkSum, N, BlockCountK, BlkLen);
-            assert(QuantBScale);
-            //assert(QuantBZeroPoint);  // QuantBZeroPoint is nullptr if symetric quantization.
             Dispatch->SQ4BitGemmPackQuantBDataAndBlkSum(
                 N,
                 K,
@@ -271,6 +254,7 @@ MlasSQNBitGemmPackQuantBData(
                 static_cast<const std::byte*>(QuantBData),
                 packed_quant_b.PackedQuantBData,
                 static_cast<const float*>(QuantBScale),
+                has_zp_input,
                 static_cast<const std::byte*>(QuantBZeroPoint),
                 packed_quant_b.QuantBBlkSum,
                 ThreadPool

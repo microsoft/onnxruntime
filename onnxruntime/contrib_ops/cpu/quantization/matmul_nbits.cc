@@ -89,6 +89,8 @@ class MatMulNBits final : public OpKernel {
 
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    const Tensor* tensor_zero_point = nullptr;
+    has_zp_input_ = info.TryGetConstantInput(3, &tensor_zero_point);
 #ifdef ORT_NEURAL_SPEED
     const Tensor* tensor_B = nullptr;
     const Tensor* tensor_scale = nullptr;
@@ -99,7 +101,7 @@ class MatMulNBits final : public OpKernel {
     is_asym_ = info.GetInputCount() >= 4;
     all_constant_ = B_constant && scale_constant;
     all_constant_ = is_asym_ ? all_constant_ && zero_point_constant : all_constant_;
-#endif
+#endif 
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -123,8 +125,9 @@ class MatMulNBits final : public OpKernel {
   IAllocatorUniquePtr<void> packed_b_;
   size_t packed_b_size_{0};
 
+  bool has_zp_input_{false};
 #if defined(ORT_NEURAL_SPEED)
-
+  
   bool is_asym_{false};
   bool all_constant_{false};
 
@@ -185,9 +188,8 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
 
 #else   // defined(ORT_NEURAL_SPEED)
-
+  const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
   if (input_idx == 1) {
-    const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
     if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
       return Status::OK();
     }
@@ -197,7 +199,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     }
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, qptr, packed_b_.get());
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, qptr, packed_b_.get(), nullptr, has_zp_input_, nullptr);
     if (prepacked_weights) {
       // TODO: cannot use packed_b_ after
       assert(false);
@@ -205,12 +207,15 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
     }
     is_packed = true;
-  } else if (input_idx == 2) {
-    // MlasSQNBitGemmPackQuantBData with scales
-    assert(false);
-  } else if (input_idx == 3) {
-    // MlasSQNBitGemmPackQuantBData with zp
-    assert(false);
+  }
+  else if (input_idx == 2 && packed_b_ != nullptr) {
+    auto sptr = tensor.Data<float>();
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), sptr, has_zp_input_, nullptr);
+    is_packed = false;
+  } else if (input_idx == 3 && packed_b_ != nullptr) {
+    auto zptr = tensor.Data<uint8_t>();
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), nullptr, has_zp_input_, zptr);
+    is_packed = false;
   }
 #endif  // defined(ORT_NEURAL_SPEED)
 
@@ -333,9 +338,9 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     // mlas nbits implementation requires packed b. update this logic if it changes.
     if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type) && packed_b_) {
       IAllocatorUniquePtr<std::byte> workspace{};
-      if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
-                                                                         nbits_, block_size_, compute_type);
-          workspace_size > 0) {
+      const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(
+        M, N, K, batch_count, nbits_, block_size_, compute_type);
+      if (workspace_size > 0) {
         AllocatorPtr allocator;
         ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
         workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);

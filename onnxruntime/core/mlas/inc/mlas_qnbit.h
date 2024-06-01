@@ -191,6 +191,7 @@ MlasSQNBitGemmPackQuantBData(
     const void* QuantBData,
     void* PackedQuantBDataAndOrBlkSum,
     const void* QuantBScale,
+    bool has_zp_input,
     const void* QuantBZeroPoint,
     MLAS_THREADPOOL* ThreadPool = nullptr
 );

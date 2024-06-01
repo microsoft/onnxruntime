@@ -28,10 +28,39 @@ Abstract:
 #include "mlasi.h"
 
 constexpr MLAS_FORCEINLINE size_t
+MlasQNBitQuantBBlkSumAlignment()
+{
+    // 16 floats. this alignment is required by GemmFloatKernel
+    return 16 * sizeof(float);
+}
+
+constexpr MLAS_FORCEINLINE size_t
 MlasQNBitBlkDataSizeInBytes(size_t BlkBitWidth, size_t BlkLen)
 {
     return BlkLen * BlkBitWidth / 8;
 }
+
+struct PackedQuantBDataStruct {
+    PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
+        : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
+    {
+        constexpr size_t BlkBitWidth = 4;
+        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        PackedQuantBData = (std::byte*)PackedQuantBWorkspace;
+        QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
+
+        const size_t Alignment = MlasQNBitQuantBBlkSumAlignment();
+        const uintptr_t QuantBBlkSumAddr = reinterpret_cast<uintptr_t>(QuantBBlkSum);
+        QuantBBlkSum = reinterpret_cast<float*>(
+            (QuantBBlkSumAddr + Alignment - 1) & (~(Alignment - 1))
+        );
+    }
+    std::byte* PackedQuantBData;
+    float* QuantBBlkSum;
+
+    void* QuantBWorkspace_;
+    size_t N_, BlockCountK_, BlkLen_;
+};
 
 template <size_t BlkBitWidth>
 constexpr MLAS_FORCEINLINE size_t
@@ -134,6 +163,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         const std::byte* QuantBDataBegin,
         std::byte* PackedQuantBDataBegin,
         const float* QuantBScaleBegin,
+        bool has_zp_input,
         const std::byte* QuantBZPBegin,
         float* BlockSumBegin,  // BlockCountK by N => (BlockCountK * N) / 16 by 16
         MLAS_THREADPOOL* ThreadPool

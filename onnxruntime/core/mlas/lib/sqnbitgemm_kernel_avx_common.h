@@ -19,7 +19,11 @@ SQ4BitGemmPackQuantBDataSize(
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+    size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+
+    const size_t Alignment = MlasQNBitQuantBBlkSumAlignment();
+    BlkSumSize += Alignment - 1;
+
     return PackedQuantBDataSize + BlkSumSize;
 }
 

@@ -269,8 +269,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
         PackedQuantBDataSize > 0) {
       PackedQuantBData = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
+      bool has_zp_input = QuantBZeroPoint != nullptr;
       MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBData,
-                                   QuantBScale, QuantBZeroPoint,
+                                   QuantBScale, has_zp_input, QuantBZeroPoint,
                                    GetMlasThreadPool());
     }
 
@@ -391,7 +392,6 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           }
           tests_registered += RegisterSingleTest(43, 500, 401, ComputeType, WithThreadpool, Symmetric, true);
 
-
           tests_registered += RegisterSingleTest(1, 4, 49, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(1, 8, 49, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(1, 16, 49, ComputeType, WithThreadpool, Symmetric, true);
@@ -446,8 +446,12 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
             tests_registered += RegisterSingleTest(1, 1, 32, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(1, 1, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(1, 1, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(1, 1, 320, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(1, 4, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
 
+            tests_registered += RegisterSingleTest(2, 1, 1, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 1, 16, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 1, 32, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(2, 1, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(2, 1, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(2, 2, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
@@ -460,8 +464,8 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
             tests_registered += RegisterSingleTest(64, 64, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(64, 128, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(2, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
-            //tests_registered += RegisterSingleTest(256, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
-            //tests_registered += RegisterSingleTest(2048, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
+            // tests_registered += RegisterSingleTest(256, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
+            // tests_registered += RegisterSingleTest(2048, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
           }
         }
       }
