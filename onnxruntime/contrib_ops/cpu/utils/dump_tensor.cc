@@ -232,6 +232,18 @@ void CpuTensorConsoleDumper::Print(const char*, const int64_t*, int, int, int) c
 void CpuTensorConsoleDumper::Print(const char*, const int32_t*, int, int, int) const {
 }
 
+void CpuTensorConsoleDumper::Print(const char*, const float*, int, int, int, int) const {
+}
+
+void CpuTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int, int, int) const {
+}
+
+void CpuTensorConsoleDumper::Print(const char*, const int64_t*, int, int, int, int) const {
+}
+
+void CpuTensorConsoleDumper::Print(const char*, const int32_t*, int, int, int, int) const {
+}
+
 void CpuTensorConsoleDumper::Print(const char*, const Tensor&) const {
 }
 

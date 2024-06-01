@@ -112,8 +112,7 @@ inline void fill_stub(scalar_t* data, scalar_t val, int64_t size) {
 
 template <typename scalar_t, int64_t q_split_size, int64_t kv_split_size>
 void cpu_flash_attention(
-    Tensor& output,  // batch x q_seq_len  x num_heads  x head_size
-    // Tensor& logsumexp,       // batch x q_seq_len  x num_heads
+    Tensor& output,       // batch x q_seq_len  x num_heads  x head_size
     const Tensor& query,  // batch x q_seq_len  x num_heads  x head_size or
                           // batch x num_heads  x q_seq_len  x head_size (when is_q_bnsh is True)
     const Tensor& key,    // batch x kv_seq_len x num_heads  x head_size or
@@ -272,7 +271,6 @@ void cpu_flash_attention(
                 nullptr);                                             // thread pool
 
 #if DUMP_CPU_TENSOR_LEVEL > 0
-            DUMP_CPU_TENSOR_INIT();
             printf("batch_i=%d, head_j=%d, q_block_k=%d, z=%d\n", static_cast<int>(i), static_cast<int>(j), static_cast<int>(k), static_cast<int>(z));
             DUMP_CPU_TENSOR("QK", qk_data, qBlockSize, kvBlockSize);
 #endif
@@ -369,8 +367,6 @@ void cpu_flash_attention(
                 nullptr);  // thread pool
           }
 
-          DUMP_CPU_TENSOR("dst_data", dst_data, qBlockSize, headSize);
-
           // dst <- dst / sum[row]
           // reorder MHA output with strides
           for (int64_t row = 0; row < qBlockSize; ++row) {
@@ -381,13 +377,6 @@ void cpu_flash_attention(
                 dst_data + row * headSize,
                 headSize);
           }
-
-#if DUMP_CPU_TENSOR_LEVEL > 0
-          for (int64_t row = 0; row < qBlockSize; ++row) {
-            printf("out_data row %d:\n", static_cast<int>(row));
-            DUMP_CPU_TENSOR("out_data", out_data + (i * oStrideB + j * oStrideH + (m + row) * oStrideM), 1, headSize);
-          }
-#endif
 
           // Move to the next query
           vec::data_index_step(i, batchSize, j, num_head, k, qSlice);
