@@ -197,10 +197,10 @@ stages:
             msbuildPlatform: ${{ parameters.msbuildPlatform }}
             java_artifact_id: ${{ parameters.java_artifact_id }}
             ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
-              assembleOnly: false
+              buildOnly: false
             # When it is a GPU build, we only assemble the java binaries, testing will be done in the later stage with GPU machine
             ${{ else }}:
-              assembleOnly: true
+              buildOnly: true
 
         - task: PublishBuildArtifacts@1
           displayName: 'Publish Java temp binaries'
@@ -397,4 +397,4 @@ stages:
             parameters:
               msbuildPlatform: ${{ parameters.msbuildPlatform }}
               java_artifact_id: ${{ parameters.java_artifact_id }}
-              assembleOnly: false
+              buildOnly: false

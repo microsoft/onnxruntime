@@ -3,7 +3,7 @@ parameters:
   type: string
 - name: java_artifact_id
   type: string
-- name: assembleOnly
+- name: buildOnly
   type: boolean
 steps:
 - task: CmdLine@2
@@ -11,10 +11,10 @@ steps:
   inputs:
     script: |
       @echo on
-      call gradlew.bat assemble
+      call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
     workingDirectory: $(Build.SourcesDirectory)\java
     failOnStderr: true
-  condition: eq(${{ parameters.assembleOnly }}, true)
+  condition: eq(${{ parameters.buildOnly }}, true)
 
 - task: CmdLine@2
   displayName: 'Gradle assemble and check cmake'
@@ -24,7 +24,7 @@ steps:
       call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
     workingDirectory: $(Build.SourcesDirectory)\java
     failOnStderr: true
-  condition: ne(${{ parameters.assembleOnly }}, true)
+  condition: ne(${{ parameters.buildOnly }}, true)
 
 - task: CmdLine@2
   displayName: 'Update onnxruntime jar with pdb files and other files'
