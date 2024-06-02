@@ -53,6 +53,11 @@ steps:
           jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
           jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
           popd
+    - task: CmdLine@2
+      displayName: 'Add symbols and notices to Java'
+      inputs:
+        script: |
+          @echo on
           pushd $(Build.SourcesDirectory)\java\build\classes\java\test
           if %errorlevel% neq 0 exit /b %errorlevel%
           jar cvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
@@ -62,5 +67,7 @@ steps:
           rd /s /q ai\onnxruntime\native
           jar uvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
           popd
+          
           rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
           dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+      condition: ne(${{ parameters.buildOnly }}, true)
