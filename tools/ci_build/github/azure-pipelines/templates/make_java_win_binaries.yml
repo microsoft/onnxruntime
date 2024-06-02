@@ -3,6 +3,8 @@ parameters:
     type: string
   - name: java_artifact_id
     type: string
+  - name: buildOnly
+    type: boolean
 
 steps:
     - task: CmdLine@2
@@ -24,6 +26,7 @@ steps:
         workingDirectory: $(Build.SourcesDirectory)\java
         failOnStderr: true
       condition: ne(${{ parameters.buildOnly }}, true)
+
     - task: CmdLine@2
       displayName: 'Add symbols and notices to Java'
       inputs:
