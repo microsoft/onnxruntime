@@ -57,6 +57,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_TRAINING': 'true',
+  'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'false',
 
   'BUILD_DEFS.IS_ESM': 'false',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
@@ -76,7 +77,8 @@ interface OrtBuildOptions {
   readonly define?: Record<string, string>;
 }
 
-const esbuildAlreadyBuilt = new Map();
+const emscriptenMjsHandlerReplaced = new Map<string, string>();
+const esbuildAlreadyBuilt = new Map<string, string>();
 async function buildBundle(options: esbuild.BuildOptions) {
   // Skip if the same build options have been built before.
   const serializedOptions = JSON.stringify(options);
@@ -162,10 +164,39 @@ async function buildOrt({
   const platform = isNode ? 'node' : 'browser';
   const external =
       isNode ? ['onnxruntime-common'] : ['node:fs/promises', 'node:fs', 'node:os', 'module', 'worker_threads'];
+  const plugins: esbuild.Plugin[] = [];
   const defineOverride: Record<string, string> = {};
   if (!isNode) {
     defineOverride.process = 'undefined';
     defineOverride['globalThis.process'] = 'undefined';
+  }
+
+  if (define['BUILD_DEFS.DISABLE_DYNAMIC_IMPORT'] === 'true') {
+    plugins.push({
+      name: 'emscripten-mjs-handler',
+      setup(build: esbuild.PluginBuild) {
+        build.onResolve(
+            {filter: /^ort-.*wasm.*\.mjs$/},
+            async args => ({path: path.join(SOURCE_ROOT_FOLDER, 'web/dist', args.path), namespace: 'em-mjs'}));
+        build.onLoad({filter: /.*/, namespace: 'em-mjs'}, async args => {
+          let contents = emscriptenMjsHandlerReplaced.get(args.path);
+          if (!contents) {
+            const originalContent = (await fs.readFile(args.path)).toString();
+            const replaced = originalContent.replace(
+                'if (isNode) isPthread = (await import(\'worker_threads\')).workerData === \'em-pthread\';', '');
+            if (replaced === originalContent) {
+              throw new Error(`Failed to replace the top-level await from file: ${
+                  args.path}. A recent Emscripten update may have changed the code structure.`);
+            }
+
+            contents = replaced;
+            emscriptenMjsHandlerReplaced.set(args.path, contents);
+          }
+
+          return ({contents});
+        });
+      }
+    });
   }
 
   await buildBundle({
@@ -174,6 +205,7 @@ async function buildOrt({
     platform,
     format,
     globalName: 'ort',
+    plugins,
     external,
     define: {...define, ...defineOverride},
     sourcemap: isProduction ? 'linked' : 'inline',
@@ -351,10 +383,11 @@ async function validate() {
       const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
 
       if (isMinified) {
-        // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
+        // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build
+        // script only.
         //
-        // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In
-        // this case, we should fix the build script (this file).
+        // If the final bundle contains BUILD_DEFS definition, it means the build script is not working
+        // correctly. In this case, we should fix the build script (this file).
         //
         if (content.includes('BUILD_DEFS')) {
           throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
@@ -363,7 +396,7 @@ async function validate() {
 
       // all files should contain the magic comment to ignore dynamic import calls.
       //
-      if (!file.includes('webgl') && !file.startsWith('ort.esm.')) {
+      if (!file.includes('.webgl.') && !file.includes('.sw.')) {
         const contentToSearch = isMinified ? '/*webpackIgnore:true*/' : '/* webpackIgnore: true */';
         if (!content.includes(contentToSearch)) {
           throw new Error(`Validation failed: "${file}" does not contain magic comment.`);
@@ -457,6 +490,17 @@ async function main() {
   if (BUNDLE_MODE === 'prod') {
     // ort.all[.min].[m]js
     await addAllWebBuildTasks({outputName: 'ort.all'});
+    // ort.all.bundle.min.mjs
+    await buildOrt({
+      isProduction: true,
+      outputName: 'ort.all.bundle',
+      format: 'esm',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true',
+        'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
+      },
+    });
 
     // ort[.min].[m]js
     await addAllWebBuildTasks({
