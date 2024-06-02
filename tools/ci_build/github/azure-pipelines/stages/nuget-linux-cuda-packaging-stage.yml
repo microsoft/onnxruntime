@@ -21,7 +21,6 @@ stages:
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
     docker_base_image: ${{ parameters.docker_base_image }}
-    linux_trt_version: ${{ parameters.linux_trt_version }}
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
     EP: tensorrt
