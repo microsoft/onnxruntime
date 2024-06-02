@@ -7,7 +7,7 @@ parameters:
   type: boolean
 steps:
 - task: CmdLine@2
-  displayName: 'Gradle assemble'
+  displayName: 'Gradle cmakeBuild'
   inputs:
     script: |
       @echo on
@@ -17,7 +17,7 @@ steps:
   condition: eq(${{ parameters.buildOnly }}, true)
 
 - task: CmdLine@2
-  displayName: 'Gradle assemble and check cmake'
+  displayName: 'Gradle cmakeCheck'
   inputs:
     script: |
       @echo on
@@ -37,6 +37,7 @@ steps:
       jar xf %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
       move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).pom
       rd /s /q META-INF
+      Get-ChildItem -Path $(Build.BinariesDirectory)\RelWithDebInfo\ -Recurse -Force
       copy $(Build.BinariesDirectory)\RelWithDebInfo\java\build\libs\*.jar %JAR_FOLDER%
       mkdir %NATIVE_FOLDER%
       copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
