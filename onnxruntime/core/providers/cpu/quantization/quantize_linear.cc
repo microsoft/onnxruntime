@@ -444,10 +444,10 @@ struct DequantizeLinearApply<T, OutT, true> {
   template <typename OutT>                                                  \
   struct DequantizeLinearApply<T, OutT, false> {                            \
     /* Per-tensor/layer or per-axis quantization */                         \
-    void op(int64_t M, int64_t N, int64_t N,                                \
+    void op(int64_t M, int64_t K, int64_t N,                                \
             const T* input, const OutT* scale, OutT* output, const T*) {    \
       for (size_t m = 0; m < static_cast<size_t>(M); m++) {                 \
-        for (size_t bd = 0; bd < static_cast<size_t>(N); bd++) {            \
+        for (size_t bd = 0; bd < static_cast<size_t>(K); bd++) {            \
           auto sc = scale[bd];                                              \
           for (size_t bs = 0; bs < static_cast<size_t>(N); bs++, input++) { \
             *output++ = static_cast<OutT>(input->ToFloat() * sc);           \
@@ -456,10 +456,10 @@ struct DequantizeLinearApply<T, OutT, true> {
       }                                                                     \
     }                                                                       \
     /* Blocked quantization */                                              \
-    void op(int64_t M, int64_t N, int64_t N, int64_t quant_block_size,      \
+    void op(int64_t M, int64_t K, int64_t N, int64_t quant_block_size,      \
             const T* input, const OutT* scale, OutT* output, const T*) {    \
       auto qbsiz = static_cast<size_t>(quant_block_size);                   \
-      auto bdim = static_cast<size_t>(N);                                   \
+      auto bdim = static_cast<size_t>(K);                                   \
       auto pbsiz = static_cast<size_t>(N);                                  \
                                                                             \
       for (size_t m = 0; m < static_cast<size_t>(M); m++) {                 \

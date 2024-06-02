@@ -797,43 +797,19 @@ TEST(QuantizeLinearOpMLFloat16Test, Float8) {
 namespace blocked_dequantization {
 
 template <typename Tin, typename Tout>
-void DequantizeLinearOp21Test_InvalidBlockSize(int64_t block_size,
-                                               int64_t scale_block_count, 
-                                               int64_t zero_point_block_count) {
+void DequantizeLinearOp21Test_InvalidBlockSize_Int(int64_t block_size,
+                                                   int64_t scale_block_count, 
+                                                   int64_t zero_point_block_count) {
   OpTester test("DequantizeLinear", 21);
   std::vector<int64_t> dims{2, 4};
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
-  bool init_x = false;
-  constexpr bool is_4bits = boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, Tin>::value;
 
-#if !defined(DISABLE_FLOAT8_TYPES)
-  if constexpr (boost::mp11::mp_contains<element_type_lists::AllFloat8, Tin>::value) {
-    for (int i = 0, n = 2 * zero_point_block_count; i < n; i++) x_zero_point.push_back(Tin(0.0f));
-    for (int i = 0; i < 8; ++i) x.push_back(Tin(static_cast<float>(i)));
-    init_x = true;
-  }
-#endif
-
-  if (!init_x) {
-    for (int i = 0, n = 2 * zero_point_block_count; i < n; ++i) {
-      if (is_4bits) {
-        if (i & 1) x_zero_point.push_back(Tin(0, 0));
-      } else if (!init_x) {
-        x_zero_point.push_back(Tin(0));
-      }
-    }
-  }
-
+  for (int i = 0, n = 2 * zero_point_block_count; i < n; ++i) x_zero_point.push_back(0);
   for (int i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
-
   for (int i = 0; i < 8; ++i) {
-    if (is_4bits) {
-      if (i & 1) x.push_back(Tin(i - 1, i));
-    } else if (!init_x) {
-      x.push_back(Tin(i));
-    }
-    y.push_back(Tout(static_cast<float>(i) * 2.0f);
+    x.push_back(i);
+    y.push_back(Tout(static_cast<float>(i) * 2.0f));
   }
 
   test.AddInput<Tin>("x", dims, x);
@@ -845,22 +821,70 @@ void DequantizeLinearOp21Test_InvalidBlockSize(int64_t block_size,
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
+template <typename Tin, typename Tout>
+void DequantizeLinearOp21Test_InvalidBlockSize_Int4(int64_t block_size,
+                                                   int64_t scale_block_count,
+                                                   int64_t zero_point_block_count) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> dims{2, 4};
+  std::vector<Tout> x_scale, y;
+  std::vector<Tin> x, x_zero_point;
+
+  for (int i = 0, n = zero_point_block_count; i < n; ++i)  x_zero_point.push_back(Tin(0, 0));
+  for (int i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
+  for (int i = 0; i < 8; ++i) {
+    if (i & 1) x.push_back(Tin(i - 1, i));
+    y.push_back(Tout(static_cast<float>(i) * 2.0f));
+  }
+
+  test.AddInput<Tin>("x", dims, x);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<Tout>("x_scale", {2, scale_block_count}, x_scale);
+  test.AddInput<Tin>("x_zero_point", {2, zero_point_block_count}, x_zero_point);
+  test.AddOutput<Tout>("y", dims, y);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+}
+
+template <typename Tin, typename Tout>
+void DequantizeLinearOp21Test_InvalidBlockSize_Float8(int64_t block_size,
+                                                      int64_t scale_block_count,
+                                                      int64_t zero_point_block_count) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> dims{2, 4};
+  std::vector<Tout> x_scale, y;
+  std::vector<Tin> x, x_zero_point;
+
+  for (int i = 0, n = 2 * zero_point_block_count; i < n; i++) x_zero_point.push_back(Tin(0.0f));
+  for (int i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
+  for (int i = 0; i < 8; ++i) x.push_back(Tin(static_cast<float>(i)));
+  for (int i = 0; i < 8; ++i) y.push_back(Tout(static_cast<float>(i) * 2.0f));
+
+  test.AddInput<Tin>("x", dims, x);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<Tout>("x_scale", {2, scale_block_count}, x_scale);
+  test.AddInput<Tin>("x_zero_point", {2, zero_point_block_count}, x_zero_point);
+  test.AddOutput<Tout>("y", dims, y);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+}
+
 // test negative block size fail
-TEST(DequantizeLinearOpTest, NagativeBlockSize) {
-  DequantizeLinearOp21Test_InvalidBlockSize<Int4x2, float>(-1, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<Int4x2, MLFloat16>(-1, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<UInt4x2, float>(-2, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<UInt4x2, MLFloat16>(-2, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<int8_t, float>(-3, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<int8_t, MLFloat16>(-3, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint8_t, float>(-4, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint8_t, MLFloat16>(-4, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<int16_t, float>(-5, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<int16_t, MLFloat16>(-5, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint16_t, float>(-6, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint16_t, MLFloat16>(-1, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<int32_t, float>(-1, 2, 2);
-  DequantizeLinearOp21Test_InvalidBlockSize<int32_t, MLFloat16>(-1, 2, 2);
+TEST(DequantizeLinearOpTest, NagativeBlockSize_Int) {
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<Int4x2, float>(-1, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<Int4x2, MLFloat16>(-1, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<UInt4x2, float>(-2, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<UInt4x2, MLFloat16>(-2, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int8_t, float>(-3, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int8_t, MLFloat16>(-3, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint8_t, float>(-4, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint8_t, MLFloat16>(-4, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int16_t, float>(-5, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int16_t, MLFloat16>(-5, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint16_t, float>(-6, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint16_t, MLFloat16>(-1, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int32_t, float>(-1, 2, 2);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int32_t, MLFloat16>(-1, 2, 2);
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -870,40 +894,40 @@ TEST(DequantizeLinearOpTest, NagativeBlockSize_Float8) {
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FN, float>(-1, 2, 2);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FN, MLFloat16>(-2, 2, 2);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FN, float>(-1, 2, 2);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FN, MLFloat16>(-2, 2, 2);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FNUZ, float>(-3, 2, 2);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FNUZ, MLFloat16>(-4, 2, 2);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FNUZ, float>(-3, 2, 2);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FNUZ, MLFloat16>(-4, 2, 2);
   }
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2, float>(-5, 2, 2);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2, MLFloat16>(-6, 2, 2);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2, float>(-5, 2, 2);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2, MLFloat16>(-6, 2, 2);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2FNUZ, float>(-1, 2, 2);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2FNUZ, MLFloat16>(-1, 2, 2);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2FNUZ, float>(-1, 2, 2);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2FNUZ, MLFloat16>(-1, 2, 2);
   }
 }
 #endif
 
 // test block size incompatible with x_scale shape fail
-TEST(DequantizeLinearOpTest, IncompatibleBlockSizeWithX) {
-  DequantizeLinearOp21Test_InvalidBlockSize<Int4x2, float>(3, 1, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<Int4x2, MLFloat16>(3, 3, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<UInt4x2, float>(3, 3, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<UInt4x2, MLFloat16>(3, 1, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int8_t, float>(3, 1, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int8_t, MLFloat16>(3, 3, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint8_t, float>(3, 3, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint8_t, MLFloat16>(3, 1, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int16_t, float>(3, 1, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int16_t, MLFloat16>(3, 3, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint16_t, float>(3, 3, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint16_t, MLFloat16>(3, 1, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int32_t, float>(3, 3, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<int32_t, MLFloat16>(3, 1, 1);
+TEST(DequantizeLinearOpTest, IncompatibleBlockSizeWithX_Int) {
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<Int4x2, float>(3, 1, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<Int4x2, MLFloat16>(3, 3, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<UInt4x2, float>(3, 3, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<UInt4x2, MLFloat16>(3, 1, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int8_t, float>(3, 1, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int8_t, MLFloat16>(3, 3, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint8_t, float>(3, 3, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint8_t, MLFloat16>(3, 1, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int16_t, float>(3, 1, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int16_t, MLFloat16>(3, 3, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint16_t, float>(3, 3, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint16_t, MLFloat16>(3, 1, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int32_t, float>(3, 3, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int32_t, MLFloat16>(3, 1, 1);
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -913,36 +937,36 @@ TEST(DequantizeLinearOpTest, IncompatibleBlockSizeWithX_Float8) {
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FN, float>(3, 1, 1);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FN, MLFloat16>(3, 3, 3);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2, float>(3, 1, 1);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2, MLFloat16>(3, 3, 3);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FN, float>(3, 1, 1);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FN, MLFloat16>(3, 3, 3);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2, float>(3, 1, 1);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2, MLFloat16>(3, 3, 3);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FNUZ, float>(3, 1, 1);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FNUZ, MLFloat16>(3, 3, 3);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2FNUZ, float>(3, 1, 1);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2FNUZ, MLFloat16>(3, 3, 3);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FNUZ, float>(3, 1, 1);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FNUZ, MLFloat16>(3, 3, 3);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2FNUZ, float>(3, 1, 1);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2FNUZ, MLFloat16>(3, 3, 3);
   }
 }
 #endif
 
 // test x_scale vs. x_zero_point shape incompatible fail
-TEST(DequantizeLinearOpTest, ScaleShapeUnmatchZeroPoint) {
-  DequantizeLinearOp21Test_InvalidBlockSize<Int4x2, float>(3, 2, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<Int4x2, MLFloat16>(3, 2, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<UInt4x2, float>(3, 2, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<UInt4x2, MLFloat16>(3, 2, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int8_t, float>(3, 2, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int8_t, MLFloat16>(3, 2, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint8_t, float>(3, 2, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint8_t, MLFloat16>(3, 2, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int16_t, float>(3, 2, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int16_t, MLFloat16>(3, 2, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint16_t, float>(3, 2, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<uint16_t, MLFloat16>(3, 2, 1);
-  DequantizeLinearOp21Test_InvalidBlockSize<int32_t, float>(3, 2, 3);
-  DequantizeLinearOp21Test_InvalidBlockSize<int32_t, MLFloat16>(3, 2, 1);
+TEST(DequantizeLinearOpTest, ScaleShapeUnmatchZeroPoint_Int) {
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<Int4x2, float>(3, 2, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<Int4x2, MLFloat16>(3, 2, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<UInt4x2, float>(3, 2, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int4<UInt4x2, MLFloat16>(3, 2, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int8_t, float>(3, 2, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int8_t, MLFloat16>(3, 2, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint8_t, float>(3, 2, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint8_t, MLFloat16>(3, 2, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int16_t, float>(3, 2, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int16_t, MLFloat16>(3, 2, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint16_t, float>(3, 2, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<uint16_t, MLFloat16>(3, 2, 1);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int32_t, float>(3, 2, 3);
+  DequantizeLinearOp21Test_InvalidBlockSize_Int<int32_t, MLFloat16>(3, 2, 1);
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -952,359 +976,406 @@ TEST(DequantizeLinearOpTest, ScaleShapeUnmatchZeroPoint_Float8) {
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FN, float>(3, 2, 1);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FN, MLFloat16>(3, 2, 3);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2, float>(3, 2, 1);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2, MLFloat16>(3, 2, 3);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FN, float>(3, 2, 1);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FN, MLFloat16>(3, 2, 3);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2, float>(3, 2, 1);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2, MLFloat16>(3, 2, 3);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FNUZ, float>(3, 2, 1);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E4M3FNUZ, MLFloat16>(3, 2, 3);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2FNUZ, float>(3, 2, 1);
-    DequantizeLinearOp21Test_InvalidBlockSize<Float8E5M2FNUZ, MLFloat16>(3, 2, 3);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FNUZ, float>(3, 2, 1);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E4M3FNUZ, MLFloat16>(3, 2, 3);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2FNUZ, float>(3, 2, 1);
+    DequantizeLinearOp21Test_InvalidBlockSize_Float8<Float8E5M2FNUZ, MLFloat16>(3, 2, 3);
   }
 }
 #endif
 
 // test DQ with blocked quantization succeed
 template <typename Tin, typename Tout>
-void DequantizeLinearOp21Test_Succeed(std::initializer_list<int64_t>&& dims,
+void DequantizeLinearOp21Test_Int4_Succeed(std::vector<int64_t>&& dims,
                                            int64_t axis,
                                            int64_t block_size,
-                                           std::initializer_list<int>& x_,
-                                           std::initializer_list<double>& x_scale_,
-                                           std::initializer_list<int>& x_zero_point_,
-                                           std::initializer_list<double>& y_) {
+                                           std::vector<int>& x_,
+                                           std::vector<float>& x_scale_,
+                                           std::vector<int>& x_zero_point_,
+                                           std::vector<float>& y_) {
   OpTester test("DequantizeLinear", 21);
   std::vector<int64_t> x_scale_shape;
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
-  bool init_x = false;
-  bool use_zero_point = x_zero_point_.size() > 0;
-  constexpr bool is_4bits = boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, Tin>::value;
+  bool use_zero_point = !x_zero_point_.empty();
 
-  for (auto v : y_) y.push_back(static_cast<Tout>(v));
-  for (auto v : x_scale_) x_scale.push_back(static_cast<Tout>(v));
+  for (auto v : y_) y.push_back(Tout(v));
+  for (auto v : x_scale_) x_scale.push_back(Tout(v));
   for (size_t i = 0, n = dims.size(); i < n; ++i) {
-    x_scale_shape.push_back(i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
+    x_scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
 
-#if !defined(DISABLE_FLOAT8_TYPES)
-  if constexpr (boost::mp11::mp_contains<element_type_lists::AllFloat8, Tin>::value) {
-    for (auto v : x_) x.push_back(Tin(static_cast<float>(v)));
-    if (use_zero_point) {
-      for (auto v : x_zero_point_) x_zero_point.push_back(Tin(static_cast<float>(v)));
-    }
-    init_x = true;
-  }
-#endif
+  size_t i = 0, n = x_.size();
+  for (; i < n - 1; i += 2) x.push_back(Tin(x_[i], x_[i + 1]));
+  if (i < n) x.push_back(Tin(x_[i], 0xF));
 
-  if (!init_x) {
-    if (is_4bits) {
-      size_t i = 0, n = x_.size();
-      for (; i < n - 1; i += 2) x.push_back(Tin(x_[i], x_[i + 1]));
-      if (i < n) x.push_back(Tin(x_[i], 0xF));
-
-      if (use_zero_point) {
-        i = 0, n = x_zero_point_.size();
-        for (; i < n - 1; i += 2) x_zero_point.push_back(Tin(x_zero_point_[i], x_zero_point_[i + 1]));
-        if (i < n) x_zero_point.push_back(Tin(x_zero_point_[i], 0xF));
-      }
-    } else {
-      for (auto v : x_) x.push_back(Tin(v));
-      if (use_zero_point) {
-        for (auto v : x_zero_point_) x_zero_point.push_back(Tin(v));
-      }
-    }
+  if (use_zero_point) {
+    i = 0, n = x_zero_point_.size();
+    for (; i < n - 1; i += 2) x_zero_point.push_back(Tin(x_zero_point_[i], x_zero_point_[i + 1]));
+    if (i < n) x_zero_point.push_back(Tin(x_zero_point_[i], 0xF));
   }
 
   test.AddInput<Tin>("x", dims, x);
   test.AddAttribute<int64_t>("axis", axis);
   test.AddAttribute<int64_t>("block_size", block_size);
   test.AddInput<Tout>("x_scale", x_scale_shape, x_scale);
-  if (use_zero_point) {
-    test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
+  if (use_zero_point) test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
+  test.AddOutput<Tout>("y", dims, y);
+  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+template <typename Tin, typename Tout>
+void DequantizeLinearOp21Test_Int_Succeed(std::vector<int64_t>&& dims,
+                                           int64_t axis,
+                                           int64_t block_size,
+                                           std::vector<int>& x_,
+                                           std::vector<float>& x_scale_,
+                                           std::vector<int>& x_zero_point_,
+                                           std::vector<float>& y_) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> x_scale_shape;
+  std::vector<Tout> x_scale, y;
+  std::vector<Tin> x, x_zero_point;
+
+  int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
+  bool use_zero_point = !x_zero_point_.empty();
+
+  for (auto v : y_) y.push_back(Tout(v));
+  for (auto v : x_scale_) x_scale.push_back(Tout(v));
+  for (size_t i = 0, n = dims.size(); i < n; ++i) {
+    x_scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
+  for (auto v : x_) x.push_back(v);
+  if (use_zero_point) for (auto v : x_zero_point_) x_zero_point.push_back(v);
+  
+
+  test.AddInput<Tin>("x", dims, x);
+  test.AddAttribute<int64_t>("axis", axis);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<Tout>("x_scale", x_scale_shape, x_scale);
+  if (use_zero_point) test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
+  test.AddOutput<Tout>("y", dims, y);
+  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+template <typename Tin, typename Tout>
+void DequantizeLinearOp21Test_Float8_Succeed(std::vector<int64_t>&& dims,
+                                          int64_t axis,
+                                          int64_t block_size,
+                                          std::vector<int>& x_,
+                                          std::vector<float>& x_scale_,
+                                          std::vector<int>& x_zero_point_,
+                                          std::vector<float>& y_) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> x_scale_shape;
+  std::vector<Tout> x_scale, y;
+  std::vector<Tin> x, x_zero_point;
+
+  int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
+  bool use_zero_point = !x_zero_point_.empty();
+
+  for (auto v : y_) y.push_back(Tout(v));
+  for (auto v : x_scale_) x_scale.push_back(Tout(v));
+  for (size_t i = 0, n = dims.size(); i < n; ++i) {
+    x_scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
+  }
+
+  for (auto v : x_) x.push_back(Tin(static_cast<float>(v)));
+  if (use_zero_point) {
+    for (auto v : x_zero_point_) x_zero_point.push_back(Tin(static_cast<float>(v)));
+  }
+
+  test.AddInput<Tin>("x", dims, x);
+  test.AddAttribute<int64_t>("axis", axis);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<Tout>("x_scale", x_scale_shape, x_scale);
+  if (use_zero_point) test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
   test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(DequantizeLinearOp21Test, SignedInt_NoZeroPoint_FirstAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::initializer_list<int> zero_point = {};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  auto y_2 = {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, 2.0, 8.0, -10.5, -4.0, 10.0, 24.0, -24.5, -8.0};
-  auto y_3 = {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, -2.0, -8.0, 10.5, 4.0, 10.0, 24.0, -24.5, -8.0};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point;
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, 2.0, 8.0, -10.5, -4.0, 10.0, 24.0, -24.5, -8.0};
+  std::vector<float> y_3 {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, -2.0, -8.0, 10.5, 4.0, 10.0, 24.0, -24.5, -8.0};
 
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, SignedInt_UseZeroPoint_FirstAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto zero_point = {-6, -4, -3, -1, 0, 2, 4, 7};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, 2.0, 0, -3.5, 3.0, 10.0, 16.0, -10.5, -1.0};
-  std::initializer_list<double> y_3 = {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, -14.0, -24, 21, 5, 10.0, 16.0, -10.5, -1.0};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {-6, -4, -3, -1, 0, 2, 4, 7};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, 2.0, 0, -3.5, 3.0, 10.0, 16.0, -10.5, -1.0};
+  std::vector<float> y_3 {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, -14.0, -24, 21, 5, 10.0, 16.0, -10.5, -1.0};
 
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, SignedInt_NoZeroPoint_MiddleAxis) {
-  std::initializer_list<int> zero_point = {};
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {14, 24, 10, 16, -10.5, -2, -3.5, 0, 4, 4, 12, -17.5, -6, -24.5, -8};
-  std::initializer_list<double> y_3 = {14, 24, 10, 16, 6, 8, -3.5, 0, 2, 8, 6, 16, 10, 24, -24.5, -8};
+  std::vector<int> zero_point {};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {14, 24, 10, 16, -10.5, -2, -3.5, 0, 4, 4, 12, -17.5, -6, -24.5, -8};
+  std::vector<float> y_3 {14, 24, 10, 16, 6, 8, -3.5, 0, 2, 8, 6, 16, 10, 24, -24.5, -8};
 
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, SignedInt_UseZeroPoint_MiddleAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto zero_point = {-6, -4, -3, -1, 0, 2, 4, 7};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {2, 8, -2, 0, 0, -1, 7, 1, 2, 0, 6, 8, -10.5, -4, -10.5, -1};
-  std::initializer_list<double> y_3 = {2, 8, -2, 0, -6, -8, 7, 1, 2, 0, 6, 8, 10, 16, -10.5, -1};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {-6, -4, -3, -1, 0, 2, 4, 7};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {2, 8, -2, 0, 0, -1, 7, 1, 2, 0, 6, 8, -10.5, -4, -10.5, -1};
+  std::vector<float> y_3 {2, 8, -2, 0, -6, -8, 7, 1, 2, 0, 6, 8, 10, 16, -10.5, -1};
 
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, SignedInt_NoZeroPoint_LastAxis) {
-  std::initializer_list<int> zero_point = {};
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {14, 12, 20, 16, -10.5, -7, -1, 0, 2, 4, 12, 16, -17.5, -21, -7, -8};
-  std::initializer_list<double> y_3 = {14, 12, 10, 16, -10.5, -7, -3.5, 0, 2, 4, 6, 16, -17.5, -21, -24.5, -8};
+  std::vector<int> zero_point {};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {14, 12, 20, 16, -10.5, -7, -1, 0, 2, 4, 12, 16, -17.5, -21, -7, -8};
+  std::vector<float> y_3 {14, 12, 10, 16, -10.5, -7, -3.5, 0, 2, 4, 6, 16, -17.5, -21, -24.5, -8};
 
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, SignedInt_UseZeroPoint_LastAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto zero_point = {-6, -4, -3, -1, 0, 2, 4, 7};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {2, 0, 4, 0, 0, 3.5, 0, 1, 2, 4, 4, 8, -3.5, -7, 0, -1};
-  std::initializer_list<double> y_3 = {2, 0, -2, 0, 0, 3.5, 7, 1, 2, 4, 6, 8, -3.5, -7, -10.5, -1};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {-6, -4, -3, -1, 0, 2, 4, 7};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {2, 0, 4, 0, 0, 3.5, 0, 1, 2, 4, 4, 8, -3.5, -7, 0, -1};
+  std::vector<float> y_3 {2, 0, -2, 0, 0, 3.5, 7, 1, 2, 4, 6, 8, -3.5, -7, -10.5, -1};
 
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<Int4x2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int8_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int16_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<int32_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<Int4x2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int8_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int16_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<int32_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, UnsignedInt_NoZeroPoint_FirstAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::initializer_list<int> zero_point = {};
-  auto x = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::initializer_list<double> y_2 = {0, -4, 7, 3, -8, -20, 21, 7, 16, 36, -35, -11, 24, 52, -49, -15};
-  std::initializer_list<double> y_3 = {0, -4, 7, 3, -8, -20, 21, 7, -16, -36, 35, -11, 24, 52, -49, -15};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {};
+  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2 {0, -4, 7, 3, -8, -20, 21, 7, 16, 36, -35, -11, 24, 52, -49, -15};
+  std::vector<float> y_3 {0, -4, 7, 3, -8, -20, 21, 7, -16, -36, 35, -11, 24, 52, -49, -15};
 
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, UnsignedInt_UseZeroPoint_FirstAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::initializer_list<int> zero_point = {2, 0, 1, 9, 13, 5, 11, 6};
-  auto x = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::initializer_list<double> y_2 = {4, -4, 3.5, -6, -4, -20, 17.5, -2, -10, 16, 3.5, -5, -2, 32, -10.5, -9};
-  std::initializer_list<double> y_3 = {4, -4, 3.5, -6, -4, -20, 17.5, -2, -12, -36, 31.5, 2, -2, 32, -10.5, -9};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {2, 0, 1, 9, 13, 5, 11, 6};
+  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2 {4, -4, 3.5, -6, -4, -20, 17.5, -2, -10, 16, 3.5, -5, -2, 32, -10.5, -9};
+  std::vector<float> y_3 {4, -4, 3.5, -6, -4, -20, 17.5, -2, -12, -36, 31.5, 2, -2, 32, -10.5, -9};
 
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, UnsignedInt_NoZeroPoint_MiddleAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::initializer_list<int> zero_point = {};
-  auto x = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::initializer_list<double> y_2 = {0, -4, -4, -12, 14, 5, 21, 7, 16, 36, 20, 44, -42, -13, -49, -15};
-  std::initializer_list<double> y_3 = {0, -4, -4, -12, -8, -20, 21, 7, 16, 36, 20, 44, 24, 52, -49, -15};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {};
+  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2 {0, -4, -4, -12, 14, 5, 21, 7, 16, 36, 20, 44, -42, -13, -49, -15};
+  std::vector<float> y_3 {0, -4, -4, -12, -8, -20, 21, 7, 16, 36, 20, 44, 24, 52, -49, -15};
 
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, UnsignedInt_UseZeroPoint_MiddleAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::initializer_list<int> zero_point = {2, 0, 1, 9, 13, 5, 11, 6};
-  auto x = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::initializer_list<double> y_2 = {4, -4, 0, -12, 10.5, -4, 17.5, -2, -10, 16, -6, 24, -3.5, -7, -10.5, -9};
-  std::initializer_list<double> y_3 = {4, -4, 0, -12, -4, -20, -10, 8, -10, 16, -6, 24, -2, 32, -10.5, -9};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {2, 0, 1, 9, 13, 5, 11, 6};
+  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2 {4, -4, 0, -12, 10.5, -4, 17.5, -2, -10, 16, -6, 24, -3.5, -7, -10.5, -9};
+  std::vector<float> y_3 {4, -4, 0, -12, -4, -20, -10, 8, -10, 16, -6, 24, -2, 32, -10.5, -9};
 
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, UnsignedInt_NoZeroPoint_LastAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::initializer_list<int> zero_point = {};
-  auto x = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::initializer_list<double> y_2 = {0, -2, -8, -12, 14, 17.5, 6, 7, 16, 18, 40, 44, -42, -45.5, -14, -15};
-  std::initializer_list<double> y_3 = {0, -2, -4, -12, 14, 17.5, 21, 7, 16, 18, 20, 44, -42, -45.5, -49, -15};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {};
+  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2 {0, -2, -8, -12, 14, 17.5, 6, 7, 16, 18, 40, 44, -42, -45.5, -14, -15};
+  std::vector<float> y_3 {0, -2, -4, -12, 14, 17.5, 21, 7, 16, 18, 20, 44, -42, -45.5, -49, -15};
 
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
 }
 
 TEST(DequantizeLinearOp21Test, UnsignedInt_UseZeroPoint_LastAxis) {
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::initializer_list<int> zero_point = {2, 0, 1, 9, 13, 5, 11, 6};
-  auto x = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::initializer_list<double> y_2 = {4, 2, -8, -12, 10.5, 14, -3, -2, -10, -8, 20, 24, -3.5, -7, -8, -9};
-  std::initializer_list<double> y_3 = {4, 2, 0, -12, 10.5, 14, 17.5, -2, -10, -8, -6, 24, -3.5, -7, -10.5, -9};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {2, 0, 1, 9, 13, 5, 11, 6};
+  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2 {4, 2, -8, -12, 10.5, 14, -3, -2, -10, -8, 20, 24, -3.5, -7, -8, -9};
+  std::vector<float> y_3 {4, 2, 0, -12, 10.5, 14, 17.5, -2, -10, -8, -6, 24, -3.5, -7, -10.5, -9};
 
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<UInt4x2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint8_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-  DequantizeLinearOp21Test_Succeed<uint16_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int4_Succeed<UInt4x2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint8_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+  DequantizeLinearOp21Test_Int_Succeed<uint16_t, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -1313,31 +1384,31 @@ TEST(DequantizeLinearOp21Test, Float8_NoZeroPoint_FirstAxis) {
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::initializer_list<int> zero_point = {};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  auto y_2 = {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, 2.0, 8.0, -10.5, -4.0, 10.0, 24.0, -24.5, -8.0};
-  auto y_3 = {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, -2.0, -8.0, 10.5, 4.0, 10.0, 24.0, -24.5, -8.0};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, 2.0, 8.0, -10.5, -4.0, 10.0, 24.0, -24.5, -8.0};
+  std::vector<float> y_3 {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, -2.0, -8.0, 10.5, 4.0, 10.0, 24.0, -24.5, -8.0};
 
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
   }
 }
 
@@ -1346,31 +1417,31 @@ TEST(DequantizeLinearOp21Test, Float8_UseZeroPoint_FirstAxis) {
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto zero_point = {-6, -4, -3, -1, 0, 2, 4, 7};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, 2.0, 0, -3.5, 3.0, 10.0, 16.0, -10.5, -1.0};
-  std::initializer_list<double> y_3 = {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, -14.0, -24, 21, 5, 10.0, 16.0, -10.5, -1.0};
+  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {-6, -4, -3, -1, 0, 2, 4, 7};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, 2.0, 0, -3.5, 3.0, 10.0, 16.0, -10.5, -1.0};
+  std::vector<float> y_3 {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, -14.0, -24, 21, 5, 10.0, 16.0, -10.5, -1.0};
 
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
   }
 }
 
@@ -1379,31 +1450,31 @@ TEST(DequantizeLinearOp21Test, Float8_NoZeroPoint_MiddleAxis) {
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
-  std::initializer_list<int> zero_point = {};
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {14, 24, 10, 16, -10.5, -2, -3.5, 0, 4, 4, 12, -17.5, -6, -24.5, -8};
-  std::initializer_list<double> y_3 = {14, 24, 10, 16, 6, 8, -3.5, 0, 2, 8, 6, 16, 10, 24, -24.5, -8};
+  std::vector<int> zero_point {};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {14, 24, 10, 16, -10.5, -2, -3.5, 0, 4, 4, 12, -17.5, -6, -24.5, -8};
+  std::vector<float> y_3 {14, 24, 10, 16, 6, 8, -3.5, 0, 2, 8, 6, 16, 10, 24, -24.5, -8};
 
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
   }
 }
 
@@ -1412,31 +1483,31 @@ TEST(DequantizeLinearOp21Test, Float8_UseZeroPoint_MiddleAxis) {
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto zero_point = {-6, -4, -3, -1, 0, 2, 4, 7};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {2, 8, -2, 0, 0, -1, 7, 1, 2, 0, 6, 8, -10.5, -4, -10.5, -1};
-  std::initializer_list<double> y_3 = {2, 8, -2, 0, -6, -8, 7, 1, 2, 0, 6, 8, 10, 16, -10.5, -1};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {-6, -4, -3, -1, 0, 2, 4, 7};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {2, 8, -2, 0, 0, -1, 7, 1, 2, 0, 6, 8, -10.5, -4, -10.5, -1};
+  std::vector<float> y_3 {2, 8, -2, 0, -6, -8, 7, 1, 2, 0, 6, 8, 10, 16, -10.5, -1};
 
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
   }
 }
 
@@ -1445,31 +1516,31 @@ TEST(DequantizeLinearOp21Test, Float8_NoZeroPoint_LastAxis) {
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
-  std::initializer_list<int> zero_point = {};
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {14, 12, 20, 16, -10.5, -7, -1, 0, 2, 4, 12, 16, -17.5, -21, -7, -8};
-  std::initializer_list<double> y_3 = {14, 12, 10, 16, -10.5, -7, -3.5, 0, 2, 4, 6, 16, -17.5, -21, -24.5, -8};
+  std::vector<int> zero_point {};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {14, 12, 20, 16, -10.5, -7, -1, 0, 2, 4, 12, 16, -17.5, -21, -7, -8};
+  std::vector<float> y_3 {14, 12, 10, 16, -10.5, -7, -3.5, 0, 2, 4, 6, 16, -17.5, -21, -24.5, -8};
 
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
   }
 }
 
@@ -1478,31 +1549,31 @@ TEST(DequantizeLinearOp21Test, Float8_UseZeroPoint_LastAxis) {
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
-  auto x_scale = {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  auto zero_point = {-6, -4, -3, -1, 0, 2, 4, 7};
-  auto x = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::initializer_list<double> y_2 = {2, 0, 4, 0, 0, 3.5, 0, 1, 2, 4, 4, 8, -3.5, -7, 0, -1};
-  std::initializer_list<double> y_3 = {2, 0, -2, 0, 0, 3.5, 7, 1, 2, 4, 6, 8, -3.5, -7, -10.5, -1};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point {-6, -4, -3, -1, 0, 2, 4, 7};
+  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2 {2, 0, 4, 0, 0, 3.5, 0, 1, 2, 4, 4, 8, -3.5, -7, 0, -1};
+  std::vector<float> y_3 {2, 0, -2, 0, 0, 3.5, 7, 1, 2, 4, 6, 8, -3.5, -7, -10.5, -1};
 
   if (enable_cpu || enable_cuda) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
   }
   if (enable_cpu) {
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21Test_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21Test_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
   }
 }
 #endif
