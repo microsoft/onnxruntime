@@ -1,54 +1,63 @@
 parameters:
-- name: msbuildPlatform
-  type: string
-- name: java_artifact_id
-  type: string
-- name: buildOnly
-  type: boolean
+  - name: msbuildPlatform
+    type: string
+  - name: java_artifact_id
+    type: string
+
 steps:
-- task: CmdLine@2
-  displayName: 'Gradle cmakeBuild'
-  inputs:
-    script: |
-      @echo on
-      call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
-    workingDirectory: $(Build.SourcesDirectory)\java
-    failOnStderr: true
-  condition: eq(${{ parameters.buildOnly }}, true)
+    - task: CmdLine@2
+      displayName: 'Gradle cmakeBuild'
+      inputs:
+        script: |
+          @echo on
+          call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+        workingDirectory: $(Build.SourcesDirectory)\java
+        failOnStderr: true
+      condition: eq(${{ parameters.buildOnly }}, true)
 
-- task: CmdLine@2
-  displayName: 'Gradle cmakeCheck'
-  inputs:
-    script: |
-      @echo on
-      call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
-    workingDirectory: $(Build.SourcesDirectory)\java
-    failOnStderr: true
-  condition: ne(${{ parameters.buildOnly }}, true)
-
-- task: CmdLine@2
-  displayName: 'Update onnxruntime jar with pdb files and other files'
-  inputs:
-    script: |
-      set artifact_id=${{ parameters.java_artifact_id }}
-      set JAR_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-      set STAGE_FOLDER=%JAR_FOLDER%\stage
-      set NATIVE_FOLDER=%STAGE_FOLDER%\ai\onnxruntime\native\win-x64
-      dir/s $(Build.BinariesDirectory)\RelWithDebInfo\ 
-      copy $(Build.BinariesDirectory)\RelWithDebInfo\java\build\libs\*.jar %JAR_FOLDER%
-      mkdir %NATIVE_FOLDER%
-      jar xf %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
-      move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).pom
-      rd /s /q META-INF
-      copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
-      copy .\RelWithDebInfo\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
-      copy $(Build.SourcesDirectory)\docs\Privacy.md %STAGE_FOLDER%\Privacy.md
-      copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt %STAGE_FOLDER%\ThirdPartyNotices.txt
-      @echo $(OnnxRuntimeGitCommitHash) > %STAGE_FOLDER%\GIT_COMMIT_ID
-      jar uf %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).jar %NATIVE_FOLDER%\onnxruntime.pdb
-      jar uf %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).jar %NATIVE_FOLDER%\onnxruntime4j_jni.pdb
-      jar uf %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
-      jar cvf %JAR_FOLDER%\testing.jar $(Build.SourcesDirectory)\java\build\classes\java\test
-      jar uvf %JAR_FOLDER%\testing.jar $(Build.SourcesDirectory)\java\build\resources\test
-      rd /s /q %STAGE_FOLDER%
-      dir /s /b %JAR_FOLDER%
+    - task: CmdLine@2
+      displayName: 'Gradle cmakeCheck'
+      inputs:
+        script: |
+          @echo on
+          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+        workingDirectory: $(Build.SourcesDirectory)\java
+        failOnStderr: true
+      condition: ne(${{ parameters.buildOnly }}, true)
+    - task: CmdLine@2
+      displayName: 'Add symbols and notices to Java'
+      inputs:
+        script: |
+          @echo on
+          cd $(Build.BinariesDirectory)\RelWithDebInfo
+          set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ai\onnxruntime\native\win-x64
+          mkdir %NATIVE_FOLDER%
+          echo "Directories created"
+          copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+          pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+          set artifact_id=${{ parameters.java_artifact_id }}
+          jar xf onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
+          move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-$(OnnxRuntimeVersion).pom
+          rd /s /q META-INF
+          popd
+          copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
+          copy .\RelWithDebInfo\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
+          copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\Privacy.md
+          copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ThirdPartyNotices.txt
+          @echo $(OnnxRuntimeGitCommitHash) > $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\GIT_COMMIT_ID
+          pushd $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
+          jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime.pdb
+          jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\win-x64\onnxruntime4j_jni.pdb
+          jar uf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\onnxruntime-$(OnnxRuntimeVersion).jar Privacy.md ThirdPartyNotices.txt GIT_COMMIT_ID
+          popd
+          pushd $(Build.SourcesDirectory)\java\build\classes\java\test
+          if %errorlevel% neq 0 exit /b %errorlevel%
+          jar cvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
+          if %errorlevel% neq 0 exit /b %errorlevel%
+          popd
+          pushd $(Build.SourcesDirectory)\java\build\resources\test
+          rd /s /q ai\onnxruntime\native
+          jar uvf $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\testing.jar .
+          popd
+          rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
+          dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
