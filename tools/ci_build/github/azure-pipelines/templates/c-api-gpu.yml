@@ -54,7 +54,7 @@ stages:
             --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
             --build-arg BUILD_UID=$( id -u )
             "
-        $ {{ if eq(parameters.EP, 'cuda') }}:
+        ${{ if eq(parameters.EP, 'cuda') }}:
           DockerBuildArgs: "
             --build-arg BASEIMAGE=${{ variables.docker_base_image }}
             --build-arg BUILD_UID=$( id -u )
