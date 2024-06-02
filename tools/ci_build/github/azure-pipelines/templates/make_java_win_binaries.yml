@@ -37,7 +37,7 @@ steps:
       jar xf %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
       move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).pom
       rd /s /q META-INF
-      Get-ChildItem -Path $(Build.BinariesDirectory)\RelWithDebInfo\ -Recurse -Force
+      dir/s $(Build.BinariesDirectory)\RelWithDebInfo\ 
       copy $(Build.BinariesDirectory)\RelWithDebInfo\java\build\libs\*.jar %JAR_FOLDER%
       mkdir %NATIVE_FOLDER%
       copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
