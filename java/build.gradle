@@ -148,11 +148,8 @@ if (cmakeBuildDir != null) {
 		include 'libs/**'
 		include 'docs/**'
 		into cmakeBuildOutputDir
+		dependsOn(allJar, sourcesJar, javadocJar, javadoc, compileTestJava)
 	}
-	cmakeBuild.dependsOn allJar
-	cmakeBuild.dependsOn sourcesJar
-	cmakeBuild.dependsOn javadocJar
-	cmakeBuild.dependsOn javadoc
 
 	task cmakeCheck(type: Copy) {
 		from project.buildDir
