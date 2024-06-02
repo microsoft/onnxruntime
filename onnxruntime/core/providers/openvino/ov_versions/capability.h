@@ -19,7 +19,8 @@ class GetCapability {
 
  public:
   GetCapability(const GraphViewer& graph_viewer_param,
-                const std::string device_type_param);
+                const std::string device_type_param,
+                const bool enable_qdq_optimizer);
   virtual std::vector<std::unique_ptr<ComputeCapability>> Execute();
   bool IsWhollySupportedGraph() {
     return is_wholly_supported_graph_;
