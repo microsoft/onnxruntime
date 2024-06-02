@@ -10,20 +10,23 @@ parameters:
   type: boolean
 
 stages:
-- template: ../templates/c-api-gpu.yml
-  parameters:
-    CudaVersion: ${{ parameters.CudaVersion }}
-    docker_base_image: ${{ parameters.docker_base_image }}
-    buildJava: ${{ parameters.buildJava }}
-    EP: cuda
+- stage: Linux_C_API_Packaging_GPU
+  dependsOn: []
+  jobs:
+  - template: ../templates/c-api-gpu.yml
+    parameters:
+      CudaVersion: ${{ parameters.CudaVersion }}
+      docker_base_image: ${{ parameters.docker_base_image }}
+      buildJava: ${{ parameters.buildJava }}
+      EP: cuda
 
-- template: ../templates/c-api-gpu.yml
-  parameters:
-    CudaVersion: ${{ parameters.CudaVersion }}
-    docker_base_image: ${{ parameters.docker_base_image }}
-    buildJava: ${{ parameters.buildJava }}
-    buildNodejs: ${{ parameters.buildNodejs }}
-    EP: tensorrt
+  - template: ../templates/c-api-gpu.yml
+    parameters:
+      CudaVersion: ${{ parameters.CudaVersion }}
+      docker_base_image: ${{ parameters.docker_base_image }}
+      buildJava: ${{ parameters.buildJava }}
+      buildNodejs: ${{ parameters.buildNodejs }}
+      EP: tensorrt
 
 - stage: Linux_Packaging_combined_CUDA
   dependsOn:
