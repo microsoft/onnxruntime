@@ -5,10 +5,6 @@ parameters:
 - name: docker_base_image
   type: string
 
-- name: linux_trt_version
-  type: string
-  default: ''
-
 - name: buildJava
   type: boolean
 
