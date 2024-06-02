@@ -34,12 +34,12 @@ steps:
       set JAR_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
       set STAGE_FOLDER=%JAR_FOLDER%\stage
       set NATIVE_FOLDER=%STAGE_FOLDER%\ai\onnxruntime\native\win-x64
-      jar xf %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
-      move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).pom
-      rd /s /q META-INF
       dir/s $(Build.BinariesDirectory)\RelWithDebInfo\ 
       copy $(Build.BinariesDirectory)\RelWithDebInfo\java\build\libs\*.jar %JAR_FOLDER%
       mkdir %NATIVE_FOLDER%
+      jar xf %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
+      move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml %JAR_FOLDER%\onnxruntime-$(OnnxRuntimeVersion).pom
+      rd /s /q META-INF
       copy .\RelWithDebInfo\onnxruntime.pdb %NATIVE_FOLDER%
       copy .\RelWithDebInfo\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
       copy $(Build.SourcesDirectory)\docs\Privacy.md %STAGE_FOLDER%\Privacy.md
