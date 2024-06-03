@@ -491,7 +491,7 @@ Note: The example does not specify `trt_engine_cache_path` because `onnxruntime_
 $./onnxruntime_perf_test -e tensorrt -r 1 -i "trt_engine_cache_enable|true trt_dump_ep_context_model|true" /model_database/transformer_model/model.onnx
 ```
 Once the inference is complete, the embedded engine model is saved to disk. User can then run this model just like the original one, but with a significantly quicker session creation time.
-```bask
+```bash
 $./onnxruntime_perf_test -e tensorrt -r 1 /model_database/transformer_model/model_ctx.onnx
 ```
 
