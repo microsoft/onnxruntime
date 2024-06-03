@@ -798,7 +798,7 @@ namespace blocked_dequantization {
 
 template <typename Tin, typename Tout>
 void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
-                                                          int64_t scale_block_count, 
+                                                          int64_t scale_block_count,
                                                           int64_t zero_point_block_count) {
   OpTester test("DequantizeLinear", 21);
   std::vector<int64_t> dims{2, 4};
@@ -822,8 +822,8 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   so.session_log_verbosity_level = 1;
   so.graph_optimization_level = TransformerLevel::Default;
 
-  for (int i = 0, n = 2 * zero_point_block_count; i < n; ++i) x_zero_point.push_back(0);
-  for (int i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
+  for (int64_t i = 0, n = 2 * zero_point_block_count; i < n; ++i) x_zero_point.push_back(0);
+  for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
   for (int i = 0; i < 8; ++i) {
     x.push_back(i);
     y.push_back(Tout(static_cast<float>(i) * 2.0f));
@@ -847,8 +847,8 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   SessionOptions so;
-  std::vector<std::string> log_msgs; // redirect error messages
-  so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category, 
+  std::vector<std::string> log_msgs;  // redirect error messages
+  so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
     ORT_UNUSED_PARAMETER(severity);
     ORT_UNUSED_PARAMETER(category);
@@ -864,8 +864,8 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   so.session_log_verbosity_level = 1;
   so.graph_optimization_level = TransformerLevel::Default;
 
-  for (int i = 0, n = zero_point_block_count; i < n; ++i)  x_zero_point.push_back(Tin(0, 0));
-  for (int i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
+  for (int64_t i = 0, n = zero_point_block_count; i < n; ++i) x_zero_point.push_back(Tin(0, 0));
+  for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
   for (int i = 0; i < 8; ++i) {
     if (i & 1) x.push_back(Tin(i - 1, i));
     y.push_back(Tout(static_cast<float>(i) * 2.0f));
@@ -906,7 +906,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Float8(int64_t block_size,
   so.session_log_verbosity_level = 1;
   so.graph_optimization_level = TransformerLevel::Default;
 
-  for (int i = 0, n = 2 * zero_point_block_count; i < n; i++) x_zero_point.push_back(Tin(0.0f));
+  for (int64_t i = 0, n = 2 * zero_point_block_count; i < n; i++) x_zero_point.push_back(Tin(0.0f));
   for (int i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
   for (int i = 0; i < 8; ++i) x.push_back(Tin(static_cast<float>(i)));
   for (int i = 0; i < 8; ++i) y.push_back(Tout(static_cast<float>(i) * 2.0f));
@@ -1044,12 +1044,12 @@ TEST(DequantizeLinearOp21BlockedTest, ScaleShapeUnmatchZeroPoint_Float8) {
 // test DQ with blocked quantization succeed
 template <typename Tin, typename Tout>
 void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
-                                           int64_t axis,
-                                           int64_t block_size,
-                                           std::vector<int>& x_,
-                                           std::vector<float>& x_scale_,
-                                           std::vector<int>& x_zero_point_,
-                                           std::vector<float>& y_) {
+                                                  int64_t axis,
+                                                  int64_t block_size,
+                                                  std::vector<int>& x_,
+                                                  std::vector<float>& x_scale_,
+                                                  std::vector<int>& x_zero_point_,
+                                                  std::vector<float>& y_) {
   OpTester test("DequantizeLinear", 21);
   std::vector<int64_t> x_scale_shape;
   std::vector<Tout> x_scale, y;
@@ -1085,12 +1085,12 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
 
 template <typename Tin, typename Tout>
 void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
-                                           int64_t axis,
-                                           int64_t block_size,
-                                           std::vector<int>& x_,
-                                           std::vector<float>& x_scale_,
-                                           std::vector<int>& x_zero_point_,
-                                           std::vector<float>& y_) {
+                                                 int64_t axis,
+                                                 int64_t block_size,
+                                                 std::vector<int>& x_,
+                                                 std::vector<float>& x_scale_,
+                                                 std::vector<int>& x_zero_point_,
+                                                 std::vector<float>& y_) {
   OpTester test("DequantizeLinear", 21);
   std::vector<int64_t> x_scale_shape;
   std::vector<Tout> x_scale, y;
@@ -1105,8 +1105,8 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
     x_scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
   for (auto v : x_) x.push_back(v);
-  if (use_zero_point) for (auto v : x_zero_point_) x_zero_point.push_back(v);
-  
+  if (use_zero_point)
+    for (auto v : x_zero_point_) x_zero_point.push_back(v);
 
   test.AddInput<Tin>("x", dims, x);
   test.AddAttribute<int64_t>("axis", axis);
@@ -1119,12 +1119,12 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
 
 template <typename Tin, typename Tout>
 void DequantizeLinearOp21BlockedTest_Float8_Succeed(std::vector<int64_t>&& dims,
-                                          int64_t axis,
-                                          int64_t block_size,
-                                          std::vector<int>& x_,
-                                          std::vector<float>& x_scale_,
-                                          std::vector<int>& x_zero_point_,
-                                          std::vector<float>& y_) {
+                                                    int64_t axis,
+                                                    int64_t block_size,
+                                                    std::vector<int>& x_,
+                                                    std::vector<float>& x_scale_,
+                                                    std::vector<int>& x_zero_point_,
+                                                    std::vector<float>& y_) {
   OpTester test("DequantizeLinear", 21);
   std::vector<int64_t> x_scale_shape;
   std::vector<Tout> x_scale, y;
@@ -1154,11 +1154,11 @@ void DequantizeLinearOp21BlockedTest_Float8_Succeed(std::vector<int64_t>&& dims,
 }
 
 TEST(DequantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_FirstAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
   std::vector<int> zero_point;
-  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
-  std::vector<float> y_2 {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, 2.0, 8.0, -10.5, -4.0, 10.0, 24.0, -24.5, 8.0};
-  std::vector<float> y_3 {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, -2.0, -8.0, 10.5, 4.0, 10.0, 24.0, -24.5, 8.0};
+  std::vector<int> x{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
+  std::vector<float> y_2{14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, 2.0, 8.0, -10.5, -4.0, 10.0, 24.0, -24.5, 8.0};
+  std::vector<float> y_3{14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, -2.0, -8.0, 10.5, 4.0, 10.0, 24.0, -24.5, 8.0};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
@@ -1179,11 +1179,11 @@ TEST(DequantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_FirstAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, SignedInt_UseZeroPoint_FirstAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {-6, -4, -3, -1, 0, 2, 4, 7};
-  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
-  std::vector<float> y_2 {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, 2.0, 0, 3.5, 3.0, 10.0, 16.0, -10.5, 15};
-  std::vector<float> y_3 {2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, -14.0, -24, 21, 5, 10.0, 16.0, -10.5, 15};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{-6, -4, -3, -1, 0, 2, 4, 7};
+  std::vector<int> x{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
+  std::vector<float> y_2{2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, 2.0, 0, 3.5, 3.0, 10.0, 16.0, -10.5, 15};
+  std::vector<float> y_3{2.0, 8.0, -7.0, -3, -6.0, -8.0, 7.0, 1, -14.0, -24, 21, 5, 10.0, 16.0, -10.5, 15};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
@@ -1200,11 +1200,11 @@ TEST(DequantizeLinearOp21BlockedTest, SignedInt_UseZeroPoint_FirstAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_MiddleAxis) {
-  std::vector<int> zero_point {};
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
-  std::vector<float> y_2 {14, 24, 10, 16, -10.5, -2, -3.5, 0, 2, 8, 6, 16, -17.5, -6, -24.5, 8};
-  std::vector<float> y_3 {14, 24, 10, 16, 6, 8, -3.5, 0, 2, 8, 6, 16, 10, 24, -24.5, 8};
+  std::vector<int> zero_point{};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> x{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
+  std::vector<float> y_2{14, 24, 10, 16, -10.5, -2, -3.5, 0, 2, 8, 6, 16, -17.5, -6, -24.5, 8};
+  std::vector<float> y_3{14, 24, 10, 16, 6, 8, -3.5, 0, 2, 8, 6, 16, 10, 24, -24.5, 8};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
@@ -1225,11 +1225,11 @@ TEST(DequantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_MiddleAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, SignedInt_UseZeroPoint_MiddleAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {-6, -4, -3, -1, 0, 2, 4, 7};
-  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
-  std::vector<float> y_2 {2, 8, -2, 0, 0, -1, 7, 1, 2, 0, 6, 8, -3.5, 1, -10.5, 15};
-  std::vector<float> y_3 {2, 8, -2, 0, -6, -8, 7, 1, 2, 0, 6, 8, 10, 16, -10.5, 15};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{-6, -4, -3, -1, 0, 2, 4, 7};
+  std::vector<int> x{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
+  std::vector<float> y_2{2, 8, -2, 0, 0, -1, 7, 1, 2, 0, 6, 8, -3.5, 1, -10.5, 15};
+  std::vector<float> y_3{2, 8, -2, 0, -6, -8, 7, 1, 2, 0, 6, 8, 10, 16, -10.5, 15};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
@@ -1246,11 +1246,11 @@ TEST(DequantizeLinearOp21BlockedTest, SignedInt_UseZeroPoint_MiddleAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_LastAxis) {
-  std::vector<int> zero_point {};
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
-  std::vector<float> y_2 {14, 12, 20, 16, -10.5, -7, -1, 0, 2, 4, 12, 16, -17.5, -21, -7, 8};
-  std::vector<float> y_3 {14, 12, 10, 16, -10.5, -7, -3.5, 0, 2, 4, 6, 16, -17.5, -21, -24.5, 8};
+  std::vector<int> zero_point{};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> x{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
+  std::vector<float> y_2{14, 12, 20, 16, -10.5, -7, -1, 0, 2, 4, 12, 16, -17.5, -21, -7, 8};
+  std::vector<float> y_3{14, 12, 10, 16, -10.5, -7, -3.5, 0, 2, 4, 6, 16, -17.5, -21, -24.5, 8};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
@@ -1271,11 +1271,11 @@ TEST(DequantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_LastAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, SignedInt_UseZeroPoint_LastAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {-6, -4, -3, -1, 0, 2, 4, 7};
-  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
-  std::vector<float> y_2 {2, 0, 4, 0, 0, 3.5, 0, 1, 2, 4, 4, 8, -3.5, -7, 0, 15};
-  std::vector<float> y_3 {2, 0, -2, 0, 0, 3.5, 7, 1, 2, 4, 6, 8, -3.5, -7, -10.5, 15};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{-6, -4, -3, -1, 0, 2, 4, 7};
+  std::vector<int> x{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, -8};
+  std::vector<float> y_2{2, 0, 4, 0, 0, 3.5, 0, 1, 2, 4, 4, 8, -3.5, -7, 0, 15};
+  std::vector<float> y_3{2, 0, -2, 0, 0, 3.5, 7, 1, 2, 4, 6, 8, -3.5, -7, -10.5, 15};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
@@ -1292,11 +1292,11 @@ TEST(DequantizeLinearOp21BlockedTest, SignedInt_UseZeroPoint_LastAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_NoZeroPoint_FirstAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {};
-  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::vector<float> y_2 {0, -4, 7, 3, -8, -20, 21, 7, 16, 36, -35, -11, 24, 52, -49, -15};
-  std::vector<float> y_3 {0, -4, 7, 3, -8, -20, 21, 7, -16, -36, 35, 11, 24, 52, -49, -15};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{};
+  std::vector<int> x{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2{0, -4, 7, 3, -8, -20, 21, 7, 16, 36, -35, -11, 24, 52, -49, -15};
+  std::vector<float> y_3{0, -4, 7, 3, -8, -20, 21, 7, -16, -36, 35, 11, 24, 52, -49, -15};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
@@ -1313,11 +1313,11 @@ TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_NoZeroPoint_FirstAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_UseZeroPoint_FirstAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {2, 0, 1, 9, 13, 5, 11, 6};
-  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::vector<float> y_2 {4, -4, 3.5, -6, -4, -20, 17.5, -2, -10, 16, 3.5, -5, -2, 32, -10.5, -9};
-  std::vector<float> y_3 {4, -4, 3.5, -6, -4, -20, 17.5, -2, -12, -36, 31.5, 2, -2, 32, -10.5, -9};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{2, 0, 1, 9, 13, 5, 11, 6};
+  std::vector<int> x{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2{4, -4, 3.5, -6, -4, -20, 17.5, -2, -10, 16, 3.5, -5, -2, 32, -10.5, -9};
+  std::vector<float> y_3{4, -4, 3.5, -6, -4, -20, 17.5, -2, -12, -36, 31.5, 2, -2, 32, -10.5, -9};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
@@ -1334,11 +1334,11 @@ TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_UseZeroPoint_FirstAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_NoZeroPoint_MiddleAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {};
-  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::vector<float> y_2 {0, -4, -4, -12, 14, 5, 21, 7, 16, 36, 20, 44, -42, -13, -49, -15};
-  std::vector<float> y_3 {0, -4, -4, -12, -8, -20, 21, 7, 16, 36, 20, 44, 24, 52, -49, -15};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{};
+  std::vector<int> x{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2{0, -4, -4, -12, 14, 5, 21, 7, 16, 36, 20, 44, -42, -13, -49, -15};
+  std::vector<float> y_3{0, -4, -4, -12, -8, -20, 21, 7, 16, 36, 20, 44, 24, 52, -49, -15};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
@@ -1355,11 +1355,11 @@ TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_NoZeroPoint_MiddleAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_UseZeroPoint_MiddleAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {2, 0, 1, 9, 13, 5, 11, 6};
-  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::vector<float> y_2 {4, -4, 0, -12, 10.5, -4, 17.5, -2, -10, 16, -6, 24, -3.5, -7, -10.5, -9};
-  std::vector<float> y_3 {4, -4, 0, -12, -4, -20, 17.5, -2, -10, 16, -6, 24, -2, 32, -10.5, -9};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{2, 0, 1, 9, 13, 5, 11, 6};
+  std::vector<int> x{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2{4, -4, 0, -12, 10.5, -4, 17.5, -2, -10, 16, -6, 24, -3.5, -7, -10.5, -9};
+  std::vector<float> y_3{4, -4, 0, -12, -4, -20, 17.5, -2, -10, 16, -6, 24, -2, 32, -10.5, -9};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
@@ -1376,11 +1376,11 @@ TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_UseZeroPoint_MiddleAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_NoZeroPoint_LastAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {};
-  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::vector<float> y_2 {0, -2, -8, -12, 14, 17.5, 6, 7, 16, 18, 40, 44, -42, -45.5, -14, -15};
-  std::vector<float> y_3 {0, -2, -4, -12, 14, 17.5, 21, 7, 16, 18, 20, 44, -42, -45.5, -49, -15};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{};
+  std::vector<int> x{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2{0, -2, -8, -12, 14, 17.5, 6, 7, 16, 18, 40, 44, -42, -45.5, -14, -15};
+  std::vector<float> y_3{0, -2, -4, -12, 14, 17.5, 21, 7, 16, 18, 20, 44, -42, -45.5, -49, -15};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
@@ -1397,11 +1397,11 @@ TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_NoZeroPoint_LastAxis) {
 }
 
 TEST(DequantizeLinearOp21BlockedTest, UnsignedInt_UseZeroPoint_LastAxis) {
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {2, 0, 1, 9, 13, 5, 11, 6};
-  std::vector<int> x {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  std::vector<float> y_2 {4, 2, -8, -12, 10.5, 14, -3, -2, -10, -8, 20, 24, -3.5, -7, -8, -9};
-  std::vector<float> y_3 {4, 2, 0, -12, 10.5, 14, 17.5, -2, -10, -8, -6, 24, -3.5, -7, -10.5, -9};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{2, 0, 1, 9, 13, 5, 11, 6};
+  std::vector<int> x{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<float> y_2{4, 2, -8, -12, 10.5, 14, -3, -2, -10, -8, 20, 24, -3.5, -7, -8, -9};
+  std::vector<float> y_3{4, 2, 0, -12, 10.5, 14, 17.5, -2, -10, -8, -6, 24, -3.5, -7, -10.5, -9};
 
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
   DequantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
@@ -1423,11 +1423,11 @@ TEST(DequantizeLinearOp21BlockedTest, Float8_NoZeroPoint_FirstAxis) {
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
-  std::vector<float> x_scale {-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> zero_point {};
-  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::vector<float> y_2 {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, 2.0, 8.0, -10.5, -4.0, 10.0, 24.0, -24.5, -8.0};
-  std::vector<float> y_3 {14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, -2.0, -8.0, 10.5, 4.0, 10.0, 24.0, -24.5, -8.0};
+  std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
+  std::vector<int> zero_point{};
+  std::vector<int> x{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2{14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, 2.0, 8.0, -10.5, -4.0, 10.0, 24.0, -24.5, -8.0};
+  std::vector<float> y_3{14.0, 24.0, -17.5, -4.0, 6.0, 8.0, -3.5, 0.0, -2.0, -8.0, 10.5, 4.0, 10.0, 24.0, -24.5, -8.0};
 
   if (enable_cpu || enable_cuda) {
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
@@ -1456,11 +1456,11 @@ TEST(DequantizeLinearOp21BlockedTest, Float8_NoZeroPoint_MiddleAxis) {
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
-  std::vector<int> zero_point {};
+  std::vector<int> zero_point{};
   std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::vector<float> y_2 {14, 24, 10, 16, -10.5, -2, -3.5, 0, 2, 8, 6, 16, -17.5, -6, -24.5, -8};
-  std::vector<float> y_3 {14, 24, 10, 16, 6, 8, -3.5, 0, 2, 8, 6, 16, 10, 24, -24.5, -8};
+  std::vector<int> x{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2{14, 24, 10, 16, -10.5, -2, -3.5, 0, 2, 8, 6, 16, -17.5, -6, -24.5, -8};
+  std::vector<float> y_3{14, 24, 10, 16, 6, 8, -3.5, 0, 2, 8, 6, 16, 10, 24, -24.5, -8};
 
   if (enable_cpu || enable_cuda) {
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
@@ -1489,11 +1489,11 @@ TEST(DequantizeLinearOp21BlockedTest, Float8_NoZeroPoint_LastAxis) {
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
-  std::vector<int> zero_point {};
+  std::vector<int> zero_point{};
   std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
-  std::vector<int> x {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-  std::vector<float> y_2 {14, 12, 20, 16, -10.5, -7, -1, 0, 2, 4, 12, 16, -17.5, -21, -7, -8};
-  std::vector<float> y_3 {14, 12, 10, 16, -10.5, -7, -3.5, 0, 2, 4, 6, 16, -17.5, -21, -24.5, -8};
+  std::vector<int> x{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<float> y_2{14, 12, 20, 16, -10.5, -7, -1, 0, 2, 4, 12, 16, -17.5, -21, -7, -8};
+  std::vector<float> y_3{14, 12, 10, 16, -10.5, -7, -3.5, 0, 2, 4, 6, 16, -17.5, -21, -24.5, -8};
 
   if (enable_cpu || enable_cuda) {
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
@@ -1517,7 +1517,7 @@ TEST(DequantizeLinearOp21BlockedTest, Float8_NoZeroPoint_LastAxis) {
   }
 }
 #endif
-}  // namespace blockeddequantization
+}  // namespace blocked_dequantization
 
 }  // namespace test
 }  // namespace onnxruntime
