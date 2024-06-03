@@ -263,6 +263,7 @@ stages:
             '
       displayName: 'Check if the generated image is wierd'
       workingDirectory: $(Build.SourcesDirectory)
+      # If the generate image hit another test image, make the job status as warning
       continueOnError: true
 
     - script: |
@@ -284,6 +285,8 @@ stages:
             '
       displayName: 'Check the generated image'
       workingDirectory: $(Build.SourcesDirectory)
+      # The step will execute if the gereneate image doesn't hit another test image
+      condition: succeded()
 
 - stage: Llama2_ONNX_FP16
   dependsOn:
