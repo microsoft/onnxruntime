@@ -22,7 +22,11 @@
  *
  *****************************************************************************/
 
-#include "vsinpu_util.h"
+#include <map>
+#include <algorithm>
+#include <utility>
+#include <unordered_set>
+#include "core/providers/vsinpu/vsinpu_util.h"
 
 #include "core/optimizer/initializer.h"
 #include "core/providers/shared/utils/utils.h"
@@ -52,7 +56,7 @@ tim::vx::DataType OnnxDtypeToTIMVXDtype(const int32_t dtype) {
     case onnx::TensorProto_DataType_UINT16:
       return tim::vx::DataType::UINT16;
     case onnx::TensorProto_DataType_BOOL:
-      return tim::vx::DataType::INT8;
+      return tim::vx::DataType::BOOL8;
     default:
       LOGS_DEFAULT(WARNING) << "Unsupported data type: " << dtype;
       break;
@@ -70,7 +74,7 @@ tim::vx::DataType OnnxDtypeToTIMVXDtype(const ONNX_NAMESPACE::DataType type) {
       {"tensor(int16)", tim::vx::DataType::INT16},
       {"tensor(uint16)", tim::vx::DataType::UINT16},
       {"tensor(int64)", tim::vx::DataType::INT64},
-      {"tensor(bool)", tim::vx::DataType::INT8},
+      {"tensor(bool)", tim::vx::DataType::BOOL8},
   };
   auto search = type_table.find(*type);
   if (search != type_table.end()) {
@@ -444,13 +448,11 @@ void GetQuantizationScaleAndZeroPoint(
         auto zps = unpacked_tensor.DataAsSpan<int8_t>();
         std::vector<int32_t> zps_vec(zps.begin(), zps.end());
         pcq_zps = onnxruntime::make_optional(std::move(zps_vec));
-      }
-      else if (is_int32_zp) {
+      } else if (is_int32_zp) {
         auto zps = unpacked_tensor.DataAsByteSpan();
         std::vector<int32_t> zps_vec(zps.begin(), zps.end());
         pcq_zps = onnxruntime::make_optional(std::move(zps_vec));
-      }
-      else {
+      } else {
         auto zps = unpacked_tensor.DataAsSpan<int32_t>();
         std::vector<int32_t> zps_vec(zps.begin(), zps.end());
         pcq_zps = onnxruntime::make_optional(std::move(zps_vec));
@@ -466,13 +468,12 @@ static bool IsInternalQuantizedNodeUnit(const NodeUnit& node_unit) {
 
   // These operators can use uint8 input without specific QLinear version of it
   // However, the mode has to be internal to the graph/partition (they cannot consume graph inputs)
-  static const std::unordered_set<std::string> internal_quantized_op_types =
-      {
-          "Transpose",
-          "Resize",
-          "Concat",
-          "MaxPool",
-      };
+  static const std::unordered_set<std::string> internal_quantized_op_types = {
+      "Transpose",
+      "Resize",
+      "Concat",
+      "MaxPool",
+  };
 
   const auto& node = node_unit.GetNode();
   if (!Contains(internal_quantized_op_types, node.OpType()))

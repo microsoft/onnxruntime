@@ -23,6 +23,9 @@
  *****************************************************************************/
 
 #pragma once
+#include <memory>
+#include <string>
+#include <vector>
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"

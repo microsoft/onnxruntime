@@ -25,7 +25,9 @@
 #pragma once
 #include <map>
 #include <vector>
-
+#include <string>
+#include <memory>
+#include <unordered_map>
 #include "builders/op_builder.h"
 #include "tim/vx/context.h"
 #include "tim/vx/graph.h"
@@ -49,8 +51,8 @@ struct NodeIOInfo {
 
 class GraphEP {
  public:
-  GraphEP(const GraphViewer& graph_viewer);
-  ~GraphEP(){};
+  explicit GraphEP(const GraphViewer& graph_viewer);
+  ~GraphEP() {}
 
   bool Prepare();
 
@@ -65,18 +67,18 @@ class GraphEP {
 
   bool& GetCompiled() { return compiled_; }
   std::shared_ptr<tim::vx::Graph>& GetGraph() { return graph_; }
-  std::vector<std::shared_ptr<tim::vx::Operation>>& GetOps() { return ops_;}
+  std::vector<std::shared_ptr<tim::vx::Operation>>& GetOps() { return ops_; }
   std::map<std::string, std::shared_ptr<tim::vx::Tensor>>& GetTensors() {
     return tensors_;
   }
 
   std::vector<std::shared_ptr<GraphIOInfo>>& GetGraphInputs() {
     return graph_inputs_;
-  };
+  }
 
   std::vector<std::shared_ptr<GraphIOInfo>>& GetGraphOutputs() {
     return graph_outputs_;
-  };
+  }
 
   void UpdateTensorMap(const std::string& name, const std::shared_ptr<tim::vx::Tensor>& dst_tensor);
 

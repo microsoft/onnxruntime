@@ -23,8 +23,8 @@
  *****************************************************************************/
 #include "core/framework/compute_capability.h"
 #include "core/providers/vsinpu/vsinpu_provider_factory.h"
-#include "vsinpu_provider_factory_creator.h"
-#include "vsinpu_execution_provider.h"
+#include "core/providers/vsinpu/vsinpu_provider_factory_creator.h"
+#include "core/providers/vsinpu/vsinpu_execution_provider.h"
 
 namespace onnxruntime {
 

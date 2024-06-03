@@ -66,8 +66,8 @@ class ResizeOpBuilder : public BaseOpBuilder {
       return false;
     }
     auto& cooridinate = helper.Get("coordinate_transoformation_mode", "half_pixel");
-    if (cooridinate != "align_corners" && cooridinate != "half_pixel" && cooridinate != "half_pixel_symmetric") {
-      LOGS_DEFAULT(WARNING) << "Only support half_pixel_symmetric and align_corners attributes now.";
+    if (cooridinate != "align_corners" && cooridinate != "half_pixel") {
+      LOGS_DEFAULT(WARNING) << "Only support half_pixel and align_corners attributes now.";
       return false;
     }
     if (helper.Get("keep_aspect_ratio_policy", "stretch") != "stretch") {
@@ -100,7 +100,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
     auto resize_type = onnx_mode == "nearest" ? tim::vx::ResizeType::NEAREST_NEIGHBOR : tim::vx::ResizeType::BILINEAR;
     bool align_corners = coordinate_transformation == "align_corners";
-    bool half_pixel_center = coordinate_transformation == "half_pixel_symmetric";
+    bool half_pixel_center = coordinate_transformation == "half_pixel";
     std::shared_ptr<tim::vx::Operation> op = nullptr;
     if (is_1dresize) {
       int target_size;

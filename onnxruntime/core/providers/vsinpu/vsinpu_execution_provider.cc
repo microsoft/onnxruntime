@@ -21,20 +21,20 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <unordered_map>
+#include <string>
+#include <unordered_set>
 #include "core/framework/compute_capability.h"
-#include "vsinpu_execution_provider.h"
-#include "vsinpu_ep_graph.h"
-#include "builders/op_builder.h"
-#include "builders/op_builder_factory.h"
+#include "core/providers/vsinpu/vsinpu_execution_provider.h"
+#include "core/providers/vsinpu/vsinpu_ep_graph.h"
+#include "core/providers/vsinpu/builders/op_builder.h"
+#include "core/providers/vsinpu/builders/op_builder_factory.h"
+#include "core/providers/vsinpu/vsinpu_util.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/node_unit.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/partitioning_utils.h"
-#include "vsinpu_util.h"
-
-using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 VSINPUExecutionProvider::VSINPUExecutionProvider(const VSINPUExecutionProviderInfo& info)
@@ -197,7 +197,7 @@ Status ComputeStateFunc(vsi::npu::GraphEP* graph_ep,
     auto out_shape = graph_ep->GetGraphOutputs()[i]->shape.GetDims();
     auto onnx_output_tensor =
         ctx.GetOutput(i, out_shape.data(), out_shape.size());
-    timvx_tensor->CopyDataFromTensor((void*)onnx_output_tensor.GetTensorRawData());
+    timvx_tensor->CopyDataFromTensor(const_cast<void*>(onnx_output_tensor.GetTensorRawData()));
   }
 
   return Status::OK();
@@ -242,8 +242,9 @@ Status VSINPUExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
     graph_ep->GetCompiled() = graph_ep->GetGraph()->Compile();
     if (!graph_ep->GetCompiled()) {
       LOGS_DEFAULT(ERROR) << "Failed to verify graph.";
-    } else
+    } else {
       LOGS_DEFAULT(INFO) << "Graph has been verified successfully.";
+    }
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [graph_ep](ComputeContext* /*context*/,

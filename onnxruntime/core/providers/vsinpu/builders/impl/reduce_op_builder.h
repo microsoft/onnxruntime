@@ -38,9 +38,9 @@ class ReduceMeanOpBuilder : public BaseOpBuilder {
     return true;
   }
   bool HandleBuildOp(vsi::npu::GraphEP* graph_ep,
-                   std::vector<std::shared_ptr<tim::vx::Tensor>>& inputs,
-                   std::vector<std::shared_ptr<tim::vx::Tensor>>& outputs,
-                   const NodeUnit& node_unit) override {
+                     std::vector<std::shared_ptr<tim::vx::Tensor>>& inputs,
+                     std::vector<std::shared_ptr<tim::vx::Tensor>>& outputs,
+                     const NodeUnit& node_unit) override {
     LOGS_DEFAULT(INFO) << "Creating ReduceMean Op.";
 
     NodeAttrHelper helper(node_unit.GetNode());
@@ -48,22 +48,22 @@ class ReduceMeanOpBuilder : public BaseOpBuilder {
     auto input_shape_size = inputs[0]->GetShape().size();
 
     if (node_unit.SinceVersion() < 18 && helper.HasAttr("axes")) {
-        def_axes = helper.Get("axes", def_axes);
+      def_axes = helper.Get("axes", def_axes);
     } else if (inputs.size() > 1) {
-        def_axes.resize(inputs[1]->GetSpec().GetElementNum());
-        inputs[1]->CopyDataFromTensor(def_axes.data());
+      def_axes.resize(inputs[1]->GetSpec().GetElementNum());
+      inputs[1]->CopyDataFromTensor(def_axes.data());
     } else {
-        for (int64_t i = 0; i < input_shape_size; ++i) {
-            def_axes.push_back(i);
-        }
+      for (int64_t i = 0; i < input_shape_size; ++i) {
+        def_axes.push_back(i);
+      }
     }
 
     std::vector<int32_t> axes(def_axes.begin(), def_axes.end());
     axes = util::ReverseAxis(axes, input_shape_size);
 
     if (helper.HasAttr("noop_with_empty_axes") && inputs.size() == 1 && helper.Get("noop_with_empty_axes", 0) == 1) {
-        outputs[0] = inputs[0];
-        return true;
+      outputs[0] = inputs[0];
+      return true;
     }
 
     bool keepdims = helper.Get("keepdims", 1) == 1;
@@ -71,7 +71,7 @@ class ReduceMeanOpBuilder : public BaseOpBuilder {
     (*op).BindInput(inputs[0]).BindOutputs(outputs);
     graph_ep->GetOps().push_back(std::move(op));
     return true;
-}
+  }
 };
 }  // namespace npu
 

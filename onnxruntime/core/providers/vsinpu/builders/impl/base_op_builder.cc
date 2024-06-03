@@ -91,8 +91,8 @@ bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initial
           return false;
         if (!has_initialized_quant_param(*input.quant_param->zero_point, initializers))
           return false;
-        if (input.quant_param->zero_point->Type() != input.node_arg.Type()){
-          LOGS_DEFAULT(ERROR)<<"Invalid input type because the data type mismatch with its' quant param type.";
+        if (input.quant_param->zero_point->Type() != input.node_arg.Type()) {
+          LOGS_DEFAULT(ERROR) << "Invalid input type because the data type mismatch with its' quant param type.";
           return false;
         }
       }

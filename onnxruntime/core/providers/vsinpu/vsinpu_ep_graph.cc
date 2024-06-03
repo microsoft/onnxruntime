@@ -22,9 +22,10 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
-#include "vsinpu_ep_graph.h"
-#include "builders/op_builder_factory.h"
-#include "vsinpu_util.h"
+#include <algorithm>
+#include "core/providers/vsinpu/vsinpu_ep_graph.h"
+#include "core/providers/vsinpu/builders/op_builder_factory.h"
+#include "core/providers/vsinpu/vsinpu_util.h"
 #include "core/framework/node_unit.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
@@ -66,7 +67,6 @@ bool GraphEP::Prepare() {
         add_quantized_input(*node_unit, 2);
       }
     }
-
   }  // All quantized inputs is recorded
   return true;
 }

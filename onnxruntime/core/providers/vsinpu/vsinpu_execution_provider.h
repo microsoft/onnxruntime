@@ -22,6 +22,8 @@
  *
  *****************************************************************************/
 #pragma once
+#include <memory>
+#include <vector>
 #include "core/framework/execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 

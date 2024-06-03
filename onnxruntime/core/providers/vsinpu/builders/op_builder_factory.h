@@ -103,7 +103,7 @@ static const std::map<std::string, createIOpBuildItemFunc> reg = {
     REGISTER_OP_BUILDER("Tile", TileOpBuilder),
     REGISTER_OP_BUILDER("Squeeze", SqueezeOpBuilder),
     REGISTER_OP_BUILDER("Unsqueeze", UnsqueezeOpBuilder),
-    REGISTER_OP_BUILDER("Resize",ResizeOpBuilder),
+    REGISTER_OP_BUILDER("Resize", ResizeOpBuilder),
     REGISTER_OP_BUILDER("Cast", CastOpBuilder),
 
 #undef REGISTER_OP_BUILDER
