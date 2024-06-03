@@ -258,13 +258,15 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
 
 template <typename T, typename ArchTag>
 void DispatchBlockSize(const MemoryEfficientAttentionParams& params) {
-  if (params.v_head_size <= 64) {
-    DispatchIsAligned<T, ArchTag, 64, 64, true>(params);
-  } else if (params.v_head_size <= 128) {
-    DispatchIsAligned<T, ArchTag, 32, 128, true>(params);
-  } else {
-    DispatchIsAligned<T, ArchTag, 32, 128, false>(params);
-  }
+  // cutlass upgrading: bugbug
+  (void)params;
+  // if (params.v_head_size <= 64) {
+  //   DispatchIsAligned<T, ArchTag, 64, 64, true>(params);
+  // } else if (params.v_head_size <= 128) {
+  //   DispatchIsAligned<T, ArchTag, 32, 128, true>(params);
+  // } else {
+  //   DispatchIsAligned<T, ArchTag, 32, 128, false>(params);
+  // }
 }
 
 }  // namespace cuda
