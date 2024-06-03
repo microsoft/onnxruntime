@@ -120,6 +120,7 @@ struct TypeProto_Sequence;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
+struct FunctionProto;
 struct InferenceContext;
 class GraphInferencer;
 using InferenceFunction = std::function<void(InferenceContext&)>;

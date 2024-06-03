@@ -807,8 +807,8 @@ struct ProviderHostImpl : ProviderHost {
   void IndexedSubGraph__SetMetaDef(IndexedSubGraph* p, std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) override { p->SetMetaDef(std::move(meta_def_)); }
   const IndexedSubGraph_MetaDef* IndexedSubGraph__GetMetaDef(const IndexedSubGraph* p) override { return p->GetMetaDef(); }
 
-  void IndexedSubGraph__SetSchemaSource(IndexedSubGraph* p, SourceOfSchema schema_source) override { p->schema_source = schema_source; }
-  SourceOfSchema IndexedSubGraph__GetSchemaSource(const IndexedSubGraph* p) override { return p->schema_source; }
+  void IndexedSubGraph__SetSchemaSource(IndexedSubGraph* p, IndexedSubGraph::SourceOfSchema schema_source) override { p->schema_source = schema_source; }
+  IndexedSubGraph::SourceOfSchema IndexedSubGraph__GetSchemaSource(const IndexedSubGraph* p) override { return p->schema_source; }
 
   // KernelDef (wrapped)
   void KernelDef__operator_delete(KernelDef* p) override { delete p; }
