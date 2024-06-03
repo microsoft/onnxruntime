@@ -194,7 +194,7 @@ Return Value:
         auto ShortVector1 = vec_pack(IntegerVector2, IntegerVector3);
 
         auto CharVector = vec_pack(ShortVector0, ShortVector1);
-        vec_xst(CharVector, 0, static_cast<int8_t *>(&TmpOutput[0]));
+        vec_xst(CharVector, 0, reinterpret_cast<int8_t *>(&TmpOutput[0]));
 
         MlasPackInt4Elements(Output++, TmpOutput[0], TmpOutput[1]);
         MlasPackInt4Elements(Output++, TmpOutput[2], TmpOutput[3]);
