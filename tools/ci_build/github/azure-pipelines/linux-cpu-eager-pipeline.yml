@@ -27,14 +27,6 @@ pr:
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 jobs:
 # This pipeline builds the latest PyTorch commit from source
 # and use it in ORT tests. See Dockerfile.manylinux2014_lort_cpu
@@ -59,7 +51,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_lort_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.lort_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildlort
@@ -75,7 +67,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuildlort \
-            /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/tools/ci_build/build.py \
+            python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Release \
               --skip_submodule_sync \
@@ -97,9 +89,9 @@ jobs:
           onnxruntimecpubuildlort \
             bash -c "
               export PYTHONPATH=/build/Release && \
-              /opt/python/cp39-cp39/bin/python3.9 -m pip install /build/Release/dist/*.whl && \
-              /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort.py && \
-              cd /build/Release && /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort_custom_ops.py"
+              python3 -m pip install /build/Release/dist/*.whl && \
+              python3 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort.py && \
+              cd /build/Release && python3 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_dort_custom_ops.py"
       workingDirectory: $(Build.SourcesDirectory)
       condition: succeededOrFailed()
 

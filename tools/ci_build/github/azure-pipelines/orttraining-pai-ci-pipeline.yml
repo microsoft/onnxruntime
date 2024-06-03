@@ -62,6 +62,7 @@ jobs:
         --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
         --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
       Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-manylinux-build
+      CheckOutManyLinux: true
 
   - task: Cache@2
     inputs:
