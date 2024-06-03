@@ -37,6 +37,7 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info)
   rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
   num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
+  is_batch_inputs_packed = (info.GetAttrOrDefault<int64_t>("is_batch_inputs_packed", 0) == 1);
 }
 
 template <typename T>
@@ -57,12 +58,9 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  if (parameters.sequence_length > parameters.max_sequence_length) {
+  if (is_batch_inputs_packed == false && parameters.sequence_length > parameters.max_sequence_length) {
     // Launch update_cos_sin_cache kernel with scale
-    //ORT_NOT_IMPLEMENTED("WARNNING: This behavior might lead to error output."
-    //" if the input_ids is not packed together, this means sequense is loger than "
-    //"the max_seq_len for sin/cos cache and updating cos_cache and sin_cache in RotaryEmbedding"
-    //" is not currently supported");
+    ORT_NOT_IMPLEMENTED("Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported");
   }
 
   // Launch rotary embedding kernel
