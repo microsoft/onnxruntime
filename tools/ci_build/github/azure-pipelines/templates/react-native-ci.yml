@@ -119,7 +119,7 @@ stages:
       vmImage: 'macOS-12'
     variables:
       runCodesignValidationInjection: false
-    timeoutInMinutes: 60
+    timeoutInMinutes: 90
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: Clean Agent Directories
@@ -397,10 +397,6 @@ stages:
         contents: onnxruntime-react-native*.tgz
         targetFolder: $(Build.ArtifactStagingDirectory)
       displayName: Create Artifacts onnxruntime-react-native
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
 
     - task: PublishPipelineArtifact@1
       inputs:

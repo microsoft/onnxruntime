@@ -25,6 +25,8 @@ class GemmOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -214,6 +216,55 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
         }
       }
     }
+  }
+
+  return true;
+}
+
+bool GemmOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                                           const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // A data type
+  int32_t input1_type;  // B data type
+  int32_t input2_type;  // C or a_zero_point data type
+  int32_t input3_type;  // b_zero_point data type
+  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
+  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      (has_input2 && !GetType(*input_defs[2], input2_type, logger)) ||
+      (has_input3 && !GetType(*input_defs[3], input3_type, logger))) {
+    return false;
+  }
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
+  if (op_type == "Gemm" || op_type == "MatMul") {
+    // WebNN gemm and matmul only support float32 and float16 input data types.
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+    };
+  } else if (op_type == "MatMulInteger") {
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_INT8,
+        ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+    };
+  }
+  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input0_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (input0_type != input1_type ||
+      (has_input2 && input0_type != input2_type) ||
+      (has_input3 && input0_type != input3_type)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input data types should be the same.";
+    return false;
   }
 
   return true;

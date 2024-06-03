@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/tensor/transpose.h"
 
+#include <memory>
 #include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
 #include "core/framework/transpose_helper.h"
@@ -29,12 +30,23 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Transpose, Input, 0,
     DefaultDataTypes);
 #endif
+
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Transpose, 21, Input, 0,
+    element_type_lists::AllIRv10);
+
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Transpose, 21, Input, 0,
+    element_type_lists::AllIRv10);
+
 }  // namespace op_kernel_type_control
 
 namespace {
 // reduce the supported types with any global or op specific lists
-using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                        Transpose, Input, 0);
+using EnabledDataTypesAllOpsets = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                                 Transpose, Input, 0);
+using EnabledDataTypesOpset21 = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
+                                                                    Transpose, 21, Input, 0);
 }  // namespace
 
 /* A permutation [a,b,c,...] indicates that
@@ -183,7 +195,7 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 template <class T>
 static bool TypedDoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
                                     const gsl::span<const size_t>& stride, const uint8_t* source, uint8_t* target) {
-  constexpr bool enabled = utils::HasTypeWithSameSize<EnabledDataTypes, T>();
+  constexpr bool enabled = utils::HasTypeWithSameSize<EnabledDataTypesAllOpsets, T>();
 
   if (enabled) {
     MultiIndex mindex;
@@ -287,7 +299,7 @@ static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, co
   Status status = Status::OK();
 
   if (is_string_type) {
-    constexpr bool string_enabled = utils::HasType<EnabledDataTypes, std::string>();
+    constexpr bool string_enabled = utils::HasType<EnabledDataTypesAllOpsets, std::string>();
 
     if (string_enabled) {
       const auto* input_data = input.Data<std::string>();
@@ -336,38 +348,84 @@ bool IsTransposeReshape(const gsl::span<const size_t>& perm, gsl::span<const int
   return true;
 }
 
+static Status TransposeImpl(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
+                            const TensorShape* input_shape_override, concurrency::ThreadPool* tp) {
+  TensorShape shape = input_shape_override ? *input_shape_override : input.Shape();
+
+  if (IsTransposeReshape(permutations, shape.GetDims())) {
+    // As long as the dims with values > 1 stay in the same order, it's a reshape.
+    // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
+    CopyCpuTensor(&input, &output);
+    return Status::OK();
+  }
+
+  size_t from = 0, to = 0;
+  bool moving_single_axis = IsTransposeMovingSingleAxis(permutations, from, to);
+
+  if (moving_single_axis && !input.IsDataTypeString()) {
+    SingleAxisTranspose(permutations, input, output, from, to, input_shape_override, tp);
+    return Status::OK();
+  }
+
+  // fall back to default implementation
+  return DoUntypedTranspose(permutations, input, output, input_shape_override);
+}
+
+template <typename Int4Type>
+static Status UnpackInt4Tensor(const Tensor& src, Tensor& dst, AllocatorPtr cpu_allocator) {
+  using UnpackedType = typename Int4Type::UnpackedType;
+  MLDataType int8_elem_type = DataTypeImpl::GetType<UnpackedType>();
+  const TensorShape& shape = src.Shape();
+  Tensor int8_tensor(int8_elem_type, shape, cpu_allocator);
+
+  ORT_RETURN_IF_NOT(Int4Type::Unpack(int8_tensor.MutableDataAsSpan<UnpackedType>(), src.DataAsSpan<Int4Type>()),
+                    "Failed to unpack Int4x2 Tensor to an int8_t Tensor");
+
+  dst = std::move(int8_tensor);
+
+  return Status::OK();
+}
+
+template <typename Int4Type>
+static Status DoTransposeInt4(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
+                              const TensorShape* input_shape_override, concurrency::ThreadPool* tp) {
+  using Int8Type = typename Int4Type::UnpackedType;
+
+  ORT_RETURN_IF_NOT(input.IsDataType<Int4Type>() && output.IsDataType<Int4Type>(),
+                    "Expected to transpose int4 tensor");
+
+  // Convert to Tensor<Int8Type>, transpose, and then repack back to Tensor<Int4Type>.
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  Tensor input_unpacked;
+  Tensor output_unpacked(DataTypeImpl::GetType<Int8Type>(), output.Shape(), cpu_allocator);
+
+  ORT_RETURN_IF_ERROR((UnpackInt4Tensor<Int4Type>(input, input_unpacked, cpu_allocator)));
+  ORT_RETURN_IF_ERROR(TransposeImpl(permutations, input_unpacked, output_unpacked, input_shape_override, tp));
+  ORT_RETURN_IF_NOT(Int4Type::Pack(output.MutableDataAsSpan<Int4Type>(), output_unpacked.DataAsSpan<Int8Type>()),
+                    "Failed to pack 8-bit Tensor into 4-bit Tensor");
+
+  return Status::OK();
+}
+
 //`input_shape_override` overrides the shape of `input` for compute purposes.
 Status TransposeBase::DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                                  const TensorShape* input_shape_override) {
-  Status status = Status::OK();
-
+                                  const TensorShape* input_shape_override, concurrency::ThreadPool* tp) {
   auto input_type = input.DataType();
   auto output_type = output.DataType();
 
   if (input_type != output_type) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mismatched data types between input and output Tensors. ",
-                             input_type, " != ", output_type);
-  } else {
-    TensorShape shape = input_shape_override ? *input_shape_override : input.Shape();
-    if (IsTransposeReshape(permutations, shape.GetDims())) {
-      // As long as the dims with values > 1 stay in the same order, it's a reshape.
-      // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
-      CopyCpuTensor(&input, &output);
-      return Status::OK();
-    }
-
-    size_t from = 0, to = 0;
-    bool moving_single_axis = IsTransposeMovingSingleAxis(permutations, from, to);
-
-    if (moving_single_axis && !input.IsDataTypeString()) {
-      SingleAxisTranspose(permutations, input, output, from, to, input_shape_override);
-    } else {
-      // fall back to default implementation
-      status = DoUntypedTranspose(permutations, input, output, input_shape_override);
-    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mismatched data types between input and output Tensors. ",
+                           input_type, " != ", output_type);
+  }
+  if (input.IsDataType<Int4x2>()) {
+    return DoTransposeInt4<Int4x2>(permutations, input, output, input_shape_override, tp);
   }
 
-  return status;
+  if (input.IsDataType<UInt4x2>()) {
+    return DoTransposeInt4<UInt4x2>(permutations, input, output, input_shape_override, tp);
+  }
+
+  return TransposeImpl(permutations, input, output, input_shape_override, tp);
 }
 
 Status Transpose::Compute(OpKernelContext* ctx) const {
@@ -388,49 +446,33 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor& Y = *ctx->Output(0, output_shape);
 
-  if (output_shape.Size() == 0)
-    return Status::OK();
-
-  if (IsTransposeReshape(*p_perm, input_dims)) {
-    // As long as the dims with values > 1 stay in the same order, it's a reshape.
-    // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
-    CopyCpuTensor(&X, &Y);
+  if (output_shape.Size() == 0) {
     return Status::OK();
   }
 
-  size_t from = 0, to = 0;
-  bool moving_single_axis = IsTransposeMovingSingleAxis(*p_perm, from, to);
-
-  if (moving_single_axis && !X.IsDataTypeString()) {
-    SingleAxisTranspose(*p_perm, X, Y, from, to, nullptr, ctx->GetOperatorThreadPool());
-  } else {
-    // fall back to default implementation
-    status = DoUntypedTranspose(*p_perm, X, Y);
-  }
-
-  return status;
+  return DoTranspose(*p_perm, X, Y, nullptr, ctx->GetOperatorThreadPool());
 }
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     1,
     12,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesAllOpsets>()),
     Transpose);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     13,
     20,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesAllOpsets>()),
     Transpose);
 
 // Opset 21 added support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
-// TODO(adrianlizarraga): Implement support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
+// TODO(adrianlizarraga): Implement support for float8e4m3fnuz, float8e5m2, and float8e5m2fnuz.
 ONNX_CPU_OPERATOR_KERNEL(
     Transpose,
     21,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
     Transpose);
 
 }  // namespace onnxruntime

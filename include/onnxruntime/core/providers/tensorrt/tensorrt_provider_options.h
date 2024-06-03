@@ -80,4 +80,5 @@ struct OrtTensorRTProviderOptionsV2 {
                                                     // the "trt_weight_stripped_engine_enable" option is enabled)
 
   const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
+  int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true
 };

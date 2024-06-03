@@ -29,6 +29,7 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include "core/framework/int4.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/framework/TensorSeq.h"
@@ -202,6 +203,44 @@ std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch(const Tensor& outval
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
+template <>
+std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch<Int4x2>(const Tensor& outvalue,
+                                                                    const Tensor& expected_value) {
+  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
+  const Int4x2* expected_output = expected_value.Data<Int4x2>();
+  const Int4x2* real_output = outvalue.Data<Int4x2>();
+  for (size_t di = 0; di != size1; ++di) {
+    size_t r = di >> 1;
+    size_t c = di & 0x1;
+
+    if (expected_output[r].GetElem(c) != real_output[r].GetElem(c)) {
+      std::ostringstream oss;
+      oss << "expected " << expected_output[r].GetElem(c) << ", got " << real_output[r].GetElem(c);
+      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
+    }
+  }
+  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+}
+
+template <>
+std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch<UInt4x2>(const Tensor& outvalue,
+                                                                     const Tensor& expected_value) {
+  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
+  const UInt4x2* expected_output = expected_value.Data<UInt4x2>();
+  const UInt4x2* real_output = outvalue.Data<UInt4x2>();
+  for (size_t di = 0; di != size1; ++di) {
+    size_t r = di >> 1;
+    size_t c = di & 0x1;
+
+    if (expected_output[r].GetElem(c) != real_output[r].GetElem(c)) {
+      std::ostringstream oss;
+      oss << "expected " << expected_output[r].GetElem(c) << ", got " << real_output[r].GetElem(c);
+      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
+    }
+  }
+  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+}
+
 std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outvalue, const Tensor& expected_value,
                                                             double per_sample_tolerance,
                                                             double relative_per_sample_tolerance,
@@ -313,6 +352,10 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue,
     return IsResultExactlyMatch<int64_t>(outvalue, expected_tensor);
   } else if (outvalue.IsDataType<bool>()) {
     return IsResultExactlyMatch<bool>(outvalue, expected_tensor);
+  } else if (outvalue.IsDataType<Int4x2>()) {
+    return IsResultExactlyMatch<Int4x2>(outvalue, expected_tensor);
+  } else if (outvalue.IsDataType<UInt4x2>()) {
+    return IsResultExactlyMatch<UInt4x2>(outvalue, expected_tensor);
   } else if (outvalue.IsDataType<MLFloat16>()) {
     return CompareFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
                                 post_processing);
