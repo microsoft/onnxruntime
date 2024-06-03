@@ -404,19 +404,19 @@ struct FunctionProto final {
   void set_domain(const std::string& domain) { g_host->FunctionProto__set_domain(this, domain); }
 
   const std::string& input(int index) const { return g_host->FunctionProto__input(this, index); }
-  std::vector<std::string>* mutable_input() { return g_host->FunctionProto__input(this); }
+  std::vector<std::string>* mutable_input() { return g_host->FunctionProto__mutable_input(this); }
   std::string* mutable_input(int index) { return g_host->FunctionProto__mutable_input(this, index); }
   int input_size() const { return g_host->FunctionProto__input_size(this); }
   void add_input(const std::string& value) { g_host->FunctionProto__add_input(this, value); }
 
   const std::string& output(int index) const { return g_host->FunctionProto__output(this, index); }
-  std::vector<std::string>* mutable_output() { return g_host->FunctionProto__output(this); }
+  std::vector<std::string>* mutable_output() { return g_host->FunctionProto__mutable_output(this); }
   std::string* mutable_output(int index) { return g_host->FunctionProto__mutable_output(this, index); }
   int output_size() const { return g_host->FunctionProto__output_size(this); }
   void add_output(const std::string& value) { g_host->FunctionProto__add_output(this, value); }
 
   const std::string& attribute(int index) const { return g_host->FunctionProto__attribute(this, index); }
-  std::vector<std::string>* mutable_attribute() { return g_host->FunctionProto__attribute(this); }
+  std::vector<std::string>* mutable_attribute() { return g_host->FunctionProto__mutable_attribute(this); }
   std::string* mutable_attribute(int index) { return g_host->FunctionProto__mutable_attribute(this, index); }
   int attribute_size() const { return g_host->FunctionProto__attribute_size(this); }
   void add_attribute(const std::string& value) { g_host->FunctionProto__add_attribute(this, value); }
@@ -524,14 +524,13 @@ struct IndexedSubGraph_MetaDef final {
   void operator=(const IndexedSubGraph_MetaDef&) = delete;
 };
 
-struct IndexedSubGraph final {
-  // Mirroring the enum defined in indexed_sub_graph.h.
-  enum class SourceOfSchema : uint8_t {
-    CREATE,
-    REUSE_OR_CREATE,
-    EXISTING,
-  };
+enum class IndexedSubGraph_SourceOfSchema : uint8_t {
+  CREATE,
+  REUSE_OR_CREATE,
+  EXISTING,
+};
 
+struct IndexedSubGraph final {
   static std::unique_ptr<IndexedSubGraph> Create() { return g_host->IndexedSubGraph__construct(); }
   static void operator delete(void* p) { g_host->IndexedSubGraph__operator_delete(reinterpret_cast<IndexedSubGraph*>(p)); }
 
@@ -540,8 +539,8 @@ struct IndexedSubGraph final {
   void SetMetaDef(std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) { return g_host->IndexedSubGraph__SetMetaDef(this, std::move(*reinterpret_cast<std::unique_ptr<IndexedSubGraph_MetaDef>*>(&meta_def_))); }
   const IndexedSubGraph_MetaDef* GetMetaDef() const { return reinterpret_cast<const IndexedSubGraph_MetaDef*>(g_host->IndexedSubGraph__GetMetaDef(this)); }
 
-  void SetSchemaSource(SourceOfSchema schema_source) { return g_host->IndexedSubGraph__SetSchemaSource(this, schema_source); }
-  SourceOfSchema GetSchemaSource() const { return g_host->IndexedSubGraph__GetSchemaSource(this); }
+  void SetSchemaSource(IndexedSubGraph_SourceOfSchema schema_source) { return g_host->IndexedSubGraph__SetSchemaSource(this, schema_source); }
+  IndexedSubGraph_SetSchemaSource GetSchemaSource() const { return g_host->IndexedSubGraph__GetSchemaSource(this); }
 
   IndexedSubGraph() = delete;
   IndexedSubGraph(const IndexedSubGraph&) = delete;
