@@ -65,8 +65,8 @@ stages:
     - template: ../templates/get-docker-image-steps.yml
       parameters:
         ScriptName: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/get_docker_image.py
-        Dockerfile: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/gpu/Dockerfile
-        Context: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/gpu
+        Dockerfile: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}/Dockerfile
+        Context: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}
         DockerBuildArgs: "--build-arg BASEIMAGE=${{ variables.docker_base_image }} --build-arg TRT_VERSION=${{ variables.linux_trt_version }} --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimetensorrt$(CUDA_VERSION_MAJOR)build
         UpdateDepsTxt: false
