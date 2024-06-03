@@ -286,7 +286,7 @@ stages:
       displayName: 'Check the generated image'
       workingDirectory: $(Build.SourcesDirectory)
       # The step will execute if the gereneate image doesn't hit another test image
-      condition: succeded()
+      condition: succeeded()
 
 - stage: Llama2_ONNX_FP16
   dependsOn:
