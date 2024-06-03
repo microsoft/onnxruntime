@@ -93,11 +93,6 @@ variables:
     value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
   ${{ if eq(parameters.CudaVersion, '12.2') }}:
     value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
-- name: linux_trt_version
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: 10.0.1.6-1.cuda11.8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: 10.0.1.6-1.cuda12.4
 - name: win_trt_version
   ${{ if eq(parameters.CudaVersion, '11.8') }}:
     value: 11.8
@@ -184,7 +179,6 @@ stages:
       DoCompliance: ${{ parameters.DoCompliance }}
       CudaVersion: ${{ parameters.CudaVersion }}
       docker_base_image: ${{ variables.docker_base_image }}
-      linux_trt_version: ${{ variables.linux_trt_version }}
       RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
       UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
       win_trt_home: ${{ variables.win_trt_home }}
@@ -228,6 +222,7 @@ stages:
           --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
           --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
         Repository: onnxruntimetrainingrocmbuild-rocm$(RocmVersion)
+        CheckOutManyLinux: true
 
     - template: templates/set-version-number-variables-step.yml
 

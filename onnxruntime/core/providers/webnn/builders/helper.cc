@@ -130,16 +130,10 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   return supported_node_groups;
 }
 
-bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_type) {
-  // Current data type implementation status of WebNN is inconsistent along with different backends,
-  // The XNNPack backend supports only FP32, while the DML backend POC supports more.
-  if (device_type == WebnnDeviceType::CPU) {
-    return std::find(supported_cpu_data_types.begin(), supported_cpu_data_types.end(), data_type) !=
-           supported_cpu_data_types.end();
-  } else {
-    return std::find(supported_gpu_data_types.begin(), supported_gpu_data_types.end(), data_type) !=
-           supported_gpu_data_types.end();
-  }
+bool IsSupportedDataType(const int32_t data_type,
+                         const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>& supported_data_types) {
+  return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) !=
+         supported_data_types.end();
 }
 
 bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
@@ -161,41 +155,30 @@ bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
 }
 
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
-  // WebNN changed the name of the MLOperandDescriptor's data type from "type" to "dataType",
-  // use a duplicate entry temporarily to workaround this API breaking issue.
-  // TODO: Remove legacy "type" once all browsers implement the new "dataType".
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      desc.set("type", emscripten::val("uint8"));
       desc.set("dataType", emscripten::val("uint8"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      desc.set("type", emscripten::val("int8"));
       desc.set("dataType", emscripten::val("int8"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      desc.set("type", emscripten::val("float16"));
       desc.set("dataType", emscripten::val("float16"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      desc.set("type", emscripten::val("float32"));
       desc.set("dataType", emscripten::val("float32"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      desc.set("type", emscripten::val("int32"));
       desc.set("dataType", emscripten::val("int32"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      desc.set("type", emscripten::val("int64"));
       desc.set("dataType", emscripten::val("int64"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      desc.set("type", emscripten::val("uint32"));
       desc.set("dataType", emscripten::val("uint32"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      desc.set("type", emscripten::val("uint64"));
       desc.set("dataType", emscripten::val("uint64"));
       return true;
     default:

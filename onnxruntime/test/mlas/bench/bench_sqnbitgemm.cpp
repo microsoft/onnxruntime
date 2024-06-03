@@ -111,7 +111,7 @@ void SQNBITGEMM(benchmark::State& state) {
 }
 
 static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
-  b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "ComputeType"});
+  b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
 
   b->ArgsProduct({
       {16, 32, 64, 128, 256},                  // BlkLen
