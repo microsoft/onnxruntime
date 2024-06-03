@@ -24,6 +24,7 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
 
  private:
   Status SynchronizeExpertsStartIndex(AllocatorPtr& alloc, OpKernelContext* ctx, cudaEvent_t& cuda_event) const;
+  Status SynchronizeExpertsStartIndexImpl(AllocatorPtr& alloc, OpKernelContext* ctx, cudaEvent_t& cuda_event) const;
 
   int64_t local_experts_start_index_;
   int64_t tensor_shards_;
@@ -32,6 +33,8 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
   // A global resource pack for IPC memory used in custom reduce kernel.
   // Resource retrieval and deserialization are made atomic to thread safety of accessing it.
   mutable onnxruntime::cuda::collective::GlobalIPCMemoryResourcePack g_ipc_mem_res_pack_;
+
+  mutable std::once_flag flag_;
 };
 
 #endif

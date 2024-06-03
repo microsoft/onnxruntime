@@ -146,13 +146,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
     int64_t total_past_rows = 0;
     int64_t total_covered_rows = 0;
 
-    static std::mutex s_mutex;
-    std::unique_lock<std::mutex> lock(s_mutex);
     ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
-    if (copy_event != nullptr) {
-      CUDA_RETURN_IF_ERROR(cudaEventSynchronize(copy_event));
-    }
-    lock.unlock();
 
     NCCL_RETURN_IF_ERROR(ncclGroupStart());
     for (int rank = 0; rank < nccl_->Size(); ++rank) {
@@ -181,12 +175,8 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 template <typename T>
-Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator, OpKernelContext* context,
-                                                   cudaEvent_t& cuda_event) const {
-  if (rank_to_experts_start_index_[0] != std::numeric_limits<int64_t>::min()) {
-    return Status::OK();
-  }
-
+Status ShardedMoE<T>::SynchronizeExpertsStartIndexImpl(AllocatorPtr& allocator, OpKernelContext* context,
+                                                       cudaEvent_t& cuda_event) const {
   auto stream = context->GetComputeStream();
 
   using IndexType = int64_t;
@@ -204,13 +194,24 @@ Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator, OpKe
                                      reinterpret_cast<char*>(rank_to_experts_start_index_d.get()), 1,
                                      GetNcclDataType(DataTypeImpl::GetType<IndexType>()), nccl_->Comm(),
                                      Stream(context)));
-  // The const_cast<> violates the const modifier to make sure the synchronization happens only once per session.
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(const_cast<int64_t*>(rank_to_experts_start_index_.data()),
                                        rank_to_experts_start_index_d.get(), nccl_->Size() * IndexTypeSize,
                                        cudaMemcpyDeviceToHost, Stream(context)));
 
   CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&cuda_event, cudaEventDisableTiming));
   CUDA_RETURN_IF_ERROR(cudaEventRecord(cuda_event, Stream(context)));
+
+  if (cuda_event != nullptr) {
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(cuda_event));
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
+Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator, OpKernelContext* context,
+                                                   cudaEvent_t& cuda_event) const {
+  std::call_once(flag_, &ShardedMoE<T>::SynchronizeExpertsStartIndexImpl, this, allocator, context, cuda_event);
 
   return Status::OK();
 }
