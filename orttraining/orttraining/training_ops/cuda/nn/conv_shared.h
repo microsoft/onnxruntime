@@ -55,14 +55,14 @@ struct ConvArgs {
 
 struct ConvParamsHash {
   // ConvParams must be a POD because we read out its memory constant as char* when hashing.
-  static_assert(std::is_pod<ConvParams>::value, "ConvParams is not POD");
+  static_assert(std::is_trivial<ConvParams>::value, "ConvParams is not POD");
 
   size_t operator()(const ConvParams& conv_params) const;
 };
 
 struct ConvParamsEqual {
   // ConvParams must be a POD because we read out its memory constant as char* when hashing.
-  static_assert(std::is_pod<ConvParams>::value, "ConvParams is not POD");
+  static_assert(std::is_trivial<ConvParams>::value, "ConvParams is not POD");
 
   bool operator()(const ConvParams& a, const ConvParams& b) const;
 };
