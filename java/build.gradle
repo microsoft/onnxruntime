@@ -160,11 +160,14 @@ if (cmakeBuildDir != null) {
 		include 'libs/**'
 		include 'docs/**'
 		into cmakeBuildOutputDir
+		dependsOn(allJar, sourcesJar, javadocJar, javadoc, compileTestJava)
+		var propSet = ['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'USE_COREML', 'USE_DML', 'JAVA_FULL_TEST', 'ENABLE_TRAINING_APIS']
+		for (prop in propSet) {
+			if (System.getProperty(prop) == null) {
+				System.setProperty(prop, '1')
+			}
+		}
 	}
-	cmakeBuild.dependsOn allJar
-	cmakeBuild.dependsOn sourcesJar
-	cmakeBuild.dependsOn javadocJar
-	cmakeBuild.dependsOn javadoc
 
 	task cmakeCheck(type: Copy) {
 		from project.buildDir
@@ -172,6 +175,7 @@ if (cmakeBuildDir != null) {
 		into cmakeBuildOutputDir
 	}
 	cmakeCheck.dependsOn check
+
 }
 
 dependencies {
@@ -184,9 +188,10 @@ processTestResources {
 	duplicatesStrategy(DuplicatesStrategy.INCLUDE) // allows duplicates in the test resources
 }
 
+
 test {
 	java {
-		dependsOn spotlessJava
+		dependsOn (spotlessJava)
 	}
 	if (System.getProperty("JAVA_FULL_TEST") != null) {
 		// Forces each test class to be run in a separate JVM,

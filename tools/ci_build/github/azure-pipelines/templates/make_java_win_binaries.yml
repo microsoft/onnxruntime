@@ -8,14 +8,17 @@ parameters:
 
 steps:
     - task: CmdLine@2
-      displayName: 'Gradle cmakeCheck'
-      continueOnError:  ${{ parameters.buildOnly }}
+      displayName: 'Gradle Build Jar'
       inputs:
+      ${{ if eq(parameters.buildOnly, false) }}:
+        script: |
+          @echo on
+          call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+      ${{ if eq(parameters.buildOnly, true) }}:
         script: |
           @echo on
           call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
-        workingDirectory: $(Build.SourcesDirectory)\java
-        failOnStderr: ${{ not(parameters.buildOnly) }}
+      workingDirectory: $(Build.SourcesDirectory)\java
 
     - task: CmdLine@2
       displayName: 'Add symbols and notices to Java'
