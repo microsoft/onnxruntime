@@ -68,7 +68,7 @@ stages:
         Dockerfile: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/gpu/Dockerfile
         Context: $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/inference/x86_64/default/gpu
         DockerBuildArgs: "--build-arg BASEIMAGE=${{ variables.docker_base_image }} --build-arg TRT_VERSION=${{ variables.linux_trt_version }} --build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
+        Repository: onnxruntime${{ parameters.EP }}${{ variables.CUDA_VERSION_MAJOR }}x64build
         UpdateDepsTxt: false
 
     - template: ../templates/set-version-number-variables-step.yml
