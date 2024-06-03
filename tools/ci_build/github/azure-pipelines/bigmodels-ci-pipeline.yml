@@ -178,10 +178,18 @@ stages:
       CLIP_MODEL_CACHE: $(Agent.TempDirectory)/clip_cache
       STABLE_DIFFUSION_MODEL_CACHE: $(Agent.TempDirectory)/stablediffusion_cache
       GenerateImage_DIR: $(Agent.TempDirectory)/images
+      hitAnother: 'False'
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
     steps:
+
+    - bash: |
+        echo "##vso[task.setvariable variable=myVar;]foo"
+
+    - bash: |
+        echo "You can use macro syntax for variables: $(myVar)"
+
     - checkout: self
       clean: true
       submodules: none
@@ -258,10 +266,10 @@ stages:
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py generate image; \
             python3 -u check_image.py --image1 astronaut_riding_error.png --image2 $image2 --cache_dir /model_cache --negative; \
-            if [ $? -ne 0 ]; then echo "##vso[task.setvariable variable=hitAnother;]True"; exit 1; fi; \
+            if [ $? -ne 0 ]; then echo "failed"; exit 1; fi; \
             popd ; \
             popd ; \
-            '
+            ' || echo "##vso[task.setvariable variable=myVar;]True"
       displayName: 'Check if the generated image is wierd'
       workingDirectory: $(Build.SourcesDirectory)
       # If the generate image hit another test image, make the job status as warning
