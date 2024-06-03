@@ -421,6 +421,7 @@ struct ProviderHost {
   virtual int NodeProto__attribute_size(ONNX_NAMESPACE::NodeProto* p) = 0;
   virtual const ONNX_NAMESPACE::AttributeProto& NodeProto__attribute(const ONNX_NAMESPACE::NodeProto* p, int index) const = 0;
   virtual ONNX_NAMESPACE::AttributeProto* NodeProto__mutable_attribute(ONNX_NAMESPACE::NodeProto* p, int index) = 0;
+  virtual ONNX_NAMESPACE::AttributeProto* NodeProto__add_attribute(ONNX_NAMESPACE::NodeProto* p) = 0;
 
   // TensorProto
   virtual std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() = 0;
@@ -489,6 +490,75 @@ struct ProviderHost {
 
   virtual const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) = 0;
 
+  // FunctionProto
+  virtual std::unique_ptr<ONNX_NAMESPACE::FunctionProto> FunctionProto__construct() = 0;
+  virtual void FunctionProto__operator_delete(ONNX_NAMESPACE::FunctionProto* p) = 0;
+
+  virtual bool FunctionProto__SerializeToString(const ONNX_NAMESPACE::FunctionProto* p, std::string& string) = 0;
+  virtual bool FunctionProto__SerializeToOstream(const ONNX_NAMESPACE::FunctionProto* p, std::ostream& output) = 0;
+  virtual bool FunctionProto__ParseFromString(ONNX_NAMESPACE::FunctionProto* p, const std::string& data) = 0;
+  virtual std::string FunctionProto__SerializeAsString(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+
+  virtual bool FunctionProto__has_name(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual const std::string& FunctionProto__name(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
+  virtual void FunctionProto__set_name(ONNX_NAMESPACE::FunctionProto* p, const ::std::string& name) = 0;
+
+  virtual bool FunctionProto__has_since_version(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual int FunctionProto__since_version(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
+  virtual void FunctionProto__set_since_version(ONNX_NAMESPACE::FunctionProto* p, int since_version) = 0;
+
+  bool FunctionProto__has_status(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual const ONNX_NAMESPACE::OperatorStatus& FunctionProto__status(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
+  virtual void FunctionProto__set_status(ONNX_NAMESPACE::FunctionProto* p, const ONNX_NAMESPACE::OperatorStatus& status) = 0;
+
+  virtual bool FunctionProto__has_doc_string(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual const std::string& FunctionProto__doc_string(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
+  virtual void FunctionProto__set_doc_string(ONNX_NAMESPACE::FunctionProto* p, const ::std::string& doc_string) = 0;
+
+  virtual bool FunctionProto__has_domain(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual const std::string& FunctionProto__domain(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual void FunctionProto__set_domain(ONNX_NAMESPACE::FunctionProto* p, const ::std::string& domain) = 0;
+
+  virtual const std::string& FunctionProto__input(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual std::vector<std::string>* FunctionProto__mutable_input(ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual std::string* FunctionProto__mutable_input(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual int FunctionProto__input_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual void FunctionProto__add_input(ONNX_NAMESPACE::FunctionProto* p, const string& value) = 0;
+
+  virtual const std::string& FunctionProto__output(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual std::vector<std::string>* FunctionProto__mutable_output(ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual std::string* FunctionProto__mutable_output(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual int FunctionProto__output_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual void FunctionProto__add_output(ONNX_NAMESPACE::FunctionProto* p, const string& value) = 0;
+
+  virtual const std::string& FunctionProto__attribute(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual std::vector<std::string>* FunctionProto__mutable_attribute(ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual std::string* FunctionProto__mutable_attribute(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual int FunctionProto__attribute_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual void FunctionProto__add_attribute(ONNX_NAMESPACE::FunctionProto* p, const string& value) = 0;
+
+  virtual const ONNX_NAMESPACE::AttributeProto& FunctionProto__attribute_proto(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual ONNX_NAMESPACE::AttributeProto* FunctionProto__mutable_attribute_proto(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual int FunctionProto__attribute_proto_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual ONNX_NAMESPACE::AttributeProto* FunctionProto__add_attribution_proto(ONNX_NAMESPACE::FunctionProto* p) = 0;
+
+  virtual const ONNX_NAMESPACE::NodeProto& FunctionProto__node(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual ONNX_NAMESPACE::NodeProto* FunctionProto__mutable_node(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual int FunctionProto__node_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual ONNX_NAMESPACE::NodeProto* FunctionProto__add_node(ONNX_NAMESPACE::FunctionProto* p) = 0;
+
+  virtual const ONNX_NAMESPACE::ValueInfoProto& FunctionProto__value_info(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual ONNX_NAMESPACE::ValueInfoProtos* FunctionProto__mutable_value_info(ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual ONNX_NAMESPACE::ValueInfoProto* FunctionProto__mutable_value_info(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual int FunctionProto__value_info_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual ONNX_NAMESPACE::ValueInfoProto* FunctionProto__add_value_info(ONNX_NAMESPACE::FunctionProto* p) = 0;
+
+  virtual const ONNX_NAMESPACE::StringStringEntryProto& FunctionProto__metadata_props(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual ONNX_NAMESPACE::StringStringEntryProtos* FunctionProto__mutable_metadata_props(ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__mutable_metadata_props(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
+  virtual int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) = 0;
+
   virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) = 0;
 
   // ConfigOptions
@@ -539,6 +609,9 @@ struct ProviderHost {
 
   virtual void IndexedSubGraph__SetMetaDef(IndexedSubGraph* p, std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) = 0;
   virtual const IndexedSubGraph_MetaDef* IndexedSubGraph__GetMetaDef(const IndexedSubGraph* p) = 0;
+
+  virtual void IndexedSubGraph__SetSchemaSource(IndexedSubGraph* p, SourceOfSchema schema_source) = 0;
+  virtual SourceOfSchema IndexedSubGraph__GetSchemaSource(const IndexedSubGraph* p) = 0;
 
   // KernelDef
   virtual void KernelDef__operator_delete(KernelDef* p) = 0;
