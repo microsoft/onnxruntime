@@ -267,8 +267,11 @@ stages:
       # If the generate image hit another test image, make the job status as warning
       continueOnError: true
 
+    - bash: |
+        echo "You can use variables: $(hitAnother)"
+
     # The step will execute if the gereneate image doesn't hit another test image
-    - ${{ if ne(variables['hitAnother'], 'True') }}:
+    - ${{ if eq(variables['hitAnother'], 'True') }}:
       - script: |
           docker run --rm --gpus all -v $PWD:/workspace \
             -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
