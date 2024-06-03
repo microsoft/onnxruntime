@@ -217,9 +217,18 @@ void cpu_flash_attention(
 #endif
 
 #if DUMP_CPU_TENSOR_LEVEL == 0
-  double cost_per_slice = 1.0;
+  TensorOpCost unit_cost;
+  const size_t probs_matrix_bytes = SafeInt<size_t>(sequence_length) * total_sequence_length * sizeof(T);
+  unit_cost.compute_cycles = static_cast<double>(2 * sequence_length * head_size * total_sequence_length / qSlice);
+  unit_cost.bytes_loaded = static_cast<double>((sequence_length + total_sequence_length) * head_size * sizeof(T) / qSlice);
+  unit_cost.bytes_stored = static_cast<double>(probs_matrix_bytes / qSlice);
+
+  unit_cost.compute_cycles += static_cast<double>(2 * sequence_length * v_head_size * total_sequence_length / qSlice);
+  unit_cost.bytes_loaded += static_cast<double>((sequence_length + v_head_size) * total_sequence_length * sizeof(T) / qSlice);
+  unit_cost.bytes_stored += static_cast<double>(sequence_length * v_head_size * sizeof(T) / qSlice);
+
   concurrency::ThreadPool::TryParallelFor(
-      thread_pool, batchSize * num_head * qSlice, cost_per_slice, [&](ptrdiff_t begin, ptrdiff_t end) {
+      thread_pool, batchSize * num_head * qSlice, unit_cost, [&](ptrdiff_t begin, ptrdiff_t end) {
 #else
   ptrdiff_t begin = 0;
   ptrdiff_t end = batchSize * num_head * qSlice;

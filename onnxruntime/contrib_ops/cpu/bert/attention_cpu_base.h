@@ -38,7 +38,8 @@ class AttentionCPUBase : public AttentionBase {
                         int v_head_size,                       // head size of V (H_v)
                         int v_hidden_size,                     // hidden size of V (D_v)
                         const Tensor* relative_position_bias,  // bias addition in QK. Its size is BxNxSxT
-                        OpKernelContext* context) const {
+                        OpKernelContext* context,
+                        bool disable_flash_attention = false) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -78,9 +79,7 @@ class AttentionCPUBase : public AttentionBase {
 
     float scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
 
-    // Use Flash Attention if possible
-    constexpr bool use_flash_attention = true;
-    if (use_flash_attention && relative_position_bias == nullptr && v_head_size == qk_head_size) {
+    if (!disable_flash_attention && relative_position_bias == nullptr && v_head_size == qk_head_size) {
       auto data_type = DataTypeImpl::GetType<T>();
 
       Tensor query(data_type,
