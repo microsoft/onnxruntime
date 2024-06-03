@@ -249,7 +249,7 @@ stages:
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
           nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c '
-            set -ex; \
+            set -e; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/; \
@@ -258,7 +258,7 @@ stages:
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py generate image; \
             python3 -u check_image.py --image1 astronaut_riding_error.png --image2 $image2 --cache_dir /model_cache --negative; \
-            if [ $? -ne 0 ]; then echo "##vso[task.setvariable variable=hitAnother;]True"; fi; \
+            if [ $? -ne 0 ]; then echo "##vso[task.setvariable variable=hitAnother;]True"; exit 1; fi; \
             popd ; \
             popd ; \
             '
