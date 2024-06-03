@@ -10,15 +10,15 @@ steps:
     - task: CmdLine@2
       displayName: 'Gradle Build Jar'
       inputs:
-      ${{ if eq(parameters.buildOnly, false) }}:
-        script: |
-          @echo on
-          call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
-      ${{ if eq(parameters.buildOnly, true) }}:
-        script: |
-          @echo on
-          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
-      workingDirectory: $(Build.SourcesDirectory)\java
+        ${{ if eq(parameters.buildOnly, false) }}:
+          script: |
+            @echo on
+            call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+        ${{ if eq(parameters.buildOnly, true) }}:
+          script: |
+            @echo on
+            call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+        workingDirectory: $(Build.SourcesDirectory)\java
 
     - task: CmdLine@2
       displayName: 'Add symbols and notices to Java'
