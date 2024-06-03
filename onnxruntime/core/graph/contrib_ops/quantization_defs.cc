@@ -190,11 +190,11 @@ rank identical to the input (blocked quantization).)DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                             OpSchema()
                                 .Attr("axis",
-                                      "The axis along which same quantization parameters are applied. It's optional."
+                                      "The axis along which same quantization parameters are applied. It's optional. "
                                       "If it's not specified, it means per-tensor quantization and input 'x_scale' and "
-                                      "'x_zero_point' must be scalars."
+                                      "'x_zero_point' must be scalars. "
                                       "For per 'axis' quantization, it is specified, and 'x_scale' and "
-                                      "'x_zero_point' (if specified) must be 1-D tensors."
+                                      "'x_zero_point' (if specified) must be 1-D tensors. "
                                       "For blocked quantization, it is specified, and 'x_scale' and "
                                       "'x_zero_point' (if specified) have the same rank as 'x'.",
                                       AttributeProto::INT, false)
@@ -205,8 +205,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                       AttributeProto::INT, false)
                                 .Input(0, "x", "N-D quantized Input tensor to be de-quantized.", "T1")
                                 .Input(1, "x_scale",
-                                       "Scale for input 'x'. It can be a scalar, which means a per-tensor/layer "
-                                       "quantization, a 1-D tensor for per-axis quantization. or a tensor with the "
+                                       "Scale for input 'x'. It can be a scalar for per-tensor/layer "
+                                       "quantization, a 1-D tensor for per-axis quantization, or a tensor with the "
                                        "same rank as 'x' for blocked quantization.",
                                        "T2")
                                 .Input(2, "x_zero_point",

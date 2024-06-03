@@ -907,7 +907,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Float8(int64_t block_size,
   so.graph_optimization_level = TransformerLevel::Default;
 
   for (int64_t i = 0, n = 2 * zero_point_block_count; i < n; i++) x_zero_point.push_back(Tin(0.0f));
-  for (int i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
+  for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
   for (int i = 0; i < 8; ++i) x.push_back(Tin(static_cast<float>(i)));
   for (int i = 0; i < 8; ++i) y.push_back(Tout(static_cast<float>(i) * 2.0f));
 
