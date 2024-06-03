@@ -249,7 +249,7 @@ stages:
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
           nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c '
-            set -e; \
+            set -x; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/; \
