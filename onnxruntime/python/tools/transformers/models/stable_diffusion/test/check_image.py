@@ -64,7 +64,7 @@ def main():
     score = round(generate_score(image1, image2, cache_dir), 2)
     print("similarity Score: ", {score})
     if args.negative:
-        if score > 97:
+        if score < 97:
             print("Why generated this incorrect image")
             raise SystemExit(1)
     else:
