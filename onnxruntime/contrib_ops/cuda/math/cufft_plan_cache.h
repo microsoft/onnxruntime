@@ -34,7 +34,7 @@ struct CufftPlanInfo {
 template <typename T>
 struct ParamsHash {
   // Params must be a POD because we read out its memory
-  // contenst as char* when hashing
+  // contents as char* when hashing
 
   static_assert(std::is_trivial<T>::value, "Params is not POD");
   size_t operator()(const T& params) const {
@@ -51,7 +51,7 @@ struct ParamsHash {
 template <typename T>
 struct ParamsEqual {
   // Params must be a POD because we read out its memory
-  // contenst as char* when comparing
+  // contents as char* when comparing
 
   static_assert(std::is_trivial<T>::value, "Params is not POD");
 
