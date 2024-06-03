@@ -62,7 +62,7 @@ const writeBufferDataImpl = (outputs: readonly IndicesHelper[]) => {
       }`;
 };
 
-const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: SplitAttributes): ProgramInfo => {
+export const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: SplitAttributes): ProgramInfo => {
   const inputShape = inputs[0].dims;
   const inputSize = ShapeUtil.size(inputShape);
   const dataType = inputs[0].dataType;
