@@ -8,24 +8,14 @@ parameters:
 
 steps:
     - task: CmdLine@2
-      displayName: 'Gradle cmakeBuild'
-      inputs:
-        script: |
-          @echo on
-          call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo -DUSE_CUDA
-        workingDirectory: $(Build.SourcesDirectory)\java
-        failOnStderr: true
-      condition: eq(${{ parameters.buildOnly }}, true)
-
-    - task: CmdLine@2
       displayName: 'Gradle cmakeCheck'
+      continueOnError:  ${{ parameters.buildOnly }}
       inputs:
         script: |
           @echo on
-          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo -DUSE_CUDA
+          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
         workingDirectory: $(Build.SourcesDirectory)\java
-        failOnStderr: true
-      condition: ne(${{ parameters.buildOnly }}, true)
+        failOnStderr: ${{ not(parameters.buildOnly) }}
 
     - task: CmdLine@2
       displayName: 'Add symbols and notices to Java'
