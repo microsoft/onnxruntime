@@ -1431,23 +1431,29 @@ TEST(DequantizeLinearOp21BlockedTest, Float8_NoZeroPoint_FirstAxis) {
 
   if (enable_cpu || enable_cuda) {
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>(
+        {4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>(
+        {4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
   }
   if (enable_cpu) {
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>(
+        {4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>(
+        {4, 2, 2}, 0, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>(
+        {4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, float>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>(
+        {4, 2, 2}, 0, 3, x, x_scale, zero_point, y_3);
   }
 }
 
@@ -1464,23 +1470,29 @@ TEST(DequantizeLinearOp21BlockedTest, Float8_NoZeroPoint_MiddleAxis) {
 
   if (enable_cpu || enable_cuda) {
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>(
+        {2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>(
+        {2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
   }
   if (enable_cpu) {
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>(
+        {2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>(
+        {2, 4, 2}, 1, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>(
+        {2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, float>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>(
+        {2, 4, 2}, 1, 3, x, x_scale, zero_point, y_3);
   }
 }
 
@@ -1497,23 +1509,29 @@ TEST(DequantizeLinearOp21BlockedTest, Float8_NoZeroPoint_LastAxis) {
 
   if (enable_cpu || enable_cuda) {
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>(
+        {2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FN, MLFloat16>(
+        {2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
   }
   if (enable_cpu) {
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>(
+        {2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>(
+        {2, 2, 4}, 2, 2, x, x_scale, zero_point, y_2);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E4M3FNUZ, MLFloat16>(
+        {2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
     DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, float>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
-    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>({2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
+    DequantizeLinearOp21BlockedTest_Float8_Succeed<Float8E5M2FNUZ, MLFloat16>(
+        {2, 2, 4}, 2, 3, x, x_scale, zero_point, y_3);
   }
 }
 #endif

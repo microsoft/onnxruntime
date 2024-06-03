@@ -95,8 +95,13 @@ static void PrepareForQDQ(const TensorShape& input_shape,
                   "x_zero_point must be null or have the same rank as x for blocked quantization");
 
       for (size_t i = 0, ndim = input_shape.NumDimensions(); i < ndim; ++i) {
-        ORT_ENFORCE(scale.Shape()[i] == (i == SafeInt<size_t>(axis_no_neg) ? (input_shape[i] + quant_block_size - 1) / quant_block_size : input_shape[i]),
-                    i == SafeInt<size_t>(axis_no_neg) ? "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization" : "x_scale and x must have the same shape despite the quantize axis for blocked quantization");
+        if (i == SafeInt<size_t>(axis_no_neg)) {
+          ORT_ENFORCE(scale.Shape()[i] == (input_shape[i] + quant_block_size - 1) / quant_block_size,
+                      "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization");
+        } else {
+          ORT_ENFORCE(scale.Shape()[i] == input_shape[i],
+                      "x_scale and x must have the same shape despite the quantize axis for blocked quantization");
+        }
 
         if (zero_point_ptr) {
           ORT_ENFORCE(zero_point_ptr->Shape()[i] == scale.Shape()[i],
@@ -531,7 +536,8 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
     MLFloat16* output = y.MutableData<MLFloat16>();
     if (block_size_) {
       DequantizeLinearApply<T, MLFloat16, is_4bit>().op(process_block_count, broadcast_dim,
-                                                        process_block_size, block_size_, input, scale, output, zero_point);
+                                                        process_block_size, block_size_, input,
+                                                        scale, output, zero_point);
     } else {
       DequantizeLinearApply<T, MLFloat16, is_4bit>().op(process_block_count, broadcast_dim,
                                                         process_block_size, input, scale, output, zero_point);
