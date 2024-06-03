@@ -12,7 +12,7 @@ steps:
       inputs:
         script: |
           @echo on
-          call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+          call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo -DUSE_CUDA
         workingDirectory: $(Build.SourcesDirectory)\java
         failOnStderr: true
       condition: eq(${{ parameters.buildOnly }}, true)
@@ -22,7 +22,7 @@ steps:
       inputs:
         script: |
           @echo on
-          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo -DUSE_CUDA
         workingDirectory: $(Build.SourcesDirectory)\java
         failOnStderr: true
       condition: ne(${{ parameters.buildOnly }}, true)
