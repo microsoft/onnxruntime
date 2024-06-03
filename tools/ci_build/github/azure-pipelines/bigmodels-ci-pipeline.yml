@@ -183,13 +183,6 @@ stages:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
     steps:
-
-    - bash: |
-        echo "##vso[task.setvariable variable=myVar;]foo"
-
-    - bash: |
-        echo "You can use macro syntax for variables: $(myVar)"
-
     - checkout: self
       clean: true
       submodules: none
@@ -269,7 +262,7 @@ stages:
             if [ $? -ne 0 ]; then echo "failed"; exit 1; fi; \
             popd ; \
             popd ; \
-            ' || echo "##vso[task.setvariable variable=myVar;]True"
+            ' || echo "##vso[task.setvariable variable=hitAnother;]True" && exit 1
       displayName: 'Check if the generated image is wierd'
       workingDirectory: $(Build.SourcesDirectory)
       # If the generate image hit another test image, make the job status as warning
