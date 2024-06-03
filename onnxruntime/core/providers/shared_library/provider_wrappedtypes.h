@@ -540,7 +540,7 @@ struct IndexedSubGraph final {
   const IndexedSubGraph_MetaDef* GetMetaDef() const { return reinterpret_cast<const IndexedSubGraph_MetaDef*>(g_host->IndexedSubGraph__GetMetaDef(this)); }
 
   void SetSchemaSource(IndexedSubGraph_SourceOfSchema schema_source) { return g_host->IndexedSubGraph__SetSchemaSource(this, schema_source); }
-  IndexedSubGraph_SetSchemaSource GetSchemaSource() const { return g_host->IndexedSubGraph__GetSchemaSource(this); }
+  IndexedSubGraph_SourceOfSchema GetSchemaSource() const { return g_host->IndexedSubGraph__GetSchemaSource(this); }
 
   IndexedSubGraph() = delete;
   IndexedSubGraph(const IndexedSubGraph&) = delete;

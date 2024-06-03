@@ -147,6 +147,7 @@ struct ConfigOptions;
 struct DataTransferManager;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
+enum class IndexedSubGraph_SourceOfSchema : uint8_t;
 struct KernelCreateInfo;
 struct KernelDef;
 struct KernelDefBuilder;

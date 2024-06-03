@@ -63,7 +63,9 @@ void VitisAIExecutionProvider::LoadEPContexModelFromFile() {
   if (!p_ep_ctx_model_ && !ep_ctx_model_file_loc_.empty()) {
     auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
     auto status = Model::Load(ep_ctx_model_file_loc_, *p_model_proto);
-    static_assert(status.IsOK(), "Loading EP context model failed");
+    if (!status.IsOK()) {
+      ORT_THROW("Loading EP context model failed from ", ep_ctx_model_file_loc_);
+    }
     auto& logger = logging::LoggingManager::DefaultLogger();
     p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
     LOGS_DEFAULT(VERBOSE) << "Loaded EP context model from: " << ep_ctx_model_file_loc_;
@@ -106,11 +108,13 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_);
     auto ep_ctx_cache_fs_path = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_fs_path.c_str(), std::ios::trunc | std::ios::binary);
-    static_assert(ep_ctx_cache_ofs.is_open(), "Failed to open a file to write EP context cache");
+    if (!ep_ctx_cache_ofs.is_open()) {
+      ORT_THROW("Failed to open a file to write EP context cache: ", ep_ctx_cache_fs_path.c_str());
+    }
     ep_ctx_cache_ofs.write(ep_ctx_payload.c_str(), ep_ctx_payload.length());
     if (!ep_ctx_cache_ofs.good()) {
       ep_ctx_cache_ofs.close();
-      ORT_THROW("Exception writing EP context cache file");
+      ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_fs_path.c_str());
     }
     ep_ctx_cache_ofs.close();
     p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, ep_ctx_cache_fs_path.string(), 0, &logger);
