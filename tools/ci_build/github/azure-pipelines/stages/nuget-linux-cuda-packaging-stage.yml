@@ -30,9 +30,9 @@ stages:
 
   - job: Linux_Packaging_combined_CUDA
     condition: succeeded()
-    dependsOn: |
-      Linux_C_API_Packaging_cuda
-      Linux_C_API_Packaging_tensorrt
+    dependsOn:
+    - Linux_C_API_Packaging_cuda
+    - Linux_C_API_Packaging_tensorrt
     workspace:
       clean: all
     pool: 'Onnxruntime-Linux-GPU'
