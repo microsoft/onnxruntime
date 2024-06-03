@@ -22,11 +22,16 @@ class GroupQueryAttention final : public CudaKernel {
  protected:
   int num_heads_;     // number of attention heads
   int kv_num_heads_;  // different for k and v for group query attention
-  int past_sequence_length_;
-  bool is_unidirectional_;  // causal
+  int local_window_size_;
+  bool is_unidirectional_;
   bool is_past_bsnh_;
+  bool do_rotary_;
+  bool rotary_interleaved_;
   float scale_;
   bool disable_flash_attention_;
+  bool disable_memory_efficient_attention_;
+  static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
+  IAllocatorUniquePtr<int> zeros_;
 };
 
 }  // namespace cuda

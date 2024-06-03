@@ -11,6 +11,8 @@
 /// User can only get the instance of OrtTensorRTProviderOptionsV2 via CreateTensorRTProviderOptions.
 /// </summary>
 struct OrtTensorRTProviderOptionsV2 {
+  OrtTensorRTProviderOptionsV2& operator=(const OrtTensorRTProviderOptionsV2& other);  // copy assignment operator
+
   int device_id{0};                                      // cuda device id.
   int has_user_compute_stream{0};                        // indicator of user specified CUDA compute stream.
   void* user_compute_stream{nullptr};                    // user specified CUDA compute stream.
@@ -25,13 +27,14 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_dla_core{0};                                   // DLA core number. Default 0
   int trt_dump_subgraphs{0};                             // dump TRT subgraph. Default 0 = false, nonzero = true
   int trt_engine_cache_enable{0};                        // enable engine caching. Default 0 = false, nonzero = true
-  const char* trt_engine_cache_path{nullptr};            // specify engine cache path
+  const char* trt_engine_cache_path{nullptr};            // specify engine cache path, defaults to the working directory
   int trt_engine_decryption_enable{0};                   // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path{nullptr};   // specify engine decryption library path
   int trt_force_sequential_engine_build{0};              // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
   int trt_context_memory_sharing_enable{0};              // enable context memory sharing between subgraphs. Default 0 = false, nonzero = true
   int trt_layer_norm_fp32_fallback{0};                   // force Pow + Reduce ops in layer norm to FP32. Default 0 = false, nonzero = true
   int trt_timing_cache_enable{0};                        // enable TensorRT timing cache. Default 0 = false, nonzero = true
+  const char* trt_timing_cache_path{nullptr};            // specify timing cache path, if none is provided the trt_engine_cache_path is used
   int trt_force_timing_cache{0};                         // force the TensorRT cache to be used even if device profile does not match. Default 0 = false, nonzero = true
   int trt_detailed_build_log{0};                         // Enable detailed build step logging on TensorRT EP with timing for each engine build. Default 0 = false, nonzero = true
   int trt_build_heuristics_enable{0};                    // Build engine using heuristics to reduce build time. Default 0 = false, nonzero = true
@@ -45,4 +48,37 @@ struct OrtTensorRTProviderOptionsV2 {
   const char* trt_profile_max_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   const char* trt_profile_opt_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   int trt_cuda_graph_enable{0};                          // Enable CUDA graph in ORT TRT
+
+  /*
+   * Please note that there are rules for using following context model related provider options:
+   *
+   * 1. In the case of dumping the context model and loading the context model,
+   *    for security reason, TRT EP doesn't allow the "ep_cache_context" node attribute of EP context node to be
+   *    the absolute path or relative path that is outside of context model directory.
+   *    It means engine cache needs to be in the same directory or sub-directory of context model.
+   *
+   * 2. In the case of dumping the context model, the engine cache path will be changed to the relative path of context model directory.
+   *    For example:
+   *    If "trt_dump_ep_context_model" is enabled and "trt_engine_cache_enable" is enabled,
+   *       if "trt_ep_context_file_path" is "./context_model_dir",
+   *       - if "trt_engine_cache_path" is "" -> the engine cache will be saved to "./context_model_dir"
+   *       - if "trt_engine_cache_path" is "engine_dir" -> the engine cache will be saved to "./context_model_dir/engine_dir"
+   *
+   * 3. In the case of building weight-stripped engines, the same security reasons as listed in 1) apply to the
+   *    "onnx_model_filename" node attribute of EP context node, which contains a filename of the ONNX model with the
+   *    weights needed for the refit process. User can specify a folder path relative to the current working
+   *    directory by means of the "trt_onnx_model_folder_path" option.
+   *
+   */
+  int trt_dump_ep_context_model{0};                 // Dump EP context node model
+  const char* trt_ep_context_file_path{nullptr};    // Specify file name to dump EP context node model. Can be a path or a file name or a file name with path.
+  int trt_ep_context_embed_mode{0};                 // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
+  int trt_weight_stripped_engine_enable{0};         // Enable weight-stripped engine build. Default 0 = false,
+                                                    // nonzero = true
+  const char* trt_onnx_model_folder_path{nullptr};  // Folder path relative to the current working directory for
+                                                    // the ONNX model containing the weights (applicable only when
+                                                    // the "trt_weight_stripped_engine_enable" option is enabled)
+
+  const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
+  int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true
 };

@@ -1,17 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test_util.h"
-
-#include <list>
 #include <algorithm>
+#include <list>
+#include <memory>
+
+#include "test_util.h"
 
 #if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 
 MLAS_THREADPOOL* GetMlasThreadPool(void) {
-  static MLAS_THREADPOOL* threadpool = new onnxruntime::concurrency::ThreadPool(
+  static auto threadpool = std::make_unique<onnxruntime::concurrency::ThreadPool>(
       &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
-  return threadpool;
+  return threadpool.get();
 }
 
 #else

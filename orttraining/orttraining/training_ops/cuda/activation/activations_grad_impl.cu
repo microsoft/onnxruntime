@@ -83,14 +83,15 @@ struct OP_LeakyReluGrad : public CtxLeakyReluGrad {
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(name, T) \
   template void Impl_##name<T>(cudaStream_t stream, const T* lhs_data, const T* rhs_data, T* output_data, const Ctx##name* func_ctx, size_t count);
 
-#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(x) \
+#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFDX(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, half)     \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, float)    \
-  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, double)
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, double)  \
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, BFloat16)
 
 #define ACTIVATION_GRAD_OP_NAME(name) \
   BINARY_ELEMENTWISE_IMPL(name);      \
-  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(name)
+  SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFDX(name)
 
 ACTIVATION_GRAD_OPS()
 #undef ACTIVATION_GRAD_OP_NAME

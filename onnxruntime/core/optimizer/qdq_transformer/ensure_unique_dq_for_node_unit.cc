@@ -53,7 +53,7 @@ Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output
                                     MakeString("Added by ", kTransformerName),
                                     dq_inputs,
                                     {&new_dq_output_nodearg},
-                                    nullptr,  // attributes
+                                    &original_dq_node.GetAttributes(),
                                     original_dq_node.Domain());
 
   // set up edges

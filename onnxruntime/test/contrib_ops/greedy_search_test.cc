@@ -8,6 +8,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
+
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
@@ -50,12 +54,30 @@ TEST(GreedySearchTest, GptGreedySearchFp16_VocabPadded) {
   const char* input_names[] = {"input_ids", "max_length", "min_length", "repetition_penalty"};
   const char* const output_names[] = {"sequences"};
 
+#ifdef USE_CUDA
   constexpr int min_cuda_architecture = 530;
-  if (HasCudaEnvironment(min_cuda_architecture)) {
+  bool is_cuda = HasCudaEnvironment(min_cuda_architecture);
+#else
+  bool is_cuda = false;
+#endif
+#ifdef USE_ROCM
+  bool is_rocm = true;
+#else
+  bool is_rocm = false;
+#endif
+
+  if (is_cuda || is_rocm) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    if (is_cuda) {
+      OrtCUDAProviderOptionsV2 cuda_options;
+      cuda_options.use_tf32 = false;
+      session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
+    }
 #endif
+    if (is_rocm) {
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
+    }
 
     // The following model was obtained by padding the vocabulary size in testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx
     // (by making beam_size == 1) from 1000 to 1600 (just for illustrative and testing purposes) to see if the greedy search
@@ -117,12 +139,30 @@ TEST(GreedySearchTest, GptGreedySearchFp32) {
   const char* input_names[] = {"input_ids", "max_length", "min_length", "repetition_penalty"};
   const char* const output_names[] = {"sequences"};
 
+#ifdef USE_CUDA
   constexpr int min_cuda_architecture = 530;
-  if (HasCudaEnvironment(min_cuda_architecture)) {
+  bool is_cuda = HasCudaEnvironment(min_cuda_architecture);
+#else
+  bool is_cuda = false;
+#endif
+#ifdef USE_ROCM
+  bool is_rocm = true;
+#else
+  bool is_rocm = false;
+#endif
+
+  if (is_cuda || is_rocm) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    if (is_cuda) {
+      OrtCUDAProviderOptionsV2 cuda_options;
+      cuda_options.use_tf32 = false;
+      session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
+    }
 #endif
+    if (is_rocm) {
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
+    }
 
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_greedysearch_with_init_decoder.onnx"), session_options);
 

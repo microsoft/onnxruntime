@@ -18,6 +18,8 @@ class TransposeOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -40,14 +42,36 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val options = emscripten::val::object();
-  std::vector<int32_t> permutation;
-  std::transform(perm.cbegin(), perm.cend(),
-                 std::back_inserter(permutation),
-                 [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
+  std::vector<uint32_t> permutation = GetVecUint32FromVecInt64(perm);
   options.set("permutation", emscripten::val::array(permutation));
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("transpose", input, options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
+}
+
+bool TransposeOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                                const logging::Logger& logger) const {
+  const auto& input = *node.InputDefs()[0];
+  const auto& op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
+  // WebNN CPU backend doesn't support uint32, uint64 input data types for transpose.
+  if (device_type == WebnnDeviceType::CPU) {
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
+  }
+
+  if (!IsSupportedDataType(input_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
 }
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

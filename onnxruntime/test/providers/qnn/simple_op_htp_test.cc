@@ -8,6 +8,7 @@
 #include <variant>
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
@@ -93,6 +94,22 @@ TEST_F(QnnCPUBackendTests, DISABLED_SpaceToDepth_Flaky2) {
   }
 }
 
+// Test f32 Relu on the CPU backend.
+// TODO: When this is fixed, enable ActivationOpTest.Relu test in cpu/activation/activation_op_test tests.
+// Disabled because QNN SDK 2.17 Relu treats inf as FLT_MAX.
+// Log: the value pair (inf, 3.40282347e+38) at index #12 don't match
+TEST_F(QnnCPUBackendTests, DISABLED_UnaryOp_Relu) {
+  std::vector<float> input_data{-1.0f, 0, 1.0f,
+                                100.0f, -100.0f, 1000.0f, -1000.0f,
+                                FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,
+                                FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity()};
+  RunOpTestOnCPU("Relu",
+                 {TestInputDef<float>({13}, false, input_data)},
+                 {},
+                 14,
+                 ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model
@@ -105,7 +122,7 @@ static void RunQDQOpTest(const std::string& op_type,
                          ExpectedEPNodeAssignment expected_ep_assignment,
                          const std::string& op_domain = kOnnxDomain,
                          bool use_contrib_qdq = false,
-                         float fp32_abs_err = 1e-4f) {
+                         QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -118,7 +135,7 @@ static void RunQDQOpTest(const std::string& op_type,
                        provider_options,
                        opset_version,
                        expected_ep_assignment,
-                       fp32_abs_err);
+                       tolerance);
 }
 
 // Runs a non-QDQ model on HTP and compares output to CPU EP.
@@ -128,7 +145,9 @@ static void RunOpTest(const std::string& op_type,
                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                       int opset_version,
                       ExpectedEPNodeAssignment expected_ep_assignment,
-                      const std::string& op_domain = kOnnxDomain) {
+                      const std::string& op_domain = kOnnxDomain,
+                      float fp32_abs_err = 1e-5f,
+                      bool enable_htp_fp16_precision = false) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -136,11 +155,49 @@ static void RunOpTest(const std::string& op_type,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
+  if (enable_htp_fp16_precision) {
+    provider_options["enable_htp_fp16_precision"] = "1";
+  }
+
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
   RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, {}, attrs, op_domain),
                   provider_options,
                   opset_version,
-                  expected_ep_assignment);
+                  expected_ep_assignment,
+                  fp32_abs_err);
+}
+
+// Runs an FP16 model on the QNN HTP backend and compares QNN EP's accuracy to CPU EP.
+static void RunFP16OpTest(const std::string& op_type,
+                          const std::vector<TestInputDef<float>>& input_defs,
+                          const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                          int opset_version,
+                          ExpectedEPNodeAssignment expected_ep_assignment,
+                          const std::string& op_domain = kOnnxDomain,
+                          float tolerance = 0.004f) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  std::vector<TestInputDef<MLFloat16>> input_fp16_defs;
+  input_fp16_defs.reserve(input_defs.size());
+
+  for (size_t i = 0; i < input_defs.size(); i++) {
+    input_fp16_defs.push_back(ConvertToFP16InputDef(input_defs[i]));
+  }
+
+  auto model_fp32_fn = BuildOpTestCase<float>(op_type, input_defs, {}, attrs, op_domain);
+  auto model_fp16_fn = BuildOpTestCase<MLFloat16>(op_type, input_fp16_defs, {}, attrs, op_domain);
+
+  TestFp16ModelAccuracy(model_fp32_fn,
+                        model_fp16_fn,
+                        provider_options,
+                        opset_version,
+                        expected_ep_assignment,
+                        tolerance);
 }
 
 // Test the accuracy of QDQ Sigmoid.
@@ -208,8 +265,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Gelu_U16) {
                          11,
                          ExpectedEPNodeAssignment::All,
                          kMSDomain,  // GeLu is a contrib op.
-                         true,       // Use MS domain Q/DQ ops.
-                         0.0025f);   // TODO(adrianlizarraga): Accuracy
+                         true);      // Use MS domain Q/DQ ops.
 }
 
 // Check that QNN compiles DQ -> Elu -> Q as a single unit.
@@ -280,8 +336,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish_U16) {
                          14,
                          ExpectedEPNodeAssignment::All,
                          kOnnxDomain,
-                         true,
-                         0.001f);  // TODO(adrianlizarraga): Remove additional tolerance needed for inaccuracy
+                         true);
 }
 
 // Check that QNN compiles DQ -> Atan -> Q as a single unit.
@@ -308,8 +363,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Atan_U16) {
                          14,
                          ExpectedEPNodeAssignment::All,
                          kOnnxDomain,  // Atan domain
-                         true,         // Q/DQ op domain is com.microsoft
-                         1.8e-4f);
+                         true);        // Q/DQ op domain is com.microsoft
 }
 
 // Check that QNN compiles DQ -> Asin -> Q as a single unit.
@@ -602,7 +656,13 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
 }
 
 // Test accuracy of 16-bit QDQ Ceil op.
-TEST_F(QnnHTPBackendTests, UnaryOp_Ceil_U16) {
+// TODO(adrianlizarraga): Fails in QNN SDK 2.21 (linux). On Windows ARM64, fails in QNN SDK 2.19.
+//
+// input: [-12.0, -7.199, -2.399, 2.4, 7.2, 12.0]
+// CPU EP f32 model output: [-12.0, -7.0, -2.0, 3.0, 8.0, 12.0]
+// CPU EP qdq model output: [-12.0, -6.99, -1.99, 3.0, 8.0, 11.99]
+// QNN EP qdq model output: [-11.0 (WRONG), -7.0, -2.0, 2.99, 8.0, 11.99]
+TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Ceil_U16) {
   const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
   RunQDQOpTest<uint16_t>("Ceil",
                          {TestInputDef<float>({1, 2, 3}, false, input_data)},
@@ -707,151 +767,6 @@ TEST_F(QnnHTPBackendTests, SpaceToDepthOp_U16) {
                          ExpectedEPNodeAssignment::All,
                          kOnnxDomain,  // Op's domain
                          true);        // Use com.microsoft domain for Q/DQ ops
-}
-
-// Run QDQ model on HTP 3 times
-// 1st run will generate the Qnn context cache onnx file
-// 2nd run will load and run from QDQ model + Qnn context cache model
-// 3rd run directly loads and run from Qnn context cache model
-TEST_F(QnnHTPBackendTests, ContextBinaryCacheEmbedModeTest) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  provider_options["qnn_context_cache_enable"] = "1";
-  const std::string context_binary_file = "./qnn_context_binary_test.onnx";
-  provider_options["qnn_context_cache_path"] = context_binary_file;
-
-  const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
-  const std::string op_type = "Atan";
-
-  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
-  // 1st run will generate the Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All);
-
-  // Make sure the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
-
-  // 2nd run loads and run from QDQ model + Qnn context cache model
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All);
-
-  // 3rd run directly loads and run from Qnn context cache model
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       1e-4f,
-                       logging::Severity::kERROR,
-                       context_binary_file);
-}
-
-// Run QDQ model on HTP 3 times
-// 1st run will generate the Onnx skeleton file + Qnn context cache binary file
-// 2nd run will loads and run from QDQ model + Onnx skeleton file + Qnn context cache binary file
-// 3rd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
-TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  provider_options["qnn_context_cache_enable"] = "1";
-  const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
-  provider_options["qnn_context_cache_path"] = context_binary_file;
-  provider_options["qnn_context_embed_mode"] = "0";
-
-  const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
-  const std::string op_type = "Atan";
-
-  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
-  // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All);
-
-  // Check the Onnx skeleton file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
-  // Check the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists("qnn_context_cache_non_embed.onnx_QNN_8283143575221199085_1.bin"));
-
-  // 2nd run loads and run from QDQ model + Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All);
-
-  // 3rd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       1e-4f,
-                       logging::Severity::kERROR,
-                       context_binary_file);
-}
-
-// Run QDQ model on HTP with 2 inputs
-// 1st run will generate the Qnn context cache onnx file
-// 2nd run will load and run from QDQ model + Qnn context cache model
-// 3rd run directly loads and run from Qnn context cache model
-TEST_F(QnnHTPBackendTests, ContextBinary2InputsTest) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  provider_options["qnn_context_cache_enable"] = "1";
-  const std::string context_binary_file = "./qnn_context_binary_2inputs_test.onnx";
-  provider_options["qnn_context_cache_path"] = context_binary_file;
-
-  const TestInputDef<float> input_def1({1, 2, 3}, false, -10.0f, 10.0f);
-  const TestInputDef<float> input_def2({1, 2, 3}, false, -10.0f, 10.0f);
-  const std::string op_type = "Add";
-
-  // Runs model with DQ-> Add-> Q and compares the outputs of the CPU and QNN EPs.
-  // 1st run will generate the Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All);
-
-  // Make sure the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
-
-  // 2nd run loads and run from QDQ model + Qnn context cache model
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All);
-
-  // 3rd run directly loads and run from Qnn context cache model
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       1e-4f,
-                       logging::Severity::kERROR,
-                       context_binary_file);
 }
 
 TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {
@@ -1091,7 +1006,7 @@ TEST_F(QnnHTPBackendTests, BinaryOp_HTP_Or_Unsupported) {
                    TestInputDef<bool>({1, 4}, false, {false, true, false, true})},
                   {},
                   17,
-                  ExpectedEPNodeAssignment::None);
+                  ExpectedEPNodeAssignment::All);
 }
 
 // Test 8-bit QDQ GridSample with bilinear
@@ -1219,6 +1134,225 @@ TEST_F(QnnHTPBackendTests, VariadicOp_Concat_2Inputs_2ndAxis) {
                         13,
                         ExpectedEPNodeAssignment::All);
 }
+
+TEST_F(QnnHTPBackendTests, LpNormalization_u8_rank4) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  RunQDQOpTest<uint8_t>("LpNormalization",
+                        {TestInputDef<float>({1, 2, 2, 2}, false, input_data)},
+                        {utils::MakeAttribute("axis", static_cast<int64_t>(-1)),  // Last axis
+                         utils::MakeAttribute("p", static_cast<int64_t>(2))},     // Order 2 to map to QNN's L2Norm operator
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, LpNormalization_u16_rank4) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  RunQDQOpTest<uint16_t>("LpNormalization",
+                         {TestInputDef<float>({1, 2, 2, 2}, false, input_data)},
+                         {utils::MakeAttribute("axis", static_cast<int64_t>(-1)),  // Last axis
+                          utils::MakeAttribute("p", static_cast<int64_t>(2))},     // Order 2 to map to QNN's L2Norm operator
+                         13,
+                         ExpectedEPNodeAssignment::All,
+                         kOnnxDomain,
+                         true);
+}
+
+static GetTestQDQModelFn<uint16_t> BuildQDQConvertAddTestCase(const TestInputDef<float>& input0_def,
+                                                              const TestInputDef<float>& input1_def) {
+  return [input0_def, input1_def](ModelTestBuilder& builder, std::vector<QuantParams<uint16_t>>& output_qparams) {
+    constexpr bool use_contrib_qdq = true;
+
+    // Input0 -> Quantize(u8) -> Dequantize(u8 to float) -> input0_after_qdq
+    NodeArg* input0 = MakeTestInput<float>(builder, input0_def);
+    QuantParams<uint8_t> input0_u8_qparams = GetTestInputQuantParams<uint8_t>(input0_def);
+    NodeArg* input0_after_qdq = AddQDQNodePair<uint8_t>(builder, input0, input0_u8_qparams.scale,
+                                                        input0_u8_qparams.zero_point, use_contrib_qdq);
+
+    // input0_after_qdq -> Quantize(u16) -> Dequantize(u16 to float)
+    QuantParams<uint16_t> input0_u16_qparams = GetTestInputQuantParams<uint16_t>(input0_def);
+    NodeArg* input0_after_convert = AddQDQNodePair<uint16_t>(builder, input0_after_qdq, input0_u16_qparams.scale,
+                                                             input0_u16_qparams.zero_point, use_contrib_qdq);
+
+    // Input1 -> Quantize(u16) -> Dequantize(u16 to float) -> input1_after_qdq
+    NodeArg* input1 = MakeTestInput<float>(builder, input1_def);
+    QuantParams<uint16_t> input1_qparams = GetTestInputQuantParams<uint16_t>(input1_def);
+    NodeArg* input1_after_qdq = AddQDQNodePair<uint16_t>(builder, input1, input1_qparams.scale,
+                                                         input1_qparams.zero_point, use_contrib_qdq);
+
+    // Add op -> op_output
+    auto* op_output = builder.MakeIntermediate();
+    builder.AddNode("Add", {input0_after_convert, input1_after_qdq}, {op_output});
+
+    // op_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<uint16_t>(builder, op_output, output_qparams[0].scale,
+                                                    output_qparams[0].zero_point, use_contrib_qdq);
+  };
+}
+
+// Test quantization type conversion (mixed precision) with Add.
+// First input is converted from uint8_t to uint16_t.
+TEST_F(QnnHTPBackendTests, Add_U8_U16_Convert) {
+  std::vector<float> input0_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  std::vector<float> input1_data = GetFloatDataInRange(-20.0f, 20.0f, 8);
+  TestInputDef<float> input0_def({1, 2, 2, 2}, false, input0_data);
+  TestInputDef<float> input1_def({1, 2, 2, 2}, false, input1_data);
+
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  TestQDQModelAccuracy(BuildOpTestCase<float>("Add", {input0_def, input1_def}, {}, {}, kOnnxDomain),
+                       BuildQDQConvertAddTestCase(input0_def, input1_def),
+                       provider_options,
+                       18,
+                       ExpectedEPNodeAssignment::All);
+}
+
+// Test that QDQ HardSigmoid is *not* supported by QNN EP.
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_QDQ_NotSupported) {
+  RunQDQOpTest<uint8_t>("HardSigmoid",
+                        {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)},
+                        {},
+                        19,
+                        ExpectedEPNodeAssignment::None);  // Not assigned to QNN EP
+}
+
+// Check that QNN EP can support float32 HardSigmoid on HTP by decomposing to its constituent ops.
+// Enables running f32 ops using fp16 precision.
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
+  std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
+
+  RunOpTest<float>("HardSigmoid",
+                   {TestInputDef<float>({1, 2, 8}, false, input_data)},
+                   {},
+                   21,
+                   ExpectedEPNodeAssignment::All,
+                   kOnnxDomain,
+                   0.004f,  // Tolerance. Comparing fp16 (QNN) with fp32 (CPU EP), so expect to need larger tolerance.
+                   true);   // enable_htp_fp16_precision
+
+  // Rank 4, non-default alpha and beta
+  RunOpTest<float>("HardSigmoid",
+                   {TestInputDef<float>({1, 2, 2, 4}, false, input_data)},
+                   {utils::MakeAttribute("alpha", 0.1f),
+                    utils::MakeAttribute("beta", 0.4f)},
+                   21,
+                   ExpectedEPNodeAssignment::All,
+                   kOnnxDomain,
+                   0.004f,  // Tolerance. Comparing fp16 (QNN) with fp32 (CPU EP), so expect to need larger tolerance.
+                   true);   // enable_htp_fp16_precision
+}
+
+// Check that QNN EP can support float16 HardSigmoid on HTP by decomposing to its constituent ops.
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_FP16) {
+  std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
+
+  RunFP16OpTest("HardSigmoid",
+                {TestInputDef<float>({1, 2, 8}, false, input_data)},
+                {},
+                21,
+                ExpectedEPNodeAssignment::All,
+                kOnnxDomain);
+
+  // Rank 4, non-default alpha and beta
+  RunFP16OpTest("HardSigmoid",
+                {TestInputDef<float>({1, 2, 2, 4}, false, input_data)},
+                {utils::MakeAttribute("alpha", 0.1f),
+                 utils::MakeAttribute("beta", 0.4f)},
+                21,
+                ExpectedEPNodeAssignment::All,
+                kOnnxDomain);
+}
+
+// Returns a function that creates the model `X * HardSigmoid(X)`, which can be potentially fused
+// into a single HardSwish(X) operator.
+template <typename FloatType>
+static GetTestModelFn BuildHardSigmoidFusionTestCase(TestInputDef<FloatType>& input_def,
+                                                     std::optional<float> alpha,
+                                                     std::optional<float> beta) {
+  return [input_def, alpha, beta](ModelTestBuilder& builder) {
+    NodeArg* input = MakeTestInput<FloatType>(builder, input_def);
+
+    // input -> HardSigmoid<alpha, beta> -> hs_output
+    NodeArg* hs_output = builder.MakeIntermediate();
+    Node& hs_node = builder.AddNode("HardSigmoid", {input}, {hs_output});
+
+    if (alpha.has_value()) {
+      hs_node.AddAttribute("alpha", alpha.value());
+    }
+
+    if (beta.has_value()) {
+      hs_node.AddAttribute("beta", beta.value());
+    }
+
+    // hs_output -> Mul -> output
+    //               ^
+    //               |
+    // input --------+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Mul", {hs_output, input}, {output});
+  };
+}
+
+// Test FP32 fusion of HardSigmoid into HardSwish on the HTP backend with the enable_htp_fp16_precision option enabled
+// to run it with fp16 precision.
+TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP32_as_FP16) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  provider_options["enable_htp_fp16_precision"] = "1";
+
+  std::vector<float> input_data = {-8.0f, -2.0f, 0.0f, 0.5f, 0.9f, 1.1f, 3.3f, 8.0f,
+                                   -7.0f, 0.0f, 0.2f, 0.4f, 0.8f, 2.1f, 4.3f, 7.0f};
+
+  auto input_def = TestInputDef<float>({2, 2, 2, 2}, false, input_data);
+  constexpr float alpha = 1.0f / 6.0f;
+  constexpr float beta = 0.5f;
+  auto model_fn = BuildHardSigmoidFusionTestCase<float>(input_def, alpha, beta);
+
+  RunQnnModelTest(model_fn,
+                  provider_options,
+                  18,  // opset
+                  ExpectedEPNodeAssignment::All,
+                  0.01f);  // abs err. Comparing fp16 (QNN) vs fp32 (CPU EP) so can't expect too much.
+}
+
+// Test FP16 fusion of HardSigmoid into HardSwish on the HTP backend.
+TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP16) {
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  std::vector<float> input_data = {-8.0f, -2.0f, 0.0f, 0.5f, 0.9f, 1.1f, 3.3f, 8.0f,
+                                   -7.0f, 0.0f, 0.2f, 0.4f, 0.8f, 2.1f, 4.3f, 7.0f};
+
+  auto input_def = TestInputDef<float>({2, 2, 2, 2}, false, input_data);
+  auto input_fp16_def = ConvertToFP16InputDef(input_def);
+
+  constexpr float alpha = 1.0f / 6.0f;
+  constexpr float beta = 0.5f;
+  auto model_fp32_fn = BuildHardSigmoidFusionTestCase<float>(input_def, alpha, beta);
+  auto model_fp16_fn = BuildHardSigmoidFusionTestCase<MLFloat16>(input_fp16_def, alpha, beta);
+
+  TestFp16ModelAccuracy(model_fp32_fn,
+                        model_fp16_fn,
+                        provider_options,
+                        18,  // opset
+                        ExpectedEPNodeAssignment::All);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test

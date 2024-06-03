@@ -88,6 +88,11 @@ struct AttentionData {
   T* v = nullptr;
   T* scratch = nullptr;
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+
+  // Flash buffers
+  T* softmax_lse = nullptr;
+  T* softmax_lse_accum = nullptr;
+  T* out_accum = nullptr;
 };
 
 template <typename T>
@@ -123,6 +128,9 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                       const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
                       int total_matrix_count = -1);
+
+Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const half* input, half* output, cudaStream_t stream, const int max_threads_per_block);
 
 Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const int all_sequence_length,

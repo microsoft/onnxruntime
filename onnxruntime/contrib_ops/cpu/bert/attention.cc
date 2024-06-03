@@ -211,6 +211,12 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                   relative_position_bias,
                                   &parameters));
 
+  if (parameters.do_rotary) {
+    ORT_NOT_IMPLEMENTED(
+        "Rotary embedding is not supported in Attention CPU kernel. \
+                        Please fuse the model with MHA + RotaryEmbedding.");
+  }
+
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int input_hidden_size = parameters.input_hidden_size;

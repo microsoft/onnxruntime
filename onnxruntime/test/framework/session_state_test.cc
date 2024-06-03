@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <iostream>
+#include <absl/base/config.h>
 
 #include "asserts.h"
 #include "core/framework/execution_providers.h"
@@ -84,9 +85,10 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
 
   OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider, s.GetConstantInitializedTensors(),
-                      s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr());
-  unique_ptr<TestOpKernel> p_kernel;
-  p_kernel.reset(new TestOpKernel(p_info));
+                      s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr(), s.GetAllocators(),
+                      s.GetSessionOptions().config_options);
+
+  std::unique_ptr<TestOpKernel> p_kernel = std::make_unique<TestOpKernel>(p_info);
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
   std::cout << "node_idx: " << node.Index() << std::endl;
 
@@ -170,13 +172,16 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   GraphPartitioner partitioner(krm, execution_providers);
   ASSERT_STATUS_OK(
-      partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                            [](Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
-                               const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
-                              AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-                              return layout_transformation::TransformLayoutForEP(
-                                  graph, modified, execution_provider, std::move(cpu_allocator), debug_graph_fn);
-                            }));
+      partitioner.Partition(
+          graph, session_state.GetMutableFuncMgr(),
+          [](Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
+             const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
+            AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+            return layout_transformation::TransformLayoutForEP(
+                graph, modified, execution_provider, std::move(cpu_allocator), debug_graph_fn);
+          },
+          sess_options.config_options,
+          DefaultLoggingManager().DefaultLogger()));
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
@@ -211,7 +216,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 // if the relevant session option config flag is set
 // For this test we need to enable the arena-based allocator which is not supported on x86 builds, so
 // enable this test only on x64 builds
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_MIMALLOC)
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_MIMALLOC) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
 TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
   AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
   // Part 1: Feature turned ON (i.e.) allocate from non-arena memory
@@ -256,7 +261,9 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
                          const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
           return layout_transformation::TransformLayoutForEP(graph, modified, execution_provider,
                                                              cpu_allocator, debug_graph_fn);
-        }));
+        },
+        sess_options.config_options,
+        DefaultLoggingManager().DefaultLogger()));
 
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
@@ -313,7 +320,9 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
                          const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
           return layout_transformation::TransformLayoutForEP(
               graph, modified, execution_provider, cpu_allocator, debug_graph_fn);
-        }));
+        },
+        sess_options.config_options,
+        DefaultLoggingManager().DefaultLogger()));
 
     // Finalize the session state
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));

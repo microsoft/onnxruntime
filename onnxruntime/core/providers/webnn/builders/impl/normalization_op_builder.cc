@@ -25,10 +25,10 @@ class NormalizationOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                              const logging::Logger& logger) const override;
 };
 
-// All normalization are based on layout NCHW.
-// TODO: add support for NHWC.
 Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                      const Node& node,
                                                      const logging::Logger& logger) const {
@@ -61,49 +61,13 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     ORT_RETURN_IF_NOT(bias_shape == scale_shape, "The bias' shape should be equal to scale's shape.");
   }
 
-  std::vector<uint32_t> new_scale_shape;
-  if (scale_size < rank) {
-    if (op_type == "BatchNormalization") {
-      scale_shape.insert(scale_shape.begin(), 1);
-      scale_shape.insert(scale_shape.end(), rank - 2, 1);
-    } else if (op_type == "LayerNormalization") {
-      // Align right with leading ones.
-      scale_shape.insert(scale_shape.begin(), rank - scale_size, 1);
-    } else if (op_type == "InstanceNormalization") {
-      // Insert ones before and after the channel dimension.
-      scale_shape.insert(scale_shape.begin(), 1);
-      ORT_RETURN_IF(scale_size != 1 || rank < 2,
-                    "The scale size should be 1 and rank should be at least 2 for InstanceNorm.");
-      scale_shape.insert(scale_shape.end(), rank - scale_size - 1, 1);
-    } else if (op_type == "GroupNormalization") {
-      // The input will be reshaped to 3D later. So just insert ones before the channel and after.
-      scale_shape.insert(scale_shape.begin(), 1);
-      scale_shape.insert(scale_shape.end(), 1);
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported normalization op: ", op_type);
-    }
+  emscripten::val scale = model_builder.GetOperand(input_defs[1]->Name());
+  options.set("scale", scale);
 
-    std::transform(scale_shape.cbegin(), scale_shape.cend(),
-                   std::back_inserter(new_scale_shape),
-                   [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
-    emscripten::val reshape_scale = model_builder.GetOperand(input_defs[1]->Name());
-    emscripten::val reshape_output_scale =
-        model_builder.GetBuilder().call<emscripten::val>("reshape", reshape_scale, emscripten::val::array(new_scale_shape));
-    options.set("scale", reshape_output_scale);
-
-    if (input_defs.size() >= 3 && !input_defs[2]->Name().empty()) {
-      // Bias input exists, and bias's shape is the same as scale's shape.
-      emscripten::val reshape_bias = model_builder.GetOperand(input_defs[2]->Name());
-      emscripten::val reshape_output_bias =
-          model_builder.GetBuilder().call<emscripten::val>("reshape", reshape_bias, emscripten::val::array(new_scale_shape));
-      options.set("bias", reshape_output_bias);
-    }
-  } else {
-    options.set("scale", model_builder.GetOperand(input_defs[1]->Name()));
-    if (input_defs.size() >= 3 && !input_defs[2]->Name().empty()) {
-      // Bias input exists, and bias's shape is the same as scale's shape.
-      options.set("bias", model_builder.GetOperand(input_defs[2]->Name()));
-    }
+  if (input_defs.size() >= 3 && !input_defs[2]->Name().empty()) {
+    // Bias input exists, and bias's shape is the same as scale's shape.
+    emscripten::val bias = model_builder.GetOperand(input_defs[2]->Name());
+    options.set("bias", bias);
   }
 
   NodeAttrHelper helper(node);
@@ -114,56 +78,60 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     ORT_RETURN_IF_NOT(input_defs.size() == 5, "BatchNormalization requires five inputs.");
     emscripten::val mean = model_builder.GetOperand(input_defs[3]->Name());
     emscripten::val variance = model_builder.GetOperand(input_defs[4]->Name());
-    // Enlarge 1-D mean and variance to new scale shape.
-    emscripten::val reshape_mean =
-        model_builder.GetBuilder().call<emscripten::val>("reshape", mean, emscripten::val::array(new_scale_shape));
-    emscripten::val reshape_variance =
-        model_builder.GetBuilder().call<emscripten::val>("reshape", variance, emscripten::val::array(new_scale_shape));
-
-    std::vector<uint32_t> axes = {0};
-    for (uint32_t i = 2; i < rank; i++) {
-      axes.push_back(i);
+    if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
+      options.set("axis", rank - 1);
     }
 
-    options.set("axes", emscripten::val::array(axes));
-    options.set("mean", reshape_mean);
-    options.set("variance", reshape_variance);
-    output = model_builder.GetBuilder().call<emscripten::val>("meanVarianceNormalization", input, options);
+    output = model_builder.GetBuilder().call<emscripten::val>("batchNormalization", input, mean, variance, options);
   } else if (op_type == "LayerNormalization") {
     int64_t axis = helper.Get("axis", -1);
     axis = HandleNegativeAxis(axis, rank);
     std::vector<uint32_t> axes(rank - SafeInt<uint32_t>(axis));
-    std::iota(axes.begin(), axes.end(), axis);
-    options.set("axes", emscripten::val::array(axes));
-    output = model_builder.GetBuilder().call<emscripten::val>("meanVarianceNormalization", input, options);
-  } else if (op_type == "InstanceNormalization") {
-    std::vector<uint32_t> axes;
-    for (uint32_t i = 2; i < rank; i++) {
-      axes.emplace_back(i);
+    if (model_builder.GetPreferredLayout() == DataLayout::NHWC && axis > 1) {
+      std::iota(axes.begin(), axes.end(), axis - 1);
+    } else {
+      std::iota(axes.begin(), axes.end(), axis);
     }
     options.set("axes", emscripten::val::array(axes));
-    output = model_builder.GetBuilder().call<emscripten::val>("meanVarianceNormalization", input, options);
-  } else if (op_type == "GroupNormalization") {
-    ORT_RETURN_IF_NOT(helper.HasAttr("num_groups"), "GroupNormalization num_group must be provided.");
-    int32_t group_count = helper.Get("num_groups", -1);
-    std::vector<uint32_t> orig_shape, new_shape;
-    std::transform(input_shape.cbegin(), input_shape.cend(),
-                   std::back_inserter(orig_shape),
-                   [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
-    // Add N and Group.
-    ORT_RETURN_IF_NOT(rank >= 2, "Input for GroupNormalization cannot be a scalar or 1D");
-    new_shape.emplace_back(SafeInt<uint32_t>(input_shape[0]));
-    new_shape.emplace_back(SafeInt<uint32_t>(group_count));
+    output = model_builder.GetBuilder().call<emscripten::val>("layerNormalization", input, options);
+  } else if (op_type == "InstanceNormalization") {
+    // WebNN spec only supports 4D input for instanceNormalization.
+    // Supports 3D input by prepending 1 size dimension.
+    // For models with dimensions greater than 4, they will be reshaped into 4D.
+    constexpr size_t webnn_shape_rank = 4;
+    if (input_shape.size() != webnn_shape_rank) {
+      std::vector<uint32_t> new_shape;
+      new_shape.reserve(std::max(input_shape.size(), webnn_shape_rank));
+      std::transform(input_shape.begin(), input_shape.end(),
+                     std::back_inserter(new_shape),
+                     [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
 
-    ORT_RETURN_IF_NOT(group_count > 0 && input_shape[1] % group_count == 0,
-                      "GroupNormalization num_group must be divisible by group.");
-    new_shape.emplace_back(SafeInt<uint32_t>(std::reduce(input_shape.begin() + 2, input_shape.end(),
-                                                         input_shape[1] / group_count, std::multiplies<int64_t>())));
-    // Input will be reshaped to (N, group count, channels per group x D1 x D2 ... Dn) and recovered after normalization.
-    options.set("axes", emscripten::val::array(std::vector<uint32_t>{2}));
-    output = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
-    output = model_builder.GetBuilder().call<emscripten::val>("meanVarianceNormalization", output, options);
-    output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array(orig_shape));
+      size_t insertion_offset = (model_builder.GetPreferredLayout() == DataLayout::NHWC) ? 2 : 3;
+      ptrdiff_t excess_rank = new_shape.size() - webnn_shape_rank;
+      auto insertion_point = new_shape.begin() + insertion_offset;
+      if (input_shape.size() < webnn_shape_rank) {
+        // Pad the shape with extra 1's to satisfy WebNN v1's rank requirements.
+        new_shape.insert(insertion_point, -excess_rank, 1);
+      } else {
+        // Fold the extra range to fit within WebNN v1's rank requirements.
+        uint32_t sum = std::accumulate(
+            insertion_point, insertion_point + excess_rank + 1, 1, std::multiplies<uint32_t>());
+        new_shape.erase(insertion_point, insertion_point + excess_rank);
+        *insertion_point = sum;
+      }
+      input = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
+    }
+
+    if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
+      options.set("layout", emscripten::val("nhwc"));
+    }
+    output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
+    // Reshape back to the original output shape for 3D input.
+    if (input_shape.size() != 4) {
+      std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
+      output = model_builder.GetBuilder().call<emscripten::val>(
+          "reshape", output, emscripten::val::array(output_shape));
+    }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported normalization op: ", op_type);
   }
@@ -207,6 +175,53 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
   return true;
 }
 
+bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                                                    const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // input data type
+  int32_t input1_type;  // scale data type
+  int32_t input2_type;  // B data type
+  int32_t input3_type;  // mean data type
+  int32_t input4_type;  // var data type
+  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
+  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
+  bool has_input4 = input_defs.size() > 3 && input_defs[4]->Exists();
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      (has_input2 && !GetType(*input_defs[2], input2_type, logger)) ||
+      (has_input3 && !GetType(*input_defs[3], input3_type, logger)) ||
+      (has_input4 && !GetType(*input_defs[4], input4_type, logger))) {
+    return false;
+  }
+
+  // WebNN batchNormalization, instanceNormalization, layerNormalization
+  // only support float32 and float16 input data types.
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = {
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+  };
+
+  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input0_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (input0_type != input1_type ||
+      (has_input2 && input0_type != input2_type) ||
+      (has_input3 && input0_type != input3_type) ||
+      (has_input4 && input0_type != input4_type)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input data types should be the same.";
+    return false;
+  }
+
+  return true;
+}
+
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
@@ -214,7 +229,6 @@ void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrat
   constexpr static std::string_view op_types[] =
       {
           "BatchNormalization",
-          "GroupNormalization",
           "InstanceNormalization",
           "LayerNormalization",
       };

@@ -35,6 +35,10 @@ Options:
 	-x: [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes. A value of 0 means the test will auto-select a default. Must >=0.
 	
 	-y: [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means the test will auto-select a default. Must >=0.
+
+        -C: [session_config_entries]: Specify session configuration entries as key-value pairs: -C "<key1>|<val1> <key2>|<val2>"
+                                      Refer to onnxruntime_session_options_config_keys.h for valid keys and values.
+                                      [Example] -C "session.disable_cpu_ep_fallback|1 ep.context_enable|1"
 	
 	-h: help.
 

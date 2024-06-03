@@ -36,8 +36,10 @@ _DTYPE_TO_ONNX = {torch_dtype: onnx_dtype for k, (onnx_dtype, torch_dtype) in _C
 _ONNX_TO_DTYPE = {onnx_dtype: torch_dtype for torch_dtype, onnx_dtype in _DTYPE_TO_ONNX.items()}
 
 
-def pytorch_dtype_to_onnx(dtype_or_scalar_type: Union[torch.dtype, str]) -> torch.onnx.TensorProtoDataType:
-    """Converts a pytorch dtype or scalar type string to an onnx dtype."""
+def pytorch_type_to_onnx_dtype(dtype_or_scalar_type: Union[torch.dtype, str]) -> torch.onnx.TensorProtoDataType:
+    """Converts a pytorch dtype or scalar type string to an onnx dtype.
+    PyTorch type can be either a dtype or a scalar type string.
+    """
     dtype = dtype_or_scalar_type
     if isinstance(dtype, str):
         if dtype not in _CAST_PYTORCH_TO_ONNX:
@@ -49,7 +51,15 @@ def pytorch_dtype_to_onnx(dtype_or_scalar_type: Union[torch.dtype, str]) -> torc
     return _DTYPE_TO_ONNX[dtype]
 
 
-def onnx_dtype_to_pytorch(dtype: torch.onnx.TensorProtoDataType) -> torch.dtype:
+def pytorch_scalar_type_to_pytorch_dtype(dtype: str) -> torch.dtype:
+    """Converts a pytorch scalar type string to a pytorch dtype."""
+    assert isinstance(dtype, str)
+    if dtype not in _CAST_PYTORCH_TO_ONNX:
+        raise RuntimeError(f"Unsupported dtype {dtype}")
+    return _CAST_PYTORCH_TO_ONNX[dtype][1]
+
+
+def onnx_dtype_to_pytorch_dtype(dtype: torch.onnx.TensorProtoDataType) -> torch.dtype:
     """Converts an onnx dtype to a pytorch dtype."""
     if dtype not in _ONNX_TO_DTYPE:
         raise RuntimeError(f"Unsupported dtype {dtype}")

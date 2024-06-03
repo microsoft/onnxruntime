@@ -19,6 +19,8 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer_utils.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/matmul_nbits_fusion.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/matmul_nbits_fusion.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/nhwc_transformer.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/nhwc_transformer.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_final_cleanup.cc"
@@ -86,6 +88,8 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.cc"
   )
 endif()
 
@@ -109,6 +113,7 @@ onnxruntime_add_include_to_target(onnxruntime_optimizer onnxruntime_common onnxr
 target_include_directories(onnxruntime_optimizer PRIVATE ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_optimizer PRIVATE ${ORTTRAINING_ROOT})
+  onnxruntime_add_include_to_target(onnxruntime_optimizer nlohmann_json::nlohmann_json)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime_optimizer Python::Module)
   endif()
@@ -127,4 +132,8 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+if (onnxruntime_USE_ROCM)
+  add_dependencies(onnxruntime_optimizer generate_hipified_files)
 endif()

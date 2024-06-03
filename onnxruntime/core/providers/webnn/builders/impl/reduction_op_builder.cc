@@ -31,6 +31,8 @@ class ReductionOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -65,7 +67,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (opset >= 18 || (op_type == "ReduceSum" && opset >= 13)) {
     // 'axes' is an optional input.
     const auto noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
-    if (input_defs.size() > 1) {
+    if (!GetTensorName(input_defs, 1).empty()) {
       // Optional input axes is provided, use axes initializer data.
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(input_defs[1]->Name());
@@ -134,9 +136,55 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
     return false;
 
   const auto& op_type = node.OpType();
+  const std::string axes_name = GetTensorName(input_defs, 1);
   // If the optional input 'axes' is provided, it must be an initializer.
-  if (input_defs.size() > 1 && !Contains(initializers, input_defs[1]->Name())) {
+  if (!axes_name.empty() && !Contains(initializers, axes_name)) {
     LOGS(logger, VERBOSE) << "Input axes of " << op_type << " must be a constant";
+    return false;
+  }
+
+  return true;
+}
+
+bool ReductionOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                                const logging::Logger& logger) const {
+  const auto& input = *node.InputDefs()[0];
+  const auto& op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
+  if (op_type == "ReduceL1" || op_type == "ReduceProd" ||
+      op_type == "ReduceSum" || op_type == "ReduceSumSquare") {
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+        ONNX_NAMESPACE::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+    };
+    // WebNN CPU backend doesn't support uint32 for reduceProd and reduceSum.
+    if (device_type == WebnnDeviceType::CPU && (op_type == "ReduceProd" || op_type == "ReduceSum")) {
+      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
+    }
+  } else if (op_type == "ReduceL2" || op_type == "ReduceLogSum" ||
+             op_type == "ReduceLogSumExp" || op_type == "ReduceMean") {
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+    };
+  } else {  // ReduceMax and ReduceMin
+    supported_data_types = webnn_supported_data_types;
+    // WebNN CPU backend doesn't support uint32, uint64 for reduceMax and reduceMin.
+    if (device_type == WebnnDeviceType::CPU) {
+      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
+      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
+    }
+  }
+  if (!IsSupportedDataType(input_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
     return false;
   }
 

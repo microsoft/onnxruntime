@@ -6,10 +6,50 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "29bf8085f3bf17b84d30e34b3d7ff8248fda404e",
+          "commitHash": "d52c46520124845b1e0e0525f2759299d840143f",
+          "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
+        },
+        "comments": "git submodule at cmake/external/emsdk"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7a2ed51a6b682a83e345ff49fc4cfd7ca47550db",
+          "repositoryUrl": "https://github.com/google/libprotobuf-mutator.git"
+        },
+        "comments": "git submodule at cmake/external/libprotobuf-mutator"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "990217f043af7222348ca8f0301e17fa7b841781",
+          "repositoryUrl": "https://github.com/onnx/onnx.git"
+        },
+        "comments": "git submodule at cmake/external/onnx"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "4a2c63365eff8823a5221db86ef490e828306f9d",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "dbb0094fd0cb936469e35320bf37e866ef7a1da4",
+          "repositoryUrl": "https://github.com/apple/coremltools.git"
+        },
+        "comments": "coremltools"
       }
     },
     {
@@ -46,7 +86,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6df40a2471737b27271bdd9b900ab5f3aec746c7",
+          "commitHash": "0100f6a5779831fa7a651e4b67ef389a8752bd9b",
           "repositoryUrl": "https://github.com/google/flatbuffers.git"
         },
         "comments": "flatbuffers"
@@ -76,7 +116,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "361e8d1cfe0c6c36d30b39f1b61302ece5507320",
+          "commitHash": "344117638c8ff7e239044fd0fa7085839fc03021",
           "repositoryUrl": "https://github.com/google/benchmark.git"
         },
         "comments": "google_benchmark"
@@ -96,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f8d7d77c06936315286eb55f8de22cd23c188571",
+          "commitHash": "530d5c8c84abd2a46f38583ee817743c9b3a42b4",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "googletest"
@@ -106,7 +146,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "003c580e696a774afdc984996ee909b7c8d8128c",
+          "commitHash": "0da379fc4808f9601faef392352018c741c0f297",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -166,17 +206,17 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "fdefbe85ed9c362b95b9b401cd19db068a76141f",
-          "repositoryUrl": "https://github.com/onnx/onnx.git"
+          "commitHash": "150e7527d5286ddd3a995c228dedf8d76a7a86bc",
+          "repositoryUrl": "https://github.com/intel/neural-speed.git"
         },
-        "comments": "onnx"
+        "comments": "neural_speed"
       }
     },
     {
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0462dc31ae78f48744b6141ae376df1f96d3f459",
+          "commitHash": "eb43908b02a296ea0594432f06e9d3fac288d672",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -206,7 +246,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1787867f6183f056420e532eec640cba25efafea",
+          "commitHash": "4fe0e1e183925bf8cfa6aae24237e724a96479b8",
           "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
         },
         "comments": "pthreadpool"
@@ -236,7 +276,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5723bb8950318135ed9cf4fc76bed988a087f536",
+          "commitHash": "2b354c6ad0d0479dcff68dab23fb0d1143a482c2",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "re2"
@@ -266,7 +306,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c4f6b8c6bc94ff69048492fb34df0dfaf1983933",
+          "commitHash": "6f47420213f757831fae65c686aa471749fa8d60",
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
@@ -296,10 +336,20 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d52ec01652b7d620386251db92455968d8d90bdc",
+          "commitHash": "5356c4a943a35e74d7cdc69486afcb8703b9a59a",
           "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
         },
         "comments": "composable_kernel"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "de28d93dfa9ebf3e473127c1c657e1920a5345ee",
+          "repositoryUrl": "https://github.com/microsoft/DirectX-Headers.git"
+        },
+        "comments": "directx_headers"
       }
     }
   ]

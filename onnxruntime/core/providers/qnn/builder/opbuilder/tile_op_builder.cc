@@ -3,6 +3,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
@@ -30,6 +31,14 @@ class TileOpBuilder : public BaseOpBuilder {
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
 Status TileOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -84,6 +93,23 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                      logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
+}
+
+Status TileOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                               const NodeUnit& node_unit,
+                                               const logging::Logger& logger,
+                                               const std::vector<std::string>& input_names,
+                                               size_t output_index,
+                                               Qnn_DataType_t qnn_data_type,
+                                               QnnQuantParamsWrapper& quant_param) const {
+  if (!quant_param.IsPerTensor()) {
+    return Status::OK();
+  }
+
+  // Force the Tile operator output to use the same quantization parameters as the input if nearly equal.
+  // This helps the HTP backend employ certain optimizations.
+  return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                  0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }
 
 void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

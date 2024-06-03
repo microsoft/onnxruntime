@@ -67,21 +67,45 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
-#ifdef ENABLE_TRAINING
-// Specifies a list of op types for memory footprint reduction.
-// The value should be a ","-delimited list of pair of
-// <subgraph string : optimization strategy : number of subgraph to apply>.
-// For example, "Gelu+Cast+:1:0,Dropout+:1:1".
-//   A valid "subgraph string" should be one subgraph representation output by ORT graph transformations.
-//   "optimization strategy" currently has valid values: 0 - disabled, 1 - recompute.
-//   "number of subgraph to apply" is used to control how many subgraphs to apply optimization, to avoid "oversaving"
-//   the memory.
-static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.enable_memory_optimizer";
+// This setting controls whether to enable AheadOfTime function inlining.
+// AOT function inlining examines the graph and attempts to inline as many locally defined functions in the model
+// as possible with the help of enabled execution providers.
+// This can reduce the number of function calls and improve performance because it is done before
+// Level1 optimizers and constant folding. However, under some circumstances, when the EPs are not available,
+// one can disable the AOT inlining, produce an optimized model and postpone AOT until run time.
+// "0": enable; "1": disable.
+// Its default value is "0".
+static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = "session.disable_aot_function_inlining";
 
-// Specifies the level for detecting subgraphs for memory footprint reduction.
-// The value should be an integer. The default value is 0.
-static const char* const kOrtSessionOptionsMemoryOptimizerProbeLevel = "optimization.enable_memory_probe_recompute_level";
+#ifdef ENABLE_TRAINING
+// Specifies a path of the file containing a list of memory optimization configurations.
+// The value should be a string indicating the file path of the config file.
+// The content of the config file is a JSON struct like this:
+// [
+//   "Gelu+Cast+:1:0",
+//   "Dropout+:1:1"
+// ]
+// Taking the example of "Gelu+Cast+:1:0",
+// > "Gelu+Cast+" is the subgraph string, a valid "subgraph string" should be one subgraph representation
+//    output by ORT graph transformations.
+// > "1" is "optimization strategy", valid values: 0 - disabled, 1 - recompute.
+// > "0" is "number of subgraph to apply" which is used to control how many subgraphs to apply optimization,
+//    to avoid "oversaving" the memory.
+static const char* const kOrtSessionOptionsMemoryOptimizerApplyConfig = "optimization.memory_optimizer_config";
+
+// Specifies the config for detecting subgraphs for memory footprint reduction.
+// The value should be a string contains int separated using commas. The default value is "0:0".
+static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimization.enable_memory_probe_recompute_config";
 #endif
+
+// This setting if set should contain a comma separated list of optimizers names that should be disabled.
+// Optimizers may take time to execute and affect model loading time. If you feel that a specific optimizer
+// does not provider runtime benefits, but affects your model loading time you may disable it using this config
+// entry. This option is not enabled in ORT_MINIMAL_BUILD build.
+// A list of optimizes is available in onnxruntime/core/optimizer/graph_transformer_utils.cc
+//
+// Default is an empty string which means no optimizers are disabled.
+static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
 
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
@@ -225,3 +249,24 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFil
 // Use this config to control the minimum size of the initializer when externalizing it during serialization
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";
+
+// Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
+// The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
+// "0": disable. (default)
+// "1": enable.
+static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
+
+// Specify the file path for the Onnx model which has EP context.
+// Default to original_file_name_ctx.onnx if not specified
+static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
+
+// Flag to specify whether to dump the EP context into the Onnx model.
+// "0": dump the EP context into separate file, keep the file name in the Onnx model.
+// "1": dump the EP context into the Onnx model. (default).
+static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
+
+// Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
+// Option values:
+// - "0": Gemm FastMath mode is not enabled. [DEFAULT]
+// - "1": Gemm FastMath mode is enabled.
+static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";

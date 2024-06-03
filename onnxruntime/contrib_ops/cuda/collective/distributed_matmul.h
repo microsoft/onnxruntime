@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#include "sharding_spec.h"
-#include "core/providers/cuda/cuda_kernel.h"
+#include "sharding.h"
 
 #include <algorithm>
 #include <tuple>
@@ -20,15 +18,11 @@ namespace cuda {
 #if defined(ORT_USE_NCCL)
 
 template <typename T>
-class DistributedMatMul final : public NcclKernel {
+class DistributedMatMul final : public DistributedKernel {
  public:
   explicit DistributedMatMul(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  std::vector<TensorPartitionSpec> input_shard_specs_;
-  std::vector<TensorPartitionSpec> output_shard_specs_;
 };
 
 #endif

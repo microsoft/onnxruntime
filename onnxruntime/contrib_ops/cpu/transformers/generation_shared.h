@@ -53,6 +53,7 @@ struct IBeamSearchCpuState {
   gsl::span<int32_t> topk_tokens;      // shape (batch_size, 2*num_beams), tokens of topk candidates.
   gsl::span<int32_t> topk_indices;     // shape (batch_size, 2*num_beams), beam indices of topk candidates.
   gsl::span<float> final_beam_scores;  // shape (batch_size, num_beams)
+  gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
 };
 
 template <typename T>
@@ -119,6 +120,9 @@ struct IBeamScorer {
                         Tensor* output_sequences,
                         Tensor* output_sequence_scores) = 0;
 
+  virtual void OutputScores(gsl::span<const float>& final_scores,
+                            Tensor* output_scores) = 0;
+
   virtual bool IsDone() const = 0;                    // GPU version will return false here, as it asynchronously queues up the event
   virtual bool IsDoneLater() const { return false; }  // GPU version waits for the asynchous result to complete here
 
@@ -175,6 +179,24 @@ struct IGenerationParameters {
   int seed = 0;
   int min_tokens_to_keep = 1;
   bool custom_sampling = false;
+
+  // Parameters for whisper model
+  bool decoder_output_cross_qk = false;
+  gsl::span<const int32_t> extra_decoding_ids;
+
+  // Token ids are defined below in the order that they appear in the tokenizer
+  int32_t translate_token_id = -1;
+  int32_t transcribe_token_id = -1;
+  int32_t start_of_lm_token_id = -1;
+  int32_t no_speech_token_id = -1;
+  int32_t no_timestamps_token_id = -1;
+  int32_t beginning_timestamp_token_id = -1;
+  void* no_speech_probs = nullptr;
+
+  int cross_qk_layer_head_input_id = -1;
+  int extra_decoding_ids_input_id = -1;
+  int cross_qk_output_id = -1;
+  int no_speech_probs_output_id = -1;
 };
 
 }  // namespace transformers

@@ -132,6 +132,7 @@ struct OrtTrainingApi {
    * \note Note that the training session created with a checkpoint state uses this state to store the entire
    * training state (including model parameters, its gradients, the optimizer states and the properties).
    * As a result, it is required that the checkpoint state outlive the lifetime of the training session.
+   * \note Note that the checkpoint file can be either the complete checkpoint or the nominal checkpoint.
    *
    * \param[in] checkpoint_path Path to the checkpoint file
    * \param[out] checkpoint_state Checkpoint state that contains the states of the training session.
@@ -463,10 +464,12 @@ struct OrtTrainingApi {
    *
    * The parameters_buffer argument has to be of the size given by OrtTrainingApi::GetParametersSize api call,
    * with matching setting for trainable_only argument. All the target parameters must be of the same
-   * datatype. This is a complementary function to OrtTrainingApi::CopyBufferToParameters
+   * datatype. This is a complementary function to OrtTrainingApi::CopyParametersToBuffer
    * and can be used to load updated buffer values onto the training state.
    * Parameter ordering is preserved.
    * User is responsible for allocating and freeing the resources used by the parameters_buffer.
+   * In case the training session was created with a nominal checkpoint, invoking this function is required
+   * to load the updated parameters onto the checkpoint to complete it.
    *
    * \param[in] sess The `this` pointer to the training session.
    * \param[in] trainable_only Whether to skip non-trainable parameters

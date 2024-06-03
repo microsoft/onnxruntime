@@ -373,7 +373,8 @@ class Inliner {
   // Replace given name with a unique version of the name, and cache the
   // renaming-binding in current scope.
   void make_unique(std::string& name) {
-    auto new_name = prefix_ + name;
+    auto new_name{prefix_};
+    new_name.append("_").append(name);
     auto& current_scope = rename_scopes_.back();
     current_scope[name] = new_name;
     name = std::move(new_name);
@@ -410,7 +411,7 @@ class Inliner {
       std::string rename_as = actuals.Get(i);
       if constexpr (isOutput) {
         if (rename_as.empty())
-          rename_as.assign(prefix_).append(formal);
+          rename_as.assign(prefix_).append("_").append(formal);
       }
       current_scope[formal] = rename_as;
       if (!rename_as.empty())
@@ -420,7 +421,7 @@ class Inliner {
       std::string& formal = *formals.Mutable(i);
       std::string rename_as;
       if constexpr (isOutput) {
-        rename_as.assign(prefix_).append(formal);
+        rename_as.assign(prefix_).append("_").append(formal);
       }
       current_scope[formal] = rename_as;
       if (!rename_as.empty())
@@ -431,7 +432,7 @@ class Inliner {
   // Process a node:
   void transform(NodeProto& n) {
     if (!n.name().empty())
-      n.set_name(prefix_ + n.name());
+      n.set_name(prefix_ + "_" + n.name());
 
     for (auto& x : *n.mutable_input()) {
       rename(x, false);

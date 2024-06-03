@@ -1,38 +1,47 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
+
+#include <utility>
 
 #include "core/providers/cuda/nn/conv.h"
 #include "core/common/span_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/tensor/slice.h"
+#include "core/providers/cuda/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 // Op Set 11 for Conv only update document to clearify default dilations and strides value.
 // which are already convered by op set 11 cpu versoin, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T)                                                           \
+#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                             \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Conv,                                                                                \
-      kOnnxDomain,                                                                         \
+      DOMAIN,                                                                              \
       1, 10,                                                                               \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T, false>);                                                                     \
+      Conv<T, NHWC>);                                                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       Conv,                                                                                \
-      kOnnxDomain,                                                                         \
+      DOMAIN,                                                                              \
       11,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T, false>);
+      Conv<T, NHWC>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(float, kOnnxDomain, false)
+REGISTER_KERNEL_TYPED(double, kOnnxDomain, false)
+REGISTER_KERNEL_TYPED(MLFloat16, kOnnxDomain, false)
+
+#ifdef ENABLE_CUDA_NHWC_OPS
+REGISTER_KERNEL_TYPED(float, kMSInternalNHWCDomain, true)
+REGISTER_KERNEL_TYPED(MLFloat16, kMSInternalNHWCDomain, true)
+#endif
 
 template <typename T, bool NHWC>
 const cudnnConvolutionFwdAlgo_t Conv<T, NHWC>::kAllAlgos[] = {
@@ -87,6 +96,43 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 }
 
 template <typename T, bool NHWC>
+Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                              bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;
+  // only layout of weight input is adjusted via PrePack
+  if constexpr (NHWC) {
+    if (is_nhwc_domain_ && input_idx == 1) {  // InputTensors::IN_W
+      // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
+      auto orig_shape = tensor.Shape();
+
+      InlinedVector<size_t> perm{0, 2, 3, 1};
+      gsl::span<size_t> permutation(perm.data(), 4);
+      TensorShapeVector new_dims{orig_shape[0],
+                                 orig_shape[2],
+                                 orig_shape[3],
+                                 orig_shape[1]};
+      W_ = Tensor::Create(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+
+      auto status = cuda::Transpose::DoTranspose(GetDeviceProp(),
+                                                 DefaultCudaStream(),
+                                                 DefaultCublasHandle(),
+                                                 permutation, tensor, *W_);
+      if (!status.IsOK()) {
+        return status;
+      }
+      CUDA_CALL_THROW(cudaStreamSynchronize(DefaultCudaStream()));
+      is_packed = true;
+    }
+  } else {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+  }
+
+  return Status::OK();
+}
+
+template <typename T, bool NHWC>
 Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) const {
   // set X
   const Tensor* X = context->Input<Tensor>(0);
@@ -95,15 +141,23 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
   s_.x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
   // set W
-  const Tensor* W = context->Input<Tensor>(1);
+  const Tensor* W;
+  if (!W_) {
+    W = context->Input<Tensor>(1);
+  } else {
+    W = W_.get();
+  }
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
   s_.w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
 
   // Make sure input and weight are 4D for NHWC since we set 4D descriptor for NHWC.
   constexpr bool channels_last = NHWC;
-  if (channels_last && (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+  if constexpr (channels_last) {
+    if (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+    }
   }
 
   // set B
@@ -279,7 +333,8 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
     ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
                                          gsl::narrow_cast<int>(conv_attrs_.group),
-                                         CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
+                                         CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>(),
+                                         UseTF32()));
 
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
@@ -304,8 +359,13 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
-      if constexpr (std::is_same<T, MLFloat16>::value)
+      if constexpr (std::is_same<T, MLFloat16>::value) {
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+      } else if constexpr (std::is_same<T, float>::value) {
+        if (!UseTF32()) {
+          CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_FMA_MATH));
+        }
+      }
 
       cudnnConvolutionFwdAlgoPerf_t perf;
       int algo_count = 1;
@@ -350,8 +410,11 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
         default:
           perf.algo = kDefaultConvAlgo;
           CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(GetCudnnHandle(context), s_, perf.algo, &perf.memory));
-          if (std::is_same<T, MLFloat16>::value) {
+
+          if constexpr (std::is_same<T, MLFloat16>::value) {
             perf.mathType = CUDNN_TENSOR_OP_MATH;
+          } else if (std::is_same<T, float>::value && !UseTF32()) {
+            perf.mathType = CUDNN_FMA_MATH;
           } else {
             perf.mathType = CUDNN_DEFAULT_MATH;
           }
@@ -433,7 +496,8 @@ Status CudnnConvolutionDescriptor::Set(
     const gsl::span<const int64_t>& dilations,
     int groups,
     cudnnConvolutionMode_t mode,
-    cudnnDataType_t data_type) {
+    cudnnDataType_t data_type,
+    bool use_tf32) {
   if (!desc_)
     CUDNN_RETURN_IF_ERROR(cudnnCreateConvolutionDescriptor(&desc_));
 
@@ -466,6 +530,8 @@ Status CudnnConvolutionDescriptor::Set(
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
   if (data_type == CUDNN_DATA_HALF) {
     CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
+  } else if (data_type == CUDNN_DATA_FLOAT && !use_tf32) {
+    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_FMA_MATH));
   }
 
   return Status::OK();

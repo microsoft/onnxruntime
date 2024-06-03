@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include "op_builder.h"
 
 namespace onnxruntime {
@@ -92,5 +93,8 @@ void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations
 
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateHardSigmoidOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 }  // namespace qnn
 }  // namespace onnxruntime

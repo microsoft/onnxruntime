@@ -22,6 +22,8 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -41,9 +43,11 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto select_last_index = helper.Get("select_last_index", 0);
 
   axis = HandleNegativeAxis(axis, input_rank);
+  emscripten::val axes = emscripten::val::array();
+  axes.call<void>("push", static_cast<uint32_t>(axis));
 
   emscripten::val options = emscripten::val::object();
-  options.set("axis", static_cast<int32_t>(axis));
+  options.set("axes", axes);
   options.set("keepDimensions", keep_dims == 1);
   options.set("selectLastIndex", select_last_index == 1);
   emscripten::val output = emscripten::val::object();
@@ -71,6 +75,31 @@ bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initia
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
+
+  return true;
+}
+
+bool ArgMaxMinOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                                const logging::Logger& logger) const {
+  const auto& input = *node.InputDefs()[0];
+  const auto& op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
+  // WebNN CPU backend doesn't support int64, uint64 input data types for argMax and argMin.
+  if (device_type == WebnnDeviceType::CPU) {
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
+  }
+
+  if (!IsSupportedDataType(input_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
 
   return true;
 }

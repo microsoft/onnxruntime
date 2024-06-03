@@ -25,6 +25,7 @@ Status CheckInputs(const T* query,
                    int num_heads,
                    float mask_filter_value,
                    float scale,
+                   bool is_unidirectional,
                    bool past_present_share_buffer,
                    bool dmmha_packing) {
   //     key_padding_mask (K/V)     : (B) or (2*B + 1) or (B, L) or None
@@ -103,7 +104,8 @@ Status CheckInputs(const T* query,
     }
     if (past_key_dims[2] != past_value_dims[2]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length)");
+                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length). ",
+                             past_key_dims[2], " vs ", past_value_dims[2]);
     }
     if (past_key_dims[3] != head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -205,6 +207,7 @@ Status CheckInputs(const T* query,
     }
   }
 
+  int total_sequence_length = past_sequence_length + kv_sequence_length;
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
   if (key_padding_mask != nullptr) {
     mask_type = AttentionMaskType::MASK_UNKNOWN;
@@ -215,13 +218,21 @@ Status CheckInputs(const T* query,
       } else if (mask_dims[0] == static_cast<int64_t>(3) * static_cast<int64_t>(batch_size) + static_cast<int64_t>(2)) {
         mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
       }
-    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
+    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) &&
+               mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) &&
+               mask_dims[1] == static_cast<int64_t>(total_sequence_length)) {
+      mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+    } else if (mask_dims.size() == 3 && mask_dims[0] == static_cast<int64_t>(batch_size) &&
+               mask_dims[1] == static_cast<int64_t>(sequence_length) &&
+               mask_dims[2] == static_cast<int64_t>(total_sequence_length)) {
+      mask_type = AttentionMaskType::MASK_3D_ATTENTION;
     }
 
     if (mask_type == AttentionMaskType::MASK_UNKNOWN) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key_padding_mask' shape shall be (batch_size) or (batch_size, kv_sequence_length)");
+                             "Input 'key_padding_mask' shape shall be 1D, 2D, or 3D");
     }
   }
 
@@ -256,7 +267,6 @@ Status CheckInputs(const T* query,
     }
   }
 
-  int total_sequence_length = past_sequence_length + kv_sequence_length;
   bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
@@ -306,7 +316,7 @@ Status CheckInputs(const T* query,
     output_parameters->head_size = hidden_size / num_heads;
     output_parameters->v_head_size = v_hidden_size / num_heads;
     output_parameters->num_heads = num_heads;
-    output_parameters->is_unidirectional = false;
+    output_parameters->is_unidirectional = is_unidirectional;
     output_parameters->past_present_share_buffer = past_present_share_buffer;
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
@@ -333,6 +343,7 @@ Status CheckInputs(const T* query,
                    int num_heads,
                    float mask_filter_value,
                    float scale,
+                   bool is_unidirectional,
                    bool past_present_share_buffer,
                    bool dmmha_packing,
                    int max_threads_per_block) {
@@ -341,8 +352,8 @@ Status CheckInputs(const T* query,
   }
 
   return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
-                     past_seq_len, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer,
-                     dmmha_packing);
+                     past_seq_len, parameters, num_heads, mask_filter_value, scale, is_unidirectional,
+                     past_present_share_buffer, dmmha_packing);
 }
 
 }  // namespace multihead_attention_helper

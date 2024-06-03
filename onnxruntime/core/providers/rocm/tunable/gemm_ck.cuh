@@ -36,9 +36,11 @@ using Col = ck::tensor_layout::gemm::ColumnMajor;
 
 using Nop = ck::tensor_operation::element_wise::PassThrough;
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKGemmTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -61,7 +63,7 @@ auto GetCKGemmTypeStringAndOps() {
                                            params->lda, params->ldb, params->ldc,
                                            nop, nop, nop);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
+                                                impl->GetTypeString(), " does not support the params");
       invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
@@ -70,9 +72,11 @@ auto GetCKGemmTypeStringAndOps() {
   return ret;
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKStreamKGemmTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemmStreamK<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -104,9 +108,11 @@ auto GetCKStreamKGemmTypeStringAndOps() {
   return ret;
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKSplitKGemmTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemmSplitK<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -144,9 +150,11 @@ auto GetCKSplitKGemmTypeStringAndOps() {
   return ret;
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKStridedBatchedGemmTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceStridedBatchedGemm = ck::tensor_operation::device::DeviceBatchedGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -164,7 +172,7 @@ auto GetCKStridedBatchedGemmTypeStringAndOps() {
       auto zero = ToHipType<T>::FromFloat(0.0f);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->alpha != one || params->beta != zero,
-          impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
+          impl->GetTypeString(), " only supports alpha == 1 and beta == 0");
 
       auto nop = Nop{};
       auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
@@ -174,7 +182,7 @@ auto GetCKStridedBatchedGemmTypeStringAndOps() {
                                            params->batch,
                                            nop, nop, nop);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
+                                                impl->GetTypeString(), " does not support the params");
       invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };

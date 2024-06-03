@@ -330,7 +330,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     IMLOperatorKernelFactory* operatorKernelFactory,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept
 {
-    return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, nullptr, false, false, false);
+    return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, nullptr, false, false);
 }
 
 HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
@@ -339,11 +339,12 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
     _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
     bool isInternalOperator,
-    bool canAliasFirstInput,
     bool supportsGraph,
     const uint32_t* requiredInputCountForGraph,
     _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
-    uint32_t constantCpuInputCount) const noexcept
+    uint32_t constantCpuInputCount,
+    _In_reads_(aliasCount) const std::pair<uint32_t, uint32_t>* aliases,
+    uint32_t aliasCount) const noexcept
 {
     ORT_TRY
     {
@@ -417,9 +418,9 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         builder.InputMemoryType(::OrtMemType::OrtMemTypeCPUInput, inputIndex);
     }
 
-    if (canAliasFirstInput)
+    for (uint32_t i = 0; i < aliasCount; ++i)
     {
-        builder.Alias(0, 0);
+        builder.Alias(aliases[i].first, aliases[i].second);
     }
 
     // Set type constraints
@@ -491,6 +492,8 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     const onnxruntime::Node& node,
                     MLOperatorTensorGetter& constantInputGetter,
                     const void* executionHandle,
+                    const EdgeShapes* inputShapesOverrides,
+                    /*out*/ EdgeShapes* outputShapes,
                     /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
                 )
                 {
@@ -498,15 +501,15 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
 
                     // Use the same list of required constant inputs for the shape inferrer and the kernel.
-                    EdgeShapes outputShapes;
-                    InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, nullptr, outputShapes);
+                    InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, inputShapesOverrides, *outputShapes);
 
                     // Create the kernel while allowing input shape and output shape queries according to options
                     ComPtr<DmlGraphOpKernelInfoWrapper> kernelInfoWrapper = wil::MakeOrThrow<DmlGraphOpKernelInfoWrapper>(
                             &protoHelper,
                             executionHandle,
                             true,
-                            &outputShapes,
+                            inputShapesOverrides,
+                            outputShapes,
                             &defaultAttributesCapture,
                             graphNodeCreateInfo,
                             constantCpuInputCapture,
@@ -551,7 +554,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     else
     {
         // Currently unsupported for external operators
-        if (canAliasFirstInput ||
+        if (aliasCount > 0 ||
             supportsGraph ||
             requiredInputCountForGraph)
         {

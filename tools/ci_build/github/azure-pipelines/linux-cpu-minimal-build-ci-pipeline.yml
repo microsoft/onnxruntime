@@ -46,20 +46,12 @@ pr:
     - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: onnxruntime-Linux-CPU-For-Android-CI
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
   variables:
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
@@ -73,6 +65,8 @@ jobs:
   - checkout: self
     clean: true
     submodules: none
+
+  - template: "templates/use-android-ndk.yml"
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -139,7 +133,7 @@ jobs:
               --config Debug \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --skip_tests \
               --minimal_build \
               --disable_exceptions \
@@ -220,7 +214,7 @@ jobs:
               --build_dir /build/5 --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
-              --build_shared_lib \
+              --build_shared_lib --use_binskim_compliant_compile_flags \
               --parallel \
               --minimal_build extended
       workingDirectory: $(Build.SourcesDirectory)
@@ -244,7 +238,7 @@ jobs:
               --skip_submodule_sync \
               --build_shared_lib \
               --build_wheel \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --skip_tests \
               --disable_ml_ops \
               --disable_types sparsetensor float8 optional \
@@ -270,7 +264,7 @@ jobs:
               --config MinSizeRel \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --minimal_build \
               --disable_exceptions \
               --disable_ml_ops \
@@ -298,7 +292,7 @@ jobs:
               --cmake_generator Ninja \
               --config MinSizeRel \
               --skip_submodule_sync \
-              --build_shared_lib \
+              --build_shared_lib --use_binskim_compliant_compile_flags \
               --parallel \
               --minimal_build extended \
               --disable_exceptions \
@@ -328,7 +322,7 @@ jobs:
               --cmake_generator Ninja \
               --config MinSizeRel \
               --skip_submodule_sync \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --android \
               --android_sdk_path /android_home \
               --android_ndk_path /ndk_home \

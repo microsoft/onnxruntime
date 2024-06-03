@@ -3,12 +3,15 @@
 
 #include "conv.h"
 
+#include <cassert>
+
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers_fwd.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -23,16 +26,30 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       (conv_type_ != OpComputeType::op_compute_type_fp32 && input_idx == 3)) {  // InputTensors::IN_W
     // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
     auto orig_shape = tensor.Shape();
+    const auto rank = orig_shape.NumDimensions();
 
-    InlinedVector<size_t> perm{0, 2, 3, 1};
-    TensorShapeVector new_dims{orig_shape[0],
-                               orig_shape[2],
-                               orig_shape[3],
-                               orig_shape[1]};
+    if (rank == 4) {
+      InlinedVector<size_t> perm{0, 2, 3, 1};
+      TensorShapeVector new_dims{orig_shape[0],
+                                 orig_shape[2],
+                                 orig_shape[3],
+                                 orig_shape[1]};
 
-    packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+      packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
 
-    SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 3);
+      SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 3);
+    } else {
+      assert(rank == 3);  // ConvBase::IsOnnxNodeSupported validates this
+
+      InlinedVector<size_t> perm{0, 2, 1};
+      TensorShapeVector new_dims{orig_shape[0],
+                                 orig_shape[2],
+                                 orig_shape[1]};
+
+      packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+
+      SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 2);
+    }
 
     is_packed = true;
 
@@ -46,9 +63,13 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 Status Conv::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);  // this is in NHWC format
   const auto& X_shape = X.Shape();
-  const int64_t N = X_shape[0];  // input is NHWC
-  const int64_t H = X_shape[1];
-  const int64_t W = X_shape[2];
+  const auto rank = X_shape.NumDimensions();
+  const auto is_1D = rank == 3;
+  const int64_t N = X_shape[0];  // input is NHWC or NWC
+
+  // we support 1D or 2D. if 1D we convert to 2D by setting H to 1
+  const int64_t H = is_1D ? 1 : X_shape[1];
+  const int64_t W = X_shape[rank - 2];
 
   // We don't need to call ValidateInputShape as we checked validity in ConvChecker.
   // We also can't use ValidateInputShape as-is as the weight tensor was pre-packed and the layout was changed there.
@@ -64,21 +85,48 @@ Status Conv::Compute(OpKernelContext* context) const {
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
-  pthreadpool_t t_pool = GetThreadPool();
 
-  xnn_status status = xnn_status_invalid_state;
-  if (conv_type_ == OpComputeType::op_compute_type_fp32) {
-    status = xnn_setup_convolution2d_nhwc_f32(op0_.get(), N, H, W, X.Data<float>(), Y->MutableData<float>(),
-                                              t_pool /*threadpool*/);
-  } else if (conv_type_ == OpComputeType::op_compute_type_qs8) {
-    status = xnn_setup_convolution2d_nhwc_qs8(op0_.get(), N, H, W, X.Data<int8_t>(), Y->MutableData<int8_t>(),
-                                              t_pool /*threadpool*/);
+  pthreadpool_t threadpool = GetThreadPool();
+
+  // setup allocator/automated dellocate for workspace
+  size_t workspace_size = 0;
+  size_t workspace_alignment = 0;
+  xnn_allocator* allocator = GetStoredAllocator().second;
+  auto deallocator = [allocator](void* ptr) { allocator->aligned_deallocate(allocator->context, ptr); };
+  std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
+
+  auto reshape_fn = xnn_reshape_convolution2d_nhwc_f32;
+  if (conv_type_ == OpComputeType::op_compute_type_qs8) {
+    reshape_fn = xnn_reshape_convolution2d_nhwc_qs8;
   } else if (conv_type_ == OpComputeType::op_compute_type_qu8) {
-    status = xnn_setup_convolution2d_nhwc_qu8(op0_.get(), N, H, W, X.Data<uint8_t>(), Y->MutableData<uint8_t>(),
-                                              t_pool /*threadpool*/);
+    reshape_fn = xnn_reshape_convolution2d_nhwc_qu8;
   } else if (conv_type_ == OpComputeType::op_compute_type_qs8_per_channel) {
-    status = xnn_setup_convolution2d_nhwc_qc8(op0_.get(), N, H, W, X.Data<int8_t>(), Y->MutableData<int8_t>(),
-                                              t_pool /*threadpool*/);
+    reshape_fn = xnn_reshape_convolution2d_nhwc_qs8_qc8w;
+  }
+
+  auto status = reshape_fn(op0_.get(), N, H, W,
+                           &workspace_size, &workspace_alignment,
+                           /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+                           threadpool);
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_convolution2d_nhwc_", OpTypeToString(conv_type_),
+                           "returned ", status);
+  }
+
+  workspace.reset(allocator->aligned_allocate(allocator->context, XNN_ALLOCATION_ALIGNMENT, workspace_size));
+
+  if (conv_type_ == OpComputeType::op_compute_type_fp32) {
+    status = xnn_setup_convolution2d_nhwc_f32(op0_.get(), workspace.get(), X.Data<float>(),
+                                              Y->MutableData<float>());
+  } else if (conv_type_ == OpComputeType::op_compute_type_qs8) {
+    status = xnn_setup_convolution2d_nhwc_qs8(op0_.get(), workspace.get(), X.Data<int8_t>(),
+                                              Y->MutableData<int8_t>());
+  } else if (conv_type_ == OpComputeType::op_compute_type_qu8) {
+    status = xnn_setup_convolution2d_nhwc_qu8(op0_.get(), workspace.get(), X.Data<uint8_t>(),
+                                              Y->MutableData<uint8_t>());
+  } else if (conv_type_ == OpComputeType::op_compute_type_qs8_per_channel) {
+    status = xnn_setup_convolution2d_nhwc_qs8_qc8w(op0_.get(), workspace.get(), X.Data<int8_t>(),
+                                                   Y->MutableData<int8_t>());
   }
 
   if (status != xnn_status_success) {
@@ -86,13 +134,17 @@ Status Conv::Compute(OpKernelContext* context) const {
                            OpTypeToString(conv_type_), "returned ", status);
   }
 
-  status = xnn_run_operator(op0_.get(), t_pool);
+  status = xnn_run_operator(op0_.get(), threadpool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }
 
   return Status::OK();
 }
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  Conv);
 
 ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),

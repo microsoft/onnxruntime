@@ -3,14 +3,14 @@
 
 import {Env} from 'onnxruntime-common';
 
-import {OrtWasmModule} from '../binding/ort-wasm';
+import type {OrtWasmModule} from '../wasm-types';
 import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
 import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
-import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
+import {AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
 
@@ -54,6 +54,7 @@ class TensorViewImpl implements TensorView {
 }
 
 class ComputeContextImpl implements ComputeContext {
+  readonly adapterInfo: AdapterInfo;
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   readonly outputCount: number;
@@ -66,10 +67,11 @@ class ComputeContextImpl implements ComputeContext {
   private customDataOffset = 0;
   private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
+    this.adapterInfo = backend.adapterInfo;
     const heapU32 = module.HEAPU32;
 
     // extract context data
-    let dataIndex = (contextDataOffset >> 2);
+    let dataIndex = (contextDataOffset >>> 2);
     this.opKernelContext = heapU32[dataIndex++];
     const inputCount = heapU32[dataIndex++];
     this.outputCount = heapU32[dataIndex++];
@@ -90,6 +92,17 @@ class ComputeContextImpl implements ComputeContext {
     this.inputs = inputs;
   }
 
+  getMaxComputeWorkgroupSizes(): [number, number, number] {
+    return [
+      this.backend.device.limits.maxComputeWorkgroupSizeX, this.backend.device.limits.maxComputeWorkgroupSizeY,
+      this.backend.device.limits.maxComputeWorkgroupSizeZ
+    ];
+  }
+
+  getMaxComputeWorkgroupStoragesize(): number {
+    return this.backend.device.limits.maxComputeWorkgroupStorageSize;
+  }
+
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[] {
     // prepare inputs. inputs should always be valid data.
     const mappedInputs =
@@ -104,9 +117,11 @@ class ComputeContextImpl implements ComputeContext {
         throw new Error(`Unsupported data type: ${dataType}`);
       }
       const bufferSize = elementSize * ShapeUtil.size(dims);
-      return new TensorViewImpl(this.module, dataType, this.backend.gpuDataManager.create(bufferSize).id, dims);
+      const gpuDataId = bufferSize > 0 ? this.backend.gpuDataManager.create(bufferSize).id : 0;
+      return new TensorViewImpl(this.module, dataType, gpuDataId, dims);
     };
-    return this.backend.run(program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput);
+    return this.backend.run(
+        program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput, this.outputCount);
   }
 
   output(index: number, dims: readonly number[]): number {
@@ -118,7 +133,7 @@ class ComputeContextImpl implements ComputeContext {
       for (let i = 0; i < dims.length; i++) {
         this.module.HEAPU32[offset++] = dims[i];
       }
-      return this.module._JsepOutput(this.opKernelContext, index, data);
+      return this.module._JsepOutput!(this.opKernelContext, index, data);
     } catch (e) {
       throw new Error(
           `Failed to generate kernel's output[${index}] with dims [${dims}]. ` +
@@ -130,65 +145,98 @@ class ComputeContextImpl implements ComputeContext {
   }
 }
 
-export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
-  const init = module.jsepInit;
-  if (init && navigator.gpu) {
-    if (!env.wasm.simd) {
-      throw new Error(
-          'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using WebGPU EP');
-    }
+/**
+ * Initialize JSEP with WebGPU backend.
+ *
+ * This function will be called after the WebAssembly module is loaded and initialized ("_OrtInit" is called), once for
+ * each of the following EPs if they are specified:
+ * - "webgpu"
+ * - "webnn"
+ *
+ * For WebGPU, this function expects:
+ *  - WebGPU is enabled in build (BUILD_DEFS.DISABLE_JSEP === false).
+ *  - WebGPU is available in current environment. (a valid GPUAdapter is passed in)
+ *
+ * For WebNN, this function expects:
+ * - WebNN is enabled in build (BUILD_DEFS.DISABLE_JSEP === false).
+ * - WebNN is available in current environment. (navigator.ml is not undefined)
+ *
+ * If the WebAssembly module is not built with JSEP support, this function will throw an error. This will invalidate
+ * 'webgpu'/'webnn' backend.
+ *
+ * @param name - the name of the EP, either "webgpu" or "webnn"
+ * @param module - the ORT WebAssembly module
+ * @param env - the ORT environment variable (ort.env)
+ * @param gpuAdapter - the pre-created GPU adapter
+ */
+export const init =
+    async(name: 'webgpu'|'webnn', module: OrtWasmModule, env: Env, gpuAdapter?: GPUAdapter): Promise<void> => {
+  const jsepInit = module.jsepInit;
+  if (!jsepInit) {
+    throw new Error('Failed to initialize JSEP. The WebAssembly module is not built with JSEP support.');
+  }
+
+  if (name === 'webgpu') {
     const backend = new WebGpuBackend();
-    await backend.initialize(env);
+    await backend.initialize(env, gpuAdapter!);
 
-    init(
-        // backend
-        backend,
+    jsepInit('webgpu', [
+      // backend
+      backend,
 
-        // jsepAlloc()
-        (size: number) => backend.alloc(size),
+      // jsepAlloc()
+      (size: number) => backend.alloc(size),
 
-        // jsepFree()
-        (ptr: number) => backend.free(ptr),
+      // jsepFree()
+      (ptr: number) => backend.free(ptr),
 
-        // jsepCopy(src, dst, size, isSourceGpu)
-        (src: number, dst: number, size: number, isSourceGpu = false) => {
-          if (isSourceGpu) {
-            LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
-            backend.memcpy(src, dst);
-          } else {
-            LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
-            const data = module.HEAPU8.subarray(src, src + size);
-            backend.upload(dst, data);
-          }
-        },
+      // jsepCopy(src, dst, size, isSourceGpu)
+      (src: number, dst: number, size: number, isSourceGpu = false) => {
+        if (isSourceGpu) {
+          LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
+          backend.memcpy(src, dst);
+        } else {
+          LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
+          const data = module.HEAPU8.subarray(src >>> 0, (src >>> 0) + size);
+          backend.upload(dst, data);
+        }
+      },
 
-        // jsepCopyAsync(src, dst, size)
-        async(gpuDataId: number, dataOffset: number, size: number):
-            Promise<void> => {
-              LOG_DEBUG(
-                  'verbose',
-                  () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
+      // jsepCopyAsync(src, dst, size)
+      async(gpuDataId: number, dataOffset: number, size: number):
+          Promise<void> => {
+            LOG_DEBUG(
+                'verbose',
+                () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
-              await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
-            },
+            await backend.download(
+                gpuDataId, () => module.HEAPU8.subarray(dataOffset >>> 0, (dataOffset >>> 0) + size));
+          },
 
-        // jsepCreateKernel
-        (name: string, kernel: number, attribute: unknown) => backend.createKernel(
-            name, kernel, attribute,
-            env.debug || env.webgpu.profilingMode === 'default' ? module.UTF8ToString(module._JsepGetNodeName(kernel)) :
-                                                                  `${kernel}`),
+      // jsepCreateKernel
+      (kernelType: string, kernelId: number, attribute: unknown) => backend.createKernel(
+          kernelType, kernelId, attribute, module.UTF8ToString(module._JsepGetNodeName!(kernelId))),
 
-        // jsepReleaseKernel
-        (kernel: number) => backend.releaseKernel(kernel),
+      // jsepReleaseKernel
+      (kernel: number) => backend.releaseKernel(kernel),
 
-        // jsepRun
-        (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => {
-          LOG_DEBUG(
-              'verbose',
-              () => `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
-                  contextDataOffset}`);
-          const context = new ComputeContextImpl(module, backend, contextDataOffset);
-          return backend.computeKernel(kernel, context, errors);
-        });
+      // jsepRun
+      (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => {
+        LOG_DEBUG(
+            'verbose',
+            () => `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
+                contextDataOffset}`);
+        const context = new ComputeContextImpl(module, backend, contextDataOffset);
+        return backend.computeKernel(kernel, context, errors);
+      },
+      // jsepCaptureBegin
+      () => backend.captureBegin(),
+      // jsepCaptureEnd
+      () => backend.captureEnd(),
+      // jsepReplay
+      () => backend.replay()
+    ]);
+  } else {
+    jsepInit('webnn');
   }
 };

@@ -35,10 +35,11 @@ struct BeamHypotheses {
   bool CanImprove(float best_sum_logprobs, int current_length) const;
 
   // Output results
-  void Output(int top_k,                            // number of sequences to return
-              int max_length,                       // max sequence length
-              gsl::span<int32_t>& sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
-              gsl::span<float>& sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
+  template <typename T>
+  void Output(int top_k,                        // number of sequences to return
+              int max_length,                   // max sequence length
+              gsl::span<int32_t>& sequences,    // buffer with pad token, shape (num_return_sequences, max_length)
+              gsl::span<T>& sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
 
   gsl::span<HypothesisScore> beams_;  // Beam width sized array of hypotheses, sorted by highest scoring
   int beams_used_;                    // Number of elements used in beams_
@@ -60,13 +61,14 @@ struct BeamSearchScorer : IBeamScorer {
                 Tensor* output_sequences,
                 Tensor* output_sequence_scores) override;
 
+  void OutputScores(gsl::span<const float>& final_scores, Tensor* output_scores) override;
+
   bool IsDone() const override { return not_done_count_ == 0; }
 
   gsl::span<float> GetNextScores() override { return next_beam_scores_; }
   gsl::span<int32_t> GetNextTokens() override { return next_beam_tokens_; }
   gsl::span<int32_t> GetNextIndicesCPU() override { return next_beam_indices_; }
 
- private:
   size_t batch_size_;
   size_t num_beams_;
   size_t max_length_;

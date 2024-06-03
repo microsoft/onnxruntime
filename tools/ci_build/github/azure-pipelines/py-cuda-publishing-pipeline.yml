@@ -1,0 +1,26 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Python-CUDA-Packaging-Pipeline'
+    trigger:
+      branches:
+        include:
+        - main
+    branch: main
+
+parameters:
+  - name: isReleaseBuild
+    type: boolean
+    default: false
+
+variables:
+  - name: ArtifactFeed
+    ${{ if eq(parameters.isReleaseBuild, false) }}:
+      value: ort-cuda-12-nightly
+    ${{ else }}:
+      value: onnxruntime-cuda-12
+
+stages:
+- template: stages/py-cuda-publishing-stage.yml
+  parameters:
+    artifact_feed: $(ArtifactFeed)

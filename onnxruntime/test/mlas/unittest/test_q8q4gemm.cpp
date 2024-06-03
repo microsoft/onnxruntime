@@ -19,20 +19,6 @@ Abstract:
 #include "test_util.h"
 #include "mlas_q4.h"
 
-inline bool
-CloseEnough(float actual, float expected) {
-  if (std::isnan(actual)) {
-    return std::isnan(expected);
-  }
-  float diff = std::abs(actual - expected);
-  float top = std::max(std::abs(actual), std::abs(expected));
-  float ratio = 0;
-  if (top > 0.0001) {
-    ratio = diff / top;
-  }
-  return ratio < 0.005;
-}
-
 template <size_t QBlkLen>
 static void blkq8_dequant_reference(const int8_t* src, float* dst, size_t M, size_t K) {
   const size_t num_blks = K / QBlkLen;
@@ -270,19 +256,6 @@ class Q8Q4GemmShortExecuteTest : public MlasTestFixture<MlasQ8Q4GemmTest<QType, 
   size_t M_, N_, K_;
   bool hasBias_;
 };
-
-template <>
-MlasQ8Q4GemmTest<BlkQ4Sym, false>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Sym, false>>::mlas_tester(nullptr);
-template <>
-MlasQ8Q4GemmTest<BlkQ4Sym, true>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Sym, true>>::mlas_tester(nullptr);
-template <>
-MlasQ8Q4GemmTest<BlkQ4Zp8, false>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Zp8, false>>::mlas_tester(nullptr);
-template <>
-MlasQ8Q4GemmTest<BlkQ4Zp8, true>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Zp8, true>>::mlas_tester(nullptr);
-template <>
-MlasQ8Q4GemmTest<BlkQ4Sym128, false>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Sym128, false>>::mlas_tester(nullptr);
-template <>
-MlasQ8Q4GemmTest<BlkQ4Sym128, true>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Sym128, true>>::mlas_tester(nullptr);
 
 static size_t Q8Q4GemmRegistShortExecute() {
   size_t count = 0;

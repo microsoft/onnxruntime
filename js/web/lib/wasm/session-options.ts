@@ -60,28 +60,40 @@ const setExecutionProviders =
 
         // check EP name
         switch (epName) {
-          case 'xnnpack':
-            epName = 'XNNPACK';
-            break;
           case 'webnn':
             epName = 'WEBNN';
             if (typeof ep !== 'string') {
               const webnnOptions = ep as InferenceSession.WebNNExecutionProviderOption;
-              if (webnnOptions?.deviceType) {
+              // const context = (webnnOptions as InferenceSession.WebNNOptionsWithMLContext)?.context;
+              const deviceType = (webnnOptions as InferenceSession.WebNNContextOptions)?.deviceType;
+              const numThreads = (webnnOptions as InferenceSession.WebNNContextOptions)?.numThreads;
+              const powerPreference = (webnnOptions as InferenceSession.WebNNContextOptions)?.powerPreference;
+              if (deviceType) {
                 const keyDataOffset = allocWasmString('deviceType', allocs);
-                const valueDataOffset = allocWasmString(webnnOptions.deviceType, allocs);
+                const valueDataOffset = allocWasmString(deviceType, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
                     0) {
-                  checkLastError(`Can't set a session config entry: 'deviceType' - ${webnnOptions.deviceType}.`);
+                  checkLastError(`Can't set a session config entry: 'deviceType' - ${deviceType}.`);
                 }
               }
-              if (webnnOptions?.powerPreference) {
-                const keyDataOffset = allocWasmString('powerPreference', allocs);
-                const valueDataOffset = allocWasmString(webnnOptions.powerPreference, allocs);
+              if (numThreads !== undefined) {
+                // Just ignore invalid webnnOptions.numThreads.
+                const validatedNumThreads =
+                    (typeof numThreads !== 'number' || !Number.isInteger(numThreads) || numThreads < 0) ? 0 :
+                                                                                                          numThreads;
+                const keyDataOffset = allocWasmString('numThreads', allocs);
+                const valueDataOffset = allocWasmString(validatedNumThreads.toString(), allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
                     0) {
-                  checkLastError(
-                      `Can't set a session config entry: 'powerPreference' - ${webnnOptions.powerPreference}.`);
+                  checkLastError(`Can't set a session config entry: 'numThreads' - ${numThreads}.`);
+                }
+              }
+              if (powerPreference) {
+                const keyDataOffset = allocWasmString('powerPreference', allocs);
+                const valueDataOffset = allocWasmString(powerPreference, allocs);
+                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
+                    0) {
+                  checkLastError(`Can't set a session config entry: 'powerPreference' - ${powerPreference}.`);
                 }
               }
             }
@@ -156,6 +168,18 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
 
     if (sessionOptions.executionProviders) {
       setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
+    }
+
+    if (sessionOptions.enableGraphCapture !== undefined) {
+      if (typeof sessionOptions.enableGraphCapture !== 'boolean') {
+        throw new Error(`enableGraphCapture must be a boolean value: ${sessionOptions.enableGraphCapture}`);
+      }
+      const keyDataOffset = allocWasmString('enableGraphCapture', allocs);
+      const valueDataOffset = allocWasmString(sessionOptions.enableGraphCapture.toString(), allocs);
+      if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+        checkLastError(
+            `Can't set a session config entry: 'enableGraphCapture' - ${sessionOptions.enableGraphCapture}.`);
+      }
     }
 
     if (sessionOptions.freeDimensionOverrides) {

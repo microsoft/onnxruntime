@@ -20,10 +20,6 @@ set(contrib_ops_excluded_files
   "bert/fastertransformer_decoder_attention/*"
   "bert/multihead_attention.cc"
   "bert/multihead_attention.h"
-  "bert/fast_gelu_impl.cu"
-  "bert/fast_gelu_impl.h"
-  "bert/fast_gelu.cc"
-  "bert/fast_gelu.h"
   "bert/relative_attn_bias.cc"
   "bert/relative_attn_bias.h"
   "bert/relative_attn_bias_impl.cu"
@@ -44,23 +40,24 @@ set(contrib_ops_excluded_files
   "bert/packed_multihead_attention.cc"
   "bert/packed_multihead_attention_impl.h"
   "bert/packed_multihead_attention_impl.cu"
-  "diffusion/group_norm.cc"
   "diffusion/group_norm_impl.cu"
-  "diffusion/group_norm_impl.h"
   "diffusion/nhwc_conv.cc"
-  "math/complex_mul.cc"
-  "math/complex_mul.h"
-  "math/complex_mul_impl.cu"
-  "math/complex_mul_impl.h"
-  "math/cufft_plan_cache.h"
-  "math/fft_ops.cc"
-  "math/fft_ops.h"
-  "math/fft_ops_impl.cu"
-  "math/fft_ops_impl.h"
+  "math/gemm_float8.cc"
+  "math/gemm_float8.cu"
+  "math/gemm_float8.h"
+  "moe/*"
+  "sparse/*"
   "quantization/attention_quantization.cc"
   "quantization/attention_quantization.h"
   "quantization/attention_quantization_impl.cu"
   "quantization/attention_quantization_impl.cuh"
+  "quantization/dequantize_blockwise_bnb4.cuh"
+  "quantization/dequantize_blockwise_bnb4.cu"
+  "quantization/matmul_bnb4.cc"
+  "quantization/matmul_bnb4.cuh"
+  "quantization/matmul_bnb4.cu"
+  "quantization/moe_quantization.h"
+  "quantization/moe_quantization.cc"
   "quantization/quantize_dequantize_linear.cc"
   "quantization/qordered_ops/qordered_attention_impl.cu"
   "quantization/qordered_ops/qordered_attention_impl.h"
@@ -86,43 +83,31 @@ set(contrib_ops_excluded_files
   "quantization/qordered_ops/qordered_unary_ops.cc"
   "quantization/qordered_ops/qordered_unary_ops_impl.h"
   "quantization/qordered_ops/qordered_unary_ops_impl.cu"
-  "tensor/crop.cc"
-  "tensor/crop.h"
-  "tensor/crop_impl.cu"
-  "tensor/crop_impl.h"
-  "tensor/dynamicslice.cc"
-  "tensor/image_scaler.cc"
-  "tensor/image_scaler.h"
-  "tensor/image_scaler_impl.cu"
-  "tensor/image_scaler_impl.h"
-  "transformers/greedy_search.cc"
-  "transformers/greedy_search.h"
-  "conv_transpose_with_dynamic_pads.cc"
-  "conv_transpose_with_dynamic_pads.h"
   "cuda_contrib_kernels.cc"
   "cuda_contrib_kernels.h"
   "inverse.cc"
   "fused_conv.cc"
+  "bert/group_query_attention_helper.h"
+  "bert/group_query_attention.h"
+  "bert/group_query_attention.cc"
+  "bert/group_query_attention_impl.h"
+  "bert/group_query_attention_impl.cu"
+  "collective/distributed_*"
+  "collective/shard*"
 )
 
-if (NOT onnxruntime_ENABLE_ATEN)
-  list(APPEND contrib_ops_excluded_files "aten_ops/aten_op.cc")
-endif()
 if (NOT onnxruntime_USE_NCCL)
   # Those are string patterns to exclude. Do NOT use stars such as
   # collective/*.cc or *.h.
   list(APPEND contrib_ops_excluded_files "collective/nccl_kernels.cc")
-  list(APPEND contrib_ops_excluded_files "collective/sharding.cc")
-  list(APPEND contrib_ops_excluded_files "collective/sharding_spec.cc")
-  list(APPEND contrib_ops_excluded_files "collective/distributed_matmul.cc")
+endif()
+
+if (NOT onnxruntime_ENABLE_ATEN)
+  list(APPEND contrib_ops_excluded_files "aten_ops/aten_op.cc")
 endif()
 
 set(provider_excluded_files
   "atomic/common.cuh"
-  "controlflow/loop.cc"
-  "controlflow/loop.h"
-  "controlflow/scan.cc"
-  "controlflow/scan.h"
   "cu_inc/common.cuh"
   "math/einsum_utils/einsum_auxiliary_ops.cc"
   "math/einsum_utils/einsum_auxiliary_ops.h"
@@ -170,7 +155,6 @@ set(provider_excluded_files
   "cuda_memory_check.h"
   "cuda_fence.cc"
   "cuda_fence.h"
-  "cuda_fwd.h"
   "cuda_kernel.h"
   "cuda_pch.cc"
   "cuda_pch.h"
@@ -190,6 +174,8 @@ set(provider_excluded_files
   "gpu_data_transfer.h"
   "integer_gemm.cc"
   "tunable/*"
+  "cuda_nhwc_kernels.cc"
+  "cuda_nhwc_kernels.h"
 )
 
 set(training_ops_excluded_files

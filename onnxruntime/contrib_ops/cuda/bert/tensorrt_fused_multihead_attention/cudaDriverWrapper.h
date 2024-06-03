@@ -45,6 +45,10 @@ class CUDADriverWrapper {
 
   CUresult cuFuncSetAttribute(CUfunction hfunc, CUfunction_attribute attrib, int value) const;
 
+  CUresult cuDeviceGetAttribute(int* pi, CUdevice_attribute attrib, CUdevice dev) const;
+
+  CUresult cuFuncSetCacheConfig(CUfunction hfunc, CUfunc_cache config) const;
+
   CUresult cuLinkComplete(CUlinkState state, void** cubinOut, size_t* sizeOut) const;
 
   CUresult cuModuleUnload(CUmodule hmod) const;
@@ -73,10 +77,14 @@ class CUDADriverWrapper {
       uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream, void** kernelParams,
       void** extra) const;
 
+  static const CUDADriverWrapper* GetInstance();
+
  private:
   void* handle;
   CUresult (*_cuGetErrorName)(CUresult, const char**);
   CUresult (*_cuFuncSetAttribute)(CUfunction, CUfunction_attribute, int);
+  CUresult (*_cuDeviceGetAttribute)(int*, CUdevice_attribute, CUdevice);
+  CUresult (*_cuFuncSetCacheConfig)(CUfunction, CUfunc_cache);
   CUresult (*_cuLinkComplete)(CUlinkState, void**, size_t*);
   CUresult (*_cuModuleUnload)(CUmodule);
   CUresult (*_cuLinkDestroy)(CUlinkState);
@@ -92,6 +100,8 @@ class CUDADriverWrapper {
       CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
       uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream,
       void** kernelParams, void** extra);
+
+  static CUDADriverWrapper instance;
 };
 
 inline void cuErrCheck_(CUresult stat, const CUDADriverWrapper& wrap, const char* file, int line) {

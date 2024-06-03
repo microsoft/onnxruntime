@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import sys
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper, shape_inference  # noqa: F401
+from onnx import numpy_helper
 
 if len(sys.argv) < 2:
     print("Please give model path...")
@@ -15,10 +17,8 @@ model = onnx.load(input_model_name)
 
 
 def add_name(model):
-    i = 0
-    for node in model.graph.node:
+    for i, node in enumerate(model.graph.node):
         node.name = "%s_%d" % (node.op_type, i)
-        i += 1
 
 
 def find_input_node(model, arg):
@@ -118,11 +118,9 @@ def process_concat(model):
             for n in fuse_nodes:
                 delete_nodes.append(get_node_index(model, n))
     # insert new shape to reshape
-    index = 0
-    for reshape_node_index in new_nodes:
+    for index, reshape_node_index in enumerate(new_nodes):
         shape_tensor = numpy_helper.from_array(np.asarray(new_nodes[reshape_node_index], dtype=np.int64))
         const_node = add_const(model, "concat_shape_node_%d" % index, "concat_shape_%d" % index, shape_tensor)
-        index += 1
         reshape_node = model.graph.node[reshape_node_index]
         reshape_node.input[1] = const_node.output[0]
     # delete nodes
@@ -199,12 +197,10 @@ def replace_input_arg(model, arg, new_arg):
             i += 1
 
 
-def find_weight_index(model, name):
-    index = 0
-    for w in model.graph.initializer:
+def find_weight_index(model, name: str) -> int | None:
+    for index, w in enumerate(model.graph.initializer):
         if w.name == name:
             return index
-        index += 1
     return None
 
 

@@ -29,6 +29,8 @@ class SliceOpBuilder : public BaseOpBuilder {
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   // TODO: Support Slice opset < 10, which uses attributes for starts and ends.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 10; }
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -114,6 +116,24 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   if (!GetShape(*input_defs[0], input_shape, logger)) {
     return false;
   }
+
+  if (input_defs.size() < 3) {
+    LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data, starts, ends) but got "
+                          << input_defs.size();
+    return false;
+  }
+
+  // Inputs: starts, ends, axes, and steps must be constant initializers if present.
+  for (size_t i = 1; i < input_defs.size(); i++) {
+    // Optional tensors (axes, steps) can be indicated by an empty name, just ignore it.
+    const std::string input_name = GetTensorName(input_defs, i);
+    if (!input_name.empty() && !Contains(initializers, input_name)) {
+      LOGS(logger, VERBOSE) << "Input [" << input_name << "] of " << op_type
+                            << " [" << name << "] must be known as initializer";
+      return false;
+    }
+  }
+
   if (input_defs.size() == 5) {  // Check steps.
     const auto& steps_tensor = *initializers.at(input_defs[4]->Name());
     std::vector<uint8_t> unpacked_tensor;
@@ -140,18 +160,30 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     }
   }
 
-  if (input_defs.size() < 3) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data starts and ends) but got "
-                          << input_defs.size();
+  return true;
+}
+
+bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                            const logging::Logger& logger) const {
+  const auto& input = *node.InputDefs()[0];
+  const auto& op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
+  // WebNN CPU backend doesn't support uint64 input data type for slice.
+  if (device_type == WebnnDeviceType::CPU) {
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
+  }
+
+  if (!IsSupportedDataType(input_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
     return false;
   }
 
-  const auto& starts_name = input_defs[1]->Name();
-  const auto& ends_name = input_defs[2]->Name();
-  if (!Contains(initializers, starts_name) || !Contains(initializers, ends_name)) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "] need starts and ends as initializer.";
-    return false;
-  }
   return true;
 }
 

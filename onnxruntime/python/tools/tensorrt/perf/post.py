@@ -24,6 +24,7 @@ from perf_utils import (
     memory_name,
     memory_over_time_name,
     model_title,
+    op_metrics_name,
     ort_provider_list,
     provider_list,
     second,
@@ -55,6 +56,7 @@ def parse_arguments():
     parser.add_argument("-b", "--branch", help="Branch", required=True)
     parser.add_argument("--kusto_conn", help="Kusto connection URL", required=True)
     parser.add_argument("--database", help="Database name", required=True)
+    parser.add_argument("--use_tensorrt_oss_parser", help="Use TensorRT OSS parser", required=False)
     parser.add_argument(
         "-d",
         "--commit_datetime",
@@ -308,7 +310,7 @@ def get_specs(specs, branch, commit_hash, commit_datetime):
     :return: The updated table.
     """
 
-    init_id = int(specs.tail(1).get(".", 0)) + 1
+    init_id = int(specs.tail(1).get(".", 0).iloc[0]) + 1
     specs_additional = pd.DataFrame(
         {
             ".": [init_id, init_id + 1, init_id + 2],
@@ -369,7 +371,7 @@ def write_table(
     ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
 
-def get_identifier(commit_datetime, commit_hash, trt_version, branch):
+def get_identifier(commit_datetime, commit_hash, trt_version, branch, use_tensorrt_oss_parser):
     """
     Returns an identifier that associates uploaded data with an ORT commit/date/branch and a TensorRT version.
 
@@ -382,7 +384,23 @@ def get_identifier(commit_datetime, commit_hash, trt_version, branch):
     """
 
     date = str(commit_datetime.date())  # extract date only
-    return date + "_" + commit_hash + "_" + trt_version + "_" + branch
+    if use_tensorrt_oss_parser:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.abspath(os.path.join(current_dir, "../../../../.."))
+        deps_txt_path = os.path.join(root_dir, "cmake", "deps.txt")
+        commit_head = ""
+        with open(deps_txt_path) as file:
+            for line in file:
+                parts = line.split(";")
+                if parts[0] == "onnx_tensorrt":
+                    url = parts[1]
+                    commit = url.split("/")[-1]
+                    commit_head = commit[:6]
+                    break
+        parser = f"oss_{commit_head}"
+    else:
+        parser = "builtin"
+    return "_".join([date, commit_hash, trt_version, parser, branch])
 
 
 def main():
@@ -395,7 +413,10 @@ def main():
     # connect to database
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(args.kusto_conn)
     ingest_client = QueuedIngestClient(kcsb_ingest)
-    identifier = get_identifier(args.commit_datetime, args.commit_hash, args.trt_version, args.branch)
+    identifier = get_identifier(
+        args.commit_datetime, args.commit_hash, args.trt_version, args.branch, args.use_tensorrt_oss_parser
+    )
+    print(f"DB record identifier: {identifier}")
     upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
 
     try:
@@ -415,6 +436,7 @@ def main():
             specs_name,
             session_name,
             session_over_time_name,
+            op_metrics_name,
         ]
 
         table_results = {}
@@ -456,6 +478,11 @@ def main():
                 elif status_name in csv:
                     table_results[status_name] = pd.concat(
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
+                    )
+                elif op_metrics_name in csv:
+                    table = table.assign(Group=model_group)
+                    table_results[op_metrics_name] = pd.concat(
+                        [table_results[op_metrics_name], table], ignore_index=True
                     )
             os.chdir(result_file)
 

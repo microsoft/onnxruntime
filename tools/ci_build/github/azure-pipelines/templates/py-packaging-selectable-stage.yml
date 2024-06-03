@@ -27,7 +27,7 @@ parameters:
 - name: cpu_build_py_parameters
   displayName: 'Extra parameters to pass to build.py for CPU package.'
   type: string
-  default: '--use_openvino CPU_FP32'
+  default: '--use_openvino CPU'
 
 - name: gpu_build_py_parameters
   displayName: 'Extra parameters to pass to build.py for GPU package.'
@@ -48,7 +48,7 @@ stages:
       timeoutInMinutes: 90
       workspace:
         clean: all
-      pool: onnxruntime-Ubuntu2004-AMD-CPU
+      pool: onnxruntime-Ubuntu2204-AMD-CPU
       strategy:
         matrix:
           ${{ each PythonVersion in parameters.python_version }}:
@@ -168,7 +168,7 @@ stages:
         inputs:
           filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
           workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config $(BuildConfig)
+          arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
@@ -392,7 +392,7 @@ stages:
       variables:
         CUDA_VERSION: '11.8'
         buildArch: x64
-        EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+        EpBuildFlags: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
         EnvSetupScript: setup_env_gpu.bat
         EP_NAME: gpu
         VSGenerator: 'Visual Studio 17 2022'

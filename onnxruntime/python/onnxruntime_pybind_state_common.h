@@ -48,23 +48,14 @@ struct OrtStatus {
 #endif
 
 #ifdef USE_OPENVINO
-#if OPENVINO_CONFIG_CPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
+#if OPENVINO_CONFIG_CPU
+#define BACKEND_OPENVINO "-OPENVINO_CPU"
 
-#elif OPENVINO_CONFIG_CPU_FP16
-#define BACKEND_OPENVINO "-OPENVINO_CPU_FP16"
+#elif OPENVINO_CONFIG_GPU
+#define BACKEND_OPENVINO "-OPENVINO_GPU"
 
-#elif OPENVINO_CONFIG_GPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
-
-#elif OPENVINO_CONFIG_GPU_FP16
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
-
-#elif OPENVINO_CONFIG_VPUX_FP16
-#define BACKEND_OPENVINO "-OPENVINO_VPUX_FP16"
-
-#elif OPENVINO_CONFIG_VPUX_U8
-#define BACKEND_OPENVINO "-OPENVINO_VPUX_U8"
+#elif OPENVINO_CONFIG_NPU
+#define BACKEND_OPENVINO "-OPENVINO_NPU"
 
 #elif OPENVINO_CONFIG_MULTI
 #define BACKEND_OPENVINO "-OPENVINO_MULTI"
@@ -83,13 +74,6 @@ struct OrtStatus {
 #define BACKEND_TVM "-TVM"
 #else
 #define BACKEND_TVM ""
-#endif
-
-#if USE_VITISAI
-#define BACKEND_VITISAI "-VITISAI"
-#include "core/providers/vitisai/vitisai_execution_provider.h"
-#else
-#define BACKEND_VITISAI ""
 #endif
 
 #if USE_OPENBLAS
@@ -451,9 +435,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(c
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
 #endif
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
-                                                                                  const char* export_runtime_module,
-                                                                                  const char* load_runtime_module);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);

@@ -32,12 +32,15 @@ struct TensorrtExecutionProviderInfo {
   bool dump_subgraphs{false};
   bool engine_cache_enable{false};
   std::string engine_cache_path{""};
+  bool weight_stripped_engine_enable{false};
+  std::string onnx_model_folder_path{""};
   bool engine_decryption_enable{false};
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};
   bool context_memory_sharing_enable{false};
   bool layer_norm_fp32_fallback{false};
   bool timing_cache_enable{false};
+  std::string timing_cache_path{""};
   bool force_timing_cache{false};
   bool detailed_build_log{false};
   bool build_heuristics_enable{false};
@@ -50,6 +53,11 @@ struct TensorrtExecutionProviderInfo {
   std::string profile_max_shapes{""};
   std::string profile_opt_shapes{""};
   bool cuda_graph_enable{false};
+  bool dump_ep_context_model{false};
+  std::string ep_context_file_path{""};
+  int ep_context_embed_mode{0};
+  std::string engine_cache_prefix{""};
+  bool engine_hw_compatible{false};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

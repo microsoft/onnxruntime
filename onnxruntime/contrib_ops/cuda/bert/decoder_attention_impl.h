@@ -11,6 +11,7 @@ namespace cuda {
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
+    bool use_tf32,                    // Use TF32
     Stream* stream,                   // ORT Stream
     cublasHandle_t& cublas,           // Cublas handle
     const size_t element_size,        // Element size of input tensor

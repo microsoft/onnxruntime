@@ -28,6 +28,8 @@ class PadOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -88,15 +90,15 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     const auto& pads_tensor = *initializers.at(input_defs[1]->Name());
     ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(pads_tensor, pads, logger), "Error while read pads tensor");
 
-    // Constant value and axes are optional.
-    if (input_defs.size() >= 3) {
+    // Constant value and axes are optional. Make sure they are not empty.
+    if (!GetTensorName(input_defs, 2).empty()) {
       const auto value_tensor = *initializers.at(input_defs[2]->Name());
       emscripten::val value = emscripten::val::object();
       ORT_RETURN_IF_NOT(ReadScalarTensorData(value_tensor, value, logger), "Cannot read constant value");
       options.set("value", value);
     }
 
-    if (input_defs.size() == 4) {
+    if (!GetTensorName(input_defs, 3).empty()) {
       const auto input_rank = input_shape.size();
       std::vector<int64_t> axes;
       const auto& axes_tensor = *initializers.at(input_defs[3]->Name());
@@ -178,8 +180,10 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       return false;
     }
     for (size_t i = 1; i < input_defs.size(); i++) {
-      if (!Contains(initializers, input_defs[i]->Name())) {
-        LOGS(logger, VERBOSE) << "Input [" << input_defs[i]->Name() << "] must be known as initializer";
+      // Optional tensors (constant_value, axes) can be indicated by an empty name, just ignore it.
+      const std::string input_name = GetTensorName(input_defs, i);
+      if (!input_name.empty() && !Contains(initializers, input_name)) {
+        LOGS(logger, VERBOSE) << "Input [" << input_name << "] must be known as initializer";
         return false;
       }
     }
@@ -187,6 +191,31 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
 
   return true;
 }  // namespace webnn
+
+bool PadOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                          const logging::Logger& logger) const {
+  const auto& input = *node.InputDefs()[0];
+  const auto& op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
+  // WebNN CPU backend doesn't support uint32, uint64 input data types for pad.
+  if (device_type == WebnnDeviceType::CPU) {
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
+  }
+
+  if (!IsSupportedDataType(input_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
 
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<PadOpBuilder>());
