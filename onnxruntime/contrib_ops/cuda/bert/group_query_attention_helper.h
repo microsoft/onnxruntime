@@ -245,6 +245,8 @@ Status CheckInputs(const Tensor* query,
                            "sequence_length shall be 1 when it is not prompt.");
   }
 
+  // TODO(aciddelgado): check page_block_size % 256 == 0
+
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;

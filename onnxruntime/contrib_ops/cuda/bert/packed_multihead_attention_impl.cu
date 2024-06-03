@@ -631,6 +631,8 @@ Status FlashAttention(
           data.output,
           cu_seqlens_q,
           cu_seqlens_k,
+          nullptr,  // seqused_k
+          nullptr,  // block_table
           softmax_lse_buffer,
           batch_size,
           num_heads,

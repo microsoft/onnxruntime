@@ -142,7 +142,7 @@ size_t get_out_accum_size(int num_splits, int batch_size, int num_heads, int seq
 
 void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream, bool force_split_kernel = false) {
   FP16_SWITCH(!params.is_bf16, [&] {
-    FWD_HEADDIM_SWITCH(params.d, [&] {
+    HEADDIM_SWITCH(params.d, [&] {
       if (params.num_splits <= 1 && !force_split_kernel) {  // If we don't set it num_splits == 0
         run_mha_fwd_<elem_type, kHeadDim>(params, stream);
       } else {
@@ -278,7 +278,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    /*cu_seqlens_q*/ nullptr,
                    /*cu_seqlens_k*/ nullptr,
                    /*seqused_k=*/ nullptr,
-                   nullptr,
+                   /*p_ptr=*/ nullptr,
                    softmax_lse,
                    softmax_scale,
                    is_causal,
@@ -305,6 +305,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
     params.oaccum_ptr = nullptr;
   }
 
+  params.alibi_slopes_ptr = nullptr;
+
   run_mha_fwd(params, stream);
   return Status::OK();
 }
@@ -318,7 +320,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       int* cu_seqlens_q,  // int (batch_size + 1)
                       int* cu_seqlens_k,  // int (batch_size + 1)
                       void* seqused_k,    // batch_size; If given, only this many elements of each batch element's keys are used.
-                      void* block_table,  // batch_size x max_num_blocks_per_seq
+                      int* block_table,  // batch_size x max_num_blocks_per_seq
                       void* softmax_lse,  // float (batch_size, num_heads, max_seqlen_q)
                       int batch_size,
                       int num_heads,
@@ -328,19 +330,14 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       int max_seqlen_k,
                       float softmax_scale,
                       bool is_causal,
-                      bool is_bf16) {
+                      bool is_bf16,
+                      int max_num_blocks_per_seq,
+                      int page_block_size) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(max_seqlen_q, 128);
   const int seqlen_k_rounded = round_multiple(max_seqlen_k, 128);
-
-  const bool paged_KV = block_table_.has_value();
-  if (paged_KV) {
-    block_table = block_table_.value();
-    CHECK_DEVICE(block_table);
-    TORCH_CHECK(block_table.dtype() == torch::kInt32, "block_table must have dtype torch.int32");
-    TORCH_CHECK(block_table.stride(-1) == 1, "block_table must have contiguous last dimension");
-  }
+  const bool paged_KV = block_table != nullptr;
 
   Flash_fwd_params params;
   set_params_fprop(params,
@@ -352,7 +349,8 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    q, k, v, out,
                    cu_seqlens_q,
                    cu_seqlens_k,
-                   nullptr,
+                   seqused_k,
+                   /*p_ptr=*/ nullptr,
                    softmax_lse,
                    softmax_scale,
                    is_causal,
@@ -366,6 +364,20 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   params.oaccum_ptr = nullptr;
   params.knew_ptr = nullptr;
   params.vnew_ptr = nullptr;
+  params.alibi_slopes_ptr = nullptr;
+  if (paged_KV) {
+    params.block_table = block_table; // TODO(aciddelgado): cast to int pointer
+    params.block_table_batch_stride = max_num_blocks_per_seq;
+    // params.num_blocks = num_blocks;
+    params.page_block_size = page_block_size;
+    params.k_batch_stride = page_block_size * num_heads_k * head_size;
+    params.v_batch_stride = page_block_size * num_heads_k * head_size;
+  } else {
+    params.block_table = nullptr;
+    params.block_table_batch_stride = 0;
+    // params.num_blocks = 0;
+    params.page_block_size = 1;
+  }
   run_mha_fwd(params, stream);
   return Status::OK();
 }
@@ -390,12 +402,13 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        void* seqlens_k_,   // batch_size
                        void* rotary_cos,   // seqlen_ro x (rotary_dim / 2)
                        void* rotary_sin,   // seqlen_ro x (rotary_dim / 2)
+                       int* block_table, // batch_size x max_num_blocks_per_seq
                        int batch_size,
                        int num_heads,
                        int num_heads_k,
                        int head_size,
                        int seqlen_q,
-                       int seqlen_k,
+                       int seqlen_k, // TODO(aciddelgado): in case of pagedkv must be calculated correclty
                        int seqlen_k_new,
                        int rotary_dim,
                        const float softmax_scale,
@@ -407,11 +420,14 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
                        int local_window_size,
                        bool is_rotary_interleaved,
-                       bool is_packed_qkv) {
+                       bool is_packed_qkv,
+                       int max_num_blocks_per_seq,
+                       int page_block_size) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
+  const bool paged_KV = block_table != nullptr;
 
   // In kv-cache case, seqlen_k_max as kv sequence length
   Flash_fwd_params params;
@@ -424,7 +440,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                    q, kcache, vcache, out,
                    /*cu_seqlens_q_d=*/nullptr,
                    /*cu_seqlens_k_d=*/nullptr,
-                   /*p_ptr=*/nullptr,
+                   /*seqused_k=*/ nullptr,
+                   /*p_ptr=*/ nullptr,
                    softmax_lse,
                    softmax_scale,
                    is_causal,
@@ -485,6 +502,21 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
   } else {
     params.softmax_lseaccum_ptr = nullptr;
     params.oaccum_ptr = nullptr;
+  }
+
+  params.alibi_slopes_ptr = nullptr;
+  if (paged_KV) {
+    params.block_table = block_table; // TODO(aciddelgado): cast to int pointer
+    params.block_table_batch_stride = max_num_blocks_per_seq;
+    // params.num_blocks = num_blocks;
+    params.page_block_size = page_block_size;
+    params.k_batch_stride = page_block_size * num_heads_k * head_size;
+    params.v_batch_stride = page_block_size * num_heads_k * head_size;
+  } else {
+    params.block_table = nullptr;
+    params.block_table_batch_stride = 0;
+    // params.num_blocks = 0;
+    params.page_block_size = 1;
   }
 
   // Only split kernel supports appending to KV cache
