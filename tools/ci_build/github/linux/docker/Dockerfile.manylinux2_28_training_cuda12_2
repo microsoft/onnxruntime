@@ -1,6 +1,5 @@
 FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240610.1
 
-#Build manylinux2014 docker image end
 ARG PYTHON_VERSION=3.9
 ARG TORCH_VERSION=2.1.0
 ARG OPSET_VERSION=17
