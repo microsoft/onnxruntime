@@ -17,10 +17,10 @@ parameters:
       - MinSizeRel
   - name: cuda_version
     type: string
-    default: '12.2'
+    default: '12.3'
     values:
       - 11.8
-      - 12.2
+      - 12.3
   - name: SpecificArtifact
     displayName: Use Specific Artifact
     type: boolean

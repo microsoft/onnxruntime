@@ -26,7 +26,7 @@ stages:
     jobs:
       - template: stages/jobs/py-linux-cuda-package-test-job.yml
         parameters:
-          CudaVersion: '12.2'
+          CudaVersion: '12.3'
           machine_pool: 'Onnxruntime-Linux-GPU'
           timeout: 480
           build_id: ${{ parameters.build_id }}

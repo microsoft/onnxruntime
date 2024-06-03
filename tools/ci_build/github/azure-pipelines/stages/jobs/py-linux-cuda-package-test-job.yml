@@ -5,7 +5,7 @@ parameters:
     default: '11.8'
     values:
       - 11.8
-      - 12.2
+      - 12.3
   - name: machine_pool
     type: string
 
@@ -45,12 +45,12 @@ jobs:
       - name: docker_base_image
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
           value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        ${{ if eq(parameters.CudaVersion, '12.3') }}:
           value: nvidia/cuda:12.3.2-cudnn9-devel-ubi8
       - name: linux_trt_version
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
           value: 10.0.1.6-1.cuda11.8
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        ${{ if eq(parameters.CudaVersion, '12.3') }}:
           value: 10.0.1.6-1.cuda12.4
     pool: ${{ parameters.machine_pool }}
     steps:
@@ -112,7 +112,7 @@ jobs:
         inputs:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockertest.sh
-          arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64 -u 12.2
+          arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64 -u 12.3
       - template: ../../templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'

@@ -31,7 +31,7 @@ parameters:
   default: '11.8'
   values:
    - 11.8
-   - 12.2
+   - 12.3
 
 stages:
 - stage: Linux_py_GPU_Wheels_${{ parameters.arch }}

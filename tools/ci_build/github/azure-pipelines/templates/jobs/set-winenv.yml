@@ -12,7 +12,7 @@ parameters:
     default: '11.8'
   - name: SecondaryCUDAVersion
     type: string
-    default: '12.2'
+    default: '12.3'
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:

@@ -15,7 +15,7 @@ RUN cd /tmp/scripts && \
 ENV PATH="/root/.cargo/bin/:$PATH"
 
 RUN /tmp/scripts/install_ninja.sh && \
-    /tmp/scripts/install_python_deps.sh -d gpu -v 12.2 -p $PYTHON_VERSION -h $TORCH_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -v 12.3 -p $PYTHON_VERSION -h $TORCH_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
     rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001

@@ -22,7 +22,7 @@ stages:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.3') }}:
         value: '12'
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
@@ -73,7 +73,7 @@ stages:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.3') }}:
         value: '12'
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
@@ -81,7 +81,7 @@ stages:
     - name: linux_trt_version
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: 10.0.1.6-1.cuda11.8
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.3') }}:
         value: 10.0.1.6-1.cuda12.4
     steps:
     - checkout: self
@@ -145,12 +145,12 @@ stages:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.3') }}:
         value: '12'
     - name: linux_trt_version
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: 10.0.1.6-1.cuda11.8
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.3') }}:
         value: 10.0.1.6-1.cuda12.4
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
