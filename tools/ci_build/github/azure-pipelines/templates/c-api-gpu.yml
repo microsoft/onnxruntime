@@ -16,7 +16,7 @@ parameters:
   type: string
 
 jobs:
-- job: Linux_C_API_Packaging_{{ parameters.EP }}
+- job: Linux_C_API_Packaging_${{ parameters.EP }}
   workspace:
     clean: all
   timeoutInMinutes: 150
