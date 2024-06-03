@@ -259,10 +259,10 @@ stages:
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py generate image; \
             python3 -u check_image.py --image1 astronaut_riding_error.png --image2 $image2 --cache_dir /model_cache --negative; \
-            if [ $? -ne 0 ]; then echo "failed"; exit 1; fi; \
+            if [ $? -ne 0 ]; then echo "Hit an unexpected image"; exit 1; fi; \
             popd ; \
             popd ; \
-            ' || echo "##vso[task.setvariable variable=hitAnother;]True" && exit 1
+            ' || ( echo "##vso[task.setvariable variable=hitAnother;]True" && exit 1 )
       displayName: 'Check if the generated image is wierd'
       workingDirectory: $(Build.SourcesDirectory)
       # If the generate image hit another test image, make the job status as warning
@@ -291,7 +291,7 @@ stages:
             '
       displayName: 'Check the generated image'
       workingDirectory: $(Build.SourcesDirectory)
-      condition: eq(variables.hitAnother, 'True')
+      condition: ne(variables.hitAnother, 'True')
 
 - stage: Llama2_ONNX_FP16
   dependsOn:
