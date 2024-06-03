@@ -187,7 +187,7 @@ class TrainingBlock(blocks.Block):
 
         output = self.build(*args, **kwargs)
 
-        model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+        model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model) if self._enable_shape_inference else accessor._GLOBAL_ACCESSOR.model
 
         _graph_utils.register_graph_outputs(model, output)
 
