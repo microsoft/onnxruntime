@@ -11,7 +11,7 @@ namespace logging {
 constexpr const char* SYSLOG_LEVEL = "76432";
 
 void SysLogSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
-  using date::operator<<;
+  using std::chrono::operator<<;
   std::stringstream msg;
 
   // syslog has it own timestamp but not as accurate as our timestamp. So we are going to keep both,

@@ -15,7 +15,7 @@ class CapturingSink : public logging::ISink {
  public:
   void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override {
     // operator for formatting of timestamp in ISO8601 format including microseconds
-    using date::operator<<;
+    using std::chrono::operator<<;
     std::ostringstream msg;
 
     msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "

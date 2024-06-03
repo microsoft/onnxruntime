@@ -106,7 +106,6 @@ inline const wchar_t* GetDateFormatString<wchar_t>() {
   return L"%Y-%m-%d_%H-%M-%S";
 }
 #endif
-// TODO: use LoggingManager::GetTimestamp and date::operator<<
 // (see ostream_sink.cc for an example)
 // to simplify this and match the log file timestamp format.
 template <typename T>
