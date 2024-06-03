@@ -17,8 +17,8 @@ The Phi-3 vision model is supported by versions of onnxruntime-genai 0.3.0-rc2 a
 
 You can download the models here:
 
-* [https://microsoft/Phi-3-vision-128k-instruct-onnx-cpu](https://microsoft/Phi-3-vision-128k-instruct-onnx-cpu)
-* [https://microsoft/Phi-3-vision-128k-instruct-onnx-cuda](https://microsoft/Phi-3-vision-128k-instruct-onnx-cuda)
+* [https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu)
+* [https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cuda](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cuda)
 
 Support for DirectML is coming soon!
 
