@@ -9,6 +9,9 @@
 // build/external/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h:162:71:
 // error: ignoring attributes on template argument "Eigen::PacketType<const float, Eigen::DefaultDevice>::type {aka __vector(4) float}" [-Werror=ignored-attributes]
 #if defined(__GNUC__)
+#if __cplusplus >= 202002L
+#pragma GCC diagnostic ignored "-Wdeprecated"
+#endif
 #pragma GCC diagnostic push
 #if __GNUC__ >= 6
 #pragma GCC diagnostic ignored "-Wignored-attributes"
