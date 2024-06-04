@@ -870,24 +870,14 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
         )
 
-        if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
-            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER"
-        elif (
-            self._runtime_options.memory_optimization_level
-            == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE
-        ):
-            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER_WITH_COMPROMISE"
-        else:
-            opt_config_to_display = self._runtime_options.memory_optimizer_config
-
         mem_infos = ""
         if self._runtime_options.memory_optimizer_is_enabled():
             mem_infos += (
                 f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
-                f"Optimization Config: [{opt_config_to_display}]"
+                f"Optimization Config: [{self._runtime_options.memory_optimizer_config_file_path}]"
             )
         else:
-            mem_infos = "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+            mem_infos = "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1/2 or ORTMODULE_MEMORY_OPT_CONFIG=<config.json>"
 
         mem_row = _add_record(
             tbl,
@@ -900,7 +890,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.logging.log_level < LogLevel.WARNING:
             mem_notes, mem_tbl = self._runtime_inspector.memory_ob.display_memory_optimization_plans(
-                self._runtime_options.memory_optimizer_config,
+                self._runtime_options.memory_optimizer_config_file_path,
                 details=True,
             )
             if mem_tbl is not None:

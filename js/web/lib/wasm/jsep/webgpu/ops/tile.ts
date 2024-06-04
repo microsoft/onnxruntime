@@ -17,9 +17,9 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('Tile requires 2 inputs.');
   }
 
-  if (inputs[0].dataType !== DataType.float && inputs[0].dataType !== DataType.int32 &&
-      inputs[0].dataType !== DataType.uint32) {
-    throw new Error('Tile only support float, int32, and uint32 data types');
+  if (inputs[0].dataType !== DataType.float && inputs[0].dataType !== DataType.float16 &&
+      inputs[0].dataType !== DataType.int32 && inputs[0].dataType !== DataType.uint32) {
+    throw new Error('Tile only support float, float16, int32, and uint32 data types');
   }
 
   if (inputs[1].dataType !== DataType.int64) {

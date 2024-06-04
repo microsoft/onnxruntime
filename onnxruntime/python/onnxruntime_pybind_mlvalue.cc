@@ -586,9 +586,10 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor
     }
   } else {
     void* buffer = tensor.MutableDataRaw();
-    size_t len;
-    if (!IAllocator::CalcMemSizeForArray(tensor.DataType()->Size(), tensor.Shape().Size(), &len)) {
-      throw std::runtime_error("length overflow");
+    size_t len = 0;
+    Status status = Tensor::CalculateTensorStorageSize(tensor.DataType(), tensor.Shape(), /*alignment*/ 0, len);
+    if (!status.IsOK()) {
+      throw std::runtime_error(status.ErrorMessage());
     }
     mem_cpy_to_device(buffer, PyArray_DATA(darray), len);
   }

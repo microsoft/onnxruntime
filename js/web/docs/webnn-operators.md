@@ -13,8 +13,8 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 |:------:|:------:|:------:|:-:|:-:|:------|
 | Abs | ai.onnx(7-12, 13+) | abs | ✓ | ✓ | |
 | Add | ai.onnx(7-12, 13, 14+) | add | ✓ | ✓ | |
-| ArgMax | ai.onnx(7-10, 11, 12, 13+) | argMax | ✗ | ✓ | |
-| ArgMin | ai.onnx(7-10, 11, 12, 13+) | argMin | ✗ | ✓ | |
+| ArgMax | ai.onnx(7-10, 11, 12, 13+) | argMax | ✓ | ✓ | WebNN CPU backend only supports 'select_last_index' value is 0 |
+| ArgMin | ai.onnx(7-10, 11, 12, 13+) | argMin | ✓ | ✓ | WebNN CPU backend only supports 'select_last_index' value is 0 |
 | AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | ✓ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'count_include_pad' value is 0 |
 | BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | ✗ | ✓ | Only supports 'training_mode' value is 0, one output |
 | Cast | ai.onnx(7-8, 9-12, 13-18, 19-20, 21+) | cast | ✗ | ✓ | |
@@ -22,10 +22,10 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | ✓ | ✓ | |
 | Conv | ai.onnx(7-10, 11+) | conv2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU requires the 'W' (weight) input to be a constant |
-| ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU requires the 'W' (weight) input to be a constant |
+| ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✓ | ✗ | Only supports 3-D or 4-D input and 'W' (weight). |
 | Cos | ai.onnx(7+) | cos | ✗ | ✓ | |
 | Div | ai.onnx(7-12, 13, 14+) | div | ✓ | ✓ | |
-| Elu | ai.onnx(7+) | elu | ✓ | ✓ | |
+| Elu | ai.onnx(7+) | elu | ✓ | ✓ | WebNN CPU backend only supports 'alpha' value is 1.0 |
 | Equal | ai.onnx(7-10, 11-12, 13-18, 19+) | equal | ✗ | ✓ | |
 | Erf | ai.onnx(7-9, 10-12, 13+) | erf | ✗ | ✓ | |
 | Exp | ai.onnx(7-12, 13+) | exp | ✗ | ✓ | |
@@ -88,5 +88,6 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Tan | ai.onnx(7+) | tan | ✗ | ✓ | |
 | Tanh | ai.onnx(7-12, 13+) | tanh | ✓ | ✓ | |
 | Transpose | ai.onnx(7-12, 13-20, 21+) | transpose | ✓ | ✓ | |
+| Trilu | ai.onnx(14+) | triangular | ✗ | ✓ | Input 'k' (option 'diagonal' for WebNN) if present should be a constant |
 | Unsqueeze | ai.onnx(7-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
 | Where | ai.onnx(7-8, 9-15, 16+) | where | ✗ | ✓ | |
