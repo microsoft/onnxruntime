@@ -61,7 +61,6 @@ jar {
 
 // Add explicit sources jar with pom file.
 tasks.register('sourcesJar', Jar) {
-	dependsOn classes
 	archiveClassifier = "sources"
 	from sourceSets.main.allSource
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
@@ -72,7 +71,6 @@ tasks.register('sourcesJar', Jar) {
 
 // Add explicit javadoc jar with pom file
 tasks.register('javadocJar', Jar) {
-	dependsOn javadoc
 	archiveClassifier = "javadoc"
 	from javadoc.destinationDir
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
