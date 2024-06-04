@@ -31,10 +31,6 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
   int64_t tensor_shards_;
   mutable InlinedVector<int64_t> rank_to_experts_start_index_;
 
-  // A global resource pack for IPC memory used in custom reduce kernel.
-  // Resource retrieval and deserialization are made atomic to thread safety of accessing it.
-  mutable onnxruntime::cuda::collective::GlobalIPCMemoryResourcePack g_ipc_mem_res_pack_;
-
   mutable std::once_flag flag_;
 };
 

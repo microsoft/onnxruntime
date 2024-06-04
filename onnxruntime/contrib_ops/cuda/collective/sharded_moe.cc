@@ -149,7 +149,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
                                             fc2_output_bc.get(),
                                             static_cast<int64_t>(fc2_output_size / sizeof(CudaT)),
                                             input->DataType(),
-                                            g_ipc_mem_res_pack_.GetIPCMemoryResourcePack()));
+                                            collective::IPCMemoryResourcePack::GetGlobalInstance()));
   }
 
   if (moe_params.parallel_type == MoEParallelType::EP) {

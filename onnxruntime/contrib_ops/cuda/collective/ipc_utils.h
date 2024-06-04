@@ -49,20 +49,19 @@ class IpcMemory {
   void* m_buffer_ptr_{nullptr};
 };
 
+// A global resource pack for IPC memory used in custom reduce kernel.
+// Resource retrieval and deserialization are made atomic to thread safety of accessing it.
 struct IPCMemoryResourcePack {
   mutable InlinedVector<std::shared_ptr<IpcMemory>> m_ipc_momery_handles;
   mutable InlinedVector<const void*> m_comm_ptrs;
   mutable size_t max_input_size{0};
   mutable uint32_t counter{0};
+
+  static IPCMemoryResourcePack& GetGlobalInstance();
 };
 
 Status
 GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size, IPCMemoryResourcePack& ipc_mem_res_pack);
-
-class GlobalIPCMemoryResourcePack {
- public:
-  IPCMemoryResourcePack& GetIPCMemoryResourcePack();
-};
 
 #endif
 

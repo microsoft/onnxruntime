@@ -266,7 +266,7 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
                              output_data,
                              input_count,
                              input_tensor->DataType(),
-                             g_ipc_mem_res_pack_.GetIPCMemoryResourcePack());
+                             onnxruntime::cuda::collective::IPCMemoryResourcePack::GetGlobalInstance());
 #else
   ncclComm_t comm = nccl_->Comm();
   ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());

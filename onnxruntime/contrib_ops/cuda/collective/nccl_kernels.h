@@ -77,11 +77,6 @@ class AllReduce final : public NcclKernel {
   explicit AllReduce(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
-#ifndef USE_ROCM
- private:
-  mutable onnxruntime::cuda::collective::GlobalIPCMemoryResourcePack g_ipc_mem_res_pack_;
-#endif
 };
 
 class AllGather final : public NcclKernel {
