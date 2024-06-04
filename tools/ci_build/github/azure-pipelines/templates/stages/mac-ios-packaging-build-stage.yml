@@ -2,7 +2,6 @@ parameters:
 - name: packageVariant
   type: string
   values:
-  - Mobile
   - Full
   - Training
 
@@ -21,12 +20,6 @@ stages:
     variables:
       xcodeVersion: "14.2"
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
-
-      ${{ if eq(parameters.packageVariant, 'Mobile') }}:
-        buildSettingsFile: "tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json"
-        optionalIncludeOpsByConfigOption: "--include-ops-by-config tools/ci_build/github/android/mobile_package.required_operators.config"
-        cPodName: onnxruntime-mobile-c
-        objcPodName: onnxruntime-mobile-objc
 
       ${{ if eq(parameters.packageVariant, 'Full') }}:
         buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
@@ -142,7 +135,7 @@ stages:
         done
 
         # copy over helper script for use in release pipeline
-        cp tools/ci_build/github/apple/upload_pod_archive_and_update_podspec.sh "$(Build.ArtifactStagingDirectory)"
+        cp tools/ci_build/github/apple/package_release_tasks.py "$(Build.ArtifactStagingDirectory)"
       displayName: "Assemble artifacts"
 
     - script: |

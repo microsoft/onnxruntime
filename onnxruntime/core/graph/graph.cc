@@ -1905,6 +1905,14 @@ struct GroupNode {
         intermediate_args.insert(arg);
       }
 
+      if (node->GetOutputEdgesCount() == 0) {
+        for (const NodeArg* arg : node->OutputDefs()) {
+          output_args.push_back(arg);
+        }
+
+        continue;
+      }
+
       for (auto output_edge_it = node->OutputEdgesBegin(); output_edge_it != node->OutputEdgesEnd();
            ++output_edge_it) {
         const Node* output_node = &output_edge_it->GetNode();
@@ -1924,6 +1932,22 @@ struct GroupNode {
   InlinedVector<const Node*> nodes;
 };
 
+struct NodeCompareByMaxDistance {
+  explicit NodeCompareByMaxDistance(const InlinedHashMap<NodeIndex, int>& max_distance)
+      : max_distance_(max_distance) {}
+  bool operator()(const Node* n1, const Node* n2) const {
+    if (max_distance_.at(n1->Index()) != max_distance_.at(n2->Index())) {
+      // The longer distance node should be executed first.
+      return max_distance_.at(n1->Index()) < max_distance_.at(n2->Index());
+    }
+
+    return n1->Index() < n2->Index();
+  }
+
+ private:
+  const InlinedHashMap<NodeIndex, int>& max_distance_;
+};
+
 void SortForwardNodesByReverseDFS(const Graph* graph,
                                   const InlinedVector<const Node*>& forward_output_nodes,
                                   const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
@@ -1933,6 +1957,38 @@ void SortForwardNodesByReverseDFS(const Graph* graph,
   // Note 2: While it is also possible some nodes not contributing to the forward output nodes will be
   //   executed before YieldOp, for example, if one forward node's output is used by Shape/Size, then
   //   the Shape/Size node should be executed before YieldOp to release the memory as soon as possible.
+  InlinedVector<size_t> nodes_in_degree;
+  std::queue<const Node*> to_visit;
+  nodes_in_degree.resize(graph->MaxNodeIndex(), 0);
+  for (auto& node : graph->Nodes()) {
+    size_t input_edge_count = node.GetInputEdgesCount();
+    nodes_in_degree[node.Index()] = input_edge_count;
+    if (input_edge_count == 0) {
+      to_visit.push(&node);
+    }
+  }
+
+  InlinedHashMap<NodeIndex, int> max_distance;
+  max_distance.reserve(graph->NumberOfNodes());
+  while (!to_visit.empty()) {
+    const Node* current = to_visit.front();
+    to_visit.pop();
+
+    if (!current) continue;
+
+    for (auto output_edge_it = current->OutputEdgesBegin();
+         output_edge_it != current->OutputEdgesEnd();
+         ++output_edge_it) {
+      const Node* out_node = &output_edge_it->GetNode();
+      max_distance[out_node->Index()] = std::max(max_distance[out_node->Index()],
+                                                 max_distance[current->Index()] + 1);
+      auto& node_in_degree = nodes_in_degree[out_node->Index()];
+      node_in_degree--;
+      if (node_in_degree == 0) {
+        to_visit.push(out_node);
+      }
+    }
+  }
 
   // Reverse DFS from forward output nodes to find all "forward" nodes.
   // The forward nodes are ordered by Reverse DFS tranverse.
@@ -1943,7 +1999,7 @@ void SortForwardNodesByReverseDFS(const Graph* graph,
         nodes_to_execute_before_yieldop.insert(n);
         node_orders.push_back(n->Index());
       },
-      NodeCompare());
+      NodeCompareByMaxDistance(max_distance));
 
   for (const auto& parent_to_children_pair : shape_size_parents) {
     const NodeIndex& parent_index = parent_to_children_pair.first;
@@ -1968,13 +2024,13 @@ void SortForwardNodesByReverseDFS(const Graph* graph,
 }
 
 void PrepareToFindBranchGraph(const Graph* graph,
-                              const InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
+                              std::function<bool(const Node*)> is_forward_node,
                               InlinedVector<const Node*>& branch_graph_input_nodes,
                               InlinedVector<size_t>& backward_node_in_degree,
                               std::queue<const Node*>& to_visit) {
   for (auto& node : graph->Nodes()) {
     // Ignore forward.
-    if (nodes_to_execute_before_yieldop.find(&node) != nodes_to_execute_before_yieldop.end()) {
+    if (is_forward_node(&node)) {
       continue;
     }
 
@@ -1996,7 +2052,7 @@ void PrepareToFindBranchGraph(const Graph* graph,
     for (auto input_edge_it = node.InputEdgesBegin(); input_edge_it != node.InputEdgesEnd(); ++input_edge_it) {
       const Node* input_node = &input_edge_it->GetNode();
       // If the input edge connect to forward nodes, then we remove the in_degree of the node.
-      if (nodes_to_execute_before_yieldop.find(input_node) != nodes_to_execute_before_yieldop.end()) {
+      if (is_forward_node(input_node)) {
         input_edge_count--;
       }
     }
@@ -2012,7 +2068,8 @@ void FindBranchGraph(
     const InlinedVector<const Node*>& branch_graph_input_nodes,
     const InlinedVector<size_t>& backward_node_in_degree,
     InlinedVector<const Node*>& branch_graph,
-    InlinedVector<std::pair<const Node*, size_t>>& branch_subgraph_consumers) {
+    InlinedVector<std::pair<const Node*, size_t>>& branch_subgraph_consumers,
+    InlinedVector<const NodeArg*>& branch_subgraph_outputs) {
   // Loop through the branch_graph_input_nodes to find the branch subgraphs by its output edges in BFS,
   // and find the maximum self_contained subgraph taking the branch_graph_input_nodes as input nodes.
   std::queue<const Node*> to_visit_queue;
@@ -2044,11 +2101,20 @@ void FindBranchGraph(
   // At this point, branch_graph is a big subgraph that contains all the nodes that are purely
   // triggered by the branch_graph_input_nodes, other graph input/initializers and leaf nodes (for example Constant).
   for (const Node* n : branch_graph) {
+    if (n->GetOutputEdgesCount() == 0) {
+      // In case the node connect to graph outputs or nothings, append all outputs as the branch subgraph outputs.
+      for (auto output_def : n->OutputDefs()) {
+        branch_subgraph_outputs.push_back(output_def);
+      }
+      continue;
+    }
+
     for (auto output_it = n->OutputEdgesBegin(); output_it != n->OutputEdgesEnd(); ++output_it) {
       const Node* output_node = &output_it->GetNode();
       const size_t dest_in_port = output_it->GetDstArgIndex();
       if (std::find(branch_graph.begin(), branch_graph.end(), output_node) == branch_graph.end()) {
         branch_subgraph_consumers.push_back({output_node, dest_in_port});
+        branch_subgraph_outputs.push_back(n->OutputDefs()[output_it->GetSrcArgIndex()]);
       }
     }
   }
@@ -2056,18 +2122,20 @@ void FindBranchGraph(
 
 void TagNodeToAssociatedOutputs(const Graph* graph,
                                 const InlinedHashSet<const Node*>& nodes_to_execute_before_yieldop,
-                                const InlinedVector<std::pair<const Node*, size_t>>& branch_subgraph_consumers,
+                                const InlinedVector<const NodeArg*>& branch_subgraph_outputs,
                                 const InlinedVector<const Node*>& branch_graph,
                                 InlinedVector<GroupNode>& group_node_collection,
                                 InlinedHashMap<const NodeArg*, GroupNode*>& output_arg_to_grouped_node) {
-  // Reverse DFS from branch graph outputs (e.g. branch_subgraph_consumers) to tag each nodes:
+  // Reverse DFS from branch graph outputs (e.g. branch_subgraph_outputs) to tag each nodes:
   // If one node N contributes to a graph output A, then we will tag A to N.
   // If the node N contributes to multiple graph outputs A, B, C, then we will tag the A, B, C to N.
   InlinedHashMap<const Node*, std::set<const NodeArg*>> node_to_its_associated_outputs;
   node_to_its_associated_outputs.reserve(branch_graph.size());
-  for (const auto& consumer : branch_subgraph_consumers) {
-    const NodeArg* output_arg = consumer.first->InputDefs()[consumer.second];
+  InlinedHashSet<const Node*> handled_branch_subgraph_end_nodes;
+  for (const auto& output_arg : branch_subgraph_outputs) {
     const Node* end_node = graph->GetProducerNode(output_arg->Name());
+    handled_branch_subgraph_end_nodes.insert(end_node);
+
     InlinedVector<const Node*> end_nodes{end_node};
     graph->ReverseDFSFrom(
         end_nodes,
@@ -2097,6 +2165,7 @@ void TagNodeToAssociatedOutputs(const Graph* graph,
   group_node_collection.reserve(associated_outputs_to_nodes.size());
   for (auto& [associated_outputs, nodes] : associated_outputs_to_nodes) {
     group_node_collection.push_back(nodes);
+
     // Flatten the key into NodeArg* for better search.
     GroupNode& grouped_node = group_node_collection.back();
     for (const auto& output_arg : grouped_node.output_args) {
@@ -2182,10 +2251,15 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
   topo_order.reserve(num_of_backward_nodes);
   std::queue<const Node*> to_visit;
 
+  auto is_forward_op = [&nodes_to_execute_before_yieldop](const Node* n) -> bool {
+    return nodes_to_execute_before_yieldop.find(n) != nodes_to_execute_before_yieldop.end();
+  };
+
   InlinedVector<const Node*> branch_graph_input_nodes;
   branch_graph_input_nodes.reserve(num_of_backward_nodes);
+
   PrepareToFindBranchGraph(this,
-                           nodes_to_execute_before_yieldop,
+                           is_forward_op,
                            branch_graph_input_nodes,
                            backward_node_in_degree,
                            to_visit);
@@ -2193,17 +2267,19 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
   InlinedVector<const Node*> branch_graph;
   branch_graph.reserve(num_of_backward_nodes);
   InlinedVector<std::pair<const Node*, size_t>> branch_subgraph_consumers;
+  InlinedVector<const NodeArg*> branch_subgraph_outputs;
   FindBranchGraph(branch_graph_input_nodes,
                   backward_node_in_degree,
                   branch_graph,
-                  branch_subgraph_consumers);
+                  branch_subgraph_consumers,
+                  branch_subgraph_outputs);
 
   // Cluster the nodes in the branch_graph based on the associated outputs.
   InlinedVector<GroupNode> group_node_collection;
   InlinedHashMap<const NodeArg*, GroupNode*> output_arg_to_grouped_node;
   TagNodeToAssociatedOutputs(this,
                              nodes_to_execute_before_yieldop,
-                             branch_subgraph_consumers,
+                             branch_subgraph_outputs,
                              branch_graph,
                              group_node_collection,
                              output_arg_to_grouped_node);
@@ -2247,9 +2323,27 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
   // For the group nodes that are not outputted, we need to output them.
   // Hitting this code path means some nodes are consuming outputs of forward nodes, and their outputs
   // are not used by main branch backward nodes.
-  for (const auto& [output_arg, grouped_node] : output_arg_to_grouped_node) {
+  InlinedVector<std::pair<const NodeArg*, GroupNode*>>
+      left_output_arg_to_grouped_node_vector;  // To ensure deterministic order.
+  left_output_arg_to_grouped_node_vector.reserve(output_arg_to_grouped_node.size());
+  for (auto& [output_arg, grouped_node] : output_arg_to_grouped_node) {
     if (!grouped_node->is_outputted) {
-      OutputGroupedNodes(this, output_arg, output_arg_to_grouped_node, node_orders, topo_order);
+      left_output_arg_to_grouped_node_vector.push_back({output_arg, grouped_node});
+    }
+  }
+
+  if (!left_output_arg_to_grouped_node_vector.empty()) {
+    // Sort to ensure deterministic order.
+    std::sort(left_output_arg_to_grouped_node_vector.begin(), left_output_arg_to_grouped_node_vector.end(),
+              [](const std::pair<const NodeArg*, GroupNode*>& a, const std::pair<const NodeArg*, GroupNode*>& b) {
+                return a.first->Name() < b.first->Name();
+              });
+    for (const auto& pair : left_output_arg_to_grouped_node_vector) {
+      const NodeArg* output_arg = pair.first;
+      GroupNode* grouped_node = pair.second;
+      if (!grouped_node->is_outputted) {
+        OutputGroupedNodes(this, output_arg, output_arg_to_grouped_node, node_orders, topo_order);
+      }
     }
   }
 
@@ -3968,7 +4062,13 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
-  for (const auto* value_info : value_info_) {
+  // Before adding value info to GraphProto, sort its unordered values so that across multiple calls
+  // to this function, its values are consistently written to the GraphProto
+  auto sort_predicate = [](const NodeArg* v1, const NodeArg* v2) { return v1->Name() < v2->Name(); };
+  std::vector<const NodeArg*> value_info_sorted{value_info_.begin(), value_info_.end()};
+  std::sort(value_info_sorted.begin(), value_info_sorted.end(), sort_predicate);
+
+  for (const auto* value_info : value_info_sorted) {
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 

@@ -73,7 +73,7 @@ module.exports = function(config) {
       {pattern: TEST_FILE},
       {pattern: 'test/testdata-file-cache-*.json', included: false, watched: false},
       {pattern: 'test/data/**/*', included: false, nocache: true, watched: false},
-      {pattern: 'dist/*.wasm', included: false, watched: false},
+      {pattern: 'dist/*.*', included: false, watched: false},
     ],
     plugins: karmaPlugins,
     client: {captureConsole: true, mocha: {expose: ['body'], timeout: timeoutMocha}},

@@ -1,5 +1,6 @@
 #pragma once
 #include "sqnbitgemm.h"
+#include "sqnbitgemm_q8_block.h"
 
 //
 // Quantized B data packing function implementation.
@@ -136,6 +137,53 @@ ComputePackBlkSum(
             *(BlockSumBegin + dst_offset) = *QuantBScale * zp;
         }
     );
+}
+
+//
+// Workspace size calculation function implementation.
+//
+
+static size_t
+SQ4BitGemmPerGemmWorkspaceSize(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(N);
+
+    switch(ComputeType) {
+        case CompInt8: {
+            // workspace buffer is used for block quantization of A to int8
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            // QuantData + Scale + BlkSum
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
+            return PerGemmWorkspaceSize;
+        }
+        default: {
+            return 0;
+        }
+    }
+}
+
+static size_t
+SQ4BitGemmPerGemmWorkspaceAlignment(
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(BlkLen);
+
+    switch (ComputeType) {
+        case CompInt8: {
+            return Q8BlkAlignment();
+        }
+        default: {
+            return 1;
+        }
+    }
 }
 
 void
