@@ -16,7 +16,6 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/inlined_containers_fwd.h"
 
-
 // we cannot include vaip/vaip.hpp here because header file referred by
 // onnxruntime_pybind_state_common.cc
 namespace vaip_core {
@@ -29,8 +28,8 @@ namespace onnxruntime {
 class VitisAIExecutionProvider : public IExecutionProvider {
  public:
   explicit VitisAIExecutionProvider(const ProviderOptions& info);
-  //explicit VitisAIExecutionProvider(const ProviderOptions& info,
-  //    const SessionOptions* p_sess_opts = nullptr);
+  // explicit VitisAIExecutionProvider(const ProviderOptions& info,
+  //     const SessionOptions* p_sess_opts = nullptr);
   ~VitisAIExecutionProvider() = default;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,

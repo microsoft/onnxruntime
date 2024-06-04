@@ -5,7 +5,6 @@
 
 #include "ep_context_utils.h"
 
-
 namespace fs = std::filesystem;
 
 namespace onnxruntime {
@@ -143,7 +142,7 @@ std::string SerializeCapabilities(
 }
 
 void DeserializeCapabilities(const std::string& ser_capabilities,
-    std::vector<std::unique_ptr<ComputeCapability>>& capability_ptrs) {
+                             std::vector<std::unique_ptr<ComputeCapability>>& capability_ptrs) {
   std::istringstream ss(ser_capabilities);
   while (!ss.eof()) {
     size_t buf_len;
@@ -176,7 +175,7 @@ std::unique_ptr<Model> CreateEPContexModel(
     input_node_arg_ptrs.push_back(&temp_node_arg);
   }
   std::vector<NodeArg*> output_node_arg_ptrs;
-  for (const auto* p_node_arg: graph_viewer.GetOutputs()) {
+  for (const auto* p_node_arg : graph_viewer.GetOutputs()) {
     auto& temp_node_arg = ep_ctx_graph.GetOrCreateNodeArg(p_node_arg->Name(), p_node_arg->TypeAsProto());
     output_node_arg_ptrs.push_back(&temp_node_arg);
   }
@@ -184,19 +183,19 @@ std::unique_ptr<Model> CreateEPContexModel(
   // Attr "embed_mode".
   auto p_attr_0 = ONNX_NAMESPACE::AttributeProto::Create();
   p_attr_0->set_name(kEmbedModeAttr);
-  //p_attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
+  // p_attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
   p_attr_0->set_type(ONNX_NAMESPACE::AttributeProto::INT);
   p_attr_0->set_i(embed_mode);
   // Attr "ep_cache_context".
   auto p_attr_1 = ONNX_NAMESPACE::AttributeProto::Create();
   p_attr_1->set_name(kEPCacheContextAttr);
-  //p_attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
+  // p_attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
   p_attr_1->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
   p_attr_1->set_s(embed_mode == 0 ? ctx_cache_file_loc : serialized_ctx_cache);
   // Attr "source".
   auto p_attr_2 = ONNX_NAMESPACE::AttributeProto::Create();
   p_attr_2->set_name(kSourceAttr);
-  //p_attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
+  // p_attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
   p_attr_2->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
   p_attr_2->set_s(kVitisAIExecutionProvider);
 
@@ -312,9 +311,9 @@ bool GetEPContextModelFileLocation(
     const PathString& model_path_str,
     bool is_ep_ctx_model,
     PathString& ep_ctx_model_file_loc) {
-  //if (!ep_ctx_model_file_loc.empty()) {
-  //  return true;
-  //}
+  // if (!ep_ctx_model_file_loc.empty()) {
+  //   return true;
+  // }
   if (!ep_ctx_model_path_cfg.empty()) {
     ep_ctx_model_file_loc = ToPathString(ep_ctx_model_path_cfg);
   } else if (!model_path_str.empty()) {
@@ -322,7 +321,7 @@ bool GetEPContextModelFileLocation(
       ep_ctx_model_file_loc = model_path_str;
     } else {
       ep_ctx_model_file_loc =
-        ToPathString(fs::path(model_path_str).stem().string() + "_ctx.onnx");
+          ToPathString(fs::path(model_path_str).stem().string() + "_ctx.onnx");
     }
   }
   return !ep_ctx_model_file_loc.empty() && fs::exists(ep_ctx_model_file_loc) && fs::is_regular_file(ep_ctx_model_file_loc);
@@ -334,12 +333,12 @@ PathString GetEPContextCacheFileLocation(
   if (!ep_ctx_model_file_loc.empty()) {
     fs::path ep_ctx_model_fs_path(ep_ctx_model_file_loc);
     auto ep_ctx_cache_fs_path =
-      ep_ctx_model_fs_path.replace_extension(fs::path("__ep_ctx_cache.bin"));
+        ep_ctx_model_fs_path.replace_extension(fs::path("__ep_ctx_cache.bin"));
     return ToPathString(ep_ctx_cache_fs_path.string());
   }
   fs::path model_fs_path(model_path_str);
   auto ep_ctx_cache_fs_path =
-    model_fs_path.replace_extension(fs::path("__ep_ctx_cache.bin"));
+      model_fs_path.replace_extension(fs::path("__ep_ctx_cache.bin"));
   return ToPathString(ep_ctx_cache_fs_path.string());
 }
 

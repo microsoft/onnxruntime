@@ -8,7 +8,6 @@
 // 1st-party headers/libs.
 #include "core/providers/shared_library/provider_api.h"
 
-
 namespace onnxruntime {
 
 static constexpr const char* kEPContextOp = "EPContext";
@@ -33,7 +32,7 @@ void DeserializeCapabilities(
     const std::string&, std::vector<std::unique_ptr<ComputeCapability>>&);
 
 std::unique_ptr<Model> CreateEPContexModel(const GraphViewer&, const std::string&,
-    const std::string&, const int64_t, const logging::Logger*);
+                                           const std::string&, const int64_t, const logging::Logger*);
 
 void DumpEPContextModel(std::unique_ptr<Model>&, const std::string&);
 

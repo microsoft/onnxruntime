@@ -12,7 +12,6 @@
 #include "vaip/global_api.h"
 #include "ep_context_utils.h"
 
-
 using namespace ONNX_NAMESPACE;
 
 namespace fs = std::filesystem;
@@ -22,8 +21,8 @@ constexpr const char* VITISAI = "VITISAI";
 
 VitisAIExecutionProvider::VitisAIExecutionProvider(
     const ProviderOptions& info)
-    //const ProviderOptions& info, const SessionOptions* p_sess_opts)
-  : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
+    // const ProviderOptions& info, const SessionOptions* p_sess_opts)
+    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
   CreateKernelRegistry();
 
 #if 0
@@ -44,13 +43,13 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
         kOrtSessionOptionEpContextFilePath, "");
   } else {
 #endif
-    auto it = info_.find("ep_context_enable");
-    ep_ctx_enabled_ = it != info_.end() && it->second == "1";
-    it = info_.find("ep_context_embed_mode");
-    ep_ctx_embed_mode_ = it != info_.end() && it->second != "0";
-    //ep_ctx_embed_mode_ = it == info_.end() || it->second != "0";
-    it = info_.find("ep_context_file_path");
-    ep_ctx_model_path_cfg_ = it == info_.end() ? "" : it->second;
+  auto it = info_.find("ep_context_enable");
+  ep_ctx_enabled_ = it != info_.end() && it->second == "1";
+  it = info_.find("ep_context_embed_mode");
+  ep_ctx_embed_mode_ = it != info_.end() && it->second != "0";
+  // ep_ctx_embed_mode_ = it == info_.end() || it->second != "0";
+  it = info_.find("ep_context_file_path");
+  ep_ctx_model_path_cfg_ = it == info_.end() ? "" : it->second;
 #if 0
   }
 #endif
@@ -144,9 +143,9 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     // One of the potential problems is the existing EP-context model file may be stale.
     auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
     if (GetEPContextModelFileLocation(
-          ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
+            ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
       LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
-        << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
+                            << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
       LoadEPContexModelFromFile();
       auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph());
       std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
