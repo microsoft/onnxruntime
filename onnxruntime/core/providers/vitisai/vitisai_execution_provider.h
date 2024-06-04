@@ -3,16 +3,19 @@
 
 #pragma once
 
+// Standard headers/libs.
 #include <ctime>
 #include <vector>
 #include <memory>
 #include <set>
 #include <string>
 
+// 1st-party headers/libs.
 //#include "core/framework/session_options.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/inlined_containers_fwd.h"
+
 
 // we cannot include vaip/vaip.hpp here because header file referred by
 // onnxruntime_pybind_state_common.cc
@@ -58,15 +61,15 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   std::string ep_ctx_model_path_cfg_{""};
   PathString ep_ctx_model_file_loc_{""};
   // FIXME: This might not be needed.
-  std::unique_ptr<onnxruntime::Model> p_ep_ctx_model_;
+  mutable std::unique_ptr<onnxruntime::Model> p_ep_ctx_model_;
   // It might need to be called before loading
   // the EP context model that is compiled AOT/offline.
-  void LoadEPContexModelFromFile();
+  void LoadEPContexModelFromFile() const;
   // Create EP context model and dump it for future use.
   // This implementation here is only working for non-compilation-based EPs.
   void FulfillEPContextEnablement(
       const std::vector<std::unique_ptr<ComputeCapability>>&,
-      const onnxruntime::GraphViewer&);
+      const onnxruntime::GraphViewer&) const;
 };
 
 }  // namespace onnxruntime

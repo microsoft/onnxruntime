@@ -2,14 +2,19 @@
 // Licensed under the MIT License.
 #include "vitisai_execution_provider.h"
 
+// Standard headers/libs.
 #include <cassert>
 #include <fstream>
 #include <istream>
 #include <filesystem>
 
+// 1st-party headers/libs.
+#include "core/framework/session_options.h"
+
 #include "vaip/capability.h"
 #include "vaip/global_api.h"
 #include "ep_context_utils.h"
+
 
 using namespace ONNX_NAMESPACE;
 
@@ -58,7 +63,7 @@ VitisAIExecutionProvider::~VitisAIExecutionProvider() {
 }
 #endif
 
-void VitisAIExecutionProvider::LoadEPContexModelFromFile() {
+void VitisAIExecutionProvider::LoadEPContexModelFromFile() const {
   // XXX: should "p_ep_ctx_model_" be checked or not?
   if (!p_ep_ctx_model_ && !ep_ctx_model_file_loc_.empty()) {
     auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
@@ -101,8 +106,8 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const std::vector<std::unique_ptr<ComputeCapability>>& capability_ptrs,
     const onnxruntime::GraphViewer& graph_viewer) {
-  auto& logger = logging::LoggingManager::DefaultLogger()
-  auto& model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
+  auto& logger = logging::LoggingManager::DefaultLogger();
+  auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
   if (!ep_ctx_embed_mode_) {
     GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_);
@@ -135,7 +140,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
   } else {
     // FIXME: Will it make sense to do this?
     // One of the potential problems is the existing EP-context model file may be stale.
-    auto& model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
+    auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
     if (GetEPContextModelFileLocation(
           ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
       LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
