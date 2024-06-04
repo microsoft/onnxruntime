@@ -163,23 +163,8 @@ if (cmakeBuildDir != null) {
 		dependsOn(allJar,sourcesJar,javadocJar,javadoc)
 	}
 
-    task setTestProperty() {
-        doFirst {
-            System.setProperty('USE_CUDA', '1')
-            System.setProperty('USE_ROCM', '1')
-            System.setProperty('USE_TENSORRT', '1')
-            System.setProperty('USE_DNNL', '1')
-            System.setProperty('USE_OPENVINO', '1')
-            System.setProperty('USE_COREML', '1')
-            System.setProperty('USE_DML', '1')
-            System.setProperty('JAVA_FULL_TEST', '1')
-            System.setProperty('ENABLE_TRAINING_APIS', '1')
-
-
-        }
-    }
 	task prepCmakeCheck() {
-		dependsOn(cmakeBuild,setTestProperty,testClasses,classes,compileTestJava,compileJava,spotlessJava)
+		dependsOn(cmakeBuild,testClasses,classes,compileTestJava,compileJava,spotlessJava)
 	}
 
 	task cmakeCheck(type: Copy) {
