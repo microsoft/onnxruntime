@@ -31,16 +31,21 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   if (!match_first(first_node) ||
       // not filtering on provider currently
       // !graph_utils::IsSupportedProvider(first_node, compatible_execution_providers) ||
-      !optimizer_utils::CheckOutputEdges(graph, first_node, 1)) {
+      !(first_node.GetOutputEdgesCount() >= 1)) {
     return false;
   }
 
-  Node& second_node = *graph.GetNode(first_node.OutputNodesBegin()->Index());
-  if (!match_second(second_node)
+  std::vector<Node*> second_nodes;
+  for (auto node_it = first_node.OutputNodesBegin(); node_it != first_node.OutputNodesEnd(); ++node_it) {
+    second_nodes.push_back(graph.GetNode(node_it->Index()));
+  }
+  for (auto second_node : second_nodes) {
+  if (!match_second(*second_node)
       // not filtering on provider currently
-      // || !graph_utils::IsSupportedProvider(second_node, compatible_execution_providers)
+      // || !graph_utils::IsSupportedProvider(*second_node, compatible_execution_providers)
   ) {
     return false;
+  }
   }
 
   if (node_sequence_type == NodeSequence::DQ_Q) {
@@ -49,13 +54,17 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
       return graph.GetConstantInitializer(initializer_name, true);
     };
 
-    if (!QDQ::IsQDQPairSupported(second_node, first_node, get_constant_initializer, graph.ModelPath())) {
+    for (auto second_node : second_nodes) {
+    if (!QDQ::IsQDQPairSupported(*second_node, first_node, get_constant_initializer, graph.ModelPath())) {
       return false;
+    }
     }
   }
 
   // we have a node sequence to clean up
 
+  for (auto second_node_it = second_nodes.begin(); second_node_it != second_nodes.end(); ++second_node_it) {
+  Node& second_node = *graph.GetNode((*second_node_it)->Index());
   // we support a second_node that produces a graph output if it has no output edges, or a second_node with one output edge.
   const bool produces_graph_output = graph.NodeProducesGraphOutput(second_node);
   const auto output_edges_count = second_node.GetOutputEdgesCount();
@@ -83,7 +92,9 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
     src_node_idx = input_edge->GetNode().Index();
     src_arg_idx = input_edge->GetSrcArgIndex();
     // remove edge from src to first_node. dest arg idx is 0 as first_node (Q or DQ) only has one input
+    if (std::next(second_node_it) == second_nodes.end()) {
     graph.RemoveEdge(src_node_idx, first_node.Index(), src_arg_idx, 0);
+    }
   }
 
   // remove edge between pair we're removing
@@ -109,7 +120,7 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
     }
   } else {
     NodeArg* graph_output_nodearg = second_node.MutableOutputDefs()[0];
-    if (src_arg_idx >= 0) {
+    if (src_arg_idx >= 0 && second_nodes.size() == 1) {
       // update the src node to produce the graph output that was being provided by second_node
       Node& src_node = *graph.GetNode(src_node_idx);
       src_node.MutableOutputDefs()[src_arg_idx] = graph_output_nodearg;
@@ -121,8 +132,11 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
     }
   }
 
+  if (std::next(second_node_it) == second_nodes.end()) {
   graph.RemoveNode(first_node.Index());
+  }
   graph.RemoveNode(second_node.Index());
+  }
 
   return true;
 }
