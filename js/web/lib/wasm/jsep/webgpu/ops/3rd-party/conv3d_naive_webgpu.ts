@@ -152,8 +152,7 @@ export const computeConv3DInfo =
     (inShape: [number, number, number, number, number], filterShape: [number, number, number, number, number],
      strides: number|[number, number, number], dilations: number|[number, number, number], pad: number|string|number[],
      depthwise = false, dataFormat: 'channelsFirst'|'channelsLast' = 'channelsLast'): Conv3DInfo => {
-      let [batchSize, inDepth, inHeight, inWidth, inChannels] = [-1, -1, -1, -1, -1];
-      let [filterDepth, filterHeight, filterWidth, , filterChannels] = [-1, -1, -1, -1, -1];
+      let batchSize, inDepth, inHeight, inWidth, inChannels;
       if (dataFormat === 'channelsLast') {
         [batchSize, inDepth, inHeight, inWidth, inChannels] = inShape;
       } else if (dataFormat === 'channelsFirst') {
@@ -161,7 +160,7 @@ export const computeConv3DInfo =
       } else {
         throw new Error(`Unknown dataFormat ${dataFormat}`);
       }
-      [filterChannels, , filterDepth, filterHeight, filterWidth] = filterShape;
+      const [filterChannels, , filterDepth, filterHeight, filterWidth] = filterShape;
 
       const [strideDepth, strideHeight, strideWidth] = parse3TupleParam(strides);
       const [dilationDepth, dilationHeight, dilationWidth] = parse3TupleParam(dilations);
