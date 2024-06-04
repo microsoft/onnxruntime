@@ -9,7 +9,7 @@
 #include <set>
 #include <string>
 
-#include "core/framework/session_options.h"
+//#include "core/framework/session_options.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/inlined_containers_fwd.h"

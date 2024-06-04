@@ -226,6 +226,7 @@ bool ValidateEPContextNode(const Graph& graph) {
   assert(attrs.count(kEmbedModeAttr) > 0);
   assert(attrs.count(kEPCacheContextAttr) > 0);
   assert(attrs.count(kSourceAttr) > 0);
+  (void)attrs;
   return true;
 }
 
