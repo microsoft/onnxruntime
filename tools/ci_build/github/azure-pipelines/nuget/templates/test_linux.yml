@@ -54,6 +54,11 @@ stages:
           ln -sf /data/models $(Build.BinariesDirectory)
 
     - ${{if contains(parameters.StageSuffix , 'GPU') }}:
+      - script: |
+          nvidia-smi
+        continueOnError: true
+        displayName: 'Check GPU availability'
+
       - template: ../../templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
