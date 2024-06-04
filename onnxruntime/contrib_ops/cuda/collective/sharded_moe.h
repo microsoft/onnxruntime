@@ -24,7 +24,8 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
 
  private:
   Status SynchronizeExpertsStartIndex(AllocatorPtr& alloc, OpKernelContext* ctx, cudaEvent_t& cuda_event) const;
-  Status SynchronizeExpertsStartIndexImpl(AllocatorPtr& alloc, OpKernelContext* ctx, cudaEvent_t& cuda_event) const;
+  void SynchronizeExpertsStartIndexImpl(AllocatorPtr& alloc, OpKernelContext* ctx, cudaEvent_t& cuda_event,
+                                        cudaError_t& cuda_result, ncclResult_t& nccl_result) const;
 
   int64_t local_experts_start_index_;
   int64_t tensor_shards_;
