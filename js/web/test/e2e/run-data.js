@@ -30,6 +30,12 @@ const BROWSER_TEST_CASES = [
   [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=2', 'proxy=1']],  // wasm, 2 threads, proxy
   [true, true, './browser-test-wasm.js', 'ort.min.mjs', ['num_threads=1', 'proxy=1']],  // wasm, 1 thread, proxy
 
+  // ort.bundle.min.mjs
+  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=1']],             // 1 thread
+  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=2']],             // 2 threads
+  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=2', 'proxy=1']],  // 2 threads, proxy
+  [true, false, './browser-test-wasm.js', 'ort.bundle.min.mjs', ['num_threads=1', 'proxy=1']],  // 1 thread, proxy
+
   // path override:
   // wasm, path override filenames for both mjs and wasm, same origin
   [true, false, './browser-test-wasm-path-override-filename.js', 'ort.min.js', ['port=9876', 'files=mjs,wasm']],
