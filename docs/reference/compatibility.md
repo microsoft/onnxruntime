@@ -24,8 +24,8 @@ ONNX Runtime is not explicitly tested with every variation/combination of enviro
 ### Platforms
 
 * Windows
-
-  * Tested with Windows 10 and Windows Server 2022. When building the official packages, the [WINVER](https://learn.microsoft.com/en-us/cpp/porting/modifying-winver-and-win32-winnt?view=msvc-170) macro is defined as 0x0A00 which maps to Windows 10.     
+  * Tested with Windows Server 2022 and Windows 11.
+  * May be compatible with Windows 10 and above.
 
 * Linux
   * Tested with UBI8 (which is equivalent to Red Hat Enterprise Linux 8)
