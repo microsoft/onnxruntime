@@ -25,10 +25,7 @@ class DequantizeLinear final : public OpKernel {
       block_size_ = 0;
     }
 
-    // TODO(adrianlizarraga): Support the block_size attribute added in opset 21.
-    if (block_size_ != 0) {
-      ORT_THROW("DequantizeLinear does not yet support the 'block_size' attribute.");
-    }
+    ORT_ENFORCE(block_size_ >= 0, "'block_size' must be non-negative.");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -71,31 +68,55 @@ static void PrepareForQDQ(const TensorShape& input_shape,
                           const Tensor& scale,
                           const Tensor* zero_point_ptr,
                           int64_t axis,
-                          int64_t& quant_block_count,  // A "quant block" is a block of elems with the same scale/zp
-                          int64_t& axis_dim_val,
-                          int64_t& quant_block_size) {
+                          int64_t quant_block_size,
+                          int64_t& process_block_count,
+                          int64_t& broadcast_dim,
+                          int64_t& process_block_size) {
   if (IsScalarOr1ElementVector(&scale)) {  // per-tensor QuantizeLinear/DequantizeLinear
-    quant_block_count = 1;
-    axis_dim_val = 1;
-    quant_block_size = static_cast<size_t>(input_shape.Size());
+    process_block_count = 1;
+    broadcast_dim = 1;
+    process_block_size = static_cast<size_t>(input_shape.Size());
 
     // enforce that zero point are scalars
     ORT_ENFORCE(zero_point_ptr == nullptr || IsScalarOr1ElementVector(zero_point_ptr),
                 "x_zero_point must be null or a scalar or 1D tensor or size 1.");
-  } else {  // per-channel QuantizeLinear/DequantizeLinear
+    ORT_ENFORCE(quant_block_size == 0, "block_size must be 0 for per-tensor quantization.");
+  } else {  // per-axis or blocked QuantizeLinear/DequantizeLinear
     const int64_t axis_no_neg = HandleNegativeAxis(axis, input_shape.NumDimensions());
-    quant_block_count = input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis_no_neg));
-    axis_dim_val = input_shape[onnxruntime::narrow<size_t>(axis_no_neg)];
-    quant_block_size = input_shape.SizeFromDimension(SafeInt<size_t>(axis_no_neg) + 1);
+    process_block_count = input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis_no_neg));
+    broadcast_dim = input_shape[onnxruntime::narrow<size_t>(axis_no_neg)];
+    process_block_size = input_shape.SizeFromDimension(SafeInt<size_t>(axis_no_neg) + 1);
 
     // if an axis was specified, ensure the scale and zero point are compatible
-    ORT_ENFORCE(scale.Shape().NumDimensions() == 1 && scale.Shape()[0] == axis_dim_val,
-                "scale must be 1D tensor with size ",
-                axis_dim_val);
-    ORT_ENFORCE(zero_point_ptr == nullptr ||
-                    (zero_point_ptr->Shape().NumDimensions() == 1 && zero_point_ptr->Shape()[0] == axis_dim_val),
-                "x_zero_point must be null or 1D tensor with size ",
-                axis_dim_val);
+    if (quant_block_size) {  // blocked quantization
+      ORT_ENFORCE(scale.Shape().NumDimensions() == input_shape.NumDimensions(),
+                  "x_scale and x must have the same rank for blocked quantization");
+      ORT_ENFORCE(zero_point_ptr == nullptr || zero_point_ptr->Shape().NumDimensions() == input_shape.NumDimensions(),
+                  "x_zero_point must be null or have the same rank as x for blocked quantization");
+
+      for (size_t i = 0, ndim = input_shape.NumDimensions(); i < ndim; ++i) {
+        if (i == SafeInt<size_t>(axis_no_neg)) {
+          ORT_ENFORCE(scale.Shape()[i] == (input_shape[i] + quant_block_size - 1) / quant_block_size,
+                      "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization");
+        } else {
+          ORT_ENFORCE(scale.Shape()[i] == input_shape[i],
+                      "x_scale and x must have the same shape despite the quantize axis for blocked quantization");
+        }
+
+        if (zero_point_ptr) {
+          ORT_ENFORCE(zero_point_ptr->Shape()[i] == scale.Shape()[i],
+                      "x_zero_point and x_scale must have the same shape for blocked quantization");
+        }
+      }
+    } else {  // per-axis quantization
+      ORT_ENFORCE(scale.Shape().NumDimensions() == 1 && scale.Shape()[0] == broadcast_dim,
+                  "For per axis quantization, scale must be 1D tensor with size ",
+                  broadcast_dim);
+      ORT_ENFORCE(zero_point_ptr == nullptr || (zero_point_ptr->Shape().NumDimensions() == 1 &&
+                                                zero_point_ptr->Shape()[0] == broadcast_dim),
+                  "For per axis quantization, x_zero_point must be null or 1D tensor with size ",
+                  broadcast_dim);
+    }
   }
 }
 
@@ -244,66 +265,198 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
 }  // namespace contrib
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
+template <typename T, typename OutT, bool is_4bit>
+struct DequantizeLinearApply;
+
+// The dimensions before quantize axis and after quantize axis can be flattened.
+// After flattening, the tensor can be represented by a rank-3 tensor.
+// If the quantization happens on the first or last axis, the flattened tensor is
+// effectively rank-2.
+// For per tensor quantization, the tensor is effectively rank-1.
 template <typename T, typename OutT>
-struct DequantizeLinearApply {
-  void op(int64_t N, int64_t axis_dim_val, int64_t quant_block_size, const T* input, const OutT* scale, OutT* output,
-          const T* zero_point) {
-    for (size_t n = 0; n < static_cast<size_t>(N); n++) {
-      for (size_t bd = 0; bd < static_cast<size_t>(axis_dim_val); bd++) {
-        auto zp = zero_point ? static_cast<int32_t>(zero_point[bd]) : 0;
-        auto sc = static_cast<float>(scale[bd]);
-        for (size_t bs = 0; bs < static_cast<size_t>(quant_block_size); bs++) {
+struct DequantizeLinearApply<T, OutT, false> {
+  /**
+   * @brief Calculate per-tensor/layer or per-axis quantization of DequantizeLinear on the
+   *        flattened tensors.
+   * @param[in]    M                      size of dimensions before the quantize axis
+   * @param[in]    K                      dimension on the quantize axis
+   * @param[in]    N                      size of dimensions after the quantize axis
+   * @param[in]    input                  1D array of flattened [D0, ..., Di, ..., Dn]
+   * @param[in]    scale                  scalar for per-tensor/layer quantization and 1D array [Di]
+   *                                      for per-axis quantization. i is the quantize axis.
+   * @param[out]   output                 same shape as input
+   * @param[in]    zero_point             same shape as scale
+   */
+  void op(size_t M, size_t K, size_t N, const T* input,
+          const OutT* scale, OutT* output, const T* zero_point) {
+    for (size_t m = 0; m < M; m++) {
+      for (size_t k = 0; k < K; k++) {
+        auto zp = zero_point ? static_cast<int32_t>(zero_point[k]) : 0;
+        auto sc = static_cast<float>(scale[k]);
+        for (size_t n = 0; n < N; n++) {
           *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
+        }
+      }
+    }
+  }
+
+  /**
+   * @brief Calculate blocked quantization of DequantizeLinear on the flattened tensors.
+   *        TODO(fajin): add mlas kernel to utilize multithreading, refer MlasDequantizeBlockwise.
+   * @param[in]    M                      size of dimensions before the quantize axis
+   * @param[in]    K                      dimension of the quantize axis
+   * @param[in]    N                      size of dimensions after the quantize axis
+   * @param[in]    quant_block_size       quantize block size along the quantize axis
+   * @param[in]    input                  1D array of flattened [D0, ..., Di, ..., Dn]
+   * @param[in]    scale                  1D array of flattened [D0, ..., ceil(Di/quant_block_size), ..., Dn].
+   *                                      i is the quantize axis.
+   * @param[out]   output                 same shape as input
+   * @param[in]    zero_point             same shape as scale
+   */
+  void op(size_t M, size_t K, size_t N, size_t quant_block_size,
+          const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+    if (zero_point) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t bd = 0; bd < K; bd += quant_block_size) {
+          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) {
+            // within the quantize block, the zero point and scale are the same.
+            for (size_t bs = 0; bs < N; bs++) {
+              auto zp = static_cast<int32_t>(zero_point[bs]);
+              auto sc = static_cast<float>(scale[bs]);
+              *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
+            }
+          }
+
+          // move to the next quantize block
+          zero_point += N;
+          scale += N;
+        }
+      }
+    } else {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t bd = 0; bd < K; bd += quant_block_size) {
+          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) {
+            // within the quantize block, the zero point and scale are the same.
+            for (size_t bs = 0; bs < N; bs++) {
+              auto sc = static_cast<float>(scale[bs]);
+              *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++)) * sc);
+            }
+          }
+
+          // move to the next quantize block
+          scale += N;
         }
       }
     }
   }
 };
 
-#define DEQUANTIZE_LINEAR_APPLY_INT4(T)                                                                   \
-  template <typename OutT>                                                                                \
-  struct DequantizeLinearApply<T, OutT> {                                                                 \
-    void op(int64_t N, int64_t axis_dim_val, int64_t quant_block_size, const T* input, const OutT* scale, \
-            OutT* output, const T* zero_point) {                                                          \
-      size_t input_index = 0;                                                                             \
-      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                               \
-        for (size_t bd = 0; bd < static_cast<size_t>(axis_dim_val); bd++) {                               \
-          size_t bd_i = bd >> 1;  /*bd / 2*/                                                              \
-          size_t bd_j = bd & 0x1; /*bd % 2*/                                                              \
-          auto zp = zero_point ? static_cast<int32_t>(zero_point[bd_i].GetElem(bd_j)) : 0;                \
-          auto sc = static_cast<float>(scale[bd]);                                                        \
-          for (size_t bs = 0; bs < static_cast<size_t>(quant_block_size); bs++) {                         \
-            size_t input_i = input_index >> 1;                                                            \
-            size_t input_j = input_index & 0x1;                                                           \
-            int32_t val = static_cast<int32_t>(input[input_i].GetElem(input_j));                          \
-            *output++ = static_cast<OutT>(static_cast<float>(val - zp) * sc);                             \
-            input_index += 1;                                                                             \
-          }                                                                                               \
-        }                                                                                                 \
-      }                                                                                                   \
-      assert(input_index == static_cast<size_t>(N * axis_dim_val * quant_block_size));                    \
-    }                                                                                                     \
-  };
+template <typename T, typename OutT>
+struct DequantizeLinearApply<T, OutT, true> {
+  // per-tensor/layer or per-axis quantization
+  void op(size_t M, size_t K, size_t N,
+          const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+    size_t input_index = 0;
 
-DEQUANTIZE_LINEAR_APPLY_INT4(Int4x2);
-DEQUANTIZE_LINEAR_APPLY_INT4(UInt4x2);
+    for (size_t m = 0; m < M; m++) {
+      for (size_t bd = 0; bd < K; bd++) {
+        size_t bd_i = bd >> 1;  /*bd / 2*/
+        size_t bd_j = bd & 0x1; /*bd % 2*/
+        auto zp = zero_point ? static_cast<int32_t>(zero_point[bd_i].GetElem(bd_j)) : 0;
+        auto sc = static_cast<float>(scale[bd]);
+
+        for (size_t bs = 0; bs < N; bs++) {
+          size_t input_i = input_index >> 1;
+          size_t input_j = input_index & 0x1;
+          int32_t val = static_cast<int32_t>(input[input_i].GetElem(input_j));
+          *output++ = static_cast<OutT>(static_cast<float>(val - zp) * sc);
+          input_index += 1;
+        }
+      }
+    }
+
+    assert(input_index == M * K * N);
+  }
+
+  // Blocked quantization
+  // TODO(fajin) : add mlas kernel to utilize multithreading, refer MlasDequantizeBlockwise.
+  void op(size_t M, size_t K, size_t N, size_t quant_block_size,
+          const T* input, const OutT* scale, OutT* output, const T* zero_point) {
+    size_t input_index = 0;
+
+    if (zero_point) {
+      size_t zp_index = 0;
+
+      for (size_t n = 0; n < M; n++) {
+        for (size_t bd = 0; bd < K; bd += quant_block_size) {
+          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) {
+            auto q_zp_index = zp_index;
+            for (size_t bs = 0; bs < N; ++bs, ++input_index, ++q_zp_index) {
+              auto zp = static_cast<int32_t>(zero_point[q_zp_index >> 1].GetElem(q_zp_index & 0x1));
+              auto sc = static_cast<float>(scale[bs]);
+
+              int32_t val = static_cast<int32_t>(input[input_index >> 1].GetElem(input_index & 0x1));
+              *output++ = static_cast<OutT>(static_cast<float>(val - zp) * sc);
+            }
+          }
+
+          scale += N;
+          zp_index += N;
+        }
+      }
+    } else {
+      for (size_t n = 0; n < M; n++) {
+        for (size_t bd = 0; bd < K; bd += quant_block_size) {
+          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) {
+            for (size_t bs = 0; bs < N; ++bs, ++input_index) {
+              auto sc = static_cast<float>(scale[bs]);
+
+              int32_t val = static_cast<int32_t>(input[input_index >> 1].GetElem(input_index & 0x1));
+              *output++ = static_cast<OutT>(static_cast<float>(val) * sc);
+            }
+          }
+
+          scale += N;
+        }
+      }
+    }
+
+    assert(input_index == M * K * N);
+  }
+};
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T)                                                                 \
-  template <typename OutT>                                                                                \
-  struct DequantizeLinearApply<T, OutT> {                                                                 \
-    void op(int64_t N, int64_t axis_dim_val, int64_t quant_block_size, const T* input, const OutT* scale, \
-            OutT* output, const T*) {                                                                     \
-      for (size_t n = 0; n < static_cast<size_t>(N); n++) {                                               \
-        for (size_t bd = 0; bd < static_cast<size_t>(axis_dim_val); bd++) {                               \
-          auto sc = scale[bd];                                                                            \
-          for (size_t bs = 0; bs < static_cast<size_t>(quant_block_size); bs++, input++) {                \
-            *output++ = static_cast<OutT>(input->ToFloat() * sc);                                         \
-          }                                                                                               \
-        }                                                                                                 \
-      }                                                                                                   \
-    }                                                                                                     \
+#define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T)                                                       \
+  template <typename OutT>                                                                      \
+  struct DequantizeLinearApply<T, OutT, false> {                                                \
+    /* Per-tensor/layer or per-axis quantization */                                             \
+    void op(size_t M, size_t K, size_t N,                                                       \
+            const T* input, const OutT* scale, OutT* output, const T*) {                        \
+      for (size_t m = 0; m < M; m++) {                                                          \
+        for (size_t bd = 0; bd < K; bd++) {                                                     \
+          auto sc = scale[bd];                                                                  \
+          for (size_t bs = 0; bs < N; bs++, input++) {                                          \
+            *output++ = static_cast<OutT>(input->ToFloat() * sc);                               \
+          }                                                                                     \
+        }                                                                                       \
+      }                                                                                         \
+    }                                                                                           \
+    /* Blocked quantization */                                                                  \
+    void op(size_t M, size_t K, size_t N, size_t quant_block_size,                              \
+            const T* input, const OutT* scale, OutT* output, const T*) {                        \
+      for (size_t m = 0; m < M; m++) {                                                          \
+        for (size_t bd = 0; bd < K; bd += quant_block_size) {                                   \
+          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) { \
+            for (size_t bs = 0; bs < N; bs++, input++) {                                        \
+              auto sc = static_cast<float>(scale[bs]);                                          \
+              *output++ = static_cast<OutT>(input->ToFloat() * sc);                             \
+            }                                                                                   \
+          }                                                                                     \
+          scale += N;                                                                           \
+        }                                                                                       \
+      }                                                                                         \
+    }                                                                                           \
   };
 
 DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E4M3FN)
@@ -323,11 +476,12 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   const auto& x_shape = x.Shape();
   auto& y = *ctx->Output(0, x_shape);
 
-  int64_t N;
-  int64_t axis_dim_val;
-  int64_t quant_block_size;
+  int64_t process_block_count;
+  int64_t broadcast_dim;
+  int64_t process_block_size;
 
-  PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, axis_dim_val, quant_block_size);
+  PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, block_size_,
+                process_block_count, broadcast_dim, process_block_size);
 
   const T* zero_point = x_zero_point ? x_zero_point->Data<T>() : nullptr;
 
@@ -345,15 +499,38 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   const auto to = x_scale.GetElementType();
   const T* input = x.Data<T>();
+  constexpr bool is_4bit = boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value;
 
   if (to == ONNX_NAMESPACE::TensorProto::FLOAT) {
     const float* scale = x_scale.Data<float>();
     float* output = y.MutableData<float>();
-    DequantizeLinearApply<T, float>().op(N, axis_dim_val, quant_block_size, input, scale, output, zero_point);
+    if (block_size_) {
+      DequantizeLinearApply<T, float, is_4bit>().op(static_cast<size_t>(process_block_count),
+                                                    static_cast<size_t>(broadcast_dim),
+                                                    static_cast<size_t>(process_block_size),
+                                                    static_cast<size_t>(block_size_),
+                                                    input, scale, output, zero_point);
+    } else {
+      DequantizeLinearApply<T, float, is_4bit>().op(static_cast<size_t>(process_block_count),
+                                                    static_cast<size_t>(broadcast_dim),
+                                                    static_cast<size_t>(process_block_size),
+                                                    input, scale, output, zero_point);
+    }
   } else if (to == ONNX_NAMESPACE::TensorProto::FLOAT16) {
     const MLFloat16* scale = x_scale.Data<MLFloat16>();
     MLFloat16* output = y.MutableData<MLFloat16>();
-    DequantizeLinearApply<T, MLFloat16>().op(N, axis_dim_val, quant_block_size, input, scale, output, zero_point);
+    if (block_size_) {
+      DequantizeLinearApply<T, MLFloat16, is_4bit>().op(static_cast<size_t>(process_block_count),
+                                                        static_cast<size_t>(broadcast_dim),
+                                                        static_cast<size_t>(process_block_size),
+                                                        static_cast<size_t>(block_size_),
+                                                        input, scale, output, zero_point);
+    } else {
+      DequantizeLinearApply<T, MLFloat16, is_4bit>().op(static_cast<size_t>(process_block_count),
+                                                        static_cast<size_t>(broadcast_dim),
+                                                        static_cast<size_t>(process_block_size),
+                                                        input, scale, output, zero_point);
+    }
   } else if (to == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
     ORT_THROW("DequantizeLinear into BFLOAT16 is not implemented yet.");
   } else {
@@ -524,14 +701,14 @@ void ParQuantizeLinear(const InputType* Input,
 }
 
 template <typename T, typename InT>
-void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const T* zero_point, T* output, int64_t N,
-                 int64_t axis_dim_val, int64_t quant_block_size, bool saturate) {
-  for (size_t n = 0; n < static_cast<size_t>(N); n++) {
-    for (size_t bd = 0; bd < static_cast<size_t>(axis_dim_val); bd++) {
-      ParQuantizeLinear(input, output, static_cast<size_t>(quant_block_size), scale[bd], bd, zero_point, saturate,
-                        ctx->GetOperatorThreadPool());
-      input += quant_block_size;
-      output += quant_block_size;
+void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const T* zero_point, T* output,
+                 int64_t process_block_count, int64_t broadcast_dim, int64_t process_block_size, bool saturate) {
+  for (size_t n = 0; n < static_cast<size_t>(process_block_count); n++) {
+    for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
+      ParQuantizeLinear(input, output, static_cast<size_t>(process_block_size), scale[bd], bd, zero_point,
+                        saturate, ctx->GetOperatorThreadPool());
+      input += process_block_size;
+      output += process_block_size;
     }
   }
 }
@@ -611,20 +788,21 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   const auto& x_shape = x.Shape();
   auto& y = *ctx->Output(0, x_shape);
 
-  int64_t N;
-  int64_t axis_dim_val;
-  int64_t quant_block_size;
-  PrepareForQDQ(x.Shape(), y_scale, y_zero_point, axis_, N, axis_dim_val, quant_block_size);
+  int64_t process_block_count;
+  int64_t broadcast_dim;
+  int64_t process_block_size;
+  PrepareForQDQ(x.Shape(), y_scale, y_zero_point, axis_, block_size_,
+                process_block_count, broadcast_dim, process_block_size);
 
   const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
   T* output = y.MutableData<T>();
 
   if (x.IsDataType<float>()) {
-    ComputeLoop<T, float>(ctx, x.Data<float>(), y_scale.Data<float>(), zero_point, output, N, axis_dim_val,
-                          quant_block_size, saturate_);
+    ComputeLoop<T, float>(ctx, x.Data<float>(), y_scale.Data<float>(), zero_point, output,
+                          process_block_count, broadcast_dim, process_block_size, saturate_);
   } else if (x.IsDataType<MLFloat16>()) {
-    ComputeLoop<T, MLFloat16>(ctx, x.Data<MLFloat16>(), y_scale.Data<MLFloat16>(), zero_point, output, N,
-                              axis_dim_val, quant_block_size, saturate_);
+    ComputeLoop<T, MLFloat16>(ctx, x.Data<MLFloat16>(), y_scale.Data<MLFloat16>(), zero_point, output,
+                              process_block_count, broadcast_dim, process_block_size, saturate_);
   } else {
     ORT_THROW("Unsupported input type.");
   }
