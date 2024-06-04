@@ -3738,6 +3738,99 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
 #endif
 }
 
+// test removal of Q->DQs pairs by QDQFinalCleanupTransformer
+TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
+  auto test_case = [&](bool is_input_q,
+                       bool use_contrib_qdq) {
+    // create model with float Input -> (Transpose1 ->) Q -> DQ1 -> Transpose2 -> Output1
+    //                                                    -> DQ2 -> Transpose3 -> Output2
+    // If we enable cleanup and don't run the QDQ transformer we should drop all the Q->DQ pairs
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_args = builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f);
+
+      NodeArg* q_input = nullptr;
+      if (is_input_q) {
+        q_input = input_args;
+      } else {
+        auto* transpose_output = builder.MakeIntermediate();
+        builder.AddNode("Transpose", {input_args}, {transpose_output});
+        q_input = transpose_output;
+      }
+
+      // Add Q
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(q_input, 0.05f, 128, q_output, use_contrib_qdq);
+
+      // Add -> DQ1 -> Transpose2 -> output1
+      auto* dq_output1 = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output1, use_contrib_qdq);
+      auto* output1 = builder.MakeOutput();
+      builder.AddNode("Transpose", {dq_output1}, {output1});
+
+      // Add -> DQ2 -> Transpose3 -> output2
+      auto* dq_output2 = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output2, use_contrib_qdq);
+      auto* output2 = builder.MakeOutput();
+      //builder.AddNode("Identity", {dq_output2}, {output2});
+      builder.AddNode("Transpose", {dq_output2}, {output2});
+    };
+
+    const int expected_transpose_count = is_input_q ? 2 : 3;
+
+    auto check_graph = [expected_transpose_count,
+                        use_contrib_qdq](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+      EXPECT_EQ(op_to_count["Transpose"], expected_transpose_count);
+    };
+
+    auto add_session_options = [](SessionOptions& so) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+    };
+
+    // we increase the tolerance as removing the QDQ nodes means there's no round-trip to 8-bit and back
+    // essentially rounding the input values.
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+  };
+
+  test_case(true, false);   // Input -> Q -> ...
+  test_case(false, false);  // Input -> Transpose -> Q -> ...
+
+#if !defined(DISABLE_CONTRIB_OPS)
+  // Use contrib QDQ ops
+  test_case(true, false);   // Input -> Q -> ...
+  test_case(false, false);  // Input -> Transpose -> Q -> ...
+#endif
+}
+
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
   auto test_case = [](bool use_matching_qdq_params, bool use_contrib_qdq) {
     // input -> Q -> DQ -> Q -> DQ -> output
