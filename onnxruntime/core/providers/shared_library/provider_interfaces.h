@@ -503,11 +503,9 @@ struct ProviderHost {
   virtual const std::string& FunctionProto__name(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
   virtual void FunctionProto__set_name(ONNX_NAMESPACE::FunctionProto* p, const ::std::string& name) = 0;
 
-  virtual bool FunctionProto__has_since_version(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual int FunctionProto__since_version(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
   virtual void FunctionProto__set_since_version(ONNX_NAMESPACE::FunctionProto* p, int since_version) = 0;
 
-  virtual bool FunctionProto__has_status(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual const ONNX_NAMESPACE::OperatorStatus& FunctionProto__status(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
   virtual void FunctionProto__set_status(ONNX_NAMESPACE::FunctionProto* p, const ONNX_NAMESPACE::OperatorStatus& status) = 0;
 
@@ -516,7 +514,7 @@ struct ProviderHost {
   virtual void FunctionProto__set_doc_string(ONNX_NAMESPACE::FunctionProto* p, const ::std::string& doc_string) = 0;
 
   virtual bool FunctionProto__has_domain(const ONNX_NAMESPACE::FunctionProto* p) = 0;
-  virtual const std::string& FunctionProto__domain(const ONNX_NAMESPACE::FunctionProto* p) = 0;
+  virtual const std::string& FunctionProto__domain(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
   virtual void FunctionProto__set_domain(ONNX_NAMESPACE::FunctionProto* p, const ::std::string& domain) = 0;
 
   virtual const std::string& FunctionProto__input(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;

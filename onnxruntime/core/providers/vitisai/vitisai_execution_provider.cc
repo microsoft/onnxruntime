@@ -8,9 +8,6 @@
 #include <istream>
 #include <filesystem>
 
-// 1st-party headers/libs.
-#include "core/framework/session_options.h"
-
 #include "vaip/capability.h"
 #include "vaip/global_api.h"
 #include "ep_context_utils.h"
@@ -24,10 +21,12 @@ namespace onnxruntime {
 constexpr const char* VITISAI = "VITISAI";
 
 VitisAIExecutionProvider::VitisAIExecutionProvider(
-    const ProviderOptions& info, const SessionOptions* p_sess_opts)
+    const ProviderOptions& info)
+    //const ProviderOptions& info, const SessionOptions* p_sess_opts)
   : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
   CreateKernelRegistry();
 
+#if 0
   if (p_sess_opts) {
     ep_ctx_enabled_ = p_sess_opts->config_options.GetConfigOrDefault(
         kOrtSessionOptionEpContextEnable, "0") == "1";
@@ -44,6 +43,7 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
     ep_ctx_model_path_cfg_ = p_sess_opts->config_options.GetConfigOrDefault(
         kOrtSessionOptionEpContextFilePath, "");
   } else {
+#endif
     auto it = info_.find("ep_context_enable");
     ep_ctx_enabled_ = it != info_.end() && it->second == "1";
     it = info_.find("ep_context_embed_mode");
@@ -51,7 +51,9 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
     //ep_ctx_embed_mode_ = it == info_.end() || it->second != "0";
     it = info_.find("ep_context_file_path");
     ep_ctx_model_path_cfg_ = it == info_.end() ? "" : it->second;
+#if 0
   }
+#endif
   LOGS_DEFAULT(VERBOSE) << "EP Context cache enabled: " << ep_ctx_enabled_;
   LOGS_DEFAULT(VERBOSE) << "EP context cache embed mode: " << ep_ctx_embed_mode_;
   LOGS_DEFAULT(VERBOSE) << "User specified EP context cache path: " << ep_ctx_model_path_cfg_;
@@ -105,24 +107,24 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
 // This implementation here is only working for non-compilation-based EPs.
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const std::vector<std::unique_ptr<ComputeCapability>>& capability_ptrs,
-    const onnxruntime::GraphViewer& graph_viewer) {
+    const onnxruntime::GraphViewer& graph_viewer) const {
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
   if (!ep_ctx_embed_mode_) {
     GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_);
-    auto ep_ctx_cache_fs_path = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
-    std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_fs_path.c_str(), std::ios::trunc | std::ios::binary);
+    auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
+    std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc | std::ios::binary);
     if (!ep_ctx_cache_ofs.is_open()) {
-      ORT_THROW("Failed to open a file to write EP context cache: ", ep_ctx_cache_fs_path.c_str());
+      ORT_THROW("Failed to open a file to write EP context cache: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.write(ep_ctx_payload.c_str(), ep_ctx_payload.length());
     if (!ep_ctx_cache_ofs.good()) {
       ep_ctx_cache_ofs.close();
-      ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_fs_path.c_str());
+      ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, ep_ctx_cache_fs_path.string(), 0, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, ep_ctx_cache_path_str, 0, &logger);
   } else {
     p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, &logger);
   }

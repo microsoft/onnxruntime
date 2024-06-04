@@ -28,8 +28,9 @@ namespace onnxruntime {
 // Logical device representation.
 class VitisAIExecutionProvider : public IExecutionProvider {
  public:
-  explicit VitisAIExecutionProvider(const ProviderOptions& info,
-      const SessionOptions* p_sess_opts = nullptr);
+  explicit VitisAIExecutionProvider(const ProviderOptions& info);
+  //explicit VitisAIExecutionProvider(const ProviderOptions& info,
+  //    const SessionOptions* p_sess_opts = nullptr);
   ~VitisAIExecutionProvider() = default;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -59,7 +60,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   bool ep_ctx_enabled_ = false;
   bool ep_ctx_embed_mode_ = true;
   std::string ep_ctx_model_path_cfg_{""};
-  PathString ep_ctx_model_file_loc_{""};
+  mutable PathString ep_ctx_model_file_loc_{""};
   // FIXME: This might not be needed.
   mutable std::unique_ptr<onnxruntime::Model> p_ep_ctx_model_;
   // It might need to be called before loading

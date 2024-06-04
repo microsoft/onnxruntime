@@ -387,11 +387,9 @@ struct FunctionProto final {
   const std::string& name() const { return g_host->FunctionProto__name(this); }
   void set_name(const std::string& name) { g_host->FunctionProto__set_name(this, name); }
 
-  bool has_since_version() const { return g_host->FunctionProto__has_since_version(this); }
   int since_version() const { return g_host->FunctionProto__since_version(this); }
   void set_since_version(int since_version) { g_host->FunctionProto__set_since_version(this, since_version); }
 
-  bool has_status() const { return g_host->FunctionProto__has_status(this); }
   const OperatorStatus& status() const { return g_host->FunctionProto__status(this); }
   void set_status(const OperatorStatus& status) { g_host->FunctionProto__set_status(this, status); }
 
