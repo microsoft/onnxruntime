@@ -24,8 +24,6 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MyTritonKernel);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MyTritonKernel);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, FastGelu);
@@ -223,6 +221,11 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DistributedUnsqueeze);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, DistributedSqueeze);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DistributedSqueeze);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DistributedSqueeze);
+#endif
+
+#ifdef USE_TRITON_KERNEL
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MyTritonKernel);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MyTritonKernel);
 #endif
 
 template <>
