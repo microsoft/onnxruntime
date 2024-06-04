@@ -835,7 +835,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   test.AddInput<Tout>("x_scale", {2, scale_block_count}, x_scale);
   test.AddInput<Tin>("x_zero_point", {2, zero_point_block_count}, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
 }
 
 template <typename Tin, typename Tout>
@@ -877,7 +877,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   test.AddInput<Tout>("x_scale", {2, scale_block_count}, x_scale);
   test.AddInput<Tin>("x_zero_point", {2, zero_point_block_count}, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
 }
 
 template <typename Tin, typename Tout>
@@ -917,7 +917,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Float8(int64_t block_size,
   test.AddInput<Tout>("x_scale", {2, scale_block_count}, x_scale);
   test.AddInput<Tin>("x_zero_point", {2, zero_point_block_count}, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
 }
 
 // test negative block size fail
@@ -1080,7 +1080,7 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
   test.AddInput<Tout>("x_scale", x_scale_shape, x_scale);
   if (use_zero_point) test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
 }
 
 template <typename Tin, typename Tout>
@@ -1114,7 +1114,7 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   test.AddInput<Tout>("x_scale", x_scale_shape, x_scale);
   if (use_zero_point) test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
 }
 
 template <typename Tin, typename Tout>
@@ -1150,7 +1150,7 @@ void DequantizeLinearOp21BlockedTest_Float8_Succeed(std::vector<int64_t>&& dims,
   test.AddInput<Tout>("x_scale", x_scale_shape, x_scale);
   if (use_zero_point) test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
 }
 
 TEST(DequantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_FirstAxis) {

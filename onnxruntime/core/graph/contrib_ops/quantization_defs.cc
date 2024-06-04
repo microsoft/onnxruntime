@@ -184,34 +184,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 static const char* DequantizeLinear_ver1_doc = R"DOC(
 The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
 The dequantization formula is y = (x - x_zero_point) * x_scale.
-x_scale and x_zero_point must have same shape. They must be scalar (per tensor), 1-D tensor (per 'axis'), or have a
-rank identical to the input (blocked quantization).)DOC";
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                             OpSchema()
                                 .Attr("axis",
-                                      "The axis along which same quantization parameters are applied. It's optional. "
+                                      "The axis along which same quantization parameters are applied. It's optional."
                                       "If it's not specified, it means per-tensor quantization and input 'x_scale' and "
-                                      "'x_zero_point' must be scalars. "
-                                      "For per 'axis' quantization, it is specified, and 'x_scale' and "
-                                      "'x_zero_point' (if specified) must be 1-D tensors. "
-                                      "For blocked quantization, it is specified, and 'x_scale' and "
-                                      "'x_zero_point' (if specified) have the same rank as 'x'.",
-                                      AttributeProto::INT, false)
-                                .Attr("block_size",
-                                      "(Optional) The size of the quantization block (number of times every scale is "
-                                      "replicated) along axis. Used only for blocked quantization. The block size is "
-                                      "a positive integer if specified.",
+                                      "'x_zero_point' must be scalars."
+                                      "If it's specified, it means per 'axis' quantization and input 'x_scale' and "
+                                      "'x_zero_point' must be 1-D tensors.",
                                       AttributeProto::INT, false)
                                 .Input(0, "x", "N-D quantized Input tensor to be de-quantized.", "T1")
                                 .Input(1, "x_scale",
-                                       "Scale for input 'x'. It can be a scalar for per-tensor/layer "
-                                       "quantization, a 1-D tensor for per-axis quantization, or a tensor with the "
-                                       "same rank as 'x' for blocked quantization.",
+                                       "Scale for input 'x'. It can be a scalar, which means a per-tensor/layer "
+                                       "dequantization, or a 1-D tensor for per-axis dequantization.",
                                        "T2")
                                 .Input(2, "x_zero_point",
-                                       "Zero point for input 'x'. It's optional. When it's not specified, "
-                                       "zero point is 0. If specified, its shape must match x_scale's shape.",
+                                       "Zero point for input 'x'. Shape must match x_scale. It's optional. "
+                                       "Zero point is 0 when it's not specified.",
                                        "T1", OpSchema::Optional)
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
