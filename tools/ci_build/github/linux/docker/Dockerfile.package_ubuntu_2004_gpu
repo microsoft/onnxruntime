@@ -27,6 +27,12 @@ RUN apt-get install -y --no-install-recommends \
 
 RUN pip install --upgrade pip
 
+RUN echo '#!/bin/bash\n\
+    if [ $(echo $CUDA_VERSION | cut -d"." -f1) -ge 12 ]; then\n\
+    apt-get -y install cudnn9-cuda-12\n\
+    fi' > /usr/local/bin/install_cudnn.sh && \
+    chmod +x /usr/local/bin/install_cudnn.sh
+
 # Install TensorRT
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
@@ -46,7 +52,8 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
     libnvonnxparsers-dev=${TRT_VERSION} \
     libnvonnxparsers10=${TRT_VERSION} \
     tensorrt-dev=${TRT_VERSION} \
-    libnvinfer-bin=${TRT_VERSION}
+    libnvinfer-bin=${TRT_VERSION} \
+    /usr/local/bin/install_cudnn.sh
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
