@@ -21,6 +21,7 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
                             size_t M, size_t N, size_t K,
                             size_t Threads,
                             bool Symmetric,
+                            bool HasBias,
                             MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
                             benchmark::State& state) {
   if (!MlasIsSQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
@@ -42,8 +43,11 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
-  const auto A = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
-  const auto B = RandomVectorUniform(static_cast<size_t>(K * N), -1.0f, 1.0f);
+  const auto A = RandomVectorUniform(M * K, -1.0f, 1.0f);
+  const auto B = RandomVectorUniform(K * N, -1.0f, 1.0f);
+
+  const auto Bias = HasBias ? RandomVectorUniform(N, -1.0f, 1.0f) : std::vector<float>();
+
   std::vector<float> C(static_cast<size_t>(M * N));
 
   std::vector<uint8_t> QuantBData(QuantBDataSizeInBytes);
@@ -78,7 +82,7 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
                           : static_cast<const void*>(QuantBData.data());
   params.QuantBScale = QuantBScale.data();
   params.QuantBZeroPoint = Symmetric ? nullptr : QuantBZeroPoint.data();
-  params.Bias = nullptr;
+  params.Bias = HasBias ? Bias.data() : nullptr;
   params.C = C.data();
   params.ldc = N;
 
@@ -100,13 +104,14 @@ void SQNBITGEMM(benchmark::State& state) {
   const auto K = narrow<size_t>(state.range(3));
   const auto Threads = narrow<size_t>(state.range(4));
   const auto Symmetric = narrow<bool>(state.range(5));
-  const auto ComputeType = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(state.range(6));
+  const bool HasBias = narrow<bool>(state.range(6));
+  const auto ComputeType = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(state.range(7));
 
-  RunSQNBitGemmBenchmark<BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, ComputeType, state);
+  RunSQNBitGemmBenchmark<BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, HasBias, ComputeType, state);
 }
 
 static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
-  b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "ComputeType"});
+  b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
 
   b->ArgsProduct({
       {16, 32, 64, 128, 256},                  // BlkLen
@@ -115,6 +120,7 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
       {4096, 11008},                           // K
       {1, 8},                                  // Threads
       {int64_t{false}, int64_t{true}},         // Symmetric
+      {int64_t{false}, int64_t{true}},         // HasBias
       {int64_t{CompFp32}, int64_t{CompInt8}},  // ComputeType
   });
 }
@@ -132,17 +138,19 @@ void SQNBITGEMM_ENV(benchmark::State& state) {
   const auto K = ParseEnvironmentVariableWithDefault<size_t>("ORT_SQNBITGEMM_K", 4096);
   const auto Threads = ParseEnvironmentVariableWithDefault<size_t>("ORT_SQNBITGEMM_THREADS", 1);
   const auto Symmetric = ParseEnvironmentVariableWithDefault<bool>("ORT_SQNBITGEMM_SYMMETRIC", true);
+  const auto HasBias = ParseEnvironmentVariableWithDefault<bool>("ORT_SQNBITGEMM_HAS_BIAS", false);
   const auto ComputeType = ParseEnvironmentVariableWithDefault<int32_t>("ORT_SQNBITGEMM_COMPUTE_TYPE",
                                                                         static_cast<int32_t>(CompFp32));
 
-  RunSQNBitGemmBenchmark<BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric,
+  RunSQNBitGemmBenchmark<BlkBitWidth>(BlkLen, M, N, K, Threads, Symmetric, HasBias,
                                       static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(ComputeType),
                                       state);
 
   std::ostringstream s;
   s << "BlkBitWidth:" << BlkBitWidth << "/BlkLen:" << BlkLen
     << "/M:" << M << "/N:" << N << "/K:" << K
-    << "/Threads:" << Threads << "/Symmetric:" << Symmetric << "/ComputeType:" << ComputeType;
+    << "/Threads:" << Threads << "/Symmetric:" << Symmetric << "/HasBias:" << HasBias
+    << "/ComputeType:" << ComputeType;
   state.SetLabel(s.str());
 }
 

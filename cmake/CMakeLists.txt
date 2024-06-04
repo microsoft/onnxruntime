@@ -59,8 +59,8 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 8)
-  message(FATAL_ERROR  "GCC version must be greater than or equal to 8")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
 endif()
 
 # Options
@@ -652,6 +652,12 @@ else()
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
   check_cxx_compiler_flag(-Wstringop-overflow HAS_STRINGOP_OVERFLOW)
+  if(onnxruntime_ENABLE_TRAINING_APIS)
+	check_cxx_compiler_flag(-Wdangling-reference HAS_DANGLING_REFERENCE)
+	if(HAS_DANGLING_REFERENCE)
+	  list(APPEND ORT_WARNING_FLAGS -Wno-dangling-reference)
+	endif()
+  endif()
   check_function_exists(reallocarray HAS_REALLOCARRAY)
   if (NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_target_platform STREQUAL "aarch64")
    check_cxx_compiler_flag(-march=armv8.2-a+bf16 HAS_ARM64_BFLOAT16)
@@ -1294,12 +1300,6 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
-# needs to link with stdc++fs in Linux
-if (UNIX AND "${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
-  set(FS_STDLIB stdc++fs)
-endif()
-list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${FS_STDLIB})
-
 # onnxruntime-extensions
 if (onnxruntime_USE_EXTENSIONS)
   include(extensions)
@@ -1466,16 +1466,6 @@ if (onnxruntime_USE_CUDA)
   if (onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO)
     add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>")
   endif()
-endif()
-
-if (onnxruntime_USE_TENSORRT)
-  # needs to link with stdc++fs in Linux
-  if (UNIX)
-    if (NOT APPLE)
-      set(FS_STDLIB stdc++fs)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${FS_STDLIB})
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)

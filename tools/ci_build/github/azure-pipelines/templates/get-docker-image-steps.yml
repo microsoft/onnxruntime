@@ -16,6 +16,9 @@ parameters:
 - name: UsePipelineCache
   type: boolean
   default: false
+- name: CheckOutManyLinux
+  type: boolean
+  default: false
 - name: ScriptName
   type: string
   default: "tools/ci_build/get_docker_image.py"
@@ -31,7 +34,7 @@ steps:
 - ${{ if eq(parameters.UpdateDepsTxt, true)}}:
   - template: download-deps.yml
 
-- ${{ if contains(parameters.Dockerfile, 'manylinux') }}:
+- ${{ if eq(parameters.CheckOutManyLinux, true) }}:
     - checkout: manylinux
     - script: |
         set -e -x

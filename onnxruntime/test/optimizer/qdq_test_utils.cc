@@ -5,6 +5,8 @@
 #include <type_traits>
 #include <utility>
 #include "core/common/common.h"
+#include "core/common/inlined_containers_fwd.h"
+#include "core/common/span_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -162,6 +164,53 @@ std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph, bo
     op_types.push_back(std::move(full_op_type));
   }
   return op_types;
+}
+
+GetQDQTestCaseFn BuildDoubleQDQTestCaseWithDuplicateLastDQs(
+    gsl::span<const int64_t> input_shape,
+    gsl::span<const float> input_data,
+    gsl::span<const int64_t> zero_points,
+    gsl::span<const ONNX_NAMESPACE::TensorProto_DataType> zero_point_types,
+    gsl::span<const float> scales,
+    size_t graph_output_index,
+    bool use_contrib_qdq) {
+  const size_t num_nodes = zero_points.size();
+  bool valid_inputs = (num_nodes >= 4) &&
+                      (zero_point_types.size() == num_nodes) &&
+                      (scales.size() == num_nodes) &&
+                      (graph_output_index < 4);
+  if (!valid_inputs) {
+    ORT_THROW("Invalid inputs for call to BuildDoubleQDQTestCaseWithDuplicateLastDQs()");
+  }
+
+  return [=](ModelTestBuilder& builder) {
+    // TODO(adrianlizarraga): Clean up ModelTestBuilder functions (like MakeInput) to work with gsl::span inputs.
+    // For now, we have to copy data into a std::vector if we want this outer function to take in span inputs.
+    std::vector<int64_t> input_shape_copy(input_shape.begin(), input_shape.end());
+    std::vector<float> input_data_copy(input_data.begin(), input_data.end());
+    auto* input_arg = builder.MakeInput<float>(input_shape_copy, input_data_copy);
+    InlinedVector<NodeArg*> node_outputs(num_nodes);
+
+    for (size_t i = 0; i < num_nodes; i++) {
+      if (i == graph_output_index || i >= 3) {
+        node_outputs[i] = builder.MakeOutput();
+      } else {
+        node_outputs[i] = builder.MakeIntermediate();
+      }
+    }
+
+    builder.AddQuantizeLinearNode(input_arg, scales[0], zero_points[0], zero_point_types[0], node_outputs[0],
+                                  use_contrib_qdq);
+    builder.AddDequantizeLinearNode(node_outputs[0], scales[1], zero_points[1], zero_point_types[1], node_outputs[1],
+                                    use_contrib_qdq);
+    builder.AddQuantizeLinearNode(node_outputs[1], scales[2], zero_points[2], zero_point_types[2], node_outputs[2],
+                                  use_contrib_qdq);
+
+    for (size_t i = 3; i < num_nodes; i++) {
+      builder.AddDequantizeLinearNode(node_outputs[2], scales[i], zero_points[i], zero_point_types[i],
+                                      node_outputs[i], use_contrib_qdq);
+    }
+  };
 }
 
 }  // namespace test

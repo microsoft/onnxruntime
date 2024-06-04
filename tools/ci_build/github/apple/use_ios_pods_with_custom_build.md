@@ -18,7 +18,7 @@ Run the script:
 python3 tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
   --staging-dir /path/to/staging/dir \
   --include-ops-by-config /path/to/custom.config \
-  --build-settings-file tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
+  --build-settings-file tools/ci_build/github/apple/default_full_apple_framework_build_settings.json
 ```
 
 This will do a custom build and create the pod package files for it in `/path/to/staging/dir`.
