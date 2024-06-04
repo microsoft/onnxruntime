@@ -34,7 +34,7 @@ TEST(CApiTensorTest, load_simple_float_tensor_not_enough_space) {
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
 
   ASSERT_STATUS_NOT_OK(
-      utils::TensorProtoToOrtValue(Env::Default(), nullptr, p,
+      utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
                                    MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
                                    value));
 }
@@ -55,7 +55,7 @@ TEST(CApiTensorTest, load_simple_float_tensor_membuffer) {
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   ASSERT_STATUS_OK(
-      utils::TensorProtoToOrtValue(Env::Default(), nullptr, p,
+      utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
                                    MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
                                    value));
   float* real_output;
@@ -83,7 +83,7 @@ TEST(CApiTensorTest, load_simple_float_tensor_allocator) {
   AllocatorPtr tmp_allocator = std::make_shared<CPUAllocator>();
   OrtValue value;
 
-  ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), nullptr, p, tmp_allocator, value));
+  ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p, tmp_allocator, value));
 
   float* real_output;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
@@ -139,7 +139,7 @@ static void run_external_data_test() {
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(
-      Env::Default(), nullptr, p, MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value));
+      Env::Default(), std::filesystem::path(), p, MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value));
 
   float* real_output;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
@@ -190,7 +190,7 @@ TEST(CApiTensorTest, load_huge_tensor_with_external_data) {
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
   ASSERT_STATUS_OK(
-      utils::TensorProtoToOrtValue(Env::Default(), nullptr, p,
+      utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
                                    MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value));
 
   int* buffer;

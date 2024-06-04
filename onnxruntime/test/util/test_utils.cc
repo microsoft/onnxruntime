@@ -233,7 +233,7 @@ void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
 #if !defined(DISABLE_SPARSE_TENSORS)
 void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies) {
   using namespace ONNX_NAMESPACE;
-  Path model_path;
+  std::filesystem::path model_path;
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> ind_span;
   std::vector<int64_t> converted_indices;

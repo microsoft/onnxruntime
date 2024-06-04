@@ -615,7 +615,7 @@ class InferenceSession {
     return !custom_schema_registries_.empty();
   }
 
-  common::Status SaveToOrtFormat(const PathString& filepath) const;
+  common::Status SaveToOrtFormat(const std::filesystem::path& filepath) const;
 #endif
 
   /**

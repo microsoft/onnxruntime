@@ -174,7 +174,7 @@ class Model {
   const ModelMetaData& MetaData() const noexcept;
 
   // Gets the path from which the model was loaded, if any.
-  const Path& ModelPath() const noexcept { return model_path_; }
+  const std::filesystem::path& ModelPath() const noexcept { return model_path_; }
 
   // Get model's main graph.
   Graph& MainGraph() noexcept;
@@ -199,14 +199,16 @@ class Model {
   static common::Status Save(Model& model, int fd);
 
   // Save the model to file using an external file for initializers larger than the given threshold (in bytes).
+  // external_file_name must be a UTF-8 string
   static common::Status SaveWithExternalInitializers(Model& model,
-                                                     const PathString& file_path,
+                                                     const std::filesystem::path& file_path,
                                                      const std::string& external_file_name,
                                                      size_t initializer_size_threshold);
 
+  // external_file_name must be a UTF-8 string
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
-                                                     const PathString& file_path,
+                                                     const std::filesystem::path& file_path,
                                                      const std::string& external_file_name,
                                                      size_t initializer_size_threshold);
 
@@ -332,7 +334,7 @@ class Model {
   ModelMetaData model_metadata_;
 
   // Path to model file. May be empty.
-  const Path model_path_;
+  const std::filesystem::path model_path_;
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;

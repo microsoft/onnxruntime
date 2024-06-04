@@ -277,7 +277,7 @@ const std::string& NodeUnit::OpType() const noexcept { return target_node_.OpTyp
 const std::string& NodeUnit::Name() const noexcept { return target_node_.Name(); }
 int NodeUnit::SinceVersion() const noexcept { return target_node_.SinceVersion(); }
 NodeIndex NodeUnit::Index() const noexcept { return target_node_.Index(); }
-const Path& NodeUnit::ModelPath() const noexcept { return target_node_.ModelPath(); }
+const std::filesystem::path& NodeUnit::ModelPath() const noexcept { return target_node_.ModelPath(); }
 ProviderType NodeUnit::GetExecutionProviderType() const noexcept { return target_node_.GetExecutionProviderType(); }
 
 void NodeUnit::InitForSingleNode() {

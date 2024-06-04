@@ -89,7 +89,7 @@ struct SessionOptions {
   //
   // If session config value is not set, it will be assumed to be ONNX
   // unless the filepath ends in '.ort' (case insensitive).
-  std::basic_string<ORTCHAR_T> optimized_model_filepath;
+  std::filesystem::path optimized_model_filepath;
 
   // enable the memory pattern optimization.
   // The idea is if the input shapes are the same, we could trace the internal memory allocation

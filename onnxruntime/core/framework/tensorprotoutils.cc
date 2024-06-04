@@ -6,7 +6,7 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
-
+#include <filesystem>
 #if defined(__wasm__)
 #include <emscripten.h>
 #endif
@@ -165,7 +165,7 @@ DEFINE_INT4_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Int4x2)
 DEFINE_INT4_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(UInt4x2)
 
 static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                  const ORTCHAR_T* tensor_proto_dir,
+                                  const std::filesystem::path& tensor_proto_dir,
                                   std::basic_string<ORTCHAR_T>& external_file_path,
                                   onnxruntime::FileOffsetType& file_offset,
                                   SafeInt<size_t>& tensor_byte_size) {
@@ -180,16 +180,7 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
 
   const auto& location = external_data_info->GetRelPath();
 
-  if (location == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
-    external_file_path = location;
-  } else {
-    if (tensor_proto_dir != nullptr) {
-      external_file_path = onnxruntime::ConcatPathComponent(tensor_proto_dir,
-                                                            external_data_info->GetRelPath());
-    } else {
-      external_file_path = external_data_info->GetRelPath();
-    }
-  }
+  external_file_path = location == onnxruntime::utils::kTensorProtoMemoryAddressTag ? std::filesystem::path(location) : (tensor_proto_dir / location);
 
   ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   const size_t external_data_length = external_data_info->GetLength();
@@ -207,7 +198,7 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
 // then uses the current directory instead.
 // This function does not unpack string_data of an initializer tensor
 Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                 const ORTCHAR_T* tensor_proto_dir,
+                                 const std::filesystem::path& tensor_proto_dir,
                                  std::vector<uint8_t>& unpacked_tensor) {
   std::basic_string<ORTCHAR_T> external_file_path;
   onnxruntime::FileOffsetType file_offset;
@@ -231,7 +222,7 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
 
 // TODO(unknown): Change the current interface to take Path object for model path
 // so that validating and manipulating path for reading external data becomes easy
-Status TensorProtoToOrtValueImpl(const Env& env, const ORTCHAR_T* model_path,
+Status TensorProtoToOrtValueImpl(const Env& env, const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  const MemBuffer* m, AllocatorPtr alloc,
                                  OrtValue& value) {
@@ -276,7 +267,7 @@ namespace utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
-                                               const ORTCHAR_T* tensor_proto_dir,
+                                               const std::filesystem::path& tensor_proto_dir,
                                                size_t expected_num_elements, size_t element_size,
                                                /*out*/ unsigned char* p_data) {
   ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");
@@ -292,7 +283,7 @@ static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto
 
 template <typename T>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
-                                    const ORTCHAR_T* tensor_proto_dir, size_t expected_num_elements,
+                                    const std::filesystem::path& tensor_proto_dir, size_t expected_num_elements,
                                     /*out*/ T* p_data) {
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
 
@@ -300,34 +291,34 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
                                           reinterpret_cast<unsigned char*>(p_data));
 }
 
-#define DEFINE_INT4_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(INT4_TYPE)                                                      \
-  template <>                                                                                                        \
-  Status UnpackTensorWithExternalData<INT4_TYPE>(const ONNX_NAMESPACE::TensorProto& tensor,                          \
-                                                 const ORTCHAR_T* tensor_proto_dir, size_t expected_num_elements,    \
-                                                 /*out*/ INT4_TYPE* p_data) {                                        \
-    static_assert(std::is_trivially_copyable<INT4_TYPE>::value, "T must be trivially copyable");                     \
-                                                                                                                     \
-    ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");                                                           \
-    std::vector<uint8_t> unpacked_tensor;                                                                            \
-    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor));                       \
-                                                                                                                     \
-    size_t num_packed_pairs = INT4_TYPE::CalcNumInt4Pairs(expected_num_elements);                                    \
-    ORT_RETURN_IF_NOT(num_packed_pairs == unpacked_tensor.size(), "Unexpected number of packed int4 pairs");         \
-                                                                                                                     \
-    gsl::span<const INT4_TYPE> src_span = gsl::make_span(reinterpret_cast<const INT4_TYPE*>(unpacked_tensor.data()), \
-                                                         num_packed_pairs);                                          \
-    gsl::span<INT4_TYPE> dst_span = gsl::make_span(p_data, expected_num_elements);                                   \
-                                                                                                                     \
-    std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);                                                 \
-                                                                                                                     \
-    return Status::OK();                                                                                             \
+#define DEFINE_INT4_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(INT4_TYPE)                                                               \
+  template <>                                                                                                                 \
+  Status UnpackTensorWithExternalData<INT4_TYPE>(const ONNX_NAMESPACE::TensorProto& tensor,                                   \
+                                                 const std::filesystem::path& tensor_proto_dir, size_t expected_num_elements, \
+                                                 /*out*/ INT4_TYPE* p_data) {                                                 \
+    static_assert(std::is_trivially_copyable<INT4_TYPE>::value, "T must be trivially copyable");                              \
+                                                                                                                              \
+    ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");                                                                    \
+    std::vector<uint8_t> unpacked_tensor;                                                                                     \
+    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor));                                \
+                                                                                                                              \
+    size_t num_packed_pairs = INT4_TYPE::CalcNumInt4Pairs(expected_num_elements);                                             \
+    ORT_RETURN_IF_NOT(num_packed_pairs == unpacked_tensor.size(), "Unexpected number of packed int4 pairs");                  \
+                                                                                                                              \
+    gsl::span<const INT4_TYPE> src_span = gsl::make_span(reinterpret_cast<const INT4_TYPE*>(unpacked_tensor.data()),          \
+                                                         num_packed_pairs);                                                   \
+    gsl::span<INT4_TYPE> dst_span = gsl::make_span(p_data, expected_num_elements);                                            \
+                                                                                                                              \
+    std::memcpy(dst_span.data(), src_span.data(), num_packed_pairs);                                                          \
+                                                                                                                              \
+    return Status::OK();                                                                                                      \
   }
 
 DEFINE_INT4_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(Int4x2)
 DEFINE_INT4_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(UInt4x2)
 
 #define INSTANTIATE_UNPACK_EXTERNAL_TENSOR(type) \
-  template Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto&, const ORTCHAR_T*, size_t, type*);
+  template Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto&, const std::filesystem::path&, size_t, type*);
 
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(float)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(double)
@@ -352,7 +343,7 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E5M2FNUZ)
 
 template <>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*/,
-                                    const ORTCHAR_T* /*tensor_proto_dir*/, size_t /*expected_num_elements*/,
+                                    const std::filesystem::path& /*tensor_proto_dir*/, size_t /*expected_num_elements*/,
                                     /*out*/ std::string* /*p_data*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "External data type cannot be STRING.");
 }
@@ -705,13 +696,13 @@ DEFINE_INT4_UNPACK_TENSOR_IMPL(UInt4x2, TensorProto_DataType_UINT4)
 // Uses the model path to construct the full path for loading external data. In case when model_path is empty
 // it uses current directory.
 template <typename T>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
                     /*out*/ T* p_data, size_t expected_num_elements) {
 #if !defined(ORT_MINIMAL_BUILD)
   if (HasExternalData(tensor)) {
     return UnpackTensorWithExternalData(
         tensor,
-        model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(),
+        model_path.empty() ? std::filesystem::path() : model_path.parent_path(),
         expected_num_elements,
         p_data);
   }
@@ -727,7 +718,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model
 
 // instantiate the UnpackTensor variant that supports external data
 #define INSTANTIATE_UNPACK_TENSOR(type) \
-  template Status UnpackTensor(const ONNX_NAMESPACE::TensorProto&, const Path&, type* p_data, size_t);
+  template Status UnpackTensor(const ONNX_NAMESPACE::TensorProto&, const std::filesystem::path&, type* p_data, size_t);
 
 INSTANTIATE_UNPACK_TENSOR(float)
 INSTANTIATE_UNPACK_TENSOR(double)
@@ -885,17 +876,17 @@ static void DeleteCharArray(void* param) noexcept {
 
 #if !defined(__wasm__)
 static Status GetFileContent(
-    const Env& env, const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+    const Env& env, const std::filesystem::path& file_path, FileOffsetType offset, size_t length,
     void*& raw_buffer, OrtCallback& deleter) {
   // query length if it is 0
   if (length == 0) {
-    ORT_RETURN_IF_ERROR(env.GetFileLength(file_path, length));
+    length = std::filesystem::file_size(file_path);
   }
 
   // first, try to map into memory
   {
     Env::MappedMemoryPtr mapped_memory{};
-    auto status = env.MapFileIntoMemory(file_path, offset, length, mapped_memory);
+    auto status = env.MapFileIntoMemory(file_path.native().c_str(), offset, length, mapped_memory);
     if (status.IsOK()) {
       deleter = mapped_memory.get_deleter().callback;
       raw_buffer = mapped_memory.release();
@@ -906,7 +897,7 @@ static Status GetFileContent(
   // if that fails, try to copy
   auto buffer = std::make_unique<char[]>(length);
   ORT_RETURN_IF_ERROR(env.ReadFileIntoBuffer(
-      file_path, offset, length, gsl::make_span(buffer.get(), length)));
+      file_path.native().c_str(), offset, length, gsl::make_span(buffer.get(), length)));
 
   deleter = OrtCallback{DeleteCharArray, buffer.get()};
   raw_buffer = buffer.release();
@@ -914,12 +905,12 @@ static Status GetFileContent(
 }
 #endif
 
-Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
+Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
-  if (model_path != nullptr) {
+  if (!model_path.empty()) {
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
   }
   const ORTCHAR_T* t_prot_dir_s = tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str();
@@ -1036,7 +1027,7 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
  * @param tensor        pre-allocated tensor object, where we store the data
  * @return
  */
-Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
+Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_path,
                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            Tensor& tensor) {
   // Validate tensor compatibility
@@ -1125,13 +1116,13 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   return Status::OK();
 }
 
-Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* model_path,
+Status TensorProtoToOrtValue(const Env& env, const std::filesystem::path& model_path,
                              const ONNX_NAMESPACE::TensorProto& tensor_proto,
                              const MemBuffer& m, OrtValue& value) {
   return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, &m, nullptr, value);
 }
 
-Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* model_path,
+Status TensorProtoToOrtValue(const Env& env, const std::filesystem::path& model_path,
                              const ONNX_NAMESPACE::TensorProto& tensor_proto,
                              AllocatorPtr alloc, OrtValue& value) {
   return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, nullptr, alloc, value);
@@ -1207,7 +1198,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
 }
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
-                                              const Path& model_path,
+                                              const std::filesystem::path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name) {
   ORT_RETURN_IF_NOT(node.attribute_size() > 0, "Constant node: ", node.name(), " has no data attributes");
 
@@ -1266,7 +1257,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 }
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
-                                              const Path& model_path,
+                                              const std::filesystem::path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor) {
   return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
 }
@@ -1274,7 +1265,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 #if !defined(DISABLE_SPARSE_TENSORS)
 static Status CopySparseData(size_t n_sparse_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
-                             const Path& model_path,
+                             const std::filesystem::path& model_path,
                              gsl::span<const int64_t> dims,
                              std::function<void(size_t from_idx, size_t to_idx)> copier) {
   Status status = Status::OK();
@@ -1393,7 +1384,7 @@ static Status CopySparseData(size_t n_sparse_elements,
 }
 
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
-                                                   const Path& model_path,
+                                                   const std::filesystem::path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense) {
   Status status = Status::OK();
 
@@ -1591,7 +1582,7 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
 }
 
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense_proto,
-                                              const Path& model_path,
+                                              const std::filesystem::path& model_path,
                                               ONNX_NAMESPACE::SparseTensorProto& result) {
   ORT_ENFORCE(HasDataType(dense_proto), "Must have a valid data type");
 
@@ -1699,7 +1690,7 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
   }
 
 Status UnpackInitializerData(const onnx::TensorProto& initializer,
-                             const Path& model_path,
+                             const std::filesystem::path& model_path,
                              std::vector<uint8_t>& unpacked_tensor) {
   // TODO, if std::vector does not use a custom allocator, the default std::allocator will
   // allocation the memory aligned to std::max_align_t, need look into allocating
@@ -1707,7 +1698,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
   if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
         initializer,
-        (model_path.IsEmpty() || model_path.ParentPath().IsEmpty()) ? nullptr : model_path.ParentPath().ToPathString().c_str(),
+        (model_path.empty() || model_path.parent_path().empty()) ? std::filesystem::path() : model_path.parent_path(),
         unpacked_tensor));
     return Status::OK();
   }
@@ -1746,7 +1737,7 @@ Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                              std::vector<uint8_t>& unpacked_tensor) {
   ORT_RETURN_IF(initializer.data_location() == TensorProto_DataLocation_EXTERNAL,
                 "The given initializer contains external data");
-  return UnpackInitializerData(initializer, Path(), unpacked_tensor);
+  return UnpackInitializerData(initializer, std::filesystem::path(), unpacked_tensor);
 }
 
 }  // namespace utils

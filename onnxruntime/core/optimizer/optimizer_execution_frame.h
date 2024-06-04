@@ -24,13 +24,13 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
    public:
     Info(const std::vector<const Node*>& nodes,
          const InitializedTensorSet& initialized_tensor_set,
-         const Path& model_path,
+         const std::filesystem::path& model_path,
          const IExecutionProvider& execution_provider,
          const std::function<bool(const std::string&)>& is_sparse_initializer_func);
 
     Info(const std::vector<const Node*>& nodes,
          const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
-         const Path& model_path,
+         const std::filesystem::path& model_path,
          const IExecutionProvider& execution_provider,
          const std::function<bool(const std::string&)>& is_sparse_initializer_func);
 
