@@ -880,7 +880,8 @@ static Status GetFileContent(
     void*& raw_buffer, OrtCallback& deleter) {
   // query length if it is 0
   if (length == 0) {
-    length = std::filesystem::file_size(file_path);
+    // The return type of std::filesystem::file_size is uintmax_t which could be bigger than size_t
+    length = narrow<size_t>(std::filesystem::file_size(file_path));
   }
 
   // first, try to map into memory
@@ -913,11 +914,10 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
   if (!model_path.empty()) {
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
   }
-  const ORTCHAR_T* t_prot_dir_s = tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str();
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
-  ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, t_prot_dir_s, external_data_file_path, file_offset,
+  ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset,
                                           raw_data_safe_len));
 
   if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
