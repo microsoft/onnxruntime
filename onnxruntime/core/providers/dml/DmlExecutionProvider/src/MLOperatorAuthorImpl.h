@@ -283,7 +283,7 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
  public:
     OnnxTensorWrapper() = default;
 
-    OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::Path& modelPath);
+    OnnxTensorWrapper(onnx::TensorProto* impl, const std::filesystem::path& modelPath);
 
     uint32_t STDMETHODCALLTYPE GetDimensionCount() const noexcept override;
 
