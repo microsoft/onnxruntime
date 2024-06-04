@@ -20,7 +20,7 @@ namespace Dml
         DmlRuntimeFusedGraphKernel(
             const onnxruntime::OpKernelInfo& kernelInfo,
             std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
-            const onnxruntime::Path& modelPath,
+            const std::filesystem::path& modelPath,
             std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
             std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
             std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,
@@ -314,7 +314,7 @@ namespace Dml
 
         mutable std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         std::shared_ptr<const onnxruntime::IndexedSubGraph> m_indexedSubGraph;
-        const onnxruntime::Path& m_modelPath;
+        const std::filesystem::path& m_modelPath;
 
         std::vector<std::shared_ptr<onnxruntime::Node>> m_subgraphNodes;
         std::vector<const onnxruntime::NodeArg*> m_subgraphInputs;
@@ -341,7 +341,7 @@ namespace Dml
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
-        const onnxruntime::Path& modelPath,
+        const std::filesystem::path& modelPath,
         std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
         std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
         std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,
