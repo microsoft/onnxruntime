@@ -191,19 +191,24 @@ stages:
           createLogFile: true
 
       # For CPU job, tests are run in the same machine as building
-      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
-        - ${{ if eq(parameters.buildJava, 'true') }}:
-          - template: make_java_win_binaries.yml
-            parameters:
-              msbuildPlatform: ${{ parameters.msbuildPlatform }}
-              java_artifact_id: ${{ parameters.java_artifact_id }}
+      - ${{ if eq(parameters.buildJava, 'true') }}:
+        - template: make_java_win_binaries.yml
+          parameters:
+            msbuildPlatform: ${{ parameters.msbuildPlatform }}
+            java_artifact_id: ${{ parameters.java_artifact_id }}
+            ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
+              buildOnly: false
+            # When it is a GPU build, we only assemble the java binaries, testing will be done in the later stage with GPU machine
+            ${{ else }}:
+              buildOnly: true
 
-          - task: PublishBuildArtifacts@1
-            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-            displayName: 'Publish Java temp binaries'
-            inputs:
-              pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-              artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Java temp binaries'
+          inputs:
+            pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+            artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+        # All GPU builds will be tested in the next stage with GPU machine
+      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
         - task: PythonScript@0
           displayName: 'test'
           condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
@@ -307,9 +312,11 @@ stages:
       - template: component-governance-component-detection-steps.yml
         parameters :
           condition : 'succeeded'
-  - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+- ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+  - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
+    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
+    jobs:
     - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
-      dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
       workspace:
         clean: all
       pool: ${{ parameters.ort_build_pool_name }}
@@ -384,16 +391,10 @@ stages:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
             arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
             workingDirectory: '$(Build.BinariesDirectory)'
-
+# Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
         - ${{ if eq(parameters.buildJava, 'true') }}:
           - template: make_java_win_binaries.yml
             parameters:
               msbuildPlatform: ${{ parameters.msbuildPlatform }}
               java_artifact_id: ${{ parameters.java_artifact_id }}
-
-          - task: PublishBuildArtifacts@1
-            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-            displayName: 'Publish Java temp binaries'
-            inputs:
-              pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-              artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+              buildOnly: false

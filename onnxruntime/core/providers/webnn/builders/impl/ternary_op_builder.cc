@@ -18,6 +18,8 @@ class TernaryOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -40,6 +42,42 @@ Status TernaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
+}
+
+bool TernaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                              const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // condition data type
+  int32_t input1_type;  // X data type
+  int32_t input2_type;  // Y data type
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      !GetType(*input_defs[2], input2_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
+  // WebNN CPU backend doesn't support uint64 X, Y data type for where.
+  if (device_type == WebnnDeviceType::CPU && op_type == "Where") {
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
+  }
+  // ONNX's condition data type is bool which is same as WebNN.
+  // Only need to check X, Y data types.
+  if (!IsSupportedDataType(input1_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input1_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (input1_type != input2_type) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input X, Y data types should be the same.";
+    return false;
+  }
+
+  return true;
 }
 
 void CreateTernaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

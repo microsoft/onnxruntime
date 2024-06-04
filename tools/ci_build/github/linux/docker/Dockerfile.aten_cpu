@@ -1,4 +1,4 @@
-FROM quay.io/pypa/manylinux2014_x86_64:latest
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_ubi8_gcc12:20240531.1
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps_aten.sh && rm -rf /tmp/scripts

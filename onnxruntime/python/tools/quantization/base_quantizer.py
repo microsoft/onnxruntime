@@ -339,6 +339,14 @@ class BaseQuantizer:
                             f"{q_weight_data.tobytes()[:10]}, got {check.tobytes()[:10]} and shape={weight.shape}"
                             f"\nraw={str(q_weight_initializer)[:200]}."
                         )
+            elif qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
+                # TODO: Use simpler make_tensor call when ONNX bug that does not store negative weights packed
+                # within int32_data is fixed.
+                # q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, q_weight_data)
+                packed_data = onnx.helper.pack_float32_to_4bit(q_weight_data.flatten(), qType == onnx.TensorProto.INT4)
+                q_weight_initializer = onnx.helper.make_tensor(
+                    q_weight_name, qType, weight.dims, packed_data.tobytes(), raw=True
+                )
             else:
                 q_weight_data = np.asarray(q_weight_data, dtype=onnx.helper.tensor_dtype_to_np_dtype(qType)).reshape(
                     weight.dims
@@ -396,7 +404,10 @@ class BaseQuantizer:
 
         symmetric = quant_overrides_for_channels[0].get(
             "symmetric",
-            (self.is_weight_symmetric or weight_qType in (onnx.TensorProto.INT8, onnx.TensorProto.FLOAT8E4M3FN)),
+            (
+                self.is_weight_symmetric
+                or weight_qType in (onnx.TensorProto.INT8, onnx.TensorProto.FLOAT8E4M3FN, onnx.TensorProto.INT4)
+            ),
         )
         reduce_range = quant_overrides_for_channels[0].get("reduce_range", self.reduce_range and reduce_range)
         zero_point_list = []
@@ -447,7 +458,8 @@ class BaseQuantizer:
             quantized_per_channel_data_list.append(quantized_per_channel_data)
 
         # combine per_channel_data into one
-        reshape_dims = list(weights.shape)  # deep copy
+        weights_shape = list(weights.shape)
+        reshape_dims = list(weights_shape)  # deep copy
         reshape_dims[channel_axis] = 1  # only one per channel for reshape
         quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
         for i in range(1, len(quantized_per_channel_data_list)):
@@ -470,12 +482,26 @@ class BaseQuantizer:
         self.model.initializer_extend([scale_initializer, zero_initializer])
 
         if not keep_float_weight:
-            quantized_weights = np.asarray(
-                quantized_weights,
-                dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_qType],
-            ).reshape(initializer.dims)
-            q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
-            self.model.initializer_extend([q_weight_initializer])
+            if weight_qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
+                # TODO: Use simpler make_tensor call when ONNX bug that does not store negative weights packed
+                # within int32_data is fixed.
+                # q_weight_initializer = onnx.helper.make_tensor(
+                #     q_weight_name, weight_qType, weights_shape, quantized_weights
+                # )
+                packed_data = onnx.helper.pack_float32_to_4bit(
+                    quantized_weights.flatten(), weight_qType == onnx.TensorProto.INT4
+                )
+                q_weight_initializer = onnx.helper.make_tensor(
+                    q_weight_name, weight_qType, weights_shape, packed_data.tobytes(), raw=True
+                )
+                self.model.initializer_extend([q_weight_initializer])
+            else:
+                quantized_weights = np.asarray(
+                    quantized_weights,
+                    dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_qType],
+                ).reshape(initializer.dims)
+                q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
+                self.model.initializer_extend([q_weight_initializer])
 
         return q_weight_name, zp_name, scale_name
 
