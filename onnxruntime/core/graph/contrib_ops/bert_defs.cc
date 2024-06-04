@@ -1348,8 +1348,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
               AttributeProto::INT,
               OPTIONAL_VALUE)
-        .Attr("is_batch_inputs_packed",
-              "ragged batch inputs or not. Default value is 0"
+        .Attr("is_packed_batching",
+              "ragged batch inputs or not. Default value is 0",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Input(0,
