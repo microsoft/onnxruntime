@@ -387,12 +387,6 @@ struct FunctionProto final {
   const std::string& name() const { return g_host->FunctionProto__name(this); }
   void set_name(const std::string& name) { g_host->FunctionProto__set_name(this, name); }
 
-  int since_version() const { return g_host->FunctionProto__since_version(this); }
-  void set_since_version(int since_version) { g_host->FunctionProto__set_since_version(this, since_version); }
-
-  const OperatorStatus& status() const { return g_host->FunctionProto__status(this); }
-  void set_status(const OperatorStatus& status) { g_host->FunctionProto__set_status(this, status); }
-
   bool has_doc_string() const { return g_host->FunctionProto__has_doc_string(this); }
   const std::string& doc_string() const { return g_host->FunctionProto__doc_string(this); }
   void set_doc_string(const std::string& doc_string) { g_host->FunctionProto__set_doc_string(this, doc_string); }
@@ -402,19 +396,16 @@ struct FunctionProto final {
   void set_domain(const std::string& domain) { g_host->FunctionProto__set_domain(this, domain); }
 
   const std::string& input(int index) const { return g_host->FunctionProto__input(this, index); }
-  std::vector<std::string>* mutable_input() { return g_host->FunctionProto__mutable_input(this); }
   std::string* mutable_input(int index) { return g_host->FunctionProto__mutable_input(this, index); }
   int input_size() const { return g_host->FunctionProto__input_size(this); }
   void add_input(const std::string& value) { g_host->FunctionProto__add_input(this, value); }
 
   const std::string& output(int index) const { return g_host->FunctionProto__output(this, index); }
-  std::vector<std::string>* mutable_output() { return g_host->FunctionProto__mutable_output(this); }
   std::string* mutable_output(int index) { return g_host->FunctionProto__mutable_output(this, index); }
   int output_size() const { return g_host->FunctionProto__output_size(this); }
   void add_output(const std::string& value) { g_host->FunctionProto__add_output(this, value); }
 
   const std::string& attribute(int index) const { return g_host->FunctionProto__attribute(this, index); }
-  std::vector<std::string>* mutable_attribute() { return g_host->FunctionProto__mutable_attribute(this); }
   std::string* mutable_attribute(int index) { return g_host->FunctionProto__mutable_attribute(this, index); }
   int attribute_size() const { return g_host->FunctionProto__attribute_size(this); }
   void add_attribute(const std::string& value) { g_host->FunctionProto__add_attribute(this, value); }

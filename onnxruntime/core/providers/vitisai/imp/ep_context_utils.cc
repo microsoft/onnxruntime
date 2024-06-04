@@ -17,8 +17,8 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
   if (p_meta_def) {
     p_func_proto->set_name(p_meta_def->name());
     p_func_proto->set_domain(p_meta_def->domain());
-    p_func_proto->set_since_version(p_meta_def->since_version());
-    p_func_proto->set_status(p_meta_def->status());
+    //p_func_proto->set_since_version(p_meta_def->since_version());
+    //p_func_proto->set_status(p_meta_def->status());
     for (const auto& input : p_meta_def->inputs()) {
       p_func_proto->add_input(input);
     }
@@ -82,8 +82,8 @@ std::unique_ptr<IndexedSubGraph> ConvertFunctionProtoToIndexedSubGraph(
     auto p_meta_def = IndexedSubGraph_MetaDef::Create();
     p_meta_def->name() = p_func_proto->name();
     p_meta_def->domain() = p_func_proto->domain();
-    p_meta_def->since_version() = p_func_proto->since_version();
-    p_meta_def->status() = p_func_proto->status();
+    //p_meta_def->since_version() = p_func_proto->since_version();
+    //p_meta_def->status() = p_func_proto->status();
     auto& meta_def_inputs = p_meta_def->inputs();
     for (int i = 0; i < isg_meta_def_inputs_size; i++) {
       meta_def_inputs.push_back(p_func_proto->input(i));

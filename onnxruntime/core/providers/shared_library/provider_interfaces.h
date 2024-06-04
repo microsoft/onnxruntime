@@ -503,12 +503,6 @@ struct ProviderHost {
   virtual const std::string& FunctionProto__name(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
   virtual void FunctionProto__set_name(ONNX_NAMESPACE::FunctionProto* p, const ::std::string& name) = 0;
 
-  virtual int FunctionProto__since_version(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
-  virtual void FunctionProto__set_since_version(ONNX_NAMESPACE::FunctionProto* p, int since_version) = 0;
-
-  virtual const ONNX_NAMESPACE::OperatorStatus& FunctionProto__status(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
-  virtual void FunctionProto__set_status(ONNX_NAMESPACE::FunctionProto* p, const ONNX_NAMESPACE::OperatorStatus& status) = 0;
-
   virtual bool FunctionProto__has_doc_string(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual const std::string& FunctionProto__doc_string(const ONNX_NAMESPACE::FunctionProto* p) const = 0;
   virtual void FunctionProto__set_doc_string(ONNX_NAMESPACE::FunctionProto* p, const ::std::string& doc_string) = 0;
@@ -518,19 +512,16 @@ struct ProviderHost {
   virtual void FunctionProto__set_domain(ONNX_NAMESPACE::FunctionProto* p, const ::std::string& domain) = 0;
 
   virtual const std::string& FunctionProto__input(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
-  virtual std::vector<std::string>* FunctionProto__mutable_input(ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual std::string* FunctionProto__mutable_input(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
   virtual int FunctionProto__input_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual void FunctionProto__add_input(ONNX_NAMESPACE::FunctionProto* p, const std::string& value) = 0;
 
   virtual const std::string& FunctionProto__output(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
-  virtual std::vector<std::string>* FunctionProto__mutable_output(ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual std::string* FunctionProto__mutable_output(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
   virtual int FunctionProto__output_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual void FunctionProto__add_output(ONNX_NAMESPACE::FunctionProto* p, const std::string& value) = 0;
 
   virtual const std::string& FunctionProto__attribute(const ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
-  virtual std::vector<std::string>* FunctionProto__mutable_attribute(ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual std::string* FunctionProto__mutable_attribute(ONNX_NAMESPACE::FunctionProto* p, int index) = 0;
   virtual int FunctionProto__attribute_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual void FunctionProto__add_attribute(ONNX_NAMESPACE::FunctionProto* p, const std::string& value) = 0;
