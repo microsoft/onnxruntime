@@ -537,9 +537,7 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
   };
 
   // Use the model's file name instead of the entire path to avoid cache regeneration if path changes
-  const auto& model_path_components = main_graph.ModelPath().GetComponents();
-
-  if (!main_graph.ModelPath().empty()) {
+  if (main_graph.ModelPath().has_filename()) {
     std::string model_name = PathToUTF8String(main_graph.ModelPath().filename());
 
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
