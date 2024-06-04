@@ -102,8 +102,8 @@ class TrainingBlock(blocks.Block):
     starting from the output of the loss function.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, enable_checker = True):
+        super().__init__(enable_checker)
         self._requires_grad = set()
         self._frozen_params = set()
         self._parameters = None

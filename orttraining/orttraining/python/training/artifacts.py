@@ -49,7 +49,7 @@ def generate_artifacts(
     additional_output_names: Optional[List[str]] = None,
     nominal_checkpoint: bool = False,
     loss_input_names: Optional[List[str]] = None,
-    enable_shape_inference: bool = True,
+    enable_large_model: bool = False,
 ) -> None:
     """Generates artifacts required for training with ORT training api.
 
@@ -82,8 +82,8 @@ def generate_artifacts(
         loss_input_names: Specifies a list of input names to be used specifically for the loss computation. When provided,
             only these inputs will be passed to the loss function. If `None`, all graph outputs are passed to
             the loss function.
-        enable_shape_inference: Whether to enable shape inference on the model before generating the artifacts. Currently,
-            shape inference does not work for models > 2GB. Default is True.
+        enable_large_model: Will disable ONNX checks that fail with >2GB, such as shape inference and the ONNX checker.
+            Default is False.
     Raises:
         RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
         RuntimeError: If the optimizer provided is not one of the supported optimizers.
@@ -117,11 +117,12 @@ def generate_artifacts(
         logging.info("Custom loss block provided: %s", loss.__class__.__name__)
 
     class _TrainingBlock(onnxblock.TrainingBlock):
-        def __init__(self, _enable_shape_inference, _loss, _loss_input_names=None):
-            super().__init__()
+        def __init__(self, enable_large_model, _loss, _loss_input_names=None):
+            # if enable_large_model, then disable the ONNX checker and the shape inference
+            super().__init__(enable_checker = not enable_large_model)
             self._loss = _loss
             self._loss_input_names = _loss_input_names
-            self._enable_shape_inference = _enable_shape_inference
+            self._enable_shape_inference = not enable_large_model
 
         def build(self, *inputs_to_loss):
             # If loss_input_names is passed, only pass the specified input names to the loss function.
@@ -144,7 +145,7 @@ def generate_artifacts(
 
             return self._loss(*inputs_to_loss)
 
-    training_block = _TrainingBlock(enable_shape_inference, loss_block, loss_input_names)
+    training_block = _TrainingBlock(enable_large_model, loss_block, loss_input_names)
 
     if requires_grad is not None and frozen_params is not None and set(requires_grad).intersection(set(frozen_params)):
         raise RuntimeError(

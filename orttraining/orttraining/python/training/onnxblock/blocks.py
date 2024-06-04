@@ -28,8 +28,9 @@ class Block(ABC):
         base (onnx.ModelProto): The base model that the subclass can manipulate.
     """
 
-    def __init__(self):
+    def __init__(self, enable_checker = True):
         self.base = None
+        self.enable_checker = enable_checker
 
     @abstractmethod
     def build(self, *args, **kwargs):
@@ -47,7 +48,8 @@ class Block(ABC):
 
         output = self.build(*args, **kwargs)
 
-        onnx.checker.check_model(self.base, True)
+        if self.enable_checker:
+            onnx.checker.check_model(self.base, True)
 
         return output
 
