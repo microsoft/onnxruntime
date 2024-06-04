@@ -26,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "990217f043af7222348ca8f0301e17fa7b841781",
+          "commitHash": "595228d99e3977ac27cb79d5963adda262af99ad",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -216,7 +216,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "eb43908b02a296ea0594432f06e9d3fac288d672",
+          "commitHash": "06adf4461ac84035bee658c6cf5df39f7ab6071d",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"

@@ -6,7 +6,7 @@ onnxruntime-gpu>=1.16.2
 py3nvml
 
 # The version of cuda-python shall be compatible with installed CUDA version.
-# For example, if your CUDA version is 12.1, you can install cuda-python 12.1.
+# For demo of TensorRT excution provider and TensortRT.
 cuda-python==11.8.0
 
 # For windows, cuda-python need the following
