@@ -73,11 +73,23 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const WebnnDeviceType d
     }
   }
 
+  // WebNN CPU backend (TFLite) will enable float16 input data type soon,
+  // temporarily fallback float16 input data type for WebNN CPU.
+  if (device_type == WebnnDeviceType::CPU) {
+    const auto& input = *node.InputDefs()[0];
+
+    int32_t input_type;
+    if (!GetType(input, input_type, logger))
+      return false;
+    if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)
+      return false;
+  }
+
   return HasSupportedInputsImpl(node, device_type, logger);
 }
 
 bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
-                                           const WebnnDeviceType device_type,
+                                           const WebnnDeviceType /* device_type */,
                                            const logging::Logger& logger) const {
   // We only check the type of input 0 by default, specific op builder can override this.
   const auto& input = *node.InputDefs()[0];
@@ -86,7 +98,7 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
   if (!GetType(input, input_type, logger))
     return false;
 
-  if (!IsSupportedDataType(input_type, device_type)) {
+  if (!IsSupportedDataType(input_type, webnn_supported_data_types)) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Input type: [" << input_type
                           << "] is not supported for now";

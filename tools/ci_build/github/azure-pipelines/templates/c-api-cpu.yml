@@ -511,7 +511,7 @@ stages:
   - Windows_CI_GPU_DML_Dev
   - Windows_CI_GPU_DML_Dev_arm64
   - Linux_C_API_Packaging_CPU
-  - Linux_C_API_Packaging_Combined_CUDA
+  - Linux_C_API_Packaging_GPU
   - MacOS_C_API_Package_Publish
   condition: succeeded()
   jobs:

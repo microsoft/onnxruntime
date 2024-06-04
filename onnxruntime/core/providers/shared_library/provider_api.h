@@ -24,6 +24,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/int4.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"
@@ -68,7 +69,9 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_FLOAT8E4M3FN = 17,
   TensorProto_DataType_FLOAT8E4M3FNUZ = 18,
   TensorProto_DataType_FLOAT8E5M2 = 19,
-  TensorProto_DataType_FLOAT8E5M2FNUZ = 20
+  TensorProto_DataType_FLOAT8E5M2FNUZ = 20,
+  TensorProto_DataType_UINT4 = 21,
+  TensorProto_DataType_INT4 = 22,
 };
 
 enum TensorProto_DataLocation : int {
@@ -86,7 +89,8 @@ enum Version : int {
   IR_VERSION_2019_9_19 = 6,
   IR_VERSION_2020_5_8 = 7,
   IR_VERSION_2021_7_31 = 8,
-  IR_VERSION = 9
+  IR_VERSION_2023_5_5 = 9,
+  IR_VERSION = 10
 };
 
 enum OperatorStatus : int {
@@ -155,6 +159,8 @@ struct Path;
 struct Node;
 struct NodeArg;
 struct NodeAttributes;
+struct NodeUnitIODef;
+struct NodeUnit;
 class OpKernel;
 struct OpKernelContext;
 struct OpKernelInfo;
@@ -265,7 +271,7 @@ constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
 template <typename T>
-using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
+using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept { return g_host->CreateStatus(code, msg); }
 
@@ -345,7 +351,22 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() {
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
 #endif
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
+}
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
+}
 }  // namespace utils
+
+namespace QDQ {
+inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+GetAllNodeUnits(const GraphViewer* graph_viewer) {
+  return g_host->QDQ__GetAllNodeUnits(graph_viewer);
+}
+}  // namespace QDQ
 
 // This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.
 // So the C API (and C++) becomes available when ORT_API_MANUAL_INIT is used.
