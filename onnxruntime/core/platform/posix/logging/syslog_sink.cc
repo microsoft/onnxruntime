@@ -4,6 +4,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/capture.h"
 #include "syslog_sink.h"
+#include "date/date.h"
 
 namespace onnxruntime {
 namespace logging {
@@ -11,7 +12,7 @@ namespace logging {
 constexpr const char* SYSLOG_LEVEL = "76432";
 
 void SysLogSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
-  using std::chrono::operator<<;
+  using date::operator<<;
   std::stringstream msg;
 
   // syslog has it own timestamp but not as accurate as our timestamp. So we are going to keep both,
