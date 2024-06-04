@@ -183,9 +183,9 @@ void initialize_vitisai_ep() {
 static void set_version_info(vaip_core::OrtApiForVaip& api) {
   const char* magic = "VAIP";
   std::memcpy(reinterpret_cast<char*>(&api.magic), magic, sizeof(api.magic));
-  api.major = 1u;
-  api.minor = 0u;
-  api.patch = 0u;
+  api.major = VAIP_ORT_API_MAJOR;
+  api.minor = VAIP_ORT_API_MINOR;
+  api.patch = VAIP_ORT_API_PATCH;
 }
 
 vaip_core::OrtApiForVaip* create_org_api_hook() {
@@ -371,6 +371,11 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.get_lib_id = []() -> vaip_core::DllSafe<std::string> {
     return vaip_core::DllSafe(std::string(GIT_COMMIT_ID));
   };
+
+  the_global_api.graph_add_initialized_tensor = [](Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor) {
+    graph.AddInitializedTensor(tensor);
+  };
+
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {

@@ -315,6 +315,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_opencl_throttling' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "enable_qdq_optimizer") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_qdq_optimizer' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       } else if (key == "disable_dynamic_shapes") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {

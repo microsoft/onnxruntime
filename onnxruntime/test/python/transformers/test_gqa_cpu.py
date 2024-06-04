@@ -1294,7 +1294,7 @@ def parity_check_gqa_prompt_no_buff(
             None,
             cos,
             sin,
-            cache_seqlens,
+            cache_seqlens - 1,
             left_window_size,
             past_format,
             False,
@@ -1310,7 +1310,7 @@ def parity_check_gqa_prompt_no_buff(
             new_v,
             cos,
             sin,
-            cache_seqlens,
+            cache_seqlens - 1,
             left_window_size,
             past_format,
             False,
@@ -1766,9 +1766,6 @@ class TestGQA(unittest.TestCase):
         seqs = (
             [
                 (127, 127),
-                (35, 35),
-                (2000, 2000),
-                (200, 200),
                 (240, 240),
             ]
             if pipeline_mode

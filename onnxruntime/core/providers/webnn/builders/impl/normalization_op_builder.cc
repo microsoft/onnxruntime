@@ -25,6 +25,8 @@ class NormalizationOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                              const logging::Logger& logger) const override;
 };
 
 Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -79,10 +81,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
       options.set("axis", rank - 1);
     }
-    emscripten::val activation = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-    if (emscripten::val::null() != activation) {
-      options.set("activation", activation);
-    }
+
     output = model_builder.GetBuilder().call<emscripten::val>("batchNormalization", input, mean, variance, options);
   } else if (op_type == "LayerNormalization") {
     int64_t axis = helper.Get("axis", -1);
@@ -170,6 +169,53 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
 
   if (op_type == "BatchNormalization" && helper.Get("training_mode", 0)) {
     LOGS(logger, VERBOSE) << "BatchNormalization with training_mode set to true is not supported.";
+    return false;
+  }
+
+  return true;
+}
+
+bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                                                    const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // input data type
+  int32_t input1_type;  // scale data type
+  int32_t input2_type;  // B data type
+  int32_t input3_type;  // mean data type
+  int32_t input4_type;  // var data type
+  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
+  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
+  bool has_input4 = input_defs.size() > 3 && input_defs[4]->Exists();
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      (has_input2 && !GetType(*input_defs[2], input2_type, logger)) ||
+      (has_input3 && !GetType(*input_defs[3], input3_type, logger)) ||
+      (has_input4 && !GetType(*input_defs[4], input4_type, logger))) {
+    return false;
+  }
+
+  // WebNN batchNormalization, instanceNormalization, layerNormalization
+  // only support float32 and float16 input data types.
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = {
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+  };
+
+  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input0_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (input0_type != input1_type ||
+      (has_input2 && input0_type != input2_type) ||
+      (has_input3 && input0_type != input3_type) ||
+      (has_input4 && input0_type != input4_type)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input data types should be the same.";
     return false;
   }
 
