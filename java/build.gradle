@@ -160,13 +160,26 @@ if (cmakeBuildDir != null) {
 		include 'libs/**'
 		include 'docs/**'
 		into cmakeBuildOutputDir
-		dependsOn(allJar, sourcesJar, javadocJar, javadoc, compileTestJava)
-		var propSet = ['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'USE_COREML', 'USE_DML', 'JAVA_FULL_TEST', 'ENABLE_TRAINING_APIS']
-		for (prop in propSet) {
-			if (System.getProperty(prop) == null) {
-				System.setProperty(prop, '1')
-			}
-		}
+		dependsOn(allJar,sourcesJar,javadocJar,javadoc)
+	}
+
+    task setTestProperty() {
+        doFirst {
+            System.setProperty('USE_CUDA', '1')
+            System.setProperty('USE_ROCM', '1')
+            System.setProperty('USE_TENSORRT', '1')
+            System.setProperty('USE_DNNL', '1')
+            System.setProperty('USE_OPENVINO', '1')
+            System.setProperty('USE_COREML', '1')
+            System.setProperty('USE_DML', '1')
+            System.setProperty('JAVA_FULL_TEST', '1')
+            System.setProperty('ENABLE_TRAINING_APIS', '1')
+
+
+        }
+    }
+	task prepCmakeCheck() {
+		dependsOn(cmakeBuild,setTestProperty,testClasses,classes,compileTestJava,compileJava,spotlessJava)
 	}
 
 	task cmakeCheck(type: Copy) {
@@ -175,7 +188,6 @@ if (cmakeBuildDir != null) {
 		into cmakeBuildOutputDir
 	}
 	cmakeCheck.dependsOn check
-
 }
 
 dependencies {
@@ -191,7 +203,7 @@ processTestResources {
 
 test {
 	java {
-		dependsOn (spotlessJava)
+		dependsOn spotlessJava
 	}
 	if (System.getProperty("JAVA_FULL_TEST") != null) {
 		// Forces each test class to be run in a separate JVM,
@@ -297,4 +309,17 @@ signing {
 			sign publishing.publications.maven
 			sign publishing.publications.mavenAdo
 		}
+}
+task printDependencies {
+    doLast {
+        def taskName = 'test' // Replace with the name of your task
+        def task = tasks.findByName(taskName)
+        if (task) {
+            def dependencies = task.taskDependencies.getDependencies(task)
+            println "Dependencies of task ${taskName}:"
+            dependencies.each { println it }
+        } else {
+            println "Task '${taskName}' not found."
+        }
+    }
 }

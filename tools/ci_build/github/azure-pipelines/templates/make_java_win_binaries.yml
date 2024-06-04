@@ -17,7 +17,7 @@ steps:
         ${{ if eq(parameters.buildOnly, true) }}:
           script: |
             @echo on
-            call gradlew.bat cmakeBuild -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+            call gradlew.bat prepCmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
         workingDirectory: $(Build.SourcesDirectory)\java
 
     - task: CmdLine@2
