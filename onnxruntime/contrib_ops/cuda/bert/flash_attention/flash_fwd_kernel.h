@@ -9,15 +9,11 @@
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #endif
 
-// TODO(aciddelgado): keep or remove commented out headers?
-// #include <cmath>
-#include <cute/algorithm/copy.hpp>
-// #include <cute/algorithm/gemm.hpp>
+#include <cute/tensor.hpp>
 
 #include <cutlass/cutlass.h>
 #include <cutlass/array.h>
 #include <cutlass/numeric_types.h>
-// #include <cutlass/numeric_conversion.h>
 
 #include "contrib_ops/cuda/bert/flash_attention/block_info.h"
 #include "contrib_ops/cuda/bert/flash_attention/kernel_traits.h"
@@ -195,11 +191,11 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   // Set predicates for k bounds
   if (!Is_even_K) {
 #pragma unroll
-    for (int k = 0; k < cute::size(tQpQ); ++k) {
+    for (int k = 0; k < size(tQpQ); ++k) {
       tQpQ(k) = get<1>(tQcQ(0, 0, k)) < params.d;
     }
 #pragma unroll
-    for (int k = 0; k < cute::size(tKVpKV); ++k) {
+    for (int k = 0; k < size(tKVpKV); ++k) {
       tKVpKV(k) = get<1>(tKVcKV(0, 0, k)) < params.d;
     }
   }
