@@ -9,7 +9,7 @@ namespace {
 template <typename T>
 std::string GetTypeAsString();
 
-#define TYPE_TO_STRING(T,S)           \
+#define TYPE_TO_STRING(T, S)          \
   template <>                         \
   std::string GetTypeAsString<T>() {  \
     return S;                         \
@@ -64,8 +64,8 @@ Status MyTritonKernel<T>::ComputeInternal(OpKernelContext* ctx) const {
     const void* input_ptr;
     int32_t input_size_;
   } args = {
-    (void*)Y,
-    (const void*)X,
+    reinterpret_cast<void*>(Y),
+    reinterpret_cast<const void*>(X),
     static_cast<int32_t>(input_size),
   };
 
