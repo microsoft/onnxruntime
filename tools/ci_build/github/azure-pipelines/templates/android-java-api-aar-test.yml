@@ -10,7 +10,6 @@ parameters:
   default: ''
 
 - name: packageName
-  # now we can build onnxruntime-android or onnxruntime-mobile for Android, need specify it here
   displayName: Package Name
   type: string
   default: 'onnxruntime-android'
