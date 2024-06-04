@@ -162,10 +162,15 @@ bool ReductionOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDev
         ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
         ONNX_NAMESPACE::TensorProto_DataType_INT32,
         ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+        ONNX_NAMESPACE::TensorProto_DataType_INT64,
+        ONNX_NAMESPACE::TensorProto_DataType_UINT64,
     };
-    // WebNN CPU backend doesn't support uint32 for reduceProd and reduceSum.
-    if (device_type == WebnnDeviceType::CPU && (op_type == "ReduceProd" || op_type == "ReduceSum")) {
+
+    if (device_type == WebnnDeviceType::CPU) {
+      // WebNN CPU backend doesn't support uint32 and uint64 for reduceL1,
+      // reduceProd, reduceSum and reduceSumSquare.
       supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
+      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
     }
   } else if (op_type == "ReduceL2" || op_type == "ReduceLogSum" ||
              op_type == "ReduceLogSumExp" || op_type == "ReduceMean") {
