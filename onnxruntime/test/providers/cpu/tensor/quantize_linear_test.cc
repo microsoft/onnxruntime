@@ -806,6 +806,8 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   std::vector<Tin> x, x_zero_point;
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
     ORT_UNUSED_PARAMETER(severity);
@@ -835,7 +837,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   test.AddInput<Tout>("x_scale", {2, scale_block_count}, x_scale);
   test.AddInput<Tin>("x_zero_point", {2, zero_point_block_count}, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
+  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &eps);
 }
 
 template <typename Tin, typename Tout>
@@ -848,6 +850,8 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   std::vector<Tin> x, x_zero_point;
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
     ORT_UNUSED_PARAMETER(severity);
@@ -877,7 +881,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   test.AddInput<Tout>("x_scale", {2, scale_block_count}, x_scale);
   test.AddInput<Tin>("x_zero_point", {2, zero_point_block_count}, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
+  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &eps);
 }
 
 template <typename Tin, typename Tout>
@@ -890,6 +894,8 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Float8(int64_t block_size,
   std::vector<Tin> x, x_zero_point;
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
     ORT_UNUSED_PARAMETER(severity);
@@ -917,7 +923,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Float8(int64_t block_size,
   test.AddInput<Tout>("x_scale", {2, scale_block_count}, x_scale);
   test.AddInput<Tin>("x_zero_point", {2, zero_point_block_count}, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
+  test.Run(so, OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &eps);
 }
 
 // test negative block size fail
@@ -1054,6 +1060,8 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
   std::vector<int64_t> x_scale_shape;
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
   bool use_zero_point = !x_zero_point_.empty();
@@ -1080,7 +1088,7 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
   test.AddInput<Tout>("x_scale", x_scale_shape, x_scale);
   if (use_zero_point) test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
+  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
 }
 
 template <typename Tin, typename Tout>
@@ -1095,6 +1103,8 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   std::vector<int64_t> x_scale_shape;
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
   bool use_zero_point = !x_zero_point_.empty();
@@ -1114,7 +1124,7 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   test.AddInput<Tout>("x_scale", x_scale_shape, x_scale);
   if (use_zero_point) test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
+  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
 }
 
 template <typename Tin, typename Tout>
@@ -1129,6 +1139,8 @@ void DequantizeLinearOp21BlockedTest_Float8_Succeed(std::vector<int64_t>&& dims,
   std::vector<int64_t> x_scale_shape;
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
   bool use_zero_point = !x_zero_point_.empty();
@@ -1150,7 +1162,7 @@ void DequantizeLinearOp21BlockedTest_Float8_Succeed(std::vector<int64_t>&& dims,
   test.AddInput<Tout>("x_scale", x_scale_shape, x_scale);
   if (use_zero_point) test.AddInput<Tin>("x_zero_point", x_scale_shape, x_zero_point);
   test.AddOutput<Tout>("y", dims, y);
-  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});
+  test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
 }
 
 TEST(DequantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_FirstAxis) {
