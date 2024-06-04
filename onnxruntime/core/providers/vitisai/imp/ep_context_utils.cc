@@ -17,8 +17,6 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
   if (p_meta_def) {
     p_func_proto->set_name(p_meta_def->name());
     p_func_proto->set_domain(p_meta_def->domain());
-    //p_func_proto->set_since_version(p_meta_def->since_version());
-    //p_func_proto->set_status(p_meta_def->status());
     for (const auto& input : p_meta_def->inputs()) {
       p_func_proto->add_input(input);
     }
@@ -39,6 +37,14 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
       *p_attr_proto = attr_pair.second;
     }
     p_func_proto->set_doc_string(p_meta_def->doc_string());
+    // "since_version"
+    auto* p_metadata_props_1 = p_func_proto->add_metadata_props();
+    *(p_metadata_props_1->mutable_key()) = "meta_def_since_version";
+    *(p_metadata_props_1->mutable_value()) = std::to_string(p_meta_def->since_version());
+    // "status"
+    auto* p_metadata_props_2 = p_func_proto->add_metadata_props();
+    *(p_metadata_props_2->mutable_key()) = "meta_def_status";
+    *(p_metadata_props_2->mutable_value()) = std::to_string(static_cast<int>(p_meta_def->status()));
     // TODO: `MetaDef::type_and_shape_inference_function`.
   }
   auto p_parent_graph_proto = parent_graph.ToGraphProto();
@@ -63,9 +69,9 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
     *(p_func_proto.add_node()) = *p_node_proto;
   }
 #endif
-  auto* p_metadata_props_1 = p_func_proto->add_metadata_props();
-  *p_metadata_props_1->mutable_key() = "schema_source";
-  *p_metadata_props_1->mutable_value() = std::to_string(static_cast<uint8_t>(sub_graph.GetSchemaSource()));
+  auto* p_metadata_props_3 = p_func_proto->add_metadata_props();
+  *p_metadata_props_3->mutable_key() = "schema_source";
+  *p_metadata_props_3->mutable_value() = std::to_string(static_cast<uint8_t>(sub_graph.GetSchemaSource()));
   return p_func_proto;
 }
 
@@ -74,16 +80,18 @@ std::unique_ptr<IndexedSubGraph> ConvertFunctionProtoToIndexedSubGraph(
   auto p_isg = IndexedSubGraph::Create();
   // "meta_def_inputs_size" (optional) and "schema_source".
   int func_metadata_props_size = p_func_proto->metadata_props_size();
-  // Precisely, func_metadata_props_size == 2, which implies
+  // Precisely, func_metadata_props_size == 4, which implies
   // `IndexedSubGraph::meta_def_` is not null and `IndexedSubGraph::nodes` > 1.
   if (func_metadata_props_size > 1) {
-    auto& prop = const_cast<ONNX_NAMESPACE::StringStringEntryProto&>(p_func_proto->metadata_props(0));
-    int isg_meta_def_inputs_size = std::stoi(*(prop.mutable_value()));
+    auto& prop0 = const_cast<ONNX_NAMESPACE::StringStringEntryProto&>(p_func_proto->metadata_props(0));
+    int isg_meta_def_inputs_size = std::stoi(*(prop0.mutable_value()));
     auto p_meta_def = IndexedSubGraph_MetaDef::Create();
     p_meta_def->name() = p_func_proto->name();
     p_meta_def->domain() = p_func_proto->domain();
-    //p_meta_def->since_version() = p_func_proto->since_version();
-    //p_meta_def->status() = p_func_proto->status();
+    auto& prop1 = const_cast<ONNX_NAMESPACE::StringStringEntryProto&>(p_func_proto->metadata_props(1));
+    p_meta_def->since_version() = std::stoi(*(prop1.mutable_value()));
+    auto& prop2 = const_cast<ONNX_NAMESPACE::StringStringEntryProto&>(p_func_proto->metadata_props(2));
+    p_meta_def->status() = static_cast<ONNX_NAMESPACE::OperatorStatus>(std::stoi(*(prop2.mutable_value())));
     auto& meta_def_inputs = p_meta_def->inputs();
     for (int i = 0; i < isg_meta_def_inputs_size; i++) {
       meta_def_inputs.push_back(p_func_proto->input(i));
