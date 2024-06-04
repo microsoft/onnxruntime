@@ -9,11 +9,11 @@
 #include "core/common/exceptions.h"
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
+#include "core/common/logging/sinks/composite_sink.h"
 
 #ifdef _WIN32
 #include <Windows.h>
 #include "core/platform/windows/logging/etw_sink.h"
-#include "core/common/logging/sinks/composite_sink.h"
 #else
 #include <unistd.h>
 #if defined(__MACH__) || defined(__wasm__) || defined(_AIX)
