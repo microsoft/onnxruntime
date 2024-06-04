@@ -3018,7 +3018,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
     std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
         const onnx::TensorProto& initializer,
-        const onnxruntime::Path& modelPath)
+        const std::filesystem::path& modelPath)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;
         size_t tensorByteSize = 0;

@@ -681,5 +681,5 @@ bool TryGetStaticInputShapes(const onnxruntime::Node& node, EdgeShapes& inputSha
 bool TryGetStaticOutputShapes(const onnxruntime::Node& node, EdgeShapes& outputShapes);
 bool ContainsEmptyDimensions(const EdgeShapes& shapes, gsl::span<const uint32_t> ignoredShapeIndices = gsl::span<const uint32_t>());
 
-std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer, const onnxruntime::Path& modelPath);
+std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer, const std::filesystem::path& modelPath);
 }    // namespace Windows::AI::MachineLearning::Adapter
