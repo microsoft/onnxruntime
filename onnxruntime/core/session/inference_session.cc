@@ -12,6 +12,7 @@
 #include <queue>
 
 #include "core/common/denormal.h"
+#include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
@@ -52,6 +53,7 @@
 #include "core/platform/tracing.h"
 #include <Windows.h>
 #include "core/platform/windows/telemetry.h"
+#include "core/platform/windows/logging/etw_sink.h"
 #endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -420,13 +422,19 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0 &&
               IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
             LOGS(*session_logger_, VERBOSE) << "Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
-            logging_manager_->AddEtwSink(ortETWSeverity);
-            onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddEtwSink(ortETWSeverity);
+            logging_manager_->AddSink(
+                onnxruntime::logging::SinkType::EtwSink,
+                []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
+                ortETWSeverity);
+            onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddSink(
+                onnxruntime::logging::SinkType::EtwSink,
+                []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
+                ortETWSeverity);
             LOGS(*session_logger_, INFO) << "Done Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
           }
           if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
             LOGS(*session_logger_, INFO) << "Removing ETW Sink from logger";
-            logging_manager_->RemoveEtwSink();
+            logging_manager_->RemoveSink(onnxruntime::logging::SinkType::EtwSink);
             LOGS(*session_logger_, VERBOSE) << "Done Removing ETW Sink from logger";
           }
         }

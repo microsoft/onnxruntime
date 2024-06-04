@@ -16,6 +16,7 @@
 #include "core/common/logging/capture.h"
 #include "core/common/logging/macros.h"
 #include "core/common/logging/severity.h"
+#include "core/common/logging/sink_types.h"
 #include "core/platform/ort_mutex.h"
 #include "date/date.h"
 
@@ -171,18 +172,16 @@ class LoggingManager final {
   */
   static LoggingManager* GetDefaultInstance();
 
-#ifdef _WIN32
   /**
-     Removes the ETW Sink if one is present
+     Removes a Sink if one is present
   */
-  void RemoveEtwSink();
+  void RemoveSink(SinkType sinkType);
 
   /**
-     Adds an ETW Sink to the current sink creating a CompositeSink if necessary
-     @param etwSeverity The severity level for the ETW Sink
+     Adds a Sink to the current sink creating a CompositeSink if necessary
+     @param severity The severity level for the new Sink
   */
-  void AddEtwSink(logging::Severity etwSeverity);
-#endif
+  void AddSink(SinkType sinkType, std::function<std::unique_ptr<ISink>()> sinkFactory, logging::Severity severity);
 
   /**
      Change the minimum severity level for log messages to be output by the default logger.

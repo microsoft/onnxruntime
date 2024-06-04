@@ -23,9 +23,7 @@ class CompositeSink : public ISink {
   /// Initializes a new instance of the <see cref="CompositeSink"/> class.
   /// Use AddSink to add sinks.
   /// </summary>
-  CompositeSink() {}
-
-  SinkType GetType() const override { return ISink::CompositeSink; }
+  CompositeSink() : ISink(SinkType::CompositeSink) {}
 
   /// <summary>
   /// Adds a sink. Takes ownership of the sink (so pass unique_ptr by value).

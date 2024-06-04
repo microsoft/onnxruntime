@@ -281,46 +281,39 @@ Severity OverrideLevelWithEtw(Severity originalSeverity) {
   return originalSeverity;
 }
 
-#ifdef _WIN32
-void LoggingManager::AddEtwSink(logging::Severity etwSeverity) {
+void LoggingManager::AddSink(SinkType sinkType, std::function<std::unique_ptr<ISink>()> sinkFactory, logging::Severity severity) {
   std::lock_guard<OrtMutex> guard(sink_mutex_);
 
-  // Check if the EtwRegistrationManager is enabled
-  auto& manager = EtwRegistrationManager::Instance();
-  if (!manager.IsEnabled()) {
-    return;  // ETW not enabled, no operation needed
-  }
-
-  if (sink_->GetType() != ISink::CompositeSink) {
+  if (sink_->GetType() != SinkType::CompositeSink) {
     // Current sink is not a composite, create a new composite sink and add the current sink to it
     auto new_composite = std::make_unique<CompositeSink>();
     new_composite->AddSink(std::move(sink_), default_min_severity_);  // Move the current sink into the new composite
     sink_ = std::move(new_composite);                                 // Now sink_ is pointing to the new composite
   }
 
-  // Adjust the default minimum severity level to accommodate ETW logging needs
-  default_min_severity_ = std::min(default_min_severity_, etwSeverity);
+  // Adjust the default minimum severity level to accommodate new sink needs
+  default_min_severity_ = std::min(default_min_severity_, severity);
   if (s_default_logger_ != nullptr) {
     s_default_logger_->SetSeverity(default_min_severity_);
   }
 
   CompositeSink* current_composite = static_cast<CompositeSink*>(sink_.get());
-  // Check if an EtwSink already exists in the current composite
   const auto& sinks = current_composite->GetSinks();
-  if (std::any_of(sinks.begin(), sinks.end(), [](const auto& pair) {
-        return pair.first->GetType() == ISink::EtwSink;
+
+  // Check if a sink of this type already exists
+  if (std::any_of(sinks.begin(), sinks.end(), [sinkType](const auto& pair) {
+        return pair.first->GetType() == sinkType;
       })) {
-    return;  // EtwSink already exists, do not add another
+    return;  // Sink of this type already exists, do not add another
   }
 
-  // Add a new EtwSink
-  current_composite->AddSink(std::make_unique<EtwSink>(), etwSeverity);
+  current_composite->AddSink(sinkFactory(), severity);
 }
 
-void LoggingManager::RemoveEtwSink() {
+void LoggingManager::RemoveSink(SinkType sinkType) {
   std::lock_guard<OrtMutex> guard(sink_mutex_);
 
-  if (sink_->GetType() == ISink::CompositeSink) {
+  if (sink_->GetType() == SinkType::CompositeSink) {
     auto composite_sink = static_cast<CompositeSink*>(sink_.get());
     const auto& sinks_with_severity = composite_sink->GetSinks();
     std::unique_ptr<ISink> remaining_sink;
@@ -328,9 +321,9 @@ void LoggingManager::RemoveEtwSink() {
     Severity newSeverity = Severity::kFATAL;
 
     for (const auto& sink_pair : sinks_with_severity) {
-      if (sink_pair.first->GetType() != ISink::EtwSink) {
+      if (sink_pair.first->GetType() != sinkType) {
         if (remaining_sink) {
-          // If more than one non-EtwSink is found, we leave the CompositeSink intact
+          // If more than one non sinkType is found, we leave the CompositeSink intact
           return;
         }
         newSeverity = std::min(newSeverity, sink_pair.second);
@@ -338,13 +331,12 @@ void LoggingManager::RemoveEtwSink() {
       }
     }
 
-    // If only one non-EtwSink remains, replace the CompositeSink with this sink
+    // If only one non sinkType remains, replace the CompositeSink with this sink
     if (remaining_sink) {
       sink_ = std::move(remaining_sink);
 
     } else {
-      // Handle the case where all sinks were EtwSinks
-      // sink_ = std::make_unique<NullSink>(); // Assuming NullSink is a basic ISink that does nothing
+      // Handle the case where all sinks were sinkType
     }
 
     default_min_severity_ = newSeverity;
@@ -353,7 +345,6 @@ void LoggingManager::RemoveEtwSink() {
     }
   }
 }
-#endif
 
 }  // namespace logging
 }  // namespace onnxruntime
