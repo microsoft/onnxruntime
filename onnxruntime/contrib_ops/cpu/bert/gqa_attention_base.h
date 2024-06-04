@@ -98,7 +98,7 @@ class GQAAttentionBase : public AttentionBase {
                              bool packed_qkv,                     // whether Q, K, V are packed
                              ThreadPool* tp) const {              // thread pool
     const bool is_prompt = sequence_length != 1;
-    const int packed_batch_stride = packed_qkv ? (num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size : 0;
+    const ptrdiff_t packed_batch_stride = packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size : 0;
     const int kv_num_heads_factor = num_heads_ / kv_num_heads_;
     const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;                      // S x H
     const size_t kv_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;                     // L x H
@@ -113,8 +113,8 @@ class GQAAttentionBase : public AttentionBase {
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
     TensorOpCost unit_cost;
-    const size_t probs_matrix_bytes = SafeInt<size_t>(sequence_length) * present_buffer_sequence_length * sizeof(T);
-    unit_cost.compute_cycles = static_cast<double>(2 * sequence_length * head_size * present_buffer_sequence_length);
+    const ptrdiff_t probs_matrix_bytes = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * sizeof(T);
+    unit_cost.compute_cycles = static_cast<double>(SafeInt<ptrdiff_t>(2) * sequence_length * head_size * present_buffer_sequence_length);
     unit_cost.bytes_loaded = static_cast<double>((sequence_length + present_buffer_sequence_length) * head_size * sizeof(T));
     unit_cost.bytes_stored = static_cast<double>(probs_matrix_bytes);
 
@@ -135,7 +135,7 @@ class GQAAttentionBase : public AttentionBase {
         const size_t past_chunk_length = static_cast<size_t>(past_seqlen) * head_size;
         const int total_seqlen = seqlens_k[batch_index] + 1;
 
-        const int output_offset = static_cast<int>(i) * sequence_length * present_buffer_sequence_length;
+        const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * present_buffer_sequence_length;
         T* output = attention_probs + output_offset;
 
         const T* k;
@@ -208,7 +208,7 @@ class GQAAttentionBase : public AttentionBase {
                                bool packed_qkv,                     // whether Q, K, V are packed
                                ThreadPool* tp) const {
     const bool is_prompt = sequence_length != 1;
-    const int packed_batch_stride = packed_qkv ? (num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size : 0;
+    const int64_t packed_batch_stride = packed_qkv ? SafeInt<int64_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size : 0;
     const int kv_num_heads_factor = num_heads_ / kv_num_heads_;
     const int kv_input_chunk_length = sequence_length * head_size;                                             // L x H
     const size_t past_buff_chunk_length = static_cast<size_t>(past_buffer_sequence_length) * head_size;        // L x H
@@ -220,8 +220,8 @@ class GQAAttentionBase : public AttentionBase {
 
     // The cost of Gemm
     TensorOpCost unit_cost;
-    unit_cost.compute_cycles = static_cast<double>(2 * sequence_length * head_size * present_buffer_sequence_length);
-    unit_cost.bytes_loaded = static_cast<double>((sequence_length + head_size) * present_buffer_sequence_length * sizeof(T));
+    unit_cost.compute_cycles = static_cast<double>(SafeInt<uint64_t>(2) * sequence_length * head_size * present_buffer_sequence_length);
+    unit_cost.bytes_loaded = static_cast<double>(SafeInt<uint64_t>(sequence_length + head_size) * present_buffer_sequence_length * sizeof(T));
     unit_cost.bytes_stored = static_cast<double>(sequence_length * head_size * sizeof(T));
 
     if (present_value) {

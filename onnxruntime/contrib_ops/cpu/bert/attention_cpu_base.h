@@ -146,8 +146,8 @@ class AttentionCPUBase : public AttentionBase {
       const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
       TensorOpCost unit_cost;
-      const size_t probs_matrix_bytes = SafeInt<size_t>(sequence_length) * total_sequence_length * sizeof(T);
-      unit_cost.compute_cycles = static_cast<double>(2 * sequence_length * head_size * total_sequence_length);
+      const ptrdiff_t probs_matrix_bytes = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * sizeof(T);
+      unit_cost.compute_cycles = static_cast<double>(SafeInt<ptrdiff_t>(2) * sequence_length * head_size * total_sequence_length);
       unit_cost.bytes_loaded = static_cast<double>((sequence_length + total_sequence_length) * head_size * sizeof(T));
       unit_cost.bytes_stored = static_cast<double>(probs_matrix_bytes);
 
@@ -172,8 +172,8 @@ class AttentionCPUBase : public AttentionBase {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           const int batch_index = static_cast<int>(i) / num_heads_;
 
-          const int output_offset = static_cast<int>(i) * sequence_length * total_sequence_length;
-          const int mask_offset = batch_index * sequence_length * total_sequence_length;
+          const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * total_sequence_length;
+          const ptrdiff_t mask_offset = SafeInt<ptrdiff_t>(batch_index) * sequence_length * total_sequence_length;
           T* output = attention_probs + output_offset;
 
           // Broadcast mask data: (Bx)SxT -> (BxNx)SxT
@@ -249,8 +249,8 @@ class AttentionCPUBase : public AttentionBase {
 
     // The cost of Gemm
     TensorOpCost unit_cost;
-    unit_cost.compute_cycles = static_cast<double>(2 * sequence_length * v_head_size * total_sequence_length);
-    unit_cost.bytes_loaded = static_cast<double>((sequence_length + v_head_size) * total_sequence_length * sizeof(T));
+    unit_cost.compute_cycles = static_cast<double>(SafeInt<ptrdiff_t>(2) * sequence_length * v_head_size * total_sequence_length);
+    unit_cost.bytes_loaded = static_cast<double>(SafeInt<ptrdiff_t>(sequence_length + v_head_size) * total_sequence_length * sizeof(T));
     unit_cost.bytes_stored = static_cast<double>(sequence_length * v_head_size * sizeof(T));
 
     if (present || present_value) {
