@@ -36,7 +36,7 @@ parameters:
 
 jobs:
   - job: Build_QNN_EP
-    pool: onnxruntime-qnn-ubuntu-2004-cpu
+    pool: onnxruntime-qnn-ubuntu-2204-cpu
     timeoutInMinutes: 60
     workspace:
       clean: all
