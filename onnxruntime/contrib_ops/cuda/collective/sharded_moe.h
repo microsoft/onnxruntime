@@ -23,16 +23,11 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
-  Status SynchronizeExpertsStartIndex(AllocatorPtr& alloc, OpKernelContext* ctx, cudaEvent_t& cuda_event) const;
-  void SynchronizeExpertsStartIndexImpl(AllocatorPtr& alloc, OpKernelContext* ctx, cudaEvent_t& cuda_event,
-                                        cudaError_t& cuda_result, ncclResult_t& nccl_result) const;
+  Status SynchronizeExpertsStartIndex(AllocatorPtr& alloc) const;
 
   int64_t local_experts_start_index_;
   int64_t tensor_shards_;
-  mutable InlinedVector<int64_t> rank_to_experts_start_index_;
-
-  // Use mutable since std::call_once(std::once_flag&, _Callable&&, _Args&& ...) asks flag to be non-const
-  mutable std::once_flag flag_;
+  InlinedVector<int64_t> rank_to_experts_start_index_;
 };
 
 #endif

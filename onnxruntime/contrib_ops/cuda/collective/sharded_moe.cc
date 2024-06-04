@@ -45,8 +45,9 @@ ShardedMoE<T>::ShardedMoE(const OpKernelInfo& op_kernel_info) : NcclKernel(op_ke
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("tensor_shards", &tensor_shards_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("local_experts_start_index", &local_experts_start_index_).IsOK());
   rank_to_experts_start_index_.resize(nccl_->Size());
-  // Initialize rank_to_experts_start_index_[0] to a value to convey that it is not initialized.
-  rank_to_experts_start_index_[0] = std::numeric_limits<int64_t>::min();
+
+  auto allocator = op_kernel_info.GetAllocator(OrtMemTypeDefault);
+  ORT_ENFORCE(SynchronizeExpertsStartIndex(allocator) == Status::OK());
 }
 
 template <typename T>
@@ -59,10 +60,6 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-
-  // Create a {Rank, ExpertsStartIndex} map on Host.
-  AutoDestoryCudaEvent cuda_event;
-  cudaEvent_t& copy_event = cuda_event.Get();
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
@@ -158,8 +155,6 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
     int64_t total_past_rows = 0;
     int64_t total_covered_rows = 0;
 
-    ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
-
     NCCL_RETURN_IF_ERROR(ncclGroupStart());
     for (int rank = 0; rank < nccl_->Size(); ++rank) {
       int64_t experts_start_index = rank_to_experts_start_index_[rank];
@@ -187,57 +182,25 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 template <typename T>
-void ShardedMoE<T>::SynchronizeExpertsStartIndexImpl(AllocatorPtr& allocator, OpKernelContext* context,
-                                                     cudaEvent_t& cuda_event, cudaError_t& cuda_result,
-                                                     ncclResult_t& nccl_result) const {
-  auto stream = context->GetComputeStream();
-
+Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator) const {
   using IndexType = int64_t;
   size_t IndexTypeSize = sizeof(IndexType);
 
   IAllocatorUniquePtr<IndexType> experts_start_index_d =
-      IAllocator::MakeUniquePtr<IndexType>(allocator, 1, false, stream);
+      IAllocator::MakeUniquePtr<IndexType>(allocator, 1, false);
   IAllocatorUniquePtr<IndexType> rank_to_experts_start_index_d =
-      IAllocator::MakeUniquePtr<IndexType>(allocator, nccl_->Size(), false, stream);
+      IAllocator::MakeUniquePtr<IndexType>(allocator, nccl_->Size(), false);
 
-  cudaError_t cuda_res;
-  ncclResult_t nccl_res;
-  // Only happens in the first run. TODO: use MPIAllGather to avoid Memcpy between Host and Device.
-  cuda_res = cudaMemcpyAsync(experts_start_index_d.get(), &local_experts_start_index_, IndexTypeSize,
-                             cudaMemcpyHostToDevice, Stream(context));
-  CHECK_CUDA(cuda_res);
-  nccl_res = ncclAllGather(reinterpret_cast<const char*>(experts_start_index_d.get()),
-                           reinterpret_cast<char*>(rank_to_experts_start_index_d.get()), 1,
-                           GetNcclDataType(DataTypeImpl::GetType<IndexType>()), nccl_->Comm(),
-                           Stream(context));
-  CHECK_NCCL(nccl_res);
-  cuda_res = cudaMemcpyAsync(const_cast<int64_t*>(rank_to_experts_start_index_.data()),
-                             rank_to_experts_start_index_d.get(), nccl_->Size() * IndexTypeSize,
-                             cudaMemcpyDeviceToHost, Stream(context));
-  CHECK_CUDA(cuda_res);
-  cuda_res = cudaEventCreateWithFlags(&cuda_event, cudaEventDisableTiming);
-  CHECK_CUDA(cuda_res);
-  cuda_res = cudaEventRecord(cuda_event, Stream(context));
-  CHECK_CUDA(cuda_res);
+  CUDA_RETURN_IF_ERROR(cudaMemcpy(experts_start_index_d.get(), &local_experts_start_index_, IndexTypeSize,
+                                  cudaMemcpyHostToDevice));
+  NCCL_RETURN_IF_ERROR(ncclAllGather(reinterpret_cast<const char*>(experts_start_index_d.get()),
+                                     reinterpret_cast<char*>(rank_to_experts_start_index_d.get()), 1,
+                                     GetNcclDataType(DataTypeImpl::GetType<IndexType>()), nccl_->Comm(),
+                                     nullptr));
 
-  if (cuda_event != nullptr) {
-    cuda_res = cudaEventSynchronize(cuda_event);
-    CHECK_CUDA(cuda_res);
-  }
-
-  return;
-}
-
-template <typename T>
-Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator, OpKernelContext* context,
-                                                   cudaEvent_t& cuda_event) const {
-  cudaError_t cuda_result = cudaSuccess;
-  ncclResult_t nccl_result = ncclSuccess;
-  std::call_once(flag_, &ShardedMoE<T>::SynchronizeExpertsStartIndexImpl, this, allocator, context, cuda_event,
-                 cuda_result, nccl_result);
-
-  CUDA_RETURN_IF_ERROR(cuda_result);
-  NCCL_RETURN_IF_ERROR(nccl_result);
+  CUDA_RETURN_IF_ERROR(cudaMemcpy(const_cast<int64_t*>(rank_to_experts_start_index_.data()),
+                                  rank_to_experts_start_index_d.get(), nccl_->Size() * IndexTypeSize,
+                                  cudaMemcpyDeviceToHost));
 
   return Status::OK();
 }
