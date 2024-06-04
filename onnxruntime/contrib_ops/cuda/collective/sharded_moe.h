@@ -31,6 +31,7 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
   int64_t tensor_shards_;
   mutable InlinedVector<int64_t> rank_to_experts_start_index_;
 
+  // Use mutable since std::call_once(std::once_flag&, _Callable&&, _Args&& ...) asks flag to be non-const
   mutable std::once_flag flag_;
 };
 

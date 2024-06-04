@@ -34,7 +34,7 @@ class IpcMemory {
   IpcMemory(int rank, int world_size, std::size_t buffer_size);
   ~IpcMemory();
 
-  InlinedVector<void*> const& GetCommPtrsTensor() const {
+  const InlinedVector<void*>& GetCommPtrsTensor() const {
     return m_comm_ptrs_;
   }
 
@@ -52,10 +52,10 @@ class IpcMemory {
 // A global resource pack for IPC memory used in custom reduce kernel.
 // Resource retrieval and deserialization are made atomic to thread safety of accessing it.
 struct IPCMemoryResourcePack {
-  mutable InlinedVector<std::shared_ptr<IpcMemory>> m_ipc_momery_handles;
-  mutable InlinedVector<const void*> m_comm_ptrs;
-  mutable size_t max_input_size{0};
-  mutable uint32_t counter{0};
+  InlinedVector<std::shared_ptr<IpcMemory>> m_ipc_momery_handles;
+  InlinedVector<const void*> m_comm_ptrs;
+  size_t max_input_size{0};
+  uint32_t counter{0};
 
   static IPCMemoryResourcePack& GetGlobalInstance();
 };

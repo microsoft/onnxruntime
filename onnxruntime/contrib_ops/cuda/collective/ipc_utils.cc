@@ -108,7 +108,7 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
   m_comm_ptrs.resize(k_num_handles * world_size);
 
   for (size_t mem_idx = handles_size; mem_idx < m_ipc_memory_handles.size(); mem_idx++) {
-    auto const& mem_comm_ptrs = m_ipc_memory_handles[mem_idx]->GetCommPtrsTensor();
+    const auto& mem_comm_ptrs = m_ipc_memory_handles[mem_idx]->GetCommPtrsTensor();
     for (size_t tpIdx = 0; tpIdx < static_cast<size_t>(world_size); tpIdx++) {
       m_comm_ptrs[(mem_idx - handles_size) * world_size + tpIdx] = mem_comm_ptrs[tpIdx];
     }
