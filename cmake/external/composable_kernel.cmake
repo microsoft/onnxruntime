@@ -23,4 +23,31 @@ if(NOT composable_kernel_POPULATED)
     ${composable_kernel_BINARY_DIR}/include
     ${composable_kernel_SOURCE_DIR}/library/include)
   target_compile_definitions(onnxruntime_composable_kernel_includes INTERFACE __fp32__ __fp16__ __bf16__)
+
+  execute_process(
+    COMMAND ${Python3_EXECUTABLE} ${composable_kernel_SOURCE_DIR}/example/ck_tile/01_fmha/generate.py
+    --list_blobs ${composable_kernel_BINARY_DIR}/blob_list.txt
+    COMMAND_ERROR_IS_FATAL ANY
+  )
+  file(STRINGS ${composable_kernel_BINARY_DIR}/blob_list.txt generated_fmha_srcs)
+  add_custom_command(
+    OUTPUT ${generated_fmha_srcs}
+    COMMAND ${Python3_EXECUTABLE} ${composable_kernel_SOURCE_DIR}/example/ck_tile/01_fmha/generate.py --output_dir ${composable_kernel_BINARY_DIR}
+    DEPENDS ${composable_kernel_SOURCE_DIR}/example/ck_tile/01_fmha/generate.py ${composable_kernel_BINARY_DIR}/blob_list.txt
+  )
+  set_source_files_properties(${generated_fmha_srcs} PROPERTIES LANGUAGE HIP GENERATED TRUE)
+  add_custom_target(gen_fmha_srcs DEPENDS ${generated_fmha_srcs})  # dummy target for dependencies
+  # code generation complete
+
+  set(fmha_srcs
+    ${generated_fmha_srcs}
+    ${composable_kernel_SOURCE_DIR}/example/ck_tile/01_fmha/fmha_fwd.cpp
+    ${composable_kernel_SOURCE_DIR}/example/ck_tile/01_fmha/fmha_fwd.hpp
+    ${composable_kernel_SOURCE_DIR}/example/ck_tile/01_fmha/bias.hpp
+    ${composable_kernel_SOURCE_DIR}/example/ck_tile/01_fmha/mask.hpp
+  )
+  add_library(onnxruntime_composable_kernel_fmha STATIC EXCLUDE_FROM_ALL ${generated_fmha_srcs})
+  target_link_libraries(onnxruntime_composable_kernel_fmha PUBLIC onnxruntime_composable_kernel_includes)
+  target_include_directories(onnxruntime_composable_kernel_fmha PUBLIC ${composable_kernel_SOURCE_DIR}/example/ck_tile/01_fmha)
+  add_dependencies(onnxruntime_composable_kernel_fmha gen_fmha_srcs)
 endif()
