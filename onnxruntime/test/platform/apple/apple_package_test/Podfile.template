@@ -1,12 +1,9 @@
 def include_macos_target
-  if '@C_POD_NAME@' != 'onnxruntime-mobile-c'
-    if ENV['SKIP_MACOS_TEST'] != 'true'
-      return true
-    else
-      return false
-    end
+  if ENV['SKIP_MACOS_TEST'] != 'true'
+    return true
+  else
+    return false
   end
-  return false
 end
 
 target 'ios_package_test' do
