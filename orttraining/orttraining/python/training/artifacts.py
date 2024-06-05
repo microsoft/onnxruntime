@@ -98,10 +98,10 @@ def generate_artifacts(
 
     loss_block = None
     if loss is None:
-        loss_block = onnxblock.blocks.PassThrough()
+        loss_block = onnxblock.blocks.PassThrough(enable_checker = not enable_large_model)
         logging.info("No loss function enum provided. Loss node will not be added to the graph.")
     elif isinstance(loss, LossType):
-        loss_block = loss_blocks[loss]()
+        loss_block = loss_blocks[loss](enable_checker = not enable_large_model)
         logging.info("Loss function enum provided: %s", loss.name)
     else:
         # If a custom implementation of the loss was provided, then it should be
