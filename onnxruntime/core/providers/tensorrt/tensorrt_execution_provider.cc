@@ -2319,7 +2319,11 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<std::unique_ptr<ComputeCapability>> result;
   // Get ModelPath
   const auto& path_string = graph.ModelPath().string();
+#ifdef _WIN32
+  strncpy_s(model_path_, path_string.c_str(), sizeof(model_path_) - 1);
+#else
   strncpy(model_path_, path_string.c_str(), sizeof(model_path_) - 1);
+#endif
   model_path_[sizeof(model_path_) - 1] = '\0';
 
   // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and
@@ -2507,13 +2511,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 /**
  * Refit the weight-stripped engine
  */
-common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_filename,
-                                                      std::string& onnx_model_folder_path,
-                                                      std::string& weight_stripped_engine_cath_path,
-                                                      bool path_check,
-                                                      nvinfer1::ICudaEngine* trt_engine,
-                                                      bool serialize_refitted_engine,
-                                                      bool detailed_build_log) {
+common::Status TensorrtExecutionProvider::RefitEngine([[maybe_unused]] std::string onnx_model_filename,
+                                                      [[maybe_unused]] std::string& onnx_model_folder_path,
+                                                      [[maybe_unused]] std::string& weight_stripped_engine_cath_path,
+                                                      [[maybe_unused]] bool path_check,
+                                                      [[maybe_unused]] nvinfer1::ICudaEngine* trt_engine,
+                                                      [[maybe_unused]] bool serialize_refitted_engine,
+                                                      [[maybe_unused]] bool detailed_build_log) {
 #if NV_TENSORRT_MAJOR >= 10
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
   onnx_model_path.append(onnx_model_filename);
