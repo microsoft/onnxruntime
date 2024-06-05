@@ -50,7 +50,7 @@ __device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha_v
   printf("Inp2 val: %f\n", static_cast<float>(inp2));
   printf("Alpha val: %f\n", static_cast<float>(alpha_val));
   printf("v val: %f\n", static_cast<float>(v));
-  printf("Sigmoid val: %f\n", static_cast<sigmoid>(v));
+  printf("Sigmoid val: %f\n", static_cast<float>(sigmoid));
   printf("quickgelu_out: %f\n", static_cast<float>(quickgelu_out));  // Using %f for float, change format specifier if using double
   printf("Final out: %f\n", static_cast<float>(inp1 * quickgelu_out));
   return inp1 * quickgelu_out;
