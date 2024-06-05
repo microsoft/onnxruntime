@@ -22,6 +22,10 @@
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
 
+#if defined(USE_VITISAI)
+#include "core/providers/vitisai/vitisai_provider_factory_creator.h"
+#endif
+
 using namespace onnxruntime;
 
 namespace {
@@ -112,7 +116,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
-
+#if defined(USE_VITISAI)
+    options->provider_factories.push_back(VitisAIProviderFactoryCreator::Create(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
   } else if (strcmp(provider_name, "SNPE") == 0) {
 #if defined(USE_SNPE)
     options->provider_factories.push_back(SNPEProviderFactoryCreator::Create(provider_options));
@@ -208,6 +216,15 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(settings);
   return CreateNotEnabledStatus("Tvm");
+}
+#endif
+
+#ifndef USE_VITISAI
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_VitisAI,
+                    _In_ OrtSessionOptions* options, _In_ const char* settings) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(settings);
+  return CreateNotEnabledStatus("VitisAI");
 }
 #endif
 
