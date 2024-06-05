@@ -250,27 +250,27 @@ unsigned int GetProcessId() {
 #endif
 }
 
-std::unique_ptr<ISink> EnhanceSinkWithEtw(std::unique_ptr<ISink> existingSink, logging::Severity originalSeverity,
-                                          logging::Severity etwSeverity) {
+std::unique_ptr<ISink> EnhanceSinkWithEtw(std::unique_ptr<ISink> existing_sink, logging::Severity original_severity,
+                                          logging::Severity etw_severity) {
 #ifdef _WIN32
   auto& manager = EtwRegistrationManager::Instance();
   if (manager.IsEnabled()) {
     auto compositeSink = std::make_unique<CompositeSink>();
-    compositeSink->AddSink(std::move(existingSink), originalSeverity);
-    compositeSink->AddSink(std::make_unique<EtwSink>(), etwSeverity);
+    compositeSink->AddSink(std::move(existing_sink), original_severity);
+    compositeSink->AddSink(std::make_unique<EtwSink>(), etw_severity);
     return compositeSink;
   } else {
-    return existingSink;
+    return existing_sink;
   }
 #else
   // On non-Windows platforms, just return the existing logger
-  (void)originalSeverity;
-  (void)etwSeverity;
-  return existingSink;
+  (void)original_severity;
+  (void)etw_severity;
+  return existing_sink;
 #endif  // _WIN32
 }
 
-Severity OverrideLevelWithEtw(Severity originalSeverity) {
+Severity OverrideLevelWithEtw(Severity original_severity) {
 #ifdef _WIN32
   auto& manager = logging::EtwRegistrationManager::Instance();
   if (manager.IsEnabled() &&
@@ -278,65 +278,40 @@ Severity OverrideLevelWithEtw(Severity originalSeverity) {
     return manager.MapLevelToSeverity();
   }
 #endif  // _WIN32
-  return originalSeverity;
+  return original_severity;
 }
 
-void LoggingManager::AddSink(SinkType sinkType, std::function<std::unique_ptr<ISink>()> sinkFactory, logging::Severity severity) {
+void LoggingManager::AddSink(SinkType sink_type, std::function<std::unique_ptr<ISink>()> sinkFactory,
+                             logging::Severity severity) {
   std::lock_guard<OrtMutex> guard(sink_mutex_);
-
   if (sink_->GetType() != SinkType::CompositeSink) {
     // Current sink is not a composite, create a new composite sink and add the current sink to it
     auto new_composite = std::make_unique<CompositeSink>();
     new_composite->AddSink(std::move(sink_), default_min_severity_);  // Move the current sink into the new composite
     sink_ = std::move(new_composite);                                 // Now sink_ is pointing to the new composite
   }
-
   // Adjust the default minimum severity level to accommodate new sink needs
   default_min_severity_ = std::min(default_min_severity_, severity);
   if (s_default_logger_ != nullptr) {
     s_default_logger_->SetSeverity(default_min_severity_);
   }
-
   CompositeSink* current_composite = static_cast<CompositeSink*>(sink_.get());
-  const auto& sinks = current_composite->GetSinks();
-
-  // Check if a sink of this type already exists
-  if (std::any_of(sinks.begin(), sinks.end(), [sinkType](const auto& pair) {
-        return pair.first->GetType() == sinkType;
-      })) {
+  if (current_composite->HasType(sink_type)) {
     return;  // Sink of this type already exists, do not add another
   }
-
-  current_composite->AddSink(sinkFactory(), severity);
 }
 
-void LoggingManager::RemoveSink(SinkType sinkType) {
+void LoggingManager::RemoveSink(SinkType sink_type) {
   std::lock_guard<OrtMutex> guard(sink_mutex_);
 
   if (sink_->GetType() == SinkType::CompositeSink) {
     auto composite_sink = static_cast<CompositeSink*>(sink_.get());
-    const auto& sinks_with_severity = composite_sink->GetSinks();
-    std::unique_ptr<ISink> remaining_sink;
 
-    Severity newSeverity = Severity::kFATAL;
+    Severity newSeverity = composite_sink->RemoveSink(sink_type);
 
-    for (const auto& sink_pair : sinks_with_severity) {
-      if (sink_pair.first->GetType() != sinkType) {
-        if (remaining_sink) {
-          // If more than one non sinkType is found, we leave the CompositeSink intact
-          return;
-        }
-        newSeverity = std::min(newSeverity, sink_pair.second);
-        remaining_sink = std::move(const_cast<std::unique_ptr<ISink>&>(sink_pair.first));
-      }
-    }
-
-    // If only one non sinkType remains, replace the CompositeSink with this sink
-    if (remaining_sink) {
-      sink_ = std::move(remaining_sink);
-
-    } else {
-      // Handle the case where all sinks were sinkType
+    if (composite_sink->HasOnlyOneSink()) {
+      // If only one sink remains, replace the CompositeSink with this single sink
+      sink_ = composite_sink->GetRemoveSingleSink();
     }
 
     default_min_severity_ = newSeverity;
