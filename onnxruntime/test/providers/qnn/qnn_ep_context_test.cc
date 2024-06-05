@@ -732,6 +732,36 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
   ASSERT_EQ(std::remove(context_bin.string().c_str()), 0);
 }
 
+// Model has 2 EPContext nodes, both with main_context=1 and embeded context binary
+TEST_F(QnnHTPBackendTests, QnnMultiContextEmbeded) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx"), so);
+}
+
+// Model has 2 EPContext nodes, both with main_context=1 and external context binary
+TEST_F(QnnHTPBackendTests, QnnMultiContextExternal) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_external.onnx"), so);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
