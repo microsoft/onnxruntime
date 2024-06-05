@@ -21,9 +21,17 @@ from onnx.reference import ReferenceEvaluator
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 
 try:
-    from onnx.reference.custom_element_types import float8e4m3fn, int4, uint4
+    from onnx.reference.custom_element_types import float8e4m3fn
 except ImportError:
     float8e4m3fn = None
+
+# INT4 np.dtypes added in ONNX 1.16. These map to np.int8/np.uint8 because numpy
+# does not support sub-byte types.
+try:
+    from onnx.reference.custom_element_types import int4, uint4
+except ImportError:
+    int4 = None
+    uint4 = None
 
 
 __producer__ = "onnx.quantize"
@@ -134,8 +142,8 @@ ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.INT16: numpy.dtype("int16"),
     onnx_proto.TensorProto.UINT16: numpy.dtype("uint16"),
     onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
-    onnx_proto.TensorProto.INT4: int4,
-    onnx_proto.TensorProto.UINT4: uint4,
+    onnx_proto.TensorProto.INT4: int4,  # base_dtype is np.int8
+    onnx_proto.TensorProto.UINT4: uint4,  # base_dtype is np.uint8
 }
 
 ONNX_INT_TYPE_RANGE = {
@@ -212,36 +220,12 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         )
         ref = ReferenceEvaluator(onnx_model)
         return _check_type(ref.run(None, {"X": arr, "scale": scale})[0])
-    elif qType in (
-        onnx_proto.TensorProto.INT4,
-        onnx_proto.TensorProto.UINT4,
-    ):
-        if arr.dtype == numpy.float32:
-            onnx_type = TensorProto.FLOAT
-        elif arr.dtype == numpy.float16:
-            onnx_type = TensorProto.FLOAT16
-        else:
-            raise ValueError(f"Unexpected dtype {arr.dtype}.")
-        onnx_model = make_model(
-            make_graph(
-                [
-                    make_node("QuantizeLinear", ["X", "scale", "zero_point"], ["Y"]),
-                ],
-                "qu",
-                [
-                    make_tensor_value_info("X", onnx_type, None),
-                    make_tensor_value_info("scale", onnx_type, None),
-                    make_tensor_value_info("zero_point", qType, None),
-                ],
-                [make_tensor_value_info("Y", qType, None)],
-            )
-        )
-        # The reference ONNX implementation of QuantizeLinear<int4> returns "unpacked" int8 numpy values
-        # because numpy cannot represent 4bit values (although ONNX TensorProto has no problem with this).
-        # These "unpacked" int8 values are correctly re-packed when passed to onnx.make_tensor().
-        ref = ReferenceEvaluator(onnx_model)
-        return _check_type(ref.run(None, {"X": arr, "scale": scale, "zero_point": zero_point})[0])
     else:
+        # Quantizes data for all integer types.
+        #
+        # For int4 types, the quantized data is returned as either np.int8 or np.uint8,
+        # which matches the python reference ONNX implementation of QuantizeLinear.
+        # This data can be packed into 4-bit elements by using pack_bytes_to_4bit().
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
 
@@ -480,6 +464,36 @@ def normalize_axis(axis: int, rank: int) -> tuple[bool, int]:
     axis_norm = axis + rank if axis < 0 else axis
     is_valid = axis_norm >= 0 and axis_norm < rank
     return is_valid, axis_norm
+
+
+def pack_bytes_to_4bit(src_8bit: bytes) -> bytearray:
+    """
+    Copies a source array of 8-bit values into a destination bytearray of packed 4-bit values.
+    Assumes that the source values are already in the appropriate int4 range.
+    :parameter src_8bit: The 8-bit element values to pack.
+    :return A bytearray with every two 8-bit src elements packed into a single byte.
+    """
+    num_elems = len(src_8bit)
+    if num_elems == 0:
+        return bytearray()
+
+    dst_size = (num_elems + 1) // 2  # Ex: 5 8-bit elems packed into 3 bytes
+    dst = bytearray(dst_size)
+
+    src_i: int = 0
+    dst_i: int = 0
+
+    # Pack two 8-bit elements into a single byte in each iteration.
+    while src_i < num_elems - 1:
+        dst[dst_i] = ((src_8bit[src_i + 1] & 0xF) << 4) | (src_8bit[src_i] & 0xF)
+        dst_i += 1
+        src_i += 2
+
+    if src_i < num_elems:
+        # Odd number of elements.
+        dst[dst_i] = src_8bit[src_i] & 0xF
+
+    return dst
 
 
 class QuantizedInitializer:
