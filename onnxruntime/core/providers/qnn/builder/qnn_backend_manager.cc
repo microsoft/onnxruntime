@@ -461,10 +461,12 @@ Status QnnBackendManager::CreateContext() {
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
   const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
 
+  Qnn_ContextHandle_t context = nullptr;
   auto result = qnn_interface_.contextCreate(backend_handle_,
                                              device_handle_,
                                              context_configs,
-                                             &context_);
+                                             &context);
+  contexts_.push_back(context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context.");
 
@@ -477,8 +479,14 @@ Status QnnBackendManager::ReleaseContext() {
     return Status::OK();
   }
 
-  auto result = qnn_interface_.contextFree(context_, nullptr);
-  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to release context.");
+  bool failed = false;
+  for (auto context : contexts_) {
+    auto result = qnn_interface_.contextFree(context, nullptr);
+    if (QNN_CONTEXT_NO_ERROR != result) {
+      failed = true;
+    }
+  }
+  ORT_RETURN_IF(failed, "Failed to release context.");
 
   context_created_ = false;
   return Status::OK();
@@ -490,9 +498,10 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
     LOGS(*logger_, ERROR) << "Failed to get valid function pointer.";
     return nullptr;
   }
-
+  ORT_ENFORCE(contexts_.size() > 0, "No valid context!");
   uint64_t required_buffer_size(0);
-  Qnn_ErrorHandle_t rt = qnn_interface_.contextGetBinarySize(context_, &required_buffer_size);
+  // Generate all graphs in one sigle context
+  Qnn_ErrorHandle_t rt = qnn_interface_.contextGetBinarySize(contexts_[0], &required_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
     LOGS(*logger_, ERROR) << "Failed to get QNN context binary size. Error code: " << rt;
     return nullptr;
@@ -504,7 +513,7 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
     return nullptr;
   }
 
-  rt = qnn_interface_.contextGetBinary(context_,
+  rt = qnn_interface_.contextGetBinary(contexts_[0],
                                        reinterpret_cast<void*>(context_buffer.get()),
                                        required_buffer_size,
                                        &written_buffer_size);
@@ -524,6 +533,7 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
 }
 
 Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
+                                                         std::string node_name,
                                                          std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
@@ -559,7 +569,6 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
   LOGS(*logger_, VERBOSE) << "Graph count from QNN context: " << graph_count << ", EPContext node count: " << qnn_models.size();
-  ORT_RETURN_IF(graph_count != qnn_models.size(), "Graph count from QNN context not equal to EPContext node count.");
 
   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                 "Invalid function pointer for contextCreateFromBinary.");
@@ -568,27 +577,22 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
   const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
 
+  Qnn_ContextHandle_t context = nullptr;
   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                               device_handle_,
                                               context_configs,
                                               static_cast<void*>(buffer),
                                               buffer_length,
-                                              &context_,
+                                              &context,
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
+  contexts_.push_back(context);
 
-  // More work to support multiple partition, how to map the graph name in compile to qnn graph name
-  // Need the lower level framework to understand EPContext op and pass in the partition_name in fused_node during Compile
-  if (1 == graph_count) {
-    auto qnn_model_pose = qnn_models.begin();
-    ORT_RETURN_IF_ERROR(qnn_model_pose->second->DeserializeGraphInfoFromBinaryInfo(graphs_info[0]));
-  } else {
-    for (uint32_t i = 0; i < graph_count; ++i) {
-      std::string graph_name(graphs_info[i].graphInfoV1.graphName);
-      auto qnn_model_pos = qnn_models.find(graph_name);
-      ORT_RETURN_IF(qnn_model_pos == qnn_models.end(), graph_name + " does not match any EPContext node names.");
-      ORT_RETURN_IF_ERROR(qnn_model_pos->second->DeserializeGraphInfoFromBinaryInfo(graphs_info[i]));
-    }
+  for (uint32_t i = 0; i < graph_count; ++i) {
+    //std::string graph_name(graphs_info[i].graphInfoV1.graphName);
+    auto qnn_model_pos = qnn_models.find(node_name);
+    ORT_RETURN_IF(qnn_model_pos == qnn_models.end(), node_name + " does not match any EPContext node names.");
+    ORT_RETURN_IF_ERROR(qnn_model_pos->second->DeserializeGraphInfoFromBinaryInfo(graphs_info[i], context));
   }
 
   qnn_sys_interface_.systemContextFree(sys_ctx_handle);
