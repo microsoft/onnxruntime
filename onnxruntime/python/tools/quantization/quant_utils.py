@@ -24,6 +24,8 @@ try:
     from onnx.reference.custom_element_types import float8e4m3fn, int4, uint4
 except ImportError:
     float8e4m3fn = None
+    int4 = None
+    uint4 = None
 
 
 __producer__ = "onnx.quantize"
@@ -134,8 +136,8 @@ ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.INT16: numpy.dtype("int16"),
     onnx_proto.TensorProto.UINT16: numpy.dtype("uint16"),
     onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
-    onnx_proto.TensorProto.INT4: int4,
-    onnx_proto.TensorProto.UINT4: uint4,
+    onnx_proto.TensorProto.INT4: int4,  # base_dtype is np.int8
+    onnx_proto.TensorProto.UINT4: uint4,  # base_dtype is np.uint8
 }
 
 ONNX_INT_TYPE_RANGE = {
