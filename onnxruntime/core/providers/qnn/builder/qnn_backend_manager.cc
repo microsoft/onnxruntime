@@ -587,12 +587,19 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
   contexts_.push_back(context);
-
-  for (uint32_t i = 0; i < graph_count; ++i) {
-    //std::string graph_name(graphs_info[i].graphInfoV1.graphName);
+  if (1 == graph_count) {
+    // in case the EPContext node is generated from script
+    // the graph name from the context binary may not match the EPContext node name
     auto qnn_model_pos = qnn_models.find(node_name);
     ORT_RETURN_IF(qnn_model_pos == qnn_models.end(), node_name + " does not match any EPContext node names.");
-    ORT_RETURN_IF_ERROR(qnn_model_pos->second->DeserializeGraphInfoFromBinaryInfo(graphs_info[i], context));
+    ORT_RETURN_IF_ERROR(qnn_model_pos->second->DeserializeGraphInfoFromBinaryInfo(graphs_info[0], context));
+  } else {
+    for (uint32_t i = 0; i < graph_count; ++i) {
+      std::string graph_name(graphs_info[i].graphInfoV1.graphName);
+      auto qnn_model_pos = qnn_models.find(graph_name);
+      ORT_RETURN_IF(qnn_model_pos == qnn_models.end(), graph_name + " does not match any EPContext node names.");
+      ORT_RETURN_IF_ERROR(qnn_model_pos->second->DeserializeGraphInfoFromBinaryInfo(graphs_info[i], context));
+    }
   }
 
   qnn_sys_interface_.systemContextFree(sys_ctx_handle);

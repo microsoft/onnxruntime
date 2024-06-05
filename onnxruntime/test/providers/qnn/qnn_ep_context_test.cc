@@ -24,13 +24,13 @@ namespace test {
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Create a model with Case + Add (quantized)
+// Create a model with FusedMatMul + Add (quantized)
 // input1 -> Add -> Q -> DQ \
 //                           FusedMatMul -> Q -> DQ -> output
 //        input2 -> Q -> DQ /
 static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
   return [single_ep_node](ModelTestBuilder& builder) {
-    // Creat non-quantized Add node1
+    // Creat non-quantized FusedMatMul node1
     NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({2, 2}, false, {0, 1, 0, 1}));
     NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, {0, 0, 0, 0}));
 
@@ -147,15 +147,15 @@ void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
 }
 
-// Test that models with 1 non-quantized Add node and 1 quantized Add node can still generate the context binary
-// The generated Onnx model has 1 Add node and 1 EPContext node
+// Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary
+// The generated Onnx model has 1 FusedMatMul node and 1 EPContext node
 TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport1) {
   bool single_ep_node = true;
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
 }
 
-// Test that models with 2 non-quantized Add nodes and 2 quantized Add nodes can still generate the context binary
-// The generated Onnx model has 2 Add nodes and 1 EPContext nodes
+// Test that models with 2 non-quantized FusedMatMul nodes and 2 quantized Add nodes can still generate the context binary
+// The generated Onnx model has 2 FusedMatMul nodes and 1 EPContext nodes
 TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
   bool single_ep_node = false;
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
