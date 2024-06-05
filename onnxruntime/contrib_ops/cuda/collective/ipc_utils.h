@@ -39,6 +39,9 @@ inline auto ipc_deleter = [](void* ptr) {
   }
 };
 
+using CudaMemPtrT = std::unique_ptr<void*, decltype(cuda_deleter)>;
+using IpcMemPtrT = std::unique_ptr<void*, decltype(ipc_deleter)>;
+
 class IpcMemory {
  public:
   size_t static constexpr FLAGS_SIZE = (MAX_ALL_REDUCE_BLOCKS + 1) * sizeof(uint32_t);
@@ -58,10 +61,9 @@ class IpcMemory {
   InlinedVector<void*> m_comm_ptrs_;
   std::size_t mbuffer_size_;
 
-  using CudaMemPtrT = std::unique_ptr<void*, decltype(cuda_deleter)>;
   CudaMemPtrT m_buffer_ptr_{nullptr, cuda_deleter};
 
-  using IpcMemPtrT = std::unique_ptr<void*, decltype(ipc_deleter)>;
+  
   InlinedVector<IpcMemPtrT> m_ipc_ptrs_;
 };
 
