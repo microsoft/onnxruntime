@@ -182,7 +182,7 @@ def parse_args():
     parser.add_argument(
         "--staging-dir",
         type=pathlib.Path,
-        default=pathlib.Path("./onnxruntime-mobile-objc-staging"),
+        default=pathlib.Path("./objc-staging"),
         help="Path to the staging directory for the Objective-C pod files.",
     )
     parser.add_argument("--pod-version", required=True, help="Objective-C pod version.")
