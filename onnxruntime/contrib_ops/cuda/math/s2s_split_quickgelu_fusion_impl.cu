@@ -29,8 +29,8 @@ __device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha_v
     printf("Input is double: %lf\n", static_cast<double>(inp1));
   } else if (std::is_same<T, int>::value) {
     printf("Input is int: %d\n", static_cast<int>(inp1));
-  } else if (std::is_same<T, long>::value) {
-    printf("Input is long: %ld\n", static_cast<long>(inp1));
+  // } else if (std::is_same<T, long>::value) {
+  //   printf("Input is long: %ld\n", static_cast<long>(inp1));
   // } else if (std::is_same<T, long long>::value) {
   //   printf("Input is long long: %lld\n", static_cast<long long>(inp1));
   // } else if (std::is_same<T, half>::value) {
