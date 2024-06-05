@@ -27,10 +27,19 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   ORT_ENFORCE(input);
   const auto& input_shape = input->Shape();
   auto output_shape = input_shape;
+  // TODO: Handle multi dimensional array
+  // int input_shape_len = input_shape.size();
+  // TODO: Make it dynamic
+  // 2x3x8
+  // 2x3x4
+  // inp: 6x8
+  // 6x4
+  // output_shape[input_shape_len-1] /= 2;
   output_shape[1] /= 2;
   auto* output = context->Output(0, output_shape);
   ORT_ENFORCE(output);
-  int dim = output_shape[1];
+  // int dim = output_shape[input_shape_len-1];
+  int dim = output_shape[input_shape_len-1];
   const auto input_size = input_shape.Size();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, BFloat16> dispatcher{input->GetElementType()};
@@ -50,33 +59,16 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   // output_dims[num_dims-1] = output_dims[num_dims-1]/2;
   // TensorShape output_shape(output_dims);
   // auto* output_tensor = context->Output(0, output_shape);
-
-
   // const Tensor* split_tensor = context->Input<Tensor>(1);
-  // if (split_tensor) {
-  //   ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "A split tensor must be a vector tensor.");
-  //   auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
-  //   const int64_t* data = split_tensor->Data<int64_t>();
-  //   split_sizes.assign(data, data + nDims);
-  // } else {
-  //   split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
-  // }
 
   // auto input_data = input_tensor->DataRaw();
-
   // auto input_dims = input_shape.GetDims();
   // // Correct this
-  // auto output_dimensions{input_shape.AsShapeVector()};
-  // CudaAsyncBuffer<void*> output_ptr(this, num_outputs);
-  // gsl::span<void*> output_ptr_span = output_ptr.CpuSpan();
-  // TensorShapeVector axis_dimension_input_output_mapping(input_dims[axis]);
   // int index = 0;
   // for (int i = 0; i < num_outputs; ++i) {
   //   // update size of dimension for axis we're splitting on
   //   auto split_size = gsl::narrow<int>(split_sizes[i]);
   //   output_dimensions[axis] = split_size;
-
-  //   // Tensor* output = context->Output(TensorShape{output_dimensions});
 
   //   Tensor* output = context->Output(i, TensorShape{output_dimensions});
   //   auto output_data = output->MutableDataRaw();

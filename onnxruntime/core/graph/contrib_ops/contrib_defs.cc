@@ -655,7 +655,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           const int rank = input_shape.dim_size();
           ONNX_NAMESPACE::TensorShapeProto output_shape;
           for (int d = 0; d < rank; d++) {
-            if (d == rank-1){
+            if (d == rank - 1){
               *output_shape.add_dim() = input_shape.dim(d) / 2;
             } else {
               *output_shape.add_dim() = input_shape.dim(d);

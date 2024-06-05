@@ -46,12 +46,12 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   // float alpha = 1.702f;
   T alpha_val = static_cast<T>(alpha);
   // Separate QuickGelu code in another fn
-  // printf("Curr kElementsPerThread %d\n", kElementsPerThread);
-  // printf("Curr blockIdx.x %d\n", blockIdx.x);
-  // printf("Curr threadIdx.x %d\n", threadIdx.x);
-  // printf("Curr offset_in1 %d\n", offset_in1);
-  // printf("Curr offset_in2 %d\n", offset_in2);
-  // printf("Curr offset_out %d\n", offset_out);
+  printf("Curr kElementsPerThread %d\n", kElementsPerThread);
+  printf("Curr blockIdx.x %d\n", blockIdx.x);
+  printf("Curr threadIdx.x %d\n", threadIdx.x);
+  printf("Curr offset_in1 %d\n", offset_in1);
+  printf("Curr offset_in2 %d\n", offset_in2);
+  printf("Curr offset_out %d\n", offset_out);
   // std::cout << "Curr kElementsPerThread:" << kElementsPerThread << std::endl;
   // input_size - dim
   // 5x4 (input_size = 20), dim = 2
@@ -70,7 +70,6 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
     // int curr_in = offset_in1 + i;
     // int curr_half = curr_in / dim;
     // printf("Curr Inp Outside %d\n", curr_in);
-    // if (curr_half %2 == 0 && curr_in < max_inp){
     if (threadIdx.x*kElementsPerThread + i < dim) {
       // printf("Curr Inp inside %d\n", curr_in);
       // std::cout << "Curr curr_in:" << curr_in << std::endl;
@@ -89,7 +88,20 @@ template <typename T>
 void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int dim, int64_t input_size, float alpha, const T* input_data, T* output_data) {
   CUDA_LONG N = static_cast<CUDA_LONG>(input_size);
   int num_threads_per_block = std::min<int>(static_cast<int>(CeilDiv(dim, kElementsPerThread)), kThreadsPerBlock);
+  // TODO: num_blocks
+  // 2x3x8
+  // 6x8
+  // dim =4
+  // num_blocks = 6
+  // 1Mx1Mx64
+  // 10^12x64
+  // num_blocks=10^12
+  // max num_blocks = 65K
+  // [1000][10]
+  // ElemWiseKernel
+  // [1000][1]
   int num_blocks = static_cast<int>(N/(2*dim));
+  num_blocks = 1;
   // printf("Final number threads per block %d\n", num_threads_per_block);
   // printf("Final num blocks %d\n", num_blocks);
   S2SModelSplitQuickGeluKernel<T><<<num_blocks, num_threads_per_block, 0, stream>>>(dim, alpha, input_data, output_data);
