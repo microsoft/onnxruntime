@@ -14,9 +14,8 @@ repo_root = _script_dir.parents[3]
 
 
 class PackageVariant(enum.Enum):
-    Full = 0  # full ORT build with all opsets, ops, and types
-    Mobile = 1  # minimal ORT build with reduced ops
-    Training = 2  # full ORT build with all opsets, ops, and types, plus training APIs
+    Full = 0      # full ORT build with all opsets, ops, and types
+    Training = 1  # full ORT build with all opsets, ops, and types, plus training APIs
 
     @classmethod
     def release_variant_names(cls):
