@@ -8,7 +8,7 @@ import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
 import {applyAttention, AttentionAttrs, AttentionMaskType, AttentionParameters, AttentionQkvFormat} from './attention';
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 import {maybeTransposeToBNSHAndAddBias} from './multihead-attention';
 import {createSplitProgramInfo, SplitAttributes} from './split';
 import {createTileProgramInfo} from './tile';
@@ -72,7 +72,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   const hasPastKey = pastKey && pastKey.dims.length !== 0;
   const hasPastValue = pastValue && pastValue.dims.length !== 0;
   // TODO : this should be from attributes.
-  const isPastkvBSNH = true;
+  const isPastkvBSNH = !hasPastKey || pastKey.dims[3] === attributes.numHeads;
   if (hasPastKey && hasPastValue) {
     if (pastKey.dims.length !== 4) {
       throw new Error('Input "past_key" is expected to have 4 dimensions');
