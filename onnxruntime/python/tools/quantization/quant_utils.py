@@ -21,9 +21,15 @@ from onnx.reference import ReferenceEvaluator
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 
 try:
-    from onnx.reference.custom_element_types import float8e4m3fn, int4, uint4
+    from onnx.reference.custom_element_types import float8e4m3fn
 except ImportError:
     float8e4m3fn = None
+
+# INT4 np.dtypes added in ONNX 1.16. These map to np.int8/np.uint8 because numpy
+# does not support sub-byte types.
+try:
+    from onnx.reference.custom_element_types import int4, uint4
+except ImportError:
     int4 = None
     uint4 = None
 
