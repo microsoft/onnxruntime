@@ -60,7 +60,8 @@ jar {
 }
 
 // Add explicit sources jar with pom file.
-task sourcesJar(type: Jar, dependsOn: classes) {
+tasks.register('sourcesJar', Jar) {
+	dependsOn classes
 	archiveClassifier = "sources"
 	from sourceSets.main.allSource
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
@@ -70,7 +71,8 @@ task sourcesJar(type: Jar, dependsOn: classes) {
 }
 
 // Add explicit javadoc jar with pom file
-task javadocJar(type: Jar, dependsOn: javadoc) {
+tasks.register('javadocJar', Jar) {
+	dependsOn javadoc
 	archiveClassifier = "javadoc"
 	from javadoc.destinationDir
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
@@ -140,7 +142,7 @@ if (cmakeBuildDir != null) {
 	// generate tasks to be called from cmake
 
 	// Overwrite jar location
-	task allJar(type: Jar) {
+	tasks.register('allJar', Jar) {
 		manifest {
 			attributes('Automatic-Module-Name': project.group,
 					'Implementation-Title': 'onnxruntime',
@@ -155,7 +157,7 @@ if (cmakeBuildDir != null) {
 		from cmakeNativeLibDir
 	}
 
-	task cmakeBuild(type: Copy) {
+	tasks.register('cmakeBuild', Copy) {
 		from layout.buildDirectory.get()
 		include 'libs/**'
 		include 'docs/**'
@@ -163,7 +165,7 @@ if (cmakeBuildDir != null) {
 		dependsOn(allJar, sourcesJar, javadocJar, javadoc)
 	}
 
-	task cmakeCheck(type: Copy) {
+	tasks.register('cmakeCheck', Copy) {
 		from layout.buildDirectory.get()
 		include 'reports/**'
 		into cmakeBuildOutputDir
