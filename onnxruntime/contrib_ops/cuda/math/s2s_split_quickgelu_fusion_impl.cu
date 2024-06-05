@@ -23,11 +23,31 @@ constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 
 template <typename T>
 __device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha_val) {
+  if (std::is_same<T, float>::inp1) {
+    printf("Input is float: %f\n", static_cast<float>(inp1));
+  } else if (std::is_same<T, double>::inp1) {
+    printf("Input is double: %lf\n", static_cast<double>(inp1));
+  } else if (std::is_same<T, int>::inp1) {
+    printf("Input is int: %d\n", static_cast<int>(inp1));
+  } else if (std::is_same<T, long>::inp1) {
+    printf("Input is long: %ld\n", static_cast<long>(inp1));
+  } else if (std::is_same<T, long long>::inp1) {
+    printf("Input is long long: %lld\n", static_cast<long long>(inp1));
+  } else if (std::is_same<T, half>::inp1) {
+    printf("Input is half: %f\n", __half2float(inp1));
+  } else if (std::is_same<T, nv_bfloat16>::inp1) {
+    printf("Input is bfloat16: %f\n", __bfloat162float(inp1));
+  } else {
+    // Add more types if necessary
+    printf("Unknown type\n");
+  }
   T v = inp2 * alpha_val;
   T one = static_cast<T>(1.f);
   T zero = static_cast<T>(0.f);
   T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
   T quickgelu_out = inp2 * sigmoid;
+  printf("quickgelu_out: %f\n", static_cast<float>(quickgelu_out));  // Using %f for float, change format specifier if using double
+  printf("Final out: %f\n", static_cast<float>(inp1 * quickgelu_out));
   return inp1 * quickgelu_out;
 }
 
@@ -52,6 +72,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   printf("Curr offset_in1 %d\n", offset_in1);
   printf("Curr offset_in2 %d\n", offset_in2);
   printf("Curr offset_out %d\n", offset_out);
+  printf("Curr dim %d\n", dim);
   // std::cout << "Curr kElementsPerThread:" << kElementsPerThread << std::endl;
   // input_size - dim
   // 5x4 (input_size = 20), dim = 2
@@ -67,12 +88,11 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   // What about this condition? (Removing if condition should improve Warp Divergence?)
   // for (int i = 0; i < kElementsPerThread; i++) {
   for (int i = 0; i < kElementsPerThread && threadIdx.x*kElementsPerThread + i < dim; i++){
-    // int curr_in = offset_in1 + i;
+    int curr_in = offset_in1 + i;
     // int curr_half = curr_in / dim;
-    // printf("Curr Inp Outside %d\n", curr_in);
+    printf("Curr Inp Outside %d\n", curr_in);
     if (threadIdx.x*kElementsPerThread + i < dim) {
-      // printf("Curr Inp inside %d\n", curr_in);
-      // std::cout << "Curr curr_in:" << curr_in << std::endl;
+      printf("Curr Inp inside %d\n", curr_in);
       output[offset_out + i] = QuickGeluCompute(input[offset_in1 + i], input[offset_in2+i], alpha_val);
       // T v = input[offset_in2+i] * alpha_val;
       // T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
