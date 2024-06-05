@@ -328,7 +328,7 @@ void DispatchBlockSize(const MemoryEfficientAttentionParams& params) {
   } else if (params.v_head_size <= 128) {
     DispatchIsAligned<T, ArchTag, 32, 128, 128>(params);
   } else {
-    DispatchIsAligned<T, ArchTag, 32, 128, 65536>(params);
+    DispatchIsAligned<T, ArchTag, 32, 128, kEfficientAttentionMaxHeadSize>(params);
   }
 }
 

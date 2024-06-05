@@ -272,9 +272,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
     use_memory_efficient_attention =
         is_good_for_rpb &&
         (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
-        (parameters.head_size & 7) == 0 &&
-        (parameters.v_head_size & 7) == 0 &&
-        has_memory_efficient_attention(sm, sizeof(T) == 2);
+        has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
   }
 #endif
 
