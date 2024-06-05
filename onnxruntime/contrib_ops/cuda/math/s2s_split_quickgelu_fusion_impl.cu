@@ -121,6 +121,7 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int dim, int64_t in
   // ElemWiseKernel
   // [1000][1]
   int num_blocks = static_cast<int>(N/(2*dim));
+  printf("Num blocks %d\n", num_blocks);
   // num_blocks = 1;
   // printf("Final number threads per block %d\n", num_threads_per_block);
   // printf("Final num blocks %d\n", num_blocks);
