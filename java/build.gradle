@@ -94,7 +94,7 @@ spotless {
 
 compileJava {
 	dependsOn spotlessJava
-	options.compilerArgs += ["-h", "${project.layout.buildDirectory.toString()}/headers/"]
+	options.compilerArgs += ["-h", "${layout.buildDirectory.get()}/headers/"]
 	if (!JavaVersion.current().isJava8()) {
 		// Ensures only methods present in Java 8 are used
 		options.compilerArgs.addAll(['--release', '8'])
@@ -156,7 +156,7 @@ if (cmakeBuildDir != null) {
 	}
 
 	task cmakeBuild(type: Copy) {
-		from project.layout.buildDirectory
+		from layout.buildDirectory.get()
 		include 'libs/**'
 		include 'docs/**'
 		into cmakeBuildOutputDir
@@ -164,7 +164,7 @@ if (cmakeBuildDir != null) {
 	}
 
 	task cmakeCheck(type: Copy) {
-		from project.layout.buildDirectory
+		from layout.buildDirectory.get()
 		include 'reports/**'
 		into cmakeBuildOutputDir
 		dependsOn(check)
