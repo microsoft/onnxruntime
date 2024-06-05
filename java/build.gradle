@@ -96,7 +96,7 @@ spotless {
 
 compileJava {
 	dependsOn spotlessJava
-	options.compilerArgs += ["-h", "${layout.buildDirectory.get()}/headers/"]
+	options.compilerArgs += ["-h", "${layout.buildDirectory.get().toString()}/headers/"]
 	if (!JavaVersion.current().isJava8()) {
 		// Ensures only methods present in Java 8 are used
 		options.compilerArgs.addAll(['--release', '8'])
