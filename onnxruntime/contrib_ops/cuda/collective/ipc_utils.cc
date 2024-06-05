@@ -29,15 +29,23 @@ using namespace onnxruntime;
 
 IpcMemory::IpcMemory(int rank, int world_size, std::size_t buffer_size)
     : rank_(rank), world_size_(world_size), m_comm_ptrs_(world_size), mbuffer_size_(buffer_size) {
+  m_ipc_ptrs_.reserve(world_size);
+  for (int i = 0; i < world_size; i++) {
+    IpcMemPtrT m_ipc_ptr{nullptr, ipc_deleter};
+    m_ipc_ptrs_.push_back(std::move(m_ipc_ptr));
+  }
   ORT_ENFORCE(AllocateIpcMemory() == Status::OK());
 }
 
 Status IpcMemory::AllocateIpcMemory() {
-  CUDA_RETURN_IF_ERROR(cudaMalloc(&m_buffer_ptr_, mbuffer_size_));
-  CUDA_RETURN_IF_ERROR(cudaMemset(m_buffer_ptr_, 0, mbuffer_size_));
+  void* m_buffer_ptr = m_buffer_ptr_.get();
+
+  CUDA_RETURN_IF_ERROR(cudaMalloc(&m_buffer_ptr, mbuffer_size_));
+  CUDA_RETURN_IF_ERROR(cudaMemset(m_buffer_ptr, 0, mbuffer_size_));
 
   cudaIpcMemHandle_t local_handle;
-  CUDA_RETURN_IF_ERROR(cudaIpcGetMemHandle(&local_handle, m_buffer_ptr_));
+  CUDA_RETURN_IF_ERROR(cudaIpcGetMemHandle(&local_handle, m_buffer_ptr));
+  m_comm_ptrs_[rank_] = m_buffer_ptr_.get();
 
   // Assume no pipeline parallelism.
   InlinedVector<char> serial_handles(CUDA_IPC_HANDLE_SIZE * world_size_, 0);
@@ -56,10 +64,8 @@ Status IpcMemory::AllocateIpcMemory() {
   }
 
   for (size_t node_id = 0; node_id < handles.size(); node_id++) {
-    if ((int)node_id == rank_) {
-      m_comm_ptrs_[node_id] = m_buffer_ptr_;
-    } else {
-      uint8_t* foreign_buffer;
+    if ((int)node_id != rank_) {
+      void* foreign_buffer = *m_ipc_ptrs_[node_id];
       CUDA_RETURN_IF_ERROR(cudaIpcOpenMemHandle(
           reinterpret_cast<void**>(&foreign_buffer), handles[node_id], cudaIpcMemLazyEnablePeerAccess));
       m_comm_ptrs_[node_id] = foreign_buffer;
@@ -70,18 +76,6 @@ Status IpcMemory::AllocateIpcMemory() {
 }
 
 IpcMemory::~IpcMemory() {
-  std::ignore = DestroyIpcMemory();
-}
-
-Status IpcMemory::DestroyIpcMemory() {
-  for (int node_id = 0; node_id < world_size_; ++node_id) {
-    if (node_id == rank_) {
-      CUDA_RETURN_IF_ERROR(cudaFree(m_comm_ptrs_[node_id]));
-    } else {
-      CUDA_RETURN_IF_ERROR(cudaIpcCloseMemHandle(m_comm_ptrs_[node_id]));
-    }
-  }
-  return Status::OK();
 }
 
 Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
