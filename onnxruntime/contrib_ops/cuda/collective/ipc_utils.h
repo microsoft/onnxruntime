@@ -27,19 +27,15 @@ namespace collective {
 
 #if defined(USE_MPI) || defined(USE_NCCL)
 
-struct CudaDeleter {
-  void operator()(void* ptr) {
-    if (ptr != nullptr) {
-      cudaFree(ptr);
-    }
+inline auto cuda_deleter = [](void* ptr) {
+  if (ptr != nullptr) {
+    cudaFree(ptr);
   }
 };
 
-struct IpcDeleter {
-  void operator()(void* ptr) {
-    if (ptr != nullptr) {
-      cudaIpcCloseMemHandle(ptr);
-    }
+inline auto ipc_deleter = [](void* ptr) {
+  if (ptr != nullptr) {
+    cudaIpcCloseMemHandle(ptr);
   }
 };
 
@@ -62,10 +58,10 @@ class IpcMemory {
   InlinedVector<void*> m_comm_ptrs_;
   std::size_t mbuffer_size_;
 
-  using CudaMemPtrT = std::unique_ptr<void*, CudaDeleter>;
-  CudaMemPtrT m_buffer_ptr_;
+  using CudaMemPtrT = std::unique_ptr<void*, decltype(cuda_deleter)>;
+  CudaMemPtrT m_buffer_ptr_{nullptr, cuda_deleter};
 
-  using IpcMemPtrT = std::unique_ptr<void*, IpcDeleter>;
+  using IpcMemPtrT = std::unique_ptr<void*, decltype(ipc_deleter)>;
   InlinedVector<IpcMemPtrT> m_ipc_ptrs_;
 };
 
