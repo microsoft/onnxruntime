@@ -498,9 +498,9 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
     LOGS(*logger_, ERROR) << "Failed to get valid function pointer.";
     return nullptr;
   }
-  ORT_ENFORCE(contexts_.size() > 0, "No valid context!");
+  ORT_ENFORCE(contexts_.size() > 0, "No valid QNN context!");
   uint64_t required_buffer_size(0);
-  // Generate all graphs in one sigle context
+  // Generate all graphs in one single context
   Qnn_ErrorHandle_t rt = qnn_interface_.contextGetBinarySize(contexts_[0], &required_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
     LOGS(*logger_, ERROR) << "Failed to get QNN context binary size. Error code: " << rt;

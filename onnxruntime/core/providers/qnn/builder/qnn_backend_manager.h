@@ -103,7 +103,10 @@ class QnnBackendManager {
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
-  const Qnn_ContextHandle_t& GetQnnContext(int index = 0) { return contexts_[index]; }
+  const Qnn_ContextHandle_t& GetQnnContext(int index = 0) {
+    ORT_ENFORCE(contexts_.size() > 0, "No valid QNN context!");
+    return contexts_[index];
+  }
 
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
 
