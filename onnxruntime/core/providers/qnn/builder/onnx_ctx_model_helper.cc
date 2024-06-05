@@ -64,7 +64,7 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     }
   }
 
-  ORT_RETURN_IF(main_context_pos.size() < 0, "Failed to find the EPContext node with main_context=1");
+  ORT_RETURN_IF(main_context_pos.size() < 1, "Failed to find the EPContext node with main_context=1");
   return Status::OK();
 }
 
