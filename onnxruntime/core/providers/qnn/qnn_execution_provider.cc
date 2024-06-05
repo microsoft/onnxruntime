@@ -373,30 +373,8 @@ std::unordered_set<const Node*>
 QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                         const size_t node_unit_size,
-                                        bool is_qnn_ctx_model,
                                         const logging::Logger& logger) const {
   std::unordered_set<const Node*> supported_nodes{};
-  // Filter in the EPContext node for QNN
-  if (is_qnn_ctx_model) {
-    for (const auto& node : graph_viewer.Nodes()) {
-      NodeAttrHelper node_helper(node);
-      std::string cache_source = node_helper.Get(qnn::SOURCE, "");
-
-      std::transform(cache_source.begin(),
-                     cache_source.end(),
-                     cache_source.begin(),
-                     [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-
-      if (qnn::EPCONTEXT_OP == node.OpType() && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
-        LOGS(logger, VERBOSE) << "Node supported: [1] index: [" << node.Index()
-                              << "] name: [" << node.Name()
-                              << "] Operator type: [EPContext"
-                              << "] index: [" << node.Index() << "]";
-        supported_nodes.insert(&node);
-      }
-    }
-    return supported_nodes;
-  }
 
   std::unordered_set<std::string> initializer_input_lookup;
   auto graph_initializers = graph_viewer.GetAllInitializedTensors();
@@ -587,8 +565,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
 
   // remove is_qnn_ctx_model related code
-  const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(),
-                                                 is_qnn_ctx_model, logger);
+  const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map,
+                                                 node_unit_holder.size(), logger);
 
   // Helper function that returns a string that lists all unsupported nodes.
   // Ex: { name: mul_123, type: Mul }, {}, ...

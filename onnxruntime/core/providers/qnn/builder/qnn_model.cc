@@ -368,8 +368,8 @@ Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_Graph
   }
   Qnn_GraphHandle_t graph;
   auto qnn_interface = qnn_backend_manager_->GetQnnInterface();
-  qnn_interface.graphRetrieve(context,
-                              graph_name.c_str(), &graph);
+  auto rt = qnn_interface.graphRetrieve(context, graph_name.c_str(), &graph);
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to retrieve QNN graph.");
 
   graph_info_ = std::make_unique<GraphInfo>(graph,
                                             graph_name,
