@@ -24,15 +24,15 @@ class GQAAttentionBase : public AttentionBase {
   bool rotary_interleaved_;
 
   template <typename T>
-  Status ApplyAttention(const T* Q,                // Q data with shape BxNxSxH
-                        const T* K,                // K data with shape BxN_kvxSxH
-                        const T* V,                // V data with shape BxN_kvxSxH
-                        const Tensor* past_key,    // past K input tensor (if not using past state)
-                        const Tensor* past_value,  // past V input tensor (if not using past state)
-                        Tensor* output,            // output tensor
-                        Tensor* present_key,       // present K output tensor (if separating present KV)
-                        Tensor* present_value,     // present V output tensor (if separating present KV)
-                        const Tensor* seqlens_k,   // past sequence lengths tensor
+  Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH
+                        const T* K,                                 // K data with shape BxN_kvxSxH
+                        const T* V,                                 // V data with shape BxN_kvxSxH
+                        const Tensor* past_key,                     // past K input tensor (if not using past state)
+                        const Tensor* past_value,                   // past V input tensor (if not using past state)
+                        Tensor* output,                             // output tensor
+                        Tensor* present_key,                        // present K output tensor (if separating present KV)
+                        Tensor* present_value,                      // present V output tensor (if separating present KV)
+                        const Tensor* seqlens_k,                    // past sequence lengths tensor
                         GroupQueryAttentionParameters& parameters,  // attention parameters
                         AllocatorPtr allocator,                     // allocator for temporary tensors
                         OpKernelContext* context) const {
@@ -208,8 +208,8 @@ class GQAAttentionBase : public AttentionBase {
                                int hidden_size,                     // hidden size of Output
                                const T* past_value,                 // past value only
                                T* present_value,                    // present value only
-                               bool past_present_share_buffer,  // whether present key and value share the same buffer
-                               bool packed_qkv,                 // whether Q, K, V are packed
+                               bool past_present_share_buffer,      // whether present key and value share the same buffer
+                               bool packed_qkv,                     // whether Q, K, V are packed
                                ThreadPool* tp) const {
     const bool is_prompt = sequence_length != 1;
     const ptrdiff_t packed_batch_stride =
