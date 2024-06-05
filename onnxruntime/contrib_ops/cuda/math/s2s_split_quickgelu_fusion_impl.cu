@@ -33,10 +33,10 @@ __device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha_v
     printf("Input is long: %ld\n", static_cast<long>(inp1));
   } else if (std::is_same<T, long long>::value) {
     printf("Input is long long: %lld\n", static_cast<long long>(inp1));
-  } else if (std::is_same<T, half>::value) {
-    printf("Input is half: %f\n", __half2float(inp1));
-  } else if (std::is_same<T, nv_bfloat16>::value) {
-    printf("Input is bfloat16: %f\n", __bfloat162float(inp1));
+  // } else if (std::is_same<T, half>::value) {
+  //   printf("Input is half: %f\n", __half2float(inp1));
+  // } else if (std::is_same<T, nv_bfloat16>::value) {
+  //   printf("Input is bfloat16: %f\n", __bfloat162float(inp1));
   } else {
     // Add more types if necessary
     printf("Unknown type\n");
