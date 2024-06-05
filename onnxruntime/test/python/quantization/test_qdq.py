@@ -24,6 +24,7 @@ from op_test_utils import (
 
 from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import TensorData
+from onnxruntime.quantization.quant_utils import pack_bytes_to_4bit
 
 
 class TestQDQFormat(unittest.TestCase):
@@ -1691,6 +1692,25 @@ class TestQDQ4bit(TestQDQFormat):
         weight_quant_init = initializers["weight_quantized"]
         size_ratio = weight_quant_init.ByteSize() / unpacked_size
         self.assertLess(size_ratio, 0.55)
+
+    def test_pack_bytes_to_4bit(self):
+        """
+        Tests the pack_bytes_to_4bit() utility.
+        """
+        subtest_configs = [
+            (-8, 6, True),  # Odd num elems, signed
+            (-8, 7, True),  # Even num elems, signed
+            (0, 14, False),  # Odd num elems, unsigned
+            (0, 15, False),  # Even num elems, unsigned
+        ]
+        for min_val, max_val, signed in subtest_configs:
+            with self.subTest(min_val=min_val, max_val=max_val, signed=signed):
+                src_float = np.arange(min_val, max_val + 1).astype(np.float32)
+                src_int = src_float.astype(np.int8 if signed else np.uint8)
+
+                actual_packed_vals = bytes(pack_bytes_to_4bit(src_int.tobytes()))
+                expected_packed_vals = onnx.helper.pack_float32_to_4bit(src_float, signed).tobytes()
+                self.assertEqual(actual_packed_vals, expected_packed_vals)
 
 
 if __name__ == "__main__":

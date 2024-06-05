@@ -461,7 +461,7 @@ def normalize_axis(axis: int, rank: int) -> tuple[bool, int]:
 def pack_bytes_to_4bit(src_8bit: bytes) -> bytearray:
     """
     Copies a source array of 8-bit values into a destination bytearray of packed 4-bit values.
-    Assumes that the upper 4 bits of each source value can be discarded.
+    Assumes that the source values are already in the appropriate int4 range.
     :parameter src_8bit: The 8-bit element values to pack.
     :return A bytearray with every two 8-bit src elements packed into a single byte.
     """
