@@ -112,6 +112,7 @@ namespace perftest {
       "\t    [TensorRT only] [trt_engine_cache_enable]: Enable engine caching.\n"
       "\t    [TensorRT only] [trt_engine_cache_path]: Specify engine cache path.\n"
       "\t    [TensorRT only] [trt_engine_cache_prefix]: Customize engine cache prefix when trt_engine_cache_enable is true.\n"
+      "\t    [TensorRT only] [trt_engine_hw_compatible]: Enable hardware compatibility. Engines ending with '_sm80+' can be re-used across all Ampere+ GPU (a hardware-compatible engine may have lower throughput and/or higher latency than its non-hardware-compatible counterpart).\n"
       "\t    [TensorRT only] [trt_weight_stripped_engine_enable]: Enable weight-stripped engine build.\n"
       "\t    [TensorRT only] [trt_onnx_model_folder_path]: Folder path for the ONNX model with weights.\n"
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"

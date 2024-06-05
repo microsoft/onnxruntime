@@ -24,6 +24,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/int4.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"
@@ -68,7 +69,9 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_FLOAT8E4M3FN = 17,
   TensorProto_DataType_FLOAT8E4M3FNUZ = 18,
   TensorProto_DataType_FLOAT8E5M2 = 19,
-  TensorProto_DataType_FLOAT8E5M2FNUZ = 20
+  TensorProto_DataType_FLOAT8E5M2FNUZ = 20,
+  TensorProto_DataType_UINT4 = 21,
+  TensorProto_DataType_INT4 = 22,
 };
 
 enum TensorProto_DataLocation : int {
@@ -86,7 +89,8 @@ enum Version : int {
   IR_VERSION_2019_9_19 = 6,
   IR_VERSION_2020_5_8 = 7,
   IR_VERSION_2021_7_31 = 8,
-  IR_VERSION = 9
+  IR_VERSION_2023_5_5 = 9,
+  IR_VERSION = 10
 };
 
 enum OperatorStatus : int {
@@ -347,6 +351,14 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() {
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
 #endif
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
+}
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
+}
 }  // namespace utils
 
 namespace QDQ {

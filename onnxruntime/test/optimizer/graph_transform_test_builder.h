@@ -10,6 +10,7 @@
 #include "core/common/type_utils.h"
 #include "core/graph/graph.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/int4.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/framework/test_utils.h"
@@ -46,6 +47,12 @@ struct IsTypeQuantLinearCompatible<int16_t> : std::true_type {};
 template <>
 struct IsTypeQuantLinearCompatible<uint16_t> : std::true_type {};
 
+template <>
+struct IsTypeQuantLinearCompatible<Int4x2> : std::true_type {};
+
+template <>
+struct IsTypeQuantLinearCompatible<UInt4x2> : std::true_type {};
+
 template <typename T>
 struct IsTypeDequantLinearCompatible : utils::IsByteType<T> {};
 
@@ -57,6 +64,12 @@ struct IsTypeDequantLinearCompatible<uint16_t> : std::true_type {};
 
 template <>
 struct IsTypeDequantLinearCompatible<int32_t> : std::true_type {};
+
+template <>
+struct IsTypeDequantLinearCompatible<Int4x2> : std::true_type {};
+
+template <>
+struct IsTypeDequantLinearCompatible<UInt4x2> : std::true_type {};
 
 class ModelTestBuilder {
  public:
@@ -101,6 +114,22 @@ class ModelTestBuilder {
       data.push_back(x != 0);
     }
     return MakeInput<bool>(shape, data);
+  }
+
+  template <typename TInt4>
+  typename std::enable_if<
+      std::is_same_v<TInt4, Int4x2> || std::is_same_v<TInt4, UInt4x2>,
+      NodeArg*>::type
+  MakeInputInt4(const std::vector<int64_t>& shape, typename TInt4::UnpackedType min, typename TInt4::UnpackedType max) {
+    using UnpackedType = typename TInt4::UnpackedType;
+    std::vector<UnpackedType> data_int8 = rand_gen_.Uniform<UnpackedType>(shape, min, max);
+    std::vector<TInt4> data(TInt4::CalcNumInt4Pairs(data_int8.size()));
+    for (size_t i = 0; i < data_int8.size(); i++) {
+      size_t r = i >> 1;
+      size_t c = i & 0x1;
+      data[r].SetElem(c, data_int8[i]);
+    }
+    return MakeInput<TInt4>(shape, data);
   }
 
   template <typename T>

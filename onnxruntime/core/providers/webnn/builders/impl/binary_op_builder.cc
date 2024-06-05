@@ -22,6 +22,8 @@ class BinaryOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType device_type, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -66,6 +68,49 @@ bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   // TODO: Remove this check after it is solved.
   if (op_type == "PRelu" && !Contains(initializers, input_defs[1]->Name()) && device_type == WebnnDeviceType::CPU) {
     LOGS(logger, VERBOSE) << "The second input (slope) for PRelu must be a constant initializer for WebNN CPU backend.";
+    return false;
+  }
+
+  return true;
+}
+
+bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                             const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;
+  int32_t input1_type;
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
+  // WebNN prelu op only supports float32, float16, int32, int8 input data types.
+  if (op_type == "Prelu") {
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+        ONNX_NAMESPACE::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType_INT8,
+    };
+    // WebNN CPU backend doesn't support int32 for prelu.
+    if (device_type == WebnnDeviceType::CPU) {
+      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    }
+  } else {
+    supported_data_types = webnn_supported_data_types;
+  }
+  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input0_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (input0_type != input1_type) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input data types should be the same.";
     return false;
   }
 
