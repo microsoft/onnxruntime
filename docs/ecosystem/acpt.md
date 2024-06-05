@@ -1,6 +1,7 @@
 ---
 title: Azure Container for PyTorch (ACPT)
 description: Learn more about Azure Container for PyTorch (ACPT) and how it utilizes ONNX Runtime
+parent: Ecosystem
 nav_order: 1
 redirect_from: /docs/tutorials/ecosystem/acpt
 ---
