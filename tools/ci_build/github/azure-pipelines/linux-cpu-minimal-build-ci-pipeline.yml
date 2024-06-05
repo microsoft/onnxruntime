@@ -46,14 +46,6 @@ pr:
     - BUILD.md
     - 'js/web'
     - 'onnxruntime/core/providers/js'
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120

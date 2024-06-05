@@ -16,13 +16,30 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// template <typename AttentionKernel, int kQueriesPerBlock>
-// struct RightPaddingBatchHook {
-//   using scalar_t = typename AttentionKernel::scalar_t;
-//   using accum_t = typename AttentionKernel::accum_t;
-//   using lse_scalar_t = typename AttentionKernel::lse_scalar_t;
-//   using output_t = typename AttentionKernel::output_t;
-//   using output_accum_t = typename AttentionKernel::output_accum_t;
+// TODO: remove this flag and unused code after testing.
+#define USE_MEMORY_EFFICIENT_TO_BATCH_HOOK 0
+
+#if USE_MEMORY_EFFICIENT_TO_BATCH_HOOK
+struct GQAToBatchHook {
+  template <typename Params>
+  CUTLASS_DEVICE static bool advance_to_batch(Params& p, int64_t& q_start, int64_t& k_start) {
+    auto batch_id = blockIdx.z;
+    q_start = batch_id* p.num_queries const int64_t max_sequence_length = p.v_strideB / p.v_strideM;
+    const bool is_kv_bsnh = (p.k_strideH == p.head_dim && p.k_strideM == p.num_heads * p.head_dim);
+    k_start = batch_id * (is_kv_bsnh ? max_sequence_length : p.num_heads * max_sequence_length);
+    return true;
+  }
+};
+
+#else
+
+template <typename AttentionKernel, int kQueriesPerBlock>
+struct RightPaddingBatchHook {
+  using scalar_t = typename AttentionKernel::scalar_t;
+  using accum_t = typename AttentionKernel::accum_t;
+  using lse_scalar_t = typename AttentionKernel::lse_scalar_t;
+  using output_t = typename AttentionKernel::output_t;
+  using output_accum_t = typename AttentionKernel::output_accum_t;
 
 //   static constexpr bool kSupportsDropout = AttentionKernel::kSupportsDropout;
 //   static constexpr bool kSupportsBias = AttentionKernel::kSupportsBias;
@@ -51,23 +68,39 @@ namespace cuda {
 //       return false;
 //     }
 
-//     // Advance to the current batch / head / query_start
-//     p.query_ptr += batch_id * p.q_strideB + query_start * p.q_strideM + head_id * p.q_strideH;
-//     p.key_ptr += batch_id * p.k_strideB + head_id * p.k_strideH;
-//     p.value_ptr += batch_id * p.v_strideB + head_id * p.v_strideH;
-//     p.output_ptr += int64_t(batch_id * p.num_queries) * p.o_strideM + int64_t(query_start) * p.o_strideM + head_id * p.head_dim_value;
+    // TODO: use GroupQueryAttentionToBatchHook
+    bool is_kv_bsnh = (p.k_strideH == p.head_dim && p.k_strideM == p.num_heads * p.head_dim);
+    int64_t q_start = batch_id * p.num_queries;
+    const int64_t max_sequence_length = p.v_strideB / p.v_strideM;
+    int64_t k_start = batch_id * (is_kv_bsnh ? max_sequence_length : p.num_heads * max_sequence_length);
 
-//     if (kSupportsBias && p.attn_bias_ptr != nullptr) {
-//       p.attn_bias_ptr += (batch_id * p.bias_strideB) + (head_id * p.bias_strideH);
-//     }
-//     if (p.output_accum_ptr != nullptr) {
-//       p.output_accum_ptr += int64_t(batch_id * p.num_queries) * (p.head_dim_value * p.num_heads) +
-//                             int64_t(query_start) * (p.head_dim_value * p.num_heads) +
-//                             head_id * p.head_dim_value;
-//     } else {
-//       // Accumulate directly in the destination buffer (eg for f32)
-//       p.output_accum_ptr = (accum_t*)(p.output_ptr);
-//     }
+    // Advance to the current batch / head / query_start
+    // p.query_ptr += batch_id * p.q_strideB + query_start * p.q_strideM + head_id * p.q_strideH;
+    p.query_ptr += (q_start + query_start) * p.q_strideM + head_id * p.q_strideH;
+
+    // p.key_ptr += batch_id * p.k_strideB + head_id * p.k_strideH;
+    p.key_ptr += k_start * p.k_strideM + head_id * p.k_strideH;
+
+    // p.value_ptr += batch_id * p.v_strideB + head_id * p.v_strideH;
+    p.value_ptr += k_start * p.v_strideM + head_id * p.v_strideH;
+
+    // p.output_ptr += int64_t(batch_id * p.num_queries) * p.o_strideM + int64_t(query_start) * p.o_strideM
+    //                 + head_id * p.head_dim_value;
+    p.output_ptr += int64_t(q_start + query_start) * p.o_strideM + head_id * p.head_dim_value;
+
+    if (kSupportsBias && p.attn_bias_ptr != nullptr) {
+      p.attn_bias_ptr += (batch_id * p.bias_strideB) + (head_id * p.bias_strideH);
+    }
+    if (p.output_accum_ptr != nullptr) {
+      // p.output_accum_ptr += int64_t(batch_id * p.num_queries) * (p.head_dim_value * p.num_heads) +
+      //                       int64_t(query_start) * (p.head_dim_value * p.num_heads) +
+      //                       head_id * p.head_dim_value;
+      p.output_accum_ptr += int64_t(q_start + query_start) * (p.head_dim_value * p.num_heads) +
+                            head_id * p.head_dim_value;
+    } else {
+      // Accumulate directly in the destination buffer (eg for f32)
+      p.output_accum_ptr = (accum_t*)(p.output_ptr);
+    }
 
 //     if (p.logsumexp_ptr != nullptr) {
 //       // lse[batch_id, head_id, query_start]
@@ -75,23 +108,23 @@ namespace cuda {
 //           batch_id * lse_dim * p.num_heads + head_id * lse_dim + query_start;
 //     }
 
-//     // Custom masking
-//     if (p.causal_diagonal_ptr) {
-//       p.causal_diagonal_offset = p.causal_diagonal_ptr[batch_id];
-//     }
-//     if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
-//       p.causal_diagonal_offset += p.num_keys - p.num_queries;
-//     }
-//     if (p.custom_mask_type == AttentionKernel::CausalFromTopLeft ||
-//         p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
-//       // the bottom row of the current block is query_start + kQueriesPerBlock
-//       // the last active key is then query_start + causal_diagonal_offset +
-//       // kQueriesPerBlock so num_keys is the min between actual num_keys and
-//       // this to avoid extra computations
-//       p.num_keys = cutlass::fast_min(
-//           int32_t(query_start + p.causal_diagonal_offset + kQueriesPerBlock),
-//           p.num_keys);
-//     }
+    // Custom masking
+    // if (p.causal_diagonal_ptr) {
+    //   p.causal_diagonal_offset = p.causal_diagonal_ptr[batch_id];
+    // }
+    if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+      p.causal_diagonal_offset = p.num_keys - p.num_queries;
+    }
+    if (p.custom_mask_type == AttentionKernel::CausalFromTopLeft ||
+        p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+      // the bottom row of the current block is query_start + kQueriesPerBlock
+      // the last active key is then query_start + causal_diagonal_offset +
+      // kQueriesPerBlock so num_keys is the min between actual num_keys and
+      // this to avoid extra computations
+      p.num_keys = cutlass::fast_min(
+          int32_t(query_start + p.causal_diagonal_offset + kQueriesPerBlock),
+          p.num_keys);
+    }
 
 //     p.num_queries -= query_start;
 //     p.num_batches = 0;  // no longer used after
@@ -112,40 +145,44 @@ namespace cuda {
 //       p.o_strideM = p.head_dim_value;
 //     }
 
-//     // Make sure the compiler knows these variables are the same on all
-//     // the threads of the warp.
-//     p.query_ptr = warp_uniform(p.query_ptr);
-//     p.key_ptr = warp_uniform(p.key_ptr);
-//     p.value_ptr = warp_uniform(p.value_ptr);
-//     if (kSupportsBias) {
-//       p.attn_bias_ptr = warp_uniform(p.attn_bias_ptr);
-//     }
-//     p.output_ptr = warp_uniform(p.output_ptr);
-//     p.output_accum_ptr = warp_uniform(p.output_accum_ptr);
-//     p.logsumexp_ptr = warp_uniform(p.logsumexp_ptr);
-//     p.num_queries = warp_uniform(p.num_queries);
-//     p.num_keys = warp_uniform(p.num_keys);
-//     p.num_heads = warp_uniform(p.num_heads);
-//     p.head_dim = warp_uniform(p.head_dim);
-//     p.head_dim_value = warp_uniform(p.head_dim_value);
-//     p.o_strideM = warp_uniform(p.o_strideM);
-//     p.custom_mask_type = warp_uniform(p.custom_mask_type);
-//     return true;
-//   }
-// };
+    // Make sure the compiler knows these variables are the same on all
+    // the threads of the warp.
+    p.query_ptr = warp_uniform(p.query_ptr);
+    p.key_ptr = warp_uniform(p.key_ptr);
+    p.value_ptr = warp_uniform(p.value_ptr);
+    if (kSupportsBias) {
+      p.attn_bias_ptr = warp_uniform(p.attn_bias_ptr);
+    }
+    p.output_ptr = warp_uniform(p.output_ptr);
+    p.output_accum_ptr = warp_uniform(p.output_accum_ptr);
+    p.logsumexp_ptr = warp_uniform(p.logsumexp_ptr);
+    p.num_queries = warp_uniform(p.num_queries);
+    p.num_keys = warp_uniform(p.num_keys);
+    p.num_heads = warp_uniform(p.num_heads);
+    // p.head_dim = warp_uniform(p.head_dim);
+    // p.head_dim_value = warp_uniform(p.head_dim_value);
+    p.o_strideM = warp_uniform(p.o_strideM);
+    p.custom_mask_type = warp_uniform(p.custom_mask_type);
+    return true;
+  }
+};
 
-// template <typename AK, int kQueriesPerBlock>
-// __global__ void __launch_bounds__(AK::kNumThreads, AK::kMinBlocksPerSm)
-//     attention_kernel_batched_impl_right_padding(typename AK::Params p) {
-//   if (!RightPaddingBatchHook<AK, kQueriesPerBlock>::AdvanceToBlockForGQA(p)) {
-//     return;
-//   }
-//   AK::attention_kernel(p);
-// }
+template <typename AK, int kQueriesPerBlock>
+__global__ void __launch_bounds__(AK::kNumThreads, AK::kMinBlocksPerSm)
+    attention_kernel_batched_impl_right_padding(typename AK::Params p) {
+  if (!RightPaddingBatchHook<AK, kQueriesPerBlock>::AdvanceToBlockForGQA(p)) {
+    return;
+  }
+  AK::attention_kernel(p);
+}
+#endif
 
-template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, bool single_value_iteration>
+#if USE_MEMORY_EFFICIENT_TO_BATCH_HOOK == 0
+template <typename T, typename Attention, int queries_per_block>
+#else
+template <typename T, typename Attention>
+#endif
 void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
-  using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, single_value_iteration>;
   typename Attention::Params p;
   {  // set parameters
     p.query_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.query));
@@ -220,9 +257,12 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   }
 
   auto kernel_fn = attention_kernel_batched_impl<Attention>;
-  // if (params.has_custom_right_padding) {
-  //   kernel_fn = attention_kernel_batched_impl_right_padding<Attention, queries_per_block>;
-  // }
+
+#if USE_MEMORY_EFFICIENT_TO_BATCH_HOOK == 0
+  if (params.has_custom_right_padding) {
+    kernel_fn = attention_kernel_batched_impl_right_padding<Attention, queries_per_block>;
+  }
+#endif
 
   int smem_bytes = sizeof(typename Attention::SharedStorage);
   if (smem_bytes > 0xc000) {
@@ -237,20 +277,45 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   kernel_fn<<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, params.stream>>>(p);
 }
 
-template <typename T, typename ArchTag, int queries_per_block, int keys_per_block, bool single_value_iteration>
+template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, int max_head_size>
+void RunCutlassFmha(const MemoryEfficientAttentionParams& params) {
+  constexpr bool kSupportsDropout = false;
+  constexpr bool kSupportsBias = true;
+
+#if USE_MEMORY_EFFICIENT_TO_BATCH_HOOK
+  if (params.has_custom_right_padding) {
+    using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, max_head_size,
+                                      kSupportsDropout, kSupportsBias, GQAToBatchHook>;
+    LaunchCutlassFmha<T, Attention>(params);
+  } else {
+    using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, max_head_size,
+                                      kSupportsDropout, kSupportsBias, DefaultToBatchHook>;
+    LaunchCutlassFmha<T, Attention>(params);
+  }
+#else
+  using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, max_head_size,
+                                    kSupportsDropout, kSupportsBias, DefaultToBatchHook>;
+  LaunchCutlassFmha<T, Attention, queries_per_block>(params);
+#endif
+}
+
+template <typename T, typename ArchTag, int queries_per_block, int keys_per_block, int max_head_size>
 void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
-  using AlignedAK = AttentionKernel<T, ArchTag, true, queries_per_block, keys_per_block, single_value_iteration>;
+  using AlignedAK = AttentionKernel<T, ArchTag, true, queries_per_block, keys_per_block, max_head_size>;
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 6287 4189)  // kAligned is used via capture so 4189 warning seems incorrect
 #endif
+
   // Run a more efficient kernel with `isAligned=True` when memory is correctly aligned.
   bool is_aligned = params.qk_head_size % AlignedAK::kAlignmentQ == 0 &&
                     params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
+
   DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
-                  LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, single_value_iteration>(params);
+                  RunCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, max_head_size>(params);
                 }));
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
@@ -259,11 +324,11 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
 template <typename T, typename ArchTag>
 void DispatchBlockSize(const MemoryEfficientAttentionParams& params) {
   if (params.v_head_size <= 64) {
-    DispatchIsAligned<T, ArchTag, 64, 64, true>(params);
+    DispatchIsAligned<T, ArchTag, 64, 64, 64>(params);
   } else if (params.v_head_size <= 128) {
-    DispatchIsAligned<T, ArchTag, 32, 128, true>(params);
+    DispatchIsAligned<T, ArchTag, 32, 128, 128>(params);
   } else {
-    DispatchIsAligned<T, ArchTag, 32, 128, false>(params);
+    DispatchIsAligned<T, ArchTag, 32, 128, kEfficientAttentionMaxHeadSize>(params);
   }
 }
 

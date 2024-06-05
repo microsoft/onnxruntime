@@ -1021,7 +1021,12 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
        {}},
       {"dequantizelinear_blocked", "blocked quantization (onnx 1.16.0) not supported", {}},
       {"quantizelinear_blocked_asymmetric", "blocked quantization (onnx 1.16.0) not supported", {}},
-      {"quantizelinear_blocked_symmetric", "blocked quantization (onnx 1.16.0) not supported", {}}});
+      {"quantizelinear_blocked_symmetric", "blocked quantization (onnx 1.16.0) not supported", {}},
+      // See PR that fixes int4 q/dq tests: https://github.com/onnx/onnx/pull/6122
+      {"dequantizelinear_int4", "Bug with model input name 'zero_point' not matching node's input name", {}},
+      {"dequantizelinear_uint4", "Bug with model input name 'zero_point' not matching node's input name", {}},
+      {"quantizelinear_int4", "Bug with model input name 'zero_point' not matching node's input name", {}},
+      {"quantizelinear_uint4", "Bug with model input name 'zero_point' not matching node's input name", {}}});
 
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
