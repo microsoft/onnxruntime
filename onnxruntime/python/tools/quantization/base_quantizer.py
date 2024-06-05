@@ -348,7 +348,7 @@ class BaseQuantizer:
 
                 # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
                 # This can be the difference between a large model taking 30 minutes to quantize vs 5 minutes.
-                packed_data = bytes(pack_bytes_to_4bit(q_weight_data.flatten().tobytes()))
+                packed_data = bytes(pack_bytes_to_4bit(q_weight_data.tobytes()))
 
                 # We only use onnx.helper.make_tensor with raw data due to bug: https://github.com/onnx/onnx/pull/6161
                 q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, packed_data, raw=True)
@@ -495,7 +495,7 @@ class BaseQuantizer:
 
                 # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
                 # This can be the difference between a large model taking 30 minutes to quantize vs 5 minutes.
-                packed_data = bytes(pack_bytes_to_4bit(quantized_weights.flatten().tobytes()))
+                packed_data = bytes(pack_bytes_to_4bit(quantized_weights.tobytes()))
 
                 # We only use onnx.helper.make_tensor with raw data due to bug: https://github.com/onnx/onnx/pull/6161
                 q_weight_initializer = onnx.helper.make_tensor(
