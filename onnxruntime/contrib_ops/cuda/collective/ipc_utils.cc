@@ -31,7 +31,7 @@ IpcMemory::IpcMemory(int rank, int world_size, std::size_t buffer_size)
     : rank_(rank), world_size_(world_size), m_comm_ptrs_(world_size), mbuffer_size_(buffer_size) {
   m_ipc_ptrs_.reserve(world_size);
   for (int i = 0; i < world_size; i++) {
-    IpcMemPtrT m_ipc_ptr{nullptr, ipc_deleter};
+    IpcMemPtrT m_ipc_ptr{nullptr};
     m_ipc_ptrs_.push_back(std::move(m_ipc_ptr));
   }
   ORT_ENFORCE(AllocateIpcMemory() == Status::OK());
@@ -70,6 +70,11 @@ Status IpcMemory::AllocateIpcMemory() {
           reinterpret_cast<void**>(&foreign_buffer), handles[node_id], cudaIpcMemLazyEnablePeerAccess));
       m_comm_ptrs_[node_id] = foreign_buffer;
     }
+  }
+
+  // print m_comm_ptrs_ for debug
+  for (size_t i = 0; i < m_comm_ptrs_.size(); i++) {
+    printf("rank %d, m_comm_ptrs_[%ld] = %p\n", rank_, i, m_comm_ptrs_[i]);
   }
 
   return Status::OK();
