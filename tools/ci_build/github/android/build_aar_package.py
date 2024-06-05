@@ -167,7 +167,7 @@ def parse_args():
         os.path.basename(__file__),
         description="""Create Android Archive (AAR) package for one or more Android ABI(s)
         and building properties specified in the given build config file, see
-        tools/ci_build/github/android/default_mobile_aar_build_settings.json for details.
+        tools/ci_build/github/android/default_full_aar_build_settings.json for details.
         The output of the final AAR package can be found under [build_dir]/aar_out
         """,
     )

@@ -60,7 +60,7 @@ def parse_args():
         type=pathlib.Path,
         required=True,
         help="The configuration file specifying the build.py options. "
-        "For an example, see tools/ci_build/github/android/default_mobile_aar_build_settings.json.",
+        "For an example, see tools/ci_build/github/android/default_full_aar_build_settings.json.",
     )
 
     default_config = "Release"
