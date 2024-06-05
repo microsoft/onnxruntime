@@ -48,18 +48,16 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   }
   }
 
-  if (node_sequence_type == NodeSequence::DQ_Q) {
     // for DQ -> Q, check for constant, matching scale/ZP values
     const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
       return graph.GetConstantInitializer(initializer_name, true);
     };
 
     for (auto second_node : second_nodes) {
-    if (!QDQ::IsQDQPairSupported(*second_node, first_node, get_constant_initializer, graph.ModelPath())) {
+    if (!QDQ::IsQDQPairSupported(*second_node, first_node, get_constant_initializer, graph.ModelPath(), false)) {
       return false;
     }
     }
-  }
 
   // we have a node sequence to clean up
 
