@@ -3675,7 +3675,9 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
     };
 
     // if we block removal of the DQ node the Q node in the pair will not be removed either
-    const int expected_qdq_count = 0 + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
+    // NB. block_removal_of_first_dq is useless
+    // NB. block_removal_of_last_dq is useless
+    const int expected_qdq_count = 0; // + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
     // blocking removal of DQ by adding an additional edge will cause EnsureUniqueDQForNodeUnit to duplicate the DQ,
     // so we expect twice as many DQ's as original QDQ pairs
     const int expected_dq_count = expected_qdq_count * 2;
@@ -3725,15 +3727,15 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
   };
 
   test_case({{1, 2, 4}, {1, 3, 4}}, false, false);  // Do not block removal
-  test_case({{1, 2, 4}, {1, 3, 4}}, true, false);   // Block removal of first dq
-  test_case({{1, 2, 4}, {1, 3, 4}}, false, true);   // Block removal of last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, true, false);   // Block removal of last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, false, true);   // Block removal of first dq
   test_case({{1, 2, 4}, {1, 3, 4}}, true, true);    // Block removal of first and last dq
 
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use contrib QDQ ops
   test_case({{1, 2, 4}, {1, 3, 4}}, false, false, true);  // Do not block removal
-  test_case({{1, 2, 4}, {1, 3, 4}}, true, false, true);   // Block removal of first dq
-  test_case({{1, 2, 4}, {1, 3, 4}}, false, true, true);   // Block removal of last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, true, false, true);   // Block removal of last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, false, true, true);   // Block removal of first dq
   test_case({{1, 2, 4}, {1, 3, 4}}, true, true, true);    // Block removal of first and last dq
 #endif
 }
