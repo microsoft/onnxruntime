@@ -3743,13 +3743,15 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
 // test removal of Q->DQs pairs by QDQFinalCleanupTransformer
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
   auto test_case = [&](bool is_input_q,
+                       bool is_dq_output,
                        bool use_contrib_qdq) {
-    // create model with float Input -> (Transpose1 ->) Q -> DQ1 -> Transpose2 -> Output1
-    //                                                    -> DQ2 -> Transpose3 -> Output2
+    // create model with float Input -> (Transpose1 ->) Q -> DQ1 -> (Transpose2 ->) Output1
+    //                                                    -> DQ2 -> (Transpose3 ->) Output2
     // If we enable cleanup and don't run the QDQ transformer we should drop all the Q->DQ pairs
     auto build_test_case = [&](ModelTestBuilder& builder) {
       NodeArg* input_args = builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f);
 
+      // Add Input -> (Transpose1 ->)
       NodeArg* q_input = nullptr;
       if (is_input_q) {
         q_input = input_args;
@@ -3759,25 +3761,34 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
         q_input = transpose_output;
       }
 
-      // Add Q
+      // Add Q ->
       auto* q_output = builder.MakeIntermediate();
       builder.AddQuantizeLinearNode<uint8_t>(q_input, 0.05f, 128, q_output, use_contrib_qdq);
 
-      // Add -> DQ1 -> Transpose2 -> output1
-      auto* dq_output1 = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output1, use_contrib_qdq);
-      auto* output1 = builder.MakeOutput();
-      builder.AddNode("Transpose", {dq_output1}, {output1});
+      // Add DQ1 -> (Transpose2 ->) output1
+      if (is_dq_output) {
+        auto* dq_output1 = builder.MakeOutput();
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output1, use_contrib_qdq);
+      } else {
+        auto* dq_output1 = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output1, use_contrib_qdq);
+        auto* output1 = builder.MakeOutput();
+        builder.AddNode("Transpose", {dq_output1}, {output1});
+      }
 
-      // Add -> DQ2 -> Transpose3 -> output2
-      auto* dq_output2 = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output2, use_contrib_qdq);
-      auto* output2 = builder.MakeOutput();
-      //builder.AddNode("Identity", {dq_output2}, {output2});
-      builder.AddNode("Transpose", {dq_output2}, {output2});
+      // Add DQ2 -> (Transpose3 ->) output2
+      if (is_dq_output) {
+        auto* dq_output2 = builder.MakeOutput();
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output2, use_contrib_qdq);
+      } else {
+        auto* dq_output2 = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output2, use_contrib_qdq);
+        auto* output2 = builder.MakeOutput();
+        builder.AddNode("Transpose", {dq_output2}, {output2});
+      }
     };
 
-    const int expected_transpose_count = is_input_q ? 2 : 3;
+    const int expected_transpose_count = (is_input_q ? 0 : 1) + (is_dq_output ? 0 : 2);
 
     auto check_graph = [expected_transpose_count,
                         use_contrib_qdq](InferenceSessionWrapper& session) {
@@ -3823,13 +3834,17 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
                       add_session_options);
   };
 
-  test_case(true, false);   // Input -> Q -> ...
-  test_case(false, false);  // Input -> Transpose -> Q -> ...
+  test_case(true, true, false);   // is_input_q, is_dq_output
+  test_case(false, true, false);  // is_dq_output
+  test_case(true, false, false);  // is_input_q
+  test_case(false, false, false);
 
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use contrib QDQ ops
-  test_case(true, false);   // Input -> Q -> ...
-  test_case(false, false);  // Input -> Transpose -> Q -> ...
+  test_case(true, true, true);   // is_input_q, is_dq_output
+  test_case(false, true, true);  // is_dq_output
+  test_case(true, false, true);  // is_input_q
+  test_case(false, false, true);
 #endif
 }
 
