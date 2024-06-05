@@ -14,7 +14,6 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 BUILD_PY = os.path.join(REPO_DIR, "tools", "ci_build", "build.py")
 JAVA_ROOT = os.path.join(REPO_DIR, "java")
-DEFAULT_BUILD_VARIANT = "Full"
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 from util import is_windows  # noqa: E402
@@ -72,7 +71,6 @@ def _parse_build_settings(args):
         )
 
     build_settings["build_params"] = build_params
-    build_settings["build_variant"] = build_settings_data.get("build_variant", DEFAULT_BUILD_VARIANT)
 
     return build_settings
 
@@ -148,7 +146,6 @@ def _build_aar(args):
         "-DpublishDir=" + aar_publish_dir,
         "-DminSdkVer=" + str(build_settings["android_min_sdk_version"]),
         "-DtargetSdkVer=" + str(build_settings["android_target_sdk_version"]),
-        "-DbuildVariant=" + str(build_settings["build_variant"]),
         (
             "-DENABLE_TRAINING_APIS=1"
             if "--enable_training_apis" in build_settings["build_params"]
