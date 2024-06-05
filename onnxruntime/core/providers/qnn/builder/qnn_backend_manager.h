@@ -232,7 +232,6 @@ class QnnBackendManager {
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
-  //Qnn_ContextHandle_t context_ = nullptr;
   std::vector<Qnn_ContextHandle_t> contexts_;
   ProfilingLevel profiling_level_etw_;
   ProfilingLevel profiling_level_;
