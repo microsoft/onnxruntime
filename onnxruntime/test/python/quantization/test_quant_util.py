@@ -130,7 +130,7 @@ class TestQuantUtil(unittest.TestCase):
         """
         Test that calling quantize_data for int4 quantization returns data of the correct type and range.
         """
-        data_float = numpy.array([-4, -3, -2, -1, 0, 1, 2, 3], dtype=numpy.float32)
+        data_float = numpy.arange(-20, 17).astype(numpy.float32)
 
         subtest_configs = [
             (onnx.TensorProto.INT4, True),  # int4, symmetric quant
@@ -142,10 +142,10 @@ class TestQuantUtil(unittest.TestCase):
         for onnx_type, symmetric in subtest_configs:
             with self.subTest(onnx_type=onnx_type, symmetric=symmetric):
                 _, _, zero_point, scale, data_quant = quantize_data(data_float, onnx_type, symmetric)
-                is_int4 = onnx_type == onnx.TensorProto.INT4
-                np_int_type = numpy.int8 if is_int4 else numpy.uint8
-                qmin = numpy.array(-8 if is_int4 else 0, dtype=np_int_type)
-                qmax = numpy.array(7 if is_int4 else 15, dtype=np_int_type)
+                is_signed = onnx_type == onnx.TensorProto.INT4
+                np_int_type = numpy.int8 if is_signed else numpy.uint8
+                qmin = numpy.array(-8 if is_signed else 0, dtype=np_int_type)
+                qmax = numpy.array(7 if is_signed else 15, dtype=np_int_type)
 
                 self.assertEqual(zero_point.dtype, np_int_type)
                 self.assertEqual(scale.dtype, data_float.dtype)
