@@ -39,7 +39,7 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   auto* output = context->Output(0, output_shape);
   ORT_ENFORCE(output);
   // int dim = output_shape[input_shape_len-1];
-  int dim = output_shape[input_shape_len-1];
+  int dim = output_shape[1];
   const auto input_size = input_shape.Size();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, BFloat16> dispatcher{input->GetElementType()};
