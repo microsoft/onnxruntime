@@ -17,6 +17,8 @@ static constexpr const char* kEmbedModeAttr = "embed_mode";
 static constexpr const char* kPartitionNameAttr = "partition_name";
 static constexpr const char* kSourceAttr = "source";
 static constexpr const char* kEPSDKVersionAttr = "ep_sdk_version";
+static constexpr const char* kONNXModelFileNameAttr = "onnx_model_filename";
+static constexpr const char* kNotesAttr = "notes";
 static constexpr const char* kEPContextOpDomain = "com.microsoft";
 
 std::unique_ptr<ONNX_NAMESPACE::FunctionProto>
@@ -31,6 +33,8 @@ std::string SerializeCapabilities(
 void DeserializeCapabilities(
     const std::string&, std::vector<std::unique_ptr<ComputeCapability>>&);
 
+std::string SerializeOrigialGraph(const GraphViewer&) const;
+
 std::unique_ptr<Model> CreateEPContexModel(const GraphViewer&, const std::string&,
                                            const std::string&, const int64_t, const logging::Logger*);
 
@@ -39,6 +43,8 @@ void DumpEPContextModel(std::unique_ptr<Model>&, const std::string&);
 bool ValidateEPContextNode(const Graph&);
 
 std::string RetrieveEPContextCache(const Graph&);
+
+std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph&);
 
 bool GraphHasEPContextNode(const GraphViewer&);
 

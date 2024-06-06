@@ -3,6 +3,9 @@
 #include <filesystem>
 #include <sstream>
 
+// 3rd-party headers/libs.
+#include <nlohmann/json.hpp>
+
 #include "ep_context_utils.h"
 
 namespace fs = std::filesystem;
@@ -156,6 +159,20 @@ void DeserializeCapabilities(const std::string& ser_capabilities,
   }
 }
 
+std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) const {
+  const Graph& orig_graph = graph_viewer.GetGraph();
+  const Model& orig_model = orig_graph.GetModel();
+  auto p_orig_model_proto = orig_model.ToProto();
+  std::string ser_buf;
+  p_orig_model_proto->SerializeToString(ser_buf);
+
+  nlohmann::json j_obj;
+  j_obj["orig_graph_name"] = graph_viewer.Name();
+  j_obj["orig_model_path"] = graph_viewer.ModelPath().ToPathString();
+  j_obj["orig_model_proto_ser_str"] = ser_buf;
+  return j_obj.dump();
+}
+
 std::unique_ptr<Model> CreateEPContexModel(
     const GraphViewer& graph_viewer,
     const std::string& serialized_ctx_cache,
@@ -198,13 +215,28 @@ std::unique_ptr<Model> CreateEPContexModel(
   // p_attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
   p_attr_2->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
   p_attr_2->set_s(kVitisAIExecutionProvider);
+  // Attr "onnx_model_filename".
+  auto p_attr_3 = ONNX_NAMESPACE::AttributeProto::Create();
+  p_attr_3->set_name(kONNXModelFileNameAttr);
+  // p_attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
+  p_attr_3->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+  p_attr_3->set_s(fs::path(graph_viewer.ModelPath().ToPathString()).filename().string());
+  // Attr "notes".
+  auto p_attr_4 = ONNX_NAMESPACE::AttributeProto::Create();
+  p_attr_4->set_name(kNotesAttr);
+  // p_attr_4->set_type(onnx::AttributeProto_AttributeType_STRING);
+  p_attr_4->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+  // FIXME: 2G-limit of ProtoBuf.
+  p_attr_4->set_s(SerializeOrigialGraph(graph_viewer));
 
   auto p_node_attrs = NodeAttributes::Create();
-  constexpr int num_attrs = 3;
+  constexpr int num_attrs = 5;
   p_node_attrs->reserve(num_attrs);
   p_node_attrs->emplace(kEmbedModeAttr, *p_attr_0);
   p_node_attrs->emplace(kEPCacheContextAttr, *p_attr_1);
   p_node_attrs->emplace(kSourceAttr, *p_attr_2);
+  p_node_attrs->emplace(kONNXModelFileNameAttr, *p_attr_3);
+  p_node_attrs->emplace(kNotesAttr, *p_attr_4);
 
   ep_ctx_graph.AddNode(kEPContextOp, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
   ORT_ENFORCE(ep_ctx_graph.Resolve().IsOK());
@@ -271,6 +303,28 @@ std::string RetrieveEPContextCache(const Graph& graph) {
   std::string cache_payload(buf);
   delete[] buf;
   return cache_payload;
+}
+
+std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
+  if (!ValidateEPContextNode(ep_ctx_graph)) {
+    ORT_THROW("Invalid EP context model for Vitis AI");
+  }
+  // TODO: Support for multi-node EP context model.
+  auto* p_node = ep_ctx_graph.GetNode(0);
+  const auto& attrs = p_node->GetAttributes();
+  const auto& notes_str = attrs.at(kNotesAttr).s();
+  nlohmann::json j_obj = nlohmann::json::parse(notes_str);
+
+  auto& logger = logging::LoggingManager::DefaultLogger();
+
+  auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
+  p_model_proto->ParseFromString(j_obj["orig_model_proto_ser_str"]);
+  auto p_model = Model::Create(std::move(*p_model_proto), j_obj["orig_model_path"], nullptr, logger);
+  auto& graph = p_model->MainGraph();
+  // XXX: maybe ineffective.
+  graph.ToGraphProto()->set_name(j_obj["orig_graph_name"]);
+
+  return p_model->MainGraph().CreateGraphViewer();
 }
 
 bool GraphHasEPContextNode(const GraphViewer& graph_viewer) {

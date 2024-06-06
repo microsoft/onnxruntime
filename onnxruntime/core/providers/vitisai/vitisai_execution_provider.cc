@@ -137,6 +137,14 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph());
     std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
     DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
+    // FIXME
+    // 1) This is the baseline and needs to be optimized (WIP).
+    // 2) This implies further performance boost potential.
+    // 3) This makes sense because VAIP behind the scenes has implemented internal EP-context like cache.
+    if (!execution_providers_) {
+      auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
+      execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
+    }
     return capability_ptrs;
   } else {
     // FIXME: Will it make sense to do this?
@@ -150,6 +158,10 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph());
       std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
       DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
+      // FIXME: ditto.
+      if (!execution_providers_) {
+        execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph_viewer, *GetLogger(), info_));
+      }
       return capability_ptrs;
     }
   }
