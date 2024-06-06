@@ -256,6 +256,7 @@ MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2>() { return Provider_Get
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ(); }
 #endif
+
 #endif
 
 Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {

@@ -21,7 +21,7 @@ from onnx.reference import ReferenceEvaluator
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 
 try:
-    from onnx.reference.custom_element_types import float8e4m3fn, int4, uint4
+    from onnx.reference.custom_element_types import float8e4m3fn
 except ImportError:
     float8e4m3fn = None
 
