@@ -12,23 +12,27 @@ namespace cuda {
 
 template <typename T>
 __global__ void StridedCopy(const T* in, const int H, longlong4 in_strides,  // coord (b,n,s,h)
-                            T* out, longlong4 out_strides                    // coord (b,n,s,h)
-) {
+                            T* out, longlong4 out_strides,                   // coord (b,n,s,h)
+                            const int32_t* in_seqlens_offset, const int32_t* out_seqlens_offset) {
   const int h = threadIdx.x;
   const int n = threadIdx.y;
   const int s = blockIdx.x;
   const int b = blockIdx.y;
+
+  const int s_offset_i = in_seqlens_offset == nullptr ? 0 : in_seqlens_offset[b];
+  const int s_offset_o = out_seqlens_offset == nullptr ? 0 : out_seqlens_offset[b];
+
   if (h < H) {
-    const int in_offset = b * in_strides.x + n * in_strides.y + s * in_strides.z + h * in_strides.w;
-    const int out_offset = b * out_strides.x + n * out_strides.y + s * out_strides.z + h * out_strides.w;
+    const int in_offset = b * in_strides.x + n * in_strides.y + (s + s_offset_i) * in_strides.z + h * in_strides.w;
+    const int out_offset = b * out_strides.x + n * out_strides.y + (s + s_offset_o) * out_strides.z + h * out_strides.w;
     out[out_offset] = in[in_offset];
   }
 }
 
 template <typename T>
 __global__ void StridedCopyLarge(const T* in, const int H, longlong4 in_strides,  // coord (b,n,s,h)
-                                 T* out, longlong4 out_strides                    // coord (b,n,s,h)
-) {
+                                 T* out, longlong4 out_strides,                   // coord (b,n,s,h)
+                                 const int* in_seqlens_offset, const int* out_seqlens_offset) {
   // Use when (H*)*num_heads > 1024
   int h = threadIdx.x;
   const int n = threadIdx.y;
@@ -37,9 +41,12 @@ __global__ void StridedCopyLarge(const T* in, const int H, longlong4 in_strides,
 
   const int h_step = blockDim.x;
 
+  const int s_offset_i = in_seqlens_offset == nullptr ? 0 : in_seqlens_offset[b];
+  const int s_offset_o = out_seqlens_offset == nullptr ? 0 : out_seqlens_offset[b];
+
   while (h < H) {
-    const int in_offset = b * in_strides.x + n * in_strides.y + s * in_strides.z + h * in_strides.w;
-    const int out_offset = b * out_strides.x + n * out_strides.y + s * out_strides.z + h * out_strides.w;
+    const int in_offset = b * in_strides.x + n * in_strides.y + (s + s_offset_i) * in_strides.z + h * in_strides.w;
+    const int out_offset = b * out_strides.x + n * out_strides.y + (s + s_offset_o) * out_strides.z + h * out_strides.w;
     out[out_offset] = in[in_offset];
     h += h_step;
   }
@@ -78,8 +85,8 @@ using ToBytes = typename ToByteType<NumBytes>::T;
 
 template <typename T>
 Status LaunchStridedCopy(cudaStream_t stream,
-                         const T* in, int4 in_shape, longlong4 in_strides,  // coord (b,n,s,h)
-                         T* out, longlong4 out_strides,                     // coord (b,n,s,h)
+                         const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+                         T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
                          int max_threads_per_block) {
   int batch_size = in_shape.x;
   int num_heads = in_shape.y;
@@ -102,11 +109,13 @@ Status LaunchStridedCopy(cudaStream_t stream,
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
       StridedCopy<Bytes><<<grid, block, 0, stream>>>(reinterpret_cast<const Bytes*>(in), H, in_strides,
-                                                     reinterpret_cast<Bytes*>(out), out_strides);
+                                                     reinterpret_cast<Bytes*>(out), out_strides,
+                                                     in_seqlens_offset, out_seqlens_offset);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       StridedCopyLarge<Bytes><<<grid, block, 0, stream>>>(reinterpret_cast<const Bytes*>(in), H, in_strides,
-                                                          reinterpret_cast<Bytes*>(out), out_strides);
+                                                          reinterpret_cast<Bytes*>(out), out_strides,
+                                                          in_seqlens_offset, out_seqlens_offset);
     }
   } else if (0 == (head_size % 2)) {  // pack 2 element together
     using Bytes = ToBytes<sizeof(T) * 2>;
@@ -120,25 +129,42 @@ Status LaunchStridedCopy(cudaStream_t stream,
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
       StridedCopy<Bytes><<<grid, block, 0, stream>>>(reinterpret_cast<const Bytes*>(in), H, in_strides,
-                                                     reinterpret_cast<Bytes*>(out), out_strides);
+                                                     reinterpret_cast<Bytes*>(out), out_strides,
+                                                     in_seqlens_offset, out_seqlens_offset);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       StridedCopyLarge<Bytes><<<grid, block, 0, stream>>>(reinterpret_cast<const Bytes*>(in), H, in_strides,
-                                                          reinterpret_cast<Bytes*>(out), out_strides);
+                                                          reinterpret_cast<Bytes*>(out), out_strides,
+                                                          in_seqlens_offset, out_seqlens_offset);
     }
   } else {
     using Bytes = ToBytes<sizeof(T)>;
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
       StridedCopy<Bytes><<<grid, block, 0, stream>>>(reinterpret_cast<const Bytes*>(in), head_size, in_strides,
-                                                     reinterpret_cast<Bytes*>(out), out_strides);
+                                                     reinterpret_cast<Bytes*>(out), out_strides,
+                                                     in_seqlens_offset, out_seqlens_offset);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       StridedCopyLarge<Bytes><<<grid, block, 0, stream>>>(reinterpret_cast<const Bytes*>(in), head_size, in_strides,
-                                                          reinterpret_cast<Bytes*>(out), out_strides);
+                                                          reinterpret_cast<Bytes*>(out), out_strides,
+                                                          in_seqlens_offset, out_seqlens_offset);
     }
   }
   return CUDA_CALL(cudaGetLastError());
+}
+
+template <typename T>
+Status LaunchStridedCopy(cudaStream_t stream,
+                         const T* in, int4 in_shape, longlong4 in_strides,  // coord (b,n,s,h)
+                         T* out, longlong4 out_strides,                     // coord (b,n,s,h)
+                         int max_threads_per_block) {
+  const int* in_seqlens_offset = nullptr;
+  const int* out_seqlens_offset = nullptr;
+  return LaunchStridedCopy<T>(
+      stream, in, in_shape, in_strides, in_seqlens_offset,
+      out, out_strides, out_seqlens_offset,
+      max_threads_per_block);
 }
 
 template Status LaunchStridedCopy<float>(
