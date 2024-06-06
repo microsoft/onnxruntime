@@ -233,8 +233,8 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
     auto ort_tensor_size = TensorDataSize(ort_input_tensor);
     LOGS(logger_, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
                            << "Ort tensor size: " << ort_tensor_size;
-    ORT_ENFORCE(qnn_input_info.tensor_byte_size == ort_tensor_size,
-                "ORT Tensor data size does not match QNN tensor data size.");
+    ORT_RETURN_IF_NOT(qnn_input_info.tensor_byte_size == ort_tensor_size,
+                      "ORT Tensor data size does not match QNN tensor data size.");
 
     qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
     SetQnnTensorClientBuf(qnn_inputs.back(),
@@ -253,8 +253,8 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
     auto ort_tensor_size = TensorDataSize(ort_output_tensor);
     LOGS(logger_, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
                            << "Ort tensor size: " << ort_tensor_size;
-    ORT_ENFORCE(qnn_output_info.tensor_byte_size == ort_tensor_size,
-                "ORT Tensor data size does not match QNN tensor data size");
+    ORT_RETURN_IF_NOT(qnn_output_info.tensor_byte_size == ort_tensor_size,
+                      "ORT Tensor data size does not match QNN tensor data size");
 
     qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
     SetQnnTensorClientBuf(qnn_outputs.back(),
