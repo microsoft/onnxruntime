@@ -193,10 +193,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       }
 
       float total_weight_inv = total_weight == 0.0f ? 1.f : 1.0f / total_weight;
-#ifdef _WIN32
-#pragma warning(disable : 4189)
-#endif
-      auto* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
+      auto* scale_buffer_int = gsl::narrow_cast<int32_t*>(scale_buffer);
       for (x = 0; x < xmax_cut - xmin_cut; x++) {
         scale_buffer[x] *= total_weight_inv;
 
@@ -205,9 +202,6 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
           scale_buffer_int[x] = static_cast<int32_t>(std::round(scale_buffer[x] * ConstValue::mag_factor_x_2));
         }
       }
-#ifdef _WIN32
-#pragma warning(default : 4189)
-#endif
       /*for (; x < window_size; x++) {
         scale_buffer[x] = 0;
       }*/
