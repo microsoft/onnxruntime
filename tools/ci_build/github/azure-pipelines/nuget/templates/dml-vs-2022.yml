@@ -26,7 +26,7 @@ stages:
 - stage: ${{ parameters.StageName }}
   dependsOn: Setup
   jobs:
-  - job:
+  - job: ${{ parameters.StageName }}
     timeoutInMinutes: 200
     strategy:
       maxParallel: 2
