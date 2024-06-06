@@ -271,7 +271,7 @@ stages:
           SearchPattern: |
                onnxruntime_pybind11_state.pdb
                onnxruntime_providers_shared.pdb
-	  IndexSources: true
+          IndexSources: true
           SymbolServerType: TeamServices
           SymbolExpirationInDays: 3650
           SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)'
