@@ -256,6 +256,636 @@ ParQuantizeLinearStd(const MLFloat16* Input,
   });
 }
 
+/**
+ * @brief  compute blocked quantization
+ *
+ * @tparam TIn
+ * @tparam TOut
+ * @tparam output_type_group        0: int other than int4.
+ *                                  1: float8
+ *                                  2: int4
+ * @method op0                      baseline implementation. Single thread. Scalar instructions.
+ * @method op1                      multi-threading implementation. Vector instructions.
+ */
+template <typename TIn, typename TOut, int output_type_group>
+struct BlockedQuantizeLinear {
+
+  /**
+   * @brief Compute blocked quantization using single thread and scalar instructions.
+   *
+   * @param input                 input tensor
+   * @param scale                 scale tensor
+   * @param zero_point            zero point tensor
+   * @param output                output tensor
+   * @param M                     total size of dimensions before quantize axis
+   * @param K                     size of dimension on quantize axis
+   * @param N                     total size of dimensions after quantize axis
+   * @param quant_block_size      quantization block size
+   * @param saturate              used by float8
+   */
+  static void opBaseline(const float* input, const float* scale, const TOut* zero_point, TOut* output,
+                         size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate);
+
+  /**
+   * @brief Compute blocked quantization using multi-threading and vector instructions.
+   *        Quantize axis is not the last axis. Block the last axis using block_size.
+   *        N is usually large. Within a block, scale's index increments along with output's index.
+   *
+   * @param thread_pool           thread pool
+   * @param input                 input tensor
+   * @param scale                 scale tensor
+   * @param zero_point            zero point tensor
+   * @param output                output tensor
+   * @param M                     total size of dimensions before quantize axis
+   * @param K                     size of dimension on quantize axis
+   * @param N                     total size of dimensions after quantize axis
+   * @param quant_block_size      quantization block size
+   * @param block_size            task block size
+   * @param saturate              used by float8
+   */
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t block_size, bool saturate);
+
+  /**
+   * @brief Compute blocked quantization using multi-threading and vector instructions.
+   *        Quantize axis is the last axis. Block along quantize axis using quant_block_size
+   *        as block_size. quant_block_size is usually 2's power between 16 and 256.
+   *        Within a block, scale index does not change.
+   * 
+   * @param thread_pool           thread pool
+   * @param input                 input tensor
+   * @param scale                 scale tensor
+   * @param zero_point            zero point tensor
+   * @param output                output tensor
+   * @param M                     total size of dimensions before quantize axis
+   * @param K                     size of dimension on quantize axis
+   * @param quant_block_size      quantization block size
+   * @param saturate              used by float8
+   */
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate);
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<float, TOut, 0> {
+  static void opBaseline(const float* input, const float* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size) {
+    if (zero_point) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            for (size_t n = 0; n < N; n++) {
+              auto zp = static_cast<int32_t>(zero_point[n]);
+              auto sc = scale[n];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf((*input++) / sc)) + zp,
+                                  static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
+                                  static_cast<int32_t>(std::numeric_limits<TOut>::max()));
+              *output++ = static_cast<TOut>(v);
+            }
+          }
+
+          zero_point += N;
+          scale += N;
+        }
+      }
+    } else {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            for (size_t n = 0; n < N; n++) {
+              auto sc = scale[n];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf((*input++) / sc)),
+                                  static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
+                                  static_cast<int32_t>(std::numeric_limits<TOut>::max()));
+              *output++ = static_cast<TOut>(v);
+            }
+          }
+
+          scale += N;
+        }
+      }
+    }
+  }
+
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t block_size) {
+    const auto num_r_block = (N + block_size - 1) / block_size;
+    const auto num_blocks = M * K * num_r_block;
+    const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float) * 2),
+                                 static_cast<double>(block_size * sizeof(TOut)),
+                                 static_cast<double>(block_size) * 2.0};
+    auto KN = K * N;
+    auto qKN = (K + quant_block_size - 1) / quant_block_size * N;
+    const auto Kbc = K * num_r_block;
+
+    concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      auto m = begin / Kbc, k = begin % Kbc / num_r_block, nb = begin % num_r_block, n = nb * block_size;
+      auto output_idx = m * KN + k * N + n;
+      auto zp_b_idx = m * qKN + k / quant_block_size * N;
+      auto zp_idx = zp_b_idx + n;
+
+      for (; begin < end; ++begin) {
+        auto n_end = std::min(N, n + block_size);
+        // TODO(fajin): use SIMD
+        for (; n < n_end; ++n, ++output_idx, ++zp_idx) {
+          auto zp = zero_point ? static_cast<int32_t>(zero_point[zp_idx]) : 0;  // TODO(fajin): perf difference
+          auto sc = scale[zp_idx];
+          auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc)) + zp,
+                              static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
+                              static_cast<int32_t>(std::numeric_limits<TOut>::max()));
+          output[output_idx] = static_cast<TOut>(v);
+        }
+
+        if (n == N) {
+          n = 0;
+          ++k;
+          if (k == K) {
+            k = 0;
+            zp_b_idx += N;
+          } else if (k % quant_block_size == 0) {
+            zp_b_idx += N;
+          }
+
+          zp_idx = zp_b_idx;
+        }
+      }
+    });
+  }
+
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size) {
+    const auto num_r_block = (K + quant_block_size - 1) / quant_block_size;
+    const auto num_blocks = num_r_block * M;
+    const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(float)),
+                                 static_cast<double>(quant_block_size * sizeof(TOut)),
+                                 static_cast<double>(quant_block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      auto m = begin / num_r_block, kb = begin % num_r_block, k = kb * quant_block_size;
+      auto output_idx = m * K + k;
+
+      for (; begin < end; ++begin) {
+        auto zp = zero_point ? static_cast<int32_t>(zero_point[begin]) : 0;
+        auto sc = scale[begin];
+        size_t output_size = std::min(K - k, quant_block_size);
+        MlasQuantizeLinear(input + output_idx, output + output_idx, output_size, sc, zp);
+        output_idx += output_size;
+        k = output_idx % K;
+      }
+    });
+  }
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<MLFloat16, TOut, 0> {
+  static void opBaseline(const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
+                         size_t M, size_t K, size_t N, size_t quant_block_size) {
+    if (zero_point) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            for (size_t n = 0; n < N; n++, input++) {
+              auto zp = static_cast<int32_t>(zero_point[n]);
+              auto sc = scale[n].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input->ToFloat() / sc)) + zp,
+                                  static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
+                                  static_cast<int32_t>(std::numeric_limits<TOut>::max()));
+              *output++ = static_cast<TOut>(v);
+            }
+          }
+
+          zero_point += N;
+          scale += N;
+        }
+      }
+    } else {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            for (size_t n = 0; n < N; n++, input++) {
+              auto sc = scale[n].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input->ToFloat() / sc)) + zp,
+                                  static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
+                                  static_cast<int32_t>(std::numeric_limits<TOut>::max()));
+              *output++ = static_cast<TOut>(v);
+            }
+          }
+
+          scale += N;
+        }
+      }
+    }
+  }
+
+  static void opNotLastAxisBlockN(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                                  const TOut* zero_point, TOut* output, std::ptrdiff_t N, std::ptrdiff_t output_b_index,
+                                  std::ptrdiff_t zp_b_index, const std::ptrdiff_t block_size) {
+    const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
+    const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float) * 2),
+                                 static_cast<double>(block_size * sizeof(TOut)),
+                                 static_cast<double>(block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      auto begin_index = begin * block_size;
+      auto output_index = begin_index + output_b_index;
+      auto output_end_index = std::min(N, end * block_size) + output_b_index;
+      auto zp_index = begin_index + zp_b_index;
+      // TODO(fajin): use SIMD
+      for (; output_index != output_end_index; ++output_index, ++zp_index) {
+        auto zp = zero_point ? static_cast<int32_t>(zero_point[zp_index]) : 0;  // TODO: perf difference
+        auto sc = scale[zp_index].ToFloat();
+        auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_index].ToFloat() / sc)) + zp,
+                            static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
+                            static_cast<int32_t>(std::numeric_limits<TOut>::max()));
+        output[output_index] = static_cast<TOut>(v);
+      }
+    });
+  }
+
+  static void opNotLastAxisBlockMKN(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                                    const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                                    std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                                    const std::ptrdiff_t block_size) {
+    constexpr std::ptrdiff_t totalSize = M * K * N;
+    const std::ptrdiff_t num_blocks = totalSize / block_size;
+    const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float) * 2),
+                                 static_cast<double>(block_size * sizeof(TOut)),
+                                 static_cast<double>(block_size) * 2.0};
+    auto KN = K * N;
+    auto qKN = (K + quant_block_size - 1) / quant_block_size * N;
+    concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      auto output_index = begin * block_size;
+      auto output_end_index = std::min(totalSize, end * block_size);
+      auto m = output_index / KN, k = output_index % KN / N, n = output_index % N;
+      auto zp_index = m * qKN + k / quant_block_size * N + n;
+      // TODO(fajin): use SIMD
+      for (; output_index != output_end_index; ++output_index, ++zp_index) {
+        auto zp = zero_point ? static_cast<int32_t>(zero_point[zp_index]) : 0;
+        auto sc = scale[zp_index].ToFloat();
+        auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_index].ToFloat() / sc)) + zp,
+                            static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
+                            static_cast<int32_t>(std::numeric_limits<TOut>::max()));
+        output[output_index] = static_cast<TOut>(v);
+      }
+    });
+  }
+
+  static void opLastAxisBlockK(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                               const TOut* zero_point, TOut* output, std::ptrdiff_t K, std::ptrdiff_t output_b_index,
+                               std::ptrdiff_t zp_b_index, const std::ptrdiff_t quant_block_size) {
+    const std::ptrdiff_t num_blocks = (K + quant_block_size - 1) / quant_block_size;
+    const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(float)),
+                                 static_cast<double>(quant_block_size * sizeof(TOut)),
+                                 static_cast<double>(quant_block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      auto output_index = begin * quant_block_size + output_b_index;
+      auto output_end_index = std::min(K, end * quant_block_size) + output_b_index;
+      auto zp_index = zp_b_index + begin;
+      auto zp = zero_point ? static_cast<int32_t>(zero_point[zp_index]) : 0;  // TODO: perf difference
+      auto sc = scale[zp_index].ToFloat();
+      for (; output_index != output_end_index; ++output_index) {
+        auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_index].ToFloat() / sc)) + zp,
+                            static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
+                            static_cast<int32_t>(std::numeric_limits<TOut>::max()));
+        output[output_index] = static_cast<TOut>(v);
+      }
+    });
+  }
+
+  static void opLastAxisBlockMK(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                                const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                                const std::ptrdiff_t quant_block_size) {
+    constexpr std::ptrdiff_t totalSize = M * K;
+    const std::ptrdiff_t num_blocks = totalSize / quant_block_size;
+    const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(float) * 2),
+                                 static_cast<double>(quant_block_size * sizeof(TOut)),
+                                 static_cast<double>(quant_block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      auto output_index = begin * quant_block_size;
+      auto output_end_index = std::min(totalSize, end * quant_block_size);
+      auto zp = zero_point ? static_cast<int32_t>(zero_point[begin]) : 0;
+      auto sc = scale[begin].ToFloat();
+      for (; output_index != output_end_index; ++output_index) {
+        auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_index].ToFloat() / sc)) + zp,
+                            static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
+                            static_cast<int32_t>(std::numeric_limits<TOut>::max()));
+        output[output_index] = static_cast<TOut>(v);
+      }
+    });
+  }
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<float, TOut, 2> {
+  static void op0(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+    size_t zp_b_index = 0;
+    size_t output_index = 0;
+
+    if (zero_point) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            auto zp_index = zp_b_index;
+            for (size_t n = 0; n < N; n++, output_index++, zp_index++) {
+              auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc = scale[zp_index];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)) + zp,
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
+            }
+          }
+          zp_b_index += N;
+        }
+      }
+    } else {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            auto zp_index_n = zp_index;
+            for (size_t n = 0; n < N; n++, output_index++, zp_index_n++) {
+              auto sc = scale[zp_index_n];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)),
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
+            }
+          }
+          zp_b_index += N;
+        }
+      }
+    }
+  }
+
+  static void op1(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+    size_t zp_b_index = 0;
+    size_t output_index = 0;
+
+    if (zero_point) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            size_t n = 0;
+            size_t zp_index = zp_b_index;
+
+            if (output_index & 1) {
+              auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc = scale[zp_index];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)) + zp,
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(1, static_cast<TOut::UnpackedType>(v));
+              output_index++;
+              zp_index++;
+              n++;
+            }
+
+            for (; n < N - 1; n += 2, output_index += 2) {
+              auto zp0 = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc0 = scale[zp_index];
+              ++zp_index;
+              auto zp1 = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc1 = scale[zp_index];
+              ++zp_index;
+
+              auto v0 = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc0)) + zp0,
+                                   static_cast<int32_t>(TOut::min_val),
+                                   static_cast<int32_t>(TOut::max_val));
+              auto v1 = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index + 1] / sc1)) + zp1,
+                                   static_cast<int32_t>(TOut::min_val),
+                                   static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1] = TOut(v0, v1);
+            }
+
+            if (n < N) {
+              auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc = scale[zp_index];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)) + zp,
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
+              output_index++;
+              zp_index++;
+              n++;
+            }
+          }
+
+          zp_b_index += N;
+        }
+      }
+    } else {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            size_t n = 0;
+            size_t zp_index = zp_b_index;
+
+            if (output_index & 1) {
+              auto sc = scale[zp_index];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)),
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(1, static_cast<TOut::UnpackedType>(v));
+              output_index++;
+              zp_index++;
+              n++;
+            }
+
+            for (; n < N - 1; n += 2, output_index += 2) {
+              auto sc0 = scale[zp_index];
+              ++zp_index;
+              auto sc1 = scale[zp_index];
+              ++zp_index;
+
+              auto v0 = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc0)),
+                                   static_cast<int32_t>(TOut::min_val),
+                                   static_cast<int32_t>(TOut::max_val));
+              auto v1 = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index + 1] / sc1)),
+                                   static_cast<int32_t>(TOut::min_val),
+                                   static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1] = TOut(v0, v1);
+            }
+
+            if (n < N) {
+              auto sc = scale[zp_index];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)),
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
+              output_index++;
+              zp_index++;
+              n++;
+            }
+          }
+
+          zp_b_index += N;
+        }
+      }
+    }
+  }
+
+  static void op2(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+  }
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
+  static void op0(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+    size_t zp_index = 0;
+    size_t output_index = 0;
+
+    if (zero_point) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            for (size_t n = 0; n < N; n++, output_index++) {
+              auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc = scale[zp_index].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)) + zp,
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
+            }
+          }
+
+          zp_index += N;
+        }
+      }
+    } else {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            for (size_t n = 0; n < N; n++, output_index++) {
+              auto sc = scale[zp_index].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)),
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
+            }
+          }
+
+          zp_index += N;
+        }
+      }
+    }
+  }
+
+  static void op1(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+    size_t zp_b_index = 0;
+    size_t output_index = 0;
+
+    if (zero_point) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            size_t n = 0;
+            size_t zp_index = zp_b_index;
+
+            if (output_index & 1) {
+              auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc = scale[zp_index].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)) + zp,
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(1, static_cast<TOut::UnpackedType>(v));
+              output_index++;
+              zp_index++;
+              n++;
+            }
+
+            for (; n < N - 1; n += 2, output_index += 2) {
+              auto zp0 = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc0 = scale[zp_index].ToFloat();
+              ++zp_index;
+              auto zp1 = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc1 = scale[zp_index].ToFloat();
+              ++zp_index;
+
+              auto v0 = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc0)) + zp0,
+                                   static_cast<int32_t>(TOut::min_val),
+                                   static_cast<int32_t>(TOut::max_val));
+              auto v1 = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index + 1].ToFloat() / sc1)) + zp1,
+                                   static_cast<int32_t>(TOut::min_val),
+                                   static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1] = TOut(v0, v1);
+            }
+
+            if (n < N) {
+              auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
+              auto sc = scale[zp_index].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)) + zp,
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
+              output_index++;
+              zp_index++;
+              n++;
+            }
+          }
+
+          zp_b_index += N;
+        }
+      }
+    } else {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            size_t n = 0;
+            size_t zp_index = zp_b_index;
+
+            if (output_index & 1) {
+              auto sc = scale[zp_index].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)),
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(1, static_cast<TOut::UnpackedType>(v));
+              output_index++;
+              zp_index++;
+              n++;
+            }
+
+            for (; n < N - 1; n += 2, output_index += 2) {
+              auto sc0 = scale[zp_index].ToFloat();
+              ++zp_index;
+              auto sc1 = scale[zp_index].ToFloat();
+              ++zp_index;
+
+              auto v0 = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc0)),
+                                   static_cast<int32_t>(TOut::min_val),
+                                   static_cast<int32_t>(TOut::max_val));
+              auto v1 = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index + 1].ToFloat() / sc1)),
+                                   static_cast<int32_t>(TOut::min_val),
+                                   static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1] = TOut(v0, v1);
+            }
+
+            if (n < N) {
+              auto sc = scale[zp_index].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)),
+                                  static_cast<int32_t>(TOut::min_val),
+                                  static_cast<int32_t>(TOut::max_val));
+              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
+              output_index++;
+              zp_index++;
+              n++;
+            }
+          }
+
+          zp_b_index += N;
+        }
+      }
+    }
+  }
+};
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename OutputFloat8Type>
@@ -302,6 +932,51 @@ ParQuantizeLinearSat(const MLFloat16* Input,
     }
   });
 }
+
+template <typename TOut>
+struct BlockedQuantizeLinear<float, TOut, 1> {
+  static void op0(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+    for (size_t m = 0; m < M; m++) {
+      for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+        for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+          for (size_t n = 0; n < N; n++) {
+            *output++ = TOut((*input++) / scale[n], saturate);
+          }
+        }
+
+        scale += N;
+      }
+    }
+  }
+
+  // TODO(fajin): try out three multi-threading methods
+  static void op1(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+  }
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<MLFloat16, TOut, 1> {
+  static void op0(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+    for (size_t m = 0; m < M; m++) {
+      for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
+        for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+          for (size_t n = 0; n < N; n++, input++) {
+            *output++ = TOut(input->ToFloat() / scale[n].ToFloat(), saturate);
+          }
+        }
+
+        scale += N;
+      }
+    }
+  }
+
+  static void op1(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
+                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+  }
+};
 
 #endif
 

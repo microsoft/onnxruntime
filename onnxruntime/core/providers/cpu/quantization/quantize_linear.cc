@@ -779,362 +779,53 @@ DEFINE_COMPUTE_LOOP_FP32_TO_INT4(UInt4x2, ParQuantizeLinearStdU4)
 DEFINE_COMPUTE_LOOP_FP16_TO_INT4(Int4x2)
 DEFINE_COMPUTE_LOOP_FP16_TO_INT4(UInt4x2)
 
-/**
- * @brief     compute blocked quantization
+ /**
+ * @brief        Calculate blocked quantization of QuantizeLinear on the flattened tensors.
  *
- * @tparam TIn
- * @tparam TOut
- * @tparam output_type_group        0: int other than int4.
- *                                  1: float8
- *                                  2: int4
+ * @tparam       TIn                    input type
+ * @tparam       TOut                   output type
+ * @tparam       TOutGrp                output type group
+ * @tparam       BlockSize              single thread block size
+ *
+ * @param[in]    ctx                    OpKernelContext
+ * @param[in]    input                  1D array of flattened [D0, ..., Di, ..., Dn]
+ * @param[in]    scale                  1D array of flattened [D0, ..., ceil(Di/quant_block_size), ..., Dn].
+ *                                      i is the quantize axis.
+ * @param[in]    zero_point             same shape as scale
+ * @param[out]   output                 same shape as input
+ * @param[in]    M                      size of dimensions before the quantize axis
+ * @param[in]    K                      dimension of the quantize axis
+ * @param[in]    N                      size of dimensions after the quantize axis
+ * @param[in]    quant_block_size       quantize block size along the quantize axis
+ * @param[in]    saturate               used for float8 types
  */
-template <typename TIn, typename TOut, int output_type_group>
-struct QuantizeLinearBlockwiseApply {
-  /**
-   * @brief        Calculate blocked quantization of QuantizeLinear on the flattened tensors.
-   *
-   * @tparam       TOutGrp                output type group
-   *
-   * @param[in]    ctx                    OpKernelContext
-   * @param[in]    input                  1D array of flattened [D0, ..., Di, ..., Dn]
-   * @param[in]    scale                  1D array of flattened [D0, ..., ceil(Di/quant_block_size), ..., Dn].
-   *                                      i is the quantize axis.
-   * @param[in]    zero_point             same shape as scale
-   * @param[out]   output                 same shape as input
-   * @param[in]    M                      size of dimensions before the quantize axis
-   * @param[in]    K                      dimension of the quantize axis
-   * @param[in]    N                      size of dimensions after the quantize axis
-   * @param[in]    quant_block_size       quantize block size along the quantize axis
-   * @param[in]    saturate               used for float8 types
-   */
-  static void op(OpKernelContext* ctx, const TIn* input, const TIn* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate);
-};
-
-template <typename TOut>
-struct QuantizeLinearBlockwiseApply<float, TOut, 0> {
-  static void op(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    op0(ctx, input, scale, zero_point, output, M, K, N, quant_block_size, saturate);
-  }
-
-   // Baseline implementation. Single thread. Scalar instructions.
-  static void op0(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    if (zero_point) {
+template <typename TIn, typename TOut, int TOutGrp, int BlockSize>
+static void ComputeLoop(OpKernelContext* ctx, const TIn* input, const TIn* scale, const TOut* zero_point, TOut* output,
+                        size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
+  if (N > 1) {  // not quantize on last axis, N is usually large
+    if (N % BlockSize) {
       for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++) {
-              auto zp = static_cast<int32_t>(zero_point[n]);
-              auto sc = scale[n];
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf((*input++) / sc)) + zp,
-                                  static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
-                                  static_cast<int32_t>(std::numeric_limits<TOut>::max()));
-              *output++ = static_cast<TOut>(v);
-            }
-          }
+        for (size_t k = 0; k < K; k++) {
+          // call threaded quantize, multiple scalar per block
 
-          zero_point += N;
-          scale += N;
+          
         }
       }
     } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++) {
-              auto sc = scale[n];
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf((*input++) / sc)),
-                                  static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
-                                  static_cast<int32_t>(std::numeric_limits<TOut>::max()));
-              *output++ = static_cast<TOut>(v);
-            }
-          }
-
-          scale += N;
-        }
-      }
+      // call threaded quantize, multiple scalar per block
     }
-  }
-
-  // TODO(fajin): try out three multi-threading methods
-  static void op1(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-    size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-
-  }
-};
-
-template <typename TOut>
-struct QuantizeLinearBlockwiseApply<MLFloat16, TOut, 0> {
-  static void op(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
-    size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    op0(ctx, input, scale, zero_point, output, M, K, N, quant_block_size, saturate);
-  }
-
-  static void op0(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    if (zero_point) {
+  } else {
+    // quantize on last axis, use quant_block_size as task block size.
+    // quant_block_size is usually 2's power between 16 and 256
+    if (K % quant_block_size) {
       for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++, input++) {
-              auto zp = static_cast<int32_t>(zero_point[n]);
-              auto sc = scale[n].ToFloat();
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input->ToFloat() / sc)) + zp,
-                                  static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
-                                  static_cast<int32_t>(std::numeric_limits<TOut>::max()));
-              *output++ = static_cast<TOut>(v);
-            }
-          }
-
-          zero_point += N;
-          scale += N;
-        }
+        // call threaded quantize, single scalar per block
       }
     } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++, input++) {
-              auto sc = scale[n].ToFloat();
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input->ToFloat() / sc)) + zp,
-                                  static_cast<int32_t>(std::numeric_limits<TOut>::lowest()),
-                                  static_cast<int32_t>(std::numeric_limits<TOut>::max()));
-              *output++ = static_cast<TOut>(v);
-            }
-          }
-
-          scale += N;
-        }
-      }
+      // call threaded quantize, single scale per block
     }
   }
-
-  static void op1(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-  }
-};
-
-template <typename TOut>
-struct QuantizeLinearBlockwiseApply<float, TOut, 2> {
-  static void op(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-                 size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    op0(ctx, input, scale, zero_point, output, M, K, N, quant_block_size, saturate);
-  }
-
-  static void op0(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    size_t zp_index = 0;
-    size_t output_index = 0;
-
-    if (zero_point) {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++, output_index++) {
-              auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
-              auto sc = scale[zp_index];
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)) + zp,
-                                  static_cast<int32_t>(TOut::min_val),
-                                  static_cast<int32_t>(TOut::max_val));
-              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
-            }
-          }
-          zp_index += N;
-        }
-      }
-    } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++, output_index++) {
-              auto sc = scale[zp_index];
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)),
-                                  static_cast<int32_t>(TOut::min_val),
-                                  static_cast<int32_t>(TOut::max_val));
-              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
-            }
-          }
-          zp_index += N;
-        }
-      }
-    }
-  }
-
-  static void op1(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    size_t zp_index = 0;
-    size_t output_index = 0;
-
-    if (zero_point) {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          size_t kn = 0, kn_end = std::min(quant_block_size, K - k1) * N;
-
-          if (output_index & 1) {
-            auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
-            auto sc = scale[zp_index];
-            auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)) + zp,
-                                static_cast<int32_t>(TOut::min_val),
-                                static_cast<int32_t>(TOut::max_val));
-            output[output_index >> 1].SetElem(1, static_cast<TOut::UnpackedType>(v));
-            ++kn;
-            ++output_index;
-            ++zp_index;
-          }
-
-          // reduce load and save operations
-          for (; kn < kn_end - 1; kn += 2, output_index += 2, zp_index += 2) {
-              auto zp0 = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
-              auto sc = scale[n];
-              auto v = static_cast<int32_t>((*input++) / sc) + zp;
-              v = std::max(v, static_cast<int32_t>(std::numeric_limits<TOut>::lowest()));
-              v = std::min(v, static_cast<int32_t>(std::numeric_limits<TOut>::max()));
-              output++ = static_cast<TOut>(v);
-          }
-
-          if (kn <) {
-            ++n;
-            ++output_index;
-          }
-
-          zp_index += N;
-        }
-      }
-    } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++) {
-              auto sc = scale[n];
-              auto v = static_cast<int32_t>((*input++) / sc);
-              v = std::max(v, static_cast<int32_t>(std::numeric_limits<TOut>::lowest()));
-              v = std::min(v, static_cast<int32_t>(std::numeric_limits<TOut>::max()));
-              *output++ = static_cast<TOut>(v);
-            }
-          }
-
-          scale += N;
-        }
-      }
-    }
-  }
-
-  static void op2(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-  }
-};
-
-template <typename TOut>
-struct QuantizeLinearBlockwiseApply<MLFloat16, TOut, 2> {
-  static void op(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
-                 size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    op0(ctx, input, scale, zero_point, output, M, K, N, quant_block_size, saturate);
-  }
-
-  static void op0(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    size_t zp_index = 0;
-    size_t output_index = 0;
-
-    if (zero_point) {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++, output_index++) {
-              auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
-              auto sc = scale[zp_index].ToFloat();
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)) + zp,
-                                  static_cast<int32_t>(TOut::min_val),
-                                  static_cast<int32_t>(TOut::max_val));
-              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
-            }
-          }
-
-          zp_index += N;
-        }
-      }
-    } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-          for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++, output_index++) {
-              auto sc = scale[zp_index].ToFloat();
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)),
-                                  static_cast<int32_t>(TOut::min_val),
-                                  static_cast<int32_t>(TOut::max_val));
-              output[output_index >> 1].SetElem(output_index & 1, static_cast<TOut::UnpackedType>(v));
-            }
-          }
-
-          zp_index += N;
-        }
-      }
-    }
-  }
-
-  static void op1(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-  }
-};
-
-#if !defined(DISABLE_FLOAT8_TYPES)
-template <typename TOut>
-struct QuantizeLinearBlockwiseApply<float, TOut, 1> {
-  static void op(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-                 size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    op0(ctx, input, scale, zero_point, output, M, K, N, quant_block_size, saturate);
-  }
-
-  static void op0(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    for (size_t m = 0; m < M; m++) {
-      for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-        for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-          for (size_t n = 0; n < N; n++) {
-            *output++ = TOut((*input++) / scale[n], saturate);
-          }
-        }
-
-        scale += N;
-      }
-    }
-  }
-
-  // TODO(fajin): try out three multi-threading methods
-  static void op1(OpKernelContext* ctx, const float* input, const float* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-  }
-};
-
-template <typename TOut>
-struct QuantizeLinearBlockwiseApply<MLFloat16, TOut, 1> {
-  static void op(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
-                 size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    op0(ctx, input, scale, zero_point, output, M, K, N, quant_block_size, saturate);
-  }
-
-  static void op0(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-    for (size_t m = 0; m < M; m++) {
-      for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
-        for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-          for (size_t n = 0; n < N; n++, input++) {
-            *output++ = TOut(input->ToFloat() / scale[n].ToFloat(), saturate);
-          }
-        }
-
-        scale += N;
-      }
-    }
-  }
-
-  static void op1(OpKernelContext* ctx, const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
-                  size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
-  }
-};
-#endif
+}
 
 // formula is Y = X / Scale + ZeroPoint
 template <typename T>
@@ -1161,30 +852,30 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   if (x.IsDataType<float>()) {
     if (block_size_) {
-      QuantizeLinearBlockwiseApply<float, T, output_type_group_>::op(ctx,
-                                                                     x.Data<MLFloat16>(),
-                                                                     y_scale.Data<MLFloat16>(),
-                                                                     zero_point, output,
-                                                                     static_cast<size_t>(process_block_count),
-                                                                     static_cast<size_t>(broadcast_dim),
-                                                                     static_cast<size_t>(process_block_size),
-                                                                     static_cast<size_t>(block_size_),
-                                                                     saturate_);
+      ComputeLoop<float, T, output_type_group_, 128>(ctx,
+                                                     x.Data<MLFloat16>(),
+                                                     y_scale.Data<MLFloat16>(),
+                                                     zero_point, output,
+                                                     static_cast<size_t>(process_block_count),
+                                                     static_cast<size_t>(broadcast_dim),
+                                                     static_cast<size_t>(process_block_size),
+                                                     static_cast<size_t>(block_size_),
+                                                     saturate_);
     } else {
       ComputeLoop<T, float>(ctx, x.Data<float>(), y_scale.Data<float>(), zero_point, output,
                             process_block_count, broadcast_dim, process_block_size, saturate_);
     }
   } else if (x.IsDataType<MLFloat16>()) {
     if (block_size_) {
-      QuantizeLinearBlockwiseApply<MLFloat16, T, output_type_group_>::op(ctx,
-                                                                         x.Data<MLFloat16>(),
-                                                                         y_scale.Data<MLFloat16>(),
-                                                                         zero_point, output,
-                                                                         static_cast<size_t>(process_block_count),
-                                                                         static_cast<size_t>(broadcast_dim),
-                                                                         static_cast<size_t>(process_block_size),
-                                                                         static_cast<size_t>(block_size_),
-                                                                         saturate_);
+      ComputeLoop<MLFloat16, T, output_type_group_, 128>(ctx,
+                                                         x.Data<MLFloat16>(),
+                                                         y_scale.Data<MLFloat16>(),
+                                                         zero_point, output,
+                                                         static_cast<size_t>(process_block_count),
+                                                         static_cast<size_t>(broadcast_dim),
+                                                         static_cast<size_t>(process_block_size),
+                                                         static_cast<size_t>(block_size_),
+                                                         saturate_);
     } else {
       ComputeLoop<T, MLFloat16>(ctx, x.Data<MLFloat16>(), y_scale.Data<MLFloat16>(), zero_point, output,
                                 process_block_count, broadcast_dim, process_block_size, saturate_);
