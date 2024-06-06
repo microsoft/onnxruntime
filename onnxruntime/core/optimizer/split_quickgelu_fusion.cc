@@ -125,13 +125,13 @@ bool GetSplitQuickGeluParams(
     return false;
   }
   auto& quickgelu_attr = quickgelu_node.GetAttributes();
-  for (const auto& pair : quickgelu_attr){
-    std::cout << "Key:" << pair.first << std::endl;
-  }
+  // for (const auto& pair : quickgelu_attr){
+  //   std::cout << "Key:" << pair.first << std::endl;
+  // }
   if (quickgelu_attr.find("alpha") != quickgelu_attr.end()) {
     auto& alpha_attr = quickgelu_attr.at("alpha");
     alpha = utils::HasFloat(alpha_attr) ? (float)alpha_attr.f() : alpha;
-    printf("Got ALPHA Value as: %f\n", alpha);
+    // printf("Got ALPHA Value as: %f\n", alpha);
   } else {
     return false;
   }
