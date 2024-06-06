@@ -94,7 +94,7 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
     // More info: https://github.com/microsoft/onnxruntime/pull/8124/files#r656629895
     int n = batch_size * sequence_length;
     concurrency::ThreadPool::TryBatchParallelFor(
-        context->GetOperatorThreadPool(), n, [=, this, &failed](ptrdiff_t index) {
+        context->GetOperatorThreadPool(), n, [=, &failed](ptrdiff_t index) {
           int word_col_index = input_ids_data[index];
           if (word_col_index < 0 || word_col_index >= word_embedding_length) {
             failed.store(true, std::memory_order_release);
