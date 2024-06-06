@@ -110,7 +110,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
                       "Cannot get shape");
-    ORT_ENFORCE(static_cast<int32_t>(input_shape.size()) > axis_value, "axis not valid!");
+    ORT_RETURN_IF_NOT(static_cast<int32_t>(input_shape.size()) > axis_value, "axis not valid!");
     ORT_RETURN_IF_NOT(input_shape.at(axis_value) > 0, "Shape value not valid!");
 
     // ONNX spec states that if not evenly divisible by `num_outputs`, the last chunk is smaller.
