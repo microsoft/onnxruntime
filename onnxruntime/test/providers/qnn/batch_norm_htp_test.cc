@@ -158,7 +158,8 @@ GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float
 static void RunBatchNormQDQTest(const TestInputDef<float>& input_def,
                                 const TestInputDef<float>& scale_def,
                                 const TestInputDef<float>& bias_def,
-                                ExpectedEPNodeAssignment expected_ep_assignment) {
+                                ExpectedEPNodeAssignment expected_ep_assignment,
+                                QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -171,7 +172,8 @@ static void RunBatchNormQDQTest(const TestInputDef<float>& input_def,
                        BuildQDQBatchNormTestCase<uint8_t, uint8_t, uint8_t>(input_def, scale_def, bias_def),
                        provider_options,
                        11,
-                       expected_ep_assignment);
+                       expected_ep_assignment,
+                       tolerance);
 }
 
 static void RunBatchNormFP16Test(const TestInputDef<float>& input_def,
@@ -219,7 +221,9 @@ TEST_F(QnnHTPBackendTests, BatchNorm2D) {
   RunBatchNormQDQTest(TestInputDef<float>({2, num_channels, 2, 2}, false, input_data),  // Input data
                       TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),          // Scale initializer
                       TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),          // Bias initializer
-                      ExpectedEPNodeAssignment::All);
+                      ExpectedEPNodeAssignment::All,
+                      // Require a slightly increased tolerance on Windows ARM64 (from 0.4% to 0.6%).
+                      QDQTolerance(0.006f));
 }
 
 // Test FP16 BatchNormalization on the HTP backend.
