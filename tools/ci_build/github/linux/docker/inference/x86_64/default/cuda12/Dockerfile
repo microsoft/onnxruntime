@@ -32,10 +32,9 @@ fi
 
 # install cudnn 9 for cuda 12
 RUN if [ $(echo $CUDA_VERSION | cut -d"." -f1) -ge 12 ]; then \
-    wget https://developer.download.nvidia.com/compute/cudnn/9.1.1/local_installers/cudnn-local-repo-rhel8-9.1.1-1.0-1.x86_64.rpm &&\
-    rpm -i cudnn-local-repo-rhel8-9.1.1-1.0-1.x86_64.rpm &&\
+    dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&\
     dnf clean all &&\
-    dnf -y install cudnn-cuda-12 ; \
+    dnf -y install --allowerasing cudnn9-cuda-12 ; \
 fi
 
 ENV LANG=en_US.UTF-8
