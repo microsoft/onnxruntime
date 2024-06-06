@@ -587,13 +587,13 @@ TEST_F(GraphTransformationTests, SplitQuickGeluFusionTest) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SplitQuickGeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SplitQuickGeluFusion>(), TransformerLevel::Level2));
   std::map<std::string, int> before_op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(before_op_to_count["Split"], 1);
   ASSERT_EQ(before_op_to_count["com.microsoft.QuickGelu"], 1);
   ASSERT_EQ(before_op_to_count["Mul"], 1);
   ASSERT_EQ(before_op_to_count["com.microsoft.S2SModelSplitQuickGelu"], 0);
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Split"], 0);
