@@ -47,7 +47,10 @@ class Block(ABC):
 
         output = self.build(*args, **kwargs)
 
-        onnx.checker.check_model(self.base, True)
+        if accessor._GLOBAL_ACCESSOR.has_path:
+            onnx.checker.check_model(accessor._GLOBAL_ACCESSOR.path, True)
+        else:
+            onnx.checker.check_model(self.base, True)
 
         return output
 

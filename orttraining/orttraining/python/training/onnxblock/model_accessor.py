@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import os
 from contextlib import contextmanager
+from typing import Union
 
 import onnx
 
@@ -14,11 +15,17 @@ class ModelAccessor:
     """This class stores the onnx model that is manipulated by the onnx blocks.
 
     Attributes:
-        model: The onnx model that is manipulated by the onnx blocks.
+        model: The onnx model or path to the model that is manipulated by the onnx blocks.
     """
 
-    def __init__(self, model: onnx.ModelProto):
-        self._model = model
+    def __init__(self, model: Union[onnx.ModelProto, str]):
+        if isinstance(model, onnx.ModelProto):
+            self._model = model
+        elif isinstance(model, str):
+            self._path = model
+            self._model = onnx.load(model)
+        else:
+            raise RuntimeError("Please pass in either a file path as string to the base model, or the ModelProto")
 
     @property
     def model(self) -> onnx.ModelProto:
@@ -29,6 +36,22 @@ class ModelAccessor:
                 "The onnx model was not set. Please use the context manager onnxblock.onnx_model to create the model."
             )
         return self._model
+
+    @property
+    def path(self) -> str:
+        """ModelAccessor property that gets the path to the base model."""
+
+        if self._path is None:
+            raise RuntimeError(
+                "The path to the onnx model was not set. Please use the context manager onnxblock.onnx_model to create the model and pass in a string."
+            )
+        return self._path
+
+    @property
+    def has_path(self) -> bool:
+        """Returns True if ModelAccessor has a path to a model, False otherwise."""
+
+        return self._path is not None
 
 
 # These variable resides in the global namespace.
