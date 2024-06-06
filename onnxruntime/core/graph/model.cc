@@ -378,8 +378,8 @@ ModelProto Model::ToProto() const {
   return result;
 }
 
-ModelProto Model::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                       const PathString& file_path,
+ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
+                                                       const std::filesystem::path& file_path,
                                                        size_t initializer_size_threshold) const {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
@@ -602,7 +602,7 @@ Status Model::Save(Model& model, const std::wstring& file_path) {
 template <typename T>
 static Status SaveModelWithExternalInitializers(Model& model,
                                                 const T& file_path,
-                                                const std::string& external_file_name,
+                                                const std::filesystem::path& external_file_name,
                                                 size_t initializer_size_threshold) {
   int fd = 0;
   Status status = Env::Default().FileOpenWr(file_path, fd);
@@ -643,7 +643,7 @@ Status Model::Save(Model& model, const std::string& file_path) {
 }
 
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
-                                           const std::string& external_file_name,
+                                           const std::filesystem::path& external_file_name,
                                            size_t initializer_size_threshold) {
   return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold);
 }
@@ -760,7 +760,7 @@ Status Model::Save(Model& model, int p_fd) {
 Status Model::SaveWithExternalInitializers(Model& model,
                                            int fd,
                                            const std::filesystem::path& file_path,
-                                           const std::string& external_file_name,
+                                           const std::filesystem::path& external_file_name,
                                            size_t initializer_size_threshold) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");

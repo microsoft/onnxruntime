@@ -3972,19 +3972,16 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   return result;
 }
 
-ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                        const std::filesystem::path& destination_file_path,
                                                                        size_t initializer_size_threshold) const {
   GraphProto result;
   ToGraphProtoInternal(result);
-  std::filesystem::path external_file_path = ToPathString(external_file_name);
   // If destination_file_path is just a file name without a path separator, for example: "model.onnx". Its parent path could be empty.
-  if (destination_file_path.has_parent_path()) {
-    // Save external data file in same directory as model
-    external_file_path = destination_file_path.parent_path() / external_file_path;
-  }
+  // Else, save external data file in same directory as model
+  const std::filesystem::path modified_external_file_path = destination_file_path.has_parent_path() ? destination_file_path.parent_path() / external_file_path : external_file_path;
 
-  std::ofstream external_stream(external_file_path, std::ofstream::out | std::ofstream::binary);
+  std::ofstream external_stream(modified_external_file_path, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
   int64_t external_offset = 0;
 
@@ -4021,7 +4018,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
       ONNX_NAMESPACE::StringStringEntryProto* location = output_proto->add_external_data();
       location->set_key("location");
-      location->set_value(external_file_name);
+      location->set_value(ToUTF8String(external_file_path.native()));
       ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto->add_external_data();
       offset->set_key("offset");
       offset->set_value(std::to_string(external_offset));

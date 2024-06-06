@@ -24,14 +24,15 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
                                const std::filesystem::path& output_onnx,
                                const std::filesystem::path& output_external_init_file,
                                size_t initializer_size_threshold) {
+  auto logger = DefaultLoggingManager().CreateLogger("LoadSaveAndCompareModel");
   std::shared_ptr<Model> model;
-  ORT_RETURN_IF_ERROR(Model::Load(input_onnx, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  ORT_RETURN_IF_ERROR(Model::Load(input_onnx, model, nullptr, *logger));
   std::filesystem::remove(output_onnx);
   std::filesystem::remove(output_external_init_file);
-  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(*model, output_onnx, ToUTF8String(output_external_init_file.native()), initializer_size_threshold));
+  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(*model, output_onnx, output_external_init_file, initializer_size_threshold));
 
   std::shared_ptr<Model> model_from_external;
-  ORT_RETURN_IF_ERROR(Model::Load(ToPathString(output_onnx), model_from_external, nullptr, DefaultLoggingManager().DefaultLogger()));
+  ORT_RETURN_IF_ERROR(Model::Load(output_onnx.native(), model_from_external, nullptr, *logger));
 
   Graph& graph = model->MainGraph();
   // Perform shape inference on the graph, if this succeeds then it means that we could correctly read the
@@ -55,13 +56,13 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
     std::vector<uint8_t> tensor_proto_data;
     model_path = input_onnx;
     external_data_path = (!input_external_init_file.empty()) ? (model_path.parent_path() / input_external_init_file) : std::filesystem::path();
-    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_path, tensor_proto_data));
+    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_path, tensor_proto_data));
     size_t tensor_proto_size = tensor_proto_data.size();
 
     std::vector<uint8_t> from_external_tensor_proto_data;
     model_path = output_onnx;
     external_data_path = model_path.parent_path() / output_external_init_file;
-    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data));
+    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data));
     size_t from_external_tensor_proto_size = from_external_tensor_proto_data.size();
 
     if (from_external_tensor_proto_size < initializer_size_threshold) {
