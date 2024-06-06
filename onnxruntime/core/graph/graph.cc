@@ -3984,7 +3984,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
     external_file_path = destination_file_path.parent_path() / external_file_path;
   }
 
-  std::ofstream external_stream(external_file_path.native(), std::ofstream::out | std::ofstream::binary);
+  std::ofstream external_stream(external_file_path, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
   int64_t external_offset = 0;
 
