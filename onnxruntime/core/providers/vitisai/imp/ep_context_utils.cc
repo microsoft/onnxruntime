@@ -160,8 +160,13 @@ void DeserializeCapabilities(const std::string& ser_capabilities,
 }
 
 std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
+  // XXX: Will Steps 1/2/3 suffice for restoring a model/graph later?
+  // Any information loss or mismatch?
+  // Step 1
   const Graph& orig_graph = graph_viewer.GetGraph();
+  // Step 2
   const Model& orig_model = orig_graph.GetModel();
+  // Step 3
   auto p_orig_model_proto = const_cast<Model&>(orig_model).ToProto();
   std::string ser_buf;
   p_orig_model_proto->SerializeToString(ser_buf);

@@ -25,24 +25,6 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
   CreateKernelRegistry();
 
-#if 0
-  if (p_sess_opts) {
-    ep_ctx_enabled_ = p_sess_opts->config_options.GetConfigOrDefault(
-        kOrtSessionOptionEpContextEnable, "0") == "1";
-    std::string embed_mode = p_sess_opts->config_options.GetConfigOrDefault(
-        kOrtSessionOptionEpContextEmbedMode, "1");
-    if ("1" == embed_mode) {
-      ep_ctx_embed_mode_ = true;
-    } else if ("0" == embed_mode) {
-      ep_ctx_embed_mode_ = false;
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
-      ep_ctx_embed_mode_ = true;
-    }
-    ep_ctx_model_path_cfg_ = p_sess_opts->config_options.GetConfigOrDefault(
-        kOrtSessionOptionEpContextFilePath, "");
-  } else {
-#endif
   auto it = info_.find("ep_context_enable");
   ep_ctx_enabled_ = it != info_.end() && it->second == "1";
   it = info_.find("ep_context_embed_mode");
@@ -50,9 +32,6 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
   // ep_ctx_embed_mode_ = it == info_.end() || it->second != "0";
   it = info_.find("ep_context_file_path");
   ep_ctx_model_path_cfg_ = it == info_.end() ? "" : it->second;
-#if 0
-  }
-#endif
   LOGS_DEFAULT(VERBOSE) << "EP Context cache enabled: " << ep_ctx_enabled_;
   LOGS_DEFAULT(VERBOSE) << "EP context cache embed mode: " << ep_ctx_embed_mode_;
   LOGS_DEFAULT(VERBOSE) << "User specified EP context cache path: " << ep_ctx_model_path_cfg_;
@@ -138,9 +117,10 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
     DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
     // FIXME
-    // 1) This is the baseline and needs to be optimized (WIP).
-    // 2) This implies further performance boost potential.
-    // 3) This makes sense because VAIP behind the scenes has implemented internal EP-context like cache.
+    // 1) `execution_providers_` is used by `Compiler()` as well, so, even in this case, we need to make it ready.
+    // 2) Computing (using cache) `execution_providers_` needs the original model/graph for signature match.
+    // 3) The closed-source backend of VitisAI EP has complication cache, so no real overhead.
+    // 4) In next iteration of EP context model implementaiton, we are getting rid of this dependency.
     if (!execution_providers_) {
       auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
       execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
@@ -161,6 +141,9 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       // FIXME: ditto.
       if (!execution_providers_) {
         execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph_viewer, *GetLogger(), info_));
+        // Alternative with some nuance.
+        // auto p_orig_graph_viewer = RetrieveOriginalGraph(p_ep_ctx_model_->MainGraph());
+        // execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
       }
       return capability_ptrs;
     }
