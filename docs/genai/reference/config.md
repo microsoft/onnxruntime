@@ -146,7 +146,7 @@ Then for each model in the pipeline there is one section, named by the model.
 
 * **_top_p_**: Only includes the most probable tokens with probabilities that add up to `P` or higher. Defaults to `1`, which includes all of the tokens. Range is 0 to 1, exclusive of 0.
 
-* **_temperature_**: The temperature value scales the probability of each token so that probable tokens become more likely while less probable ones become less likely. This value can have a range  0 < `temperature` ≤ 1. When temperature is equal to `1`, it has no effect.
+* **_temperature_**: The temperature value scales the scores of each token so that lower a temperature value leads to a sharper distribution.
 
 * **_repetition_penalty_**: Discounts the scores of previously generated tokens if set to a value greater than `1`. Defaults to `1`. 
 
