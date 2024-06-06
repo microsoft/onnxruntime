@@ -13,7 +13,7 @@ opsets = [onnxdomain, msdomain]
 graph = helper.make_graph(
     [  # nodes
         helper.make_node("Split", ["inp", "split"], ["out1", "out2"], "split", axis=-1),
-        helper.make_node("QuickGelu", ["out2"], ["gelu_out"], "QuickGelu", "", msdomain.domain, alpha=1.0),
+        helper.make_node("QuickGelu", ["out2"], ["gelu_out"], "QuickGelu", "", msdomain.domain, alpha=1.702),
         helper.make_node("Mul", ["out1", "gelu_out"], ["out"], "mul"),
     ],
     "Split_QuickGelu_Fusion",  # name
