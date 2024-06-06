@@ -179,9 +179,10 @@ class LoggingManager final {
 
   /**
      Adds a Sink to the current sink creating a CompositeSink if necessary
+     Sinks types must be unique
      @param severity The severity level for the new Sink
   */
-  void AddSink(SinkType sinkType, std::function<std::unique_ptr<ISink>()> sinkFactory, logging::Severity severity);
+  bool AddSinkOfType(SinkType sinkType, std::function<std::unique_ptr<ISink>()> sinkFactory, logging::Severity severity);
 
   /**
      Change the minimum severity level for log messages to be output by the default logger.

@@ -281,8 +281,8 @@ Severity OverrideLevelWithEtw(Severity original_severity) {
   return original_severity;
 }
 
-void LoggingManager::AddSink(SinkType sink_type, std::function<std::unique_ptr<ISink>()> sinkFactory,
-                             logging::Severity severity) {
+bool LoggingManager::AddSinkOfType(SinkType sink_type, std::function<std::unique_ptr<ISink>()> sinkFactory,
+                                   logging::Severity severity) {
   std::lock_guard<OrtMutex> guard(sink_mutex_);
   if (sink_->GetType() != SinkType::CompositeSink) {
     // Current sink is not a composite, create a new composite sink and add the current sink to it
@@ -297,8 +297,11 @@ void LoggingManager::AddSink(SinkType sink_type, std::function<std::unique_ptr<I
   }
   CompositeSink* current_composite = static_cast<CompositeSink*>(sink_.get());
   if (current_composite->HasType(sink_type)) {
-    return;  // Sink of this type already exists, do not add another
+    return false;  // Sink of this type already exists, do not add another
   }
+
+  current_composite->AddSink(sinkFactory(), severity);
+  return true;
 }
 
 void LoggingManager::RemoveSink(SinkType sink_type) {

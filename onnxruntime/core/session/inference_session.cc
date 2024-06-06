@@ -422,11 +422,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0 &&
               IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
             LOGS(*session_logger_, VERBOSE) << "Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
-            logging_manager_->AddSink(
+            logging_manager_->AddSinkOfType(
                 onnxruntime::logging::SinkType::EtwSink,
                 []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
                 ortETWSeverity);
-            onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddSink(
+            onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddSinkOfType(
                 onnxruntime::logging::SinkType::EtwSink,
                 []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
                 ortETWSeverity);

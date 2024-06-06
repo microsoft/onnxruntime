@@ -179,7 +179,7 @@ TEST(LoggingTests, TestRemoveSink) {
 
   // Remove the sink and check severity update
   auto new_severity = sink.RemoveSink(SinkType::EtwSink);
-  EXPECT_EQ(new_severity, Severity::kERROR);  // assuming mock_sink1 had SpecificType and was removed
+  EXPECT_EQ(new_severity, Severity::kWARNING);  // assuming mock_sink2 had SpecificType and was removed
 
   // Verify that sink2 is still in the composite
   EXPECT_TRUE(sink.HasType(SinkType::BaseSink));
