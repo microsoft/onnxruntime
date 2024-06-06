@@ -188,6 +188,10 @@
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES FOLDER "ONNXRuntime")
   target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE ONNXIFI_BUILD_LIBRARY=1)
   target_compile_options(onnxruntime_providers_tensorrt PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
+
+  # Suppress deprecated warnings
+  target_compile_options(onnxruntime_providers_tensorrt PRIVATE /wd4996)
+
   if (WIN32)
     target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4456)
   endif()
