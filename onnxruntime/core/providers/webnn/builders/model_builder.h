@@ -53,7 +53,7 @@ class ModelBuilder {
   void AddInitializerToSkip(const std::string& tensor_name);
 
   // There are some input which will not be used, add it to a list which will not
-  // be added to CoreML model, since CoreML does not like input unused.
+  // be added to WebNN model, since WebNN does not like input unused.
   void AddInputToSkip(const std::string& input_name);
 
   std::string GetUniqueName(const std::string& base_name);

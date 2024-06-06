@@ -24,7 +24,7 @@ class ClipOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
                               const logging::Logger& logger) const override;
 };
@@ -64,13 +64,33 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool ClipOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                       const Node& node,
-                                      const WebnnDeviceType /* device_type */,
+                                      const WebnnDeviceType device_type,
                                       const logging::Logger& logger) const {
   // TODO: Update IsOpSupportedImpl to pass GraphViewer instead of InitializedTensorSet so the implementations
   // can ensure initializers are constant. See #19401 for details of how this update was made to the NNAPI EP.
   // GetClipMinMax(graph_viewer, node, minValue, maxValue, logger)
   float min, max;
-  return GetClipMinMax(initializers, node, min, max, logger);
+  if (GetClipMinMax(initializers, node, min, max, logger)) {
+    // WebNN CPU backend only supports 3 specific ranges: [0.0, infinity], [-1.0, 1.0], [0.0, 6.0].
+    // TODO: Remove this workaround once the associated issue is resolved in Chromium:
+    // https://issues.chromium.org/issues/326156496.
+    if (device_type == WebnnDeviceType::CPU) {
+      if ((min == 0.0f && max == std::numeric_limits<float>::infinity()) ||
+          (min == -1.0f && max == 1.0f) ||
+          (min == 0.0f && max == 6.0f)) {
+        return true;
+      } else {
+        LOGS(logger, VERBOSE) << "Clip min and max values ("
+                              << min << ", "
+                              << max << ") are not supported for WebNN CPU backend";
+        return false;
+      }
+    }
+
+    return true;
+  } else {
+    return false;
+  };
 }
 
 bool ClipOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
