@@ -160,18 +160,19 @@ def generate_artifacts(
     training_model = None
     eval_model = None
     model_params = None
+    loaded_model = onnx.load(model) if isinstance(model, str) else model
+    model_path = model if isinstance(model, str) else None
 
     custom_op_library_path = None
     if custom_op_library is not None:
         logging.info("Custom op library provided: %s", custom_op_library)
         custom_op_library_path = pathlib.Path(custom_op_library)
 
-    with onnxblock.base(model), (
+    with onnxblock.base(loaded_model, model_path), (
         onnxblock.custom_op_library(custom_op_library_path)
         if custom_op_library is not None
         else contextlib.nullcontext()
     ):
-        loaded_model = onnx.load(model) if isinstance(model, str) else model
         _ = training_block(*[output.name for output in loaded_model.graph.output])
         training_model, eval_model = training_block.to_model_proto()
         model_params = training_block.parameters()
@@ -222,7 +223,7 @@ def generate_artifacts(
         return
 
     opset_version = None
-    for domain in model.opset_import:
+    for domain in loaded_model.opset_import:
         if domain.domain == "" or domain.domain == "ai.onnx":
             opset_version = domain.version
             break

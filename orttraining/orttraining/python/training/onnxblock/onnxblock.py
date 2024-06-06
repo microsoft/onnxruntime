@@ -70,7 +70,12 @@ class ForwardBlock(blocks.Block):
 
         output = self.build(*args, **kwargs)
 
-        self._model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+        if accessor._GLOBAL_ACCESSOR.has_path:
+            onnx.shape_inference.infer_shapes_path(accessor._GLOBAL_ACCESSOR.path)
+            # shape inferenced model is saved to original path
+            self._model = onnx.load(accessor._GLOBAL_ACCESSOR.path)
+        else:
+            self._model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
 
         _graph_utils.register_graph_outputs(self._model, output)
 
@@ -187,8 +192,11 @@ class TrainingBlock(blocks.Block):
 
         output = self.build(*args, **kwargs)
 
+        model = None
         if accessor._GLOBAL_ACCESSOR.has_path:
-            model = onnx.shape_inference.infer_shapes_path(accessor._GLOBAL_ACCESSOR.path)
+            onnx.shape_inference.infer_shapes_path(accessor._GLOBAL_ACCESSOR.path)
+            # shape inferenced model is saved to original path
+            model = onnx.load(accessor._GLOBAL_ACCESSOR.path)
         else:
             model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
 

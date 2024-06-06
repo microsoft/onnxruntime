@@ -6,7 +6,6 @@ from __future__ import annotations
 import copy
 import os
 from contextlib import contextmanager
-from typing import Union
 
 import onnx
 
@@ -15,17 +14,13 @@ class ModelAccessor:
     """This class stores the onnx model that is manipulated by the onnx blocks.
 
     Attributes:
-        model: The onnx model or path to the model that is manipulated by the onnx blocks.
+        model: The onnx model that is manipulated by the onnx blocks.
+        model_path: The path to the base model. Can be None.
     """
 
-    def __init__(self, model: Union[onnx.ModelProto, str]):
-        if isinstance(model, onnx.ModelProto):
-            self._model = model
-        elif isinstance(model, str):
-            self._path = model
-            self._model = onnx.load(model)
-        else:
-            raise RuntimeError("Please pass in either a file path as string to the base model, or the ModelProto")
+    def __init__(self, model: onnx.ModelProto, model_path: str):
+        self._model = model
+        self._path = model_path
 
     @property
     def model(self) -> onnx.ModelProto:
@@ -62,7 +57,7 @@ _GLOBAL_CUSTOM_OP_LIBRARY = None
 
 
 @contextmanager
-def base(model: onnx.ModelProto):
+def base(model: onnx.ModelProto, model_path: str):
     """Registers the base model to be manipulated by the onnx blocks.
 
     Example:
@@ -76,6 +71,7 @@ def base(model: onnx.ModelProto):
 
     Args:
         model: The base model to be manipulated by the onnx blocks.
+        model_path: The path to the base model. None if there is no model path to pass in.
 
     Returns:
         ModelAccessor: The model accessor that contains the modified model.
@@ -92,7 +88,7 @@ def base(model: onnx.ModelProto):
             "model from scratch."
         )
 
-    _GLOBAL_ACCESSOR = ModelAccessor(model_clone)
+    _GLOBAL_ACCESSOR = ModelAccessor(model_clone, model_path)
     try:
         yield _GLOBAL_ACCESSOR
     finally:
@@ -135,7 +131,7 @@ def empty_base(opset_version: int | None = None):
         )
     )
 
-    _GLOBAL_ACCESSOR = ModelAccessor(model)
+    _GLOBAL_ACCESSOR = ModelAccessor(model, None)
     try:
         yield _GLOBAL_ACCESSOR
     finally:
