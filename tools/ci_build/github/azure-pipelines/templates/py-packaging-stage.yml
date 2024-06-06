@@ -265,10 +265,13 @@ stages:
 
 
       - task: PublishSymbols@2
-        displayName: 'Publish symbols path'
+        displayName: 'Publish symbols'
         inputs:
           SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
-          SearchPattern: '**/*.pdb'
+          SearchPattern: |
+               onnxruntime_pybind11_state.pdb
+	       onnxruntime_providers_shared.pdb
+	  IndexSources: true
           SymbolServerType: TeamServices
           SymbolExpirationInDays: 3650
           SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)'
