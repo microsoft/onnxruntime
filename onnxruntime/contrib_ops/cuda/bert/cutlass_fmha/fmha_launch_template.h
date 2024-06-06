@@ -17,14 +17,15 @@ namespace contrib {
 namespace cuda {
 
 // TODO: remove this flag and unused code after testing.
-#define USE_MEMORY_EFFICIENT_TO_BATCH_HOOK 0
+#define USE_MEMORY_EFFICIENT_TO_BATCH_HOOK 1
 
 #if USE_MEMORY_EFFICIENT_TO_BATCH_HOOK
 struct GQAToBatchHook {
   template <typename Params>
   CUTLASS_DEVICE static bool advance_to_batch(Params& p, int64_t& q_start, int64_t& k_start) {
     auto batch_id = blockIdx.z;
-    q_start = batch_id* p.num_queries const int64_t max_sequence_length = p.v_strideB / p.v_strideM;
+    q_start = batch_id * p.num_queries;
+    const int64_t max_sequence_length = p.v_strideB / p.v_strideM;
     const bool is_kv_bsnh = (p.k_strideH == p.head_dim && p.k_strideM == p.num_heads * p.head_dim);
     k_start = batch_id * (is_kv_bsnh ? max_sequence_length : p.num_heads * max_sequence_length);
     return true;
