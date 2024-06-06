@@ -159,10 +159,10 @@ void DeserializeCapabilities(const std::string& ser_capabilities,
   }
 }
 
-std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) const {
+std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   const Graph& orig_graph = graph_viewer.GetGraph();
   const Model& orig_model = orig_graph.GetModel();
-  auto p_orig_model_proto = orig_model.ToProto();
+  auto p_orig_model_proto = const_cast<Model&>(orig_model).ToProto();
   std::string ser_buf;
   p_orig_model_proto->SerializeToString(ser_buf);
 

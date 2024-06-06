@@ -33,7 +33,7 @@ std::string SerializeCapabilities(
 void DeserializeCapabilities(
     const std::string&, std::vector<std::unique_ptr<ComputeCapability>>&);
 
-std::string SerializeOrigialGraph(const GraphViewer&) const;
+std::string SerializeOrigialGraph(const GraphViewer&);
 
 std::unique_ptr<Model> CreateEPContexModel(const GraphViewer&, const std::string&,
                                            const std::string&, const int64_t, const logging::Logger*);
