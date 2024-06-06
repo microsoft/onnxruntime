@@ -130,7 +130,7 @@ bool GetSplitQuickGeluParams(
   }
   if (quickgelu_attr.find("alpha") != quickgelu_attr.end()) {
     auto& alpha_attr = quickgelu_attr.at("alpha");
-    alpha = utils::HasFloat(alpha_attr) ? (float)alpha_attr.i() : alpha;
+    alpha = utils::HasFloat(alpha_attr) ? (float)alpha_attr.f() : alpha;
     printf("Got ALPHA Value as: %f\n", alpha);
   } else {
     return false;
