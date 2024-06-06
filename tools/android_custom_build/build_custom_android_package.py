@@ -52,7 +52,9 @@ def parse_args():
         "--include_ops_by_config",
         type=pathlib.Path,
         help="The optional configuration file specifying which ops to include. "
-        "Such a configuration file is generated during ONNX to ORT format model conversion.",
+        "Such a configuration file is generated during ONNX to ORT format model conversion. "
+        "When providing this option, consider also enabling op type support reduction by specifying "
+        "the build.py --enable_reduced_operator_type_support option in the build settings configuration file.",
     )
 
     parser.add_argument(
