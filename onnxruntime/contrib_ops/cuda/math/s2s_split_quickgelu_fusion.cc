@@ -28,7 +28,7 @@ Status S2SModelSplitQuickGelu::ComputeInternal(OpKernelContext* context) const {
   const auto& input_shape = input->Shape();
   auto output_shape = input_shape;
   // TODO: Handle multi dimensional array
-  int input_shape_len = input_shape.size();
+  int input_shape_len = input_shape.NumDimensions();
   // TODO: Make it dynamic
   // 2x3x8
   // 2x3x4
