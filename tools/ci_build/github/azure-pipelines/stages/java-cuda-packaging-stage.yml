@@ -10,10 +10,8 @@ stages:
 - stage: Jar_Packaging_GPU
   dependsOn:
   - Linux_C_API_Packaging_GPU
-# Because Java Jar is published only after Windows Packaging GPU Testing stage we need to depend on the Testing stages
-# TODO: change Windows_Packaging_*_Testing to Windows_Packaging_* once we finish PRODUCT BACKLOG ITEM 34666
-  - Windows_Packaging_CUDA_Testing
-  - Windows_Packaging_TensorRT_Testing
+  - Windows_Packaging_CUDA
+  - Windows_Packaging_TensorRT
   - Download_Java_Tools
   jobs:
   - job: Jar_Packaging_GPU
@@ -141,9 +139,9 @@ stages:
       value: false
     - name: docker_base_image
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240530.3
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_2_x64_ubi8_gcc12:20240530.3
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_2_x64_ubi8_gcc12:20240531.1
     timeoutInMinutes: 60
 
     steps:

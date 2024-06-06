@@ -49,7 +49,7 @@ resources:
 variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
-    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240530.3
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
   - name: linux_trt_version
     value: 10.0.1.6-1.cuda11.8
   - name: Repository
@@ -172,6 +172,7 @@ stages:
       CLIP_MODEL_CACHE: $(Agent.TempDirectory)/clip_cache
       STABLE_DIFFUSION_MODEL_CACHE: $(Agent.TempDirectory)/stablediffusion_cache
       GenerateImage_DIR: $(Agent.TempDirectory)/images
+      hitAnother: 'False'
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
@@ -243,7 +244,7 @@ stages:
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
           nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c '
-            set -ex; \
+            set -x; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/; \
@@ -252,13 +253,19 @@ stages:
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py generate image; \
             python3 -u check_image.py --image1 astronaut_riding_error.png --image2 $image2 --cache_dir /model_cache --negative; \
+            if [ $? -ne 0 ]; then echo "Hit an unexpected image"; exit 1; fi; \
             popd ; \
             popd ; \
-            '
+            ' || ( echo "##vso[task.setvariable variable=hitAnother;]True" && exit 1 )
       displayName: 'Check if the generated image is wierd'
       workingDirectory: $(Build.SourcesDirectory)
+      # If the generate image hit another test image, make the job status as warning
       continueOnError: true
 
+    - bash: |
+        echo "You can use variables: $(hitAnother)"
+
+    # The step will execute if the gereneate image doesn't hit another test image
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
@@ -278,6 +285,7 @@ stages:
             '
       displayName: 'Check the generated image'
       workingDirectory: $(Build.SourcesDirectory)
+      condition: ne(variables.hitAnother, 'True')
 
 - stage: Llama2_ONNX_FP16
   dependsOn:

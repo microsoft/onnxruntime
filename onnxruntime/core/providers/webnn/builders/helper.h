@@ -157,8 +157,8 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
 static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Abs", {"abs", true}},
     {"Add", {"add", true}},
-    {"ArgMax", {"argMax", false}},
-    {"ArgMin", {"argMin", false}},
+    {"ArgMax", {"argMax", true}},
+    {"ArgMin", {"argMin", true}},
     {"AveragePool", {"averagePool2d", true}},
     {"BatchNormalization", {"batchNormalization", false}},
     {"Cast", {"cast", false}},
