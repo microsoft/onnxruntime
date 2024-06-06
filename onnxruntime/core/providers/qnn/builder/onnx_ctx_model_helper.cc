@@ -52,7 +52,7 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     // Only EPContext nodes are filtered in
     // There is only one EPContext node in one filtered graph -- this is guaranteed by GetCapability
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[i].filtered_graph);
-    ORT_ENFORCE(graph_viewer.NumberOfNodes() == 1, "One filtered graph should has only one EPContext node!");
+    ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
     const auto& ep_context_node = graph_viewer.Nodes().begin();
     ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node->OpType(), "Should only filter in the EPContext node.");
     qnn_models.emplace(ep_context_node->Name(),
