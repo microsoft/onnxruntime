@@ -314,3 +314,31 @@ export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttrib
 export const log = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfo(context.inputs[0], 'Log', 'log'));
 };
+
+export const quickGeluImpl = (varType: string, alpha: number) => `
+const alpha = vec4<${varType}>(${alpha});
+const one = ${varType}(1.0);
+const zero = ${varType}(0.0);
+
+fn quick_gelu_impl(x: vec4<${varType}>) -> vec4<${varType}> {
+  let v = x *alpha;
+  var x1 : vec4<${varType}>;
+  for (var i = 0; i < 4; i = i + 1) {
+    if (v[i] >= zero) {
+      x1[i] = one / (one + exp(-v[i]));
+    } else {
+      x1[i] = one - one / (one + exp(v[i]));
+    }
+  }
+  return x * x1;
+}
+`;
+
+export const quickGeluExpression = (x: string) => `quick_gelu_impl(${x})`;
+
+export const quickgelu = (context: ComputeContext, attributes: AlphaAttributes): void => {
+  const dType = tensorTypeToWsglValueType(context.inputs[0].dataType);
+  context.compute(createElementwiseProgramInfo(
+      context.inputs[0], 'QuickGelu', quickGeluExpression, quickGeluImpl(dType, attributes.alpha), attributes.cacheKey,
+      context.inputs[0].dataType));
+};
