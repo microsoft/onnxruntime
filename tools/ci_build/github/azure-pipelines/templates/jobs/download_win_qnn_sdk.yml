@@ -1,7 +1,7 @@
 parameters:
   - name: QnnSDKVersion
     type: string
-    default: '2.19.2.240210'
+    default: '2.22.0.240425'
 
 steps:
   - powershell: |

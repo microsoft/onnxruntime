@@ -34,24 +34,19 @@ parameters:
     values:
       - 11.8
       - 12.2
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
+
 variables:
   - name: docker_base_image
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_2_x64_ubi8_gcc12:20240531.1
   - name: linux_trt_version
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: 8.6.1.6-1.cuda11.8
+      value: 10.0.1.6-1.cuda11.8
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: 8.6.1.6-1.cuda12.0
+      value: 10.0.1.6-1.cuda12.4
+
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 180
@@ -94,7 +89,7 @@ jobs:
         - task: CmdLine@2
           inputs:
             script: |
-              docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+              docker run --gpus all --rm \
                   --volume /data/onnx:/data/onnx:ro \
                   --volume $(Build.SourcesDirectory):/onnxruntime_src \
                   --volume $(Build.BinariesDirectory):/build \
@@ -104,26 +99,8 @@ jobs:
                   -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
                   -e NIGHTLY_BUILD \
                   -e BUILD_BUILDNUMBER \
-                  -e CCACHE_DIR=/cache \
-                  onnxruntimetensorrt86gpubuild \
-                  /bin/bash -c "
-                    set -ex; \
-                    ccache -s; \
-                      /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                      --build_dir /build --cmake_generator Ninja \
-                      --config Release \
-                      --skip_submodule_sync \
-                      --build_shared_lib \
-                      --parallel --use_binskim_compliant_compile_flags \
-                      --build_wheel \
-                      --enable_onnx_tests \
-                      --use_cuda --cuda_home=/usr/local/cuda-${{ parameters.CudaVersion }} --cudnn_home=/usr/local/cuda-${{ parameters.CudaVersion }} \
-                      --enable_pybind --build_java \
-                      --use_tensorrt --tensorrt_home /usr \
-                      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75 \
-                      --use_cache; \
-                     ccache -sv; \
-                     ccache -z"
+                  -e CCACHE_DIR=/cache -w /onnxruntime_src \
+                  onnxruntimetensorrt86gpubuild tools/ci_build/github/linux/build_tensorrt_ci.sh
             workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/explicitly-defined-final-tasks.yml

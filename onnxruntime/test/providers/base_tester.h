@@ -692,8 +692,7 @@ class BaseTester {
         // In case values is nullptr for optional type tensor, it means we are creating
         // an optional type tensor which is None and we hence skip values count validation
         if constexpr (std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>) {
-          int64_t expected_values_count = shape.Size();
-          expected_values_count = (expected_values_count + 1) / 2;
+          const int64_t expected_values_count = T::CalcNumInt4Pairs(shape.Size());
           ORT_ENFORCE(expected_values_count == values_count, values_count,
                       " input values doesn't match tensor size of ", expected_values_count);
         } else {

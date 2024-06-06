@@ -517,7 +517,7 @@ Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool tr
                 "Only float is supported.");
     }
     ORT_RETURN_IF_ERROR(sess_data_transfer_manager.CopyTensor(*weight_tensor, *p_tensor.get()));
-    offset += shape.Size();
+    offset += narrow<size_t>(shape.Size());
   }
   return Status::OK();
 }
@@ -601,7 +601,7 @@ Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool tr
       ORT_THROW_IF_ERROR(sess_data_transfer_manager.CopyTensor(*src_tensor.get(), *weight_tensor));
     }
 
-    offset += shape.Size();
+    offset += narrow<size_t>(shape.Size());
   }
 
   if (state_->module_checkpoint_state.is_nominal_state) {

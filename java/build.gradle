@@ -4,6 +4,7 @@ plugins {
 	id 'signing'
 	id 'jacoco'
 	id "com.diffplug.spotless" version "6.25.0"
+	id "net.linguica.maven-settings" version "0.5"
 }
 
 allprojects {
@@ -19,6 +20,12 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
 def useROCM = System.properties['USE_ROCM']
+
+def adoArtifact = project.findProperty('adoArtifact')
+def adoAccessToken = project.findProperty('adoAccessToken')
+// Only publish to ADO feed if all two properties are set
+def publishToAdo = adoArtifact != null && adoAccessToken != null
+
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
@@ -36,6 +43,11 @@ def defaultDescription = 'ONNX Runtime is a performance-focused inference engine
 def trainingDescription = 'ONNX Runtime Training is a training and inference package for ONNX ' +
 	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
+
+// We need to have a custom settings.xml so codeql can bypass the need for settings.security.xml
+mavenSettings {
+	userSettingsFileName = "${projectDir}/settings.xml"
+}
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
@@ -206,9 +218,13 @@ publishing {
 	publications {
 		maven(MavenPublication) {
 			groupId = project.group
-			artifactId = mavenArtifactId
-
-			from components.java
+			if(publishToAdo) {
+				artifactId = 'onnxruntime_gpu'
+				artifact (adoArtifact)
+			} else {
+				artifactId = mavenArtifactId
+				from components.java
+			}
 			pom {
 				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
 				description = enableTrainingApis ? trainingDescription : defaultDescription
@@ -239,24 +255,41 @@ publishing {
 		}
 	}
 	repositories {
-		maven {
-			url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
-			credentials {
-				username mavenUser
-				password mavenPwd
+		if (publishToAdo) {
+			maven {
+				url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
+				name System.getenv('ADOFeedName')
+				authentication {
+					basic(BasicAuthentication)
+				}
+				credentials {
+					username  'aiinfra'
+					password "${project.findProperty('adoAccessToken')}"
+				}
+			}
+		} else {
+			maven {
+				url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+				credentials {
+					username mavenUser
+					password mavenPwd
+				}
 			}
 		}
 	}
 }
-
 // Generates a task signMavenPublication that will
 // build all artifacts.
 signing {
 	// Queries env vars:
 	// ORG_GRADLE_PROJECT_signingKey
 	// ORG_GRADLE_PROJECT_signingPassword but can be changed to properties
-	def signingKey = findProperty("signingKey")
-	def signingPassword = findProperty("signingPassword")
-	useInMemoryPgpKeys(signingKey, signingPassword)
-	sign publishing.publications.maven
+		def signingKey = findProperty("signingKey")
+		def signingPassword = findProperty("signingPassword")
+		// Skip signing if no key is provided
+		if (signingKey != null && signingPassword != null) {
+			useInMemoryPgpKeys(signingKey, signingPassword)
+			sign publishing.publications.maven
+			sign publishing.publications.mavenAdo
+		}
 }

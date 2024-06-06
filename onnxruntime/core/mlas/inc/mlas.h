@@ -1229,14 +1229,14 @@ MlasQuantizeLinearU4(
     uint8_t* Output,
     size_t N,
     float Scale,
-    uint8_t ZeroPoint
+    int8_t ZeroPoint
     );
 
 void
 MLASCALL
 MlasQuantizeLinearS4(
     const float* Input,
-    int8_t* Output,
+    uint8_t* Output,
     size_t N,
     float Scale,
     int8_t ZeroPoint

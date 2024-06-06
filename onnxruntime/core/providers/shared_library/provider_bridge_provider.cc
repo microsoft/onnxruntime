@@ -256,15 +256,6 @@ MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2>() { return Provider_Get
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ(); }
 #endif
-template <>
-MLDataType DataTypeImpl::GetSparseTensorType<Int4x2>() {
-  return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Int4x2();
-}
-template <>
-MLDataType DataTypeImpl::GetSparseTensorType<UInt4x2>() {
-  return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_UInt4x2();
-}
-
 #endif
 
 Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -493,6 +484,8 @@ template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ double* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ MLFloat16* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ BFloat16* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int8_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>

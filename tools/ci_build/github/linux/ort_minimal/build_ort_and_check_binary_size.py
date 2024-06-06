@@ -44,7 +44,7 @@ def main():
         / "linux"
         / "docker"
         / "inference"
-        / "x64"
+        / "x86_64"
         / "python"
         / "cpu"
         / "scripts"

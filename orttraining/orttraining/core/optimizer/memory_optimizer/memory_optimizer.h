@@ -29,10 +29,13 @@ Find recompute subgraphs and enable them according to user configs. The way we c
 class MemoryOptimizer : public GraphTransformer {
  private:
  public:
-  MemoryOptimizer(const std::string& memory_optimizer_config, const std::string& recompute_probe_config)
+  MemoryOptimizer(const std::string& memory_optimization_config_file_path,
+                  const std::string& recompute_probe_config)
       : GraphTransformer("MemoryOptimizer") {
     // Parse user-defined configs.
-    ORT_ENFORCE(ParseOptimizationConfigFromString(memory_optimizer_config, recompute_probe_config).IsOK());
+    ORT_ENFORCE(ParseOptimizationConfigFromString(
+                    memory_optimization_config_file_path, recompute_probe_config)
+                    .IsOK());
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -40,7 +43,8 @@ class MemoryOptimizer : public GraphTransformer {
   bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
-  Status ParseOptimizationConfigFromString(const std::string& memory_optimizer_config, const std::string& recompute_probe_config);
+  Status ParseOptimizationConfigFromString(const std::string& memory_optimizer_config_file_path,
+                                           const std::string& recompute_probe_config);
 
   /**
    * @brief Apply graph modifications based on user configs.
@@ -48,8 +52,6 @@ class MemoryOptimizer : public GraphTransformer {
    * @param graph Graph to iterate and modify.
    * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
    *   Used to re-order the collected subgraph nodes.
-   * @param candidate_output_args_map  A map from node to its candidate activations, which are consumed by both fw and
-   *  bw ops.
    * @param logger Logger.
    * @param boundary_op_order_in_topological_sort index of the boundary op between fw and bw.
    * @param subgraph_stores  A store to maintain all found subgraphs.
@@ -60,8 +62,6 @@ class MemoryOptimizer : public GraphTransformer {
   bool ModifyGraph(Graph& graph,
                    const InlinedHashMap<NodeIndex, ptrdiff_t>&
                        node_index_to_its_order_in_topological_sort_map,
-                   const InlinedHashMap<const Node*, InlinedVector<size_t>>&
-                       candidate_output_args_map,
                    const logging::Logger& logger,
                    ptrdiff_t boundary_op_order_in_topological_sort,
                    Node* node,
@@ -103,7 +103,7 @@ class MemoryOptimizer : public GraphTransformer {
 
   // User-enabled map of the subgraph string representation to the alleviation type.
   InlinedHashMap<std::string, optimizer::memory_optimizer::UserConfig> pattern_subgraph_to_user_optimizer_config_map_;
-  std::string optimizer_config_;
+  std::string optimizer_config_file_path_;
   optimizer::memory_optimizer::ProbeConfig recompute_probe_config_;
 };
 

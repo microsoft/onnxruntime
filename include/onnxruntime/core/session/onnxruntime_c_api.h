@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 18
+#define ORT_API_VERSION 19
 
 #ifdef __cplusplus
 extern "C" {
@@ -197,8 +197,9 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2,      // Non-IEEE floating-point format based on IEEE754 single-precision
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4,           // maps to a pair of uint4 values (size == 1 byte)
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4             // maps to a pair of int4 values (size == 1 byte)
+  // Int4 types were introduced in ONNX 1.16. See https://onnx.ai/onnx/technical/int4.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4,  // maps to a pair of packed uint4 values (size == 1 byte)
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4    // maps to a pair of packed int4 values (size == 1 byte)
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -269,7 +270,7 @@ typedef enum OrtOpAttrType {
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
-  typedef struct Ort##X Ort##X;
+  typedef struct Ort##X Ort##X
 
 /** \addtogroup Global
  * ONNX Runtime C API
@@ -1849,8 +1850,8 @@ struct OrtApi {
    * and not present, the function returns success and out is set to nullptr.
    *
    * \param[in] context ::OrtKernelContext instance
-   * \param[in] input index. See KernelContext_GetInputCount for boundaries check.
-   * \param[in, out] returns a ptr to OrtValue if the input is present
+   * \param[in] index See KernelContext_GetInputCount for boundaries check.
+   * \param[out] out OrtValue if the input is present otherwise is set nullptr
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -1863,8 +1864,10 @@ struct OrtApi {
    * and not present, the function returns success and out is set to nullptr.
    *
    * \param[in] context ::OrtKernelContext instance
-   * \param[in] output index. See KernelContext_GetOutputCount for boundaries check.
-   * \param[in, out] returns a ptr to OrtValue if the output is present
+   * \param[in] index See KernelContext_GetOutputCount for boundaries check.
+   * \param[in] dim_values output dimensions
+   * \param[in] dim_count number of dimensions
+   * \param[out] out a ptr to OrtValue to output otherwise set to nullptr
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
@@ -2939,7 +2942,7 @@ struct OrtApi {
    *
    * Please refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#cc
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtTensorRTProviderOptionsV2
-   * and value should be its related range.
+   * and value should be its related range. Recreates the options and only sets the supplied values.
    *
    * For example, key="trt_max_workspace_size" and value="2147483648"
    *
@@ -3435,7 +3438,7 @@ struct OrtApi {
    *
    * Please refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtCUDAProviderOptionsV2
-   * and value should be its related range.
+   * and value should be its related range. Recreates the options and only sets the supplied values.
    *
    * For example, key="device_id" and value="0"
    *
@@ -4643,7 +4646,7 @@ struct OrtApi {
    * will occur before any of the optimizations take place. The data will be copied into the graph
    * since TensorProto can't refer to the user provided buffers.
    *
-   * \param[in] session options
+   * \param[in] options
    * \param[in] external_initializer_file_names Array of null terminated UTF-8 encoded strings of the file names
    *            which holds the external initializers.
    * \param[in] external_initializer_file_buffer_array Array of pointers to the buffer of the file content.

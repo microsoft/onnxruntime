@@ -30,6 +30,8 @@ std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wr
 Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::TypeProto* type_proto,
                       Qnn_DataType_t& tensor_data_type);
 
+const std::string& GetNodeName(const NodeUnit& node_unit);
+
 bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
 
 inline Status GetOnnxTensorElemDataType(const NodeArg& node_arg, /*out*/ int32_t& onnx_data_type) {

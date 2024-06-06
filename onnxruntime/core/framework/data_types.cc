@@ -665,8 +665,6 @@ ORT_REGISTER_SPARSE_TENSOR_TYPE(Float8E5M2);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(Float8E5M2FNUZ);
 #endif
 
-ORT_REGISTER_SPARSE_TENSOR_TYPE(Int4x2);
-ORT_REGISTER_SPARSE_TENSOR_TYPE(UInt4x2);
 #endif
 
 #if !defined(DISABLE_ML_OPS)
@@ -843,8 +841,6 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SPARSE_TENSOR_PROTO(Float8E5M2, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(Float8E5M2FNUZ, reg_fn);
 #endif
-  REGISTER_SPARSE_TENSOR_PROTO(Int4x2, reg_fn);
-  REGISTER_SPARSE_TENSOR_PROTO(UInt4x2, reg_fn);
 #endif
 
 #if !defined(DISABLE_ML_OPS)
@@ -1174,10 +1170,6 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
       return DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>()->AsSparseTensorType();
 
 #endif
-    case TensorProto_DataType_INT4:
-      return DataTypeImpl::GetSparseTensorType<Int4x2>()->AsSparseTensorType();
-    case TensorProto_DataType_UINT4:
-      return DataTypeImpl::GetSparseTensorType<UInt4x2>()->AsSparseTensorType();
 
     default:
       ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
@@ -1221,8 +1213,8 @@ ORT_REGISTER_PRIM_TYPE(Float8E5M2);
 ORT_REGISTER_PRIM_TYPE(Float8E5M2FNUZ);
 
 #endif
-ORT_REGISTER_PRIM_TYPE(Int4x2);
-ORT_REGISTER_PRIM_TYPE(UInt4x2);
+ORT_REGISTER_PRIM_SUBBYTE_TYPE(Int4x2, 2);
+ORT_REGISTER_PRIM_SUBBYTE_TYPE(UInt4x2, 2);
 
 namespace {
 template <typename... ElementTypes>

@@ -1186,8 +1186,11 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                       std::move(cpu_allocator), debug_graph_fn));
 
       // Previously we ran the L1 transformers to handle constant folding of any initializers that were transposed in
-      // a QDQ format model. The transpose optimizer can now look past DQ nodes to directly update initializers which
-      // takes care of most models without needing this.
+      // a QDQ format model. The transpose optimizer can now do the following, which takes care of most models without
+      // needing this.
+      //   - Look past DQ nodes to directly update initializers in-place.
+      //   - Fix-up broken Transpose QDQ groups.
+      //   - Constant fold inserted Squeeze and Transpose ops.
       //
       // if (modified) {
       //  ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -1263,15 +1266,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 
 #ifdef ENABLE_TRAINING
-  // Enable memory optimizations (mainly insert recomputation nodes with priority).
+  // Enable memory optimizations.
   // Only applicable for training scenarios.
   {
-    const std::string memory_optimizer_config =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
+    const std::string memory_optimizer_config_file =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerApplyConfig, "");
     const std::string probe_config =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeConfig, "0:0");
 
-    MemoryOptimizer mem_transformer{memory_optimizer_config, probe_config};
+    MemoryOptimizer mem_transformer{memory_optimizer_config_file, probe_config};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(mem_transformer, *session_logger_, graph));
   }
 #endif

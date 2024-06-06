@@ -9,7 +9,8 @@
 #include "QnnTypes.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 
-#define ALIGN_PTR_UP(ptr, align, type) reinterpret_cast<type>((reinterpret_cast<std::uintptr_t>(ptr) + (align)-1) & ~((align)-1))
+#define ALIGN_PTR_UP(ptr, align, type) \
+  reinterpret_cast<type>((reinterpret_cast<std::uintptr_t>(ptr) + (align)-1) & ~((align)-1))
 
 namespace onnxruntime {
 namespace qnn {

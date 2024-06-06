@@ -133,6 +133,22 @@ ParQuantizeLinearStd(const float* Input,
   });
 }
 
+/**
+ * Defines a function for int4 quantization. Calls MLAS kernel in parallel with the provided thread pool.
+ *
+ * \param FUNC_NAME The name of the generated function.
+ * \param INT4_TYPE The int4 type (i.e., either Int4x2 or UInt4x2)
+ * \param MLAS_FUNC The MLAS quantization kernel to call.
+ * \param Input The input float values to quantize. Must contain `out_end - out_start` elements.
+ * \param Output The output buffer that will contain the quantized values.
+ * \param out_start The int4 element index at which to start writing to the output buffer.
+ *                  Divide by 2 to get index into Output buffer.
+ * \param out_end The int4 element index at which to stop writing to the output buffer.
+ *                Divide by 2 to get index into Output buffer.
+ * \param Scale The quantization scale value.
+ * \param ZeroPoint The quantization zero-point value.
+ * \param thread_pool The thread pool to use.
+ */
 #define DEFINE_PAR_QUANT_LINEAR_STD_4BIT(FUNC_NAME, INT4_TYPE, MLAS_FUNC)                                        \
   inline void FUNC_NAME(const float* Input,                                                                      \
                         INT4_TYPE* Output,                                                                       \
@@ -147,10 +163,10 @@ ParQuantizeLinearStd(const float* Input,
     /* If starting at an int4 element in the middle of a byte, quantize it by itself. */                         \
     if (out_start & 0x1) {                                                                                       \
       int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_start] / Scale)) +                           \
-                     static_cast<int32_t>(ZeroPoint.GetElem0());                                                 \
+                     static_cast<int32_t>(ZeroPoint.GetElem(0));                                                 \
       size_t output_index = out_start >> 1;                                                                      \
                                                                                                                  \
-      INT4_TYPE::unpacked_type quant_val = static_cast<INT4_TYPE::unpacked_type>(                                \
+      INT4_TYPE::UnpackedType quant_val = static_cast<INT4_TYPE::UnpackedType>(                                  \
           std::min(static_cast<int32_t>(INT4_TYPE::max_val),                                                     \
                    std::max(static_cast<int32_t>(INT4_TYPE::min_val), ival)));                                   \
       Output[output_index].SetElem(1, quant_val);                                                                \
@@ -162,10 +178,10 @@ ParQuantizeLinearStd(const float* Input,
     /* If ending at element that ends in the middle of a byte, quantize it by itself. */                         \
     if (out_end & 0x1) {                                                                                         \
       int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_end - 1] / Scale)) +                         \
-                     static_cast<int32_t>(ZeroPoint.GetElem0());                                                 \
+                     static_cast<int32_t>(ZeroPoint.GetElem(0));                                                 \
       size_t output_index = (out_end - 1) >> 1;                                                                  \
                                                                                                                  \
-      INT4_TYPE::unpacked_type quant_val = static_cast<INT4_TYPE::unpacked_type>(                                \
+      INT4_TYPE::UnpackedType quant_val = static_cast<INT4_TYPE::UnpackedType>(                                  \
           std::min(static_cast<int32_t>(INT4_TYPE::max_val),                                                     \
                    std::max(static_cast<int32_t>(INT4_TYPE::min_val), ival)));                                   \
       Output[output_index].SetElem(0, quant_val);                                                                \
@@ -190,7 +206,7 @@ ParQuantizeLinearStd(const float* Input,
                                                                                                                  \
     const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;                                         \
     const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)),                                \
-                                 static_cast<double>(block_size * sizeof(INT4_TYPE::unpacked_type)) / 2.0,       \
+                                 static_cast<double>(block_size * sizeof(INT4_TYPE::UnpackedType)) / 2.0,        \
                                  static_cast<double>(block_size) * 2.0};                                         \
     concurrency::ThreadPool::TryParallelFor(                                                                     \
         thread_pool, num_blocks, unit_cost,                                                                      \
@@ -201,10 +217,10 @@ ParQuantizeLinearStd(const float* Input,
           auto out_idx = begin_idx + static_cast<std::ptrdiff_t>(out_start);                                     \
                                                                                                                  \
           MLAS_FUNC(&(Input[inp_idx]),                                                                           \
-                    reinterpret_cast<INT4_TYPE::unpacked_type*>(&(Output[out_idx >> 1])),                        \
+                    reinterpret_cast<uint8_t*>(&(Output[out_idx >> 1])),                                         \
                     end_idx - begin_idx,                                                                         \
                     Scale,                                                                                       \
-                    ZeroPoint.GetElem0());                                                                       \
+                    static_cast<int8_t>(ZeroPoint.GetElem(0)));                                                  \
         });                                                                                                      \
   }
 

@@ -12,6 +12,9 @@ struct OrtApi;
 
 namespace vaip_core {
 
+#define VAIP_ORT_API_MAJOR (3u)
+#define VAIP_ORT_API_MINOR (0u)
+#define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
   uint32_t magic;  // 'VAIP' or something else to make sure the following field
                    // are not garbage.
@@ -191,8 +194,35 @@ struct OrtApiForVaip {
   gsl::span<const char> (*tensor_proto_as_raw)(
       const TensorProto& tensor);  // [79]
 
-  DllSafe<std::string> (*get_lib_id)();    // [80]
-  DllSafe<std::string> (*get_lib_name)();  // [81]
+  DllSafe<std::string> (*get_lib_id)();                                           // [80]
+  DllSafe<std::string> (*get_lib_name)();                                         // [81]
+                                                                                  /** new API after 2.0 */
+  void (*graph_add_initialized_tensor)(Graph& graph, const TensorProto& tensor);  // [82]
+                                                                                  /** new API after 3.0 */
+  TensorProto* (*tensor_proto_new_doubles)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<double>& data);  // [83]
+  TensorProto* (*tensor_proto_new_i16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<int16_t>& data);  // [84
+  TensorProto* (*tensor_proto_new_u16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<uint16_t>& data);  // [84]
+  TensorProto* (*tensor_proto_new_u32)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<uint32_t>& data);  // [85]
+  TensorProto* (*tensor_proto_new_u8)(const std::string& name,
+                                      const std::vector<int64_t>& shape,
+                                      const std::vector<uint8_t>& data);  // [86]
+  TensorProto* (*tensor_proto_new_u64)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<uint64_t>& data);  // [87]
+  TensorProto* (*tensor_proto_new_fp16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<int16_t>& data);  // [88]
+  TensorProto* (*tensor_proto_new_bf16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<int16_t>& data);  // [89]
 };
 
 #ifndef USE_VITISAI
