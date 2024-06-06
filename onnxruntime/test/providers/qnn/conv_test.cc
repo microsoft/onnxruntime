@@ -1626,8 +1626,8 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input1_padding_bias_initializer) {
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
                                      13,     // opset
-                                     // Need tolerance of 0.73% of output range after QNN SDK 2.17
-                                     QDQTolerance(0.00730f));
+                                     // Need tolerance of 0.76% of output range after QNN SDK 2.19.2
+                                     QDQTolerance(0.0076f));
 }
 
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
