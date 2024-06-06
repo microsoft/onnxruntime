@@ -48,7 +48,7 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
   // Compare the initializers of the two versions.
   std::filesystem::path model_path{};
   std::filesystem::path external_data_path{};
-  for (auto i : initializers) {
+  for (const auto& i : initializers) {
     const std::string kInitName = i.first;
     const ONNX_NAMESPACE::TensorProto* tensor_proto = i.second;
     const ONNX_NAMESPACE::TensorProto* from_external_tensor_proto = initializers_from_external[kInitName];
@@ -67,10 +67,10 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
 
     if (from_external_tensor_proto_size < initializer_size_threshold) {
       // 'Small' tensors should be embedded in the onnx file.
-      EXPECT_EQ(from_external_tensor_proto->data_location(), ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_DEFAULT);
+      ORT_RETURN_IF_NOT(from_external_tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_DEFAULT);
     } else {
       // 'Large' tensors should be added to the external binary file.
-      EXPECT_EQ(from_external_tensor_proto->data_location(), ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+      ORT_RETURN_IF_NOT(from_external_tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
     }
 
     ORT_RETURN_IF_NOT(tensor_proto_size == from_external_tensor_proto_size, "size mismatch");
