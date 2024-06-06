@@ -1141,7 +1141,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   /** Gets the GraphProto representation of this Graph
   @params external_file_name name of the binary file to use for initializers. Must be a UTF-8 string.
-  @params destination_file_path path of the model file.
+  @param file_path path of the model file.
   @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
   in the external file. Initializer smaller than this threshold are included in the onnx file.
   @returns GraphProto serialization of the graph.

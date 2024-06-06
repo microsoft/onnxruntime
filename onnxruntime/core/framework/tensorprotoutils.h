@@ -42,7 +42,7 @@ TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& ten
 /**
  * deserialize a TensorProto into a preallocated memory buffer on CPU.
  * \param tensor_proto_path A local file path of where the 'input' was loaded from.
- *                          Can be NULL if the tensor proto doesn't have external data or it was loaded from
+ *                          Can be empty if the tensor proto doesn't have external data or it was loaded from
  *                          the current working dir. This path could be either a relative path or an absolute path.
  * \return Status::OK on success with 'value' containing the Tensor in CPU based memory.
  */
@@ -53,7 +53,7 @@ common::Status TensorProtoToOrtValue(const Env& env, const std::filesystem::path
 /**
  * deserialize a TensorProto into a buffer on CPU allocated using 'alloc'.
  * \param tensor_proto_path A local file path of where the 'input' was loaded from.
- *                          Can be NULL if the tensor proto doesn't have external data or it was loaded from
+ *                          Can be empty if the tensor proto doesn't have external data or it was loaded from
  *                          the current working dir. This path could be either a relative path or an absolute path.
  * \param alloc             Allocator to use for allocating the buffer. Must allocate CPU based memory.
  * \return Status::OK on success with 'value' containing the Tensor in CPU based memory.

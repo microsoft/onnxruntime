@@ -7,6 +7,7 @@
 #include <vector>
 #include <iostream>
 #include <codecvt>
+#include <filesystem>
 #include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/config_options.h"
