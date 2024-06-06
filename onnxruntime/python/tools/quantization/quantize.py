@@ -522,6 +522,8 @@ def quantize_static(
             use_external_data_format=use_external_data_format,
             extra_options=calib_extra_options,
         )
+        # TODO: Workaround to save memory.
+        del calibrator.model
         calibrator.collect_data(calibration_data_reader)
         tensors_range = calibrator.compute_data()
         if not isinstance(tensors_range, TensorsData):
