@@ -270,7 +270,7 @@ stages:
           SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
           SearchPattern: |
                onnxruntime_pybind11_state.pdb
-	       onnxruntime_providers_shared.pdb
+               onnxruntime_providers_shared.pdb
 	  IndexSources: true
           SymbolServerType: TeamServices
           SymbolExpirationInDays: 3650
