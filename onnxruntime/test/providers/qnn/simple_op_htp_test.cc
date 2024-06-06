@@ -1229,7 +1229,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_QDQ_Supported) {
                         {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)},
                         {},
                         19,
-                        ExpectedEPNodeAssignment::All);  // Not assigned to QNN EP
+                        ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN EP can support float32 HardSigmoid on HTP.
