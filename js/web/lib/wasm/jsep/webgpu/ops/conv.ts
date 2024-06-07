@@ -302,12 +302,12 @@ const conv1d = (context: ComputeContext, attributes: ConvAttributes): void => {
 const conv3d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): void => {
   const format = attributes.format === 'NHWC' ? 'channelsLast' : 'channelsFirst';
   const adjustedAttributes = getAdjustedConvAttributes(attributes, inputs);
-  const pads = attributes.autoPad === 'NOTSET' ? attributes.pads: attributes.autoPad;
+  const pads = attributes.autoPad === 'NOTSET' ? attributes.pads : attributes.autoPad;
   const convInfo = computeConv3DInfo(
       inputs[0].dims as [number, number, number, number, number],
       inputs[1].dims as [number, number, number, number, number],
       attributes.strides as number | [number, number, number],
-      attributes.dilations as number | [number, number, number], pads as string|number[], false, format);
+      attributes.dilations as number | [number, number, number], pads as string | number[], false, format);
   context.compute(createConv3DNaiveProgramInfo(
       inputs, adjustedAttributes, convInfo.outShape,
       [convInfo.filterDepth, convInfo.filterHeight, convInfo.filterWidth],
