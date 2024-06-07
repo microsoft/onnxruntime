@@ -221,7 +221,9 @@ endif()
 install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu/cpu_provider_factory.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
-set_target_properties(onnxruntime_providers PROPERTIES DEBUG_POSTFIX "_d")
+if (WIN32)
+  set_target_properties(onnxruntime_providers PROPERTIES DEBUG_POSTFIX "_d")
+endif()
 
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
