@@ -69,22 +69,34 @@ def get_model(args: argparse.Namespace):
                 cache_dir=args.cache_dir,
                 torch_dtype=args.torch_dtype,
                 use_auth_token=args.auth,
-                trust_remote_code=args.auth,
+                trust_remote_code=args.trust,
                 use_cache=True,
                 attn_implementation="flash_attention_2",
                 quantization_config=bnb_config,
                 max_memory={args.device_id: "80GB"},
             )
         else:
-            model = AutoModelForCausalLM.from_pretrained(
-                args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
-                cache_dir=args.cache_dir,
-                torch_dtype=args.torch_dtype,
-                use_auth_token=args.auth,
-                trust_remote_code=args.auth,
-                use_cache=True,
-                attn_implementation=("flash_attention_2" if args.device == "cuda" else "sdpa"),
-            ).to(args.target_device)
+            try:
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
+                    cache_dir=args.cache_dir,
+                    torch_dtype=args.torch_dtype,
+                    use_auth_token=args.auth,
+                    trust_remote_code=args.trust,
+                    use_cache=True,
+                    attn_implementation=("flash_attention_2" if args.device == "cuda" else "sdpa"),
+                ).to(args.target_device)
+            except Exception as e:
+                print("Try to load a model using eager mode: ", e)
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
+                    cache_dir=args.cache_dir,
+                    torch_dtype=args.torch_dtype,
+                    use_auth_token=args.auth,
+                    trust_remote_code=args.trust,
+                    use_cache=True,
+                    attn_implementation="eager",
+                ).to(args.target_device)
 
         model.eval()
 
@@ -101,6 +113,20 @@ def get_model(args: argparse.Namespace):
         model = ort.InferenceSession(args.onnx_model_path, sess_options=sess_options, providers=[ep])
 
     return model
+
+
+def has_position_ids(args):
+    if args.benchmark_type != "ort":
+        return True
+
+    import onnx
+    import sys
+
+    model = onnx.load(args.onnx_model_path, load_external_data=False)
+    for input in model.graph.input:
+        if input.name == "position_ids":
+            return True
+    return False
 
 
 def run_inference(args, model, runs, inputs, outputs):
@@ -134,10 +160,10 @@ def run_inference(args, model, runs, inputs, outputs):
     return avg, outputs
 
 
-def prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt):
+def prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt, use_position_ids):
     clear_cache()
     inputs, outputs = get_initial_inputs_and_outputs(
-        config, tokenizer, prompt_length, prompt, args.target_device, args.use_fp16, args.use_buffer_share, args.engine
+        config, tokenizer, prompt_length, prompt, args.target_device, args.use_fp16, args.use_buffer_share, args.engine, use_position_ids
     )
     _, outputs = run_inference(args, model, args.warmup_runs, inputs, outputs)
     return inputs, outputs
@@ -198,6 +224,14 @@ def get_args():
         default=False,
         action="store_true",
         help="Use Hugging Face authentication token to access model",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--trust",
+        default=False,
+        action="store_true",
+        help="Whether or not to allow for custom models defined on the Hugging Face Hub in their own modeling files",
     )
 
     parser.add_argument(
@@ -340,15 +374,17 @@ def main():
         args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
         cache_dir=args.cache_dir,
         use_auth_token=args.auth,
-        trust_remote_code=args.auth,
+        trust_remote_code=args.trust,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
         cache_dir=args.cache_dir,
         use_auth_token=args.auth,
-        trust_remote_code=args.auth,
+        trust_remote_code=args.trust,
     )
     model = get_model(args)
+
+    use_position_ids = has_position_ids(args)
 
     all_csv_metrics = []
     for batch_size, prompt_length in itertools.product(args.batch_sizes, args.prompt_lengths):
@@ -375,7 +411,7 @@ def main():
         try:
             # Measure prompt processing
             logger.info("Measuring prompt processing...")
-            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt)
+            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt, use_position_ids)
             accelerator_prompt_latency_s, outputs = run_inference(args, model, args.num_runs, inputs, outputs)
 
             # Calculate prompt metrics
@@ -390,7 +426,7 @@ def main():
             # Measure token generation
             logger.info("Measuring token generation...")
             clear_cache()
-            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt)
+            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt, use_position_ids)
 
             all_token_ids = inputs["input_ids"].clone()
             current_length = all_token_ids.shape[-1]
@@ -442,11 +478,8 @@ def main():
                 inputs["attention_mask"] = torch.cat(
                     [inputs["attention_mask"], (~has_eos).to(torch.int64).reshape(batch_size, 1)], 1
                 )
-                inputs["position_ids"] = (
-                    None
-                    if "position_ids" not in inputs
-                    else torch.max(inputs["position_ids"], dim=1)[0].reshape(batch_size, 1) + 1
-                )
+                if use_position_ids:
+                    inputs["position_ids"] = torch.max(inputs["position_ids"], dim=1)[0].reshape(batch_size, 1) + 1
 
                 # Set logits to zeros for next inference run and re-use memory buffer
                 if outputs["logits"].shape[1] != 1:
@@ -574,8 +607,8 @@ def main():
             )
             all_csv_metrics.append(csv_metrics)
 
-        except:  # noqa: E722
-            logger.info(f"Could not benchmark at batch size = {batch_size}, prompt length = {prompt_length}")
+        except Exception as e:  # noqa: E722
+            logger.info(f"Could not benchmark at batch size = {batch_size}, prompt length = {prompt_length} - {e}")
 
     filename = f"benchmark_{args.engine}_e2e_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}.csv"
     save_results(all_csv_metrics, filename, args.generation_length)
