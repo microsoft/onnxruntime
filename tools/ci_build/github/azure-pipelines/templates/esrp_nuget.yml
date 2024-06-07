@@ -9,12 +9,11 @@ steps:
     displayName: 'ESRP CodeSigning'
     inputs:
       ConnectedServiceName: 'TestCodeSign'
-      AppRegistrationClientId: '3636be3b-6fb9-4fa5-8024-e63c32e9f0e0'
-
+      AppRegistrationClientId: '53d54d02-978d-4305-8572-583cf6711c4f'
       AppRegistrationTenantId: '72f988bf-86f1-41af-91ab-2d7cd011db47'
       AuthAKVName: 'olive-package-publish'
-      AuthCertName: 'olivepackagepublish1'
-      AuthSignCertName: '3636be3b-6fb9-4fa5-8024-e63c32e9f0e0'
+      AuthCertName: '53d54d02-SSL-AutoRotate'
+      AuthSignCertName: '53d54d02-978d-4305-8572-583cf6711c4f'
 
       FolderPath: ${{ parameters.FolderPath }}
       Pattern: '*.nupkg'
