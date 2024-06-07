@@ -96,7 +96,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
 
   // bad model paths
   EXPECT_THROW(Initializer i(tensor_proto_base, std::filesystem::path()), OnnxRuntimeException);
-  EXPECT_THROW(Initializer i(tensor_proto_base, ORT_TSTR("invalid/directory")), OnnxRuntimeException);
+  EXPECT_THROW(Initializer i(tensor_proto_base, ORT_TSTR("invalid/directory")), std::filesystem::filesystem_error);
 
   // bad length
   {
