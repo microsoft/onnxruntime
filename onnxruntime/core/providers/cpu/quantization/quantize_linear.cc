@@ -856,8 +856,8 @@ struct BlockedQuantizeLinear<float, TOut, 0> {
   static void opBaseline(const float* input, const float* scale, const TOut* zero_point, TOut* output,
                          size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
-    auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
+    constexpr auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
+    constexpr auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
     if (zero_point) {
       for (size_t m = 0; m < M; m++) {
         for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
@@ -896,8 +896,8 @@ struct BlockedQuantizeLinear<float, TOut, 0> {
                             std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
                             const std::ptrdiff_t block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
-    auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
+    constexpr auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
+    constexpr auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
     const auto num_r_block = (N + block_size - 1) / block_size;
     const auto num_blocks = M * K * num_r_block;
     const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float) * 2),
@@ -979,8 +979,8 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 0> {
   static void opBaseline(const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
                          size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
-    auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
+    constexpr auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
+    constexpr auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
     if (zero_point) {
       for (size_t m = 0; m < M; m++) {
         for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
@@ -1003,7 +1003,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 0> {
           for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
             for (size_t n = 0; n < N; n++, input++) {
               auto sc = scale[n].ToFloat();
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input->ToFloat() / sc)) + zp, low, high);
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input->ToFloat() / sc)), low, high);
               *output++ = static_cast<TOut>(v);
             }
           }
@@ -1019,8 +1019,8 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 0> {
                             std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
                             const std::ptrdiff_t block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
-    auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
+    constexpr auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
+    constexpr auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
     const auto num_r_block = (N + block_size - 1) / block_size;
     const auto num_blocks = M * K * num_r_block;
     const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(MLFloat16) * 2),
@@ -1071,8 +1071,8 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 0> {
                          const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
                          const std::ptrdiff_t quant_block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
-    auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
+    constexpr auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
+    constexpr auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
     const auto num_r_block = (K + quant_block_size - 1) / quant_block_size;
     const auto num_blocks = num_r_block * M;
     const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(MLFloat16)),
@@ -1107,8 +1107,8 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
     ORT_UNUSED_PARAMETER(saturate);
     size_t zp_b_index = 0;
     size_t output_index = 0;
-    auto low = static_cast<int32_t>(TOut::min_val);
-    auto high = static_cast<int32_t>(TOut::max_val);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
 
     if (zero_point) {
       for (size_t m = 0; m < M; m++) {
@@ -1129,9 +1129,9 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
       for (size_t m = 0; m < M; m++) {
         for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
           for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            auto zp_index_n = zp_index;
-            for (size_t n = 0; n < N; n++, output_index++, zp_index_n++) {
-              auto sc = scale[zp_index_n];
+            auto zp_index = zp_b_index;
+            for (size_t n = 0; n < N; n++, output_index++, zp_index++) {
+              auto sc = scale[zp_index];
               auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index] / sc)),
                                   static_cast<int32_t>(TOut::min_val),
                                   static_cast<int32_t>(TOut::max_val));
@@ -1149,8 +1149,8 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
     ORT_UNUSED_PARAMETER(saturate);
     size_t zp_b_index = 0;
     size_t output_index = 0;
-    auto low = static_cast<int32_t>(TOut::min_val);
-    auto high = static_cast<int32_t>(TOut::max_val);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
 
     if (zero_point) {
       for (size_t m = 0; m < M; m++) {
@@ -1247,8 +1247,8 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
                             std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
                             const std::ptrdiff_t block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    auto low = static_cast<int32_t>(TOut::min_val);
-    auto high = static_cast<int32_t>(TOut::max_val);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
     const auto num_r_block = (N + block_size - 1) / block_size;
     const auto num_blocks = M * K * num_r_block;
     const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float) * 2),
@@ -1300,8 +1300,8 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
                          const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
                          const std::ptrdiff_t quant_block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    auto low = static_cast<int32_t>(TOut::min_val);
-    auto high = static_cast<int32_t>(TOut::max_val);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
     const auto num_r_block = (K + quant_block_size - 1) / quant_block_size;
     const auto num_blocks = num_r_block * M;
     const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(float)),
@@ -1353,16 +1353,17 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
   static void opBaseline(const MLFloat16* input, const MLFloat16* scale, const TOut* zero_point, TOut* output,
                          size_t M, size_t K, size_t N, size_t quant_block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    size_t zp_index = 0;
+    size_t zp_b_index = 0;
     size_t output_index = 0;
-    auto low = static_cast<int32_t>(TOut::min_val);
-    auto high = static_cast<int32_t>(TOut::max_val);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
 
     if (zero_point) {
       for (size_t m = 0; m < M; m++) {
         for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
           for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
-            for (size_t n = 0; n < N; n++, output_index++) {
+            auto zp_index = zp_b_index;
+            for (size_t n = 0; n < N; n++, output_index++, zp_index++) {
               auto zp = static_cast<int32_t>(zero_point[zp_index >> 1].GetElem(zp_index & 1));
               auto sc = scale[zp_index].ToFloat();
               auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)) + zp,
@@ -1371,13 +1372,14 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
             }
           }
 
-          zp_index += N;
+          zp_b_index += N;
         }
       }
     } else {
       for (size_t m = 0; m < M; m++) {
         for (size_t k1 = 0; k1 < K; k1 += quant_block_size) {
           for (size_t k2 = 0, k2_end = std::min(quant_block_size, K - k1); k2 < k2_end; ++k2) {
+            auto zp_index = zp_b_index;
             for (size_t n = 0; n < N; n++, output_index++) {
               auto sc = scale[zp_index].ToFloat();
               auto v = std::clamp(static_cast<int32_t>(std::nearbyintf(input[output_index].ToFloat() / sc)),
@@ -1386,7 +1388,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
             }
           }
 
-          zp_index += N;
+          zp_b_index += N;
         }
       }
     }
@@ -1397,8 +1399,8 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
     ORT_UNUSED_PARAMETER(saturate);
     size_t zp_b_index = 0;
     size_t output_index = 0;
-    auto low = static_cast<int32_t>(TOut::min_val);
-    auto high = static_cast<int32_t>(TOut::max_val);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
 
     if (zero_point) {
       for (size_t m = 0; m < M; m++) {
@@ -1498,8 +1500,8 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
                             std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
                             const std::ptrdiff_t block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    auto low = static_cast<int32_t>(TOut::min_val);
-    auto high = static_cast<int32_t>(TOut::max_val);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
     const auto num_r_block = (N + block_size - 1) / block_size;
     const auto num_blocks = M * K * num_r_block;
     const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(MLFloat16) * 2),
@@ -1552,8 +1554,8 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
                          const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
                          const std::ptrdiff_t quant_block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    auto low = static_cast<int32_t>(TOut::min_val);
-    auto high = static_cast<int32_t>(TOut::max_val);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
     const auto num_r_block = (K + quant_block_size - 1) / quant_block_size;
     const auto num_blocks = num_r_block * M;
     const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(MLFloat16)),
@@ -1798,62 +1800,82 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   if (x.IsDataType<float>()) {
     if (block_size_) {
-      if (process_block_size > 1) {
-        BlockedQuantizeLinear<float, T, output_type_group_>::opNotLastAxis(
-            ctx->GetOperatorThreadPool(),
+      BlockedQuantizeLinear<float, T, output_type_group_>::opBaseline(
             x.Data<float>(),
             y_scale.Data<float>(),
             zero_point,
             output,
-            static_cast<std::ptrdiff_t>(process_block_count),
-            static_cast<std::ptrdiff_t>(broadcast_dim),
-            static_cast<std::ptrdiff_t>(process_block_size),
-            static_cast<std::ptrdiff_t>(block_size_),
-            128,
+            static_cast<size_t>(process_block_count),
+            static_cast<size_t>(broadcast_dim),
+            static_cast<size_t>(process_block_size),
+            static_cast<size_t>(block_size_),
             saturate_);
-      } else {
-        BlockedQuantizeLinear<float, T, output_type_group_>::opLastAxis(
-            ctx->GetOperatorThreadPool(),
-            x.Data<float>(),
-            y_scale.Data<float>(),
-            zero_point,
-            output,
-            static_cast<std::ptrdiff_t>(process_block_count),
-            static_cast<std::ptrdiff_t>(broadcast_dim),
-            static_cast<std::ptrdiff_t>(block_size_),
-            saturate_);
-      }
+      //if (process_block_size > 1) {
+      //  BlockedQuantizeLinear<float, T, output_type_group_>::opNotLastAxis(
+      //      ctx->GetOperatorThreadPool(),
+      //      x.Data<float>(),
+      //      y_scale.Data<float>(),
+      //      zero_point,
+      //      output,
+      //      static_cast<std::ptrdiff_t>(process_block_count),
+      //      static_cast<std::ptrdiff_t>(broadcast_dim),
+      //      static_cast<std::ptrdiff_t>(process_block_size),
+      //      static_cast<std::ptrdiff_t>(block_size_),
+      //      128,
+      //      saturate_);
+      //} else {
+      //  BlockedQuantizeLinear<float, T, output_type_group_>::opLastAxis(
+      //      ctx->GetOperatorThreadPool(),
+      //      x.Data<float>(),
+      //      y_scale.Data<float>(),
+      //      zero_point,
+      //      output,
+      //      static_cast<std::ptrdiff_t>(process_block_count),
+      //      static_cast<std::ptrdiff_t>(broadcast_dim),
+      //      static_cast<std::ptrdiff_t>(block_size_),
+      //      saturate_);
+      //}
     } else {
       ComputeLoop<T, float>(ctx, x.Data<float>(), y_scale.Data<float>(), zero_point, output,
                             process_block_count, broadcast_dim, process_block_size, saturate_);
     }
   } else if (x.IsDataType<MLFloat16>()) {
     if (block_size_) {
-      if (process_block_size > 1) {
-        BlockedQuantizeLinear<MLFloat16, T, output_type_group_>::opNotLastAxis(
-            ctx->GetOperatorThreadPool(),
+      BlockedQuantizeLinear<MLFloat16, T, output_type_group_>::opBaseline(
             x.Data<MLFloat16>(),
             y_scale.Data<MLFloat16>(),
             zero_point,
             output,
-            static_cast<std::ptrdiff_t>(process_block_count),
-            static_cast<std::ptrdiff_t>(broadcast_dim),
-            static_cast<std::ptrdiff_t>(process_block_size),
-            static_cast<std::ptrdiff_t>(block_size_),
-            128,
+            static_cast<size_t>(process_block_count),
+            static_cast<size_t>(broadcast_dim),
+            static_cast<size_t>(process_block_size),
+            static_cast<size_t>(block_size_),
             saturate_);
-      } else {
-        BlockedQuantizeLinear<MLFloat16, T, output_type_group_>::opLastAxis(
-            ctx->GetOperatorThreadPool(),
-            x.Data<MLFloat16>(),
-            y_scale.Data<MLFloat16>(),
-            zero_point,
-            output,
-            static_cast<std::ptrdiff_t>(process_block_count),
-            static_cast<std::ptrdiff_t>(broadcast_dim),
-            static_cast<std::ptrdiff_t>(block_size_),
-            saturate_);
-      }
+      // if (process_block_size > 1) {
+      //   BlockedQuantizeLinear<MLFloat16, T, output_type_group_>::opNotLastAxis(
+      //       ctx->GetOperatorThreadPool(),
+      //       x.Data<MLFloat16>(),
+      //       y_scale.Data<MLFloat16>(),
+      //       zero_point,
+      //       output,
+      //       static_cast<std::ptrdiff_t>(process_block_count),
+      //       static_cast<std::ptrdiff_t>(broadcast_dim),
+      //       static_cast<std::ptrdiff_t>(process_block_size),
+      //       static_cast<std::ptrdiff_t>(block_size_),
+      //       128,
+      //       saturate_);
+      // } else {
+      //   BlockedQuantizeLinear<MLFloat16, T, output_type_group_>::opLastAxis(
+      //       ctx->GetOperatorThreadPool(),
+      //       x.Data<MLFloat16>(),
+      //       y_scale.Data<MLFloat16>(),
+      //       zero_point,
+      //       output,
+      //       static_cast<std::ptrdiff_t>(process_block_count),
+      //       static_cast<std::ptrdiff_t>(broadcast_dim),
+      //       static_cast<std::ptrdiff_t>(block_size_),
+      //       saturate_);
+      // }
     } else {
       ComputeLoop<T, MLFloat16>(ctx, x.Data<MLFloat16>(), y_scale.Data<MLFloat16>(), zero_point, output,
                                 process_block_count, broadcast_dim, process_block_size, saturate_);
