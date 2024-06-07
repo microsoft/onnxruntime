@@ -259,7 +259,7 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrap
   if (onnx_axis < 0) {
     onnx_axis += rank;
   }
-  ORT_ENFORCE((onnx_axis >= 0 && onnx_axis < static_cast<int32_t>(input_shape.size())), "QNN requires axis range [0, rank-1].");
+  ORT_RETURN_IF_NOT((onnx_axis >= 0 && onnx_axis < static_cast<int32_t>(input_shape.size())), "QNN requires axis range [0, rank-1].");
   default_axis_value = onnx_axis;
 
   bool is_gather_op = (node_unit.OpType() == "Gather");
