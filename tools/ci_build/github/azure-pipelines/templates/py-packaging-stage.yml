@@ -310,6 +310,7 @@ stages:
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         cmake_build_type: {{ parameters.cmake_build_type }}
+
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
@@ -318,6 +319,7 @@ stages:
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         cmake_build_type: {{ parameters.cmake_build_type }}
+
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
@@ -326,6 +328,7 @@ stages:
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         cmake_build_type: {{ parameters.cmake_build_type }}
+
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
@@ -334,6 +337,7 @@ stages:
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
         cmake_build_type: {{ parameters.cmake_build_type }}
+
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
@@ -342,6 +346,7 @@ stages:
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
         cmake_build_type: {{ parameters.cmake_build_type }}
+
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
@@ -350,6 +355,7 @@ stages:
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
         cmake_build_type: {{ parameters.cmake_build_type }}
+
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
@@ -358,6 +364,7 @@ stages:
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
         cmake_build_type: {{ parameters.cmake_build_type }}
+
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
@@ -366,6 +373,7 @@ stages:
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
         cmake_build_type: {{ parameters.cmake_build_type }}
+
     - template: py-win-gpu.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
@@ -374,6 +382,7 @@ stages:
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
         cmake_build_type: {{ parameters.cmake_build_type }}
+
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
   - stage: Python_Packaging_MacOS
     dependsOn: []
