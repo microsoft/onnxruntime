@@ -763,7 +763,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
         assert activation_type not in to_tensor_types or to_tensor_types[activation_type] in zero_types, (
             f"activation_type={activation_type} not in zero_types={zero_types}"
         )
-        
+
         check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next(), rtol=rtol, atol=atol)
 
         # If the model uses Q/DQ ops with "com.microsoft" domain (e.g., for int16 support),
