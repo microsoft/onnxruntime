@@ -21,6 +21,10 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <string>
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 namespace onnxruntime {
@@ -44,15 +48,17 @@ class ConvOpBuilder : public BaseOpBuilder {
                      const NodeUnit& node_unit) override {
     auto input_tensor = inputs[0];
     auto weight_tensor = inputs[1];
-    auto OutChannel_idx = weight_tensor->GetShape().size() - 1;
+    auto OChannel_idx = weight_tensor->GetShape().size() - 1;
     const bool is_1d_conv =
         weight_tensor->GetShape().size() == 3 ? true : false;
     NodeAttrHelper helper(node_unit.GetNode());
     auto padtype = helper.Get("auto_pad", std::string(""));
     auto group = helper.Get("group", static_cast<uint32_t>(1));
 
-    std::string op_type = (group != 1 && group == weight_tensor->GetShape()[OutChannel_idx]) ? "DepthwiseConv" : (group != 1) ? "GroupConv"
-                                                                                                                              : "Conv";
+    std::string op_type = (group != 1 && group == weight_tensor->GetShape()[OChannel_idx])
+                              ? "DepthwiseConv"
+                          : (group != 1) ? "GroupConv"
+                                         : "Conv";
     op_type += is_1d_conv ? "1D" : "2D";
     std::string op_name = std::string("Creating ") + op_type + " Op";
     LOGS_DEFAULT(INFO) << op_name;
@@ -69,7 +75,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 
     std::shared_ptr<tim::vx::Operation> op;
     if (padtype != "NOTSET") {  // array "pads" is not set
-      if (group != 1 && group != weight_tensor->GetShape()[OutChannel_idx]) {
+      if (group != 1 && group != weight_tensor->GetShape()[OChannel_idx]) {
         if (is_1d_conv) {
           op = graph_ep->GetGraph()
                    ->CreateOperation<tim::vx::ops::GroupedConv1d>(
@@ -87,7 +93,9 @@ class ConvOpBuilder : public BaseOpBuilder {
                        tim::vx::DataLayout::WHCN, tim::vx::DataLayout::WHIcOc);
         }
       } else {
-        int32_t multiplier = group == 1 ? 0 : weight_tensor->GetShape()[OutChannel_idx] / input_tensor->GetShape()[OutChannel_idx - 1];
+        int32_t multiplier = group == 1
+                                 ? 0
+                                 : weight_tensor->GetShape()[OChannel_idx] / input_tensor->GetShape()[OChannel_idx - 1];
         if (is_1d_conv) {
           op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Conv1d>(
               vsi::npu::util::GetPadType(padtype), stride[0], dilation[0], multiplier,
@@ -104,7 +112,7 @@ class ConvOpBuilder : public BaseOpBuilder {
       }
     } else {
       auto pads = helper.Get("pads", std::vector<uint32_t>{0U, 0U});
-      if (group != 1 && group != weight_tensor->GetShape()[OutChannel_idx]) {
+      if (group != 1 && group != weight_tensor->GetShape()[OChannel_idx]) {
         if (is_1d_conv) {
           op = graph_ep->GetGraph()
                    ->CreateOperation<tim::vx::ops::GroupedConv1d>(
@@ -124,7 +132,9 @@ class ConvOpBuilder : public BaseOpBuilder {
                        tim::vx::DataLayout::WHCN, tim::vx::DataLayout::WHIcOc);
         }
       } else {
-        int32_t multiplier = group == 1 ? 0 : weight_tensor->GetShape()[OutChannel_idx] / input_tensor->GetShape()[OutChannel_idx - 1];
+        int32_t multiplier = group == 1
+                                 ? 0
+                                 : weight_tensor->GetShape()[OChannel_idx] / input_tensor->GetShape()[OChannel_idx - 1];
         if (is_1d_conv) {
           op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Conv1d>(
               std::array<uint32_t, 2>{pads[0], pads[1]}, stride[0], dilation[0],

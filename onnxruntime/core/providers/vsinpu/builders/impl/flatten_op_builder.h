@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -35,9 +38,9 @@ class FlattenOpBuilder : public BaseOpBuilder {
                      const NodeUnit& node_unit) override {
     LOGS_DEFAULT(VERBOSE) << "Creating Flatten Op.";
     std::vector<uint32_t> reshape_param;
-    if (outputs[0]->GetShape().size() == 2)
+    if (outputs[0]->GetShape().size() == 2) {
       reshape_param = outputs[0]->GetShape();
-    else {
+    } else {
       auto input_shape = inputs[0]->GetShape();
       NodeAttrHelper helper(node_unit.GetNode());
       int64_t axis = helper.Get("axis", 1);

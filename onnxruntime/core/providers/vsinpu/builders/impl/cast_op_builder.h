@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 namespace onnxruntime {
@@ -34,6 +37,7 @@ class CastOpBuilder : public BaseOpBuilder {
     NodeAttrHelper helper(node_unit.GetNode());
     auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::DataConvert>();
     (*op).BindInput(inputs[0]).BindOutputs(outputs);
+    graph_ep->GetOps().push_back(std::move(op));
     return true;
   }
 };

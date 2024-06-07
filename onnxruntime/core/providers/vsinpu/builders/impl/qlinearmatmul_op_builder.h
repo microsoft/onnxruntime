@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 
 namespace onnxruntime {
@@ -44,9 +47,9 @@ class QLinearMatMulOpBuilder : public BaseOpBuilder {
     auto A_def = input_defs[matrixA];
     auto B_def = input_defs[matrixB];
     for (auto def : input_defs) {
-      if (def->Name() == A_def->Name() || def->Name() == B_def->Name())
+      if (def->Name() == A_def->Name() || def->Name() == B_def->Name()) {
         continue;
-      else {
+      } else {
         if (!graph_viewer.IsConstantInitializer(def->Name(), true)) {
           LOGS_DEFAULT(WARNING) << "Scale and zero point must be known before setting graph.";
           return false;
@@ -70,6 +73,7 @@ class QLinearMatMulOpBuilder : public BaseOpBuilder {
     LOGS_DEFAULT(INFO) << "Creating QLinearMatmul Op.";
     auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Matmul>();
     (*op).BindInputs(inputs).BindOutputs(outputs);
+    graph_ep->GetOps().push_back(std::move(op));
     return true;
   }
 };

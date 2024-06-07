@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 namespace onnxruntime {
@@ -31,18 +34,23 @@ class GemmOpBuilder : public BaseOpBuilder {
                      const Node* node) const override {
     auto input_defs = node->InputDefs();
     NodeAttrHelper helper(*node);
-    auto weight_units = helper.Get("transB", 0) == 1 ? vsi::npu::util::GetTensorShape(*input_defs[1]).GetDims()[0] : vsi::npu::util::GetTensorShape(*input_defs[1]).GetDims()[1];
+    auto weight_units = helper.Get("transB", 0) == 1
+                            ? vsi::npu::util::GetTensorShape(*input_defs[1]).GetDims()[0]
+                            : vsi::npu::util::GetTensorShape(*input_defs[1]).GetDims()[1];
     if (input_defs.size() > 2) {
       auto bias_shape = vsi::npu::util::GetTensorShape(*input_defs[2]);
       if (bias_shape.NumDimensions() == 1 && bias_shape.GetDims()[0] != weight_units) {
         LOGS_DEFAULT(WARNING) << "Not support to broadcast bias shape.";
         return false;
-      } else if (bias_shape.NumDimensions() == 2 && (bias_shape.Size() != weight_units || (bias_shape.GetDims()[0] != 1 && bias_shape.GetDims()[1] != 1))) {
+      } else if (bias_shape.NumDimensions() == 2 &&
+                 (bias_shape.Size() != weight_units ||
+                  (bias_shape.GetDims()[0] != 1 && bias_shape.GetDims()[1] != 1))) {
         LOGS_DEFAULT(WARNING) << "Not support 2-dims bias shape.";
         return false;
       }
 
-      if (*input_defs[2]->Type() == "tensor(float16)" && !graph_viewer.IsConstantInitializer(input_defs[2]->Name(), true)) {
+      if (*input_defs[2]->Type() == "tensor(float16)" &&
+          !graph_viewer.IsConstantInitializer(input_defs[2]->Name(), true)) {
         LOGS_DEFAULT(WARNING) << "Not support f16 bias with input attr.";
         return false;
       }

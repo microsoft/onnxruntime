@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 namespace onnxruntime {
@@ -35,6 +38,7 @@ class QLinearConcatOpBuilder : public BaseOpBuilder {
     axis = util::ReverseAxis(axis, inputs[0]->GetShape().size());
     auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Concat>(axis, inputs.size());
     (*op).BindInputs(inputs).BindOutputs(outputs);
+    graph_ep->GetOps().push_back(std::move(op));
     return true;
   }
 };

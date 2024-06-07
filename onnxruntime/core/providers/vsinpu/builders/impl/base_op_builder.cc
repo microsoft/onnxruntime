@@ -21,6 +21,7 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <string>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 
 namespace onnxruntime {
@@ -49,7 +50,7 @@ bool BaseOpBuilder::HasSupportedInputOutputs(const InitializedTensorSet& initial
       return false;
     }
 
-    // We do not support dynamic shape input yet, but resize op's second input can be empty cause we not care about this value
+    // We do not support dynamic shape input yet, but resize op's second input can be empty
     for (const auto& dim : shape_proto->dim()) {
       if (!dim.has_dim_value()) {
         LOGS_DEFAULT(WARNING) << "Dynamic shape is not supported for now, for input:" << node_arg.Name();

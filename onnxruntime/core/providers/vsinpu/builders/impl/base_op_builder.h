@@ -22,7 +22,8 @@
  *
  *****************************************************************************/
 #pragma once
-
+#include <memory>
+#include <vector>
 #include "core/providers/vsinpu/builders/op_builder.h"
 #include "core/providers/vsinpu/vsinpu_ep_graph.h"
 #include "core/providers/vsinpu/vsinpu_util.h"
@@ -53,8 +54,8 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool HasSupportedInputOutputsImpl(
       const InitializedTensorSet& initializers, const NodeUnit& node_unit) const;
 
-  // TODO:Check if this node_unit's type is supported
-  virtual bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const { return true; };
+  // TODO(cfy): Check if this node_unit's type is supported
+  virtual bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const { return true; }
 
   virtual bool HandleBuildOp(
       vsi::npu::GraphEP* graph_ep,

@@ -22,7 +22,10 @@
  *
  *****************************************************************************/
 #pragma once
-
+#include <string>
+#include <memory>
+#include <map>
+#include <utility>
 #include "impl/activation_op_builder.h"
 #include "impl/conv_op_builder.h"
 #include "impl/elementwise_op_builder.h"

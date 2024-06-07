@@ -21,6 +21,10 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
+#include <functional>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -53,18 +57,20 @@ class SoftmaxOpBuilder : public BaseOpBuilder {
 
     if (def_val == 1) {
       // In earlier opset version of softmax, input is coerced into 2D shape
-      // Attribute "axis" is to describe the axis of the inputs when coerced to 2D but not take part in softmax computation
+      // Attribute "axis" is to describe the axis of the inputs coerced to 2D but not take part in softmax computation
       const bool is_2d_shape = inputs[0]->GetShape().size() == 2 ? true : false;
       if (!is_2d_shape) {
         axis = HandleNegativeAxis(axis, inputs[0]->GetShape().size());
         auto it = inputs[0]->GetShape().end();
         uint32_t last_dim = std::accumulate(it - axis, it, 1, std::multiplies<uint32_t>());
         uint32_t first_dim = std::accumulate(inputs[0]->GetShape().begin(), it - axis, 1, std::multiplies<uint32_t>());
-        auto reshaped_spec = inputs[0]->GetSpec().AsTransientSpec().SetShape(std::vector<uint32_t>{first_dim, last_dim});
+        auto reshaped_spec = inputs[0]->GetSpec().AsTransientSpec().SetShape(
+            std::vector<uint32_t>{first_dim, last_dim});
         auto reshaped_input = graph_ep->GetGraph()->CreateTensor(reshaped_spec);
         auto reshaped_output = graph_ep->GetGraph()->CreateTensor(inputs[0]->GetSpec().AsTransientSpec());
 
-        auto reshape_input_op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Reshape>(std::vector<uint32_t>{first_dim, last_dim});
+        auto reshape_input_op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Reshape>(
+            std::vector<uint32_t>{first_dim, last_dim});
         auto softmax_op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Softmax>(1, 0);
         auto reshaped_output_op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Reshape>(inputs[0]->GetShape());
 

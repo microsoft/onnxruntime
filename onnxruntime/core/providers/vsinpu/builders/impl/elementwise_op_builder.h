@@ -22,6 +22,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 namespace onnxruntime {
 namespace vsi {
@@ -68,7 +71,8 @@ class PowOpBuilder : public BaseOpBuilder {
     auto input0_type = *node->InputDefs()[0]->Type();
     auto input1_type = *node->InputDefs()[1]->Type();
     if (input0_type != input1_type) {
-      if ((input0_type == "tensor(float)" && input1_type == "tensor(int32)") || (input0_type == "tensor(int32)" && input1_type == "tensor(float)")) {
+      if ((input0_type == "tensor(float)" && input1_type == "tensor(int32)") ||
+          (input0_type == "tensor(int32)" && input1_type == "tensor(float)")) {
         LOGS_DEFAULT(WARNING) << "Pow op does not support one of input is float32 while the other one is int32 type.";
         return false;
       }
@@ -85,7 +89,6 @@ class PowOpBuilder : public BaseOpBuilder {
     (*op).BindInputs(inputs).BindOutputs(outputs);
     graph_ep->GetOps().push_back(std::move(op));
     return true;
-    ;
   }
 };
 

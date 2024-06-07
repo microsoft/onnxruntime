@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -46,7 +49,8 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
       LOGS_DEFAULT(WARNING) << "The quantization params must be known.";
       return false;
     }
-    if (node_unit.Inputs()[0].quant_param->scale.Shape()->dim_size() != 0 && node_unit.Inputs()[0].quant_param->scale.Shape()->dim(0).dim_value() != 1) {
+    if (node_unit.Inputs()[0].quant_param->scale.Shape()->dim_size() != 0 &&
+        node_unit.Inputs()[0].quant_param->scale.Shape()->dim(0).dim_value() != 1) {
       LOGS_DEFAULT(WARNING) << "Per channel quantized input is not support in DequantizeLinear op.";
       return false;
     }

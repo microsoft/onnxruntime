@@ -21,6 +21,8 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <limits>
+#include <utility>
 #include "core/providers/vsinpu/builders/impl/clip_op_builder.h"
 
 namespace onnxruntime {
@@ -62,7 +64,8 @@ struct ClipOpBuilder::ClipImpl {
     if (max_tensor) {
       max_tensor->CopyDataFromTensor(max_data);
     }
-    auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Clip>(static_cast<float>(*min_data), static_cast<float>(*max_data));
+    auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Clip>(
+        static_cast<float>(*min_data), static_cast<float>(*max_data));
     (*op).BindInputs(inputs).BindOutputs(outputs);
     graph_ep->GetOps().push_back(std::move(op));
   }

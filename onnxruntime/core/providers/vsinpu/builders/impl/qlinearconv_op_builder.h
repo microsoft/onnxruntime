@@ -21,10 +21,13 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <string>
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 #include "core/framework/tensorprotoutils.h"
-#include <variant>
 namespace onnxruntime {
 namespace vsi {
 namespace npu {
@@ -52,7 +55,8 @@ class QLinearConvOpBuilder : public BaseOpBuilder {
       return false;
     }
 
-    if (!graph_viewer.IsConstantInitializer(input_defs[QLinearConvINPUTS::INPUT_TENSOR_SCALE]->Name(), true) || !graph_viewer.IsConstantInitializer(input_defs[WEIGHT_TENSOR]->Name(), true)) {
+    if (!graph_viewer.IsConstantInitializer(input_defs[QLinearConvINPUTS::INPUT_TENSOR_SCALE]->Name(), true) ||
+        !graph_viewer.IsConstantInitializer(input_defs[WEIGHT_TENSOR]->Name(), true)) {
       LOGS_DEFAULT(WARNING) << "Not support quantization definitions or weights that are not constant yet.";
       return false;
     }

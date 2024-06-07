@@ -89,7 +89,7 @@ enum class QuantizedOpType : uint8_t {
   QDQConcat,
   QDQGemm,
   QDQMatMul,
-  // TODO, add other QDQ NodeUnit types
+  // TODO(cfy) :Add other QDQ NodeUnit types
 };
 
 enum class ConvType : uint8_t {

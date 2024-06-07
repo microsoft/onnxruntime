@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 #include "core/providers/shared/utils/utils.h"
 
@@ -108,20 +111,23 @@ class ResizeOpBuilder : public BaseOpBuilder {
         int64_t onnx_size;
         inputs[3]->CopyDataFromTensor(&onnx_size);
         target_size = static_cast<int>(onnx_size);
-        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Resize1d>(resize_type, 0.0f, align_corners, half_pixel_center, target_size);
+        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Resize1d>(resize_type, 0.0f, align_corners,
+                                                                           half_pixel_center, target_size);
       } else {
         float scale;
         inputs[scale_index]->CopyDataFromTensor(&scale);
-        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Resize1d>(resize_type, scale, align_corners, half_pixel_center, 0);
+        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Resize1d>(resize_type, scale, align_corners,
+                                                                           half_pixel_center, 0);
       }
     } else {
-      int target_height, target_width;
+      int target_h, target_w;
       if (is_size_set) {
         std::vector<int64_t> onnx_sizes(inputs[3]->GetShape().size());
         inputs[3]->CopyDataFromTensor(onnx_sizes.data());
-        target_height = static_cast<int>(onnx_sizes[1]);
-        target_width = static_cast<int>(onnx_sizes[0]);
-        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Resize>(resize_type, 0.0f, align_corners, half_pixel_center, target_height, target_width);
+        target_h = static_cast<int>(onnx_sizes[1]);
+        target_w = static_cast<int>(onnx_sizes[0]);
+        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Resize>(resize_type, 0.0f, align_corners,
+                                                                         half_pixel_center, target_h, target_w);
       } else {
         auto input_shape = inputs[0]->GetShape();
         std::vector<float> scales(input_shape.size());
@@ -130,7 +136,8 @@ class ResizeOpBuilder : public BaseOpBuilder {
         for (int i = 0; i < input_shape.size(); i++) {
           out_shape[i] = input_shape[i] * scales[input_shape.size() - 1 - i];
         }
-        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Resize>(resize_type, 0, align_corners, half_pixel_center, out_shape[1], out_shape[0]);
+        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Resize>(resize_type, 0, align_corners,
+                                                                         half_pixel_center, out_shape[1], out_shape[0]);
       }
     }
 

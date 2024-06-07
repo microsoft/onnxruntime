@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 #include "core/providers/shared/utils/utils.h"
 
@@ -67,7 +70,8 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     auto epsilon = helper.Get("epsilon", 1e-5f);
     auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::BatchNorm>(epsilon);
     std::vector<std::shared_ptr<tim::vx::Tensor>> reordered_inputs;
-    int indices[] = {NormINPUTS::input_tensor, NormINPUTS::mean_tensor, NormINPUTS::var_tensor, NormINPUTS::scale_tensor, NormINPUTS::Bias_tensor};
+    int indices[] = {NormINPUTS::input_tensor, NormINPUTS::mean_tensor, NormINPUTS::var_tensor,
+                     NormINPUTS::scale_tensor, NormINPUTS::Bias_tensor};
     for (int i : indices) {
       reordered_inputs.push_back(inputs[i]);
     }

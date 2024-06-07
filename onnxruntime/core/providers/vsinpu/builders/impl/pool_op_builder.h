@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 #include "core/providers/shared/utils/utils.h"
 
@@ -29,7 +32,7 @@ namespace vsi {
 namespace npu {
 class BasePoolOpBuilder : public BaseOpBuilder {
  public:
-  BasePoolOpBuilder(tim::vx::PoolType pool_type) : pool_type_(pool_type) {}
+  explicit BasePoolOpBuilder(tim::vx::PoolType pool_type) : pool_type_(pool_type) {}
 
  protected:
   bool IsOpSupported(const onnxruntime::GraphViewer& graph_viewer, const Node* node) const override {
@@ -60,7 +63,8 @@ class BasePoolOpBuilder : public BaseOpBuilder {
     // Create the appropriate pooling operation
     if (is_global) {
       if (is_1d_pool) {
-        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Pool1d>(pool_type_, inputs[0]->GetShape()[0], ceil_mode);
+        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Pool1d>(pool_type_, inputs[0]->GetShape()[0],
+                                                                         ceil_mode);
       } else {
         std::array<uint32_t, 2> input_size = {inputs[0]->GetShape()[0], inputs[0]->GetShape()[1]};
         op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Pool2d>(pool_type_, input_size, ceil_mode);
@@ -68,9 +72,12 @@ class BasePoolOpBuilder : public BaseOpBuilder {
 
     } else {
       if (is_1d_pool) {
-        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Pool1d>(pool_type_, std::array<uint32_t, 2>{pads[2], pads[0]}, kernel_size[1], strides[1], ceil_mode);
+        std::array<uint32_t, 2> arr = {pads[2], pads[0]};
+        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Pool1d>(pool_type_, arr,
+                                                                         kernel_size[1], strides[1], ceil_mode);
       } else {
-        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Pool2d>(pool_type_, pads, kernel_size, strides, ceil_mode);
+        op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Pool2d>(pool_type_, pads, kernel_size,
+                                                                         strides, ceil_mode);
       }
     }
 
@@ -94,9 +101,11 @@ class TraditionalPoolOpBuilder : public BasePoolOpBuilder {
     auto ksize = helper.Get("kernel_shape", std::vector<uint32_t>{1U, 1U});
     auto strides = helper.Get("strides", std::vector<uint32_t>{1U, 1U});
     auto pads = helper.Get("pads", std::vector<uint32_t>{0U, 0U, 0U, 0U});
-    tim::vx::RoundType ceil_mode = helper.Get("ceil_mode", 0U) == 0 ? tim::vx::RoundType::FLOOR : tim::vx::RoundType::CEILING;
-    return CreatePoolingOp(graph_ep, inputs, outputs,
-                           {ksize[1], ksize[0]}, {strides[1], strides[0]}, {pads[1], pads[3], pads[0], pads[2]}, false, ceil_mode);
+    tim::vx::RoundType ceil_mode = helper.Get("ceil_mode", 0U) == 0
+                                       ? tim::vx::RoundType::FLOOR
+                                       : tim::vx::RoundType::CEILING;
+    return CreatePoolingOp(graph_ep, inputs, outputs, {ksize[1], ksize[0]}, {strides[1], strides[0]},
+                           {pads[1], pads[3], pads[0], pads[2]}, false, ceil_mode);
   }
 };
 
@@ -110,7 +119,9 @@ class GlobalPoolOpBuilder : public BasePoolOpBuilder {
                      std::vector<std::shared_ptr<tim::vx::Tensor>>& outputs,
                      const NodeUnit& node_unit) override {
     NodeAttrHelper helper(node_unit.GetNode());
-    tim::vx::RoundType ceil_mode = helper.Get("ceil_mode", 0U) == 0 ? tim::vx::RoundType::FLOOR : tim::vx::RoundType::CEILING;
+    tim::vx::RoundType ceil_mode = helper.Get("ceil_mode", 0U) == 0
+                                       ? tim::vx::RoundType::FLOOR
+                                       : tim::vx::RoundType::CEILING;
     return CreatePoolingOp(graph_ep, inputs, outputs, {}, {}, {}, true, ceil_mode);
   }
 };

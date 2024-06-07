@@ -21,6 +21,9 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#include <memory>
+#include <vector>
+#include <utility>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -46,7 +49,8 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
       return false;
     }
     if (!graph_viewer.IsConstantInitializer(input_defs[QuantizeINPUTS::scale_tensor]->Name(), true) ||
-        (input_defs.size() == 3 && !graph_viewer.IsConstantInitializer(input_defs[QuantizeINPUTS::zero_point_tensor]->Name(), true))) {
+        (input_defs.size() == 3 && !graph_viewer.IsConstantInitializer(
+                                       input_defs[QuantizeINPUTS::zero_point_tensor]->Name(), true))) {
       LOGS_DEFAULT(WARNING) << "Only support const scale / zero point.";
       return false;
     }
