@@ -48,12 +48,6 @@ parameters:
 - name: cmake_build_type
   type: string
   displayName: 'Linux packages cmake build type. Linux Only.'
-  default: 'Release'
-  values:
-   - Debug
-   - Release
-   - RelWithDebInfo
-   - MinSizeRel
 
 # Only applies to QNN packages.
 - name: qnn_sdk_version
