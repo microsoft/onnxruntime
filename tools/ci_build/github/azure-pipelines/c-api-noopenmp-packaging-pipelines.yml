@@ -194,7 +194,7 @@ stages:
 - stage: Linux_C_API_Packaging_ROCm_x64
   dependsOn: []
   jobs:
-  - job:
+  - job: Linux_C_API_Packaging_ROCm_x64
     workspace:
       clean: all
     timeoutInMinutes: 120
@@ -264,7 +264,7 @@ stages:
   - Linux_C_API_Packaging_ROCm_x64
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_ROCm
     workspace:
       clean: all
     # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
@@ -564,7 +564,7 @@ stages:
   - Windows_CI_GPU_DML_Dev_arm64
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_DML
     workspace:
       clean: all
     pool: 'onnxruntime-Win2022-GPU-dml-A10'
@@ -683,7 +683,7 @@ stages:
   - OnnxRuntime_QNN_Nuget_Win_Arm64
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_QNN
     workspace:
       clean: all
     steps:
