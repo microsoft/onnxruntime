@@ -30,12 +30,7 @@ else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
 
-# install cudnn 9 for cuda 12
-RUN if [ $(echo $CUDA_VERSION | cut -d"." -f1) -ge 12 ]; then \
-    dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&\
-    dnf clean all &&\
-    dnf -y install --allowerasing cudnn9-cuda-12 ; \
-fi
+
 
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
