@@ -214,18 +214,15 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // build present kv cache
   auto* present_key_ptr = reinterpret_cast<HipT*>(present_key->MutableDataRaw());
-  ck_tile::index_t shape_seqlen_q = batch_size;
-  ck_tile::index_t shape_seqlen_k = batch_size;
-
   auto* present_value_ptr = reinterpret_cast<HipT*>(present_value->MutableDataRaw());
   int4 kv_shape{batch_size, kv_num_heads, kv_sequence_length, head_size};
   auto kv_strides = Strides::BSNHMemory(batch_size, kv_sequence_length, kv_num_heads, head_size);
   if (parameters.is_prompt) {
     // copy prompt kv to present kv
-    // ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, key_ptr, kv_shape, kv_strides.ForBNSHCoord(),
-    //                                       present_key_ptr, present_strides.ForBNSHCoord(), max_thr_per_blk));
-    // ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, value_ptr, kv_shape, kv_strides.ForBNSHCoord(),
-    //                                       present_value_ptr, present_strides.ForBNSHCoord(), max_thr_per_blk));
+    ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, key_ptr, kv_shape, kv_strides.ForBNSHCoord(),
+                                          present_key_ptr, present_strides.ForBNSHCoord(), max_thr_per_blk));
+    ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, value_ptr, kv_shape, kv_strides.ForBNSHCoord(),
+                                          present_value_ptr, present_strides.ForBNSHCoord(), max_thr_per_blk));
   } else {
     const auto* past_key_ptr = reinterpret_cast<const HipT*>(past_key->DataRaw());
     const auto* past_value_ptr = reinterpret_cast<const HipT*>(past_value->DataRaw());
@@ -255,23 +252,36 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     // NOTE: ORT: seqlens_k Indicates past sequence lengths for token generation case.
     // we should call fmha with total sequence lenghts
-    seqlens_k_tmp = GetScratchBuffer<int>(shape_seqlen_k * sizeof(int), ctx->GetComputeStream());
-    ORT_RETURN_IF_ERROR(LaunchSeqlensInc(hip_stream, seqlens_k_ptr, seqlens_k_tmp.get(), shape_seqlen_k, sequence_length));
+    seqlens_k_tmp = GetScratchBuffer<int>(batch_size * sizeof(int), ctx->GetComputeStream());
+    ORT_RETURN_IF_ERROR(LaunchSeqlensInc(hip_stream, seqlens_k_ptr, seqlens_k_tmp.get(), batch_size, sequence_length));
     seqlens_k_ptr = seqlens_k_tmp.get();
   }
   static_assert(std::is_same_v<ck_tile::index_t, int32_t>);
 
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
   // TODO:
-  mask_enum mask_type = mask_enum::no_mask;
   bias_enum bias_type = bias_enum::no_bias;
-  mask_info mask = mask_info::decode("0", sequence_length, kv_sequence_length);
 
-  auto seqstart_q_tmp = GetScratchBuffer<int>((shape_seqlen_q + 1) * sizeof(int), ctx->GetComputeStream());
-  auto seqstart_k_tmp = GetScratchBuffer<int>((shape_seqlen_k + 1) * sizeof(int), ctx->GetComputeStream());
-  ORT_RETURN_IF_ERROR(LaunchSeqStartInit(hip_stream, seqstart_q_tmp.get(), shape_seqlen_q,
+  mask_enum mask_type;
+  mask_info mask;
+  if(local_window_size_ != -1) {
+    ORT_NOT_IMPLEMENTED("local_window_size support is not implemented");
+  }
+  if (parameters.is_prompt) {
+    if (is_unidirectional_) {
+      mask_type = mask_enum::mask_top_left;
+      mask = mask_info::decode("t", sequence_length, kv_sequence_length);
+    }
+  } else {
+    mask_type = mask_enum::no_mask;
+    mask = mask_info::decode("0", sequence_length, kv_sequence_length);
+  }
+
+  auto seqstart_q_tmp = GetScratchBuffer<int>((batch_size + 1) * sizeof(int), ctx->GetComputeStream());
+  auto seqstart_k_tmp = GetScratchBuffer<int>((batch_size + 1) * sizeof(int), ctx->GetComputeStream());
+  ORT_RETURN_IF_ERROR(LaunchSeqStartInit(hip_stream, seqstart_q_tmp.get(), batch_size,
                                          query_strides.strides_for_bnsh_coord.x / query_strides.strides_for_bnsh_coord.z));
-  ORT_RETURN_IF_ERROR(LaunchSeqStartInit(hip_stream, seqstart_k_tmp.get(), shape_seqlen_k,
+  ORT_RETURN_IF_ERROR(LaunchSeqStartInit(hip_stream, seqstart_k_tmp.get(), batch_size,
                                          present_strides.strides_for_bnsh_coord.x / present_strides.strides_for_bnsh_coord.z));
 
   fmha_fwd_args args{
@@ -281,11 +291,11 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       nullptr,  // bias, alibi/element
       nullptr,  // lse, logsumexp buffer
       output->MutableDataRaw(),
-      seqstart_q_tmp.get(),        // seqstart_q_ptr
-      seqstart_k_tmp.get(),        // seqstart_k_ptr
-      seqlens_k_ptr,               // seqlen_k_ptr
-      shape_seqlen_q,              // seqlen_q
-      shape_seqlen_k,              // seqlen_k
+      seqstart_q_tmp.get(),        // seqstart_q_ptr, for group mode
+      seqstart_k_tmp.get(),        // seqstart_k_ptr, for group mode
+      seqlens_k_ptr,               // seqlen_k_ptr, for group mode
+      sequence_length,             // seqlen_q, for batch mode
+      kv_sequence_length,          // seqlen_k, for batch mode
       parameters.batch_size,       // batch
       parameters.sequence_length,  // max_seqlen_q
       parameters.head_size,        // hdim_q
@@ -298,19 +308,19 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       static_cast<ck_tile::index_t>(query_strides.strides_for_bnsh_coord.z),    // stride_q, to be regarded as stride of dim S
       static_cast<ck_tile::index_t>(present_strides.strides_for_bnsh_coord.z),  // stride_k, to be regarded as stride of dim S
       static_cast<ck_tile::index_t>(present_strides.strides_for_bnsh_coord.z),  // stride_v, to be regarded as stride of dim S
-      shape_seqlen_k,                                                           // stride_bias, if alibi, b*h need set this to h, 1*h need set this to 0
+      batch_size,                                                               // stride_bias, if alibi, b*h need set this to h, 1*h need set this to 0
       static_cast<ck_tile::index_t>(output_strides.strides_for_bnsh_coord.z),   // stride_o, to be regarded as stride of dim S
       static_cast<ck_tile::index_t>(query_strides.strides_for_bnsh_coord.y),    // nhead_stride_q, to be regarded as stride of dim N
       static_cast<ck_tile::index_t>(present_strides.strides_for_bnsh_coord.y),  // nhead_stride_k, to be regarded as stride of dim N
       static_cast<ck_tile::index_t>(present_strides.strides_for_bnsh_coord.y),  // nhead_stride_v, to be regarded as stride of dim N
       0,                                                                        // nhead_stride_bias
-      shape_seqlen_q,                                                           // nhead_stride_lse
+      batch_size,                                                               // nhead_stride_lse
       static_cast<ck_tile::index_t>(output_strides.strides_for_bnsh_coord.y),   // batch_stride_o, to be regarded as stride of dim B
       static_cast<ck_tile::index_t>(query_strides.strides_for_bnsh_coord.x),    // batch_stride_q, to be regarded as stride of dim B
       static_cast<ck_tile::index_t>(present_strides.strides_for_bnsh_coord.x),  // batch_stride_k, to be regarded as stride of dim B
       static_cast<ck_tile::index_t>(present_strides.strides_for_bnsh_coord.x),  // batch_stride_v, to be regarded as stride of dim B
       0,                                                                        // batch_stride_bias
-      num_heads * shape_seqlen_q,                                               // batch_stride_lse
+      num_heads * batch_size,                                                   // batch_stride_lse
       static_cast<ck_tile::index_t>(output_strides.strides_for_bnsh_coord.x),   // batch_stride_o, to be regarded as stride of dim B
       mask.left,                                                                // window_size_left
       mask.right,                                                               // window_size_right
@@ -366,8 +376,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       parameters.head_size,
       parameters.head_size,  // v head size
       GetCkFmhaDataTypeString<T>(),
-      true,  // is_group_mode
-      true,  // is_v_rowmajor ? dim is fastest : seq is fastest
+      !parameters.is_prompt,  // true,  // is_group_mode
+      true,                   // is_v_rowmajor ? dim is fastest : seq is fastest
       mask_type,
       bias_type,
       false,  // has_lse
