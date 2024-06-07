@@ -55,6 +55,10 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+- name: publish_symbols
+  type: boolean
+  default: false
+
 # Only applies to QNN packages.
 - name: qnn_sdk_version
   type: string
@@ -260,18 +264,20 @@ stages:
          python onnx_backend_test_series.py
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
         displayName: 'Run Python Tests'
-      - task: PublishSymbols@2
-        displayName: 'Publish symbols'
-        inputs:
-          SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
-          SearchPattern: |
+      - ${{ if eq(parameters.publish_symbols, true) }}:
+        - task: PublishSymbols@2
+          displayName: 'Publish symbols'
+          inputs:
+            SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+            SearchPattern: |
                onnxruntime_pybind11_state.pdb
                onnxruntime_providers_shared.pdb
-          IndexSources: true
-          SymbolServerType: TeamServices
-          SymbolExpirationInDays: 3650
-          SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)_$(Build.BuildNumber)'
-          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+            IndexSources: true
+            SymbolServerType: TeamServices
+            SymbolExpirationInDays: 3650
+            SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)_$(Build.BuildNumber)'
+            condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+	 
       - task: TSAUpload@2
         displayName: 'TSA upload'
         condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
