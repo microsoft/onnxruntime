@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <type_traits>
+#include <filesystem>
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
@@ -18,7 +19,7 @@
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
-#include <filesystem>
+
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
