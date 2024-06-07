@@ -17,34 +17,47 @@ class TestSplitQuickGeluMulOp(nn.Module):
 
 temp = TestSplitQuickGeluMulOp()
 # inp = torch.randn((1024, 1024, 12), device='cuda:0')
-inp = torch.randn((32, 1024, 1024, 12), device='cuda:0')
-out = temp(inp)
+# inp = torch.randn((32, 1024, 1024, 12), device='cuda:0')
+# inp = torch.randn((32, 1024, 12, 1024), device='cuda:0')
+# inp = torch.randn((76, 54, 1368), device='cuda:0')
+# out = temp(inp)
 
 from onnxruntime.training.ortmodule import ORTModule
-model2 = ORTModule(temp)
-ort_temp_out = model2(inp)
-
-num_steps = 100
-
 import time
-torch.cuda.synchronize()
-start = time.time()
-for i in range(num_steps):
-  torch_out = temp(inp)
+
+def compare_torch_ort_perf(inp, num_steps=1000):
+  model2 = ORTModule(temp)
+  ort_temp_out = model2(inp)
+  print("Current input shape:", inp.shape)
+  torch.cuda.synchronize()
+  start = time.time()
+  for i in range(num_steps):
+    torch_out = temp(inp)
 
 
-torch.cuda.synchronize()
-print("Total time torch:", time.time() - start)
+  torch.cuda.synchronize()
+  print("Total time torch:", time.time() - start)
+  torch.cuda.synchronize()
+  start = time.time()
+  for i in range(num_steps):
+    ort_out = model2(inp)
 
-torch.cuda.synchronize()
-start = time.time()
-for i in range(num_steps):
-  ort_out = model2(inp)
+  torch.cuda.synchronize()
+  print("Total time ORT:", time.time() - start)
+  comparison = torch.isclose(torch_out, ort_out, rtol=1e-04, atol=1e-05)
+  # Check if all elements are close
+  all_close = comparison.all().item()
+  print("Are all elements close:", all_close)
 
-torch.cuda.synchronize()
-print("Total time ORT:", time.time() - start)
 
-comparison = torch.isclose(torch_out, ort_out, rtol=1e-04, atol=1e-05)
-# Check if all elements are close
-all_close = comparison.all().item()
-print("Are all elements close:", all_close)
+inp = torch.randn((1024, 1024, 12), device='cuda:0')
+compare_torch_ort_perf(inp, 10000)
+
+inp = torch.randn((32, 1024, 1024, 12), device='cuda:0')
+compare_torch_ort_perf(inp, 1000)
+
+inp = torch.randn((32, 1024, 12, 1024), device='cuda:0')
+compare_torch_ort_perf(inp, 1000)
+
+inp = torch.randn((76, 54, 1368), device='cuda:0')
+compare_torch_ort_perf(inp, 10000)
