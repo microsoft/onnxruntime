@@ -26,8 +26,6 @@ def get_pod_config_file(package_variant: PackageVariant):
     """
     if package_variant == PackageVariant.Full:
         return _script_dir / "onnxruntime-c.config.json"
-    elif package_variant == PackageVariant.Mobile:
-        return _script_dir / "onnxruntime-mobile-c.config.json"
     elif package_variant == PackageVariant.Training:
         return _script_dir / "onnxruntime-training-c.config.json"
     else:
