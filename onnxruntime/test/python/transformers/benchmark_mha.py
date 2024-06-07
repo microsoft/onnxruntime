@@ -16,7 +16,7 @@ import time
 import torch
 from onnx import TensorProto, helper
 
-from onnxruntime import InferenceSession
+from onnxruntime import InferenceSession, get_available_providers
 from onnxruntime.transformers.io_binding_helper import CudaSession
 
 
@@ -38,21 +38,33 @@ class Config:
     head_size: int = 0
     causal: bool = False
     input_format: int = InputFormats.Q_K_V_BSNH
+    data_type: int = TensorProto.FLOAT16
 
-    def __init__(self, b, s, s2, n, h, causal, input_format):
-        self.batch_size = b
-        self.sequence_length = s
-        self.kv_sequence_length = s2
-        self.num_heads = n
-        self.head_size = h
+    def __init__(
+        self,
+        batch_size,
+        sequence_length,
+        kv_sequence_length,
+        num_heads,
+        head_size,
+        causal,
+        input_format,
+        data_type=TensorProto.FLOAT16,
+    ):
+        self.batch_size = batch_size
+        self.sequence_length = sequence_length
+        self.kv_sequence_length = kv_sequence_length
+        self.num_heads = num_heads
+        self.head_size = head_size
         self.causal = causal
         self.input_format = input_format
+        self.data_type = data_type
 
 
 def create_multihead_attention_graph(config: Config):
     query = helper.make_tensor_value_info(
         "query",
-        TensorProto.FLOAT16,
+        config.data_type,
         [
             config.batch_size,
             config.sequence_length,
@@ -62,7 +74,7 @@ def create_multihead_attention_graph(config: Config):
 
     key = helper.make_tensor_value_info(
         "key",
-        TensorProto.FLOAT16,
+        config.data_type,
         [
             config.batch_size,
             config.kv_sequence_length,
@@ -72,7 +84,7 @@ def create_multihead_attention_graph(config: Config):
 
     value = helper.make_tensor_value_info(
         "value",
-        TensorProto.FLOAT16,
+        config.data_type,
         [
             config.batch_size,
             config.kv_sequence_length,
@@ -82,7 +94,7 @@ def create_multihead_attention_graph(config: Config):
 
     packed_qkv = helper.make_tensor_value_info(
         "query",
-        TensorProto.FLOAT16,
+        config.data_type,
         [
             config.batch_size,
             config.sequence_length,
@@ -94,7 +106,7 @@ def create_multihead_attention_graph(config: Config):
 
     packed_kv = helper.make_tensor_value_info(
         "key",
-        TensorProto.FLOAT16,
+        config.data_type,
         [
             config.batch_size,
             config.kv_sequence_length,
@@ -128,7 +140,7 @@ def create_multihead_attention_graph(config: Config):
     outputs = [
         helper.make_tensor_value_info(
             "output",
-            TensorProto.FLOAT16,
+            config.data_type,
             [config.batch_size, config.sequence_length, config.num_heads * config.head_size],
         ),
     ]
@@ -171,8 +183,15 @@ def create_session(
 ) -> CudaSession:
     onnx_model_str = create_multihead_attention_graph(config)
     provider_options = CudaSession.get_cuda_provider_options(device_id, enable_cuda_graph)
-    ort_session = InferenceSession(onnx_model_str, providers=[(provider, provider_options), "CPUExecutionProvider"])
-    device = torch.device("cuda", device_id)
+
+    if provider == "CUDAExecutionProvider":
+        providers = [(provider, provider_options), "CPUExecutionProvider"]
+        device = torch.device("cuda", device_id)
+    else:
+        providers = ["CPUExecutionProvider"]
+        device = torch.device("cpu")
+
+    ort_session = InferenceSession(onnx_model_str, providers=providers)
     cuda_session = CudaSession(ort_session, device, enable_cuda_graph)
     shape_dict = input_output_shapes(config)
     cuda_session.allocate_buffers(shape_dict)
@@ -194,7 +213,7 @@ def tflops_per_second(flop, time):
     return (flop / time / 10**12) if not math.isnan(time) else 0.0
 
 
-def get_sm8x_kernel_name(config: Config) -> str:
+def get_gpu_kernel_name(config: Config) -> str:
     # This classification is for Nvidia GPU of Compute Capability 8.* like A100.
     # Note that some kernel might not exist in older or newer GPUs.
     if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
@@ -218,49 +237,73 @@ def get_sm8x_kernel_name(config: Config) -> str:
     return "Unfused"
 
 
-def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeats: int = 100):
-    device_id = torch.cuda.current_device()
-    device = torch.device("cuda", device_id)
+def get_cpu_kernel_name() -> str:
+    if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
+        return "Flash"
+    return "Unfused"
+
+
+def run_tflops_test(dtype=torch.float16, use_gpu: bool = True, enable_cuda_graph: bool = False, repeats: int = 100):
+    if use_gpu:
+        device_id = torch.cuda.current_device()
+        device = torch.device("cuda", device_id)
+        formats = [InputFormats.Q_K_V_BSNH, InputFormats.Q_KV_BSNH_BSN2H, InputFormats.QKV_BSN3H]
+        provider = "CUDAExecutionProvider"
+        print(f"enable_cuda_graph={enable_cuda_graph}")
+    else:
+        device_id = 0
+        device = torch.device("cpu")
+        formats = [InputFormats.Q_K_V_BSNH]
+        enable_cuda_graph = False
+        provider = "CPUExecutionProvider"
 
     # (batch_size, sequence_length, num_heads, head_size)
-    configs = [
-        (32, 512, 64, 32),
-        (32, 512, 128, 16),
-        (16, 1024, 64, 32),
-        (16, 1024, 128, 16),
-        (8, 2048, 64, 32),
-        (8, 2048, 128, 16),
-        (4, 4096, 64, 32),
-        (4, 4096, 128, 16),
-        (2, 8192, 64, 32),
-        (2, 8192, 128, 16),
-        (1, 16384, 64, 32),
-        (1, 16384, 128, 16),
-        # stable diffusion
-        (1, 4096, 8, 40),
-        (1, 4096, 8, 80),
-        (1, 4096, 8, 160),
-        (4, 4096, 8, 40),
-        (4, 4096, 8, 80),
-        (4, 4096, 8, 160),
-        (1, 16384, 8, 40),
-        (1, 16384, 8, 80),
-        (1, 16384, 8, 160),
-        # bert-base
-        (128, 128, 12, 64),
-        (64, 128, 12, 64),
-        (128, 384, 12, 64),
-        (64, 384, 12, 64),
-        (128, 512, 12, 64),
-        (64, 512, 12, 64),
-        # TNLGv4
-        (4, 2048, 32, 128),
-        (4, 4096, 32, 128),
-        (8, 2048, 32, 128),
-        (8, 4096, 32, 128),
-    ]
-
-    print(f"enable_cuda_graph={enable_cuda_graph}")
+    if use_gpu:
+        # (batch_size, sequence_length, num_heads, head_size, run_unfused)
+        configs = [
+            (32, 512, 64, 32, True),
+            (32, 512, 128, 16, True),
+            (16, 1024, 64, 32, True),
+            (16, 1024, 128, 16, True),
+            (8, 2048, 64, 32, True),
+            (8, 2048, 128, 16, False),
+            (4, 4096, 64, 32, False),
+            (4, 4096, 128, 16, False),
+            (2, 8192, 64, 32, False),
+            (2, 8192, 128, 16, False),
+            (1, 16384, 64, 32, False),
+            (1, 16384, 128, 16, False),
+            # stable diffusion
+            (1, 4096, 8, 40, False),
+            (1, 4096, 8, 80, False),
+            (1, 4096, 8, 160, False),
+            (4, 4096, 8, 40, False),
+            (4, 4096, 8, 80, False),
+            (4, 4096, 8, 160, False),
+            (1, 16384, 8, 40, False),
+            (1, 16384, 8, 80, False),
+            (1, 16384, 8, 160, False),
+            # bert-base
+            (128, 128, 12, 64, True),
+            (64, 128, 12, 64, True),
+            (128, 384, 12, 64, True),
+            (64, 384, 12, 64, True),
+            (128, 512, 12, 64, True),
+            (64, 512, 12, 64, True),
+            # TNLGv4
+            (4, 2048, 32, 128, True),
+            (4, 4096, 32, 128, False),
+            (8, 2048, 32, 128, False),
+            (8, 4096, 32, 128, False),
+        ]
+    else:
+        configs = [
+            (1, 128, 32, 128, True),
+            (1, 256, 32, 128, True),
+            (1, 512, 32, 128, True),
+            (1, 1024, 32, 128, True),
+            (1, 2048, 32, 128, True),
+        ]
 
     # List of environment variables to enable/disable attention kernels
     print("Environment Variables:")
@@ -277,15 +320,33 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
         value = os.getenv(name)
         if value is not None:
             print(f"{name}={value}")
-    print()
 
-    print("format\tcausal\tbatch\tseqlen\theads\th_dim\tms\tTFLOPS\tkernel")
+    print("\nformat\tcausal\tbatch\tseqlen\theads\th_dim\tms\tTFLOPS\tkernel")
     causal = False
-    for input_format in [InputFormats.Q_K_V_BSNH, InputFormats.Q_KV_BSNH_BSN2H, InputFormats.QKV_BSN3H]:
-        for batch_size, sequence_length, num_heads, head_size in configs:
-            config = Config(batch_size, sequence_length, sequence_length, num_heads, head_size, causal, input_format)
 
-            session = create_session(device_id, config, enable_cuda_graph=enable_cuda_graph)
+    for input_format in formats:
+        for batch_size, sequence_length, num_heads, head_size, enable_unfused in configs:
+            config = Config(
+                batch_size,
+                sequence_length,
+                sequence_length,
+                num_heads,
+                head_size,
+                causal,
+                input_format,
+                data_type=TensorProto.FLOAT16 if use_gpu else TensorProto.FLOAT,
+            )
+
+            session = create_session(device_id, config, provider=provider, enable_cuda_graph=enable_cuda_graph)
+
+            # Skip large sequence length for Unfused kernel to avoid OOM.
+            if use_gpu:
+                kernel = get_gpu_kernel_name(config)
+            else:
+                kernel = get_cpu_kernel_name()
+
+            if kernel == "Unfused" and ((input_format != InputFormats.Q_K_V_BSNH) or (not enable_unfused)):
+                continue
 
             qkv = torch.randn(batch_size, sequence_length, 3, num_heads, head_size, device=device, dtype=dtype)
             q, k, v = qkv.unbind(dim=2)
@@ -332,7 +393,6 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
             # compute TFLOPS per second
             speed = tflops_per_second(flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency)
 
-            kernel = get_sm8x_kernel_name(config)
             format = InputFormats.input_format_str(input_format)
             print(
                 f"{format}\t{causal}\t{batch_size}\t{sequence_length}\t{num_heads}\t{head_size}\t{average_latency * 1000:.2f}\t{speed:.2f}\t{kernel}"
@@ -340,4 +400,9 @@ def run_tflops_test(dtype=torch.float16, enable_cuda_graph: bool = False, repeat
 
 
 if __name__ == "__main__":
-    run_tflops_test(enable_cuda_graph=False)
+    if torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers():
+        # Test CUDA provider
+        run_tflops_test(dtype=torch.float16, use_gpu=True, enable_cuda_graph=False)
+    else:
+        # Test CPU provider
+        run_tflops_test(dtype=torch.float32, use_gpu=False, enable_cuda_graph=False, repeats=10)
