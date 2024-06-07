@@ -199,7 +199,7 @@ stages:
               IndexSources: true
               SymbolServerType: TeamServices
               SymbolExpirationInDays: 3650
-              SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)_$(Build.BuildNumber)'
+              SymbolsArtifactName: 'win_${{ parameters.EP_NAME }}_$(PythonVersion)_$(buildArch)_$(Build.BuildNumber)'
               condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/snnn/py1'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
 
 
