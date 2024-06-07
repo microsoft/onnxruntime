@@ -466,7 +466,7 @@ def get_initial_inputs_and_outputs(
         past_key = torch.zeros(
             batch_size,
             num_heads,
-            max_sequence_length if engine == "ort" and use_buffer_share else 0,
+            max_sequence_length if use_buffer_share else 0,
             head_size,
             device=device,
             dtype=torch_dtype,
@@ -474,7 +474,7 @@ def get_initial_inputs_and_outputs(
         past_value = torch.zeros(
             batch_size,
             num_heads,
-            max_sequence_length if engine == "ort" and use_buffer_share else 0,
+            max_sequence_length if use_buffer_share else 0,
             head_size,
             device=device,
             dtype=torch_dtype,

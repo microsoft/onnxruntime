@@ -87,6 +87,8 @@ def get_model(args: argparse.Namespace):
                     attn_implementation=("flash_attention_2" if args.device == "cuda" else "sdpa"),
                 ).to(args.target_device)
             except Exception as e:
+                # When flash_attention or sdpa doesn't support a model, it throws an exception.
+                # Rather than stopping a process, run as eager mode.
                 print("Try to load a model using eager mode: ", e)
                 model = AutoModelForCausalLM.from_pretrained(
                     args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
@@ -115,18 +117,16 @@ def get_model(args: argparse.Namespace):
     return model
 
 
+# When it runs a model without position_ids input, ORT keep printint out a complaint.
+# Check if a model has a position_ids input and suppress if not.
 def has_position_ids(args):
     if args.benchmark_type != "ort":
         return True
 
     import onnx
-    import sys
 
     model = onnx.load(args.onnx_model_path, load_external_data=False)
-    for input in model.graph.input:
-        if input.name == "position_ids":
-            return True
-    return False
+    return any(input.name == "position_ids" for input in model.graph.input)
 
 
 def run_inference(args, model, runs, inputs, outputs):
@@ -355,6 +355,8 @@ def get_args():
     setattr(args, "torch_dtype", torch_dtype)  # noqa: B010
     setattr(args, "engine", engine)  # noqa: B010
     setattr(args, "use_fp16", args.precision == "fp16")  # noqa: B010
+
+    args.use_buffer_share = args.use_buffer_share and engine == "ort"
 
     return args
 
@@ -607,7 +609,7 @@ def main():
             )
             all_csv_metrics.append(csv_metrics)
 
-        except Exception as e:  # noqa: E722
+        except Exception as e:
             logger.info(f"Could not benchmark at batch size = {batch_size}, prompt length = {prompt_length} - {e}")
 
     filename = f"benchmark_{args.engine}_e2e_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}.csv"
