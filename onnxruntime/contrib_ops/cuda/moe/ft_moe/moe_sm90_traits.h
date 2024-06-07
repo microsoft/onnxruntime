@@ -17,29 +17,29 @@
 #pragma once
 
 #include "cutlass/arch/mma_sm90.h"
-#include "cutlass_extensions/epilogue_helpers.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/epilogue_helpers.h"
 
-namespace tensorrt_llm::kernels::cutlass_kernels {
+namespace ort_fastertransformer {
 
 // Hopper arch
 template <typename T, typename WeightType, typename EpilogueTag = cutlass_extensions::EpilogueOpDefault>
 constexpr bool isValidHopperMOESpecialisation() {
-#if defined(CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED)
+//#if defined(CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED)
   return cutlass::platform::is_same<T, WeightType>::value && cutlass::platform::is_same<EpilogueTag, cutlass_extensions::EpilogueOpDefault>::value;
-#else
-  return false;  // CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED is set when Hopper kernels are enabled
-#endif
+// #else
+//   return false;  // CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED is set when Hopper kernels are enabled
+// #endif
 }
 
 // Hopper arch
 template <typename T, typename WeightType, typename EpilogueTag = cutlass_extensions::EpilogueOpDefault>
 constexpr bool isValidAmpereMOESpecialisation() {
-#if defined(CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED) and defined(ENABLE_FP8)
+//#if defined(CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED) and defined(ENABLE_FP8)
   constexpr bool is_fp8 = cutlass::platform::is_same<T, __nv_fp8_e4m3>::value || cutlass::platform::is_same<T, __nv_fp8_e5m2>::value;
   return !is_fp8;
-#else
-  return true;  // Default to true
-#endif
+// #else
+//   return true;  // Default to true
+// #endif
 }
 
-}  // namespace tensorrt_llm::kernels::cutlass_kernels
+}  // namespace ort_fastertransformer
