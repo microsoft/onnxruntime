@@ -505,7 +505,7 @@ class BaseQuantizer:
             else:
                 quantized_weights = np.asarray(
                     quantized_weights,
-                    dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_qType],
+                    dtype=onnx.helper.tensor_dtype_to_np_dtype(weight_qType),
                 ).reshape(initializer.dims)
                 q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
                 self.model.initializer_extend([q_weight_initializer])
