@@ -128,8 +128,8 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int dim, int64_t in
   int num_blocks = static_cast<int>(N/(2*dim));
   // printf("Num blocks %d\n", num_blocks);
   // num_blocks = 1;
-  // printf("Final number threads per block %d\n", num_threads_per_block);
-  // printf("Final num blocks %d\n", num_blocks);
+  printf("Final number threads per block %d\n", num_threads_per_block);
+  printf("Final num blocks %d\n", num_blocks);
   S2SModelSplitQuickGeluKernel<T><<<num_blocks, num_threads_per_block, 0, stream>>>(dim, alpha, input_data, output_data);
   // S2SModelSplitQuickGeluKernel<T><<<5, 1, 0, stream>>>(dim, input_data, output_data);
   // 4x10
