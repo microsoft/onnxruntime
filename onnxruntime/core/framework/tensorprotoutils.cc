@@ -989,6 +989,16 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load external data file \"", external_data_file_path,
                            "\", error: ", err_msg);
 #else
+    // The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
+    // manually check file size first.
+    std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
+
+    SafeInt<FileOffsetType> end_of_read(file_offset);
+    end_of_read += raw_data_safe_len;
+    ORT_RETURN_IF(file_offset < 0 || static_cast<std::uintmax_t>(end_of_read) > file_length,
+                  "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
+                  " size to read: ", static_cast<size_t>(raw_data_safe_len), " given file_length: ", file_length,
+                  " are out of bounds or can not be read in full.");
     ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
                                        ext_data_buf, ext_data_deleter));
     ext_data_len = raw_data_safe_len;
