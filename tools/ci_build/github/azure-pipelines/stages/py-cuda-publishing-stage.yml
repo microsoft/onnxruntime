@@ -6,7 +6,7 @@ parameters:
 stages:
 - stage: Python_Publishing_GPU
   jobs:
-  - job:
+  - job: Python_Publishing_GPU
     pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     steps:
     - checkout: none

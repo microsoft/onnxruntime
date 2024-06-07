@@ -51,7 +51,7 @@ stages:
   - OnnxRuntime_QNN_Nuget_Win_Arm64
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_QNN
     workspace:
       clean: all
     steps:

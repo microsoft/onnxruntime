@@ -97,7 +97,7 @@ stages:
 - stage: iOS_Full_xcframework
   dependsOn: []
   jobs:
-  - job:
+  - job: iOS_Full_xcframework
     workspace:
       clean: all
     pool:
@@ -200,7 +200,7 @@ stages:
   - Download_Java_Tools
   condition: succeeded()
   jobs:
-  - job:
+  - job: Jar_Packaging
     workspace:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'
@@ -290,7 +290,7 @@ stages:
   - iOS_Full_xcframework
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_CPU
     workspace:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'
@@ -515,7 +515,7 @@ stages:
   - MacOS_C_API_Package_Publish
   condition: succeeded()
   jobs:
-  - job:
+  - job: Nodejs_Packaging
     workspace:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'
