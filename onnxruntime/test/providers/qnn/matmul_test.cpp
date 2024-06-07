@@ -103,7 +103,8 @@ static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
 // CPU tests:
 //
 
-TEST_F(QnnCPUBackendTests, MatMulOp) {
+// TODO: Crashes during QNN CPU execution (QNN SDK 2.22)
+TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp) {
   RunMatMulOpOpTest(TestInputDef<float>({2, 3}, false, {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f}),
                     TestInputDef<float>({3, 2}, false, {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f}),
                     ExpectedEPNodeAssignment::All, 18);
@@ -126,13 +127,8 @@ TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_Broadcast) {
                     ExpectedEPNodeAssignment::All, 18, 0.0004f);
 }
 
-#if defined(__linux__)
+// TODO: Crashes during QNN CPU execution (QNN SDK 2.22)
 TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_PaddingAndBroadcast_BLargerThanA) {
-#else
-// TODO: When fixed, enable MathOpTest.MatMulFloatType from cpu/mat/matmul_test.cc
-// QNN SDK 2.17: Accuracy errors
-TEST_F(QnnCPUBackendTests, MatMulOp_PaddingAndBroadcast_BLargerThanA) {
-#endif
   std::vector<int64_t> input0_shape = {2, 3, 2};
   std::vector<int64_t> input1_shape = {3, 2, 2, 1};
   RunMatMulOpOpTest(TestInputDef<float>(input0_shape, false, GetSequentialFloatData(input0_shape)),
