@@ -267,6 +267,7 @@ stages:
       - ${{ if eq(parameters.publish_symbols, true) }}:
         - task: PublishSymbols@2
           displayName: 'Publish symbols'
+          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
           inputs:
             SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
             SearchPattern: |
@@ -276,7 +277,6 @@ stages:
             SymbolServerType: TeamServices
             SymbolExpirationInDays: 3650
             SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)_$(Build.BuildNumber)'
-            condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
  
       - task: TSAUpload@2
         displayName: 'TSA upload'
@@ -302,6 +302,7 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
@@ -311,6 +312,7 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
@@ -320,6 +322,7 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
@@ -329,6 +332,7 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
@@ -338,6 +342,7 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
@@ -347,6 +352,7 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
@@ -356,6 +362,7 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
@@ -365,6 +372,7 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
@@ -374,6 +382,7 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
@@ -383,6 +392,7 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
