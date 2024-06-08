@@ -1157,7 +1157,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         LOGS_DEFAULT(INFO) << "Quantizing input program to fp16: Complete" << std::endl;
       }
 
-
       migraphx::compile_options co;
       co.set_fast_math(false);
       LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
@@ -1289,7 +1288,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           }
 
           // Add all calibration data read in from int8 table
-          for (auto &[cal_key, cal_val] : map_dynamic_range) {
+          for (auto& [cal_key, cal_val] : map_dynamic_range) {
             auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
             quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
           }
