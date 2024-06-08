@@ -33,7 +33,7 @@ namespace test {
 
 // Tests that the QNN EP is registered when added via the public C++ API.
 // Loads a simple ONNX model that adds floats.
-TEST(QnnEP, TestAddEpUsingPublicApi) {
+TEST_F(QnnHTPBackendTests, TestAddEpUsingPublicApi) {
   {
     Ort::SessionOptions so;
 
