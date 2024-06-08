@@ -1259,6 +1259,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
 }
 
 // Check that QNN EP can support float16 HardSigmoid on HTP
+// It is using decompose way for FP16 since ElementWiseNeuron failed to finalize the graph with the error below:
 // \HTP\src\hexagon\prepare\tcm_migration.cc:1829:ERROR:no properties registered for q::QNN_HardSigmoid
 // \HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::QNN_HardSigmoid
 // \HTP\HTP\src\hexagon\prepare\graph_prepare.cc:1238:ERROR:Op 0x101000000010 preparation failed with err:-1
@@ -1266,7 +1267,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
 // QnnDsp <E> "node" generated: could not create op
 // QnnDsp <E> RouterWindows graph prepare failed 12
 // QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
-TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_HardSigmoid_FP16) {
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_FP16) {
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
 
   RunFP16OpTest("HardSigmoid",
