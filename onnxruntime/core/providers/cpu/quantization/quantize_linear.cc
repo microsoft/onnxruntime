@@ -815,7 +815,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
             static_cast<std::ptrdiff_t>(broadcast_dim),
             static_cast<std::ptrdiff_t>(process_block_size),
             static_cast<std::ptrdiff_t>(block_size_),
-            3,
+            128,
             saturate_);
       } else {
         BlockedQuantizeLinear<float, T, output_type_group_>::opLastAxis(
@@ -846,7 +846,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
             static_cast<std::ptrdiff_t>(broadcast_dim),
             static_cast<std::ptrdiff_t>(process_block_size),
             static_cast<std::ptrdiff_t>(block_size_),
-            3,
+            128,
             saturate_);
       } else {
         BlockedQuantizeLinear<MLFloat16, T, output_type_group_>::opLastAxis(
