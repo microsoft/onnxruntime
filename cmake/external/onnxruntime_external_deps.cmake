@@ -85,7 +85,6 @@ if (NOT WIN32)
     google_nsync
     URL ${DEP_URL_google_nsync}
     URL_HASH SHA1=${DEP_SHA1_google_nsync}
-    FIND_PACKAGE_ARGS NAMES nsync
     )
 endif()
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
