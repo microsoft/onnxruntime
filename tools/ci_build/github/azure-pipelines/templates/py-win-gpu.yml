@@ -191,6 +191,7 @@ stages:
 
           - task: PublishSymbols@2
             displayName: 'Publish symbols'
+            condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
             inputs:
               SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
               SearchPattern: |
@@ -200,7 +201,6 @@ stages:
               SymbolServerType: TeamServices
               SymbolExpirationInDays: 3650
               SymbolsArtifactName: 'win_${{ parameters.EP_NAME }}_${{ parameters.PYTHON_VERSION }}_$(Build.BuildNumber)'
-              condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
 
 
           - script: |
