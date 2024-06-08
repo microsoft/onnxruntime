@@ -8,6 +8,9 @@
 #include <istream>
 #include <filesystem>
 
+// 1st-party headers/libs.
+#include "core/platform/env_var_utils.h"
+
 #include "vaip/capability.h"
 #include "vaip/global_api.h"
 #include "ep_context_utils.h"
@@ -83,6 +86,9 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
 
 // Create EP context model and dump it for future use.
 // This implementation here is only working for non-compilation-based EPs.
+// This version of implementation (vs the overloaded version of implementation below)
+// is more universally applicable and less coupled with the closed-source backend of VitisAI EP.
+// The two vesions have respective pros and cons.
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const std::vector<std::unique_ptr<ComputeCapability>>& capability_ptrs,
     const onnxruntime::GraphViewer& graph_viewer) const {
@@ -102,9 +108,40 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, ep_ctx_cache_path_str, 0, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, &logger);
   } else {
     p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, &logger);
+  }
+  DumpEPContextModel(p_ep_ctx_model_, ep_ctx_model_file_loc_);
+}
+
+// This version of implementation (vs the overloaded version of implementation above)
+// is more VitisAI specific and more tightly coupled with the closed-source backend of VitisAI EP.
+// The two vesions have respective pros and cons.
+void VitisAIExecutionProvider::FulfillEPContextEnablement(
+    const onnxruntime::GraphViewer& graph_viewer) const {
+  auto cache_dir = GetBackendCompileCacheDir();
+  auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+  fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
+  auto backend_cache_str = GetBackendCompileCache(backend_cache_file_loc);
+  auto& logger = logging::LoggingManager::DefaultLogger();
+  auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
+  if (!ep_ctx_embed_mode_) {
+    GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_);
+    auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
+    std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc);
+    if (!ep_ctx_cache_ofs.is_open()) {
+      ORT_THROW("Failed to open a file to write EP context cache: ", ep_ctx_cache_path_str.c_str());
+    }
+    ep_ctx_cache_ofs.write(backend_cache_str.c_str(), backend_cache_str.length());
+    if (!ep_ctx_cache_ofs.good()) {
+      ep_ctx_cache_ofs.close();
+      ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
+    }
+    ep_ctx_cache_ofs.close();
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, &logger);
+  } else {
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, &logger);
   }
   DumpEPContextModel(p_ep_ctx_model_, ep_ctx_model_file_loc_);
 }
@@ -112,6 +149,11 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
   bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer);
+#if 0
+  // XXX: For now we are intentionally keeping this part.
+  // This part is corresponding to the 1st version of `FulfillEPContextEnablement()`.
+  // Once we are done with the verification of functionalities and performance
+  // of both implementations, we may eliminate this part.
   if (is_ep_ctx_model) {
     auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph());
     std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
@@ -148,6 +190,30 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       return capability_ptrs;
     }
   }
+#endif
+  // This part is corresponding to the 2nd version of `FulfillEPContextEnablement()`.
+  if (is_ep_ctx_model) {
+    auto cache_dir = GetBackendCompileCacheDir();
+    auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+    fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
+    auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), false);
+    RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
+  } else {
+    // FIXME: Will it make sense to do this?
+    // One of the potential problems is the existing EP-context model file may be stale.
+    auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
+    if (GetEPContextModelFileLocation(
+            ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
+      LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
+                            << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
+      LoadEPContexModelFromFile();
+      auto cache_dir = GetBackendCompileCacheDir();
+      auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+      fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
+      auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph());
+      RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
+    }
+  }
 
   if (graph_viewer.IsSubgraph()) {
     // VITIS AI EP not support sungraph. Assigned to CPU.
@@ -165,7 +231,10 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     index = index + 1;
   }
   if (ep_ctx_enabled_) {
+#if 0
     FulfillEPContextEnablement(result, graph_viewer);
+#endif
+    FulfillEPContextEnablement(graph_viewer);
   }
   return result;
 }
@@ -196,4 +265,54 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
   }
   return Status::OK();
 }
+
+std::string VitisAIExecutionProvider::GetBackendCompileCacheDir() const {
+  if (info_.count("cacheDir") > 0) {
+    std::string& cache_dir = info_.at("cacheDir");
+    if (!cache_dir.empty()) {
+      return cache_dir;
+    }
+  }
+  std::string cache_dir = ParseEnvironmentVariableWithDefault<std::string>("XLNX_CACHE_DIR", "");
+  if (!cache_dir.empty()) {
+    return cache_dir;
+  }
+  auto user_name = ParseEnvironmentVariableWithDefault<std::string>(
+      "USERNAME", ParseEnvironmentVariableWithDefault("USER", ""));
+  std::string temp_dir =
+#ifdef _WIN32
+      "C:/temp/";
+#else
+      "/tmp/";
+#endif
+  if (!user_name.empty()) {
+    temp_dir.append(user_name);
+  }
+  temp_dir.append("/vaip/.cache");
+  return temp_dir;
+}
+
+std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
+    const GraphViewer& graph_viewer) const {
+  if (info_.count("cacheKey") > 0) {
+    std::string& cache_key = info_.at("cacheKey");
+    if (!cache_key.empty()) {
+      return cache_key;
+    }
+  }
+  // Model metadata key "vaip_model_md5sum".
+  const auto& graph = graph_viewer.GetGraph();
+  const auto& model_metadata = graph.GetModel().MetaData();
+  if (model_metadata.count("vaip_model_md5sum") > 0) {
+    return model_metadata.at("vaip_model_md5sum");
+  }
+  if (ParseEnvironmentVariableWithDefault("XLNX_ENABLE_FILE_BASED_CACHE_KEY", "0") != "0") {
+    Path& model_path = graph_viewer.ModelPath();
+    if (!model_path.IsEmpty()) {
+      // `xir::get_md5_of_file()`
+    }
+  }
+  return GetModelSignature(graph_viewer);
+}
+
 }  // namespace onnxruntime

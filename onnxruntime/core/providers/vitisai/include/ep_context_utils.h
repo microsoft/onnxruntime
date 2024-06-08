@@ -42,7 +42,7 @@ void DumpEPContextModel(std::unique_ptr<Model>&, const std::string&);
 
 bool ValidateEPContextNode(const Graph&);
 
-std::string RetrieveEPContextCache(const Graph&);
+std::string RetrieveEPContextCache(const Graph&, bool binary_mode = true);
 
 std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph&);
 
@@ -58,5 +58,19 @@ bool GetEPContextModelFileLocation(
 
 // The file for EP context binary is in the same folder as the EP context model file.
 PathString GetEPContextCacheFileLocation(const PathString&, const PathString&);
+
+std::string Slurp(const fs::path&);
+
+std::string GetBackendCompileCache(const fs::path&);
+
+void RestoreBackendCompileCache(const fs::path&, const std::string&);
+
+// Different from `onnxruntime::GraphViewer::GetNodesInTopologicalOrder()`.
+std::vector<NodeIndex> GetNodeIndicesInTopologicalOrder(const GraphViewer&);
+
+std::vector<const NodeArg*> FilterOutputNodeArgs(const Node&);
+
+// TODO: VitisAI specifiec MD5 algorithm selection is pending.
+std::string GetModelSignature(const GraphViewer&);
 
 }  // namespace onnxruntime

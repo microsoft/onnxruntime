@@ -274,7 +274,7 @@ bool ValidateEPContextNode(const Graph& graph) {
   return true;
 }
 
-std::string RetrieveEPContextCache(const Graph& graph) {
+std::string RetrieveEPContextCache(const Graph& graph, bool binary_mode = true) {
   if (!ValidateEPContextNode(graph)) {
     ORT_THROW("Invalid EP context model for Vitis AI");
   }
@@ -291,7 +291,7 @@ std::string RetrieveEPContextCache(const Graph& graph) {
   if (!fs::exists(ep_ctx_file_loc) || !fs::is_regular_file(ep_ctx_file_loc)) {
     ORT_THROW("File for EP context cache is missing");
   }
-  std::ifstream ifs(ep_ctx_cache, std::ios::binary | std::ios::in);
+  std::ifstream ifs(ep_ctx_cache, std::ios::in | (binary_mode ? std::ios::binary : 0));
   if (!ifs.is_open()) {
     ORT_THROW("Exception opening EP context cache file");
   }
@@ -399,6 +399,88 @@ PathString GetEPContextCacheFileLocation(
   auto ep_ctx_cache_fs_path =
       model_fs_path.replace_extension(fs::path("__ep_ctx_cache.bin"));
   return ToPathString(ep_ctx_cache_fs_path.string());
+}
+
+std::string Slurp(const fs::path& file_location) {
+  const char* location_str = file_location.u8string().c_str();
+  std::ifstream ifs(location_str);
+  std::stringstream ss;
+  ss << ifs.rdbuf();
+  ifs.close();
+  return ss.str();
+}
+
+std::string GetBackendCompileCache(const fs::path& backend_cache_file_location) {
+  if (!fs::exists(backend_cache_file_location) || !fs::is_regular_file(backend_cache_file_location)) {
+    return "";
+  }
+  return Slurp(backend_cache_file_location);
+}
+
+void RestoreBackendCompileCache(
+    const fs::path& backend_cache_file_location, const std::string& compile_cache) {
+  if (!std::ofstream(backend_cache_file_location, std::ios::out | std::ios::trunc).write(compile_cache.data(), compile_cache.length()).good()) {
+    // TODO: Logging.
+  }
+}
+
+// Different from `onnxruntime::GraphViewer::GetNodesInTopologicalOrder()`.
+std::vector<NodeIndex> GetNodeIndicesInTopologicalOrder(const GraphViewer& graph_viewer) {
+  const auto& node_arg_ptrs = graph_viewer.GetOutputs();
+  std::vector<const Node*> leaf_node_ptrs;
+  leaf_node_ptrs.reserve(node_arg_ptrs.size());
+  for (const auto* p : node_arg_ptrs) {
+    if (p != nullptr) {
+      auto* p_node = graph_viewer.GetProducerNode(p->Name());
+      if (p_node != nullptr) {
+        leaf_node_ptrs.push_back(p_node);
+      }
+    }
+  }
+  std::vector<NodeIndex> node_indices;
+  const auto& graph = graph_viewer.GetGraph();
+  graph.ReverseDFSFrom(
+      leaf_node_ptrs,  // from
+      nullptr,         // enter
+      [&node_indices](const Node* p_node) mutable {
+        node_indices.push_back(p_node.Index());
+      },        // leave
+      nullptr,  // comp
+      nullptr   // stop
+  );
+  return node_indices;
+}
+
+std::vector<const NodeArg*> FilterOutputNodeArgs(const Node& node) {
+  auto node_arg_ptrs = node.OutputDefs();
+  auto num_ptrs = node_arg_ptrs.size();
+  std::vector<const NodeArg*> res(num_ptrs);
+  for (auto i = 0u; i < num_ptrs; i++) {
+    // Some operators have outputs that are optional. When an actual output parameter of an operator is not specified, the operator implementation MAY forgo computing values for such outputs.
+    // There are two ways to leave an optional input or output unspecified: the first, available only for trailing inputs and outputs, is to simply not provide that input; the second is to use an empty string in place of an input or output name.
+    // Oo optional output maybe output != null && false output->Exists().
+    // Our processing : nullptr means an optional output, and client code needs to handle nullptr.
+    assert(node_arg_ptrs[i] != nullptr);
+    if (node_arg_ptrs[i]->Exists()) {
+      res[i] = node_arg_ptrs[i];
+    } else {
+      res[i] = nullptr;
+    }
+  }
+  return res;
+}
+
+// TODO: VitisAI specifiec MD5 algorithm selection is pending.
+std::string GetModelSignature(const GraphViewer& graph_viewer) {
+  return "";
+#if 0
+  for (auto ni : GetNodeIndicesInTopologicalOrder(graph_viewer)) {
+    auto* p_node = graph_viewer.GetNode(ni);
+    for (const auto* p_node_arg : FilterOutputNodeArgs(*p_node)) {
+      auto node_arg_name = p_node_arg->Name();
+    }
+  }
+#endif
 }
 
 }  // namespace onnxruntime
