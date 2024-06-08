@@ -61,12 +61,21 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     initLibNvInferPlugins(&trt_logger, "");
 
     int num_plugin_creator = 0;
+#if NV_TENSORRT_MAJOR >= 10
+    auto plugin_creators = getPluginRegistry()->getAllCreators(&num_plugin_creator);
+#else
     auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
-    std::unordered_set<std::string> registered_plugin_names;
+#endif
 
     for (int i = 0; i < num_plugin_creator; i++) {
+#if NV_TENSORRT_MAJOR >= 10
+      auto plugin_creator_interface = plugin_creators[i];
+      auto plugin_creator = static_cast<nvinfer1::IPluginCreator*>(plugin_creator_interface);
+      std::string plugin_name(plugin_creator->getPluginName());
+#else
       auto plugin_creator = plugin_creators[i];
       std::string plugin_name(plugin_creator->getPluginName());
+#endif
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
 
       // plugin has different versions and we only register once
