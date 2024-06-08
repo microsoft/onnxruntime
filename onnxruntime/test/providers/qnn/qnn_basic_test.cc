@@ -47,9 +47,9 @@ TEST(QnnEP, TestAddEpUsingPublicApi) {
     onnxruntime::ProviderOptions options;
 
 #if defined(_WIN32)
-    options["backend_path"] = "QnnCpu.dll";
+    options["backend_path"] = "QnnHtp.dll";
 #else
-    options["backend_path"] = "libQnnCpu.so";
+    options["backend_path"] = "libQnnHtp.so";
 #endif
 
     so.AppendExecutionProvider("QNN", options);
