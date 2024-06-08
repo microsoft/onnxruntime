@@ -135,6 +135,54 @@ TEST(QnnEP, TestDisableCPUFallback_ModelNotFullySupported) {
   }
 }
 
+// The model is supported on QNN CPU backend, but CPU fallback is disabled
+// QNN EP report error for this scenario also
+TEST(QnnEP, TestDisableCPUFallback_TryingToRunOnQnnCPU) {
+  SessionOptions so;
+  // Disable fallback to the CPU EP.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnCpu.dll";
+#else
+  options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  auto model_func = BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain);
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  // logging_manager.SetDefaultLoggerSeverity(log_severity);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  model_func(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  InferenceSession session_object{so, GetEnvironment()};
+  auto qnn_ep = QnnExecutionProviderWithOptions(options, &so);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
+
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  auto status = session_object.Initialize();
+  ASSERT_EQ(status.Code(), ORT_FAIL);
+  ASSERT_THAT(status.ErrorMessage().c_str(), testing::HasSubstr("This session contains graph nodes that are assigned to the default "
+                                                                "CPU EP, but fallback to CPU EP has been explicitly disabled by "
+                                                                "the user."));
+}
+
 // Tests invalid use of the `session.disable_cpu_ep_fallback` configuration option.
 // It is invalid to set the option and explicitly add the CPU EP to the session.
 TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
