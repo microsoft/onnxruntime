@@ -48,6 +48,10 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+- name: publish_symbols
+  type: boolean
+  default: false
+
 stages:
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
     dependsOn: []
@@ -189,19 +193,19 @@ stages:
             inputs:
               ArtifactName: onnxruntime_${{ parameters.EP_NAME }}
 
-          - task: PublishSymbols@2
-            displayName: 'Publish symbols'
-            condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
-            inputs:
-              SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
-              SearchPattern: |
+          - ${{ if eq(parameters.publish_symbols, true) }}:
+            - task: PublishSymbols@2
+              displayName: 'Publish symbols'
+              condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+              inputs:
+                SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+                SearchPattern: |
                    onnxruntime_pybind11_state.pdb
                    onnxruntime_providers_shared.pdb
-              IndexSources: true
-              SymbolServerType: TeamServices
-              SymbolExpirationInDays: 3650
-              SymbolsArtifactName: 'win_${{ parameters.EP_NAME }}_${{ parameters.PYTHON_VERSION }}_$(Build.BuildNumber)'
-
+                IndexSources: true
+                SymbolServerType: TeamServices
+                SymbolExpirationInDays: 3650
+                SymbolsArtifactName: 'win_${{ parameters.EP_NAME }}_${{ parameters.PYTHON_VERSION }}_$(Build.BuildNumber)'
 
           - script: |
               7z x *.whl
