@@ -96,7 +96,9 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
   if (!ep_ctx_embed_mode_) {
-    GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_);
+    if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
+      ORT_THROW("Failed to get the path of the EP-context ONNX model");
+    }
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc | std::ios::binary);
     if (!ep_ctx_cache_ofs.is_open()) {
@@ -278,7 +280,7 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheDir() const {
     return cache_dir;
   }
   auto user_name = ParseEnvironmentVariableWithDefault<std::string>(
-      "USERNAME", ParseEnvironmentVariableWithDefault("USER", ""));
+      "USERNAME", ParseEnvironmentVariableWithDefault<std::string>("USER", ""));
   std::string temp_dir =
 #ifdef _WIN32
       "C:/temp/";
@@ -306,10 +308,11 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
   if (model_metadata.count("vaip_model_md5sum") > 0) {
     return model_metadata.at("vaip_model_md5sum");
   }
-  if (ParseEnvironmentVariableWithDefault("XLNX_ENABLE_FILE_BASED_CACHE_KEY", "0") != "0") {
+  if (ParseEnvironmentVariableWithDefault<std::string>(
+        "XLNX_ENABLE_FILE_BASED_CACHE_KEY", "0") != "0") {
     Path& model_path = graph_viewer.ModelPath();
     if (!model_path.IsEmpty()) {
-      // `xir::get_md5_of_file()`
+      return HashFileContentWithMD5(model_path.ToPathString());
     }
   }
   return GetModelSignature(graph_viewer);

@@ -8,6 +8,12 @@
 // 1st-party headers/libs.
 #include "core/providers/shared_library/provider_api.h"
 
+// 3rd-party headers/libs.
+#include "./md5.h"
+
+
+namespace fs = std::filesystem;
+
 namespace onnxruntime {
 
 static constexpr const char* kEPContextOp = "EPContext";
@@ -42,7 +48,7 @@ void DumpEPContextModel(std::unique_ptr<Model>&, const std::string&);
 
 bool ValidateEPContextNode(const Graph&);
 
-std::string RetrieveEPContextCache(const Graph&, bool binary_mode = true);
+std::string RetrieveEPContextCache(const Graph&, const PathString&, bool binary_mode = true);
 
 std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph&);
 
@@ -56,7 +62,7 @@ const Path& GetTopLevelModelPath(const GraphViewer&);
 bool GetEPContextModelFileLocation(
     const std::string&, const PathString&, bool, PathString&);
 
-// The file for EP context binary is in the same folder as the EP context model file.
+// The file for EP context cache is in the same folder as the EP context model file.
 PathString GetEPContextCacheFileLocation(const PathString&, const PathString&);
 
 std::string Slurp(const fs::path&);
@@ -65,12 +71,12 @@ std::string GetBackendCompileCache(const fs::path&);
 
 void RestoreBackendCompileCache(const fs::path&, const std::string&);
 
-// Different from `onnxruntime::GraphViewer::GetNodesInTopologicalOrder()`.
-std::vector<NodeIndex> GetNodeIndicesInTopologicalOrder(const GraphViewer&);
-
 std::vector<const NodeArg*> FilterOutputNodeArgs(const Node&);
 
-// TODO: VitisAI specifiec MD5 algorithm selection is pending.
+std::vector<int64_t> GetNodeArgShape_Int64(const NodeArg&);
+
 std::string GetModelSignature(const GraphViewer&);
+
+std::string HashFileContentWithMD5(const std::string&);
 
 }  // namespace onnxruntime

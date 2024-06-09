@@ -8,7 +8,6 @@
 
 #include "ep_context_utils.h"
 
-namespace fs = std::filesystem;
 
 namespace onnxruntime {
 
@@ -46,7 +45,8 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
     // "status"
     auto* p_metadata_props_2 = p_func_proto->add_metadata_props();
     *(p_metadata_props_2->mutable_key()) = "meta_def_status";
-    *(p_metadata_props_2->mutable_value()) = std::to_string(static_cast<int>(p_meta_def->status()));
+    *(p_metadata_props_2->mutable_value()) =
+      std::to_string(static_cast<int>(p_meta_def->status()));
     // TODO: `MetaDef::type_and_shape_inference_function`.
   }
   auto p_parent_graph_proto = parent_graph.ToGraphProto();
@@ -72,8 +72,9 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
   }
 #endif
   auto* p_metadata_props_3 = p_func_proto->add_metadata_props();
-  *p_metadata_props_3->mutable_key() = "schema_source";
-  *p_metadata_props_3->mutable_value() = std::to_string(static_cast<uint8_t>(sub_graph.GetSchemaSource()));
+  *(p_metadata_props_3->mutable_key()) = "schema_source";
+  *(p_metadata_props_3->mutable_value()) =
+    std::to_string(static_cast<uint8_t>(sub_graph.GetSchemaSource()));
   return p_func_proto;
 }
 
@@ -117,10 +118,12 @@ std::unique_ptr<IndexedSubGraph> ConvertFunctionProtoToIndexedSubGraph(
   auto& isg_nodes = p_isg->Nodes();
   for (int i = 0, l = p_func_proto->node_size(); i < l; i++) {
     const auto& node_proto = p_func_proto->node(i);
-    isg_nodes.push_back(node_proto.attribute(const_cast<ONNX_NAMESPACE::NodeProto&>(node_proto).attribute_size() - 1).i());
+    isg_nodes.push_back(
+        node_proto.attribute(const_cast<ONNX_NAMESPACE::NodeProto&>(node_proto).attribute_size() - 1).i());
   }
   auto schema_source = static_cast<IndexedSubGraph_SourceOfSchema>(
-      std::stoi(*(const_cast<ONNX_NAMESPACE::StringStringEntryProto&>(p_func_proto->metadata_props(func_metadata_props_size - 1)).mutable_value())));
+      std::stoi(*(const_cast<ONNX_NAMESPACE::StringStringEntryProto&>(
+            p_func_proto->metadata_props(func_metadata_props_size - 1)).mutable_value())));
   p_isg->SetSchemaSource(schema_source);
   return p_isg;
 }
@@ -173,7 +176,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
 
   nlohmann::json j_obj;
   j_obj["orig_graph_name"] = graph_viewer.Name();
-  j_obj["orig_model_path"] = graph_viewer.ModelPath().ToPathString();
+  j_obj["orig_model_path"] = PathToUTF8String(graph_viewer.ModelPath().ToPathString());
   j_obj["orig_model_proto_ser_str"] = ser_buf;
   return j_obj.dump();
 }
@@ -213,7 +216,9 @@ std::unique_ptr<Model> CreateEPContexModel(
   p_attr_1->set_name(kEPCacheContextAttr);
   // p_attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
   p_attr_1->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
-  p_attr_1->set_s(embed_mode == 0 ? ctx_cache_file_loc : serialized_ctx_cache);
+  // Relative to the ONNX model file.
+  p_attr_1->set_s(
+      embed_mode == 0 ? fs::path(ctx_cache_file_loc).filename().string() : serialized_ctx_cache);
   // Attr "source".
   auto p_attr_2 = ONNX_NAMESPACE::AttributeProto::Create();
   p_attr_2->set_name(kSourceAttr);
@@ -274,7 +279,8 @@ bool ValidateEPContextNode(const Graph& graph) {
   return true;
 }
 
-std::string RetrieveEPContextCache(const Graph& graph, bool binary_mode = true) {
+std::string RetrieveEPContextCache(
+    const Graph& graph, const PathString& ep_ctx_model_loc, bool binary_mode) {
   if (!ValidateEPContextNode(graph)) {
     ORT_THROW("Invalid EP context model for Vitis AI");
   }
@@ -286,12 +292,14 @@ std::string RetrieveEPContextCache(const Graph& graph, bool binary_mode = true) 
   if (embed_mode) {
     return ep_ctx_cache;
   }
-  fs::path ep_ctx_file_loc(ep_ctx_cache);
+  fs::path ep_ctx_fs_path(ep_ctx_model_loc);
+  ep_ctx_fs_path.replace_filename(fs:path(ep_ctx_cache));
   // TODO: Validaion of the file location to make sure security is met.
-  if (!fs::exists(ep_ctx_file_loc) || !fs::is_regular_file(ep_ctx_file_loc)) {
+  if (!fs::exists(ep_ctx_fs_path) || !fs::is_regular_file(ep_ctx_fs_path)) {
     ORT_THROW("File for EP context cache is missing");
   }
-  std::ifstream ifs(ep_ctx_cache, std::ios::in | (binary_mode ? std::ios::binary : 0));
+  auto open_mode = binary_mode ? (std::ios::in | std::ios::binary) : std::ios::in;
+  std::ifstream ifs(ep_ctx_cache, open_mode);
   if (!ifs.is_open()) {
     ORT_THROW("Exception opening EP context cache file");
   }
@@ -380,13 +388,13 @@ bool GetEPContextModelFileLocation(
       ep_ctx_model_file_loc = model_path_str;
     } else {
       ep_ctx_model_file_loc =
-          ToPathString(fs::path(model_path_str).stem().string() + "_ctx.onnx");
+          ToPathString(fs::path(model_path_str).replace_extension(fs::path("_ctx.onnx")));
     }
   }
   return !ep_ctx_model_file_loc.empty() && fs::exists(ep_ctx_model_file_loc) && fs::is_regular_file(ep_ctx_model_file_loc);
 }
 
-// The file for EP context binary is in the same folder as the EP context model file.
+// The file for EP context cache is in the same folder as the EP context model file.
 PathString GetEPContextCacheFileLocation(
     const PathString& ep_ctx_model_file_loc, const PathString& model_path_str) {
   if (!ep_ctx_model_file_loc.empty()) {
@@ -420,12 +428,14 @@ std::string GetBackendCompileCache(const fs::path& backend_cache_file_location) 
 void RestoreBackendCompileCache(
     const fs::path& backend_cache_file_location, const std::string& compile_cache) {
   if (!std::ofstream(backend_cache_file_location, std::ios::out | std::ios::trunc).write(compile_cache.data(), compile_cache.length()).good()) {
-    // TODO: Logging.
+    LOGS_DEFAULT(WARNING) << "[VitisAI EP] Failed to restore backend compilation cache: " << backend_cache_file_location;
+  } else {
+    LOGS_DEFAULT(WARNING) << "[VitisAI EP] Succeeded to restore backend compilation cache: " << backend_cache_file_location;
   }
 }
 
-// Different from `onnxruntime::GraphViewer::GetNodesInTopologicalOrder()`.
-std::vector<NodeIndex> GetNodeIndicesInTopologicalOrder(const GraphViewer& graph_viewer) {
+// `onnxruntime::GraphViewer::GetNodesInTopologicalOrder()`
+static std::vector<NodeIndex> GetNodeIndicesInTopologicalOrder(const GraphViewer& graph_viewer) {
   const auto& node_arg_ptrs = graph_viewer.GetOutputs();
   std::vector<const Node*> leaf_node_ptrs;
   leaf_node_ptrs.reserve(node_arg_ptrs.size());
@@ -443,7 +453,7 @@ std::vector<NodeIndex> GetNodeIndicesInTopologicalOrder(const GraphViewer& graph
       leaf_node_ptrs,  // from
       nullptr,         // enter
       [&node_indices](const Node* p_node) mutable {
-        node_indices.push_back(p_node.Index());
+        node_indices.push_back(p_node->Index());
       },        // leave
       nullptr,  // comp
       nullptr   // stop
@@ -470,17 +480,54 @@ std::vector<const NodeArg*> FilterOutputNodeArgs(const Node& node) {
   return res;
 }
 
-// TODO: VitisAI specifiec MD5 algorithm selection is pending.
+std::vector<int64_t> GetNodeArgShape_Int64(const NodeArg& node_arg) {
+  const auto* p_shape_proto = node_arg.Shape();
+  if (p_shape_proto == nullptr) {
+    return std::vector<int64_t>();
+  }
+  int num_dims = p_shape_proto->dim_size();
+  std::vector<int64_t> shape_vec;
+  shape_vec.reserve(num_dims);
+  for (auto i = 0; i < num_dims; i++) {
+    auto& curr_dim = p_shape_proto->dim(i);
+    shape_vec.push_back(curr_dim.has_dim_value() ? curr_dim.dim_value() : (int64_t)-1);
+  }
+  return shape_vec;
+}
+
 std::string GetModelSignature(const GraphViewer& graph_viewer) {
-  return "";
-#if 0
-  for (auto ni : GetNodeIndicesInTopologicalOrder(graph_viewer)) {
+  MD5 md5_obj;
+  for (auto ni : graph_viewer.GetNodesInTopologicalOrder()) {
     auto* p_node = graph_viewer.GetNode(ni);
     for (const auto* p_node_arg : FilterOutputNodeArgs(*p_node)) {
       auto node_arg_name = p_node_arg->Name();
+      md5_obj.add(node_arg_name.data(), node_arg_name.length());
+      auto node_arg_shape = GetNodeArgShape_Int64(*p_node_arg);
+      if (!node_arg_shape.empty()) {
+        md5_obj.add(node_arg_shape.data(), node_arg_shape.size() * sizeof(node_arg_shape.at(0)));
+      }
     }
   }
-#endif
+  return md5_obj.getHash();
+}
+
+std::string HashFileContentWithMD5(const std::string& file_location) {
+  std::ifstream ifs(file_location, std::ios::in | std::ios::binary);
+  if (!ifs.is_open()) {
+    // Logging.
+  }
+  constexpr const std::uint32_t kBufferSize = 1024;
+  char* buffer = new char[kBufferSize];
+  MD5 md5_obj;
+  while (ifs.read(buffer, kBufferSize)) {
+    md5_obj.add(buffer, kBufferSize);
+  }
+  auto num_in = ifs.gcount();
+  md5_obj.add(buffer, num_in);
+  delete[] buffer;
+  file.close();
+  auto hashval = md5_obj.getHash();
+  return hashval;
 }
 
 }  // namespace onnxruntime
