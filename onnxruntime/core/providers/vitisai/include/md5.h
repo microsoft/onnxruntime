@@ -12,14 +12,13 @@
 // define fixed size integer types
 #ifdef _MSC_VER
 // Windows
-typedef unsigned __int8  uint8_t;
+typedef unsigned __int8 uint8_t;
 typedef unsigned __int32 uint32_t;
 typedef unsigned __int64 uint64_t;
 #else
 // GCC
 #include <stdint.h>
 #endif
-
 
 /// compute MD5 hash
 /** Usage:
@@ -34,11 +33,12 @@ typedef unsigned __int64 uint64_t;
       md5.add(pointer to fresh data, number of new bytes);
     std::string myHash3 = md5.getHash();
   */
-class MD5 //: public Hash
+class MD5  //: public Hash
 {
-public:
+ public:
   /// split into 64 byte blocks (=> 512 bits), hash is 16 bytes long
-  enum { BlockSize = 512 / 8, HashBytes = 16 };
+  enum { BlockSize = 512 / 8,
+         HashBytes = 16 };
 
   /// same as reset()
   MD5();
@@ -54,12 +54,12 @@ public:
   /// return latest hash as 32 hex characters
   std::string getHash();
   /// return latest hash as bytes
-  void        getHash(unsigned char buffer[HashBytes]);
+  void getHash(unsigned char buffer[HashBytes]);
 
   /// restart
   void reset();
 
-private:
+ private:
   /// process 64 bytes
   void processBlock(const void* data);
   /// process everything left in the internal buffer
@@ -68,9 +68,9 @@ private:
   /// size of processed data in bytes
   uint64_t m_numBytes;
   /// valid bytes in m_buffer
-  size_t   m_bufferSize;
+  size_t m_bufferSize;
   /// bytes not processed yet
-  uint8_t  m_buffer[BlockSize];
+  uint8_t m_buffer[BlockSize];
 
   enum { HashValues = HashBytes / 4 };
   /// hash, stored as integers

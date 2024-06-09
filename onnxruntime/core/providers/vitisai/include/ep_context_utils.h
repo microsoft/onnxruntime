@@ -11,7 +11,6 @@
 // 3rd-party headers/libs.
 #include "./md5.h"
 
-
 namespace fs = std::filesystem;
 
 namespace onnxruntime {
@@ -73,7 +72,7 @@ void RestoreBackendCompileCache(const fs::path&, const std::string&);
 
 std::vector<const NodeArg*> FilterOutputNodeArgs(const Node&);
 
-std::vector<int64_t> GetNodeArgShape_Int64(const NodeArg&);
+std::vector<int64_t> GetNodeArgShape_I64(const NodeArg&);
 
 std::string GetModelSignature(const GraphViewer&);
 

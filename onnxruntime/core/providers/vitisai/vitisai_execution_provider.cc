@@ -309,7 +309,7 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
     return model_metadata.at("vaip_model_md5sum");
   }
   if (ParseEnvironmentVariableWithDefault<std::string>(
-        "XLNX_ENABLE_FILE_BASED_CACHE_KEY", "0") != "0") {
+          "XLNX_ENABLE_FILE_BASED_CACHE_KEY", "0") != "0") {
     Path& model_path = graph_viewer.ModelPath();
     if (!model_path.IsEmpty()) {
       return HashFileContentWithMD5(model_path.ToPathString());

@@ -8,7 +8,6 @@
 
 #include "ep_context_utils.h"
 
-
 namespace onnxruntime {
 
 std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionProto(
@@ -46,7 +45,7 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
     auto* p_metadata_props_2 = p_func_proto->add_metadata_props();
     *(p_metadata_props_2->mutable_key()) = "meta_def_status";
     *(p_metadata_props_2->mutable_value()) =
-      std::to_string(static_cast<int>(p_meta_def->status()));
+        std::to_string(static_cast<int>(p_meta_def->status()));
     // TODO: `MetaDef::type_and_shape_inference_function`.
   }
   auto p_parent_graph_proto = parent_graph.ToGraphProto();
@@ -74,7 +73,7 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
   auto* p_metadata_props_3 = p_func_proto->add_metadata_props();
   *(p_metadata_props_3->mutable_key()) = "schema_source";
   *(p_metadata_props_3->mutable_value()) =
-    std::to_string(static_cast<uint8_t>(sub_graph.GetSchemaSource()));
+      std::to_string(static_cast<uint8_t>(sub_graph.GetSchemaSource()));
   return p_func_proto;
 }
 
@@ -122,8 +121,7 @@ std::unique_ptr<IndexedSubGraph> ConvertFunctionProtoToIndexedSubGraph(
         node_proto.attribute(const_cast<ONNX_NAMESPACE::NodeProto&>(node_proto).attribute_size() - 1).i());
   }
   auto schema_source = static_cast<IndexedSubGraph_SourceOfSchema>(
-      std::stoi(*(const_cast<ONNX_NAMESPACE::StringStringEntryProto&>(
-            p_func_proto->metadata_props(func_metadata_props_size - 1)).mutable_value())));
+      std::stoi(*(const_cast<ONNX_NAMESPACE::StringStringEntryProto&>(p_func_proto->metadata_props(func_metadata_props_size - 1)).mutable_value())));
   p_isg->SetSchemaSource(schema_source);
   return p_isg;
 }
@@ -293,7 +291,7 @@ std::string RetrieveEPContextCache(
     return ep_ctx_cache;
   }
   fs::path ep_ctx_fs_path(ep_ctx_model_loc);
-  ep_ctx_fs_path.replace_filename(fs:path(ep_ctx_cache));
+  ep_ctx_fs_path.replace_filename(fs::path(ep_ctx_cache));
   // TODO: Validaion of the file location to make sure security is met.
   if (!fs::exists(ep_ctx_fs_path) || !fs::is_regular_file(ep_ctx_fs_path)) {
     ORT_THROW("File for EP context cache is missing");
@@ -420,6 +418,8 @@ std::string Slurp(const fs::path& file_location) {
 
 std::string GetBackendCompileCache(const fs::path& backend_cache_file_location) {
   if (!fs::exists(backend_cache_file_location) || !fs::is_regular_file(backend_cache_file_location)) {
+    LOGS_DEFAULT(WARNING) << "[VitisAI EP]Bad file for compilation cache: "
+                          << backend_cache_file_location;
     return "";
   }
   return Slurp(backend_cache_file_location);
@@ -427,11 +427,21 @@ std::string GetBackendCompileCache(const fs::path& backend_cache_file_location) 
 
 void RestoreBackendCompileCache(
     const fs::path& backend_cache_file_location, const std::string& compile_cache) {
-  if (!std::ofstream(backend_cache_file_location, std::ios::out | std::ios::trunc).write(compile_cache.data(), compile_cache.length()).good()) {
-    LOGS_DEFAULT(WARNING) << "[VitisAI EP] Failed to restore backend compilation cache: " << backend_cache_file_location;
-  } else {
-    LOGS_DEFAULT(WARNING) << "[VitisAI EP] Succeeded to restore backend compilation cache: " << backend_cache_file_location;
+  std::ofstream ofs(backend_cache_file_location, std::ios::out | std::ios::trunc);
+  if (!ofs.is_open()) {
+    LOGS_DEFAULT(WARNING) << "[VitisAI EP]Failed to open a file for restoring backend compilation cache: "
+                          << backend_cache_file_location;
+    return;
   }
+  ofs.write(compile_cache.data(), compile_cache.length());
+  if (!ofs.good()) {
+    ofs.close();
+    LOGS_DEFAULT(WARNING) << "[VitisAI EP]Failed to restore backend compilation cache: "
+                          << backend_cache_file_location;
+    return;
+  }
+  LOGS_DEFAULT(VERBOSE) << "[VitisAI EP]Succeeded to restore backend compilation cache: "
+                        << backend_cache_file_location;
 }
 
 // `onnxruntime::GraphViewer::GetNodesInTopologicalOrder()`
@@ -466,10 +476,14 @@ std::vector<const NodeArg*> FilterOutputNodeArgs(const Node& node) {
   auto num_ptrs = node_arg_ptrs.size();
   std::vector<const NodeArg*> res(num_ptrs);
   for (auto i = 0u; i < num_ptrs; i++) {
-    // Some operators have outputs that are optional. When an actual output parameter of an operator is not specified, the operator implementation MAY forgo computing values for such outputs.
-    // There are two ways to leave an optional input or output unspecified: the first, available only for trailing inputs and outputs, is to simply not provide that input; the second is to use an empty string in place of an input or output name.
-    // Oo optional output maybe output != null && false output->Exists().
-    // Our processing : nullptr means an optional output, and client code needs to handle nullptr.
+    // Some operators have outputs that are optional.
+    // When an actual output parameter of an operator is not specified,
+    // the operator implementation MAY forgo computing values for such outputs.
+    // There are two ways to leave an optional input or output unspecified:
+    // the first, available only for trailing inputs and outputs, is to simply not provide that input;
+    // the second is to use an empty string in place of an input or output name.
+    // So optional output maybe output != null && false output->Exists().
+    // Our processing: nullptr means an optional output, and client code needs to handle nullptr.
     assert(node_arg_ptrs[i] != nullptr);
     if (node_arg_ptrs[i]->Exists()) {
       res[i] = node_arg_ptrs[i];
@@ -480,7 +494,7 @@ std::vector<const NodeArg*> FilterOutputNodeArgs(const Node& node) {
   return res;
 }
 
-std::vector<int64_t> GetNodeArgShape_Int64(const NodeArg& node_arg) {
+std::vector<int64_t> GetNodeArgShape_I64(const NodeArg& node_arg) {
   const auto* p_shape_proto = node_arg.Shape();
   if (p_shape_proto == nullptr) {
     return std::vector<int64_t>();
@@ -502,7 +516,7 @@ std::string GetModelSignature(const GraphViewer& graph_viewer) {
     for (const auto* p_node_arg : FilterOutputNodeArgs(*p_node)) {
       auto node_arg_name = p_node_arg->Name();
       md5_obj.add(node_arg_name.data(), node_arg_name.length());
-      auto node_arg_shape = GetNodeArgShape_Int64(*p_node_arg);
+      auto node_arg_shape = GetNodeArgShape_I64(*p_node_arg);
       if (!node_arg_shape.empty()) {
         md5_obj.add(node_arg_shape.data(), node_arg_shape.size() * sizeof(node_arg_shape.at(0)));
       }
@@ -514,7 +528,8 @@ std::string GetModelSignature(const GraphViewer& graph_viewer) {
 std::string HashFileContentWithMD5(const std::string& file_location) {
   std::ifstream ifs(file_location, std::ios::in | std::ios::binary);
   if (!ifs.is_open()) {
-    // Logging.
+    LOGS_DEFAULT(ERROR) << "Failed to open file for checksum: " << file_location;
+    ORT_THROW("Failed to open file for checksum");
   }
   constexpr const std::uint32_t kBufferSize = 1024;
   char* buffer = new char[kBufferSize];
@@ -522,12 +537,11 @@ std::string HashFileContentWithMD5(const std::string& file_location) {
   while (ifs.read(buffer, kBufferSize)) {
     md5_obj.add(buffer, kBufferSize);
   }
-  auto num_in = ifs.gcount();
-  md5_obj.add(buffer, num_in);
+  auto num_last_read = ifs.gcount();
+  md5_obj.add(buffer, num_last_read);
   delete[] buffer;
-  file.close();
-  auto hashval = md5_obj.getHash();
-  return hashval;
+  ifs.close();
+  return md5_obj.getHash();
 }
 
 }  // namespace onnxruntime
