@@ -662,8 +662,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   const std::filesystem::path& model_path = graph.ModelPath();
 
   if (!ep_context_path.empty()) {
-    // On Windows here we explicitly cast the ep_context_path string to UTF-16 because we assume ep_context_path is in UTF-8
-    context_cache_path = ToPathString(ep_context_path);
+    context_cache_path = ep_context_path;
   } else if (!model_path.empty()) {
     context_cache_path = model_path / ORT_TSTR("_ctx.onnx");
   }
