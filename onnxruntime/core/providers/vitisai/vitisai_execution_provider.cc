@@ -42,7 +42,7 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
 
 #if 0
 VitisAIExecutionProvider::~VitisAIExecutionProvider() {
-  // TODO: EP context related sources.
+  // TODO: EP context related resources.
 }
 #endif
 
@@ -57,6 +57,8 @@ void VitisAIExecutionProvider::LoadEPContexModelFromFile() const {
     auto& logger = logging::LoggingManager::DefaultLogger();
     p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
     LOGS_DEFAULT(VERBOSE) << "Loaded EP context model from: " << ep_ctx_model_file_loc_;
+  } else if (ep_ctx_model_file_loc_.empty()) {
+    LOGS_DEFAULT(WARNING) << "Cannot load an EP-context model due to bad file path";
   }
 }
 
@@ -97,7 +99,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
   if (!ep_ctx_embed_mode_) {
     if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
-      ORT_THROW("Failed to get the path of the EP-context ONNX model");
+      ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
     }
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc | std::ios::binary);
@@ -129,7 +131,9 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
   if (!ep_ctx_embed_mode_) {
-    GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_);
+    if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
+      ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
+    }
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc);
     if (!ep_ctx_cache_ofs.is_open()) {
@@ -197,7 +201,8 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
   if (is_ep_ctx_model) {
     auto cache_dir = GetBackendCompileCacheDir();
     auto cache_key = GetBackendCompileCacheKey(graph_viewer);
-    fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
+    fs::path backend_cache_file_loc(cache_dir + "/" + cache_key + "/context.json");
+    LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
     auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), false);
     RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
   } else {
@@ -212,8 +217,11 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       auto cache_dir = GetBackendCompileCacheDir();
       auto cache_key = GetBackendCompileCacheKey(graph_viewer);
       fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
+      LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
       auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph());
       RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
+    } else {
+      LOGS_DEFAULT(WARNING) << "Failed to get EP context model file";
     }
   }
 
@@ -312,7 +320,7 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
           "XLNX_ENABLE_FILE_BASED_CACHE_KEY", "0") != "0") {
     Path& model_path = graph_viewer.ModelPath();
     if (!model_path.IsEmpty()) {
-      return HashFileContentWithMD5(model_path.ToPathString());
+      return HashFileContentWithMD5(PathToUTF8String(model_path.ToPathString()));
     }
   }
   return GetModelSignature(graph_viewer);
