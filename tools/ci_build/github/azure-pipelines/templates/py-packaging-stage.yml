@@ -267,7 +267,7 @@ stages:
       - ${{ if eq(parameters.publish_symbols, true) }}:
         - task: PublishSymbols@2
           displayName: 'Publish symbols'
-          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/snnn/py1'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
           inputs:
             SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
             SearchPattern: |
@@ -280,7 +280,7 @@ stages:
  
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8'))), eq(variables['Build.SourceBranch'], 'refs/heads/snnn/py1'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
