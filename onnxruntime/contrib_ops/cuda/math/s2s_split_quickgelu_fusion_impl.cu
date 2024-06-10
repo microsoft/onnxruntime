@@ -59,8 +59,8 @@ __device__ inline T QuickGeluCompute(const T inp1, const T inp2, const T alpha_v
 template <typename T>
 __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T* input, T* output) {
   // TODO: Should I use long int?
-  int input_line_stride = dim * 2;
-  int output_line_stride = dim;
+  // int input_line_stride = dim * 2;
+  // int output_line_stride = dim;
   // int offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
   // int offset_in2 = offset_in1 + dim;
   // int offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
@@ -74,7 +74,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   for (int i = 0; i < kElementsPerThread; i++) {
     if (offset_in1 % (2 * dim) < dim) {
       output[(offset_in1 + 1) / 2] = QuickGeluCompute(input[offset_in1], input[offset_in1 + dim], alpha_val);
-      offset_in1 += NumThreadsPerBlock;
+      offset_in1 += kElementsPerThread;
     }
   }
 
