@@ -57,14 +57,29 @@
 			}
 		}
 	};
+
+	const toggleScroll = () => {
+    if (scrollerRef) {
+      const currentState = window.getComputedStyle(scrollerRef).animationPlayState;
+      scrollerRef.style.animationPlayState = currentState === 'running' ? 'paused' : 'running';
+    }
+  };
+
+  const handleKeyDown = (event: { key: string; preventDefault: () => void; }) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault(); // Prevent default spacebar scrolling behavior
+      toggleScroll();
+    }
+  };
 </script>
 
 <div bind:this={containerRef} class={cn('scroller relative z-2 overflow-hidden ', className)}>
+	<button class="hover:bg-primary focus:bg-primary menu-item py-2 sr-only focus:not-sr-only" on:keydown={handleKeyDown} on:click={toggleScroll}>Toggle scrolling</button>
 	<ul
 		bind:this={scrollerRef}
 		class={cn(
 			' flex w-max min-w-full shrink-0 flex-nowrap gap-4 py-4',
-			start && 'animate-scroll ',
+			start && 'animate-scroll',
 			pauseOnHover && 'hover:[animation-play-state:paused]'
 		)}
 	>

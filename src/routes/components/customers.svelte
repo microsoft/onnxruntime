@@ -185,7 +185,7 @@
 		speed="slow"
 	/>
 	<div class="container mx-auto md:px-16 px-8 lg:my-10">
-		<h1 class="text-2xl pt-10 pb-4">Learn more about how to use ONNX Runtime with</h1>
+		<h2 class="text-2xl pt-10 pb-4">Learn more about how to use ONNX Runtime with</h2>
 		<div class="grid md:grid-cols-3 grid-cols-1 gap-4 mx-auto pb-10">
 			<a
 				href="./pytorch"

@@ -7,6 +7,8 @@
 	import cpp from 'svelte-highlight/languages/cpp';
 	import FaLink from 'svelte-icons/fa/FaLink.svelte';
 	import { blur, fade } from 'svelte/transition';
+	import { d } from 'svelte-highlight/languages';
+	import github from "svelte-highlight/styles/github";
 
 	let pythonCode =
 		'import onnxruntime as ort\n# Load the model and create InferenceSession\nmodel_path = "path/to/your/onnx/model"\nsession = ort.InferenceSession(model_path)\n# Load and preprocess the input image inputTensor\n...\n# Run inference\noutputs = session.run(None {"input": inputTensor})\nprint(outputs)';
@@ -45,30 +47,40 @@
 		activeTab = tabText;
 		activeTab = activeTab;
 	};
-</script>
+	let innerWidth = 0
 
+</script>
+<svelte:window bind:innerWidth/>
+<svelte:head>
+  {@html github}
+</svelte:head>
 <div class="container mx-auto px-4">
 	<h3 class="text-xl mb-4 text-center">
 		Use ONNX Runtime with your favorite language and get started with the tutorials:
 	</h3>
 	<div class="grid-cols-1 lg:grid-cols-3 gap-4 grid">
 		<div class="col-span-1 mx-auto mt-6 mx-4 lg:mx-0 lg:ml-10">
-			<div class="join join-vertical gap-4 w-full">
-				<a href="./getting-started" class="btn btn-primary rounded-sm btn-block">Quickstart</a>
-				<a rel="external" href="./docs/tutorials" class="btn btn-primary rounded-sm btn-block"
+			<div class="mx-auto">
+				<a href="./getting-started" class="my-2 btn btn-primary rounded-sm btn-block">Quickstart</a>
+				<a rel="external" href="./docs/tutorials" class="my-2 btn btn-primary rounded-sm btn-block"
 					>Tutorials</a
 				>
-				<a rel="external" href="./docs/install" class="btn btn-primary rounded-sm btn-block"
+				<a rel="external" href="./docs/install" class="my-2 btn btn-primary rounded-sm btn-block"
 					>Install ONNX Runtime</a
 				>
 				<a
 					rel="external"
 					href="./docs/execution-providers"
-					class="btn btn-primary rounded-sm btn-block">Hardware acceleration</a
+					class="my-2 btn btn-primary rounded-sm btn-block">Hardware acceleration</a
+				>
+				<a
+					rel="external"
+					href="./docs/get-started"
+					class="lg:hidden my-2 btn btn-primary rounded-sm btn-block">Get started (Docs)</a
 				>
 			</div>
 		</div>
-		<div class="hidden lg:block col-span-2 mx-auto min-w-[675px] min-h-[400px]">
+		<div class="col-span-2 lg:mx-auto lg:min-w-[675px] min-h-[400px] max-w-[100vw]">
 			<div class="tabs tabs-bordered">
 				<p
 					on:mouseenter={handleClick}
@@ -81,9 +93,9 @@
 				</p>
 				<p
 					on:mouseenter={handleClick}
-					class="tab tab-lg {activeTab === 'JavaScript' ? 'tab-active' : ''}"
+					class="tab tab-lg {activeTab === 'JavaScript' || activeTab == 'JS' ? 'tab-active' : ''}"
 				>
-					JavaScript
+					{innerWidth >=  1024 ? 'JavaScript' : 'JS'}
 				</p>
 				<p
 					on:mouseenter={handleClick}
@@ -96,11 +108,11 @@
 				</p>
 				<button
 					on:click={handleClick}
-					class="tab tab-lg {activeTab === 'More..' ? 'tab-active' : ''}">More..</button
+					class="tab tab-lg hidden lg:block {activeTab === 'More..' ? 'tab-active' : ''}">More..</button
 				>
 			</div>
 			{#if activeTab === 'Python'}
-				<Highlight language={python} code={pythonCode} />
+				<Highlight class="bg-primary" language={python} code={pythonCode} />
 				<div class="div" in:fade={{ duration: 500 }}>
 					<a
 						href="https://onnxruntime.ai/docs/get-started/with-python"
@@ -117,7 +129,7 @@
 						>C# Docs<span class="w-5 h-5"><FaLink /></span></a
 					>
 				</div>
-			{:else if activeTab === 'JavaScript'}
+			{:else if activeTab === 'JavaScript' || activeTab === 'JS'}
 				<div class="div" in:fade={{ duration: 500 }}>
 					<Highlight language={javascript} code={javascriptCode} />
 					<a
