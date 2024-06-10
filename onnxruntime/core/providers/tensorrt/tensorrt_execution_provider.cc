@@ -300,7 +300,7 @@ void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString
 
 #if NV_TENSORRT_MAJOR > 8
 void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
-                                        uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
+                                             uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
   // even for empty tensors, so allocate a dummy byte.
   size = std::max(size, static_cast<uint64_t>(1));
@@ -321,7 +321,7 @@ void* OutputAllocator::reallocateOutput(char const* /*tensorName*/, void* /*curr
                                         uint64_t /*alignment*/) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
   // even for empty tensors, so allocate a dummy byte.
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] reallocateOutput() is deprecated after TensorRT 8.6";
+  LOGS_DEFAULT(WARNING) << "[TensorRT EP] reallocateOutput() is deprecated after TensorRT 8.6";
   size = std::max(size, static_cast<uint64_t>(1));
   if (size > allocated_size) {
     cudaFree(outputPtr);
