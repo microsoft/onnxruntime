@@ -126,6 +126,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const onnxruntime::GraphViewer& graph_viewer) const {
   auto cache_dir = GetBackendCompileCacheDir();
   auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+  LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
   fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
   auto backend_cache_str = GetBackendCompileCache(backend_cache_file_loc);
   auto& logger = logging::LoggingManager::DefaultLogger();
@@ -199,6 +200,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     if (is_ep_ctx_model) {
       auto cache_dir = GetBackendCompileCacheDir();
       auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+      LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
       fs::path backend_cache_file_loc(cache_dir + "/" + cache_key + "/context.json");
       LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
       auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
@@ -210,6 +212,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
         LoadEPContexModelFromFile();
         auto cache_dir = GetBackendCompileCacheDir();
         auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+        LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
         fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
         LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
         auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_, false);
@@ -302,6 +305,7 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
   if (info_.count("cacheKey") > 0) {
     const std::string& cache_key = info_.at("cacheKey");
     if (!cache_key.empty()) {
+      LOGS_DEFAULT(VERBOSE) << "User configured cached key " << cache_key;
       return cache_key;
     }
   }
@@ -309,15 +313,21 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
   const auto& graph = graph_viewer.GetGraph();
   const auto& model_metadata = graph.GetModel().MetaData();
   if (model_metadata.count("vaip_model_md5sum") > 0) {
-    return model_metadata.at("vaip_model_md5sum");
+    const auto& cache_key = model_metadata.at("vaip_model_md5sum");
+    if (!cache_key.empty()) {
+      LOGS_DEFAULT(VERBOSE) << "Model metadata cached key " << cache_key;
+      return cache_key;
+    }
   }
   if (ParseEnvironmentVariableWithDefault<std::string>(
           "XLNX_ENABLE_FILE_BASED_CACHE_KEY", "0") != "0") {
     const Path& model_path = graph_viewer.ModelPath();
     if (!model_path.IsEmpty()) {
+      LOGS_DEFAULT(VERBOSE) << "Model file MD5 cached key";
       return HashFileContentWithMD5(PathToUTF8String(model_path.ToPathString()));
     }
   }
+  LOGS_DEFAULT(VERBOSE) << "Model signature cached key";
   return GetModelSignature(graph_viewer);
 }
 
