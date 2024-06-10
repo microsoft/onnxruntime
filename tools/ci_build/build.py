@@ -1158,6 +1158,7 @@ def generate_build_tree(
                     f"Float 8 types require CUDA>=11.8. They must be disabled on CUDA=={args.cuda_version}. "
                     f"Add '--disable_types float8' to your command line. See option disable_types."
                 )
+        cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
