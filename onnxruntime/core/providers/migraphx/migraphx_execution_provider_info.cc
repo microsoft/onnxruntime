@@ -22,7 +22,6 @@ constexpr const char* kSaveModelPath = "migx_save_model_name";
 constexpr const char* kLoadCompiledModel = "migx_load_compiled_model";
 constexpr const char* kLoadModelPath = "migx_load_model_name";
 
-
 }  // namespace provider_option_names
 }  // namespace migraphx
 
