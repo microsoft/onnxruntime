@@ -298,7 +298,7 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheDir() const {
 std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
     const GraphViewer& graph_viewer) const {
   if (info_.count("cacheKey") > 0) {
-    std::string& cache_key = info_.at("cacheKey");
+    const std::string& cache_key = info_.at("cacheKey");
     if (!cache_key.empty()) {
       return cache_key;
     }
