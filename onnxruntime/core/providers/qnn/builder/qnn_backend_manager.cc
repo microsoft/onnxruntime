@@ -98,7 +98,7 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
     case QNN_BACKEND_ID_CPU:
       qnn_backend_type_ = QnnBackendType::CPU;
       break;
-      // TODO: update once it's ready for Widows
+      // TODO: update once it's ready for Windows
       // case QNN_BACKEND_ID_GPU:
       //  qnn_backend_type_ = QnnBackendType::GPU;
       //  break;
