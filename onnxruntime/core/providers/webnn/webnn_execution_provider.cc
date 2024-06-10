@@ -17,24 +17,13 @@
 
 namespace onnxruntime {
 
-WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags,
-                                               const std::string& webnn_threads_number, const std::string& webnn_power_flags)
+WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags)
     : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
-  // Create WebNN context and graph builder.
-  const emscripten::val ml = emscripten::val::global("navigator")["ml"];
-  if (!ml.as<bool>()) {
-    ORT_THROW("Failed to get ml from navigator.");
-  }
-  emscripten::val context_options = emscripten::val::object();
-  context_options.set("deviceType", emscripten::val(webnn_device_flags));
+
   // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
   if (webnn_device_flags.compare("cpu") == 0) {
     preferred_layout_ = DataLayout::NHWC;
     wnn_device_type_ = webnn::WebnnDeviceType::CPU;
-    // Set "numThreads" if it's not default 0.
-    if (webnn_threads_number.compare("0") != 0) {
-      context_options.set("numThreads", stoi(webnn_threads_number));
-    }
   } else {
     preferred_layout_ = DataLayout::NCHW;
     if (webnn_device_flags.compare("gpu") == 0) {
@@ -45,11 +34,8 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
       ORT_THROW("Unknown WebNN deviceType.");
     }
   }
-  if (webnn_power_flags.compare("default") != 0) {
-    context_options.set("powerPreference", emscripten::val(webnn_power_flags));
-  }
 
-  wnn_context_ = ml.call<emscripten::val>("createContext", context_options).await();
+  wnn_context_ = emscripten::val::module_property("currentContext");
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
   }
