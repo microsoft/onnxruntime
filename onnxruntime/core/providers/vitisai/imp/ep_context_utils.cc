@@ -291,6 +291,7 @@ std::string RetrieveEPContextCache(
     return ep_ctx_cache;
   }
   fs::path ep_ctx_fs_path(ep_ctx_model_loc);
+  // Attr "ep_cache_context" stores a relative path.
   ep_ctx_fs_path.replace_filename(fs::path(ep_ctx_cache));
   // TODO: Validaion of the file location to make sure security is met.
   if (!fs::exists(ep_ctx_fs_path) || !fs::is_regular_file(ep_ctx_fs_path)) {
@@ -444,6 +445,8 @@ void RestoreBackendCompileCache(
                         << backend_cache_file_location;
 }
 
+#if 0
+// TODO: To be removed.
 // `onnxruntime::GraphViewer::GetNodesInTopologicalOrder()`
 static std::vector<NodeIndex> GetNodeIndicesInTopologicalOrder(const GraphViewer& graph_viewer) {
   const auto& node_arg_ptrs = graph_viewer.GetOutputs();
@@ -470,6 +473,7 @@ static std::vector<NodeIndex> GetNodeIndicesInTopologicalOrder(const GraphViewer
   );
   return node_indices;
 }
+#endif
 
 std::vector<const NodeArg*> FilterOutputNodeArgs(const Node& node) {
   auto node_arg_ptrs = node.OutputDefs();
