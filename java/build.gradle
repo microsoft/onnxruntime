@@ -60,7 +60,8 @@ jar {
 }
 
 // Add explicit sources jar with pom file.
-task sourcesJar(type: Jar, dependsOn: classes) {
+tasks.register('sourcesJar', Jar) {
+	dependsOn classes
 	archiveClassifier = "sources"
 	from sourceSets.main.allSource
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
@@ -70,7 +71,8 @@ task sourcesJar(type: Jar, dependsOn: classes) {
 }
 
 // Add explicit javadoc jar with pom file
-task javadocJar(type: Jar, dependsOn: javadoc) {
+tasks.register('javadocJar', Jar) {
+	dependsOn javadoc
 	archiveClassifier = "javadoc"
 	from javadoc.destinationDir
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
@@ -94,7 +96,7 @@ spotless {
 
 compileJava {
 	dependsOn spotlessJava
-	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
+	options.compilerArgs += ["-h", "${layout.buildDirectory.get().toString()}/headers/"]
 	if (!JavaVersion.current().isJava8()) {
 		// Ensures only methods present in Java 8 are used
 		options.compilerArgs.addAll(['--release', '8'])
@@ -140,7 +142,7 @@ if (cmakeBuildDir != null) {
 	// generate tasks to be called from cmake
 
 	// Overwrite jar location
-	task allJar(type: Jar) {
+	tasks.register('allJar', Jar) {
 		manifest {
 			attributes('Automatic-Module-Name': project.group,
 					'Implementation-Title': 'onnxruntime',
@@ -155,23 +157,20 @@ if (cmakeBuildDir != null) {
 		from cmakeNativeLibDir
 	}
 
-	task cmakeBuild(type: Copy) {
-		from project.buildDir
+	tasks.register('cmakeBuild', Copy) {
+		from layout.buildDirectory.get()
 		include 'libs/**'
 		include 'docs/**'
 		into cmakeBuildOutputDir
+		dependsOn(allJar, sourcesJar, javadocJar, javadoc)
 	}
-	cmakeBuild.dependsOn allJar
-	cmakeBuild.dependsOn sourcesJar
-	cmakeBuild.dependsOn javadocJar
-	cmakeBuild.dependsOn javadoc
 
-	task cmakeCheck(type: Copy) {
-		from project.buildDir
+	tasks.register('cmakeCheck', Copy) {
+		from layout.buildDirectory.get()
 		include 'reports/**'
 		into cmakeBuildOutputDir
+		dependsOn(check)
 	}
-	cmakeCheck.dependsOn check
 }
 
 dependencies {
@@ -210,7 +209,7 @@ jacocoTestReport {
 	reports {
 		xml.required = true
 		csv.required = true
-		html.destination file("${buildDir}/jacocoHtml")
+		html.outputLocation = layout.buildDirectory.dir("jacocoHtml")
 	}
 }
 
@@ -225,6 +224,7 @@ publishing {
 				artifactId = mavenArtifactId
 				from components.java
 			}
+			version = project.version
 			pom {
 				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
 				description = enableTrainingApis ? trainingDescription : defaultDescription
