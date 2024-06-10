@@ -387,8 +387,10 @@ bool GetEPContextModelFileLocation(
     if (is_ep_ctx_model) {
       ep_ctx_model_file_loc = model_path_str;
     } else {
-      ep_ctx_model_file_loc =
-          ToPathString(fs::path(model_path_str).replace_extension(fs::path("_ctx.onnx")));
+      fs::path model_fs_path(model_path_str);
+      fs::path ep_ctx_model_fs_path(model_fs_path.parent_path() / model_fs_path.stem());
+      ep_ctx_model_fs_path += fs::path("_ctx.onnx");
+      ep_ctx_model_file_loc = ToPathString(ep_ctx_model_fs_path.string());
     }
   }
   // return !ep_ctx_model_file_loc.empty() && fs::exists(ep_ctx_model_file_loc) && fs::is_regular_file(ep_ctx_model_file_loc);
@@ -400,13 +402,13 @@ PathString GetEPContextCacheFileLocation(
     const PathString& ep_ctx_model_file_loc, const PathString& model_path_str) {
   if (!ep_ctx_model_file_loc.empty()) {
     fs::path ep_ctx_model_fs_path(ep_ctx_model_file_loc);
-    auto ep_ctx_cache_fs_path =
-        ep_ctx_model_fs_path.replace_extension(fs::path("__ep_ctx_cache.bin"));
+    fs::path ep_ctx_cache_fs_path(ep_ctx_model_fs_path.parent_path() / ep_ctx_model_fs_path.stem());
+    ep_ctx_cache_fs_path += fs::path("__ep_ctx_cache.bin");
     return ToPathString(ep_ctx_cache_fs_path.string());
   }
   fs::path model_fs_path(model_path_str);
-  auto ep_ctx_cache_fs_path =
-      model_fs_path.replace_extension(fs::path("__ep_ctx_cache.bin"));
+  fs::path ep_ctx_cache_fs_path(model_fs_path.parent_path() / model_fs_path.stem());
+  ep_ctx_cache_fs_path += fs::path("__ep_ctx_cache.bin");
   return ToPathString(ep_ctx_cache_fs_path.string());
 }
 
