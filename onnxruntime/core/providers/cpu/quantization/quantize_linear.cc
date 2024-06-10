@@ -798,8 +798,10 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   T* output = y.MutableData<T>();
 
   constexpr int output_type_group_ =
-      boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value       ? 2
+      boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value ? 2
+#if !defined(DISABLE_FLOAT8_TYPES)
       : boost::mp11::mp_contains<element_type_lists::AllFloat8, T>::value ? 1
+#endif
                                                                           : 0;
 
   if (x.IsDataType<float>()) {

@@ -546,7 +546,7 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
     const auto num_r_block = (N + block_size - 1) / block_size;
     const auto num_blocks = M * K * num_r_block;
     const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float) * 2),
-                                 static_cast<double>(block_size * sizeof(TOut::UnpackedType)),
+                                 static_cast<double>(block_size * sizeof(typename TOut::UnpackedType)),
                                  static_cast<double>(block_size) * 2.0};
     auto KN = K * N;
     auto qKN = (K + quant_block_size - 1) / quant_block_size * N;
@@ -571,7 +571,7 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
               auto zp = zero_point ? static_cast<int32_t>(zero_point[zp_idx >> 1].GetElem(zp_idx & 1)) : 0;
               auto sc = scale[zp_idx];
               auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc)) + zp, low, high);
-              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<TOut::UnpackedType>(v));
+              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<typename TOut::UnpackedType>(v));
             }
 
             if (n == N) {
@@ -599,7 +599,7 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
     const auto num_r_block = (K + quant_block_size - 1) / quant_block_size;
     const auto num_blocks = num_r_block * M;
     const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(float)),
-                                 static_cast<double>(quant_block_size * sizeof(TOut ::UnpackedType)),
+                                 static_cast<double>(quant_block_size * sizeof(typename TOut ::UnpackedType)),
                                  static_cast<double>(quant_block_size) * 2.0};
     concurrency::ThreadPool::TryParallelFor(
         thread_pool,
@@ -617,14 +617,14 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
 
             if (o_start & 1) {
               auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[o_start] / sc)) + zp, low, high);
-              output[o_start >> 1].SetElem(1, static_cast<TOut::UnpackedType>(v));
+              output[o_start >> 1].SetElem(1, static_cast<typename TOut::UnpackedType>(v));
               ++o_start;
             }
 
             if (o_end & 1) {
               --o_end;
               auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[o_end] / sc)) + zp, low, high);
-              output[o_end >> 1].SetElem(0, static_cast<TOut::UnpackedType>(v));
+              output[o_end >> 1].SetElem(0, static_cast<typename TOut::UnpackedType>(v));
             }
 
             if constexpr (std::is_same<TOut, Int4x2>::value) {
@@ -654,7 +654,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
     const auto num_r_block = (N + block_size - 1) / block_size;
     const auto num_blocks = M * K * num_r_block;
     const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(MLFloat16) * 2),
-                                 static_cast<double>(block_size * sizeof(TOut::UnpackedType)),
+                                 static_cast<double>(block_size * sizeof(typename TOut::UnpackedType)),
                                  static_cast<double>(block_size) * 2.0};
     auto KN = K * N;
     auto qKN = (K + quant_block_size - 1) / quant_block_size * N;
@@ -680,7 +680,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
               auto sc = scale[zp_idx].ToFloat();
               auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp,
                                   low, high);
-              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<TOut::UnpackedType>(v));
+              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<typename TOut::UnpackedType>(v));
             }
 
             if (n == N) {
@@ -708,7 +708,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
     const auto num_r_block = (K + quant_block_size - 1) / quant_block_size;
     const auto num_blocks = num_r_block * M;
     const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(MLFloat16)),
-                                 static_cast<double>(quant_block_size * sizeof(TOut::UnpackedType)),
+                                 static_cast<double>(quant_block_size * sizeof(typename TOut::UnpackedType)),
                                  static_cast<double>(quant_block_size) * 2.0};
     concurrency::ThreadPool::TryParallelFor(
         thread_pool,
@@ -725,7 +725,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
             for (; output_idx < output_idx_end; ++output_idx) {
               auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp,
                                   low, high);
-              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<TOut::UnpackedType>(v));
+              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<typename TOut::UnpackedType>(v));
             }
 
             k = output_idx % K;
