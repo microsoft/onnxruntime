@@ -92,8 +92,8 @@ static Status GetInitializerInputData(const NodeUnitIODef& input, const QnnModel
   Tensor tensor(dtype, shape, std::make_shared<CPUAllocator>());
 
   // Deserialize initializer into Tensor.
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(onnxruntime::Env::Default(), qnn_model_wrapper.GetGraphViewer().ModelPath(),
-                                                              *initializer_proto, tensor));
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(
+      onnxruntime::Env::Default(), qnn_model_wrapper.GetGraphViewer().ModelPath(), *initializer_proto, tensor));
 
   Status status;
 
