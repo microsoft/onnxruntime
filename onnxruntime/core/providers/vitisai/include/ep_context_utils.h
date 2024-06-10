@@ -43,7 +43,7 @@ std::string SerializeOrigialGraph(const GraphViewer&);
 std::unique_ptr<Model> CreateEPContexModel(const GraphViewer&, const std::string&,
                                            const std::string&, const int64_t, const logging::Logger*);
 
-void DumpEPContextModel(std::unique_ptr<Model>&, const std::string&);
+void DumpEPContextModel(const std::unique_ptr<Model>&, const std::string&);
 
 bool ValidateEPContextNode(const Graph&);
 
