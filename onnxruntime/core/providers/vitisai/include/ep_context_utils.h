@@ -8,9 +8,6 @@
 // 1st-party headers/libs.
 #include "core/providers/shared_library/provider_api.h"
 
-// 3rd-party headers/libs.
-#include "./md5.h"
-
 namespace fs = std::filesystem;
 
 namespace onnxruntime {

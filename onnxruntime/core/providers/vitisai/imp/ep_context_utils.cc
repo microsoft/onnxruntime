@@ -5,6 +5,7 @@
 
 // 3rd-party headers/libs.
 #include <nlohmann/json.hpp>
+#include "./md5.h"
 
 #include "ep_context_utils.h"
 
