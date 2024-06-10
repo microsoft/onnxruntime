@@ -160,19 +160,19 @@ nvinfer1::TacticSources GetTacticSourceFromString(std::string& tactic_string) {
     nvinfer1::TacticSource source{};
     t = toUpper(t);
     if (t == "CUBLAS") {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic kCUBLAS is deprecated in TensorRT 10.0"
 #if NV_TENSORRT_MAJOR < 10
       source = nvinfer1::TacticSource::kCUBLAS;
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic kCUBLAS is deprecated in TensorRT 10.0"
 #endif
     } else if (t == "CUBLASLT" || t == "CUBLAS_LT") {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic kCUBLAS_LT is deprecated in TensorRT 9.0"
 #if NV_TENSORRT_MAJOR < 9
       source = nvinfer1::TacticSource::kCUBLAS_LT;
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic kCUBLAS_LT is deprecated in TensorRT 9.0"
 #endif
     } else if (t == "CUDNN") {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic kCUDNN is deprecated in TensorRT 10.0"
 #if NV_TENSORRT_MAJOR < 10
       source = nvinfer1::TacticSource::kCUDNN;
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic kCUDNN is deprecated in TensorRT 10.0"
 #endif
     } else if (t == "EDGE_MASK_CONVOLUTIONS") {
       source = nvinfer1::TacticSource::kEDGE_MASK_CONVOLUTIONS;
@@ -3172,7 +3172,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       if (mem_size > max_ctx_mem_size_) {
         max_ctx_mem_size_ = mem_size;
       }
+#if NV_TENSORRT_MAJOR < 10
+      trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+#else
       trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
+#endif
     } else {
       trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
     }
@@ -3618,8 +3622,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     if (context_update) {
       if (trt_state->context_memory_sharing_enable) {
+#if NV_TENSORRT_MAJOR < 10
+        *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
+            trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+#else
         *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
+#endif
       } else {
         *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
@@ -3835,7 +3844,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     if (mem_size > max_ctx_mem_size_) {
       max_ctx_mem_size_ = mem_size;
     }
+#if NV_TENSORRT_MAJOR < 10
+    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+#else
     trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
+#endif
   } else {
     trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
   }

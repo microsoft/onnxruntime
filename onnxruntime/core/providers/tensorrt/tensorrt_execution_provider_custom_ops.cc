@@ -66,6 +66,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
 #else
     auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
 #endif
+    std::unordered_set<std::string> registered_plugin_names;
 
     for (int i = 0; i < num_plugin_creator; i++) {
 #if NV_TENSORRT_MAJOR >= 10
