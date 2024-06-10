@@ -128,6 +128,9 @@ class TensorsData:
     def values(self):
         return self.data.values()
 
+    def items(self):
+        return self.data.items()
+
 
 class CalibrationMethod(Enum):
     MinMax = 0
@@ -394,6 +397,7 @@ class MinMaxCalibrater(CalibraterBase):
                 self.max_intermediate_outputs is not None
                 and len(self.intermediate_outputs) == self.max_intermediate_outputs
             ):
+                self.compute_data()
                 self.clear_collected_data()
 
         if len(self.intermediate_outputs) == 0 and self.calibrate_tensors_range is None:
@@ -409,13 +413,29 @@ class MinMaxCalibrater(CalibraterBase):
             return new_range
 
         for key, value in old_range.items():
-            if self.moving_average:
-                min_value = value[0] + self.averaging_constant * (new_range[key][0] - value[0])
-                max_value = value[1] + self.averaging_constant * (new_range[key][1] - value[1])
+            if isinstance(value, TensorData):
+                old_min = value.range_value[0]
+                old_max = value.range_value[1]
             else:
-                min_value = min(value[0], new_range[key][0])
-                max_value = max(value[1], new_range[key][1])
-            new_range[key] = (min_value, max_value)
+                old_min, old_max = value
+
+            if isinstance(new_range[key], TensorData):
+                new_min = new_range[key].range_value[0]
+                new_max = new_range[key].range_value[1]
+            else:
+                new_min, new_max = new_range[key]
+
+            if self.moving_average:
+                min_value = old_min + self.averaging_constant * (new_min - old_min)
+                max_value = old_max + self.averaging_constant * (new_max - old_max)
+            else:
+                min_value = min(old_min, new_min)
+                max_value = max(old_max, new_max)
+
+            if isinstance(value, TensorData) or isinstance(new_range[key], TensorData):
+                new_range[key] = TensorData(lowest=min_value, highest=max_value)
+            else:
+                new_range[key] = (min_value, max_value)
 
         return new_range
 
