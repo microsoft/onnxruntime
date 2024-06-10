@@ -73,7 +73,8 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   #pragma unroll
   for (int i = 0; i < kElementsPerThread; i++) {
     if (offset_in1 % (2 * dim) < dim) {
-      output[(offset_in1 + 1) / 2] = QuickGeluCompute(input[offset_in1], input[offset_in1 + dim], alpha_val);
+      CUDA_LONG offset_out = (offset_in1 / (2 * dim)) * dim + offset_in1 % dim;
+      output[offset_out] = QuickGeluCompute(input[offset_in1], input[offset_in1 + dim], alpha_val);
       offset_in1 += kThreadsPerBlock;
     }
   }
