@@ -62,12 +62,21 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   int input_line_stride = dim * 2;
   int output_line_stride = dim;
   int offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
-  // CUDA_LONG offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
   int offset_in2 = offset_in1 + dim;
   int offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
-  // Specify alpha here or outside (is this an input )
-  // float alpha = 1.702f;
+  CUDA_LONG offset_in1 = kElementsPerThread * kThreadsPerBlock * blockIdx.x + threadIdx.x;
+  CUDA_LONG offset_in2 = offset_in1 + dim;
+  CUDA_LONG offset_out = (offset_in1 + 1) / 2;
   T alpha_val = static_cast<T>(alpha);
+  // New implementation
+  CUDA_LONG id = start;
+  #pragma unroll
+  for (int i = 0; i < kElementsPerThread; i++) {
+    if (id % (2 * dim) < dim) {
+      output[offset_out + i] = QuickGeluCompute(input[offset_in1 + i], input[offset_in2+i], alpha_val);
+    }
+  }
+
   // Separate QuickGelu code in another fn
   // printf("Curr kElementsPerThread %d\n", kElementsPerThread);
   // printf("Curr blockIdx.x %d\n", blockIdx.x);
@@ -90,6 +99,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   // int max_inp = 20 - dim;
   // What about this condition? (Removing if condition should improve Warp Divergence?)
   // for (int i = 0; i < kElementsPerThread; i++) {
+  /*
   for (int i = 0; i < kElementsPerThread && threadIdx.x*kElementsPerThread + i < dim; i++){
     // int curr_in = offset_in1 + i;
     // int curr_half = curr_in / dim;
@@ -104,7 +114,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
       // printf("Current output idx %d\n", offset_out + i);
       // printf("Current output value %f\n", quickgelu_out);
     }
-  }
+  } */
 }
 
 template <typename T>
@@ -123,15 +133,15 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int dim, int64_t in
   // [1000][10]
   // ElemWiseKernel
   // [1000][1]
-  // int blocksPerGrid = static_cast<int>(CeilDiv(input_size, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
-  int num_blocks = static_cast<int>(N/(2*dim));
+  int blocksPerGrid = static_cast<int>(CeilDiv(input_size, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  // int num_blocks = static_cast<int>(N/(2*dim));
   // printf("Num blocks %d\n", num_blocks);
   // printf("Final number threads per block %d\n", num_threads_per_block);
   // printf("Final num blocks %d\n", num_blocks);
-  // printf("Final blocksPerGrid %d\n", blocksPerGrid);
-  // printf("Final number threads per block %d\n", GridDim::maxThreadsPerBlock);
-  S2SModelSplitQuickGeluKernel<T><<<num_blocks, num_threads_per_block, 0, stream>>>(dim, alpha, input_data, output_data);
-  // S2SModelSplitQuickGeluKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(dim, alpha, input_data, output_data);
+  printf("Final blocksPerGrid %d\n", blocksPerGrid);
+  printf("Final number threads per block %d\n", GridDim::maxThreadsPerBlock);
+  // S2SModelSplitQuickGeluKernel<T><<<num_blocks, num_threads_per_block, 0, stream>>>(dim, alpha, input_data, output_data);
+  S2SModelSplitQuickGeluKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(dim, alpha, input_data, output_data);
   // S2SModelSplitQuickGeluKernel<T><<<5, 1, 0, stream>>>(dim, input_data, output_data);
   // 4x10
   // output_dim = 5
