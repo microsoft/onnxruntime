@@ -204,15 +204,17 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
       RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
     } else {
-      LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
-                            << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
-      LoadEPContexModelFromFile();
-      auto cache_dir = GetBackendCompileCacheDir();
-      auto cache_key = GetBackendCompileCacheKey(graph_viewer);
-      fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
-      LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
-      auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_, false);
-      RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
+      if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_)) {
+        LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
+                              << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
+        LoadEPContexModelFromFile();
+        auto cache_dir = GetBackendCompileCacheDir();
+        auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+        fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
+        LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
+        auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_, false);
+        RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
+      }
     }
   } else {
     LOGS_DEFAULT(WARNING) << "Failed to get EP context model file";

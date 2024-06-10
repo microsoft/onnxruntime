@@ -391,7 +391,9 @@ bool GetEPContextModelFileLocation(
           ToPathString(fs::path(model_path_str).replace_extension(fs::path("_ctx.onnx")));
     }
   }
-  return !ep_ctx_model_file_loc.empty() && fs::exists(ep_ctx_model_file_loc) && fs::is_regular_file(ep_ctx_model_file_loc);
+  // return !ep_ctx_model_file_loc.empty() && fs::exists(ep_ctx_model_file_loc) && fs::is_regular_file(ep_ctx_model_file_loc);
+  return !ep_ctx_model_file_loc.empty();
+}
 }
 
 // The file for EP context cache is in the same folder as the EP context model file.
