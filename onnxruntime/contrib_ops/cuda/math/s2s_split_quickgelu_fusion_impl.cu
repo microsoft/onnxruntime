@@ -74,7 +74,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   for (int i = 0; i < kElementsPerThread; i++) {
     if (offset_in1 % (2 * dim) < dim) {
       output[(offset_in1 + 1) / 2] = QuickGeluCompute(input[offset_in1], input[offset_in1 + dim], alpha_val);
-      offset_in1 += kElementsPerThread;
+      offset_in1 += kThreadsPerBlock;
     }
   }
 
@@ -139,8 +139,8 @@ void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int dim, int64_t in
   // printf("Num blocks %d\n", num_blocks);
   // printf("Final number threads per block %d\n", num_threads_per_block);
   // printf("Final num blocks %d\n", num_blocks);
-  printf("Final blocksPerGrid %d\n", blocksPerGrid);
-  printf("Final number threads per block %d\n", GridDim::maxThreadsPerBlock);
+  // printf("Final blocksPerGrid %d\n", blocksPerGrid);
+  // printf("Final number threads per block %d\n", GridDim::maxThreadsPerBlock);
   // S2SModelSplitQuickGeluKernel<T><<<num_blocks, num_threads_per_block, 0, stream>>>(dim, alpha, input_data, output_data);
   S2SModelSplitQuickGeluKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(dim, alpha, input_data, output_data);
   // S2SModelSplitQuickGeluKernel<T><<<5, 1, 0, stream>>>(dim, input_data, output_data);
