@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <filesystem>
 
 #include "core/common/common.h"
 #include "core/framework/node_unit.h"

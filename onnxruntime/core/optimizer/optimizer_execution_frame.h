@@ -4,6 +4,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <filesystem>
 
 #include "core/common/inlined_containers.h"
 #include "core/graph/graph.h"

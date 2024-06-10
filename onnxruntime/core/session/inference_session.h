@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <filesystem>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"

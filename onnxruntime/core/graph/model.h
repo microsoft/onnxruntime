@@ -7,6 +7,7 @@
 #include <memory>
 #include <climits>
 #include <string>
+#include <filesystem>
 
 #include "core/common/flatbuffers.h"
 

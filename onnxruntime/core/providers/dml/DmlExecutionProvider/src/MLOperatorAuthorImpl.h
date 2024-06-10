@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <filesystem>
+
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
 #include "core/providers/dml/DmlExecutionProvider/src/DmlEdgeShapes.h"

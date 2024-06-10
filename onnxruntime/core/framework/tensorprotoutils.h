@@ -20,7 +20,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 
-
 namespace ONNX_NAMESPACE {
 class TensorProto;
 class TensorShapeProto;

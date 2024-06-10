@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <filesystem>
 
 #include "MLOperatorAuthorImpl.h"
 #include "ExecutionProvider.h"

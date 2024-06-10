@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <unordered_set>
+#include <filesystem>
 
 #include "core/graph/graph.h"
 #include "core/framework/session_options.h"
-#include <unordered_set>
 
 namespace onnxruntime {
 class Function;
