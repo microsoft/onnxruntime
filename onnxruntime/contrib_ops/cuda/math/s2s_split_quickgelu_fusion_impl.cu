@@ -61,19 +61,20 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   // TODO: Should I use long int?
   int input_line_stride = dim * 2;
   int output_line_stride = dim;
-  int offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
-  int offset_in2 = offset_in1 + dim;
-  int offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
+  // int offset_in1 = blockIdx.x * input_line_stride + threadIdx.x*kElementsPerThread;
+  // int offset_in2 = offset_in1 + dim;
+  // int offset_out = blockIdx.x * output_line_stride + threadIdx.x*kElementsPerThread;
   CUDA_LONG offset_in1 = kElementsPerThread * kThreadsPerBlock * blockIdx.x + threadIdx.x;
-  CUDA_LONG offset_in2 = offset_in1 + dim;
-  CUDA_LONG offset_out = (offset_in1 + 1) / 2;
+  // CUDA_LONG offset_in2 = offset_in1 + dim;
+  // CUDA_LONG offset_out = (offset_in1 + 1) / 2;
   T alpha_val = static_cast<T>(alpha);
   // New implementation
-  CUDA_LONG id = start;
+  // CUDA_LONG id = offset_in1;
   #pragma unroll
   for (int i = 0; i < kElementsPerThread; i++) {
-    if (id % (2 * dim) < dim) {
-      output[offset_out + i] = QuickGeluCompute(input[offset_in1 + i], input[offset_in2+i], alpha_val);
+    if (offset_in1 % (2 * dim) < dim) {
+      output[(offset_in1 + 1) / 2] = QuickGeluCompute(input[offset_in1], input[offset_in1 + dim], alpha_val);
+      offset_in1 += NumThreadsPerBlock;
     }
   }
 
@@ -119,7 +120,7 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
 
 template <typename T>
 void LaunchS2SModelSplitQuickGeluKernel(cudaStream_t stream, int dim, int64_t input_size, float alpha, const T* input_data, T* output_data) {
-  CUDA_LONG N = static_cast<CUDA_LONG>(input_size);
+  // CUDA_LONG N = static_cast<CUDA_LONG>(input_size);
   int num_threads_per_block = std::min<int>(static_cast<int>(CeilDiv(dim, kElementsPerThread)), kThreadsPerBlock);
   // TODO: num_blocks
   // 2x3x8
