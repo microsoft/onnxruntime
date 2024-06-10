@@ -263,11 +263,12 @@ void RunTest(const TestOptions& opts,
 }  // namespace
 
 TEST(MatMulNBits, Float32) {
-  for (auto M : {1, 2, 100}) {
-    for (auto N : {1, 2, 32, 288}) {
-      for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
-        for (auto block_size : {16, 32, 64, 128}) {
-          for (auto accuracy_level : {0, 1, 4}) {
+  //onnxruntime::profiling::Profiler::Profiler::Instance().StartProfiling<char>("profile.json");
+  for (auto M : {1/*, 2, 100*/}) {
+    for (auto N : {2560/*1, 2, 32, 288*/}) {
+      for (auto K : {2560/*16, 32, 64, 128, 256, 1024, 93, 1234*/}) {
+        for (auto block_size : {/*16, */32/*, 64, 128*/}) {
+          for (auto accuracy_level : {/*0, 1, */4}) {
             TestOptions base_opts{};
             base_opts.M = M, base_opts.N = N, base_opts.K = K;
             base_opts.block_size = block_size;
@@ -282,36 +283,36 @@ TEST(MatMulNBits, Float32) {
               RunTest<float>(opts);
             }
 
-            {
-              TestOptions opts = base_opts;
-              opts.has_zero_point = true;
-              RunTest<float>(opts);
-            }
-
-#if !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
-            {
-              TestOptions opts = base_opts;
-              opts.has_g_idx = true;
-              RunTest<float>(opts);
-            }
-
-            {
-              TestOptions opts = base_opts;
-              opts.has_zero_point = true, opts.zp_is_4bit = false;
-              RunTest<float>(opts);
-            }
-#endif  // !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
-
-            {
-              TestOptions opts = base_opts;
-              opts.has_bias = true;
-
-              // only enabled for CPU EP for now
-              std::vector<std::unique_ptr<IExecutionProvider>> explicit_eps;
-              explicit_eps.emplace_back(DefaultCpuExecutionProvider());
-
-              RunTest<float>(opts, std::move(explicit_eps));
-            }
+//            {
+//              TestOptions opts = base_opts;
+//              opts.has_zero_point = true;
+//              RunTest<float>(opts);
+//            }
+//
+//#if !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
+//            {
+//              TestOptions opts = base_opts;
+//              opts.has_g_idx = true;
+//              RunTest<float>(opts);
+//            }
+//
+//            {
+//              TestOptions opts = base_opts;
+//              opts.has_zero_point = true, opts.zp_is_4bit = false;
+//              RunTest<float>(opts);
+//            }
+//#endif  // !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
+//
+//            {
+//              TestOptions opts = base_opts;
+//              opts.has_bias = true;
+//
+//              // only enabled for CPU EP for now
+//              std::vector<std::unique_ptr<IExecutionProvider>> explicit_eps;
+//              explicit_eps.emplace_back(DefaultCpuExecutionProvider());
+//
+//              RunTest<float>(opts, std::move(explicit_eps));
+//            }
           }
         }
       }

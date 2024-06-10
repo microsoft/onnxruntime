@@ -222,7 +222,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     }
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, qptr, packed_b_.get(), nullptr, has_zp_input_, nullptr);
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, qptr, packed_b_.get(), nullptr, has_zp_input_, nullptr, nullptr);
     if (prepacked_weights) {
       // TODO: cannot use packed_b_ after
       assert(false);
@@ -233,11 +233,11 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
   else if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
     auto sptr = tensor.Data<float>();
-    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), sptr, has_zp_input_, nullptr);
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), sptr, has_zp_input_, nullptr, nullptr);
     is_packed = false;
   } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
     auto zptr = tensor.Data<uint8_t>();
-    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), nullptr, has_zp_input_, zptr);
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), nullptr, has_zp_input_, zptr, nullptr);
     is_packed = false;
   }
 #endif  // defined(ORT_NEURAL_SPEED)
@@ -278,6 +278,7 @@ Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
 }
 
 Status MatMulNBits::Compute(OpKernelContext* ctx) const {
+  //auto start = std::chrono::high_resolution_clock::now();  // Start timing here
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
   const auto* a_data = a->Data<float>();
@@ -363,11 +364,22 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
         data[i].Bias = bias_data;
         data[i].C = y_data + helper.OutputOffsets()[i];
         data[i].ldc = N;
+        data[i].node_name = this->Node().Name();
       }
+      //auto start2 = std::chrono::high_resolution_clock::now();  // Start timing here
 
-      MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
-                          thread_pool);
+      //int count = 200;
+      //while (count-- > 0)
+        MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
+                            thread_pool);
 
+      //auto end = std::chrono::high_resolution_clock::now();  // End timing here
+
+      //std::chrono::duration<double, std::nano> elapsed2 = end - start2;
+      //// Calculate and print the duration in nanoseconds
+      // std::chrono::duration<double, std::nano> elapsed = end - start;
+      //std::cout << "MlasSQNBitGemmBatch: " << elapsed2.count() << " ns\n";
+      //std::cout << "main Duration_M" << M << "xN" << N << "xK" << K << ": " << elapsed.count() << " ns\n";
       return Status::OK();
     }
   }

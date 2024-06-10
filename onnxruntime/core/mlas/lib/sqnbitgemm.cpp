@@ -19,6 +19,36 @@ Abstract:
 #include "sqnbitgemm_q8_block.h"
 
 #include <cassert>
+#include <iostream>
+#include <chrono>
+#include "core/common/profiler.h"
+
+class ProfilerWrapper
+{
+   public:
+    ProfilerWrapper()
+    {
+        profiler_ = std::make_unique<onnxruntime::profiling::Profiler>();
+        profiler_->StartProfiling<char>("profile.json");
+    }
+
+    ~ProfilerWrapper()
+    {
+        if (profiler_) {
+            profiler_->EndProfiling();
+        }
+    }
+
+    onnxruntime::profiling::Profiler* operator->()
+    {
+        return profiler_.get();
+    }
+
+   private:
+    std::unique_ptr<onnxruntime::profiling::Profiler> profiler_;
+};
+
+static ProfilerWrapper profiler_;
 
 namespace
 {
@@ -427,6 +457,84 @@ SQ4BitGemm_CompFp32(
     }
 }
 
+//#define CALL_SGEMM_SEPARATELY 1
+#if defined(CALL_SGEMM_SEPARATELY)
+void
+SQ4BitGemm_CompInt8_0(
+    const size_t BlkLen,
+    const size_t K,
+    const MLAS_SQNBIT_GEMM_DATA_PARAMS* const DataParams,
+    PerGemmQuantAWorkspace* const per_gemm_quant_a_workspace,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+)
+{
+    const size_t k_blks = MlasDivRoundup(K, BlkLen);
+
+    // quant A scale is embedded in QuantData if QuantScale is nullptr.
+    const size_t ldc = DataParams->ldc;
+
+    const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
+
+    const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN * k_blks;
+
+    float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+    if (RangeCountM == 1) {
+        // auto start = std::chrono::high_resolution_clock::now();  // Start timing here
+
+        size_t CountN;
+        for (size_t n = 0; n < RangeCountN; n += CountN) {
+            CountN = std::min(RangeCountN - n, size_t{128});
+
+            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
+            float* c_blk = C + n;
+            std::chrono::high_resolution_clock::time_point tp;
+            if (profiler_->IsEnabled()) {
+                tp = profiler_->Start();
+            }
+            GetMlasPlatform().GemmFloatKernel(
+                ABlockSum, b_blk_sum, c_blk, k_blks, RangeCountM, CountN, k_blks, ldc, 1.f, true
+            );
+            if (profiler_->IsEnabled()) {
+                std::string eventName = DataParams->node_name + "Sep GemmFloatKernel_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(k_blks);
+                profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+            }
+        }
+        // auto end = std::chrono::high_resolution_clock::now();  // End timing here
+        //// Calculate and print the duration in nanoseconds
+        // std::chrono::duration<double, std::nano> elapsed = end - start;
+        // std::cout << "Duration_M" << RangeCountM << "xN" << RangeCountN << "xK" << K << ": " << elapsed.count() << " ns\n";
+        return;
+    } else {
+        size_t CountN;
+        for (size_t n = 0; n < RangeCountN; n += CountN) {
+            CountN = std::min(RangeCountN - n, size_t{128});
+
+            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
+
+            float* c_blk = C + n;
+
+            if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum) {
+                size_t RowsRemaining = RangeCountM;
+                const float* a_blksum_row = ABlockSum;
+                while (RowsRemaining > 0) {
+                    auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+                        a_blksum_row, b_blk_sum, c_blk, k_blks, RowsRemaining, CountN, k_blks, ldc, 1.f, true
+                    );
+
+                    c_blk += ldc * RowsHandled;
+                    a_blksum_row += k_blks * RowsHandled;
+                    RowsRemaining -= RowsHandled;
+                }
+            }
+        }
+    }
+}
+#endif
+
 void
 SQ4BitGemm_CompInt8(
     const size_t BlkLen,
@@ -462,7 +570,6 @@ SQ4BitGemm_CompInt8(
 
     const std::byte* QuantA = per_gemm_quant_a_workspace->QuantData + RangeStartM * lda;
     const float* QuantAScale = per_gemm_quant_a_workspace->QuantScale + RangeStartM * k_blks;
-    const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
 
     const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->QuantBData) + RangeStartN * ldb;
     const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
@@ -470,8 +577,10 @@ SQ4BitGemm_CompInt8(
         (DataParams->QuantBZeroPoint == nullptr)
             ? nullptr
             : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+#ifndef CALL_SGEMM_SEPARATELY
+    const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
     const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN * k_blks;
-
+#endif
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
     const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
@@ -479,20 +588,34 @@ SQ4BitGemm_CompInt8(
     if (RangeCountM == 1) {
         if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8)
         {
+            //auto start = std::chrono::high_resolution_clock::now();  // Start timing here
+
             size_t CountN;
             for (size_t n = 0; n < RangeCountN; n += CountN) {
                 CountN = std::min(RangeCountN - n, size_t{128});
 
                 const std::byte* b_col = QuantBData + n * ldb;
                 const float* b_col_scale = QuantBScale + n * k_blks;
-                const float* b_blk_sum = QuantBBlkSum + n * k_blks;
                 float* c_blk = C + n;
                 const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
+                std::chrono::high_resolution_clock::time_point tp;
+#ifndef CALL_SGEMM_SEPARATELY
+                const float* b_blk_sum = QuantBBlkSum + n * k_blks;
+                if (profiler_->IsEnabled()) {
+                    tp = profiler_->Start();
+                }
 
                 GetMlasPlatform().GemmFloatKernel(
                     ABlockSum, b_blk_sum, c_blk, k_blks, RangeCountM, CountN, k_blks, ldc, 1.f, true
-                    );
-
+                );
+                if (profiler_->IsEnabled()) {
+                    std::string eventName = DataParams->node_name + "GemmFloatKernel_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(k_blks);
+                    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+                }
+#endif
+                if (profiler_->IsEnabled()) {
+                    tp = profiler_->Start();
+                }
                 GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                     BlkLen,
                     QuantA,
@@ -508,6 +631,10 @@ SQ4BitGemm_CompInt8(
                     lda,
                     ldc
                 );
+                if (profiler_->IsEnabled()) {
+                    std::string eventName = DataParams->node_name + "SQ4BitGemmKernel_CompInt_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(K);
+                    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+                }
 
                 if (DataParams->PostProcessor != nullptr) {
                     DataParams->PostProcessor->Process(
@@ -516,6 +643,11 @@ SQ4BitGemm_CompInt8(
                     );
                 }
             }
+            //auto end = std::chrono::high_resolution_clock::now();  // End timing here
+            //// Calculate and print the duration in nanoseconds
+            //std::chrono::duration<double, std::nano> elapsed = end - start;
+            //std::cout << "Duration_M" << RangeCountM << "xN" << RangeCountN << "xK" << K << ": " << elapsed.count() << " ns\n";
+            return;
         } else {
             size_t CountN;
             for (size_t n = 0; n < RangeCountN; n += CountN) {
@@ -553,11 +685,15 @@ SQ4BitGemm_CompInt8(
 
             const std::byte* b_col = QuantBData + n * ldb;
             const float* b_col_scale = QuantBScale + n * k_blks;
-            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
-
             float* c_blk = C + n;
             const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
+            std::chrono::high_resolution_clock::time_point tp;
+#ifndef CALL_SGEMM_SEPARATELY
+            if (profiler_->IsEnabled()) {
+                tp = profiler_->Start();
+            }
 
+            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
             if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum) {
                 size_t RowsRemaining = RangeCountM;
                 const float* a_blksum_row = ABlockSum;
@@ -571,7 +707,14 @@ SQ4BitGemm_CompInt8(
                     RowsRemaining -= RowsHandled;
                 }
             }
-
+            if (profiler_->IsEnabled()) {
+                std::string eventName = DataParams->node_name + "GemmFloatKernel_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(k_blks);
+                profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+            }
+#endif
+            if (profiler_->IsEnabled()) {
+                tp = profiler_->Start();
+            }
             c_blk = C + n;
             GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                 BlkLen,
@@ -588,6 +731,10 @@ SQ4BitGemm_CompInt8(
                 lda,
                 ldc
             );
+            if (profiler_->IsEnabled()) {
+                std::string eventName = DataParams->node_name + "SQ4BitGemmKernel_CompInt8_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(K);
+                profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+            }
 
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
@@ -722,6 +869,55 @@ constexpr auto OperationMap = []() {
     return ops;
 }();
 
+void
+ComputeParallelTasksSGemm(const size_t M, const size_t N, const size_t CountK, const size_t BatchN,
+  MLAS_THREADPOOL* ThreadPool,
+  size_t& ThreadCountM, size_t& ThreadCountN, size_t& ThreadsPerGemm)
+{
+    const double Complexity = double(M) * double(N) * double(CountK);
+
+    ptrdiff_t TargetThreadCount;
+
+    if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * GetMlasPlatform().MaximumThreadCount)) {
+        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
+    } else {
+        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
+    }
+
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool) * 8;
+
+    if (TargetThreadCount >= MaximumThreadCount) {
+        TargetThreadCount = MaximumThreadCount;
+    }
+
+    //
+    // Segment the operation across multiple threads.
+    //
+    // N.B. Currently, the operation is segmented as a 1D partition, which
+    // works okay for operations involving skinny matrices.
+    //
+
+    ThreadsPerGemm = (TargetThreadCount + BatchN - 1) / BatchN;
+    if (N > M) {
+        const size_t BlockedN = (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) /
+                                MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+
+        if (size_t(ThreadsPerGemm) > BlockedN) {
+            ThreadsPerGemm = ptrdiff_t(BlockedN);
+        }
+
+        ThreadCountM = 1;
+        ThreadCountN = ThreadsPerGemm;
+
+    } else {
+        if (size_t(ThreadsPerGemm) > M) {
+            ThreadsPerGemm = ptrdiff_t(M);
+        }
+
+        ThreadCountM = ThreadsPerGemm;
+        ThreadCountN = 1;
+    }
+}
 }  // namespace
 
 void MLASCALL
@@ -738,6 +934,8 @@ MlasSQNBitGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 )
 {
+    //auto start_batch = std::chrono::high_resolution_clock::now();  // Start timing here
+
     const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
     assert(Variant != SQNBitGemmVariantInvalid);
 
@@ -756,16 +954,22 @@ MlasSQNBitGemmBatch(
 
     if (const auto InitializeWorkspaceOperation = OperationMap[Variant].InitializeWorkspace;
         InitializeWorkspaceOperation != nullptr) {
+        //auto start = std::chrono::high_resolution_clock::now();  // Start timing here
         InitializeWorkspaceOperation(
             M, N, K, BatchN, BlkLen, DataParams, Workspace, PerGemmWorkspaceStride, ThreadPool
         );
+        //auto end = std::chrono::high_resolution_clock::now();  // End timing here
+        //// Calculate and print the duration in nanoseconds
+        //std::chrono::duration<double, std::nano> elapsed = end - start;
+        //std::cout << "InitializeWorkspaceOperation: " << elapsed.count() << " ns\n";
     }
 
     const auto ComputeOperation = OperationMap[Variant].SQNBitGemm;
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
-    if (ThreadPool == nullptr) {
+    if (/*true || */ThreadPool == nullptr) {
+        //auto start = std::chrono::high_resolution_clock::now();  // Start timing here
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
             const auto* Data = &DataParams[gemm_i];
             if (ComputeType == CompInt8) {
@@ -775,11 +979,19 @@ MlasSQNBitGemmBatch(
                 void* PerGemmWorkspace =
                     reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride;
                 PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
+#if defined(CALL_SGEMM_SEPARATELY)
+                SQ4BitGemm_CompInt8_0(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N);
+#endif
                 ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N);
             } else {
                 ComputeOperation(BlkLen, K, Data, nullptr, 0, M, 0, N);
             }
         }
+        //auto end = std::chrono::high_resolution_clock::now();  // End timing here
+        //// Calculate and print the duration in nanoseconds
+        //std::chrono::duration<double, std::nano> elapsed = end - start;
+        //std::cout << "ThreadPool == nullptr: " << elapsed.count() << " ns\n";
+
         return;
     }
 
@@ -787,7 +999,66 @@ MlasSQNBitGemmBatch(
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
     //
+    //auto start = std::chrono::high_resolution_clock::now();  // Start timing here
 
+#if defined(CALL_SGEMM_SEPARATELY)
+    if (ComputeType == CompInt8) {
+        size_t ThreadCountM, ThreadCountN, ThreadsPerGemm;
+        ComputeParallelTasksSGemm(M, N, BlockCountK, BatchN, ThreadPool,
+          ThreadCountM, ThreadCountN, ThreadsPerGemm);
+
+        //std::cout << "ThreadsPerGemm: " << ThreadsPerGemm << "\t"
+        //          << "ThreadCountM: " << ThreadCountM << "\t"
+        //          << "ThreadCountN: " << ThreadCountN << "\n";
+        //auto start = std::chrono::high_resolution_clock::now();  // Start timing here
+        MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * BatchN, [&](ptrdiff_t tid) {
+            ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
+            ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
+
+            // MlasSgemmThreaded
+            ptrdiff_t ThreadId = ThreadIdx;
+            const ptrdiff_t ThreadIdM = ThreadId / ThreadCountN;
+            const ptrdiff_t ThreadIdN = ThreadId % ThreadCountN;
+
+            //
+            // Partition the operation along the M dimension.
+            //
+
+            size_t RangeStartM;
+            size_t RangeCountM;
+
+            MlasPartitionWork(ThreadIdM, ThreadCountM, M, &RangeStartM, &RangeCountM);
+
+            //
+            // Partition the operation along the N dimension.
+            //
+
+            size_t RangeStartN;
+            size_t RangeCountN;
+
+            const size_t BlockedN = (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) /
+                                    MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+
+            MlasPartitionWork(ThreadIdN, ThreadCountN, BlockedN, &RangeStartN, &RangeCountN);
+
+            RangeStartN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+            RangeCountN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+
+            RangeCountN = std::min(N - RangeStartN, RangeCountN);
+
+            const auto* Data = &DataParams[GemmIdx];
+
+            PackedQuantBDataStruct packed_quant_b(const_cast<void*>(Data->QuantBData), N, BlockCountK, BlkLen);
+            const_cast<MLAS_SQNBIT_GEMM_DATA_PARAMS*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
+
+            void* PerGemmWorkspace =
+                reinterpret_cast<std::byte*>(Workspace) + GemmIdx * PerGemmWorkspaceStride;
+            PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
+            SQ4BitGemm_CompInt8_0(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+            //ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+        });
+    }
+#endif
     const double Complexity = double(M) * double(N) * double(K) * double(BatchN);
 
     ptrdiff_t TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
@@ -824,6 +1095,14 @@ MlasSQNBitGemmBatch(
     const size_t ThreadCountN = MlasDivRoundup(N, StrideN);
     ThreadsPerGemm = ThreadCountM * ThreadCountN;
 
+      //std::cout << "ThreadsPerGemm: " << ThreadsPerGemm << "\t"
+      //          << "ThreadCountM: " << ThreadCountM << "\t"
+      //          << "ThreadCountN: " << ThreadCountN << "\n";
+    std::chrono::high_resolution_clock::time_point tp;
+    if (profiler_->IsEnabled()) {
+        tp = profiler_->Start();
+    }
+
     MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * BatchN, [&](ptrdiff_t tid) {
         const auto gemm_i = tid / ThreadsPerGemm;
         const auto blk_i = tid % ThreadsPerGemm;
@@ -850,4 +1129,16 @@ MlasSQNBitGemmBatch(
             ComputeOperation(BlkLen, K, Data, nullptr, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
         }
     });
+    if (profiler_->IsEnabled()) {
+        std::string eventName = DataParams->node_name + "MlasTrySimpleParallel" + std::to_string(ThreadsPerGemm) + "-" + std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(K);
+        profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+    }
+
+    // auto end = std::chrono::high_resolution_clock::now();  // End timing here
+    //// Calculate and print the duration in nanoseconds
+    // std::chrono::duration<double, std::nano> elapsed = end - start;
+    // std::chrono::duration<double, std::nano> elapsed_batch = end - start_batch;
+
+    // std::cout << "ThreadPool kernel: " << elapsed.count() << " ns\n";
+    // std::cout << "Batch Internal: " << elapsed_batch.count() << " ns\n";
 }

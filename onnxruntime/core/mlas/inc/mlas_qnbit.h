@@ -22,6 +22,7 @@ Abstract:
 
 #include "mlas.h"
 #include "mlas_gemm_postprocessor.h"
+#include <string>
 
 /**
  * @brief Define compute types of block quantization, in order of decreasing accuracy.
@@ -55,6 +56,7 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
 
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<float>* PostProcessor = nullptr;
+    std::string node_name = "";
 };
 
 /**
@@ -179,7 +181,7 @@ MlasSQNBitGemmPackQuantBDataSize(
  * @param[in]   ComputeType         GEMM compute type (e.g., multiplying float or int8 values)
  * @param[in]   QuantBData          quantized B data
  * @param[out]  PackedQuantBData    packed quantized B data
- * @param[in]   ThreadPool          optional thread pool to use
+ * @param[in]   ThreadPool          thread pool to use (no parallel if nullptr)
  */
 void MLASCALL
 MlasSQNBitGemmPackQuantBData(
@@ -193,5 +195,5 @@ MlasSQNBitGemmPackQuantBData(
     const void* QuantBScale,
     bool has_zp_input,
     const void* QuantBZeroPoint,
-    MLAS_THREADPOOL* ThreadPool = nullptr
+    MLAS_THREADPOOL* ThreadPool
 );

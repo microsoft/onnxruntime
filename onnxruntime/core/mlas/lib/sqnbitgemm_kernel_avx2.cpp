@@ -1181,7 +1181,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 
     bool last_call = QuantBScaleBegin && (!has_zp_input || QuantBZPBegin);
 
-    if (last_call) {      
+    if (last_call) {
         ComputePackBlkSum(N, QuantBScaleBegin, QuantBZPBegin, BlockSumBegin, ThreadPool, BlockCountK);
     }
     if (delete_quant_b_scale_begin) {
