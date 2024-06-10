@@ -138,27 +138,28 @@ class MultiHeadAttentionConfig:
 
     def random_inputs(self, seed: int = 123):
         device = self.device
-        dtype = torch.float16
+        dtype = self.dtype
 
         shape_dict = self.shape_dict()
-        if self.input_format == InputFormats.Q_K_V_BSNH_BNSH_BNSH:
-            return {
-                "query": torch.empty(shape_dict["query"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-                "key": torch.empty(shape_dict["key"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-                "value": torch.empty(shape_dict["value"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-            }
 
         if seed > 0:
             torch.manual_seed(seed)
 
-        # Always use non-packed qkv to generate same inputs for Torch and ORT.
-        shape = (self.batch_size, self.sequence_length, self.num_heads * self.head_size)
-        feeds = {
-            "query": torch.empty(shape, device=device, dtype=dtype).normal_(mean=0, std=0.1),
-            "key": torch.empty(shape, device=device, dtype=dtype).normal_(mean=0, std=0.1),
-            "value": torch.empty(shape, device=device, dtype=dtype).normal_(mean=0, std=0.1),
-        }
+        shape = (self.batch_size, self.sequence_length, self.num_heads, self.head_size)
+        q = torch.empty(shape, device=device, dtype=dtype).normal_(mean=0, std=0.1)
+        k = torch.empty(shape, device=device, dtype=dtype).normal_(mean=0, std=0.1)
+        v = torch.empty(shape, device=device, dtype=dtype).normal_(mean=0, std=0.1)
+        k_bnsh = k.transpose(1, 2)
+        v_bnsh = v.transpose(1, 2)
 
+        if self.input_format == InputFormats.Q_K_V_BSNH_BNSH_BNSH:
+            return {
+                "query": q.reshape(shape_dict["query"]),
+                "key": k_bnsh.contiguous(),
+                "value": v_bnsh.contiguous(),
+            }
+
+        feeds = {}
         if self.use_kv_cache:
             feeds.update(
                 {
@@ -171,26 +172,24 @@ class MultiHeadAttentionConfig:
                 }
             )
 
-        if self.input_format == InputFormats.QKV_BSN3H:
-            query = feeds["query"].view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
-            key = feeds["key"].view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
-            value = feeds["value"].view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
-            feeds["query"] = (
-                torch.dstack((query, key, value))
-                .reshape(self.batch_size, self.sequence_length, self.num_heads, 3, self.head_size)
-                .contiguous()
+        if self.input_format == InputFormats.Q_K_V_BSNH_BSNH_BSNH:
+            feeds.update(
+                {
+                    "query": q.reshape(shape_dict["query"]),
+                    "key": k.reshape(shape_dict["key"]),
+                    "value": v.reshape(shape_dict["value"]),
+                }
             )
-            del feeds["key"]
-            del feeds["value"]
+        elif self.input_format == InputFormats.QKV_BSN3H:
+            query = q.view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
+            key = k.view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
+            value = v.view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
+            feeds["query"] = torch.dstack((query, key, value)).reshape(shape_dict["query"]).contiguous()
         elif self.input_format == InputFormats.Q_KV_BSNH_BSN2H:
-            key = feeds["key"].view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
-            value = feeds["value"].view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
-            feeds["key"] = (
-                torch.dstack((key, value))
-                .reshape(self.batch_size, self.sequence_length, self.num_heads, 2, self.head_size)
-                .contiguous()
-            )
-            del feeds["value"]
+            key = k.view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
+            value = v.view(self.batch_size * self.sequence_length, self.num_heads, self.head_size)
+            feeds["query"] = q.reshape(shape_dict["query"])
+            feeds["key"] = torch.dstack((key, value)).reshape(shape_dict["key"]).contiguous()
 
         return feeds
 
@@ -212,10 +211,8 @@ class MultiHeadAttentionConfig:
 
 
 def create_multi_head_attention_onnx_model(config: MultiHeadAttentionConfig):
-    assert config.dtype == torch.float16
-
     input_names, output_names = config.get_input_output_names()
-    float_type = TensorProto.FLOAT16
+    float_type = TensorProto.FLOAT16 if config.dtype == torch.float16 else TensorProto.FLOAT
     nodes = [
         helper.make_node(
             "MultiHeadAttention",
@@ -330,11 +327,11 @@ def get_gpu_kernel_name(config: MultiHeadAttentionConfig) -> str:
 
 def get_cpu_kernel_name() -> str:
     if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
-        return "Flash"
-    return "Unfused"
+        return "CPU:Flash"
+    return "CPU:Unfused"
 
 
-def run_tflops_test(dtype=torch.float16, use_gpu: bool = True, enable_cuda_graph: bool = False, repeats: int = 100):
+def run_tflops_test(use_gpu: bool = True, enable_cuda_graph: bool = False, repeats: int = 100):
     if use_gpu:
         device_id = torch.cuda.current_device()
         device = torch.device("cuda", device_id)
@@ -485,10 +482,15 @@ def plot_prompt_performance(
 ):
     import triton
 
+    formats = InputFormats.get_name_list()
+
+    # Exclude cross attention since kernel crashes for some configuration.
+    formats = formats[:-1]
+
     settings = {
-        "line_vals": InputFormats.get_name_list(),
-        "line_names": ["ORT-MHA:" + name for name in InputFormats.get_name_list()],
-        "styles": [("red", "solid"), ("yellow", "dashdot"), ("blue", "dashed"), ("green", "dotted")],
+        "line_vals": formats,
+        "line_names": ["ORT-MHA:" + name for name in formats],
+        "styles": [("red", "solid"), ("yellow", "dashdot"), ("blue", "dashed"), ("green", "dotted")][0 : len(formats)],
     }
 
     configs = [
@@ -574,7 +576,7 @@ if __name__ == "__main__":
         with torch.cuda.stream(s), torch.no_grad():
             run_performance_test(sm)
 
-        run_tflops_test(dtype=torch.float16, use_gpu=True, enable_cuda_graph=False)
-    else:
-        # Test CPU provider
-        run_tflops_test(dtype=torch.float32, use_gpu=False, enable_cuda_graph=False, repeats=10)
+        run_tflops_test(use_gpu=True, enable_cuda_graph=True)
+
+    # Test CPU provider
+    run_tflops_test(use_gpu=False, enable_cuda_graph=False)
