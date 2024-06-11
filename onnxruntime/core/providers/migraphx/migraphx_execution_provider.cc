@@ -1117,14 +1117,14 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     }
 
     std::vector<std::string> input_names, output_names;
-    no_input_shape = no_input_shape or get_input_output_names(graph_body_viewer, input_names, output_names);
+    no_input_shape = no_input_shape || get_input_output_names(graph_body_viewer, input_names, output_names);
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
     migraphx::program prog;
 
     if (!no_input_shape) {
-      LOGS_DEFAULT(INFO) << "No Input shapes detected quantizing model" << std::endl;
+      LOGS_DEFAULT(VERBOSE) << "No Input shapes detected quantizing model" << std::endl;
       prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
 
       // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
