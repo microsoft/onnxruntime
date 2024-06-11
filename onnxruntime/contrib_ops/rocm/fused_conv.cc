@@ -319,8 +319,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
       auto ret = miopenCompileFusionPlan(handle, fusion->plan);
       if (miopenStatusSuccess == ret) {
         fusion->compiled_on.insert(handle);
-      }
-      else {
+      } else {
         return ret;
       }
       return miopenStatusSuccess;
