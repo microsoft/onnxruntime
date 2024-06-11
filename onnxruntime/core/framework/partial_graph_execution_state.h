@@ -30,6 +30,7 @@ struct PartialGraphExecutionState {
 
   ProgramRegion& GetProgramRegions(const SessionState& session_state);
 
+  // Be noted: feeds will be std::move to ctx, so it will be empty after this function.
   StreamExecutionContext& GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, std::vector<OrtValue>& feeds,
                                               gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
                                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,

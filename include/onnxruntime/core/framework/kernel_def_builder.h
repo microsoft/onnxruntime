@@ -253,6 +253,16 @@ class KernelDefBuilder {
   /**
      Specify that this kernel's output buffers are passed from external,
      i.e. not created or managed by ORT's memory allocator.
+
+     The OrtValue set as external outputs, must be safe to release as long as the OrtValue's reference
+     count reaches zero in ORT's allocation/deallocation plan. We usually create such an OrtValue
+     following flows: torch tensors --> to dlpack tensors (destructor will release a view of original torch tensor,
+         instead of releasing original torch tensor) --> to OrtValue.
+
+     When the OrtValue is not needed in the graph, then it will be released after calling the attached
+     destructor. The destructor will release the view of the original torch tensor, instead of releasing the original
+     torch tensor. This is to make sure the original torch tensor can still be okay to use externally,
+     even after OrtValue is released in the graph. (Recalled this OrtValue is also not reused by ORT).
   */
   KernelDefBuilder& ExternalOutputs() {
     kernel_def_->external_outputs_ = true;

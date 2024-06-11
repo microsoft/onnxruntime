@@ -627,9 +627,9 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache,
                                           int32_t partial_graph_index) {
+  // Be noted: feeds will be std::move to ctx, so it will be empty after this function.
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
-  feeds.clear();  // Release the feeds at the earliest convenience.
 
   auto* plan = session_state.GetExecutionPlan();
 
