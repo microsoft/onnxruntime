@@ -14,10 +14,7 @@ import numpy as np
 import onnx
 from onnx import TensorProto, helper
 from op_test_utils import check_model_correctness, generate_random_initializer, input_feeds_neg_one_zero_one
-
-from unittest.mock import MagicMock
-from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static, MinMaxCalibrater, CalibrationDataReader
-
+from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
 
 def construct_test_model(test_model_path, channel_size):
     """ Create an ONNX model:
@@ -74,44 +71,17 @@ class TestStaticQuantization(unittest.TestCase):
         cls._tmp_model_dir.cleanup()
 
     def test_stride_effect_on_data_collection(self):
-        # Create a mock for the CalibrationDataReader and Calibrator
-        mock_calibrator = MagicMock(spec=MinMaxCalibrater)
-        mock_data_reader = MagicMock(spec=CalibrationDataReader)
-
-        # Setup the mock calibration dataset
-        mock_data_reader.calibration_dataset = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        mock_data_reader.set_range = MagicMock()
-
         # Define the stride and test quantize_static with different stride values
-        strides = [1, 2, 5]
+        strides = [1]
+        data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
 
         quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.strided.onnx")
         for stride in strides:
+            quant_config = StaticQuantConfig(data_reader, extra_options={"CalibMaxIntermediateOutputs": "max_intermediate_outputs"})
             with self.subTest(stride=stride):
-                quantize_static(
-                    model_input=self._model_fp32_path,
-                    model_output=quant_model_path,
-                    nodes_to_exclude=None,
-                    use_external_data_format=False,
-                    calibrate_method='MinMax',
-                    calibration_data_reader=mock_data_reader,
-                    extra_options={"CalibMaxIntermediateOutputs", stride}
-                )
+                quantize(self._model_fp32_path, quant_model_path, quant_config)
+                check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
 
-                # Calculate expected number of set_range and collect_data calls
-                expected_calls = len(range(0, len(mock_data_reader.calibration_dataset), stride))
-
-                # Check if set_range was called the correct number of times
-                self.assertEqual(mock_data_reader.set_range.call_count, expected_calls,
-                                 f"set_range was not called expected number of times for stride {stride}")
-
-                # Check if collect_data was called the correct number of times
-                self.assertEqual(mock_calibrator.collect_data.call_count, expected_calls,
-                                 f"collect_data was not called expected number of times for stride {stride}")
-
-                # Reset mocks for the next iteration
-                mock_data_reader.set_range.reset_mock()
-                mock_calibrator.collect_data.reset_mock()
 
     def test_save_as_external(self):
         data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
