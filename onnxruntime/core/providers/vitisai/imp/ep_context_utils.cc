@@ -413,11 +413,21 @@ PathString GetEPContextCacheFileLocation(
 }
 
 std::string Slurp(const fs::path& file_location) {
-  const char* location_str = file_location.u8string().c_str();
-  std::ifstream ifs(location_str);
+  // const char* location_str = file_location.u8string().c_str();
+  const char* location_str = file_location.c_str();
+  std::ifstream ifs;
+  ifs.exceptions(std::ifstream::failbit | std::ifstream::badbit);
   std::stringstream ss;
-  ss << ifs.rdbuf();
-  ifs.close();
+  try {
+    ifs.open(location_str, std::ifstream::in);
+    ss << ifs.rdbuf();
+    if (!ss.good()) {
+      LOGS_DEFAULT(WARNING) << "Failed to write to stream";
+    }
+    ifs.close();
+  } catch (std::system_error& se) {
+    LOGS_DEFAULT(WARNING) << "Failed to read " << location_str << ". " << se.code().message();
+  }
   return ss.str();
 }
 
