@@ -307,7 +307,7 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
   if (info_.count("cacheKey") > 0) {
     const std::string& cache_key = info_.at("cacheKey");
     if (!cache_key.empty()) {
-      LOGS_DEFAULT(VERBOSE) << "User configured cached key " << cache_key;
+      LOGS_DEFAULT(VERBOSE) << "User configured cache key " << cache_key;
       return cache_key;
     }
   }
@@ -317,7 +317,7 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
   if (model_metadata.count("vaip_model_md5sum") > 0) {
     const auto& cache_key = model_metadata.at("vaip_model_md5sum");
     if (!cache_key.empty()) {
-      LOGS_DEFAULT(VERBOSE) << "Model metadata cached key " << cache_key;
+      LOGS_DEFAULT(VERBOSE) << "Model metadata cache key " << cache_key;
       return cache_key;
     }
   }
@@ -325,11 +325,11 @@ std::string VitisAIExecutionProvider::GetBackendCompileCacheKey(
           "XLNX_ENABLE_FILE_BASED_CACHE_KEY", "0") != "0") {
     const Path& model_path = graph_viewer.ModelPath();
     if (!model_path.IsEmpty()) {
-      LOGS_DEFAULT(VERBOSE) << "Model file MD5 cached key";
+      LOGS_DEFAULT(VERBOSE) << "Model file MD5 cache key";
       return HashFileContentWithMD5(PathToUTF8String(model_path.ToPathString()));
     }
   }
-  LOGS_DEFAULT(VERBOSE) << "Model signature cached key";
+  LOGS_DEFAULT(VERBOSE) << "Model signature cache key";
   return GetModelSignature(graph_viewer);
 }
 

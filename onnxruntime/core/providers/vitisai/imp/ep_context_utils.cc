@@ -238,6 +238,7 @@ std::unique_ptr<Model> CreateEPContexModel(
   p_attr_4->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
   // FIXME: 2G-limit of ProtoBuf.
   p_attr_4->set_s(saving_orig_graph ? SerializeOrigialGraph(graph_viewer) : "N/A");
+  LOGS_DEFAULT(VERBOSE) << "All attributes for EP context node created";
 
   auto p_node_attrs = NodeAttributes::Create();
   constexpr int num_attrs = 5;
@@ -247,14 +248,18 @@ std::unique_ptr<Model> CreateEPContexModel(
   p_node_attrs->emplace(kSourceAttr, *p_attr_2);
   p_node_attrs->emplace(kONNXModelFileNameAttr, *p_attr_3);
   p_node_attrs->emplace(kNotesAttr, *p_attr_4);
+  LOGS_DEFAULT(VERBOSE) << "Node-attributes for EP context node created";
 
   ep_ctx_graph.AddNode(kEPContextOp, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
+  LOGS_DEFAULT(VERBOSE) << "EP context node created and added to graph";
   ORT_ENFORCE(ep_ctx_graph.Resolve().IsOK());
   auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
   auto p_ep_ctx_model = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
+  LOGS_DEFAULT(VERBOSE) << "EP context model created";
   auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
   p_ep_ctx_model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   p_ep_ctx_graph_viewer->ToProto(*(p_ep_ctx_model_proto->mutable_graph()), true, true);
+  LOGS_DEFAULT(VERBOSE) << "EP context model populated";
 
   return p_ep_ctx_model;
 }
