@@ -95,6 +95,7 @@ Model::Model(const std::string& graph_name,
   for (const auto& schema_collection : local_registries) {
     schema_registry->RegisterRegistry(schema_collection);
   }
+  LOGS(logger, WARNING) << "Done IR, graph name, model metadata, schema registry";
 
   // IsAllowReleasedONNXOpsetsOnlySet() checks for the appropriate env var in the process (i.e.) process-wide
   // `allow_released_opsets_only` is for this specific Model instance
@@ -113,12 +114,14 @@ Model::Model(const std::string& graph_name,
   }
 
   for (const auto& [domain, version] : *p_domain_to_version) {
+    LOGS(logger, WARNING) << "Validating op set for domain";
     model_load_utils::ValidateOpsetForDomain(domain_to_version_static, logger, allow_released_opsets_only_final,
                                              domain, version);
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_.add_opset_import()};
     opset_id_proto->set_domain(domain);
     opset_id_proto->set_version(version);
   }
+  LOGS(logger, WARNING) << "Done domain version mapping";
 
   model_local_functions_.reserve(model_local_functions.size());
   for (auto& func : model_local_functions) {
@@ -127,6 +130,7 @@ Model::Model(const std::string& graph_name,
     model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()),
                                             func_ptr);
   }
+  LOGS(logger, WARNING) << "Done model functions";
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
@@ -143,11 +147,13 @@ Model::Model(const std::string& graph_name,
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()),
                                                           std::move(func_template_ptr));
   }
+  LOGS(logger, WARNING) << "Done model proto functions";
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r.11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
+  LOGS(logger, WARNING) << "Done graph reset";
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
