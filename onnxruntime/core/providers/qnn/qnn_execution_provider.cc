@@ -24,6 +24,11 @@
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/framework/run_options.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#include "core/platform/windows/logging/etw_sink.h"
+#endif
+
 namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
@@ -156,6 +161,20 @@ static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevic
   }
 }
 
+qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned char level) {
+  if (level == 5) {
+    LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
+    return qnn::ProfilingLevel::BASIC;
+  } else if (level < 5) {
+    LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
+                       << static_cast<int>(level);
+    return qnn::ProfilingLevel::OFF;
+  } else {
+    LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
+    return qnn::ProfilingLevel::DETAILED;
+  }
+}
+
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const SessionOptions* session_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
@@ -206,20 +225,52 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
       if (level != 0) {
-        if (level == 5) {
-          LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
-          profiling_level_etw = qnn::ProfilingLevel::BASIC;
-        } else if (level < 5) {
-          LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
-                             << static_cast<int>(level);
-          profiling_level_etw = qnn::ProfilingLevel::OFF;
-        } else {
-          LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
-          profiling_level_etw = qnn::ProfilingLevel::DETAILED;
-        }
+        profiling_level_etw = GetProfilingLevelFromETWLevel(level);
       }
     }
   }
+
+#ifdef _WIN32
+  auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
+  // Register callback for ETW capture state (rundown)
+  etwRegistrationManager.RegisterInternalCallback(
+      [&etwRegistrationManager, this](
+          LPCGUID SourceId,
+          ULONG IsEnabled,
+          UCHAR Level,
+          ULONGLONG MatchAnyKeyword,
+          ULONGLONG MatchAllKeyword,
+          PEVENT_FILTER_DESCRIPTOR FilterData,
+          PVOID CallbackContext) {
+        ORT_UNUSED_PARAMETER(SourceId);
+        ORT_UNUSED_PARAMETER(MatchAnyKeyword);
+        ORT_UNUSED_PARAMETER(MatchAllKeyword);
+        ORT_UNUSED_PARAMETER(FilterData);
+        ORT_UNUSED_PARAMETER(CallbackContext);
+
+        if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
+          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
+            auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
+            (void)qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+          }
+          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
+            if (Level != 0) {
+              // Commenting out Dynamic QNN Profiling for now
+              // There seems to be a crash in 3rd party QC QnnHtp.dll with this.
+              // Repro Scenario - start ETW tracing prior to session creation.
+              //    Then disable/enable ETW Tracing with the code below uncommented a few times
+              // auto profiling_level_etw = GetProfilingLevelFromETWLevel(Level);
+              // (void)qnn_backend_manager_->SetProfilingLevelETW(profiling_level_etw);
+            }
+          }
+        }
+
+        if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
+          // (void)qnn_backend_manager_->SetProfilingLevelETW(qnn::ProfilingLevel::INVALID);
+          (void)qnn_backend_manager_->ResetQnnLogLevel();
+        }
+      });
+#endif
 
   // In case ETW gets disabled later
   auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
@@ -538,6 +589,12 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
+    return result;
+  }
+
+  // Report error if QNN CPU backend is loaded while CPU fallback is disabled
+  if (disable_cpu_ep_fallback_ && qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::CPU) {
+    LOGS(logger, ERROR) << "Qnn CPU backend is loaded while CPU fallback is disabled.";
     return result;
   }
 

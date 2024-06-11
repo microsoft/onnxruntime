@@ -13,7 +13,7 @@ steps:
       inputs:
         script: |
           @echo on
-          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo --warning-mode all
         workingDirectory: $(Build.SourcesDirectory)\java
 
     - task: CmdLine@2

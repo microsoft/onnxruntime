@@ -25,12 +25,12 @@ This will do a custom build and create the pod package files for it in `/path/to
 
 Next, update the Podfile to use the local pods:
 ```diff
--  pod 'onnxruntime-mobile-objc'
-+  pod 'onnxruntime-mobile-objc', :path => "/path/to/staging/dir/onnxruntime-mobile-objc"
-+  pod 'onnxruntime-mobile-c', :path => "/path/to/staging/dir/onnxruntime-mobile-c"
+-  pod 'onnxruntime-objc'
++  pod 'onnxruntime-objc', :path => "/path/to/staging/dir/onnxruntime-objc"
++  pod 'onnxruntime-c', :path => "/path/to/staging/dir/onnxruntime-c"
 ```
 
 Note:
-The `onnxruntime-mobile-objc` pod depends on the `onnxruntime-mobile-c` pod.
-If the released `onnxruntime-mobile-objc` pod is used, this dependency is automatically handled.
-However, if a local `onnxruntime-mobile-objc` pod is used, the local `onnxruntime-mobile-c` pod that it depends on also needs to be specified in the Podfile.
+The `onnxruntime-objc` pod depends on the `onnxruntime-c` pod.
+If the released `onnxruntime-objc` pod is used, this dependency is automatically handled.
+However, if a local `onnxruntime-objc` pod is used, the local `onnxruntime-c` pod that it depends on also needs to be specified in the Podfile.
