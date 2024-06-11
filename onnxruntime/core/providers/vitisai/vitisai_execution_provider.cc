@@ -162,7 +162,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
   // XXX: One of the potential problems is the existing EP-context model file may be stale.
   if (GetEPContextModelFileLocation(
           ep_ctx_model_path_cfg_, model_path_str, is_ep_ctx_model, ep_ctx_model_file_loc_)) {
-#if 1
+#if 0
     // XXX: For now we are intentionally keeping this part.
     // This part is corresponding to the 1st version of `FulfillEPContextEnablement()`.
     // Once we are done with the verification of functionalities and performance
@@ -202,7 +202,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       }
     }
 #endif
-#if 0
+#if 1
     // This part is corresponding to the 2nd version of `FulfillEPContextEnablement()`.
     if (is_ep_ctx_model) {
       std::string cache_dir, cache_key;
@@ -247,10 +247,10 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     index = index + 1;
   }
   if (ep_ctx_enabled_) {
-#if 1
+#if 0
     FulfillEPContextEnablement(result, graph_viewer);
 #endif
-#if 0
+#if 1
     FulfillEPContextEnablement(graph_viewer);
 #endif
   }
