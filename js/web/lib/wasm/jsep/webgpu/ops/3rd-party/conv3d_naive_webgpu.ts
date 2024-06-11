@@ -15,6 +15,10 @@
  * =============================================================================
  */
 
+// sampled from [@tensorflow/tfjs] tfjs-backend-webgpu/src/conv3d_naive_webgpu.ts
+//
+// modified to fit the needs of the project
+
 import {DataType} from '../../../../wasm-common';
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
