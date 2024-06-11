@@ -182,20 +182,22 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       }
       return capability_ptrs;
     } else {
-      LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
-                            << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
-      LoadEPContexModelFromFile();
-      auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_);
-      std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
-      DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
-      // FIXME: ditto.
-      if (!execution_providers_) {
-        execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph_viewer, *GetLogger(), info_));
-        // Alternative with some nuance.
-        // auto p_orig_graph_viewer = RetrieveOriginalGraph(p_ep_ctx_model_->MainGraph());
-        // execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
+      if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_)) {
+        LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
+                              << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
+        LoadEPContexModelFromFile();
+        auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_);
+        std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
+        DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
+        // FIXME: ditto.
+        if (!execution_providers_) {
+          execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph_viewer, *GetLogger(), info_));
+          // Alternative with some nuance.
+          // auto p_orig_graph_viewer = RetrieveOriginalGraph(p_ep_ctx_model_->MainGraph());
+          // execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
+        }
+        return capability_ptrs;
       }
-      return capability_ptrs;
     }
 #endif
 #if 0
