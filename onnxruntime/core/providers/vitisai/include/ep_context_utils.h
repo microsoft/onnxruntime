@@ -37,14 +37,16 @@ void DeserializeCapabilities(
 
 std::string SerializeOrigialGraph(const GraphViewer&);
 
-std::unique_ptr<Model> CreateEPContexModel(const GraphViewer&, const std::string&, const std::string&,
-                                           const int64_t, bool, const logging::Logger*);
+std::unique_ptr<Model> CreateEPContexModel(const GraphViewer&, const std::string&, const std::string&, const int64_t,
+                                           const std::string&, const std::string&, bool, const logging::Logger*);
 
 void DumpEPContextModel(const std::unique_ptr<Model>&, const std::string&);
 
 bool ValidateEPContextNode(const Graph&);
 
 std::string RetrieveEPContextCache(const Graph&, const PathString&, bool binary_mode = true);
+
+void RetrieveBackendCacheInfo(const Graph&, std::string&, std::string&);
 
 std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph&);
 

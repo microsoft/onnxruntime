@@ -185,6 +185,8 @@ std::unique_ptr<Model> CreateEPContexModel(
     const std::string& serialized_ctx_cache,
     const std::string& ctx_cache_file_loc,
     const int64_t embed_mode,
+    const std::string& backend_cache_dir,
+    const std::string& backend_cache_key,
     bool saving_orig_graph,
     const logging::Logger* p_logger) {
   // Create a new graph/model, reusing the graph name,
@@ -237,7 +239,15 @@ std::unique_ptr<Model> CreateEPContexModel(
   // p_attr_4->set_type(onnx::AttributeProto_AttributeType_STRING);
   p_attr_4->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
   // FIXME: 2G-limit of ProtoBuf.
-  p_attr_4->set_s(saving_orig_graph ? SerializeOrigialGraph(graph_viewer) : "N/A");
+
+  if (saving_orig_graph) {
+    p_attr_4->set_s(SerializeOrigialGraph(graph_viewer));
+  } else {
+    nlohmann::json j_obj;
+    j_obj["backend_cache_dir"] = cache_dir;
+    j_obj["backend_cache_key"] = cache_key;
+    p_attr_4->set_s(j_obj.dump());
+  }
   LOGS_DEFAULT(VERBOSE) << "All attributes for EP context node created";
 
   auto p_node_attrs = NodeAttributes::Create();
@@ -301,6 +311,7 @@ std::string RetrieveEPContextCache(
   fs::path ep_ctx_fs_path(ep_ctx_model_loc);
   // Attr "ep_cache_context" stores a relative path.
   ep_ctx_fs_path.replace_filename(fs::path(ep_ctx_cache));
+  LOGS_DEFAULT(VERBOSE) << "EP context model path: " << ep_ctx_fs_path.string();
   // TODO: Validaion of the file location to make sure security is met.
   if (!fs::exists(ep_ctx_fs_path) || !fs::is_regular_file(ep_ctx_fs_path)) {
     ORT_THROW("File for EP context cache is missing");
@@ -323,6 +334,25 @@ std::string RetrieveEPContextCache(
   std::string cache_payload(buf);
   delete[] buf;
   return cache_payload;
+}
+
+void RetrieveBackendCacheInfo(const Graph& graph, std::string& cache_dir, std::string& cache_key) {
+  if (!ValidateEPContextNode(graph)) {
+    ORT_THROW("Invalid EP context model for Vitis AI");
+  }
+  // TODO: Support for multi-node EP context model.
+  auto* p_node = graph.GetNode(0);
+  const auto& attrs = p_node->GetAttributes();
+  const auto& notes_str = attrs.at(kNotesAttr).s();
+  nlohmann::json j_obj = nlohmann::json::parse(notes_str);
+  cache_dir = j_obj["backend_cache_dir"];
+  cache_key = j_obj["backend_cache_key"];
+  if (cache_dir.empty()) {
+    LOGS_DEFAULT(WARNING) << "Retrieved backend cache dir empty";
+  }
+  if (cache_key.empty()) {
+    LOGS_DEFAULT(WARNING) << "Retrieved backend cache key empty";
+  }
 }
 
 std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {

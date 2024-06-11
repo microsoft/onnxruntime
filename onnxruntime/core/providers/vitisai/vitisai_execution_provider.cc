@@ -112,9 +112,9 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, true, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, "", "", true, &logger);
   } else {
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, true, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, "", "", true, &logger);
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
   DumpEPContextModel(p_ep_ctx_model_, ep_ctx_model_file_loc_);
@@ -147,9 +147,9 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, false, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, cache_dir, cache_key, false, &logger);
   } else {
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, false, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, cache_dir, cache_key, false, &logger);
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
   DumpEPContextModel(p_ep_ctx_model_, ep_ctx_model_file_loc_);
@@ -200,8 +200,8 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
 #endif
     // This part is corresponding to the 2nd version of `FulfillEPContextEnablement()`.
     if (is_ep_ctx_model) {
-      auto cache_dir = GetBackendCompileCacheDir();
-      auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+      std::string cache_dir, cache_key;
+      RetrieveBackendCacheInfo(graph_viewer.GetGraph(), cache_dir, cache_key);
       LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
       fs::path backend_cache_file_loc(cache_dir + "/" + cache_key + "/context.json");
       LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
