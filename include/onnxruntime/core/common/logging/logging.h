@@ -14,10 +14,10 @@
 #include "core/common/common.h"
 #include "core/common/profiler_common.h"
 #include "core/common/logging/capture.h"
-#include "core/common/logging/severity.h"
-
 #include "core/common/logging/macros.h"
-
+#include "core/common/logging/severity.h"
+#include "core/common/logging/sink_types.h"
+#include "core/platform/ort_mutex.h"
 #include "date/date.h"
 
 /*
@@ -168,6 +168,23 @@ class LoggingManager final {
   static bool HasDefaultLogger() { return nullptr != s_default_logger_; }
 
   /**
+    Gets the default instance of the LoggingManager.
+  */
+  static LoggingManager* GetDefaultInstance();
+
+  /**
+     Removes a Sink if one is present
+  */
+  void RemoveSink(SinkType sinkType);
+
+  /**
+     Adds a Sink to the current sink creating a CompositeSink if necessary
+     Sinks types must be unique
+     @param severity The severity level for the new Sink
+  */
+  bool AddSinkOfType(SinkType sinkType, std::function<std::unique_ptr<ISink>()> sinkFactory, logging::Severity severity);
+
+  /**
      Change the minimum severity level for log messages to be output by the default logger.
      @param severity The severity.
   */
@@ -214,7 +231,10 @@ class LoggingManager final {
   void CreateDefaultLogger(const std::string& logger_id);
 
   std::unique_ptr<ISink> sink_;
-  const Severity default_min_severity_;
+#ifdef _WIN32
+  mutable OrtMutex sink_mutex_;
+#endif
+  Severity default_min_severity_;
   const bool default_filter_user_data_;
   const int default_max_vlog_level_;
   bool owns_default_logger_;
@@ -362,8 +382,8 @@ unsigned int GetProcessId();
 /**
    If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then adds to the existing logger.
 */
-std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity,
-                                            logging::Severity etwSeverity);
+std::unique_ptr<ISink> EnhanceSinkWithEtw(std::unique_ptr<ISink> existingSink, logging::Severity originalSeverity,
+                                          logging::Severity etwSeverity);
 
 /**
   If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then can override the logging level.

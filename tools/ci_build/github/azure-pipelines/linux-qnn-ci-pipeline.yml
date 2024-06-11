@@ -32,11 +32,11 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.21.0.240401
+  default: 2.22.0.240425
 
 jobs:
   - job: Build_QNN_EP
-    pool: onnxruntime-qnn-ubuntu-2004-cpu
+    pool: onnxruntime-qnn-ubuntu-2204-cpu
     timeoutInMinutes: 60
     workspace:
       clean: all

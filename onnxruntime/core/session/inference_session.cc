@@ -12,6 +12,7 @@
 #include <queue>
 
 #include "core/common/denormal.h"
+#include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
@@ -52,6 +53,7 @@
 #include "core/platform/tracing.h"
 #include <Windows.h>
 #include "core/platform/windows/telemetry.h"
+#include "core/platform/windows/logging/etw_sink.h"
 #endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -345,7 +347,9 @@ void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
                                              session_options.user_logging_param);
     auto sessionSeverity = GetSeverity(session_options);
     auto etwOverrideSeverity = logging::OverrideLevelWithEtw(sessionSeverity);
-    sink = EnhanceLoggerWithEtw(std::move(sink), sessionSeverity, etwOverrideSeverity);
+#ifdef _WIN32
+    sink = EnhanceSinkWithEtw(std::move(sink), sessionSeverity, etwOverrideSeverity);
+#endif
 
     user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(sink),
                                                                       std::min(sessionSeverity, etwOverrideSeverity),
@@ -369,7 +373,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
   active_sessions_[global_session_id_++] = this;
 
-  // Register callback for ETW capture state (rundown)
+  // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
   WindowsTelemetry::RegisterInternalCallback(
       [this](
           LPCGUID SourceId,
@@ -390,6 +394,49 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
             ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
           LogAllSessions();
+        }
+      });
+
+  // Register callback for ETW start / stop so that LOGS tracing can be adjusted dynamically after session start
+  auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
+  // Register callback for ETW capture state (rundown)
+  etwRegistrationManager.RegisterInternalCallback(
+      [&etwRegistrationManager, this](
+          LPCGUID SourceId,
+          ULONG IsEnabled,
+          UCHAR Level,
+          ULONGLONG MatchAnyKeyword,
+          ULONGLONG MatchAllKeyword,
+          PEVENT_FILTER_DESCRIPTOR FilterData,
+          PVOID CallbackContext) {
+        (void)SourceId;
+        (void)Level;
+        (void)MatchAnyKeyword;
+        (void)MatchAllKeyword;
+        (void)FilterData;
+        (void)CallbackContext;
+
+        if (logging_manager_ != nullptr) {
+          auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
+
+          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0 &&
+              IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
+            LOGS(*session_logger_, VERBOSE) << "Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
+            logging_manager_->AddSinkOfType(
+                onnxruntime::logging::SinkType::EtwSink,
+                []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
+                ortETWSeverity);
+            onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddSinkOfType(
+                onnxruntime::logging::SinkType::EtwSink,
+                []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
+                ortETWSeverity);
+            LOGS(*session_logger_, INFO) << "Done Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
+          }
+          if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
+            LOGS(*session_logger_, INFO) << "Removing ETW Sink from logger";
+            logging_manager_->RemoveSink(onnxruntime::logging::SinkType::EtwSink);
+            LOGS(*session_logger_, VERBOSE) << "Done Removing ETW Sink from logger";
+          }
         }
       });
 #endif
@@ -528,7 +575,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 }
 
 void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState) {
-  (void)captureState;  // Otherwise Linux build error
+  ORT_UNUSED_PARAMETER(captureState);  // Otherwise Linux build error
 
   LOGS(*session_logger_, INFO) << session_options;
 
@@ -2030,8 +2077,8 @@ common::Status InferenceSession::Initialize() {
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
-        model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
-        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
+        graph.DomainToVersionMap(), graph.Name(), model_->MetaData(),
+        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
@@ -3172,9 +3219,19 @@ IOBinding* SessionIOBinding::Get() {
 
 #ifdef _WIN32
 void InferenceSession::LogAllSessions() {
+  const Env& env = Env::Default();
+
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
   for (const auto& session_pair : active_sessions_) {
     InferenceSession* session = session_pair.second;
+
+    onnxruntime::Graph& graph = model_->MainGraph();
+    bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+    env.GetTelemetryProvider().LogSessionCreation(
+        session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
+        graph.DomainToVersionMap(), graph.Name(), model_->MetaData(),
+        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, true);
+
     TraceSessionOptions(session->session_options_, true);
   }
 }

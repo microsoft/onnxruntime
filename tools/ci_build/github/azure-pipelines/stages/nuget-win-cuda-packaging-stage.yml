@@ -84,7 +84,7 @@ stages:
   condition: succeeded()
 
   jobs:
-    - job:
+    - job: Windows_Packaging_combined_GPU
       workspace:
         clean: all
       pool: 'onnxruntime-Win2022-GPU-T4'
