@@ -341,7 +341,7 @@ const maybeExpandAndTransposeToBNSH =
 
       return context.compute(
           createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm),
-          {inputs: [reshapedInput], outputs: [-1]})[0];
+          {inputs: [reshapedInput], outputs: [params.isPastkvBSNH ? -1 : outputIndex]})[0];
     };
 
 export const groupQueryAttention = (context: ComputeContext, attributes: AttentionAttrs): void => {
