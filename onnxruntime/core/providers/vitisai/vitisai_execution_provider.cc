@@ -177,7 +177,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       // 3) The closed-source backend of VitisAI EP has complication cache, so no real overhead.
       // 4) In next iteration of EP context model implementaiton, we are getting rid of this dependency.
       if (!execution_providers_) {
-        auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph(), ep_ctx_model_file_loc_);
+        auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
         execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
       }
       return capability_ptrs;
