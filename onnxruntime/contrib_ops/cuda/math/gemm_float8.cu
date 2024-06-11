@@ -206,8 +206,6 @@ Status GemmFloat8::ComputeGemm(
 #error CUDA_R_8F_E4M3 (float 8 types) is defined with CUDA>=11.8. Set flag DISABLE_FLOAT8_TYPES.
 #endif
         case CUDA_R_8F_E4M3:
-          compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
-          break;
         case CUDA_R_8F_E5M2:
           compute_type = CUBLAS_COMPUTE_32F;
           break;
