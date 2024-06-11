@@ -492,8 +492,10 @@ struct GemmFpAIntB {
     run_kernel<arch::Sm70>(params, shared_storage);
 #elif (__CUDA_ARCH__ >= 750) && (__CUDA_ARCH__ < 800)
     run_kernel<arch::Sm75>(params, shared_storage);
-#elif (__CUDA_ARCH__ >= 800) && (__CUDA_ARCH__ < 900)
+#elif (__CUDA_ARCH__ >= 800) && (__CUDA_ARCH__ < 890)
     run_kernel<arch::Sm80>(params, shared_storage);
+#elif (__CUDA_ARCH__ == 890)
+    run_kernel<arch::Sm89>(params, shared_storage);
 #elif (__CUDA_ARCH__ >= 900)
     CUTLASS_NOT_IMPLEMENTED();  // Don't compile these for Hopper or later. Use CUTLASS 3.x kernels.
 #else

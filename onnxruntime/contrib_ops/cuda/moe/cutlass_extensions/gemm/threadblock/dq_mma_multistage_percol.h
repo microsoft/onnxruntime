@@ -77,13 +77,13 @@ template <
     typename SmemIteratorB_,
     /// Cache operation for operand B
     cutlass::arch::CacheOperation::Kind CacheOpB,
-    /// Data type for the scales
+    /// Iterators over scales in global memory
     typename IteratorScale_,
     /// Iterators over scales in shared memory
     typename SmemIteratorScale_,
     /// Data type of accumulator matrix
     typename ElementC_,
-    /// Data type of accumulator matrix
+    /// Layout of accumulator matrix
     typename LayoutC_,
     /// Policy describing tuning details (concept: MmaPolicy)
     typename Policy_,
@@ -184,8 +184,9 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
   using WarpFragmentB = typename Operator::FragmentB;
   Dequantizer warp_dequantizer_;
 
+  using ElementA = typename IteratorA::Element;
   using ElementB = typename IteratorB::Element;
-  using LayoutDetailsForB = kernel::LayoutDetailsB<ElementB, ArchTag>;
+  using LayoutDetailsForB = kernel::LayoutDetailsB<ElementA, ElementB, ArchTag>;
 
   static constexpr bool RequiresTileInterleave =
       layout::IsColumnMajorTileInterleave<typename LayoutDetailsForB::Layout>::value;
@@ -446,7 +447,7 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
       }
     }
 
-    // Waits until kStages-2 stages have committed.
+    // Wait until we have at least one committed global fetch stage. (#uncommitted = Base::kStages - 1 - #committed)
     cutlass::arch::cp_async_wait<Base::kStages - 2>();
     __syncthreads();
 
@@ -507,7 +508,15 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
             lds_converter(warp_frag_B[warp_tileB_k_load_offset % 2]);
         warp_dequantizer_.dequantize(converted_frag_B, warp_frag_scales);
 
-        run_warp_mma(warp_mma, accum, warp_frag_A[warp_mma_k % 2], converted_frag_B, accum,
+        using FragmentOperandB = cutlass::Array<ElementA, Operator::FragmentB::kElements>;
+        constexpr cutlass::FloatRoundStyle RoundStyle = cutlass::FloatRoundStyle::round_to_nearest;
+        constexpr int ConversionVectorWidth = TransformBAfterLDS::result_type::kElements;
+        static_assert(ConversionVectorWidth == FragmentOperandB::kElements);
+
+        using Converter = cutlass::NumericArrayConverter<ElementA, ElementScale, ConversionVectorWidth, RoundStyle>;
+
+        FragmentOperandB converted_frag_B_operand = Converter::convert(converted_frag_B);
+        run_warp_mma(warp_mma, accum, warp_frag_A[warp_mma_k % 2], converted_frag_B_operand, accum,
                      warp_tileB_k_compute_offset);
 
         // Issue global->shared copies for the this stage
@@ -530,7 +539,8 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
           // Inserts a memory fence between stages of cp.async instructions.
           cutlass::arch::cp_async_fence();
 
-          // Waits until kStages-2 stages have committed.
+          // Wait until we have at least one committed global fetch stage. (#uncommitted = Base::kStages - 1 -
+          // #committed)
           arch::cp_async_wait<Base::kStages - 2>();
           __syncthreads();
 

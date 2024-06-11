@@ -279,7 +279,8 @@ class MmaTensorOpDequantizer<
   CUTLASS_DEVICE
   void dequantize(FragmentDequantizedOperand& operand_frag, FragmentScale const& scale_frag) {
     using _MmaOperandB = typename ArchMmaOperator::FragmentB;
-    using ExpandedMmaOperandB = Array<typename _MmaOperandB::Element, kExpansionFactor * _MmaOperandB::kElements>;
+    using ExpandedMmaOperandB =
+        Array<typename FragmentDequantizedOperand::Element, kExpansionFactor * _MmaOperandB::kElements>;
     static_assert(
         ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
         "");
@@ -313,7 +314,8 @@ class MmaTensorOpDequantizer<
   void dequantize(FragmentDequantizedOperand& operand_frag, FragmentScale const& scale_frag,
                   FragmentScale const& zero_frag) {
     using _MmaOperandB = typename ArchMmaOperator::FragmentB;
-    using ExpandedMmaOperandB = Array<typename _MmaOperandB::Element, kExpansionFactor * _MmaOperandB::kElements>;
+    using ExpandedMmaOperandB =
+        Array<typename FragmentDequantizedOperand::Element, kExpansionFactor * _MmaOperandB::kElements>;
     static_assert(
         ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
         "");
