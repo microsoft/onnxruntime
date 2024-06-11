@@ -16,14 +16,12 @@ stages:
   - template: ../templates/c-api-gpu.yml
     parameters:
       CudaVersion: ${{ parameters.CudaVersion }}
-      docker_base_image: ${{ parameters.docker_base_image }}
       buildJava: ${{ parameters.buildJava }}
       EP: cuda
 
   - template: ../templates/c-api-gpu.yml
     parameters:
       CudaVersion: ${{ parameters.CudaVersion }}
-      docker_base_image: ${{ parameters.docker_base_image }}
       buildJava: ${{ parameters.buildJava }}
       buildNodejs: ${{ parameters.buildNodejs }}
       EP: tensorrt
