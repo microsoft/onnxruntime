@@ -3142,7 +3142,15 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       if (mem_size > max_ctx_mem_size_) {
         max_ctx_mem_size_ = mem_size;
       }
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // nvinfer1::ICudaEngine::createExecutionContextWithoutDeviceMemory was deprecated
+#endif
       trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
     } else {
       trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
     }
@@ -3588,8 +3596,15 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     if (context_update) {
       if (trt_state->context_memory_sharing_enable) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // nvinfer1::ICudaEngine::createExecutionContextWithoutDeviceMemory was deprecated
+#endif
         *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       } else {
         *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
@@ -3805,7 +3820,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     if (mem_size > max_ctx_mem_size_) {
       max_ctx_mem_size_ = mem_size;
     }
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // nvinfer1::ICudaEngine::createExecutionContextWithoutDeviceMemory was deprecated
+#endif
     trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
   } else {
     trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
   }
