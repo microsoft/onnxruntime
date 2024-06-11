@@ -292,7 +292,7 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
       break;
     default:
       LOGS_DEFAULT(WARNING) << "MiGraphx: unsupported data type " << type << ", fallback to CPU";
-      LOGS_DEFAULT(WARNING) << "implementation" << std::endl;
+      LOGS_DEFAULT(WARNING) << "implementation";
       return false;
   }
 
@@ -1035,11 +1035,11 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
   } else {  // unsupported_nodes_idx.empty()
     if (dump_model_ops_) {
-      LOGS_DEFAULT(INFO) << "============= Unsupported nodes ====================" << std::endl;
+      LOGS_DEFAULT(INFO) << "============= Unsupported nodes ====================";
       for (auto idx : unsupported_nodes) {
         LOGS_DEFAULT(INFO) << graph_viewer.GetNode(idx)->OpType() << std::endl;
       }
-      LOGS_DEFAULT(INFO) << "************* Unsupported nodes ********************" << std::endl;
+      LOGS_DEFAULT(INFO) << "************* Unsupported nodes ********************";
     }
 
     if (unsupported_nodes.size() > 10) {
@@ -1114,6 +1114,34 @@ bool get_input_output_names(const GraphViewer& graph,
   return no_input_shape;
 }
 
+// Attempt to load a model and catch any exceptions on load fail.
+// Useful to default to EP to trigger the compile if file doesn't exist or loading fails.
+bool load_precompiled_model(migraphx::program& prog, bool load_enable, std::string path) {
+  try {
+    if (load_enable) {
+      LOGS_DEFAULT(INFO) << "Attempting to load model at:" << path;
+      prog = migraphx::load(path.c_str());
+      LOGS_DEFAULT(INFO) << "load model : Success";
+      return true;
+    } else {
+      return false;
+    }
+  } catch (...) {
+    return false;
+  }
+  return false;
+}
+
+void save_compiled_model(migraphx::program& prog, bool save_enable, std::string out_path) {
+  if (save_enable) {
+    LOGS_DEFAULT(INFO) << "Model Save at " << out_path << ": Begin" << std::endl;
+    migraphx::file_options fo;
+    fo.set_file_format("msgpack");
+    migraphx::save(prog, out_path.c_str(), fo);
+    LOGS_DEFAULT(INFO) << "Model Save: Complete" << std::endl;
+  }
+}
+
 Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   migraphx::onnx_options options;
@@ -1151,8 +1179,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     migraphx::program prog;
 
     if (!no_input_shape) {
-      if (!load_compiled_model_) {
-        LOGS_DEFAULT(INFO) << "No Input shapes detected quantizing model" << std::endl;
+      if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
+        LOGS_DEFAULT(INFO) << "No Input shapes detected quantizing model";
         prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
 
         // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
@@ -1191,17 +1219,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         prog.compile(t_, co);
         LOGS_DEFAULT(INFO) << "Model Compile: Complete" << std::endl;
 
-        if (save_compiled_model_) {
-          LOGS_DEFAULT(INFO) << "Model Save: Begin" << std::endl;
-          migraphx::file_options fo;
-          fo.set_file_format("msgpack");
-          migraphx::save(prog, save_compiled_path_.c_str(), fo);
-          LOGS_DEFAULT(INFO) << "Model Save: Complete" << std::endl;
-        }
-      } else {
-        LOGS_DEFAULT(INFO) << "Model Load: Attempting to Load Pre-Compiled Model" << std::endl;
-        prog = migraphx::load(load_compiled_path_.c_str());
-        LOGS_DEFAULT(INFO) << "Model Load: Complete" << std::endl;
+        save_compiled_model(prog, save_compiled_model_, save_compiled_path_);
       }
 
       auto prog_output_shapes = prog.get_output_shapes();
@@ -1301,7 +1319,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       // input shapes are different, needs to re-parse onnx and
       // re-compile the program
       if (!input_shape_match) {
-        if (!load_compiled_model_) {
+        if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
           LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
           prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
 
@@ -1359,16 +1377,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           co.set_fast_math(false);
           prog.compile(t, co);
 
-          LOGS_DEFAULT(INFO) << "Model Compile: Completed" << std::endl;
-          if (save_compiled_model_) {
-            LOGS_DEFAULT(INFO) << "Model Save: Begin" << std::endl;
-            migraphx::file_options fo;
-            fo.set_file_format("msgpack");
-            migraphx::save(prog, save_compiled_path_.c_str(), fo);
-            LOGS_DEFAULT(INFO) << "Model Save: Completed" << std::endl;
-          }
-        } else {
-          prog = migraphx::load(load_compiled_path_.c_str());
+          save_compiled_model(prog, mgx_state->save_compiled_mode, mgx_state->save_compiled_path);
         }
 
         mgx_state->prog = prog;
