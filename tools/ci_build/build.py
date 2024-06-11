@@ -1548,7 +1548,11 @@ def generate_build_tree(
             and not args.build_wasm
         ):
             if is_windows():
-                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
+                # DLL initialization errors due to old conda msvcp140.dll dll are a result of the new MSVC compiler
+                # See https://developercommunity.visualstudio.com/t/Access-violation-with-std::mutex::lock-a/10664660#T-N10668856
+                # Remove this definition (_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+                # once the conda msvcp140.dll dll is updated.
+                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS", "/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR"]
                 if not args.use_gdk:
                     # Target Windows 10
                     cflags += [
