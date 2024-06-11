@@ -26,7 +26,7 @@ stages:
 - stage: ${{ parameters.StageName }}
   dependsOn: Setup
   jobs:
-  - job:
+  - job: ${{ parameters.StageName }}
     timeoutInMinutes: 200
     strategy:
       maxParallel: 2
@@ -228,15 +228,14 @@ stages:
             artifactName: ${{ parameters.ArtifactName }}
             targetPath: '$(Build.ArtifactStagingDirectory)'
 
-        - ${{ if eq(parameters['IsReleaseBuild'], 'true') }}:
-          - task: PublishSymbols@2
-            displayName: 'Publish Build Symbols'
-            inputs:
-              symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-              searchPattern: '**/*.pdb'
-              symbolServerType: teamServices
-
-
+        - task: PublishSymbols@2
+          displayName: 'Publish Build Symbols'
+          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+          inputs:
+            SymbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            SearchPattern: 'onnxruntime.pdb'
+            SymbolServerType: teamServices
+            SymbolExpirationInDays: 365
 
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
