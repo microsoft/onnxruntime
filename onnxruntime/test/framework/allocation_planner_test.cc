@@ -433,7 +433,7 @@ TEST_F(PlannerTest, ChainTest) {
   CreatePlan();
 
   // Expected plan:
-  //   W: kAllocateStatically; X: kAllocate; B: kAllocate; Y: kReuse (X); post-node3: free(B); X is returned output
+  //   W: kAllocateStatically; X: kAllocate; B: kAllocate; Y: kReuse (X); post-node3: free(B); Z is returned output
   CheckAllocKind(W, AllocKind::kAllocateStatically);
   CheckAllocKind(X, AllocKind::kAllocate);
   CheckAllocKind(B, AllocKind::kAllocate);
@@ -536,10 +536,42 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   CheckAllocKind(X4, AllocKind::kAllocateOutput);
 
   // check each ml-value is freed at appropriate step
-  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+  // X2 will not be reused but will be freed (to release the current reference). X3 will be allocated and will be freed.
   CheckFreed(0, {});
-  CheckFreed(1, {});
-  CheckFreed(2, {X1});
+  CheckFreed(1, {X2});
+  CheckFreed(2, {X3});
+}
+
+TEST_F(PlannerTest, ExternalOutputsNoReuseTest) {
+  // tensor variables:
+  std::string X1("X1"), X2("X2"), X3("X3"), X4("X4"), X5("X5");
+
+  // graph structure:
+  AddExternalOutputsNode(X1, X2);  // external-outputs operator; X1: input; X2: temporary
+  AddInplaceNode(X2, X3);          // may-in-place operator; X3: temporary
+  AddNormalNode(X3, X4);           // normal operator; X4: temporary
+  AddNormalNode(X4, X5);           // normal operator; X5: output
+
+  // simulate shape-inference results:
+  Shape shape1{"M", "N"};
+  auto shape = &shape1.value;
+  SetShape({{X1, shape}, {X2, shape}, {X3, shape}, {X4, shape}, {X5, shape}});
+
+  CreatePlan();
+
+  // check allocation kind:
+  CheckAllocKind(X1, AllocKind::kPreExisting);
+  CheckAllocKind(X2, AllocKind::kAllocatedExternally);
+  CheckAllocKind(X3, AllocKind::kAllocate);  // Should not be Reused.
+  CheckAllocKind(X4, AllocKind::kAllocate);
+  CheckAllocKind(X5, AllocKind::kAllocateOutput);
+
+  // check each ml-value is freed at appropriate step
+  // X2 will not be reused. X3 will be allocated and will be freed.
+  CheckFreed(0, {});
+  CheckFreed(1, {X2});
+  CheckFreed(2, {X3});
+  CheckFreed(3, {X4});
 }
 
 #ifdef ENABLE_STRIDED_TENSORS

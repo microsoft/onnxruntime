@@ -1514,6 +1514,12 @@ class PlannerImpl {
       // determine if inputs of *pnode can be freed:
       for (auto node_input : pnode->InputDefs()) {
         if (node_input->Exists()) {
+          const Node* producer_node = graph_viewer_.GetProducerNode(node_input->Name());
+          // Skip if the producer node has external outputs.
+          if (producer_node != nullptr && HasExternalOutputs(*producer_node)) {
+            continue;
+          }
+
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -1526,6 +1532,12 @@ class PlannerImpl {
 
       for (auto node_input : pnode->ImplicitInputDefs()) {
         if (node_input->Exists()) {
+          const Node* producer_node = graph_viewer_.GetProducerNode(node_input->Name());
+          // Skip if the producer node has external outputs.
+          if (producer_node != nullptr && HasExternalOutputs(*producer_node)) {
+            continue;
+          }
+
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -1536,15 +1548,17 @@ class PlannerImpl {
         }
       }
 
-      // determine if any outputs of *pnode are unused and can be freed:
-      for (auto node_output : pnode->OutputDefs()) {
-        if (node_output->Exists()) {
-          auto& sym = node_output->Name();
-          auto original = Buffer(Index(sym));
-          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
-          // See comments in the OrtValueInfo definition.
-          if (0 == DecrementUseCount(original)) {
-            freelist_.push_front(FreeBufferInfo(original, program_counter));
+      if (!HasExternalOutputs(*pnode)) {
+        // determine if any outputs of *pnode are unused and can be freed:
+        for (auto node_output : pnode->OutputDefs()) {
+          if (node_output->Exists()) {
+            auto& sym = node_output->Name();
+            auto original = Buffer(Index(sym));
+            // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+            // See comments in the OrtValueInfo definition.
+            if (0 == DecrementUseCount(original)) {
+              freelist_.push_front(FreeBufferInfo(original, program_counter));
+            }
           }
         }
       }
@@ -1725,9 +1739,9 @@ class PlannerImpl {
   // Convert information in execution plan and memory reuse plan into release plan
   Status GenerateDeallocationPlan() {
     // 1. build the consumer list for each value
-    std::vector<InlinedVector<NodeIndex>> value_consumers;
+    std::vector<InlinedVector<NodeIndex>> ortvalue_to_consumers_map;
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
-    value_consumers.resize(num_ml_values);
+    ortvalue_to_consumers_map.resize(num_ml_values);
 
     // iterate each stream from back, so the first element is the last consumer in single stream case
     for (auto& stream : stream_nodes_) {
@@ -1744,7 +1758,7 @@ class PlannerImpl {
             if (AllocPlan(origin).alloc_kind == AllocKind::kAllocate ||
                 AllocPlan(origin).alloc_kind == AllocKind::kAllocatedExternally) {
               // add current node as consumer for origin buffer
-              value_consumers[origin].push_back(node_index);
+              ortvalue_to_consumers_map[origin].push_back(node_index);
             }
           }
           return Status::OK();
@@ -1760,8 +1774,8 @@ class PlannerImpl {
       plan_.node_release_list[node_index].push_back(release_action_idx);
     };
     plan_.node_release_list.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
-    for (size_t i = 0; i < value_consumers.size(); ++i) {
-      if (!value_consumers[i].empty()) {
+    for (size_t i = 0; i < ortvalue_to_consumers_map.size(); ++i) {
+      if (!ortvalue_to_consumers_map[i].empty()) {
         plan_.release_actions.push_back(SequentialExecutionPlan::ReleaseAction{i, 0});
         auto release_action_idx = plan_.release_actions.size() - 1;
         // check whether we can static determine where to release.
@@ -1769,19 +1783,19 @@ class PlannerImpl {
         // we actually can do better if all the consumers depends on the last consumer.
         // will optimize it later
         bool is_all_consumer_same_stream = true;
-        auto stream_idx = plan_.node_stream_map_[value_consumers[i][0]];
-        for (size_t j = 1; j < value_consumers[i].size(); ++j) {
-          if (plan_.node_stream_map_[value_consumers[i][j]] != stream_idx) {
+        auto stream_idx = plan_.node_stream_map_[ortvalue_to_consumers_map[i][0]];
+        for (size_t j = 1; j < ortvalue_to_consumers_map[i].size(); ++j) {
+          if (plan_.node_stream_map_[ortvalue_to_consumers_map[i][j]] != stream_idx) {
             is_all_consumer_same_stream = false;
             break;
           }
         }
         if (is_all_consumer_same_stream) {
           // all the consumers are on the same stream, so the first element is the last consumer int the stream.
-          process_consumer(release_action_idx, value_consumers[i][0]);
+          process_consumer(release_action_idx, ortvalue_to_consumers_map[i][0]);
         } else {
           // can't static determin, add all the consumers, we will use ref count in release action
-          for (auto node_index : value_consumers[i]) {
+          for (auto node_index : ortvalue_to_consumers_map[i]) {
             process_consumer(release_action_idx, node_index);
           }
         }
