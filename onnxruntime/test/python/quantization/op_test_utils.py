@@ -231,18 +231,60 @@ def input_feeds_neg_one_zero_one(n, name2shape):
     return dr
 
 
-class StridedDataReader(TestDataFeeds):
-    def __init__(self, data_feeds, stride=1, start_index=0, end_index=None):
-        # Initialize with common parameters using the parent class constructor
-        super().__init__(data_feeds)
+def input_feeds_neg_one_zero_one_list(n, name2shape):
+    """
+    randomize n feed according to shape, its values are from -1, 0, and 1
+    """
+    input_data_list = []
+    for _i in range(n):
+        inputs = {}
+        for name, shape in name2shape.items():
+            inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+        input_data_list.extend([inputs])
+    return input_data_list
+
+
+class GenerateCalibrationData(CalibrationDataReader):
+    def __init__(self, data_list, input_nodes, input_shapes, no_tensor_num, in_dtypes, inputs_conv_channel_last=None):
+        print("Generating calibration dataset from "+str(data_list))
+        print("input nodes are ",input_nodes,"input shapes are ", input_shapes)
+        if inputs_conv_channel_last:
+            print(f"Inputs that will be converted to channel last: {inputs_conv_channel_last}")
+
+        self.enum_data_dicts = []
+        self.input_nodes = input_nodes
+        self.input_shapes = input_shapes
+        self.inputs_conv_channel_last = inputs_conv_channel_last
+        self.calibration_dataset = data_list
+
+    def __len__(self):
+        return len(self.calibration_dataset)
+
+    def get_next(self):
+        feed_dict = {}
+        inp = next(self.calibration_dataset, None)
+        if inp is not None:
+            for i in range(len(self.input_nodes)):
+                input_data = inp[i].reshape(self.input_shapes[i])
+                if self.inputs_conv_channel_last is not None and self.input_nodes[i] in self.inputs_conv_channel_last:
+                    input_data = np.moveaxis(input_data, 1, -1)
+                dict_item = {self.input_nodes[i]: input_data}
+                feed_dict.update(dict_item)
+            return feed_dict
+        else:
+            return None
+
+
+class StridedDataReader(GenerateCalibrationData):
+    def __init__(self, data_list, input_nodes, input_shapes, no_tensor_num, in_dtypes, inputs_conv_channel_last=None, stride=1, start_index=0, end_index=None):
+        super().__init__(data_list, input_nodes, input_shapes, no_tensor_num, in_dtypes, inputs_conv_channel_last)
 
         self.stride = max(1, stride)  # Ensure stride is at least 1
         self.start_index = start_index
-        self.end_index = end_index if end_index is not None else stride  # Default to the end of the dataset
+        self.end_index = end_index if end_index is not None else len(self.calibration_dataset)  # Default to the end of the dataset
         self.enum_data_dicts = iter([])
 
     def get_next(self):
-        # Adjusted to process data within the specified range and in batches defined by the stride
         iter_data = next(self.enum_data_dicts, None)
         if iter_data:
             return iter_data
@@ -260,42 +302,32 @@ class StridedDataReader(TestDataFeeds):
             return None
 
     def load_serial(self):
-        # load stride amount of data and put them into a list of dictionary
         batch_data = []
         end_loop = min(self.end_index, self.start_index + self.stride)
         for i in range(self.start_index, end_loop):
             print(f"debugging the load serial index {i}")
-            data_item = self.data_feeds[i]
+            data_item = self.calibration_dataset[i]
             processed_item = self.process_data_item(data_item)
             batch_data.append(processed_item)
-
         return batch_data
 
     def process_data_item(self, data_item):
-        # Method to process each data item into the required format
         feed_dict = {}
         for i, node in enumerate(self.input_nodes):
-            input_data = data_item[i].reshape(self.input_shapes[i])
-            # if self.inputs_conv_channel_last and node in self.inputs_conv_channel_last:
-            #     input_data = np.moveaxis(input_data, 1, -1)
-            feed_dict[node] = input_data
+            # input_data = data_item[i].reshape(self.input_shapes[i])
+            feed_dict[node] = data_item["input"]
         return feed_dict
 
     def set_range(self, start_index, end_index=None):
-        """Dynamically update the processing range of the dataset."""
         self.start_index = start_index
         self.end_index = end_index if end_index is not None else len(self.calibration_dataset)
         self.enum_data_dicts = iter([])
 
-def strided_calibrater_data_reader(n, name2shape):
-    input_data_list = []
-    for _i in range(n):
-        inputs = {}
-        for name, shape in name2shape.items():
-            inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
-        input_data_list.extend([inputs])
-    dr = StridedDataReader(input_data_list)
-    return dr
+    def rewind(self):
+        """Rewind the data reader to the beginning of the dataset."""
+        self.start_index = 0
+        self.enum_data_dicts = iter([])
+
 
 def check_op_type_order(testcase, model_to_check, ops):
     if isinstance(model_to_check, str):

@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import check_model_correctness, generate_random_initializer, input_feeds_neg_one_zero_one, strided_calibrater_data_reader
+from op_test_utils import check_model_correctness, generate_random_initializer, input_feeds_neg_one_zero_one, StridedDataReader, input_feeds_neg_one_zero_one_list
 
 from unittest.mock import MagicMock, patch
 from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
@@ -92,15 +92,23 @@ class TestStaticQuantization(unittest.TestCase):
 
     def test_stride_effect_on_data_collection(self):
         # Define the stride and test quantize_static with different stride values
-        strides = [1]
-        data_reader = strided_calibrater_data_reader(10, {"input": [1, self._channel_size, 1, 3]})
+        strides = [2, 5]
+        input_shapes = [1, self._channel_size, 1, 3]
+        data_list = input_feeds_neg_one_zero_one_list(10, {"input": [1, self._channel_size, 1, 3]})
+        input_nodes = ["input"]
+        in_dtypes = [np.float32]  # Example dtype, adjust as needed
 
         quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.strided.onnx")
         for stride in strides:
+            data_reader = StridedDataReader(data_list, input_nodes, input_shapes, no_tensor_num=0, in_dtypes=in_dtypes, stride=stride)
             quant_config = StaticQuantConfig(data_reader, extra_options={"CalibStridedMinMax": stride})
+            non_strided_data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
             with self.subTest(stride=stride):
-                quantize(self._model_fp32_path, quant_model_path, quant_config)
-                check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
+                quantize(str(self._model_fp32_path), str(quant_model_path), quant_config)
+                data_reader.rewind()
+                # to check strided calibration gives same result as the non-strided version
+                check_model_correctness(self, self._model_fp32_path, quant_model_path, non_strided_data_reader.get_next())
+                non_strided_data_reader.rewind()
 
     def test_static_quant_config(self):
         data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
