@@ -198,6 +198,7 @@ try:
                     "libcudart.so.11.0",
                     "libcudart.so.12",
                     "libcudnn.so.8",
+                    "libcudnn.so.9",
                     "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
