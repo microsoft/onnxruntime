@@ -72,7 +72,7 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
           // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenMNConst, true, ReturnSoftmaxConst>;
           if (smem_size >= 48 * 1024) {
             cudaFuncSetAttribute(
-                kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+                kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(smem_size));
             // ORT_ENFORCE(cudaFuncSetAttribute(
             //     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
           }
@@ -80,7 +80,7 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
           // cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
           //     &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
           //  printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);
-          kernel<<<grid, Kernel_traits::kNThreads, smem_size, stream>>>(params);
+          kernel<<<grid, Kernel_traits::kNThreads, static_cast<int>(smem_size), stream>>>(params);
         });
       });
     });
@@ -111,9 +111,9 @@ void run_flash_splitkv_fwd(Flash_fwd_params& params, cudaStream_t stream) {
                 // auto kernel = &flash_fwd_splitkv_kernel<Kernel_traits, Is_causal, false, IsEvenKConst>;
                 if (smem_size >= 48 * 1024) {
                   cudaFuncSetAttribute(
-                      kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+                      kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(smem_size));
                 }
-                kernel<<<grid, Kernel_traits::kNThreads, smem_size, stream>>>(params);
+                kernel<<<grid, Kernel_traits::kNThreads, static_cast<int>(smem_size), stream>>>(params);
               });
             });
           });
@@ -271,7 +271,7 @@ void run_mha_fwd_hdim192(Flash_fwd_params& params, cudaStream_t stream) {
 template <typename T>
 void run_mha_fwd_hdim224(Flash_fwd_params& params, cudaStream_t stream) {
   constexpr static int Headdim = 224;
-  int max_smem_per_block = params.dprops->sharedMemPerBlockOptin;
+  size_t max_smem_per_block = params.dprops->sharedMemPerBlockOptin;
   //  printf("max_smem_per_block = %d\n", max_smem_per_block);
   BOOL_SWITCH(params.is_causal, Is_causal, [&] {
     if (max_smem_per_block >= 2 * Headdim * (128 + 2 * 64)) {  // 112 KB

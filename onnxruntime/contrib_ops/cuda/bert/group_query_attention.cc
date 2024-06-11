@@ -8,6 +8,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include <iostream>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -129,6 +130,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.head_size,
                                                               parameters.num_heads,
                                                               parameters.kv_num_heads);
+  std::cout << "use_flash_attention: " << use_flash_attention << "\n";
   // Allocate buffers
   size_t softmax_lse_bytes = 0;
   size_t softmax_lse_accum_bytes = 0;
@@ -141,7 +143,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
         parameters.batch_size, parameters.sequence_length, parameters.sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
-    parameters.num_splits = num_splits;
+    parameters.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }

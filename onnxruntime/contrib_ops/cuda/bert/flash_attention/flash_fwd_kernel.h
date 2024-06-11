@@ -7,6 +7,12 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4267)
+#pragma warning(disable: 4100)
+#pragma warning(disable: 4101) // equivalent to GCC's -Wunused-variable
+#pragma warning(disable: 4189) // equivalent to GCC's -Wunused-but-set-variable
 #endif
 
 #include <cute/tensor.hpp>
@@ -1180,4 +1186,6 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
 #endif

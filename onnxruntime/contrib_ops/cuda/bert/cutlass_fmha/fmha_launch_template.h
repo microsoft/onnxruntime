@@ -41,32 +41,32 @@ struct RightPaddingBatchHook {
   using output_t = typename AttentionKernel::output_t;
   using output_accum_t = typename AttentionKernel::output_accum_t;
 
-//   static constexpr bool kSupportsDropout = AttentionKernel::kSupportsDropout;
-//   static constexpr bool kSupportsBias = AttentionKernel::kSupportsBias;
-//   static constexpr int kKeysPerBlock = AttentionKernel::kKeysPerBlock;
-//   static constexpr bool kIsAligned = AttentionKernel::kIsAligned;
-//   static constexpr bool kSingleValueIteration = AttentionKernel::kSingleValueIteration;
-//   static constexpr int32_t kAlignLSE = AttentionKernel::kAlignLSE;  // block size of backward
-//   static constexpr bool kPreloadV = AttentionKernel::kPreloadV;
-//   static constexpr bool kKeepOutputInRF = AttentionKernel::kKeepOutputInRF;
-//   static constexpr bool kNeedsOutputAccumulatorBuffer = AttentionKernel::kNeedsOutputAccumulatorBuffer;
+  static constexpr bool kSupportsDropout = AttentionKernel::kSupportsDropout;
+  static constexpr bool kSupportsBias = AttentionKernel::kSupportsBias;
+  static constexpr int kKeysPerBlock = AttentionKernel::kKeysPerBlock;
+  static constexpr bool kIsAligned = AttentionKernel::kIsAligned;
+  static constexpr bool kSingleValueIteration = AttentionKernel::kSingleValueIteration;
+  static constexpr int32_t kAlignLSE = AttentionKernel::kAlignLSE;  // block size of backward
+  static constexpr bool kPreloadV = AttentionKernel::kPreloadV;
+  static constexpr bool kKeepOutputInRF = AttentionKernel::kKeepOutputInRF;
+  static constexpr bool kNeedsOutputAccumulatorBuffer = AttentionKernel::kNeedsOutputAccumulatorBuffer;
 
-//   template <typename Params>
-//   static CUTLASS_DEVICE bool AdvanceToBlockForGQA(Params& p) {
-//     auto batch_id = blockIdx.z;
-//     auto head_id = blockIdx.y;
-//     auto query_start = blockIdx.x * kQueriesPerBlock;
+  template <typename Params>
+  static CUTLASS_DEVICE bool AdvanceToBlockForGQA(Params& p) {
+    auto batch_id = blockIdx.z;
+    auto head_id = blockIdx.y;
+    auto query_start = blockIdx.x * kQueriesPerBlock;
 
-//     auto lse_dim = ceil_div((int32_t)(p.num_queries), kAlignLSE) * kAlignLSE;
+    auto lse_dim = ceil_div((int32_t)(p.num_queries), kAlignLSE) * kAlignLSE;
 
-//     // Advance to current batch - in case of different sequence lengths
-//     if (p.seqlen_k_ptr) {
-//       p.num_keys = p.seqlen_k_ptr[batch_id];
-//     }
+    // Advance to current batch - in case of different sequence lengths
+    if (p.seqlen_k_ptr) {
+      p.num_keys = p.seqlen_k_ptr[batch_id];
+    }
 
-//     if (query_start >= p.num_queries) {
-//       return false;
-//     }
+    if (query_start >= p.num_queries) {
+      return false;
+    }
 
     // TODO: use GroupQueryAttentionToBatchHook
     bool is_kv_bsnh = (p.k_strideH == p.head_dim && p.k_strideM == p.num_heads * p.head_dim);
@@ -102,11 +102,11 @@ struct RightPaddingBatchHook {
       p.output_accum_ptr = (accum_t*)(p.output_ptr);
     }
 
-//     if (p.logsumexp_ptr != nullptr) {
-//       // lse[batch_id, head_id, query_start]
-//       p.logsumexp_ptr +=
-//           batch_id * lse_dim * p.num_heads + head_id * lse_dim + query_start;
-//     }
+    if (p.logsumexp_ptr != nullptr) {
+      // lse[batch_id, head_id, query_start]
+      p.logsumexp_ptr +=
+          batch_id * lse_dim * p.num_heads + head_id * lse_dim + query_start;
+    }
 
     // Custom masking
     // if (p.causal_diagonal_ptr) {
@@ -126,24 +126,24 @@ struct RightPaddingBatchHook {
           p.num_keys);
     }
 
-//     p.num_queries -= query_start;
-//     p.num_batches = 0;  // no longer used after
+    p.num_queries -= query_start;
+    p.num_batches = 0;  // no longer used after
 
-//     // If num_queries == 1, and there is only one key head we're wasting
-//     // 15/16th of tensor core compute In that case :
-//     //  - we only launch kernels for head_id % kQueriesPerBlock == 0
-//     //  - we iterate over heads instead of queries (strideM = strideH)
-//     if (p.num_queries == 1 && p.k_strideH == 0 && p.v_strideH == 0) {
-//       if (head_id % kQueriesPerBlock != 0)
-//         return false;
-//       p.q_strideM = p.q_strideH;
-//       p.num_queries = p.num_heads;
-//       p.num_heads = 1;  // unused but here for intent
-//       // remove causal since n_query = 1
-//       // otherwise, offset would change with head !
-//       p.custom_mask_type = AttentionKernel::NoCustomMask;
-//       p.o_strideM = p.head_dim_value;
-//     }
+    // If num_queries == 1, and there is only one key head we're wasting
+    // 15/16th of tensor core compute In that case :
+    //  - we only launch kernels for head_id % kQueriesPerBlock == 0
+    //  - we iterate over heads instead of queries (strideM = strideH)
+    if (p.num_queries == 1 && p.k_strideH == 0 && p.v_strideH == 0) {
+      if (head_id % kQueriesPerBlock != 0)
+        return false;
+      p.q_strideM = p.q_strideH;
+      p.num_queries = p.num_heads;
+      p.num_heads = 1;  // unused but here for intent
+      // remove causal since n_query = 1
+      // otherwise, offset would change with head !
+      p.custom_mask_type = AttentionKernel::NoCustomMask;
+      p.o_strideM = p.head_dim_value;
+    }
 
     // Make sure the compiler knows these variables are the same on all
     // the threads of the warp.
