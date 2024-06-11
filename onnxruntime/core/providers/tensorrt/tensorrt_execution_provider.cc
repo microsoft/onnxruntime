@@ -298,7 +298,7 @@ void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
-#if NV_TENSORRT_MAJOR > 8
+#if NV_TENSORRT_MAJOR >= 10
 void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
                                              uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
