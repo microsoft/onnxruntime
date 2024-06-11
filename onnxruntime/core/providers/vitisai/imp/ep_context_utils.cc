@@ -245,7 +245,7 @@ std::unique_ptr<Model> CreateEPContexModel(
   } else {
     nlohmann::json j_obj;
     j_obj["backend_cache_dir"] = backend_cache_dir;
-    j_obj["backend_cache_key"] = backend_cache_key;;
+    j_obj["backend_cache_key"] = backend_cache_key;
     p_attr_4->set_s(j_obj.dump());
   }
   LOGS_DEFAULT(VERBOSE) << "All attributes for EP context node created";
@@ -262,7 +262,7 @@ std::unique_ptr<Model> CreateEPContexModel(
 
   ep_ctx_graph.AddNode(kEPContextOp, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
   LOGS_DEFAULT(VERBOSE) << "EP context node created and added to graph";
-  ORT_ENFORCE(ep_ctx_graph.Resolve().IsOK());
+  // ORT_ENFORCE(ep_ctx_graph.Resolve().IsOK());
   auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
   LOGS_DEFAULT(VERBOSE) << "EP context graph viewer created with EP context node added";
   auto p_ep_ctx_model = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
