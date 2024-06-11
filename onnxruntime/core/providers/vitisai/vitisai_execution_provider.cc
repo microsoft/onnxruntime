@@ -52,11 +52,11 @@ void VitisAIExecutionProvider::LoadEPContexModelFromFile() const {
     auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
     auto status = Model::Load(ep_ctx_model_file_loc_, *p_model_proto);
     if (!status.IsOK()) {
-      ORT_THROW("Loading EP context model failed from ", ep_ctx_model_file_loc_);
+      ORT_THROW("Loading EP context model failed from ", PathToUTF8String(ep_ctx_model_file_loc_));
     }
     auto& logger = logging::LoggingManager::DefaultLogger();
     p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
-    LOGS_DEFAULT(VERBOSE) << "Loaded EP context model from: " << ep_ctx_model_file_loc_;
+    LOGS_DEFAULT(VERBOSE) << "Loaded EP context model from: " << PathToUTF8String(ep_ctx_model_file_loc_);
   } else if (ep_ctx_model_file_loc_.empty()) {
     LOGS_DEFAULT(WARNING) << "Cannot load an EP-context model due to bad file path";
   }
