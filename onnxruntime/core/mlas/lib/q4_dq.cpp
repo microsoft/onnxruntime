@@ -638,6 +638,187 @@ struct BlockwiseQuantizer {
     }
 };
 
+/**
+ * @brief Blockwise quantization methods for QDQ format. Input tensor is quantized along column
+ *        or row. Scales and zeros are calculated. Based on qbits, consecutive quantized elements
+ *        in memory are packed together, which means the packing is along the row. Quantized data
+ *        are stored in row major, so the output tensor reserves same shape, in terms of qbits type,
+ *        as the input tensor.
+ * @tparam Tin    source data type, e.g. fp32/fp16
+ * @tparam qbits  number of bits in each quantized element
+ */
+template <typename Tin, int qbits>
+struct BlockwiseQDQQuantizer {
+    static_assert(qbits == 4 || qbits == 2, "Only 4bit or 2bit block quantization is supported!");
+
+    const int32_t mask_ = (1 << qbits) - 1;
+
+    static MLAS_FORCEINLINE uint8_t SetElem(uint8_t val, int32_t idx, uint8_t dst)
+    {
+        auto shift = idx * qbits;
+        return ((val & mask_) << shift) | (dst & (~(mask_ << shift)));
+    }
+
+    /**
+     * @brief Quantize a matrix shape [rows, columns] along row. Scales and zero points are calculated.
+     *        Quantized data are packed along the row based on qbits. Quantized data are stored in row
+     *        major, so the output tensor reserves the shape, in terms output type.
+     * @param src               the source matrix, row major: [rows * columns]
+     * @param scales            the scales of quantized blocks, row major layout with shape:
+     *                          [rows * ceil(columns / quant_block_size)]
+     * @param zero_points       the zero points of quantized blocks, packed. Same shape as scales
+     *                          in terms of output type. In terms of uint8_t, the shape is:
+     *                          [ceil(rows * ceil(columns / quant_block_size) * qbits / 8)]
+     * @param dst               the quantized weights, row major: [rows * columns] in terms of
+     *                          output type. In terms of uint8_t, the shape is: [ceil(rows * columns * qbits / 8]
+     * @param rows              number of rows in the source matrix
+     * @param columns           number of columns in the source matrix
+     * @param quant_block_size  number of rows/columns quantized together
+     * @param thread_pool       thread pool for parallel processing
+     */
+    static void quantizeRowwise(
+        const Tin* src,
+        Tin* scales,
+        uint8_t* zero_points,
+        uint8_t* dst,
+        int32_t rows,
+        int32_t columns,
+        int32_t quant_block_size,
+        MLAS_THREADPOOL* thread_pool
+    )
+    {
+        ORT_THROW("BlockwiseQDQQuantizer::BlockwiseQDQQuantizer is not implemented");
+    }
+
+    /**
+     * @brief Quantize a matrix shape [rows, columns] along column. Scales and zero points are calculated.
+     *        Quantized data are packed along the row based on qbits. Quantized data are stored in row major
+     *        so the output tensor reserves the shape, in terms output type.
+     * @param src               the source matrix, row major: [rows * columns]
+     * @param scales            the scales of quantized blocks, row major with shape: [ceil(rows/quant_block_size) * columns]
+     * @param zero_points       the zero points of quantized blocks, packed. Same shape as scales in terms of output type.
+     *                          In uint8_t, the shape is: [ceil(columns * ceil(rows / quant_block_size) * qbits / 8)]
+     * @param dst               the quantized weights, row major: [rows * columns] in terms of output type. In uint8_t,
+     *                          the shape is: [ceil(rows * columns * qbits / 8]
+     * @param rows              number of rows in the source matrix
+     * @param columns           number of columns in the source matrix
+     * @param quant_block_size  number of rows/columns quantized together
+     * @param thread_pool       thread pool for parallel processing
+     */
+    static void quantizeColumnwise(
+        const Tin* src,
+        Tin* scales,
+        uint8_t* zero_points,
+        uint8_t* dst,
+        int32_t rows,
+        int32_t columns,
+        int32_t quant_block_size,
+        MLAS_THREADPOOL* thread_pool
+    )
+    {
+        const int32_t row_thr_blk_size = quant_block_size;
+        const int32_t col_thr_blk_size = 128;
+        const auto num_row_thr_blk = (rows + row_thr_blk_size - 1) / row_thr_blk_size;
+        const auto num_col_thr_blk = (columns + col_thr_blk_size - 1) / col_thr_blk_size;
+        const auto num_thr_blk = num_row_thr_blk * num_col_thr_blk;
+        const auto minf = std::numeric_limits<float>::lowest();
+        const auto maxf = std::numeric_limits<float>::max();
+
+        MlasTryBatchParallel(
+            thread_pool, static_cast<ptrdiff_t>(num_thr_blk),
+            [&](ptrdiff_t thr_blk_idx) {
+                uint8_t zp_t[BitsTraits<qbits>::kPackSize];
+                Tin scale_t[BitsTraits<qbits>::kPackSize];
+                uint8_t val_t[BitsTraits<qbits>::kPackSize];
+                std::fill_n(zp_t, BitsTraits<qbits>::kPackSize, BitsTraits<qbits>::kMid);
+
+                const int32_t r_thr_blk_idx = static_cast<int32_t>(thr_blk_idx / num_col_thr_blk);
+                const int32_t c_thr_blk_idx = static_cast<int32_t>(thr_blk_idx % num_col_thr_blk);
+
+                const int32_t r = r_thr_blk_idx * row_thr_blk_size;
+                const int32_t c = c_thr_blk_idx * col_thr_blk_size;
+
+                const int32_t r_size = std::min(row_thr_blk_size, rows - r);
+                const int32_t c_size = std::min(col_thr_blk_size, columns  - c);
+
+                auto input_idx = r * columns + c;
+                auto scale_idx = r_thr_blk_idx * columns + c;
+                auto input_end_idx = input_idx + c_size;
+
+                // leading unaligned
+                auto leading_unaligned = input_idx % BitsTraits<qbits>::kPackSize;
+                if (leading_unaligned) {
+                    Tin scale_tt;
+                    uint8_t zp_tt = 0, out_tt;
+
+                    for (int32_t i = leading_unaligned, i_end = std::min(BitsTraits<qbits>::kPackSize, leading_unaligned + c_size);
+                         i < i_end;
+                         ++i, ++input_idx, ++scale_idx) {
+                        float vmin = maxf;
+                        float vmax = minf;
+                        auto input_idx_t = input_idx;
+                        for (int32_t j = 0; j < r_size; ++j, input_idx_t += columns) {
+                            auto v = static_cast<float>(src[input_idx_t]);
+                            vmin = v < vmin ? v : vmin;
+                            vmax = v > vmax ? v : vmax;
+                        }
+
+                        if (zero_points) {
+                            range2scalezp<Tin, qbits>(vmin, vmax, scale_tt, zp_tt);
+                            zero_points[scale_idx >> qbits] = SetElem(zp_tt, i, zero_points[scale_idx >> qbits]);
+                        }
+                        else {
+                            range2scale<Tin, qbits>(vmin, vmax, scale_tt);
+                        }
+
+                        scales[scale_idx] = scale_tt;
+
+                        float scalef = static_cast<float>(scale_tt), zpf = static_cast<float>(zp_tt);
+                        float reciprocal_sc = scalef ? 1.0f / scalef : 0.0f;
+
+                        for (int32_t j = 0; j < r_size; ++j, input_idx_t += columns) {
+                            auto v = static_cast<float>(src[input_idx_t]);
+                            out_tt = static_cast<uint8_t>(
+                                std::clamp(std::roundf(v * reciprocal_sc) + zpf, 0.0f, BitsTraits<qbits>::kMaxFp)
+                            );
+                            dst[input_idx_t >> qbits] = SetElem(out_tt, i, dst[input_idx_t >> qbits]);
+                        }
+                    }
+                }
+
+                // aligned
+
+                // trailing unaligned
+            }
+        );
+    }
+
+    /**
+     * @brief Transpose a quantized tensor to use in MatMulNbits. The input tensor is in row major,
+     *        [rows, columns] in terms of qbits type, packed along rows. The output tensor is in
+     *        [columns, ceil(rows / quant_block_size), ceil(block_size * qbits / 8)] in uint8_t type.
+     *        Since both input tensor and output tensor are packed, it's not needed to consider sign
+     *        during the unpacking/packing in transpose.
+     * @param src               the quantized tensor, row major: [rows * columns] in terms of qbits type
+     *                          In uint8_t, the shape is: [ceil(rows * columns * qbits / 8]
+     * @param dest              the transposed quantized tensor, column major. In uint8_t, the shape is
+     *                          [columns * ceil(rows / quant_block_size) * ceil(block_size * qbits / 8)]
+     * @param rows              number of rows in the source matrix
+     * @param columns           number of columns in the source matrix
+     * @param quant_block_size  number of rows/columns quantized together
+     * @param thread_pool       thread pool for parallel processing
+     */
+    static void Transpose(
+      const uint8_t* src, 
+      uint8_t *dest, 
+      int32_t rows, 
+      int32_t columns, 
+      int32_t quant_block_size,
+      MLAS_THREADPOOL* thread_pool)
+    {
+
+    }
+};
 
 template <typename T, int qbits>
 void
