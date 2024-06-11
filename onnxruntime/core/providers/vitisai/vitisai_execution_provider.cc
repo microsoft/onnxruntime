@@ -54,6 +54,7 @@ void VitisAIExecutionProvider::LoadEPContexModelFromFile() const {
     if (!status.IsOK()) {
       ORT_THROW("Loading EP context model failed from ", PathToUTF8String(ep_ctx_model_file_loc_));
     }
+    logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
     auto& logger = logging::LoggingManager::DefaultLogger();
     p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
     LOGS_DEFAULT(VERBOSE) << "Loaded EP context model from: " << PathToUTF8String(ep_ctx_model_file_loc_);
@@ -94,6 +95,7 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const std::vector<std::unique_ptr<ComputeCapability>>& capability_ptrs,
     const onnxruntime::GraphViewer& graph_viewer) const {
+  logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
@@ -130,6 +132,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
   fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
   auto backend_cache_str = GetBackendCompileCache(backend_cache_file_loc);
+  logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
   if (!ep_ctx_embed_mode_) {

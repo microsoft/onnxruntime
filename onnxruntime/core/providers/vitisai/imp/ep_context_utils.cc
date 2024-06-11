@@ -365,6 +365,7 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   const auto& notes_str = attrs.at(kNotesAttr).s();
   nlohmann::json j_obj = nlohmann::json::parse(notes_str);
 
+  logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
   auto& logger = logging::LoggingManager::DefaultLogger();
 
   auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
