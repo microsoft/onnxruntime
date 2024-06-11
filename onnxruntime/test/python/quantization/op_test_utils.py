@@ -231,6 +231,72 @@ def input_feeds_neg_one_zero_one(n, name2shape):
     return dr
 
 
+class StridedDataReader(TestDataFeeds):
+    def __init__(self, data_feeds, stride=1, start_index=0, end_index=None):
+        # Initialize with common parameters using the parent class constructor
+        super().__init__(data_feeds)
+
+        self.stride = max(1, stride)  # Ensure stride is at least 1
+        self.start_index = start_index
+        self.end_index = end_index if end_index is not None else stride  # Default to the end of the dataset
+        self.enum_data_dicts = iter([])
+
+    def get_next(self):
+        # Adjusted to process data within the specified range and in batches defined by the stride
+        iter_data = next(self.enum_data_dicts, None)
+        if iter_data:
+            return iter_data
+
+        self.enum_data_dicts = None
+        if self.start_index < self.end_index:
+            print(f"start index is {self.start_index}")
+            data = self.load_serial()
+
+            self.start_index += self.stride
+            self.enum_data_dicts = iter(data)
+
+            return next(self.enum_data_dicts, None)
+        else:
+            return None
+
+    def load_serial(self):
+        # load stride amount of data and put them into a list of dictionary
+        batch_data = []
+        end_loop = min(self.end_index, self.start_index + self.stride)
+        for i in range(self.start_index, end_loop):
+            print(f"debugging the load serial index {i}")
+            data_item = self.data_feeds[i]
+            processed_item = self.process_data_item(data_item)
+            batch_data.append(processed_item)
+
+        return batch_data
+
+    def process_data_item(self, data_item):
+        # Method to process each data item into the required format
+        feed_dict = {}
+        for i, node in enumerate(self.input_nodes):
+            input_data = data_item[i].reshape(self.input_shapes[i])
+            # if self.inputs_conv_channel_last and node in self.inputs_conv_channel_last:
+            #     input_data = np.moveaxis(input_data, 1, -1)
+            feed_dict[node] = input_data
+        return feed_dict
+
+    def set_range(self, start_index, end_index=None):
+        """Dynamically update the processing range of the dataset."""
+        self.start_index = start_index
+        self.end_index = end_index if end_index is not None else len(self.calibration_dataset)
+        self.enum_data_dicts = iter([])
+
+def strided_calibrater_data_reader(n, name2shape):
+    input_data_list = []
+    for _i in range(n):
+        inputs = {}
+        for name, shape in name2shape.items():
+            inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+        input_data_list.extend([inputs])
+    dr = StridedDataReader(input_data_list)
+    return dr
+
 def check_op_type_order(testcase, model_to_check, ops):
     if isinstance(model_to_check, str):
         model = onnx.load(model_to_check)
@@ -244,7 +310,6 @@ def check_op_type_order(testcase, model_to_check, ops):
             node.op_type,
             f"op {node_idx} is not in order. Expected: {ops[node_idx]}, Actual: {node.op_type}",
         )
-
 
 def check_op_type_count(testcase, model_path, **kwargs):
     model = onnx.load(Path(model_path))

@@ -473,7 +473,6 @@ def quantize_static(
         ("CalibMovingAverage", "moving_average"),
         ("CalibMovingAverageConstant", "averaging_constant"),
         ("CalibMaxIntermediateOutputs", "max_intermediate_outputs"),
-        ("CalibStridedMinMax", "stride"),
     ]
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options

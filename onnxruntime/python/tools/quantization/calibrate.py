@@ -287,7 +287,6 @@ class MinMaxCalibrater(CalibraterBase):
         averaging_constant=0.01,
         max_intermediate_outputs=None,
         per_channel=False,
-        stride=None,
     ):
         """
         :param model_path: ONNX model to calibrate. It is a model path
@@ -317,7 +316,6 @@ class MinMaxCalibrater(CalibraterBase):
             raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
         self.averaging_constant = averaging_constant
         self.max_intermediate_outputs = max_intermediate_outputs
-        self.stride = stride
 
     def augment_graph(self):
         """
@@ -421,24 +419,17 @@ class MinMaxCalibrater(CalibraterBase):
             return new_range
 
         for key, value in old_range.items():
-            # Check if stride is used and adjust merging strategy accordingly
-            if self.stride:
-                # Handling for structured data types with TensorData
-                if isinstance(value, TensorData):
-                    old_min = value.range_value[0]
-                    old_max = value.range_value[1]
-                else:
-                    old_min, old_max = value
-
-                if isinstance(new_range[key], TensorData):
-                    new_min = new_range[key].range_value[0]
-                    new_max = new_range[key].range_value[1]
-                else:
-                    new_min, new_max = new_range[key]
-
+            # Handling for structured data types with TensorData
+            if isinstance(value, TensorData):
+                old_min = value.range_value[0]
+                old_max = value.range_value[1]
             else:
-                # Default handling with tuples
                 old_min, old_max = value
+
+            if isinstance(new_range[key], TensorData):
+                new_min = new_range[key].range_value[0]
+                new_max = new_range[key].range_value[1]
+            else:
                 new_min, new_max = new_range[key]
 
             if self.moving_average:
@@ -455,6 +446,7 @@ class MinMaxCalibrater(CalibraterBase):
                 new_range[key] = (min_value, max_value)
 
         return new_range
+
 
     def compute_data(self) -> TensorsData:
         """
@@ -1161,7 +1153,6 @@ def create_calibrator(
         averaging_constant = extra_options.get("averaging_constant", 0.01)
         max_intermediate_outputs = extra_options.get("max_intermediate_outputs", None)
         per_channel = extra_options.get("per_channel", False)
-        stride = extra_options.get("stride", None)
         calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
@@ -1172,7 +1163,6 @@ def create_calibrator(
             averaging_constant=averaging_constant,
             max_intermediate_outputs=max_intermediate_outputs,
             per_channel=per_channel,
-            stride=stride,
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm

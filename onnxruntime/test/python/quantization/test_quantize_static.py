@@ -13,10 +13,10 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import check_model_correctness, generate_random_initializer, input_feeds_neg_one_zero_one
+from op_test_utils import check_model_correctness, generate_random_initializer, input_feeds_neg_one_zero_one, strided_calibrater_data_reader
 
 from unittest.mock import MagicMock, patch
-from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static, Calibrator, CalibrationDataReader
+from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
 
 
 def construct_test_model(test_model_path, channel_size):
@@ -93,11 +93,11 @@ class TestStaticQuantization(unittest.TestCase):
     def test_stride_effect_on_data_collection(self):
         # Define the stride and test quantize_static with different stride values
         strides = [1]
-        data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
+        data_reader = strided_calibrater_data_reader(10, {"input": [1, self._channel_size, 1, 3]})
 
         quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.strided.onnx")
         for stride in strides:
-            quant_config = StaticQuantConfig(data_reader, extra_options={"CalibMaxIntermediateOutputs": "max_intermediate_outputs"})
+            quant_config = StaticQuantConfig(data_reader, extra_options={"CalibStridedMinMax": stride})
             with self.subTest(stride=stride):
                 quantize(self._model_fp32_path, quant_model_path, quant_config)
                 check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
