@@ -54,7 +54,6 @@ void VitisAIExecutionProvider::LoadEPContexModelFromFile() const {
     if (!status.IsOK()) {
       ORT_THROW("Loading EP context model failed from ", PathToUTF8String(ep_ctx_model_file_loc_));
     }
-    logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
     auto& logger = logging::LoggingManager::DefaultLogger();
     p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
     LOGS_DEFAULT(VERBOSE) << "Loaded EP context model from: " << PathToUTF8String(ep_ctx_model_file_loc_);
@@ -95,7 +94,6 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const std::vector<std::unique_ptr<ComputeCapability>>& capability_ptrs,
     const onnxruntime::GraphViewer& graph_viewer) const {
-  logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
@@ -132,7 +130,6 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
   fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
   auto backend_cache_str = GetBackendCompileCache(backend_cache_file_loc);
-  logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
   if (!ep_ctx_embed_mode_) {
@@ -165,7 +162,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
   // XXX: One of the potential problems is the existing EP-context model file may be stale.
   if (GetEPContextModelFileLocation(
           ep_ctx_model_path_cfg_, model_path_str, is_ep_ctx_model, ep_ctx_model_file_loc_)) {
-#if 0
+#if 1
     // XXX: For now we are intentionally keeping this part.
     // This part is corresponding to the 1st version of `FulfillEPContextEnablement()`.
     // Once we are done with the verification of functionalities and performance
@@ -201,7 +198,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       return capability_ptrs;
     }
 #endif
-#if 1
+#if 0
     // This part is corresponding to the 2nd version of `FulfillEPContextEnablement()`.
     if (is_ep_ctx_model) {
       std::string cache_dir, cache_key;
@@ -246,10 +243,10 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     index = index + 1;
   }
   if (ep_ctx_enabled_) {
-#if 0
+#if 1
     FulfillEPContextEnablement(result, graph_viewer);
 #endif
-#if 1
+#if 0
     FulfillEPContextEnablement(graph_viewer);
 #endif
   }
