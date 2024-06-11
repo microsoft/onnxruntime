@@ -11,6 +11,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+constexpr int kEfficientAttentionMaxHeadSize = 1024;
+
 struct MemoryEfficientAttentionParams {
   int32_t sm;
   bool is_half;
@@ -49,8 +51,11 @@ struct MemoryEfficientAttentionParams {
 
 void run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
 
-inline bool has_memory_efficient_attention(int32_t sm, bool is_half) {
-  return sm >= (is_half ? 53 : 50);
+inline bool has_memory_efficient_attention(int32_t sm, bool is_half, int qk_head_size, int v_head_size) {
+  return sm >= (is_half ? 53 : 50) &&
+         (qk_head_size & 7) == 0 &&
+         (v_head_size & 7) == 0 &&
+         qk_head_size <= kEfficientAttentionMaxHeadSize && v_head_size <= kEfficientAttentionMaxHeadSize;
 }
 
 void run_memory_efficient_attention_sm80(const MemoryEfficientAttentionParams& params);

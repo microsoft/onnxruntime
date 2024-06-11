@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 04cb3303a..4025805cf 100644
+index 04cb3303a..c023001de 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -249,9 +249,7 @@ if (MSVC)
@@ -20,12 +20,11 @@ index 04cb3303a..4025805cf 100644
    )
    # Allow big object
    add_definitions(/bigobj)
-@@ -289,7 +286,7 @@ if (MSVC)
+@@ -289,7 +286,6 @@ if (MSVC)
  else (MSVC)
    # No version.rc file.
    set(protobuf_version_rc_file)
 -
-+  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
    # When building with "make", "lib" prefix will be added automatically by
    # the build tool.
    set(LIB_PREFIX)

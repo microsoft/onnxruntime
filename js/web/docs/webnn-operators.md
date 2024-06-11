@@ -19,7 +19,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | ✗ | ✓ | Only supports 'training_mode' value is 0, one output |
 | Cast | ai.onnx(7-8, 9-12, 13-18, 19-20, 21+) | cast | ✗ | ✓ | |
 | Ceil | ai.onnx(7-12, 13+) | ceil | ✓ | ✓ | |
-| Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | |
+| Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | WebNN CPU backend only supports 3 specific ranges: [0.0, infinity], [-1.0, 1.0], [0.0, 6.0] (Chromium issue: https://issues.chromium.org/issues/326156496) |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | ✓ | ✓ | |
 | Conv | ai.onnx(7-10, 11+) | conv2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU requires the 'W' (weight) input to be a constant |
 | ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✓ | ✗ | Only supports 3-D or 4-D input and 'W' (weight). |
@@ -50,7 +50,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | LessOrEqual | ai.onnx(12-15, 16+) | lesserOrEqual | ✗ | ✓ | |
 | Log | ai.onnx(7-12, 13+) | log | ✗ | ✓ | |
 | LpPool | ai.onnx(7-10, 11-17, 18+) | l2Pool2d | ✗ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'p' value is 2 |
-| MatMul | ai.onnx(7-8, 9-12, 13+) | matmul | ✓ | ✓ | WebNN CPU doesn't support broadcasting for MatMul |
+| MatMul | ai.onnx(7-8, 9-12, 13+) | matmul | ✓ | ✓ | |
 | Max | ai.onnx(7, 8-11, 12, 13+) | max | ✓ | ✓ | |
 | MaxPool | ai.onnx(7, 8-9, 10, 11, 12+) | maxPool2d | ✓ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'storage_order' != 1, one output |
 | Min | ai.onnx(7, 8-11, 12, 13+) | min | ✓ | ✓ | |
@@ -73,15 +73,15 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | ReduceSumSquare | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceSumSquare | ✗ | ✓ | Input 'axes' if present should be a constant |
 | Relu | ai.onnx(7-12, 13, 14+) | relu | ✓ | ✓ | |
 | Reshape | ai.onnx(7-12, 13, 14-18, 19-20, 21+) | reshape | ✓ | ✓ | Input 'shape' should be a constant, 0 dimension value in 'shape' is not supported |
-| Resize | ai.onnx(11-12, 13-17, 18, 19+) | resample2d | ✓ | ✓ | Only supports 4-D input, exclude_outside != 0, input 'scales' and 'sizes' if present must be a constant, WebNN CPU backend only supports 'linear' mode, WebNN GPU backend only supports 'linear' and 'nearest' modes |
+| Resize | ai.onnx(11-12, 13-17, 18, 19+) | resample2d | ✓ | ✓ | Only supports 4-D input, exclude_outside != 0, input 'scales' and 'sizes' if present must be a constant, 'linear' and 'nearest' modes |
 | Shape | ai.onnx(7-12, 13-14, 15-18, 19-20, 21+) | slice | ✓ | ✓ | |
 | Sigmoid | ai.onnx(7-12, 13+) | sigmoid | ✓ | ✓ | |
 | Softplus | ai.onnx(7+) | softplus | ✗ | ✓ | |
 | Softsign | ai.onnx(7+) | softsign | ✗ | ✓ | |
 | Sin | ai.onnx(7+) | sin | ✗ | ✓ | |
 | Slice | ai.onnx(7-9, 10, 11-12, 13+) | slice | ✓ | ✓ | Input 'starts', 'ends', 'axes', and 'steps' if present must be a constant, only supports 'steps' value 1 |
-| Softmax | ai.onnx(7-10, 11-12, 13+) | softmax | ✓ | ✓ | Only supports input rank >= 2 |
-| Split | ai.onnx(7-10, 11-12, 13-17, 18+) | split | ✓ | ✓ | Input 'split' if present should be a constant, WebNN CPU backend only supports up to 4 outputs |
+| Softmax | ai.onnx(7-10, 11-12, 13+) | softmax | ✓ | ✓ | |
+| Split | ai.onnx(7-10, 11-12, 13-17, 18+) | split | ✓ | ✓ | Input 'split' if present should be a constant |
 | Sqrt | ai.onnx(7-12, 13+) | sqrt | ✓ | ✓ | |
 | Squeeze | ai.onnx(7-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | Input 'axes' if present should be a constant |
 | Sub | ai.onnx(7-12, 13, 14+) | sub | ✓ | ✓ | |

@@ -75,12 +75,8 @@ struct RightPaddingBatchHook {
           batch_id * lse_dim * p.num_heads + head_id * lse_dim + query_start;
     }
 
-    // Custom masking
-    if (p.causal_diagonal_ptr) {
-      p.causal_diagonal_offset = p.causal_diagonal_ptr[batch_id];
-    }
     if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
-      p.causal_diagonal_offset += p.num_keys - p.num_queries;
+      p.causal_diagonal_offset = p.num_keys - p.num_queries;
     }
     if (p.custom_mask_type == AttentionKernel::CausalFromTopLeft ||
         p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
@@ -143,9 +139,10 @@ __global__ void __launch_bounds__(AK::kNumThreads, AK::kMinBlocksPerSm)
   AK::attention_kernel(p);
 }
 
-template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, bool single_value_iteration>
+template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, int max_head_size>
 void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
-  using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, single_value_iteration>;
+  constexpr bool dropout = false;
+  using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, max_head_size, dropout>;
   typename Attention::Params p;
   {  // set parameters
     p.query_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.query));
@@ -220,6 +217,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   }
 
   auto kernel_fn = attention_kernel_batched_impl<Attention>;
+
   if (params.has_custom_right_padding) {
     kernel_fn = attention_kernel_batched_impl_right_padding<Attention, queries_per_block>;
   }
@@ -237,20 +235,23 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   kernel_fn<<<p.getBlocksGrid(), p.getThreadsGrid(), smem_bytes, params.stream>>>(p);
 }
 
-template <typename T, typename ArchTag, int queries_per_block, int keys_per_block, bool single_value_iteration>
+template <typename T, typename ArchTag, int queries_per_block, int keys_per_block, int max_head_size>
 void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
-  using AlignedAK = AttentionKernel<T, ArchTag, true, queries_per_block, keys_per_block, single_value_iteration>;
+  using AlignedAK = AttentionKernel<T, ArchTag, true, queries_per_block, keys_per_block, max_head_size>;
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 6287 4189)  // kAligned is used via capture so 4189 warning seems incorrect
 #endif
+
   // Run a more efficient kernel with `isAligned=True` when memory is correctly aligned.
   bool is_aligned = params.qk_head_size % AlignedAK::kAlignmentQ == 0 &&
                     params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
+
   DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
-                  LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, single_value_iteration>(params);
+                  LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, max_head_size>(params);
                 }));
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
@@ -259,11 +260,11 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
 template <typename T, typename ArchTag>
 void DispatchBlockSize(const MemoryEfficientAttentionParams& params) {
   if (params.v_head_size <= 64) {
-    DispatchIsAligned<T, ArchTag, 64, 64, true>(params);
+    DispatchIsAligned<T, ArchTag, 64, 64, 64>(params);
   } else if (params.v_head_size <= 128) {
-    DispatchIsAligned<T, ArchTag, 32, 128, true>(params);
+    DispatchIsAligned<T, ArchTag, 32, 128, 128>(params);
   } else {
-    DispatchIsAligned<T, ArchTag, 32, 128, false>(params);
+    DispatchIsAligned<T, ArchTag, 32, 128, kEfficientAttentionMaxHeadSize>(params);
   }
 }
 

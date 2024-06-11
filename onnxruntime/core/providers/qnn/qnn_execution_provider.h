@@ -56,7 +56,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                                     const size_t node_unit_size,
-                                                    bool load_from_cached_context,
                                                     const logging::Logger& logger) const;
 
   Status CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
@@ -69,6 +68,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
 
   void InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
+
+  qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
 
  private:
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
