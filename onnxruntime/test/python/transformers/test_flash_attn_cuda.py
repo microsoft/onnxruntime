@@ -20,7 +20,6 @@ import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
-from rotary_flash import apply_rotary_emb
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
 
@@ -737,6 +736,12 @@ def mha_func(q, k, v, config):
     return output
 
 
+def rotary_options_for_current_os():
+    # Reference implementation of rotary uses triton, which is not availabe in Windows.
+    # So we only test rotary in Linux right now.
+    return [(False, False)] if platform.system() != "Linux" else [(True, False), (True, True), (False, False)]
+
+
 def gqa_prompt_func(
     q,
     k,
@@ -1161,6 +1166,13 @@ def parity_check_mha(
     return all_close
 
 
+def rotary_embedding(*args, **kwargs):
+    # Use local import since triton is not available in Windows.
+    from rotary_flash import apply_rotary_emb
+
+    return apply_rotary_emb(*args, **kwargs)
+
+
 def parity_check_gqa_prompt(
     config,
     causal=True,
@@ -1250,11 +1262,12 @@ def parity_check_gqa_prompt(
         angle = torch.rand(config.buffer_sequence_length, rotary_dim // 2, device="cuda") * 2 * math.pi
         cos = torch.cos(angle).to(dtype=torch.float16)
         sin = torch.sin(angle).to(dtype=torch.float16)
+
         if causal or local:
-            q_ro = apply_rotary_emb(q, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
+            q_ro = rotary_embedding(q, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
         else:
             q_ro = rearrange(
-                apply_rotary_emb(
+                rotary_embedding(
                     rearrange(q, "b s h d -> b 1 (s h) d"),
                     cos,
                     sin,
@@ -1265,7 +1278,7 @@ def parity_check_gqa_prompt(
                 s=config.q_sequence_length,
             )
         # q_ro = q
-        k_ro = apply_rotary_emb(new_k, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
+        k_ro = rotary_embedding(new_k, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1454,11 +1467,12 @@ def parity_check_gqa_prompt_no_buff(
         angle = torch.rand(config.kv_sequence_length, rotary_dim // 2, device="cuda") * 2 * math.pi
         cos = torch.cos(angle).to(dtype=torch.float16)
         sin = torch.sin(angle).to(dtype=torch.float16)
+
         if causal or local:
-            q_ro = apply_rotary_emb(q, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
+            q_ro = rotary_embedding(q, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
         else:
             q_ro = rearrange(
-                apply_rotary_emb(
+                rotary_embedding(
                     rearrange(q, "b s h d -> b 1 (s h) d"),
                     cos,
                     sin,
@@ -1469,7 +1483,7 @@ def parity_check_gqa_prompt_no_buff(
                 s=config.q_sequence_length,
             )
         # q_ro = q
-        k_ro = apply_rotary_emb(k_cache_ref, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
+        k_ro = rotary_embedding(k_cache_ref, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, k_cache_ref
@@ -1654,10 +1668,10 @@ def parity_check_gqa_past(
         cos = torch.cos(angle).to(dtype=torch.float16)
         sin = torch.sin(angle).to(dtype=torch.float16)
         if causal or local:
-            q_ro = apply_rotary_emb(q, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
+            q_ro = rotary_embedding(q, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
         else:
             q_ro = rearrange(
-                apply_rotary_emb(
+                rotary_embedding(
                     rearrange(q, "b s h d -> b 1 (s h) d"),
                     cos,
                     sin,
@@ -1668,7 +1682,7 @@ def parity_check_gqa_past(
                 s=config.sequence_length,
             )
         # q_ro = q
-        k_ro = apply_rotary_emb(new_k, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
+        k_ro = rotary_embedding(new_k, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1863,10 +1877,10 @@ def parity_check_gqa_past_no_buff(
         cos = torch.cos(angle).to(dtype=torch.float16)
         sin = torch.sin(angle).to(dtype=torch.float16)
         if causal or local:
-            q_ro = apply_rotary_emb(q, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
+            q_ro = rotary_embedding(q, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
         else:
             q_ro = rearrange(
-                apply_rotary_emb(
+                rotary_embedding(
                     rearrange(q, "b s h d -> b 1 (s h) d"),
                     cos,
                     sin,
@@ -1877,7 +1891,7 @@ def parity_check_gqa_past_no_buff(
                 s=config.sequence_length,
             )
         # q_ro = q
-        k_ro = apply_rotary_emb(new_k, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
+        k_ro = rotary_embedding(new_k, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -2063,7 +2077,7 @@ class TestGQA(unittest.TestCase):
             for sq, skv in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
+                        for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
                                 config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
                                 all_close = parity_check_gqa_prompt(
@@ -2121,7 +2135,7 @@ class TestGQA(unittest.TestCase):
                 for n, n2 in num_h:
                     for h in h_sizes:
                         for local in [False, True]:
-                            for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
+                            for rotary, rotary_interleaved in rotary_options_for_current_os():
                                 for packed in [False, True]:
                                     config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
                                     all_close = parity_check_gqa_prompt(
@@ -2176,7 +2190,7 @@ class TestGQA(unittest.TestCase):
             for s, s2 in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
+                        for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
                                 sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                 config = Config(b, s, s2, sp, n, n2, h)
@@ -2235,7 +2249,7 @@ class TestGQA(unittest.TestCase):
                 for n, n2 in num_h:
                     for h in h_sizes:
                         for local in [False, True]:
-                            for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
+                            for rotary, rotary_interleaved in rotary_options_for_current_os():
                                 for packed in [False, True]:
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                     config = Config(b, s, s2, sp, n, n2, h)
