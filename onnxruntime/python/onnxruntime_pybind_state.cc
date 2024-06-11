@@ -501,7 +501,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
       // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
       // and TRT EP instance, so it won't be released.)
-      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path;
+      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources,
+          trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path,
+          onnx_model_folder_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -613,6 +615,21 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_engine_cache_prefix = cache_prefix.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_prefix' should be a string to customize engine cache prefix i.e. 'FRCNN' or 'yolov4'.\n");
+            }
+          } else if (option.first == "trt_weight_stripped_engine_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_weight_stripped_engine_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_weight_stripped_engine_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_weight_stripped_engine_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_onnx_model_folder_path") {
+            if (!option.second.empty()) {
+              onnx_model_folder_path = option.second;
+              params.trt_onnx_model_folder_path = onnx_model_folder_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_onnx_model_folder_path' should be a path string i.e. 'engine_cache'.\n");
             }
           } else if (option.first == "trt_engine_decryption_enable") {
             if (option.second == "True" || option.second == "true") {
@@ -775,6 +792,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_ep_context_embed_mode = std::stoi(option.second);
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_embed_mode' should be a positive integer number i.e. '1'.\n");
+            }
+          } else if (option.first == "trt_engine_hw_compatible") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_engine_hw_compatible = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_engine_hw_compatible = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_hw_compatible' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
@@ -1007,6 +1032,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "export_ep_ctx_blob") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "enable_qdq_optimizer") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
@@ -1038,13 +1066,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
+    ProviderOptions info{};
     const auto it = provider_options_map.find(type);
-    if (it == provider_options_map.end()) {
-      LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
+    if (it != provider_options_map.end()) {
+      info = it->second;
     }
-    const auto& vitis_option_map = it->second;
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(vitis_option_map)
-        ->CreateProvider();
+    return onnxruntime::VitisAIProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL

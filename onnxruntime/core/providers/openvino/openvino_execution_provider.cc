@@ -1,6 +1,7 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 #include <filesystem>
+#include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
@@ -31,12 +32,13 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_->num_of_threads = info.num_of_threads_;
   global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
   global_context_->export_ep_ctx_blob = info.export_ep_ctx_blob_;
+  global_context_->enable_qdq_optimizer = info.enable_qdq_optimizer_;
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
   if (info.cache_dir_.empty()) {
     bool device_found = false;
-    auto available_devices = global_context_->ie_core.GetAvailableDevices();
+    std::vector<std::string> available_devices = global_context_->ie_core.GetAvailableDevices();
     // Checking for device_type configuration
     if (info.device_type_ != "") {
       if (info.device_type_.find("HETERO") != std::string::npos ||
@@ -44,7 +46,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
           info.device_type_.find("AUTO") != std::string::npos) {
         device_found = true;
       } else {
-        for (auto device : available_devices) {
+        for (std::string device : available_devices) {
           if (device.rfind(info.device_type_, 0) == 0) {
             if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
                                                                        info.precision_ == "FP16" ||
@@ -79,7 +81,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                      std::to_string(global_context_->OpenVINO_Version.at(1));
 
   // Check for valid ctx node and maintain state for validity
-  if (ep_ctx_handle_.CheckForOVEPCtxNode(graph_viewer, openvino_sdk_version))
+  if (ep_ctx_handle_.CheckForOVEPCtxNode(graph_viewer, std::move(openvino_sdk_version)))
     ORT_ENFORCE(graph_viewer.NumberOfNodes() == 1,
                 "[Invalid Graph] EPContext Model with OpenVINO compiled blob should not have more than one node.");
 
@@ -118,7 +120,8 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   }(graph_viewer);
 
   openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type);
+                                 global_context_->device_type,
+                                 global_context_->enable_qdq_optimizer);
   result = obj.Execute();
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
@@ -129,7 +132,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 common::Status OpenVINOExecutionProvider::Compile(
     const std::vector<FusedNodeAndGraph>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node_graph : fused_nodes) {
+  for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
 
