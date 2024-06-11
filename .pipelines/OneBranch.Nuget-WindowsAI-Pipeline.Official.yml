@@ -293,7 +293,7 @@ extends:
         - script: |
             dir $(Build.SourcesDirectory)\unzipped\runtimes\win-x64\_native
 
-        - task: EsrpCodeSigning@2
+        - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
           displayName: "Sign Nuget package"
           inputs:
             ConnectedServiceName: 'OnnxrunTimeCodeSign_20240611'

@@ -16,15 +16,6 @@ parameters:
   default: '*.zip'
 
 steps:
-- task: EsrpCodeSigning@3
-  displayName: ${{ parameters.DisplayName }}
-  condition: and(succeeded(), eq('${{ parameters.DoEsrp }}', true))
-  inputs:
-    ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
-    FolderPath: ${{ parameters.FolderPath }}
-    Pattern: ${{ parameters.Pattern }}
-
-
 - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
   displayName: 'ESRP CodeSigning'
   inputs:
