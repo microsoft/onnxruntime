@@ -171,12 +171,15 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   // Step 3
   auto p_orig_model_proto = const_cast<Model&>(orig_model).ToProto();
   std::string ser_buf;
+  LOGS_DEFAULT(VERBOSE) << "Serializing original model";
   p_orig_model_proto->SerializeToString(ser_buf);
+  LOGS_DEFAULT(VERBOSE) << "Done serializing original model";
 
   nlohmann::json j_obj;
   j_obj["orig_graph_name"] = graph_viewer.Name();
   j_obj["orig_model_path"] = PathToUTF8String(graph_viewer.ModelPath().ToPathString());
   j_obj["orig_model_proto_ser_str"] = ser_buf;
+  LOGS_DEFAULT(VERBOSE) << "JSON dumping";
   return j_obj.dump();
 }
 

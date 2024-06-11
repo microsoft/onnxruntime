@@ -180,6 +180,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
         auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
         execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
       }
+      LOGS_DEFAULT(VERBOSE) << "Deserialized ComputeCapability";
       return capability_ptrs;
     } else {
       if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_)) {
@@ -196,6 +197,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
           // auto p_orig_graph_viewer = RetrieveOriginalGraph(p_ep_ctx_model_->MainGraph());
           // execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
         }
+        LOGS_DEFAULT(VERBOSE) << "Deserialized ComputeCapability";
         return capability_ptrs;
       }
     }
