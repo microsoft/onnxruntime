@@ -223,7 +223,6 @@ struct DefaultMma<cutlass::half_t, LayoutA, kAlignmentA, uint4b_t, LayoutB, kAli
   using ThreadblockMma = typename Mma::ThreadblockMma;
 };
 
-#ifdef ENABLE_FP8
 ////////////////////////////////////////////////////////////////////////////////
 /// Specialization for row-major output (OperatorClass TensorOp), fp8 activation & int4 weight, mma multistage
 /// (stage>=3)
@@ -275,8 +274,6 @@ struct DefaultMma<cutlass::float_e4m3_t, LayoutA, kAlignmentA, uint4b_t, LayoutB
   // Define the threadblock-scoped pipelined matrix multiply
   using ThreadblockMma = typename Mma::ThreadblockMma;
 };
-
-#endif
 
 // fp16 x fp16 specialization on Ampere to use mma multistage for 2 stage. Helps avoid reg spills on
 // large tile when not enough shared mem is present to do 3+ stage

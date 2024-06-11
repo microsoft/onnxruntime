@@ -34,9 +34,7 @@ inline __device__ uint32_t relu2<cutlass::half_t>(const uint32_t x) {
   uint32_t res;
   const uint32_t zero = 0u;
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-  asm volatile("max.f16x2 %0, %1, %2;\n"
-               : "=r"(res)
-               : "r"(x), "r"(zero));
+  asm volatile("max.f16x2 %0, %1, %2;\n" : "=r"(res) : "r"(x), "r"(zero));
 #else
   asm volatile(
       "{\n"
@@ -55,9 +53,7 @@ template <>
 inline __device__ uint32_t relu2<cutlass::bfloat16_t>(const uint32_t x) {
   uint32_t res;
   const uint32_t zero = 0u;
-  asm volatile("max.bf16x2 %0, %1, %2;\n"
-               : "=r"(res)
-               : "r"(x), "r"(zero));
+  asm volatile("max.bf16x2 %0, %1, %2;\n" : "=r"(res) : "r"(x), "r"(zero));
   return res;
 }
 #endif
@@ -74,9 +70,7 @@ inline __device__ uint32_t convert_relu2<cutlass::half_t>(const float2 x) {
   uint32_t res;
   const uint32_t a = reinterpret_cast<const uint32_t&>(x.x);
   const uint32_t b = reinterpret_cast<const uint32_t&>(x.y);
-  asm volatile("cvt.rn.relu.f16x2.f32 %0, %1, %2;\n"
-               : "=r"(res)
-               : "r"(b), "r"(a));
+  asm volatile("cvt.rn.relu.f16x2.f32 %0, %1, %2;\n" : "=r"(res) : "r"(b), "r"(a));
   return res;
 }
 
@@ -85,9 +79,7 @@ inline __device__ uint32_t convert_relu2<cutlass::bfloat16_t>(const float2 x) {
   uint32_t res;
   const uint32_t a = reinterpret_cast<const uint32_t&>(x.x);
   const uint32_t b = reinterpret_cast<const uint32_t&>(x.y);
-  asm volatile("cvt.rn.relu.bf16x2.f32 %0, %1, %2;\n"
-               : "=r"(res)
-               : "r"(b), "r"(a));
+  asm volatile("cvt.rn.relu.bf16x2.f32 %0, %1, %2;\n" : "=r"(res) : "r"(b), "r"(a));
   return res;
 }
 
@@ -139,13 +131,11 @@ struct Allreduce<2> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <bool A_in_regs = false, bool B_in_regs = false, typename Tensor0, typename Tensor1,
-          typename Tensor2, typename Tensor3, typename Tensor4,
-          typename TiledMma, typename TiledCopyA, typename TiledCopyB,
+template <bool A_in_regs = false, bool B_in_regs = false, typename Tensor0, typename Tensor1, typename Tensor2,
+          typename Tensor3, typename Tensor4, typename TiledMma, typename TiledCopyA, typename TiledCopyB,
           typename ThrCopyA, typename ThrCopyB>
-inline __device__ void gemm(Tensor0& acc, Tensor1& tCrA, Tensor2& tCrB, Tensor3 const& tCsA,
-                            Tensor4 const& tCsB, TiledMma tiled_mma,
-                            TiledCopyA smem_tiled_copy_A, TiledCopyB smem_tiled_copy_B,
+inline __device__ void gemm(Tensor0& acc, Tensor1& tCrA, Tensor2& tCrB, Tensor3 const& tCsA, Tensor4 const& tCsB,
+                            TiledMma tiled_mma, TiledCopyA smem_tiled_copy_A, TiledCopyB smem_tiled_copy_B,
                             ThrCopyA smem_thr_copy_A, ThrCopyB smem_thr_copy_B) {
   CUTE_STATIC_ASSERT_V(size<1>(tCrA) == size<1>(acc));   // MMA_M
   CUTE_STATIC_ASSERT_V(size<1>(tCrB) == size<2>(acc));   // MMA_N
@@ -176,11 +166,10 @@ inline __device__ void gemm(Tensor0& acc, Tensor1& tCrA, Tensor2& tCrB, Tensor3 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename Tensor0, typename Tensor1, typename Tensor2, typename Tensor3,
-          typename TiledMma, typename TiledCopy, typename ThrCopy>
+template <typename Tensor0, typename Tensor1, typename Tensor2, typename Tensor3, typename TiledMma, typename TiledCopy,
+          typename ThrCopy>
 inline __device__ void gemm_A_in_regs(Tensor0& acc, Tensor1& tCrA, Tensor2& tCrB, Tensor3 const& tCsB,
-                                      TiledMma tiled_mma, TiledCopy smem_tiled_copy_B,
-                                      ThrCopy smem_thr_copy_B) {
+                                      TiledMma tiled_mma, TiledCopy smem_tiled_copy_B, ThrCopy smem_thr_copy_B) {
   CUTE_STATIC_ASSERT_V(size<1>(tCrA) == size<1>(acc));   // MMA_M
   CUTE_STATIC_ASSERT_V(size<1>(tCrB) == size<2>(acc));   // MMA_N
   CUTE_STATIC_ASSERT_V(size<2>(tCrA) == size<2>(tCrB));  // MMA_K
@@ -203,8 +192,9 @@ template <typename Layout>
 inline __device__ auto convert_layout_acc_rowcol(Layout acc_layout) {
   static_assert(decltype(size<0>(acc_layout))::value == 4);
   static_assert(decltype(rank(acc_layout))::value == 3);
-  auto l = logical_divide(acc_layout, Shape<_2>{});  // ((2, 2), MMA_M, MMA_N)
-                                                     // TD [2023-08-13]: Idk why but get<0, 1>(l) doesn't work for Cutlass 3.2, I'm getting
+  auto l = logical_divide(
+      acc_layout, Shape<_2>{});  // ((2, 2), MMA_M, MMA_N)
+                                 // TD [2023-08-13]: Idk why but get<0, 1>(l) doesn't work for Cutlass 3.2, I'm getting
   // "int_tuple.hpp(74): error: conversion to inaccessible base class"
   // return make_layout(make_layout(get<0, 1>(l), get<1>(l)), make_layout(get<0, 0>(l), get<2>(l)));
   return make_layout(make_layout(get<1>(get<0>(l)), get<1>(l)), make_layout(get<0>(get<0>(l)), get<2>(l)));
@@ -222,13 +212,13 @@ inline __device__ auto convert_layout_rowcol_Aregs(Layout rowcol_layout) {
   constexpr int mma_shape_K = get<2>(typename MMA_traits::Shape_MNK{});
   static_assert(mma_shape_K == 8 || mma_shape_K == 16);
   constexpr int MMA_N_divisor = mma_shape_K == 8 ? 1 : 2;
-  auto l = logical_divide(rowcol_layout, Shape<X, Shape<X, Int<MMA_N_divisor>>>{});  // ((2, MMA_M), (2, (2, MMA_N / 2)))
-                                                                                     // TD [2023-08-13]: Same error as above on Cutlass 3.2
+  auto l = logical_divide(
+      rowcol_layout, Shape<X, Shape<X, Int<MMA_N_divisor>>>{});  // ((2, MMA_M), (2, (2, MMA_N / 2)))
+                                                                 // TD [2023-08-13]: Same error as above on Cutlass 3.2
   // return make_layout(make_layout(get<1, 0>(l), get<0, 0>(l), get<1, 1, 0>(l)),
   //                    get<0, 1>(l),
   //                    get<1, 1, 1>(l));
-  return make_layout(make_layout(get<0>(get<1>(l)), get<0>(get<0>(l)), get<0>(get<1>(get<1>(l)))),
-                     get<1>(get<0>(l)),
+  return make_layout(make_layout(get<0>(get<1>(l)), get<0>(get<0>(l)), get<0>(get<1>(get<1>(l)))), get<1>(get<0>(l)),
                      get<1>(get<1>(get<1>(l))));
 };
 
@@ -302,11 +292,11 @@ CUTE_HOST_DEVICE void cp_async_wait() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <bool Is_even_MN = true, bool Is_even_K = true, bool Clear_OOB_MN = false, bool Clear_OOB_K = true,
-          typename TiledCopy, typename Engine0, typename Layout0, typename Engine1, typename Layout1,
-          typename Engine2, typename Layout2, typename Engine3, typename Layout3>
-inline __device__ void copy(TiledCopy tiled_copy, Tensor<Engine0, Layout0> const& S,
-                            Tensor<Engine1, Layout1>& D, Tensor<Engine2, Layout2> const& identity_MN,
-                            Tensor<Engine3, Layout3> const& predicate_K, const int max_MN = 0) {
+          typename TiledCopy, typename Engine0, typename Layout0, typename Engine1, typename Layout1, typename Engine2,
+          typename Layout2, typename Engine3, typename Layout3>
+inline __device__ void copy(TiledCopy tiled_copy, Tensor<Engine0, Layout0> const& S, Tensor<Engine1, Layout1>& D,
+                            Tensor<Engine2, Layout2> const& identity_MN, Tensor<Engine3, Layout3> const& predicate_K,
+                            const int max_MN = 0) {
   CUTE_STATIC_ASSERT_V(rank(S) == Int<3>{});
   CUTE_STATIC_ASSERT_V(rank(D) == Int<3>{});
   CUTE_STATIC_ASSERT_V(size<0>(S) == size<0>(D));  // MMA
@@ -333,24 +323,26 @@ inline __device__ void copy(TiledCopy tiled_copy, Tensor<Engine0, Layout0> const
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <bool Is_even_K = true,
-          typename Engine0, typename Layout0, typename Engine1, typename Layout1,
+template <bool Is_even_K = true, typename Engine0, typename Layout0, typename Engine1, typename Layout1,
           typename Engine2, typename Layout2, typename Engine3, typename Layout3>
-inline __device__ void copy_w_min_idx(Tensor<Engine0, Layout0> const& S,
-                                      Tensor<Engine1, Layout1>& D, Tensor<Engine2, Layout2> const& identity_MN,
-                                      Tensor<Engine3, Layout3> const& predicate_K,
-                                      const int max_MN = 0, const int min_MN = 0) {
+inline __device__ void copy_w_min_idx(Tensor<Engine0, Layout0> const& S, Tensor<Engine1, Layout1>& D,
+                                      Tensor<Engine2, Layout2> const& identity_MN,
+                                      Tensor<Engine3, Layout3> const& predicate_K, const int max_MN = 0,
+                                      const int min_MN = 0) {
   CUTE_STATIC_ASSERT_V(rank(S) == Int<3>{});
   CUTE_STATIC_ASSERT_V(rank(D) == Int<3>{});
   CUTE_STATIC_ASSERT_V(size<0>(S) == size<0>(D));  // MMA
   CUTE_STATIC_ASSERT_V(size<1>(S) == size<1>(D));  // MMA_M
   CUTE_STATIC_ASSERT_V(size<2>(S) == size<2>(D));  // MMA_K
-// if (threadIdx.x == 0 && blockIdx.z == 0) { printf("blockIdx.y = %d, max_MN = %d, min_MN = %d\n", blockIdx.y, max_MN, min_MN); }
+// if (threadIdx.x == 0 && blockIdx.z == 0) { printf("blockIdx.y = %d, max_MN = %d, min_MN = %d\n", blockIdx.y, max_MN,
+// min_MN); }
 #pragma unroll
   for (int m = 0; m < size<1>(S); ++m) {
-    // if (threadIdx.x == 0 && blockIdx.z == 0) { printf("blockIdx.y = %d, m = %d\n", blockIdx.y, get<0>(identity_MN(0, m, 0))); }
+    // if (threadIdx.x == 0 && blockIdx.z == 0) { printf("blockIdx.y = %d, m = %d\n", blockIdx.y, get<0>(identity_MN(0,
+    // m, 0))); }
     if (get<0>(identity_MN(0, m, 0)) >= min_MN && get<0>(identity_MN(0, m, 0)) < max_MN) {
-// if (threadIdx.x == 0 && blockIdx.z == 0) { printf("Inner loop, blockIdx.y = %d, m = %d\n", blockIdx.y, get<0>(identity_MN(0, m, 0))); }
+// if (threadIdx.x == 0 && blockIdx.z == 0) { printf("Inner loop, blockIdx.y = %d, m = %d\n", blockIdx.y,
+// get<0>(identity_MN(0, m, 0))); }
 #pragma unroll
       for (int k = 0; k < size<2>(S); ++k) {
         if (Is_even_K || predicate_K(k)) {
@@ -363,16 +355,12 @@ inline __device__ void copy_w_min_idx(Tensor<Engine0, Layout0> const& S,
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <bool Is_even_K = true, bool Clear_OOB_K = true,
-          typename Engine0, typename Layout0, typename Engine1, typename Layout1,
-          typename Engine2, typename Layout2, typename Engine3, typename Layout3>
-inline __device__ void copy_rotary_interleaved(Tensor<Engine0, Layout0> const& S,
-                                               Tensor<Engine1, Layout1>& D,
-                                               Tensor<Engine2, Layout2> const& Cos,
-                                               Tensor<Engine2, Layout2> const& Sin,
-                                               Tensor<Engine3, Layout3> const& identity_MN,
-                                               const int max_MN, const int min_MN,
-                                               const int dim, const int rotary_dim) {
+template <bool Is_even_K = true, bool Clear_OOB_K = true, typename Engine0, typename Layout0, typename Engine1,
+          typename Layout1, typename Engine2, typename Layout2, typename Engine3, typename Layout3>
+inline __device__ void copy_rotary_interleaved(Tensor<Engine0, Layout0> const& S, Tensor<Engine1, Layout1>& D,
+                                               Tensor<Engine2, Layout2> const& Cos, Tensor<Engine2, Layout2> const& Sin,
+                                               Tensor<Engine3, Layout3> const& identity_MN, const int max_MN,
+                                               const int min_MN, const int dim, const int rotary_dim) {
   CUTE_STATIC_ASSERT_V(rank(S) == Int<3>{});
   CUTE_STATIC_ASSERT_V(rank(D) == Int<3>{});
   CUTE_STATIC_ASSERT_V(size<0>(S) == size<0>(D));      // MMA
@@ -426,16 +414,12 @@ inline __device__ void copy_rotary_interleaved(Tensor<Engine0, Layout0> const& S
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <bool Is_even_K = true, bool Clear_OOB_K = true,
-          typename Engine0, typename Layout0, typename Engine1, typename Layout1,
-          typename Engine2, typename Layout2, typename Engine3, typename Layout3>
-inline __device__ void copy_rotary_contiguous(Tensor<Engine0, Layout0> const& S,
-                                              Tensor<Engine1, Layout1>& D,
-                                              Tensor<Engine2, Layout2> const& Cos,
-                                              Tensor<Engine2, Layout2> const& Sin,
-                                              Tensor<Engine3, Layout3> const& identity_MN,
-                                              const int max_MN, const int min_MN,
-                                              const int dim, const int rotary_dim) {
+template <bool Is_even_K = true, bool Clear_OOB_K = true, typename Engine0, typename Layout0, typename Engine1,
+          typename Layout1, typename Engine2, typename Layout2, typename Engine3, typename Layout3>
+inline __device__ void copy_rotary_contiguous(Tensor<Engine0, Layout0> const& S, Tensor<Engine1, Layout1>& D,
+                                              Tensor<Engine2, Layout2> const& Cos, Tensor<Engine2, Layout2> const& Sin,
+                                              Tensor<Engine3, Layout3> const& identity_MN, const int max_MN,
+                                              const int min_MN, const int dim, const int rotary_dim) {
   CUTE_STATIC_ASSERT_V(rank(S) == Int<3>{});
   CUTE_STATIC_ASSERT_V(rank(D) == Int<3>{});
   CUTE_STATIC_ASSERT_V(size<0>(S) == size<0>(D));    // MMA
@@ -461,7 +445,8 @@ inline __device__ void copy_rotary_contiguous(Tensor<Engine0, Layout0> const& S,
           cute::copy(S(_, m, k), rS(_, m, k));
           if (get<1>(identity_MN(0, 0, k)) < rotary_dim) {
             const bool is_left = get<1>(identity_MN(0, 0, k)) < rotary_dim / 2;
-            Tensor gS_other = make_tensor(S(_, m, k).data() + (is_left ? rotary_dim / 2 : -rotary_dim / 2), S(_, m, k).layout());
+            Tensor gS_other =
+                make_tensor(S(_, m, k).data() + (is_left ? rotary_dim / 2 : -rotary_dim / 2), S(_, m, k).layout());
             cute::copy(gS_other, rS_other);
             // if (cute::thread0()) { print_tensor(rS(_, m, k)); print_tensor(rS_other); }
             Tensor gCos = make_tensor(Cos(_, m, k).data() + (is_left ? 0 : -rotary_dim / 2), Cos(_, m, k).layout());

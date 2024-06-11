@@ -69,8 +69,8 @@ void dispatchMoeGemmSelectBiasSM90(HopperGroupedGemmInput hopper_input, int num_
   static_assert(kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType, EpilogueTag>(),
                 "Invalid hopper configuration invoked, fallback to Sm80");
 
-  TLLM_CHECK_WITH_INFO(
-      workspace_size || hopper_input.isValid(), "Hopper specialisation is missing additional input information");
+  TLLM_CHECK_WITH_INFO(workspace_size || hopper_input.isValid(),
+                       "Hopper specialisation is missing additional input information");
 
   //            auto func = hopper_input.ptr_c ?
   //            kernels::cutlass_kernels::genericMoeGemmKernelLauncherHopper<T, WeightType,
@@ -120,8 +120,8 @@ constexpr bool are_tile_shapes_supported() {
 
 template <typename T, typename WeightType, typename EpilogueTag, typename TileShape>
 void dispatchMoeGemmSelectClusterShapeSM90(HopperGroupedGemmInput hopper_input, int num_experts,
-                                           cutlass_extensions::CutlassGemmConfig gemm_config, int multi_processor_count, cudaStream_t stream, int* occupancy,
-                                           size_t* workspace_size) {
+                                           cutlass_extensions::CutlassGemmConfig gemm_config, int multi_processor_count,
+                                           cudaStream_t stream, int* occupancy, size_t* workspace_size) {
   using namespace cute;
   switch (gemm_config.cluster_shape) {
 #define SHAPE_CASE(M, N, K)                                                                     \
@@ -150,8 +150,8 @@ void dispatchMoeGemmSelectClusterShapeSM90(HopperGroupedGemmInput hopper_input, 
 
 template <typename T, typename WeightType, typename EpilogueTag>
 void dispatchMoeGemmSelectTileShapeSM90(HopperGroupedGemmInput hopper_input, int num_experts,
-                                        cutlass_extensions::CutlassGemmConfig gemm_config, int multi_processor_count, cudaStream_t stream, int* occupancy,
-                                        size_t* workspace_size) {
+                                        cutlass_extensions::CutlassGemmConfig gemm_config, int multi_processor_count,
+                                        cudaStream_t stream, int* occupancy, size_t* workspace_size) {
   using namespace cute;
 
   switch (gemm_config.tile_config_sm90) {
@@ -185,8 +185,8 @@ void dispatchMoeGemmSelectTileShapeSM90(HopperGroupedGemmInput hopper_input, int
 }
 
 template <typename T, typename WeightType>
-size_t calcMaxWorkspaceSizeSM90(
-    int num_experts, cutlass_extensions::CutlassGemmConfig gemm_config, int multi_processor_count) {
+size_t calcMaxWorkspaceSizeSM90(int num_experts, cutlass_extensions::CutlassGemmConfig gemm_config,
+                                int multi_processor_count) {
   size_t count;
   // Most of the values are ignored for WS size calculation. We reuse the function to reduce the template bloat
   dispatchMoeGemmSelectTileShapeSM90<T, WeightType, cutlass_extensions::EpilogueOpDefault>(

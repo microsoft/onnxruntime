@@ -82,6 +82,7 @@ enum class CutlassTileConfigSM90 {
   CtaShape128x64x128B,
   CtaShape128x128x128B,
   CtaShape128x256x128B,
+
 };
 
 enum class MainloopScheduleType {
@@ -94,12 +95,18 @@ enum class EpilogueScheduleType {
         // architectures older than hopper, the epilogue is always performed by the same thread block as the main loop.
 };
 
-enum class ClusterShape { ClusterShape_1x1x1,
-                          ClusterShape_2x1x1,
-                          ClusterShape_1x2x1,
-                          ClusterShape_2x2x1 };
+enum class ClusterShape { ClusterShape_1x1x1, ClusterShape_2x1x1, ClusterShape_1x2x1, ClusterShape_2x2x1 };
 
 struct CutlassGemmConfig {
+  enum CandidateConfigTypeParam : int {
+    NONE = 0,
+    WEIGHT_ONLY = 1u << 0,
+    SIMT_ONLY = 1u << 1,
+    INT8_ONLY = 1u << 2,
+    HOPPER = 1u << 3,
+    GROUPED_GEMM = 1u << 4,
+  };
+
   CutlassTileConfig tile_config = CutlassTileConfig::ChooseWithHeuristic;
   SplitKStyle split_k_style = SplitKStyle::NO_SPLIT_K;
   int split_k_factor = -1;
@@ -110,80 +117,65 @@ struct CutlassGemmConfig {
   MainloopScheduleType mainloop_schedule = MainloopScheduleType::AUTO;
   EpilogueScheduleType epilogue_schedule = EpilogueScheduleType::AUTO;
   ClusterShape cluster_shape = ClusterShape::ClusterShape_1x1x1;
+  bool is_sm90 = false;
 
   CutlassGemmConfig() {}
 
   CutlassGemmConfig(CutlassTileConfig tile_config, SplitKStyle split_k_style, int split_k_factor, int stages)
-      : tile_config(tile_config), split_k_style(split_k_style), split_k_factor(split_k_factor), stages(stages) {}
+      : tile_config(tile_config),
+        split_k_style(split_k_style),
+        split_k_factor(split_k_factor),
+        stages(stages),
+        is_sm90(false) {}
 
   CutlassGemmConfig(CutlassTileConfigSM90 tile_config_sm90, MainloopScheduleType mainloop_schedule,
                     EpilogueScheduleType epilogue_schedule, ClusterShape cluster_shape)
       : tile_config_sm90(tile_config_sm90),
         mainloop_schedule(mainloop_schedule),
         epilogue_schedule(epilogue_schedule),
-        cluster_shape(cluster_shape) {}
+        cluster_shape(cluster_shape),
+        is_sm90(true) {}
 
   CutlassGemmConfig& operator=(const CutlassGemmConfig& other) {
     tile_config = other.tile_config;
     split_k_style = other.split_k_style;
     split_k_factor = other.split_k_factor;
     stages = other.stages;
+    tile_config_sm90 = other.tile_config_sm90;
+    mainloop_schedule = other.mainloop_schedule;
+    epilogue_schedule = other.epilogue_schedule;
+    cluster_shape = other.cluster_shape;
+    is_sm90 = other.is_sm90;
     return *this;
   }
 
-  std::string to_string() {
-    std::string str = "tile_config: ";
-    switch (tile_config) {
-      case CutlassTileConfig::Undefined:
-        str += "Undefined";
-        break;
-      case CutlassTileConfig::ChooseWithHeuristic:
-        str += "ChooseWithHeuristic";
-        break;
-      case CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8:
-        str += "CtaShape128x128x8_WarpShape64x64x8";
-        break;
-      case CutlassTileConfig::CtaShape16x128x64_WarpShape16x32x64:
-        str += "CtaShape16x128x64_WarpShape16x32x64";
-        break;
-      case CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
-        str += "CtaShape32x128x64_WarpShape32x32x64";
-        break;
-      case CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64:
-        str += "CtaShape64x128x64_WarpShape32x64x64";
-        break;
-      case CutlassTileConfig::CtaShape64x64x128_WarpShape32x64x64:
-        str += "CtaShape64x64x128_WarpShape32x64x64";
-        break;
-      case CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64:
-        str += "CtaShape64x128x64_WarpShape64x32x64";
-        break;
-      case CutlassTileConfig::CtaShape128x64x64_WarpShape64x32x64:
-        str += "CtaShape128x64x64_WarpShape64x32x64";
-        break;
-      case CutlassTileConfig::CtaShape128x128x64_WarpShape64x32x64:
-        str += "CtaShape128x128x64_WarpShape64x32x64";
-        break;
-      case CutlassTileConfig::CtaShape128x128x64_WarpShape64x64x64:
-        str += "CtaShape128x128x64_WarpShape64x64x64";
-        break;
-      case CutlassTileConfig::CtaShape128x128x64_WarpShape128x32x64:
-        str += "CtaShape128x128x64_WarpShape128x32x64";
-        break;
-      case CutlassTileConfig::CtaShape128x256x64_WarpShape64x64x64:
-        str += "CtaShape128x256x64_WarpShape64x64x64";
-        break;
-      case CutlassTileConfig::CtaShape256x128x64_WarpShape64x64x64:
-        str += "CtaShape256x128x64_WarpShape64x64x64";
-        break;
-      case CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64:
-        str += "CtaShape16x256x64_WarpShape16x64x64";
-        break;
+  std::string toString() {
+    std::stringstream tactic;
+    tactic << "Cutlass GEMM Tactic";
+    if (tile_config_sm90 != CutlassTileConfigSM90::ChooseWithHeuristic) {
+      assert(is_sm90 && "Invalid cutlass GEMM config");
+      tactic << "\n\tstyle=TMA"
+             << "\n\ttile shape ID: " << (int)tile_config_sm90 << "\n\tcluster shape ID: " << (int)cluster_shape
+             << "\n\tmainloop sched: " << (int)mainloop_schedule << "\n\tepi sched: " << (int)epilogue_schedule;
+    } else if (tile_config != CutlassTileConfig::ChooseWithHeuristic) {
+      assert(!is_sm90 && "Invalid cutlass GEMM config");
+      tactic << "\n\tstyle=compatible"
+             << "\n\ttile shape ID: " << (int)tile_config << "\n\tstages: " << (int)stages
+             << "\n\tsplit k: " << (int)split_k_factor;
+    } else {
+      tactic << "\n\tundefined";
     }
-    str += ", stages: ";
-    str += std::to_string(stages);
-    return str;
+    tactic << "\n";
+    return tactic.str();
   }
 };
 
 }  // namespace ort_fastertransformer
+
+// CutlassGemmConfig& operator=(const CutlassGemmConfig& other) {
+//   tile_config = other.tile_config;
+//   split_k_style = other.split_k_style;
+//   split_k_factor = other.split_k_factor;
+//   stages = other.stages;
+//   return *this;
+// }
