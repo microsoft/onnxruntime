@@ -112,10 +112,11 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, true, &logger);
   } else {
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, true, &logger);
   }
+  LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
   DumpEPContextModel(p_ep_ctx_model_, ep_ctx_model_file_loc_);
 }
 
@@ -146,10 +147,11 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, false, &logger);
   } else {
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, false, &logger);
   }
+  LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
   DumpEPContextModel(p_ep_ctx_model_, ep_ctx_model_file_loc_);
 }
 

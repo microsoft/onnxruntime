@@ -185,6 +185,7 @@ std::unique_ptr<Model> CreateEPContexModel(
     const std::string& serialized_ctx_cache,
     const std::string& ctx_cache_file_loc,
     const int64_t embed_mode,
+    bool saving_orig_graph,
     const logging::Logger* p_logger) {
   // Create a new graph/model, reusing the graph name,
   // the op-domain-to-opset-version map,
@@ -236,7 +237,7 @@ std::unique_ptr<Model> CreateEPContexModel(
   // p_attr_4->set_type(onnx::AttributeProto_AttributeType_STRING);
   p_attr_4->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
   // FIXME: 2G-limit of ProtoBuf.
-  p_attr_4->set_s(SerializeOrigialGraph(graph_viewer));
+  p_attr_4->set_s(saving_orig_graph ? SerializeOrigialGraph(graph_viewer) : "N/A");
 
   auto p_node_attrs = NodeAttributes::Create();
   constexpr int num_attrs = 5;
@@ -437,6 +438,7 @@ std::string GetBackendCompileCache(const fs::path& backend_cache_file_location) 
                           << backend_cache_file_location;
     return "";
   }
+  LOGS_DEFAULT(VERBOSE) << "Reading backend compilation cache";
   return Slurp(backend_cache_file_location);
 }
 
