@@ -41,12 +41,12 @@ steps:
     ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
     MaxConcurrency: 25
     signConfigType: inlineSignParams
-      inlineOperation: |
-        [
-          {
-            "keyCode": "CP-401337-Apple",
-            "operationSetCode": "MacAppDeveloperSign",
-            "toolName": "sign",
-            "toolVersion": "6.2.9304.0"
-          }
-        ]
+    inlineOperation: |
+      [
+        {
+          "keyCode": "CP-401337-Apple",
+          "operationSetCode": "MacAppDeveloperSign",
+          "toolName": "sign",
+          "toolVersion": "6.2.9304.0"
+        }
+      ]
