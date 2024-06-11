@@ -39,42 +39,37 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   for (auto node_it = first_node.OutputNodesBegin(); node_it != first_node.OutputNodesEnd(); ++node_it) {
     second_nodes.push_back(graph.GetNode(node_it->Index()));
   }
-  for (auto second_node : second_nodes) {
-  if (!match_second(*second_node)
-      // not filtering on provider currently
-      // || !graph_utils::IsSupportedProvider(*second_node, compatible_execution_providers)
-  ) {
-    return false;
-  }
-  }
 
-    // for DQ -> Q, check for constant, matching scale/ZP values
+  for (auto second_node : second_nodes) {
+    // check for constant, matching scale/ZP values
     const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
       return graph.GetConstantInitializer(initializer_name, true);
     };
 
-    for (auto second_node : second_nodes) {
-    if (!QDQ::IsQDQPairSupported(*second_node, first_node, get_constant_initializer, graph.ModelPath(), false)) {
+    const bool produces_graph_output = graph.NodeProducesGraphOutput(*second_node);
+    const auto output_edges_count = second_node->GetOutputEdgesCount();
+
+    if (!match_second(*second_node) ||
+        !QDQ::IsQDQPairSupported(first_node, *second_node, get_constant_initializer, graph.ModelPath(), false) ||
+        (produces_graph_output && output_edges_count != 0) ||
+        (!produces_graph_output && output_edges_count != 1)) {
       return false;
     }
-    }
+  }
 
   // we have a node sequence to clean up
+  if (logger.GetSeverity() == logging::Severity::kVERBOSE) {
+    LOGS(logger, VERBOSE) << "Found back-to-back nodes: "
+                          << first_node.OpType() << " with name \"" << first_node.Name() << "\"";
+    for (auto second_node : second_nodes) {
+      LOGS(logger, VERBOSE) << ", " << second_node->OpType() << " with name \"" << second_node->Name() << "\"";
+    }
+  }
 
   for (auto second_node_it = second_nodes.begin(); second_node_it != second_nodes.end(); ++second_node_it) {
   Node& second_node = *graph.GetNode((*second_node_it)->Index());
   // we support a second_node that produces a graph output if it has no output edges, or a second_node with one output edge.
   const bool produces_graph_output = graph.NodeProducesGraphOutput(second_node);
-  const auto output_edges_count = second_node.GetOutputEdgesCount();
-
-  if ((produces_graph_output && output_edges_count != 0) ||
-      (!produces_graph_output && output_edges_count != 1)) {
-    return false;
-  }
-
-  LOGS(logger, VERBOSE) << "Cleaning up back-to-back nodes: "
-                        << first_node.OpType() << " with name \"" << first_node.Name() << "\" and "
-                        << second_node.OpType() << " with name \"" << second_node.Name() << "\"";
 
   // src node or graph input/initializer -> first_node -> second_node -> downstream node or graph output
   NodeIndex src_node_idx = 0;
