@@ -180,7 +180,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   j_obj["orig_model_path"] = PathToUTF8String(graph_viewer.ModelPath().ToPathString());
   j_obj["orig_model_proto_ser_str"] = ser_buf;
   LOGS_DEFAULT(VERBOSE) << "Model proto JSON dumping";
-  return j_obj.dump(-1, ' ', false, json::error_handler_t::replace);
+  return j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
 std::unique_ptr<Model> CreateEPContexModel(
@@ -249,7 +249,7 @@ std::unique_ptr<Model> CreateEPContexModel(
     nlohmann::json j_obj;
     j_obj["backend_cache_dir"] = backend_cache_dir;
     j_obj["backend_cache_key"] = backend_cache_key;
-    p_attr_4->set_s(j_obj.dump(-1, ' ', false, json::error_handler_t::replace));
+    p_attr_4->set_s(j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
     LOGS_DEFAULT(VERBOSE) << "Saved backend cache key to attr proto";
   }
   LOGS_DEFAULT(VERBOSE) << "All attributes for EP context node created";
@@ -272,8 +272,8 @@ std::unique_ptr<Model> CreateEPContexModel(
   auto p_ep_ctx_model = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
   LOGS_DEFAULT(VERBOSE) << "EP context model created";
   auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
-  p_ep_ctx_model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   p_ep_ctx_graph_viewer->ToProto(*(p_ep_ctx_model_proto->mutable_graph()), true, true);
+  p_ep_ctx_model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   LOGS_DEFAULT(VERBOSE) << "EP context model populated";
 
   return p_ep_ctx_model;
