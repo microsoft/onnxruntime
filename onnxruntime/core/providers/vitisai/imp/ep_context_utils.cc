@@ -180,7 +180,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   j_obj["orig_model_path"] = PathToUTF8String(graph_viewer.ModelPath().ToPathString());
   j_obj["orig_model_proto_ser_str"] = ser_buf;
   LOGS_DEFAULT(VERBOSE) << "Model proto JSON dumping";
-  return j_obj.dump();
+  return j_obj.dump(-1, ' ', false, json::error_handler_t::replace);
 }
 
 std::unique_ptr<Model> CreateEPContexModel(
@@ -249,7 +249,7 @@ std::unique_ptr<Model> CreateEPContexModel(
     nlohmann::json j_obj;
     j_obj["backend_cache_dir"] = backend_cache_dir;
     j_obj["backend_cache_key"] = backend_cache_key;
-    p_attr_4->set_s(j_obj.dump());
+    p_attr_4->set_s(j_obj.dump(-1, ' ', false, json::error_handler_t::replace));
     LOGS_DEFAULT(VERBOSE) << "Saved backend cache key to attr proto";
   }
   LOGS_DEFAULT(VERBOSE) << "All attributes for EP context node created";
