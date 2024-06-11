@@ -244,8 +244,8 @@ std::unique_ptr<Model> CreateEPContexModel(
     p_attr_4->set_s(SerializeOrigialGraph(graph_viewer));
   } else {
     nlohmann::json j_obj;
-    j_obj["backend_cache_dir"] = cache_dir;
-    j_obj["backend_cache_key"] = cache_key;
+    j_obj["backend_cache_dir"] = backend_cache_dir;
+    j_obj["backend_cache_key"] = backend_cache_key;;
     p_attr_4->set_s(j_obj.dump());
   }
   LOGS_DEFAULT(VERBOSE) << "All attributes for EP context node created";
