@@ -38,18 +38,18 @@ stages:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.3') }}:
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
         value: '12'
     - name: linux_trt_version
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: 10.0.1.6-1.cuda11.8
-      ${{ if eq(parameters.CudaVersion, '12.3') }}:
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
         value: 10.0.1.6-1.cuda12.4
     - name: docker_base_image
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-      ${{ if eq(parameters.CudaVersion, '12.3') }}:
-        value: nvidia/cuda:12.3.2-cudnn9-devel-ubi8
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        value: nvidia/cuda:12.2.2-cudnn9-devel-ubi8
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
       submodules: false
