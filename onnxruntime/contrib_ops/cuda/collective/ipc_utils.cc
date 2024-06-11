@@ -33,13 +33,14 @@ IpcMemory::IpcMemory(int rank, int world_size, std::size_t buffer_size)
 }
 
 Status IpcMemory::AllocateIpcMemory() {
-  CUDA_RETURN_IF_ERROR(cudaMalloc(&m_buffer_ptr_, mbuffer_size_));
-  m_buffer_uptr_ = std::move(CudaMemPtrT{m_buffer_ptr_});
+  void* m_buffer_ptr;
+  CUDA_RETURN_IF_ERROR(cudaMalloc(&m_buffer_ptr, mbuffer_size_));
+  m_buffer_uptr_ = CudaMemPtrT{m_buffer_ptr, CudaDeleter()};
 
-  CUDA_RETURN_IF_ERROR(cudaMemset(m_buffer_ptr_, 0, mbuffer_size_));
+  CUDA_RETURN_IF_ERROR(cudaMemset(m_buffer_uptr_.get(), 0, mbuffer_size_));
 
   cudaIpcMemHandle_t local_handle;
-  CUDA_RETURN_IF_ERROR(cudaIpcGetMemHandle(&local_handle, m_buffer_ptr_));
+  CUDA_RETURN_IF_ERROR(cudaIpcGetMemHandle(&local_handle, m_buffer_uptr_.get()));
 
   // Assume no pipeline parallelism.
   InlinedVector<char> serial_handles(CUDA_IPC_HANDLE_SIZE * world_size_, 0);
@@ -59,12 +60,12 @@ Status IpcMemory::AllocateIpcMemory() {
 
   for (size_t node_id = 0; node_id < handles.size(); node_id++) {
     if ((int)node_id == rank_) {
-      m_comm_ptrs_[node_id] = m_buffer_ptr_;
+      m_comm_ptrs_[node_id] = m_buffer_uptr_.get();
     } else {
       uint8_t* foreign_buffer;
       CUDA_RETURN_IF_ERROR(cudaIpcOpenMemHandle(
           reinterpret_cast<void**>(&foreign_buffer), handles[node_id], cudaIpcMemLazyEnablePeerAccess));
-      m_ipc_uptrs_.emplace_back(IpcMemPtrT{foreign_buffer});
+      m_ipc_uptrs_.emplace_back(foreign_buffer, IpcDeleter());
       m_comm_ptrs_[node_id] = foreign_buffer;
     }
   }
@@ -83,15 +84,15 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
 
   const std::size_t buffer_size = world_size * input_size;
 
-  InlinedVector<std::shared_ptr<IpcMemory>>& m_ipc_memory_handles = ipc_mem_res_pack.m_ipc_momery_handles;
+  InlinedVector<std::unique_ptr<IpcMemory>>& m_ipc_memory_handles = ipc_mem_res_pack.m_ipc_momery_handles;
   const size_t handles_size{m_ipc_memory_handles.size()};
   constexpr size_t k_num_handles{3};
 
-  m_ipc_memory_handles.emplace_back(std::make_shared<IpcMemory>(rank, world_size, buffer_size));
+  m_ipc_memory_handles.emplace_back(std::make_unique<IpcMemory>(rank, world_size, buffer_size));
   m_ipc_memory_handles.emplace_back(
-      std::make_shared<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
+      std::make_unique<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
   m_ipc_memory_handles.emplace_back(
-      std::make_shared<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
+      std::make_unique<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   InlinedVector<const void*>& m_comm_ptrs = ipc_mem_res_pack.m_comm_ptrs;

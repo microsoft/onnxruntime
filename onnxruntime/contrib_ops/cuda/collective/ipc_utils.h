@@ -27,7 +27,7 @@ namespace collective {
 #if defined(USE_MPI) || defined(USE_NCCL)
 
 struct CudaDeleter {
-  void operator()(void* ptr) {
+  void operator()(void* ptr) const noexcept {
     if (ptr != nullptr) {
       cudaFree(ptr);
     }
@@ -35,7 +35,7 @@ struct CudaDeleter {
 };
 
 struct IpcDeleter {
-  void operator()(void* ptr) {
+  void operator()(void* ptr) const noexcept {
     if (ptr != nullptr) {
       cudaIpcCloseMemHandle(ptr);
     }
@@ -60,7 +60,6 @@ class IpcMemory {
   int world_size_;
   InlinedVector<void*> m_comm_ptrs_;
   std::size_t mbuffer_size_;
-  void* m_buffer_ptr_{nullptr};
 
   using CudaMemPtrT = std::unique_ptr<void, CudaDeleter>;
   CudaMemPtrT m_buffer_uptr_;
@@ -72,7 +71,7 @@ class IpcMemory {
 // A global resource pack for IPC memory used in custom reduce kernel.
 // Resource retrieval and deserialization are made atomic to thread safety of accessing it.
 struct IPCMemoryResourcePack {
-  InlinedVector<std::shared_ptr<IpcMemory>> m_ipc_momery_handles;
+  InlinedVector<std::unique_ptr<IpcMemory>> m_ipc_momery_handles;
   InlinedVector<const void*> m_comm_ptrs;
   size_t max_input_size{0};
   uint32_t counter{0};
