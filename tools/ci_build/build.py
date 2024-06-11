@@ -366,7 +366,8 @@ def parse_arguments():
         default="",
         help="Path to RISC-V qemu. e.g. --riscv_qemu_path=$HOME/qemu-dir/qemu-riscv64",
     )
-    parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/25192
+    parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11. It doesn't work if the version number is in the range of [14.36, 14.39]")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
     parser.add_argument(
