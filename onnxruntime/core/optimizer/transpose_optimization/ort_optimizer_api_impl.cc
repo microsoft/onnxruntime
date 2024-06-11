@@ -293,7 +293,8 @@ std::vector<uint8_t> ApiTensor::Data() const {
                                                 tensor_proto_, tensor));
   size_t num_bytes = gsl::narrow_cast<size_t>(tensor.SizeInBytes());
   const uint8_t* data = static_cast<const uint8_t*>(tensor.DataRaw());
-  // TODO: the returned data is unaligned
+  // TODO: the returned data is unaligned, which does not meet the alignment requirement that mlas requires. Because
+  // the returned type is a vector, not a Tensor or tensor buffer that is allocated from a CPU allocator.
   return std::vector<uint8_t>(data, data + num_bytes);
 }
 // </ApiTensor>

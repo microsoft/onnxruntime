@@ -2511,13 +2511,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 /**
  * Refit the weight-stripped engine
  */
-common::Status TensorrtExecutionProvider::RefitEngine([[maybe_unused]] std::string onnx_model_filename,
-                                                      [[maybe_unused]] std::string& onnx_model_folder_path,
-                                                      [[maybe_unused]] std::string& weight_stripped_engine_cath_path,
-                                                      [[maybe_unused]] bool path_check,
-                                                      [[maybe_unused]] nvinfer1::ICudaEngine* trt_engine,
-                                                      [[maybe_unused]] bool serialize_refitted_engine,
-                                                      [[maybe_unused]] bool detailed_build_log) {
+common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_filename,
+                                                      std::string& onnx_model_folder_path,
+                                                      std::string& weight_stripped_engine_cath_path,
+                                                      bool path_check,
+                                                      nvinfer1::ICudaEngine* trt_engine,
+                                                      bool serialize_refitted_engine,
+                                                      bool detailed_build_log) {
 #if NV_TENSORRT_MAJOR >= 10
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
   onnx_model_path.append(onnx_model_filename);

@@ -638,10 +638,6 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
   return LoadModel(file_path, p_model, local_registries, logger, options);
 }
 
-Status Model::Save(Model& model, const std::string& file_path) {
-  return SaveModel(model, file_path);
-}
-
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
                                            size_t initializer_size_threshold) {
