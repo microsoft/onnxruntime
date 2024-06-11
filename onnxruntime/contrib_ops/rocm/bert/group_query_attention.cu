@@ -262,20 +262,23 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   // TODO:
   bias_enum bias_type = bias_enum::no_bias;
 
-  mask_enum mask_type;
-  mask_info mask;
-  if(local_window_size_ != -1) {
-    ORT_NOT_IMPLEMENTED("local_window_size support is not implemented");
-  }
-  if (parameters.is_prompt) {
-    if (is_unidirectional_) {
-      mask_type = mask_enum::mask_top_left;
-      mask = mask_info::decode("t", sequence_length, kv_sequence_length);
+  mask_info mask = [&]() {
+    if (local_window_size_ != -1) {
+      mask_info ret;
+      ret.type = mask_enum::window_generic;
+      ret.left = local_window_size_;
+      ret.right = parameters.is_unidirectional ? 0 : -1;
+      // ret.x = kv_sequence_length - (sequence_length - ret.left);
+      // ret.y = sequence_length + (ret.right - kv_sequence_length);
+      return ret;
     }
-  } else {
-    mask_type = mask_enum::no_mask;
-    mask = mask_info::decode("0", sequence_length, kv_sequence_length);
-  }
+
+    if (parameters.is_prompt && is_unidirectional_) {
+      return mask_info::decode("t", sequence_length, kv_sequence_length);
+    }
+
+    return mask_info::decode("0", sequence_length, kv_sequence_length);
+  }();
 
   auto seqstart_q_tmp = GetScratchBuffer<int>((batch_size + 1) * sizeof(int), ctx->GetComputeStream());
   auto seqstart_k_tmp = GetScratchBuffer<int>((batch_size + 1) * sizeof(int), ctx->GetComputeStream());
@@ -378,7 +381,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       GetCkFmhaDataTypeString<T>(),
       !parameters.is_prompt,  // true,  // is_group_mode
       true,                   // is_v_rowmajor ? dim is fastest : seq is fastest
-      mask_type,
+      mask.type,
       bias_type,
       false,  // has_lse
       false,  // do_fp8_static_quant, aka, squant
