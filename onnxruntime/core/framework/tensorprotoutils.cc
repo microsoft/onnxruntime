@@ -1681,7 +1681,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
   if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
         initializer,
-        (model_path.empty() || model_path.parent_path().empty()) ? std::filesystem::path() : model_path.parent_path(),
+        model_path.parent_path(),
         unpacked_tensor));
     return Status::OK();
   }
