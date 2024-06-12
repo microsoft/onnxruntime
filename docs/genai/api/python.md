@@ -281,7 +281,7 @@ onnxruntime_genai.Generator.get_output(str: name) -> numpy.ndarray[int32]
 - `name`: the name of the model output
 
 #### Returns
-- `numpy.ndarray[int32]`: a multi dimensional array of the model outputs
+- `numpy.ndarray`: a multi dimensional array of the model outputs. The shape of the array is shape of the output.
 
 #### Example
 
