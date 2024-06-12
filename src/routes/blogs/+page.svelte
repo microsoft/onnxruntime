@@ -45,6 +45,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Background Removal in the Browser Using ONNX Runtime with WebGPU',
+			date: 'June 12th, 2024',
+			blurb:
+				"Using ONNX Runtime with WebGPU and WebAssembly leads to 20x speedup over multi-threaded and 550x speedup over single-threaded CPU performance. Thus achieving interactive speeds for state-of-the-art background removal directly in the browser.",
+			link: 'https://img.ly/blog/browser-background-removal-using-onnx-runtime-webgpu/',
+			image: 'https://imgly-blog-prod.storage.googleapis.com/2024/06/onnx-runtime-imgly.jpg',
+			imgalt:
+				'Image of a skateboarder with a sky background, with half of the background being alternating grey and white squares indicating it has been removed.'
+		},
+		{
 			title: 'Phi-3 Small and Medium Models are now Optimized with ONNX Runtime and DirectML',
 			date: 'May 21th, 2024',
 			blurb:
@@ -64,6 +74,9 @@
 			imgalt:
 				'Chart comparing model size (in GB) of ONNX Phi-3-mini for web and mobile with original Phi-3-mini'
 		},
+		
+	];
+	let blogs = [
 		{
 			title: 'ONNX Runtime supports Phi-3 mini models across platforms and devices',
 			date: 'April 22nd, 2024',
@@ -73,9 +86,7 @@
 			image: Phi3Image,
 			imgalt:
 				'Phi-3 + ONNX Runtime with the prompt "Tell me a joke" and Phi-3 answering: "Why don\'t scientists trust atoms?" "Because they make up everything!"'
-		}	
-	];
-	let blogs = [
+		},
 		{
 			title: 'ONNX Runtime Web unleashes generative AI in the browser using WebGPU',
 			date: 'February 29th, 2024',
