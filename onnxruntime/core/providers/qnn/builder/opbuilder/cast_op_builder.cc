@@ -40,7 +40,7 @@ Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_UNUSED_PARAMETER(do_op_validation);
 
   const auto& inputs = node_unit.Inputs();
-  ORT_ENFORCE(inputs.size() == 1, "QNN Cast node must have a single input.");
+  ORT_RETURN_IF_NOT(inputs.size() == 1, "QNN Cast node must have a single input.");
   const auto& input = inputs[0];
 
   const auto& input_name = input.node_arg.Name();
@@ -58,7 +58,7 @@ Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
   }
 
-  Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
+  Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(input_name);
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input.node_arg, input_shape),
                     "Cannot get shape for QNN Cast node's input.");
@@ -87,7 +87,7 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_UNUSED_PARAMETER(logger);
 
   const auto& outputs = node_unit.Outputs();
-  ORT_ENFORCE(outputs.size() == 1, "QNN Cast node must have a single output.");
+  ORT_RETURN_IF_NOT(outputs.size() == 1, "QNN Cast node must have a single output.");
   const auto& output = outputs[0];
   const auto& output_name = output.node_arg.Name();
 
@@ -111,7 +111,7 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)),
                     "Failed to add output tensor for QNN Cast node.");
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),

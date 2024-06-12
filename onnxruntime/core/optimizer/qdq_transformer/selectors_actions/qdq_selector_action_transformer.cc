@@ -44,9 +44,9 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
       MoveToSlot(dq, ArgType::kInput, 0, ArgType::kInput, 0),
       MoveToSlot(q, ArgType::kOutput, 0, ArgType::kOutput, 0)};
 
-  std::unique_ptr<Action> drop_action_no_int16 = std::make_unique<MergeIntoTarget>(
+  std::unique_ptr<Action> drop_action_no_int16 = std::make_unique<MergeIntoTargetFixed>(
       std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
-  std::unique_ptr<Action> drop_action = std::make_unique<MergeIntoTarget>(std::move(moves));
+  std::unique_ptr<Action> drop_action = std::make_unique<MergeIntoTargetFixed>(std::move(moves));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Use a separate selector + action that disallows 16-bit types for MaxPool and Resize.
@@ -84,7 +84,7 @@ void DropDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::vector<NodeAndMoveInfo> moves{
       MoveToSlot(dq, ArgType::kInput, 0, ArgType::kInput, 0)};
 
-  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
+  std::unique_ptr<Action> action = std::make_unique<MergeIntoTargetFixed>(std::move(moves));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when ArgMax supports 16-bit integer input tensors.

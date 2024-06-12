@@ -3300,6 +3300,11 @@ void RegisterContribSchemas() {
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
+          "onnx_model_filename",
+          "(Optional) Filename of the original ONNX model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
           "hardware_architecture",
           "(Optional) Hardware architecture.",
           AttributeProto::STRING,
@@ -3407,7 +3412,7 @@ MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7
      And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
   3. Input B's scale and zero point are specified by input scales and zero_points.
 
-  Input is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
+  Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
   - n_blocks_per_col = (K + block_size - 1) / block_size
   - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
   For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.
@@ -3446,6 +3451,7 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
       .Input(2, "scales", "quantization scale", "T1")
       .Input(3, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
       .Input(4, "g_idx", "group_idx", "T4", OpSchema::Optional)
+      .Input(5, "bias", "Bias to add to result. It should have shape [N].", "T1", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)", "tensor(int32)"}, "Constrain quantized weight types to uint8/int32.")
@@ -3458,6 +3464,20 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
         int64_t in_features = getAttribute(ctx, "K", -1);
         int64_t out_features = getAttribute(ctx, "N", -1);
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, true);
+
+        // validate bias shape
+        if (ctx.hasInput(5)) {
+          if (!hasInputShape(ctx, 5)) {
+            fail_shape_inference("bias shape must be known");
+          }
+
+          const auto& bias_shape = getInputShape(ctx, 5);
+          if (bias_shape.dim_size() != 1 ||
+              !bias_shape.dim(0).has_dim_value() ||
+              bias_shape.dim(0).dim_value() != out_features) {
+            fail_shape_inference("bias shape must be [N] where N = ", out_features);
+          }
+        }
       });
 
   static const char* MatMulBnb4_ver1_doc = R"DOC(

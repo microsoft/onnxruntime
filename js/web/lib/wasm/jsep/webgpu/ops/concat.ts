@@ -71,7 +71,7 @@ const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelpe
   return codeLines.join('\n');
 };
 
-export const createConcatProgramInfo =
+const createConcatProgramInfo =
     (inputs: readonly TensorView[], adjustedAxis: number, outputShape: number[], dataType: DataType): ProgramInfo => {
       const outputSize = ShapeUtil.size(outputShape);
 

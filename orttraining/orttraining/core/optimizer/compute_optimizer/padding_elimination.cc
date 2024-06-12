@@ -21,8 +21,8 @@ constexpr const char* kInspectActivationFuncName =
     "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation";
 constexpr const char* kIncrementStepFuncName =
     "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
-constexpr const char* kFlagPaddingEliminationFuncName =
-    "onnxruntime.training.ortmodule._runtime_inspector.FlagPaddingElimination";
+constexpr const char* kFlagAndPrintDensityFuncName =
+    "onnxruntime.training.ortmodule._runtime_inspector.FlagAndPrintDensity";
 
 void PushAllOutputNode(Graph& graph, std::queue<Node*>& q, Node* node, std::unordered_set<Node*>& visited) {
   for (auto iter = node->OutputNodesBegin(); iter != node->OutputNodesEnd(); ++iter) {
@@ -359,6 +359,30 @@ void IterateSubgraphFromNode(Graph& graph,
 }
 }  // namespace
 
+void RemovePrintDensityFlag(Graph& graph,
+                            const std::vector<NodeIndex>& node_topology_list,
+                            bool& modified,
+                            const logging::Logger& logger) {
+  for (auto node_index : node_topology_list) {
+    Node* node = graph.GetNode(node_index);
+    if (node == nullptr) {
+      continue;
+    }
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*node, "PythonOp", {1}, kMSDomain) &&
+        static_cast<std::string>(node->GetAttributes().at("func_name").s()) == kFlagAndPrintDensityFuncName) {
+      if (graph_utils::CanRemoveNode(graph, *node, logger)) {
+        if (graph_utils::RemoveNode(graph, *node)) {
+          modified = true;
+        } else {
+          LOG_DEBUG_INFO(logger, "Failed to remove node " + node->Name() + "(" + node->OpType() + ")");
+        }
+      } else {
+        LOG_DEBUG_INFO(logger, "Can not remove node " + node->Name() + "(" + node->OpType() + ")");
+      }
+    }
+  }
+}
+
 Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "Enter PaddingElimination");
 
@@ -392,29 +416,12 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         node.InputDefs()[1]->Exists() &&
         node.InputDefs()[1]->Shape() &&
         node.InputDefs()[1]->Shape()->dim_size() >= 2) {
-      const auto outputNodeCount = std::distance(node.OutputEdgesBegin(), node.OutputEdgesEnd());
-      if (outputNodeCount != 1) {
-        continue;
-      }
-      auto embedding_output_node = graph.GetNode(node.OutputNodesBegin()->Index());
-      if (embedding_output_node == nullptr ||
-          !graph_utils::IsSupportedOptypeVersionAndDomain(*embedding_output_node, "PythonOp", {1}, kMSDomain) ||
-          static_cast<std::string>(embedding_output_node->GetAttributes().at("func_name").s()) !=
-              kFlagPaddingEliminationFuncName) {
+      Node* embedding_input_node = graph.GetMutableProducerNode(node.MutableInputDefs()[1]->Name());
+      if (embedding_input_node == nullptr ||
+          !graph_utils::IsSupportedOptypeVersionAndDomain(*embedding_input_node, "PythonOp", {1}, kMSDomain) ||
+          static_cast<std::string>(embedding_input_node->GetAttributes().at("func_name").s()) !=
+              kFlagAndPrintDensityFuncName) {
         LOG_DEBUG_INFO(logger, "not find PythonOp of flagPaddingElimination after embedding node");
-        continue;
-      }
-      if (graph_utils::CanRemoveNode(graph, *embedding_output_node, logger)) {
-        if (graph_utils::RemoveNode(graph, *embedding_output_node)) {
-          modified = true;
-        } else {
-          LOG_DEBUG_INFO(logger, "Failed to remove node " + embedding_output_node->Name() +
-                                     "(" + embedding_output_node->OpType() + ")");
-          continue;
-        }
-      } else {
-        LOG_DEBUG_INFO(logger, "Can not remove node " + embedding_output_node->Name() +
-                                   "(" + embedding_output_node->OpType() + ")");
         continue;
       }
       const ONNX_NAMESPACE::TensorProto* padding_initializer =
@@ -428,18 +435,21 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
           continue;
         }
         embedding_node = &node;
-        input_ids_arg = embedding_node->MutableInputDefs()[1];
-        for (auto output_defs : embedding_node->MutableOutputDefs()) {
-          subgraph.insert(output_defs);
-        }
         break;
       }
     }
   }
 
+  if (!print_density_) {
+    RemovePrintDensityFlag(graph, node_topology_list, modified, logger);
+  }
   if (!embedding_node) {
     LOG_DEBUG_INFO(logger, "Exit PaddingElimination optimization for not finding any valid embedding node.");
     return Status::OK();
+  }
+  input_ids_arg = embedding_node->MutableInputDefs()[1];
+  for (auto output_defs : embedding_node->MutableOutputDefs()) {
+    subgraph.insert(output_defs);
   }
 
   if (!input_ids_arg->Shape()) {

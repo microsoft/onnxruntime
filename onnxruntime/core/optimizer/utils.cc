@@ -281,7 +281,7 @@ constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNorm
 // (plus ShrunkenGather for training) are considered deterministic.
 #ifdef ENABLE_TRAINING_OPS
 constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather", "QuantizeLinear", "DequantizeLinear",
-                                               "ConcatTraining"};
+                                               "ConcatTraining", "PadAndUnflatten"};
 #else
 constexpr std::array kMSDomainDeterministicOps{"QuantizeLinear", "DequantizeLinear"};
 #endif

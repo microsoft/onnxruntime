@@ -79,6 +79,20 @@ class FusionSimplifiedLayerNormalization(Fusion):
             [0, 1, 1, 0, 0, 0],
         )
 
+        # For Gemma from Microsoft custom export, which has a Multiply after the Gather:
+        #
+        #                              SimplifiedLayerNorm
+        #          +-------------------------------------------------------+
+        #          |                                                       |
+        # Mul --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Mul
+        #                                                                  |
+        #                                                                 node
+        sim_ln_nodes_5 = self.model.match_parent_path(
+            node,
+            ["Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Mul"],
+            [1, 1, 1, 0, 0, 0, 0],
+        )
+
         add_node, pow_node = None, None
         if sim_ln_nodes_1 is not None:
             sim_ln_nodes = sim_ln_nodes_1
@@ -99,6 +113,10 @@ class FusionSimplifiedLayerNormalization(Fusion):
             # Verify that parent input to Pow node is graph_input
             if pow_node.input[0] not in self.model.get_graphs_input_names():
                 return
+        elif sim_ln_nodes_5 is not None:
+            sim_ln_nodes = sim_ln_nodes_5
+            add_node = sim_ln_nodes[3]
+            pow_node = sim_ln_nodes[-2]
         else:
             return
 

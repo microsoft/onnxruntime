@@ -11,6 +11,12 @@ parameters:
     values:
       - 11.8
       - 12.2
+  - name: TrtVersion
+    type: string
+    default: '10.0.1.6'
+    values:
+      - 8.6.1.6
+      - 10.0.1.6
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
@@ -32,22 +38,26 @@ steps:
         - bash: |
             echo "##vso[task.setvariable variable=trtCudaVersion]11.8"
           displayName: Set trtCudaVersion
-    - ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '8.6.1.6')) }}:
         - bash: |
             echo "##vso[task.setvariable variable=trtCudaVersion]12.0"
           displayName: Set trtCudaVersion
+    - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '10.0.1.6')) }}:
+        - bash: |
+            echo "##vso[task.setvariable variable=trtCudaVersion]12.4"
+          displayName: Set trtCudaVersion
 
     - bash: |
-        echo $(trtCudaVersion)
-      displayName: Get trtCudaVersion
+        echo $(trtCudaVersion) && echo TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)
+      displayName: Get trtCudaVersion and Directory Name
 
     - powershell: |
-        azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-8.6.1.6.Windows10.x86_64.cuda-$(trtCudaVersion) $(Agent.TempDirectory)
-      displayName: 'Download TensorRT-8.6.1.6.Windows10.x86_64.cuda-$(trtCudaVersion)'
+        azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion) $(Agent.TempDirectory)
+      displayName: 'Download TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)'
 
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-$(trtCudaVersion)\lib"
-      displayName: 'Append TensorRT Directory to PATH'
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)\lib"
+      displayName: 'Append TensorRT-${{ parameters.TrtVersion }} Directory to PATH'
 
     - task: CmdLine@2
       inputs:

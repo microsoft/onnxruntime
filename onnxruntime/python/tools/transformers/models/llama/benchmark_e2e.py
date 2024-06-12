@@ -69,6 +69,7 @@ def get_model(args: argparse.Namespace):
                 cache_dir=args.cache_dir,
                 torch_dtype=args.torch_dtype,
                 use_auth_token=args.auth,
+                trust_remote_code=args.auth,
                 use_cache=True,
                 attn_implementation="flash_attention_2",
                 quantization_config=bnb_config,
@@ -80,6 +81,7 @@ def get_model(args: argparse.Namespace):
                 cache_dir=args.cache_dir,
                 torch_dtype=args.torch_dtype,
                 use_auth_token=args.auth,
+                trust_remote_code=args.auth,
                 use_cache=True,
                 attn_implementation=("flash_attention_2" if args.device == "cuda" else "sdpa"),
             ).to(args.target_device)
@@ -338,11 +340,13 @@ def main():
         args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
         cache_dir=args.cache_dir,
         use_auth_token=args.auth,
+        trust_remote_code=args.auth,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         args.hf_dir_path if args.hf_dir_path != "" else args.model_name,
         cache_dir=args.cache_dir,
         use_auth_token=args.auth,
+        trust_remote_code=args.auth,
     )
     model = get_model(args)
 

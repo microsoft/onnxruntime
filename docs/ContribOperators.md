@@ -102,6 +102,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
   * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
+  * <a href="#com.microsoft.SparseAttention">com.microsoft.SparseAttention</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
@@ -1372,7 +1373,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16), tensor(int32)</dt>
+<dt><tt>T1</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16), tensor(int32), tensor(int4), tensor(uint4)</dt>
 <dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, 16-bit integer tensors, or 32-bit signed integer tensors.</dd>
 <dt><tt>T2</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'y', 'x_scale' to float tensors.</dd>
@@ -1596,6 +1597,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Usually each single EPContext associate with a graph partition.But for some case like QNN, it has single EPContext contains all partitions.In that case, the node with ep_cache_context should set main_context=1. Other nodes set main_context=0 and skip ep_cache_context.The path is relative to this Onnx file. Default is 1.</dd>
 <dt><tt>notes</tt> : string</dt>
 <dd>(Optional) Some notes for the model</dd>
+<dt><tt>onnx_model_filename</tt> : string</dt>
+<dd>(Optional) Filename of the original ONNX model.</dd>
 <dt><tt>partition_name</tt> : string</dt>
 <dd>(Optional) partitioned graph name.</dd>
 <dt><tt>source</tt> : string</dt>
@@ -2454,10 +2457,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Group Query Self/Cross Attention.
   
-  Supports different number of heads for q and kv. Only supports causal or local attention.
-  Supports rotary position embedding.
-  Supports k-v cache.
-  CPU EP supports fp32... CUDA EP supports fp16.
+  *Highly recommend using k-v cache share buffer for both CPU and CUDA. Enabled through IOBinding past and present kv.
+  Supports different number of heads for q and kv for CPU and CUDA.
+  Only supports causal and local attention.
+  Supports rotary position embedding for CPU and CUDA.
+  Supports packed input for CPU and CUDA.
 
 #### Version
 
@@ -2876,7 +2880,7 @@ This version of the operator has been available since version 1 of the 'com.micr
        And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
     3. Input B's scale and zero point are specified by input scales and zero_points.
   
-    Input is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
+    Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
     - n_blocks_per_col = (K + block_size - 1) / block_size
     - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
     For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.
@@ -2913,7 +2917,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.</dd>
 </dl>
 
-#### Inputs (3 - 5)
+#### Inputs (3 - 6)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
@@ -2926,6 +2930,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>quantization zero points</dd>
 <dt><tt>g_idx</tt> (optional) : T4</dt>
 <dd>group_idx</dd>
+<dt><tt>bias</tt> (optional) : T1</dt>
+<dd>Bias to add to result. It should have shape [N].</dd>
 </dl>
 
 #### Outputs
@@ -3418,7 +3424,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Input tensors contains the hidden embedding of real tokens.
   Token_offset records the offset of token in the unpacked input.
-  cumulated_token_count records cumulated length of each sequnces length.
+  cumulated_token_count records cumulated length of each sequence length.
   
   The operator only supports BERT like model with padding on right now.
   
@@ -3492,7 +3498,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
   Token_offset records the offset of token in the unpacked input.
-  cumulative_sequence_length records cumulated length of each sequnces length.
+  cumulative_sequence_length records cumulated length of each sequence length.
   
   The operator only supports BERT like model with padding on right now.
 
@@ -4826,7 +4832,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T1</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'x', 'y_scale' to float tensors.</dd>
-<dt><tt>T2</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16)</dt>
+<dt><tt>T2</tt> : tensor(int8), tensor(uint8), tensor(int16), tensor(uint16), tensor(int4), tensor(uint4)</dt>
 <dd>Constrain 'y_zero_point' and 'y' to 8-bit and 16-bit integer tensors.</dd>
 </dl>
 
@@ -5175,6 +5181,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>is_packed_batching</tt> : int</dt>
+<dd>ragged batch inputs or not. Default value is 0</dd>
 <dt><tt>num_heads</tt> : int</dt>
 <dd>Number of attention heads. Default value is 0. Must use with rotary_embedding_dim</dd>
 <dt><tt>rotary_embedding_dim</tt> : int</dt>
@@ -5538,6 +5546,110 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(float)</dt>
 <dd>Constrain input and output types to uint8, uint16, float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SparseAttention"></a><a name="com.microsoft.sparseattention">**com.microsoft.SparseAttention**</a>
+
+  Block Sparse Attention used in Phi-3-small (https://arxiv.org/pdf/2404.14219).
+  
+  It is inspired by Sparse Transformers (https://arxiv.org/pdf/1904.10509) and BigBird (https://arxiv.org/pdf/2007.14062).
+  
+  block_mask can be used to configure sparse layout for different head.
+  When number of sparse layout is 1, all heads have same sparse layout. Otherwise, different layouts are used cyclically.
+  For example, given 4 layouts (S0, S1, S2, S3), 8 heads will have layouts like (S0, S1, S2, S3, S0, S1, S2, S3).
+  
+  The block_row_indices and block_col_indices are the CSR representation of block mask. The block_col_indices might contain
+  paddings at the right side when different layout has different number of non-zeros in block mask.
+  
+  An example of block mask with 2 layouts where each layout is 4 x 4 blocks:
+    [[[1, 0, 0, 0],
+      [1, 1, 0, 0],
+      [0, 1, 1, 0],
+      [0, 1, 1, 1]],
+  
+     [[1, 0, 0, 0],
+      [1, 1, 0, 0],
+      [1, 1, 1, 0],
+      [1, 0, 1, 1]]]
+  
+  The corresponding CSR format:
+    block_col_indices = [[0,  0,  1,  1,  2,  1,  2,  3, -1], [0,  0,  1,  0,  1,  2,  0,  2,  3]]
+    block_row_indices = [[0, 1, 3, 5, 8], [0, 1, 3, 6, 9]]
+  
+  When do_rotary is True, cos_cache and sin_cache are required. Note that the maximum sequence length supported by cos
+  or sin cache can be different from the maximum sequence length used by kv cache.
+  
+  Only supports unidirectional attention with cache of past key and value in linear buffers.
+  
+  For performance, past_key and present_key share same memory buffer, and past_value and present_value too.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for key and value</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for query</dd>
+<dt><tt>rotary_interleaved</tt> : int</dt>
+<dd>Rotary use interleaved pattern or not. Default value is 0.</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Scaling factor applied prior to softmax. The default value is 1/sqrt(head_size)</dd>
+<dt><tt>sparse_block_size</tt> : int (required)</dt>
+<dd>Number of tokens per sparse block. Choices: 16, 32, 64, 128</dd>
+</dl>
+
+#### Inputs (9 - 11)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (batch_size, sequence_length, num_heads * head_size), or packed QKV with shape is(batch_size, sequence_length, d) where d is (num_heads + 2 * kv_num_heads) * head_size.</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Key with shape (batch_size, sequence_length, kv_num_heads * head_size)</dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Value with shape (batch_size, sequence_length, kv_num_heads * head_size)</dd>
+<dt><tt>past_key</tt> : T</dt>
+<dd>Key cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size)</dd>
+<dt><tt>past_value</tt> : T</dt>
+<dd>Value cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size)</dd>
+<dt><tt>block_row_indices</tt> : M</dt>
+<dd>The row indices of CSR format of block mask with shape (num_layout, max_blocks + 1).The num_heads is divisible by num_layout, and max_blocks is max_sequence_length / sparse_block_size.</dd>
+<dt><tt>block_col_indices</tt> : M</dt>
+<dd>The col indices of CSR format of block mask with shape (num_layout, max_nnz_blocks).The max_nnz_blocks is the maximum number of non-zeros per layout in block mask.</dd>
+<dt><tt>total_sequence_length</tt> : M</dt>
+<dd>Scalar tensor of maximum total sequence length (past_sequence_length + sequence_length) among keys.</dd>
+<dt><tt>key_total_sequence_lengths</tt> : M</dt>
+<dd>1D tensor with shape (batch_size) where each value is total sequence length of key excluding paddings.</dd>
+<dt><tt>cos_cache</tt> (optional) : T</dt>
+<dd>Cos cache of rotary with shape (max_rotary_sequence_length, head_size / 2).</dd>
+<dt><tt>sin_cache</tt> (optional) : T</dt>
+<dd>Sin cache of rotary with shape (max_rotary_sequence_length, head_size / 2).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, num_heads * head_size)</dd>
+<dt><tt>present_key</tt> : T</dt>
+<dd>Updated key cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size).</dd>
+<dt><tt>present_value</tt> : T</dt>
+<dd>Updated value cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain integer type.</dd>
 </dl>
 
 

@@ -328,6 +328,12 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
     } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_32 ||
                GetQnnTensorDataType(tensor) == QNN_DATATYPE_SFIXED_POINT_32) {
       operator<< <int32_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_16 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_16) {
+      operator<< <uint16_t>(out, GetQnnTensorClientBuf(tensor));
+    } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_INT_16 ||
+               GetQnnTensorDataType(tensor) == QNN_DATATYPE_SFIXED_POINT_16) {
+      operator<< <int16_t>(out, GetQnnTensorClientBuf(tensor));
     } else if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_UINT_8 ||
                GetQnnTensorDataType(tensor) == QNN_DATATYPE_UFIXED_POINT_8) {
       operator<< <uint8_t>(out, GetQnnTensorClientBuf(tensor));
@@ -399,6 +405,15 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
                     "Failed to map Onnx data type to Qnn data type!");
 
   return Status::OK();
+}
+
+const std::string& GetNodeName(const NodeUnit& node_unit) {
+  const std::string& node_name = node_unit.Name();
+  if (node_name.empty()) {
+    return node_unit.Outputs()[0].node_arg.Name();
+  }
+
+  return node_name;
 }
 
 bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized) {

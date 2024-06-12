@@ -90,6 +90,10 @@ jobs:
         DownloadCUDA: true
       ${{ else }}:
         DownloadCUDA: false
+      ${{ if contains(parameters.additionalBuildFlags, 'use_tensorrt') }}:
+        DownloadTRT: true
+      ${{ else }}:
+        DownloadTRT: false
       BuildArch: ${{parameters.buildArch}}
       BuildConfig: ${{parameters.BuildConfig}}
       MachinePool: ${{parameters.MachinePool}}

@@ -47,6 +47,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
       Context: tools/ci_build/github/linux/docker
+      CheckOutManyLinux: true
       DockerBuildArgs: >-
         --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
         --build-arg BUILD_UID=$(id -u)

@@ -127,10 +127,15 @@ namespace onnxruntime {
  */
 class PaddingElimination : public GraphTransformer {
  public:
-  explicit PaddingElimination(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("PaddingElimination", compatible_execution_providers) {}
+  explicit PaddingElimination(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+                              const bool print_input_density = false) noexcept
+      : GraphTransformer("PaddingElimination", compatible_execution_providers),
+        print_density_(print_input_density) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+ private:
+  bool print_density_ = false;
 };
 
 }  // namespace onnxruntime

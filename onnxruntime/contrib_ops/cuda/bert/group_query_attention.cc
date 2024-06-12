@@ -45,7 +45,8 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0 && num_heads % kv_num_heads == 0);
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
-  is_past_bsnh_ = false;  // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
+  is_past_bsnh_ = false;
+  is_unidirectional_ = true;
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
@@ -59,7 +60,8 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-  disable_memory_efficient_attention_ = sizeof(T) != 2 ||
+  // Memory efficient attention only supports float and float16, not bfloat16.
+  disable_memory_efficient_attention_ = std::is_same<T, BFloat16>::value ||
                                         ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
 #else
   disable_memory_efficient_attention_ = true;
@@ -160,9 +162,12 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       !disable_memory_efficient_attention_ &&
       local_window_size_ == -1 &&
       (parameters.head_size & 7) == 0 &&
-      parameters.sequence_length <= parameters.seqlen_past_kv_cache + parameters.sequence_length &&
       (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2);
+  if (!use_flash_attention && !use_memory_efficient_attention && local_window_size_ != -1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Local attention UNSUPPORTED for sm < 80 on CUDA.");
+  }
   // allocate buffers
   size_t kv_buffer_bytes = 0;
   // need a buffer if we must ungroup kv

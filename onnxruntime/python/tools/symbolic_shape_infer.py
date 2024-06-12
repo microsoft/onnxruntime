@@ -206,6 +206,7 @@ class SymbolicShapeInference:
             "GemmFloat8": self._infer_GemmFloat8,
             "GroupNorm": self._infer_GroupNorm,
             "GroupQueryAttention": self._infer_GroupQueryAttention,
+            "SparseAttention": self._infer_SparseAttention,
             "SkipGroupNorm": self._infer_SkipGroupNorm,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
@@ -473,6 +474,7 @@ class SymbolicShapeInference:
             "MultiHeadAttention",
             "GroupNorm",
             "GroupQueryAttention",
+            "SparseAttention",
             "SkipGroupNorm",
             "BiasSplitGelu",
             "BiasAdd",
@@ -2449,6 +2451,8 @@ class SymbolicShapeInference:
 
         past_shape = self._try_get_shape(node, 3)
         if past_shape is not None:
+            # When past and present has the maximum sequence length, we can propagate the shape from past to present.
+            # Note that GQA also supports different sequence lengths for past and present, but it is rarely used.
             vi = self.known_vi_[node.output[1]]
             vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
             vi = self.known_vi_[node.output[2]]
@@ -2469,6 +2473,9 @@ class SymbolicShapeInference:
                     query_shape[2] = num_heads * head_size
                     vi = self.known_vi_[node.output[0]]
                     vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, query_shape))
+
+    def _infer_SparseAttention(self, node):  # noqa: N802
+        self._infer_GroupQueryAttention(node)
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)

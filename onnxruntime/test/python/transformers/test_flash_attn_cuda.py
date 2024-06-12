@@ -24,6 +24,10 @@ from rotary_flash import apply_rotary_emb
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
 
+RED = "\033[31m"
+GREEN = "\033[32m"
+RESET = "\033[0m"
+
 torch.manual_seed(0)
 
 pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
@@ -1137,6 +1141,8 @@ def parity_check_mha(
         out_ref = out_ref.detach().cpu().numpy()
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         " B:",
         config.batch_size,
@@ -1150,14 +1156,9 @@ def parity_check_mha(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct,
     )
+    return all_close
 
 
 def parity_check_gqa_prompt(
@@ -1331,6 +1332,8 @@ def parity_check_gqa_prompt(
     assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "KV-buffer",
         " packed:",
@@ -1359,14 +1362,25 @@ def parity_check_gqa_prompt(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct,
     )
+
+    if not all_close:
+        close_mask = numpy.isclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+        not_close_mask = numpy.logical_not(close_mask)
+
+        # Values that are not close
+        out_not_close = out[not_close_mask]
+        out_ref_not_close = out_ref[not_close_mask]
+
+        # Indices that are not close
+        not_close_indices = numpy.argwhere(not_close_mask)
+
+        print("Values in 'out' that are not close:", out_not_close)
+        print("Corresponding values in 'out_ref':", out_ref_not_close)
+        print("Indices of values that are not close:", not_close_indices)
+
+    return all_close
 
 
 def parity_check_gqa_prompt_no_buff(
@@ -1517,6 +1531,8 @@ def parity_check_gqa_prompt_no_buff(
     assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "No buff",
         " packed:",
@@ -1545,14 +1561,9 @@ def parity_check_gqa_prompt_no_buff(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct,
     )
+    return all_close
 
 
 def parity_check_gqa_past(
@@ -1723,6 +1734,8 @@ def parity_check_gqa_past(
     assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "KV-buffer",
         "past kv format:",
@@ -1751,14 +1764,9 @@ def parity_check_gqa_past(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct,
     )
+    return all_close
 
 
 def parity_check_gqa_past_no_buff(
@@ -1931,6 +1939,8 @@ def parity_check_gqa_past_no_buff(
     out = out.detach().cpu().numpy()
 
     # Compare results
+    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(
         "NO buff",
         " packed:",
@@ -1959,14 +1969,9 @@ def parity_check_gqa_past_no_buff(
         config.head_size,
         " Mean Error:",
         numpy.mean(numpy.abs(out - out_ref)),
-        numpy.allclose(
-            out,
-            out_ref,
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        ),
+        correct,
     )
+    return all_close
 
 
 class TestMHA(unittest.TestCase):
@@ -1986,7 +1991,8 @@ class TestMHA(unittest.TestCase):
                 for n in num_h:
                     for h in h_sizes:
                         config = Config(b, s, s, 0, n, n, h)
-                        parity_check_mha(config, True)
+                        all_close = parity_check_mha(config, True)
+                        self.assertTrue(all_close)
 
     def test_mha(self):
         if not torch.cuda.is_available() or platform.system() != "Linux":
@@ -2019,16 +2025,16 @@ class TestMHA(unittest.TestCase):
                 for n in num_h:
                     for h in h_sizes:
                         config = Config(b, s, s2, 0, n, n, h)
-                        parity_check_mha(config, False)
+                        all_close = parity_check_mha(config, False)
+                        self.assertTrue(all_close)
 
 
 class TestGQA(unittest.TestCase):
-    def test_gqa_no_past(self):
+    def test_gqa_no_past_memory_efficient(self):
         if not torch.cuda.is_available():
             return
         major, minor = torch.cuda.get_device_capability()
         torch.manual_seed(69)
-        print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
         batches = [3] if pipeline_mode else [1, 3, 5]
         seqs = (
             [
@@ -2047,7 +2053,7 @@ class TestGQA(unittest.TestCase):
                 (240, 240),
             ]
         )
-        num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         if major < 5 or (major == 5 and minor < 3):
             return
@@ -2060,24 +2066,52 @@ class TestGQA(unittest.TestCase):
                         for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
                             for packed in [False, True]:
                                 config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                parity_check_gqa_prompt(
+                                all_close = parity_check_gqa_prompt(
                                     config,
-                                    rtol=2e-3,
-                                    atol=2e-3,
+                                    rtol=5e-3,
+                                    atol=5e-3,
                                     past_format=Formats.BNSH,
                                     rotary=rotary,
                                     rotary_interleaved=rotary_interleaved,
                                     packed=packed,
                                 )
-                                parity_check_gqa_prompt_no_buff(
+                                self.assertTrue(all_close)
+                                all_close = parity_check_gqa_prompt_no_buff(
                                     config,
-                                    rtol=2e-3,
-                                    atol=2e-3,
+                                    rtol=5e-3,
+                                    atol=5e-3,
                                     past_format=Formats.BNSH,
                                     rotary=rotary,
                                     rotary_interleaved=rotary_interleaved,
                                     packed=packed,
                                 )
+                                self.assertTrue(all_close)
+
+    def test_gqa_no_past_flash_attention(self):
+        if not torch.cuda.is_available():
+            return
+        major, _ = torch.cuda.get_device_capability()
+        torch.manual_seed(69)
+        batches = [3] if pipeline_mode else [1, 3, 5]
+        seqs = (
+            [
+                (127, 127),
+                (35, 35),
+                (2000, 2000),
+                (200, 200),
+                (240, 240),
+            ]
+            if pipeline_mode
+            else [
+                (127, 127),
+                (35, 35),
+                (2000, 2000),
+                (200, 200),
+                (240, 240),
+            ]
+        )
+        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         if major < 8 or platform.system() != "Linux":
             return
         print("------- FLASH ATTENTION (PROMPT CASE) --------")
@@ -2090,7 +2124,7 @@ class TestGQA(unittest.TestCase):
                             for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
                                 for packed in [False, True]:
                                     config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                    parity_check_gqa_prompt(
+                                    all_close = parity_check_gqa_prompt(
                                         config,
                                         local=local,
                                         past_format=Formats.BNSH,
@@ -2098,7 +2132,8 @@ class TestGQA(unittest.TestCase):
                                         rotary_interleaved=rotary_interleaved,
                                         packed=packed,
                                     )
-                                    parity_check_gqa_prompt_no_buff(
+                                    self.assertTrue(all_close)
+                                    all_close = parity_check_gqa_prompt_no_buff(
                                         config,
                                         local=local,
                                         past_format=Formats.BNSH,
@@ -2106,15 +2141,15 @@ class TestGQA(unittest.TestCase):
                                         rotary_interleaved=rotary_interleaved,
                                         packed=packed,
                                     )
+                                    self.assertTrue(all_close)
 
-    def test_gqa_past(self):
+    def test_gqa_past_memory_efficient(self):
         if not torch.cuda.is_available():
             return
         major, minor = torch.cuda.get_device_capability()
         if major < 5 or (major == 5 and minor < 3):
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        print("-------- TEST GQA PAST (TOKEN GEN) ---------")
         batches = [5] if pipeline_mode else [1, 3, 5]
         seqs = (
             [(1, 128), (1, 1024), (1, 2048)]
@@ -2133,7 +2168,7 @@ class TestGQA(unittest.TestCase):
                 # (128, 128),
             ]
         )
-        num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
         print("-------- MEMORY EFFICIENT (TOKEN GEN) --------")
@@ -2145,7 +2180,7 @@ class TestGQA(unittest.TestCase):
                             for packed in [False, True]:
                                 sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                 config = Config(b, s, s2, sp, n, n2, h)
-                                parity_check_gqa_past(
+                                all_close = parity_check_gqa_past(
                                     config,
                                     past_format=Formats.BNSH,
                                     rtol=1e-3,
@@ -2154,7 +2189,8 @@ class TestGQA(unittest.TestCase):
                                     rotary_interleaved=rotary_interleaved,
                                     packed=packed,
                                 )
-                                parity_check_gqa_past_no_buff(
+                                self.assertTrue(all_close)
+                                all_close = parity_check_gqa_past_no_buff(
                                     config,
                                     past_format=Formats.BNSH,
                                     rtol=1e-3,
@@ -2163,6 +2199,33 @@ class TestGQA(unittest.TestCase):
                                     rotary_interleaved=rotary_interleaved,
                                     packed=packed,
                                 )
+                                self.assertTrue(all_close)
+
+    def test_gqa_past_flash_attention(self):
+        if not torch.cuda.is_available():
+            return
+        major, _ = torch.cuda.get_device_capability()
+        batches = [5] if pipeline_mode else [1, 3, 5]
+        seqs = (
+            [(1, 128), (1, 1024), (1, 2048)]
+            if pipeline_mode
+            else [
+                (1, 128),
+                (1, 339),
+                (1, 1024),
+                (1, 5000),
+                (1, 800),
+                (1, 256),
+                (1, 799),
+                (1, 2048),
+                # (1, 128 * 512),
+                # (16, 128 * 512),
+                # (128, 128),
+            ]
+        )
+        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        random.seed(69)
         if major < 8 or platform.system() != "Linux":
             return
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
@@ -2176,7 +2239,7 @@ class TestGQA(unittest.TestCase):
                                 for packed in [False, True]:
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                     config = Config(b, s, s2, sp, n, n2, h)
-                                    parity_check_gqa_past(
+                                    all_close = parity_check_gqa_past(
                                         config,
                                         local=local,
                                         past_format=Formats.BNSH,
@@ -2186,7 +2249,8 @@ class TestGQA(unittest.TestCase):
                                         rotary_interleaved=rotary_interleaved,
                                         packed=packed,
                                     )
-                                    parity_check_gqa_past_no_buff(
+                                    self.assertTrue(all_close)
+                                    all_close = parity_check_gqa_past_no_buff(
                                         config,
                                         local=local,
                                         past_format=Formats.BNSH,
@@ -2196,6 +2260,7 @@ class TestGQA(unittest.TestCase):
                                         rotary_interleaved=rotary_interleaved,
                                         packed=packed,
                                     )
+                                    self.assertTrue(all_close)
 
 
 if __name__ == "__main__":

@@ -161,23 +161,27 @@ void addIoBindingMethods(pybind11::module& m) {
             return io_binding->Get()->GetOutputs();
           },
           py::return_value_policy::reference_internal)
-      .def("copy_outputs_to_cpu", [](const SessionIOBinding* io_binding) -> std::vector<py::object> {
+      .def("copy_outputs_to_cpu", [](const SessionIOBinding* io_binding) -> py::list {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
-        std::vector<py::object> rfetch;
-        rfetch.reserve(outputs.size());
+
         size_t pos = 0;
         const auto& dtm = io_binding->GetInferenceSession()->GetDataTransferManager();
+
+        py::list result;
         for (const auto& ort_value : outputs) {
           if (ort_value.IsTensor()) {
-            rfetch.push_back(AddTensorAsPyObj(ort_value, &dtm, nullptr));
+            // We make a copy of the tensor to CPU even if it is already on CPU
+            // as the function name implies using DataTransferManager.
+            py::array arr = PrimitiveTensorToNumpyFromDevice(ort_value, &dtm);
+            result.append(py::cast<py::object>(arr));
           } else if (ort_value.IsSparseTensor()) {
-            rfetch.push_back(GetPyObjectFromSparseTensor(pos, ort_value, &dtm));
+            result.append(GetPyObjectFromSparseTensor(pos, ort_value, &dtm));
           } else {
-            rfetch.push_back(AddNonTensorAsPyObj(ort_value, &dtm, nullptr));
+            result.append(AddNonTensorAsPyObj(ort_value, &dtm, nullptr));
           }
           ++pos;
         }
-        return rfetch;
+        return result;
       });
 }
 

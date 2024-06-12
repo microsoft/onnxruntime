@@ -54,6 +54,23 @@ bool QnnModelWrapper::IsQnnParamExit(const std::string& param_tensor_name) const
   return model_params_map_.find(param_tensor_name) != model_params_map_.end();
 }
 
+Status QnnModelWrapper::MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const {
+  const std::string& tensor_name = tensor.node_arg.Name();
+
+  TensorInfo tensor_info = {};
+  ORT_RETURN_IF_ERROR(GetTensorInfo(tensor, tensor_info));
+
+  std::vector<uint8_t> unpacked_tensor;
+  if (tensor_info.is_initializer) {
+    ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
+  }
+
+  tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
+                                    std::move(tensor_info.quant_param), std::move(tensor_info.shape),
+                                    std::move(unpacked_tensor));
+  return Status::OK();
+}
+
 bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
   // Keep a copy of tensor name sine it will be moved with the wrapper into model_tensors_map_
   std::string tensor_name = tensor_wrapper.GetName();
@@ -163,6 +180,25 @@ bool QnnModelWrapper::CreateQnnParamTensors(const std::string& qnn_node_name,
   }
 
   return true;
+}
+
+Status QnnModelWrapper::ValidateQnnNode(const std::string& node_name,
+                                        const std::string& package_name,
+                                        const std::string& qnn_op_type,
+                                        std::vector<Qnn_Tensor_t>&& input_tensors,
+                                        std::vector<Qnn_Tensor_t>&& output_tensors,
+                                        std::vector<Qnn_Param_t>&& params) const {
+  QnnOpConfigWrapper op_config_wrapper(node_name,
+                                       package_name,
+                                       qnn_op_type,
+                                       std::move(input_tensors),
+                                       std::move(output_tensors),
+                                       std::move(params));
+
+  std::string error_msg;
+  ORT_RETURN_IF_NOT(op_config_wrapper.QnnGraphOpValidation(qnn_interface_, backend_handle_, error_msg), error_msg);
+
+  return Status::OK();
 }
 
 bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,

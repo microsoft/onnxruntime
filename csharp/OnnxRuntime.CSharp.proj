@@ -50,8 +50,12 @@ CMake creates a target to this project
   <PropertyGroup>
     <!-- If we create multiple nuget packages in one job, major package and dependent packages version should be the same-->
     <!-- CurrentDate and CurrentTime are only used for dev packages-->
+    <CurrentDate Condition=" '$(BuildDate)'!='' ">$(BuildDate)</CurrentDate>
+    <CurrentTime Condition=" '$(BuildTime)'!='' ">$(BuildTime)</CurrentTime>
     <CurrentDate Condition="'$(CurrentDate)'==''">$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
     <CurrentTime Condition="'$(CurrentTime)'==''">$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
+
+
   </PropertyGroup>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

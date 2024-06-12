@@ -8,6 +8,7 @@
 #include "core/common/narrow.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/float8.h"
+#include "core/framework/int4.h"
 #include <cmath>
 
 namespace onnxruntime {
@@ -131,6 +132,100 @@ ParQuantizeLinearStd(const float* Input,
     MlasQuantizeLinear(&(Input[begin_idx]), &(Output[begin_idx]), end_idx - begin_idx, Scale, ZeroPoint);
   });
 }
+
+/**
+ * Defines a function for int4 quantization. Calls MLAS kernel in parallel with the provided thread pool.
+ *
+ * \param FUNC_NAME The name of the generated function.
+ * \param INT4_TYPE The int4 type (i.e., either Int4x2 or UInt4x2)
+ * \param MLAS_FUNC The MLAS quantization kernel to call.
+ * \param Input The input float values to quantize. Must contain `out_end - out_start` elements.
+ * \param Output The output buffer that will contain the quantized values.
+ * \param out_start The int4 element index at which to start writing to the output buffer.
+ *                  Divide by 2 to get index into Output buffer.
+ * \param out_end The int4 element index at which to stop writing to the output buffer.
+ *                Divide by 2 to get index into Output buffer.
+ * \param Scale The quantization scale value.
+ * \param ZeroPoint The quantization zero-point value.
+ * \param thread_pool The thread pool to use.
+ */
+#define DEFINE_PAR_QUANT_LINEAR_STD_4BIT(FUNC_NAME, INT4_TYPE, MLAS_FUNC)                                        \
+  inline void FUNC_NAME(const float* Input,                                                                      \
+                        INT4_TYPE* Output,                                                                       \
+                        size_t out_start,                                                                        \
+                        size_t out_end,                                                                          \
+                        float Scale,                                                                             \
+                        INT4_TYPE ZeroPoint,                                                                     \
+                        concurrency::ThreadPool* thread_pool) {                                                  \
+    size_t inp_start = 0;                                                                                        \
+    size_t inp_end = out_end - out_start;                                                                        \
+                                                                                                                 \
+    /* If starting at an int4 element in the middle of a byte, quantize it by itself. */                         \
+    if (out_start & 0x1) {                                                                                       \
+      int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_start] / Scale)) +                           \
+                     static_cast<int32_t>(ZeroPoint.GetElem(0));                                                 \
+      size_t output_index = out_start >> 1;                                                                      \
+                                                                                                                 \
+      INT4_TYPE::UnpackedType quant_val = static_cast<INT4_TYPE::UnpackedType>(                                  \
+          std::min(static_cast<int32_t>(INT4_TYPE::max_val),                                                     \
+                   std::max(static_cast<int32_t>(INT4_TYPE::min_val), ival)));                                   \
+      Output[output_index].SetElem(1, quant_val);                                                                \
+                                                                                                                 \
+      out_start += 1;                                                                                            \
+      inp_start += 1;                                                                                            \
+    }                                                                                                            \
+                                                                                                                 \
+    /* If ending at element that ends in the middle of a byte, quantize it by itself. */                         \
+    if (out_end & 0x1) {                                                                                         \
+      int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_end - 1] / Scale)) +                         \
+                     static_cast<int32_t>(ZeroPoint.GetElem(0));                                                 \
+      size_t output_index = (out_end - 1) >> 1;                                                                  \
+                                                                                                                 \
+      INT4_TYPE::UnpackedType quant_val = static_cast<INT4_TYPE::UnpackedType>(                                  \
+          std::min(static_cast<int32_t>(INT4_TYPE::max_val),                                                     \
+                   std::max(static_cast<int32_t>(INT4_TYPE::min_val), ival)));                                   \
+      Output[output_index].SetElem(0, quant_val);                                                                \
+                                                                                                                 \
+      out_end -= 1;                                                                                              \
+      inp_end -= 1;                                                                                              \
+    }                                                                                                            \
+                                                                                                                 \
+    if (out_start == out_end) {                                                                                  \
+      return;                                                                                                    \
+    }                                                                                                            \
+                                                                                                                 \
+    /* At this point, should only need to quantize an *even* number of int4 elements that start and end at */    \
+    /* a byte boundary. This is necessary to ensure that no two threads write to different int4 elements that */ \
+    /* are stored in the same byte. */                                                                           \
+    size_t N = out_end - out_start;                                                                              \
+    assert(N % 2 == 0); /* Should be guaranteed by previous code that quantizes boundary elements. */            \
+                                                                                                                 \
+    constexpr std::ptrdiff_t block_size = 128;                                                                   \
+    static_assert(block_size % 2 == 0,                                                                           \
+                  "Block size must also be even to ensure no two threads write to the same byte.");              \
+                                                                                                                 \
+    const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;                                         \
+    const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)),                                \
+                                 static_cast<double>(block_size * sizeof(INT4_TYPE::UnpackedType)) / 2.0,        \
+                                 static_cast<double>(block_size) * 2.0};                                         \
+    concurrency::ThreadPool::TryParallelFor(                                                                     \
+        thread_pool, num_blocks, unit_cost,                                                                      \
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {                                                          \
+          auto begin_idx = begin * block_size;                                                                   \
+          auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);                             \
+          auto inp_idx = begin_idx + static_cast<std::ptrdiff_t>(inp_start);                                     \
+          auto out_idx = begin_idx + static_cast<std::ptrdiff_t>(out_start);                                     \
+                                                                                                                 \
+          MLAS_FUNC(&(Input[inp_idx]),                                                                           \
+                    reinterpret_cast<uint8_t*>(&(Output[out_idx >> 1])),                                         \
+                    end_idx - begin_idx,                                                                         \
+                    Scale,                                                                                       \
+                    static_cast<int8_t>(ZeroPoint.GetElem(0)));                                                  \
+        });                                                                                                      \
+  }
+
+DEFINE_PAR_QUANT_LINEAR_STD_4BIT(ParQuantizeLinearStdS4, Int4x2, MlasQuantizeLinearS4)
+DEFINE_PAR_QUANT_LINEAR_STD_4BIT(ParQuantizeLinearStdU4, UInt4x2, MlasQuantizeLinearU4)
 
 // This implementation could be more efficient however the cast from float16 to other types
 // usually happens on GPU.

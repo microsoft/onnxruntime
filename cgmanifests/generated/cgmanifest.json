@@ -6,7 +6,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "229d83fc706e10a39d4948a804cbbf17225cdda0",
+          "commitHash": "d52c46520124845b1e0e0525f2759299d840143f",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -26,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "990217f043af7222348ca8f0301e17fa7b841781",
+          "commitHash": "595228d99e3977ac27cb79d5963adda262af99ad",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -216,7 +216,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "bacfaaa951653cd4e72efe727a543567cb38f7de",
+          "commitHash": "06adf4461ac84035bee658c6cf5df39f7ab6071d",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -276,7 +276,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5723bb8950318135ed9cf4fc76bed988a087f536",
+          "commitHash": "2b354c6ad0d0479dcff68dab23fb0d1143a482c2",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "re2"

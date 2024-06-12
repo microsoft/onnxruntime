@@ -255,8 +255,6 @@ def convert_inputs_for_ort(
     use_buffer_share: bool = False,
     past_seq_len: int = 0,
     max_seq_len: int = 2048,
-    device: str = "",
-    device_id: int = -1,
 ):
     ort_inputs = {}
     for k, v in pt_inputs.items():
@@ -268,7 +266,7 @@ def convert_inputs_for_ort(
             ort_inputs[k] = v.detach().cpu().numpy()
 
     # Reshape KV caches if using past-present-share-buffer
-    if use_buffer_share and device != "" and device != "cpu" and device_id > -1:
+    if use_buffer_share:
         ort_inputs = enable_past_present_share_buffer(ort_inputs, past_seq_len, max_seq_len)
 
     return ort_inputs
@@ -420,7 +418,7 @@ def get_initial_inputs_and_outputs(
     use_buffer_share: bool,
     engine: str,
 ):
-    tokenizer.pad_token = "[PAD]"
+    tokenizer.pad_token = tokenizer.eos_token
     encodings_dict = tokenizer.batch_encode_plus(prompt, padding=True)
     torch_dtype = torch.float16 if use_fp16 else torch.float32
 
