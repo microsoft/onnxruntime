@@ -194,7 +194,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* present_value = ctx->Output(2, present_shape);
 
   Strides query_strides;
-  const void* query_ptr = query->DataRaw();
+  const HipT* query_ptr = reinterpret_cast<const HipT*>(query->DataRaw());
   const HipT* key_ptr;
   const HipT* value_ptr;
   if (!parameters.is_packed_qkv) {
@@ -205,8 +205,45 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
     query_strides = Strides::BSNHMemory(batch_size, sequence_length, num_heads + 2 * kv_num_heads, head_size);
     const size_t key_offset = static_cast<size_t>(num_heads * head_size);
     const size_t value_offset = static_cast<size_t>(kv_num_heads * head_size);
-    key_ptr = reinterpret_cast<const HipT*>(query_ptr) + key_offset;
-    value_ptr = reinterpret_cast<const HipT*>(key_ptr) + value_offset;
+    key_ptr = query_ptr + key_offset;
+    value_ptr = key_ptr + value_offset;
+  }
+
+  IAllocatorUniquePtr<HipT> rotary_q_tmp;
+  IAllocatorUniquePtr<HipT> rotary_k_tmp;
+  if (parameters.do_rotary) {
+    size_t q_size = static_cast<size_t>(batch_size * sequence_length * num_heads * head_size);
+    size_t k_size = static_cast<size_t>(batch_size * sequence_length * kv_num_heads * head_size);
+    // auto q_buffer = reinterpret_cast<T*>(data.rotary_buffer);
+    // auto k_buffer = q_buffer + q_size;
+    rotary_q_tmp = GetScratchBuffer<HipT>(q_size, ctx->GetComputeStream());
+    rotary_k_tmp = GetScratchBuffer<HipT>(k_size, ctx->GetComputeStream());
+    auto rotary_position_ids_tmp = GetScratchBuffer<int64_t>(sequence_length * batch_size, ctx->GetComputeStream());
+    ORT_RETURN_IF_ERROR(LaunchSeqlensToPosIds(parameters,
+                                              reinterpret_cast<const int32_t*>(seqlens_k->DataRaw()),
+                                              reinterpret_cast<int64_t*>(rotary_position_ids_tmp.get()),
+                                              hip_stream, max_thr_per_blk));
+    // Launch rotary embedding kernel
+    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<HipT>(hip_stream, rotary_q_tmp.get(), query_ptr,
+                                                          reinterpret_cast<int64_t*>(rotary_position_ids_tmp.get()),
+                                                          reinterpret_cast<const HipT*>(cos_cache->DataRaw()),
+                                                          reinterpret_cast<const HipT*>(sin_cache->DataRaw()),
+                                                          parameters.batch_size, parameters.sequence_length,
+                                                          parameters.num_heads, parameters.head_size,
+                                                          parameters.rotary_dim, parameters.seqlen_present_kv_cache,
+                                                          /*position_ids_format*/ 1, parameters.rotary_interleaved,
+                                                          max_thr_per_blk, /*transposed*/ false));
+    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<HipT>(hip_stream, rotary_k_tmp.get(), key_ptr,
+                                                          reinterpret_cast<int64_t*>(rotary_position_ids_tmp.get()),
+                                                          reinterpret_cast<const HipT*>(cos_cache->DataRaw()),
+                                                          reinterpret_cast<const HipT*>(sin_cache->DataRaw()),
+                                                          parameters.batch_size, parameters.sequence_length,
+                                                          parameters.kv_num_heads, parameters.head_size,
+                                                          parameters.rotary_dim, parameters.seqlen_present_kv_cache,
+                                                          /*position_ids_format*/ 1, parameters.rotary_interleaved,
+                                                          max_thr_per_blk, /*transposed*/ false));
+    query_ptr = reinterpret_cast<const HipT*>(rotary_q_tmp.get());
+    key_ptr = reinterpret_cast<const HipT*>(rotary_k_tmp.get());
   }
 
   const int* seqlens_k_ptr = seqlens_k ? reinterpret_cast<const int*>(seqlens_k->DataRaw()) : nullptr;
@@ -288,7 +325,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
                                          present_strides.strides_for_bnsh_coord.x / present_strides.strides_for_bnsh_coord.z));
 
   fmha_fwd_args args{
-      query->DataRaw(),
+      query_ptr,
       present_key->DataRaw(),
       present_value->DataRaw(),
       nullptr,  // bias, alibi/element
