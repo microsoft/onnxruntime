@@ -763,7 +763,7 @@ def mha_func(q, k, v, config):
 
 
 def rotary_options_for_current_os():
-    # Reference implementation of rotary uses triton, which is not availabe in Windows.
+    # Reference implementation of rotary uses triton, which is not available in Windows.
     # So we only test rotary in Linux right now.
     return [(False, False)] if platform.system() != "Linux" else [(True, False), (True, True), (False, False)]
 
