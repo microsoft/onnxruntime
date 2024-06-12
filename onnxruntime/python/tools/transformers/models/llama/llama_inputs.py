@@ -54,7 +54,6 @@ def get_sample_inputs(
         "attention_mask": attention_mask,
         "position_ids": position_ids,
     }
-
     return inputs
 
 
@@ -98,7 +97,7 @@ def get_sample_with_past_kv_inputs(
     inputs = {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
-        "position_ids":  position_ids,
+        "position_ids": position_ids,
     }
     if engine == "ort":
         assert isinstance(past_kv, dict)
@@ -301,7 +300,6 @@ def verify_ort_inputs(model: InferenceSession, ort_inputs: dict):
     unnecessary_inputs = user_inputs - model_inputs
     if len(unnecessary_inputs):
         for unnecessary_input in unnecessary_inputs:
-            print(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
             del ort_inputs[unnecessary_input]
 
     return ort_inputs
