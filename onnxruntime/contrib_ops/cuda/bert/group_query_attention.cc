@@ -130,7 +130,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.head_size,
                                                               parameters.num_heads,
                                                               parameters.kv_num_heads);
-  std::cout << "use_flash_attention: " << use_flash_attention << "\n";
   // Allocate buffers
   size_t softmax_lse_bytes = 0;
   size_t softmax_lse_accum_bytes = 0;

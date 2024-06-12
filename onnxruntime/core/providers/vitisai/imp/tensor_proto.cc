@@ -50,28 +50,67 @@ static ONNX_NAMESPACE::TensorProto* tensor_proto_new(const std::string& name, co
   return tensor_proto.release();
 }
 
-ONNX_NAMESPACE::TensorProto* tensor_proto_new_i32(const std::string& name, const std::vector<int64_t>& shape,
-                                                  const std::vector<int32_t>& data) {
-  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT32,
-                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(int32_t));
-}
-
-ONNX_NAMESPACE::TensorProto* tensor_proto_new_i64(const std::string& name, const std::vector<int64_t>& shape,
-                                                  const std::vector<int64_t>& data) {
-  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(int64_t));
-}
-
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_i8(const std::string& name, const std::vector<int64_t>& shape,
                                                  const std::vector<int8_t>& data) {
   return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT8,
-                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(int8_t));
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_i16(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<int16_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT16,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_i32(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<int32_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_i64(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<int64_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_u8(const std::string& name, const std::vector<int64_t>& shape,
+                                                 const std::vector<uint8_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_u16(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<uint16_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT16,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_u32(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<uint32_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_u64(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<uint64_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
 }
 
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_floats(const std::string& name, const std::vector<int64_t>& shape,
                                                      const std::vector<float>& data) {
   return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(float));
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_doubles(const std::string& name, const std::vector<int64_t>& shape,
+                                                      const std::vector<double>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
 }
 
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_bf16(const std::string& name, const std::vector<int64_t>& shape,
+                                                   const std::vector<int16_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_fp16(const std::string& name, const std::vector<int64_t>& shape,
+                                                   const std::vector<int16_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
 }  // namespace vaip

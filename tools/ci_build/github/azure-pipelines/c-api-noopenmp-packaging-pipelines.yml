@@ -59,19 +59,10 @@ parameters:
   displayName: Build flags to append to build command
   type: string
   default: '--use_azure'
-
-- name: CudaVersion
-  displayName: CUDA version
-  type: string
-  default: '11.8'
-  values:
-    - 11.8
-    - 12.2
-
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.21.0.240401
+  default: 2.22.0.240425
 
 resources:
   repositories:
@@ -88,27 +79,13 @@ resources:
 variables:
 - name: ReleaseVersionSuffix
   value: ''
-- name: docker_base_image
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
 - name: win_trt_version
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: 11.8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: 12.4
+  value: 11.8
 
 - name: win_trt_home
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-12.4
+  value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8
 - name: win_cuda_home
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: $(Agent.TempDirectory)\v11.8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: $(Agent.TempDirectory)\v12.2
+  value: $(Agent.TempDirectory)\v11.8
 
 stages:
 - template: stages/set_packaging_variables_stage.yml
@@ -170,15 +147,15 @@ stages:
 
 - template: stages/java-cuda-packaging-stage.yml
   parameters:
-    CudaVersion: ${{ parameters.CudaVersion }}
+    CudaVersion: 11.8
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
 - template: stages/nuget-combine-cuda-stage.yml
   parameters:
       DoCompliance: ${{ parameters.DoCompliance }}
-      CudaVersion: ${{ parameters.CudaVersion }}
-      docker_base_image: ${{ variables.docker_base_image }}
+      CudaVersion: 11.8
+      docker_base_image: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
       RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
       UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
       win_trt_home: ${{ variables.win_trt_home }}
@@ -194,7 +171,7 @@ stages:
 - stage: Linux_C_API_Packaging_ROCm_x64
   dependsOn: []
   jobs:
-  - job:
+  - job: Linux_C_API_Packaging_ROCm_x64
     workspace:
       clean: all
     timeoutInMinutes: 120
@@ -264,7 +241,7 @@ stages:
   - Linux_C_API_Packaging_ROCm_x64
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_ROCm
     workspace:
       clean: all
     # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
@@ -564,7 +541,7 @@ stages:
   - Windows_CI_GPU_DML_Dev_arm64
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_DML
     workspace:
       clean: all
     pool: 'onnxruntime-Win2022-GPU-dml-A10'
@@ -683,7 +660,7 @@ stages:
   - OnnxRuntime_QNN_Nuget_Win_Arm64
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_QNN
     workspace:
       clean: all
     steps:

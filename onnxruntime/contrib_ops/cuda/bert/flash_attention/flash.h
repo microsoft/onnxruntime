@@ -80,7 +80,7 @@ struct Flash_fwd_params : public Qkv_params {
   int* __restrict__ cu_seqlens_k = nullptr;
 
   // If provided, the actual length of each k sequence.
-  int * __restrict__ seqused_k;
+  int* __restrict__ seqused_k = nullptr;
 
   int* __restrict__ blockmask = nullptr;
 
@@ -123,7 +123,7 @@ struct Flash_fwd_params : public Qkv_params {
 
   int num_splits = 0;  // For split-KV version
 
-  void * __restrict__ alibi_slopes_ptr = nullptr;
+  void* __restrict__ alibi_slopes_ptr = nullptr;
   index_t alibi_slopes_batch_stride = 0;
 
   const cudaDeviceProp* dprops = nullptr;

@@ -45,7 +45,6 @@ parameters:
   type: boolean
   default: true
 
-# TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
 - name: cmake_build_type
   type: string
   displayName: 'Linux packages cmake build type. Linux Only.'
@@ -56,11 +55,15 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+- name: publish_symbols
+  type: boolean
+  default: false
+
 # Only applies to QNN packages.
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.21.0.240401
+  default: 2.22.0.240425
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -117,8 +120,6 @@ stages:
       variables:
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
-        setVcvars: true
-        BuildConfig: 'RelWithDebInfo'
         ExtraParam: ${{ parameters.build_py_parameters }}
       timeoutInMinutes: 180
       workspace:
@@ -177,14 +178,14 @@ stages:
         inputs:
           filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
           workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch $(buildArch) -install_prefix $(Build.BinariesDirectory)\$(BuildConfig)\installed -build_config $(BuildConfig)
+          arguments: -cpu_arch $(buildArch) -install_prefix $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\installed -build_config ${{ parameters.cmake_build_type }}
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           arguments: >
-            --config $(BuildConfig)
+            --config ${{ parameters.cmake_build_type }}
             --enable_lto
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
@@ -199,19 +200,19 @@ stages:
       - task: VSBuild@1
         displayName: 'Build'
         inputs:
-          solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+          solution: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\onnxruntime.sln'
           platform: $(MsbuildPlatform)
-          configuration: $(BuildConfig)
+          configuration: ${{ parameters.cmake_build_type }}
           msbuildArchitecture: $(buildArch)
           maximumCpuCount: true
           logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+          workingFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}'
           createLogFile: true
 
       # Esrp signing
       - template: win-esrp-dll.yml
         parameters:
-          FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime\capi'
+          FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: true
           Pattern: '*.pyd,*.dll'
@@ -221,12 +222,12 @@ stages:
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\setup.py'
           arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
-          workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\dist'
+          SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist'
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
@@ -257,13 +258,26 @@ stages:
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
          Remove-Item -Recurse -Force onnxruntime
          if ("$(ExtraParam)" -contains "--use_azure") {
-           $env:path="$(Build.BinariesDirectory)\$(BuildConfig)\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.BinariesDirectory)\$(BuildConfig)\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
+           $env:path="$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
            python onnxruntime_test_python_azure.py
          }
          python onnx_backend_test_series.py
-        workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
         displayName: 'Run Python Tests'
-
+      - ${{ if eq(parameters.publish_symbols, true) }}:
+        - task: PublishSymbols@2
+          displayName: 'Publish symbols'
+          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+          inputs:
+            SymbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+            SearchPattern: |
+               onnxruntime_pybind11_state.pdb
+               onnxruntime_providers_shared.pdb
+            IndexSources: true
+            SymbolServerType: TeamServices
+            SymbolExpirationInDays: 3650
+            SymbolsArtifactName: 'win_cpu_$(PythonVersion)_$(buildArch)_$(Build.BuildNumber)'
+ 
       - task: TSAUpload@2
         displayName: 'TSA upload'
         condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.8'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
@@ -288,6 +302,8 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
       parameters:
@@ -296,6 +312,8 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
       parameters:
@@ -304,6 +322,8 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
       parameters:
@@ -312,6 +332,8 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
       parameters:
@@ -320,6 +342,8 @@ stages:
         EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
         ENV_SETUP_SCRIPT: setup_env_gpu.bat
         EP_NAME: gpu
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
       parameters:
@@ -328,6 +352,8 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
       parameters:
@@ -336,6 +362,8 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
       parameters:
@@ -344,6 +372,8 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
       parameters:
@@ -352,6 +382,8 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
       parameters:
@@ -360,6 +392,8 @@ stages:
         EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
         ENV_SETUP_SCRIPT: setup_env.bat
         EP_NAME: directml
+        publish_symbols: ${{ parameters.publish_symbols }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
   - stage: Python_Packaging_MacOS
