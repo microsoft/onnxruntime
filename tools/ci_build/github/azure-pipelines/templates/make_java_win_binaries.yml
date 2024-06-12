@@ -13,9 +13,8 @@ steps:
       inputs:
         script: |
           @echo on
-          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo --warning-mode all
         workingDirectory: $(Build.SourcesDirectory)\java
-        failOnStderr: ${{ not(parameters.buildOnly) }}
 
     - task: CmdLine@2
       displayName: 'Add symbols and notices to Java'

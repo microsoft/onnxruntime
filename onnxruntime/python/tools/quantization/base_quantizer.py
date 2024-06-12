@@ -25,6 +25,7 @@ from .quant_utils import (
     find_by_name,
     model_has_infer_metadata,
     normalize_axis,
+    pack_bytes_to_4bit,
     quantize_data,
     quantize_nparray,
     save_and_reload_model_with_shape_infer,
@@ -340,13 +341,17 @@ class BaseQuantizer:
                             f"\nraw={str(q_weight_initializer)[:200]}."
                         )
             elif qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
-                # TODO: Use simpler make_tensor call when ONNX bug that does not store negative weights packed
-                # within int32_data is fixed.
-                # q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, q_weight_data)
-                packed_data = onnx.helper.pack_float32_to_4bit(q_weight_data.flatten(), qType == onnx.TensorProto.INT4)
-                q_weight_initializer = onnx.helper.make_tensor(
-                    q_weight_name, qType, weight.dims, packed_data.tobytes(), raw=True
-                )
+                if q_weight_data.dtype not in (np.int8, np.uint8):
+                    raise RuntimeError(
+                        f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values."
+                    )
+
+                # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
+                # This can be the difference between a large model taking 30 minutes to quantize vs 5 minutes.
+                packed_data = bytes(pack_bytes_to_4bit(q_weight_data.tobytes()))
+
+                # We only use onnx.helper.make_tensor with raw data due to bug: https://github.com/onnx/onnx/pull/6161
+                q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, packed_data, raw=True)
             else:
                 q_weight_data = np.asarray(q_weight_data, dtype=onnx.helper.tensor_dtype_to_np_dtype(qType)).reshape(
                     weight.dims
@@ -483,16 +488,18 @@ class BaseQuantizer:
 
         if not keep_float_weight:
             if weight_qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
-                # TODO: Use simpler make_tensor call when ONNX bug that does not store negative weights packed
-                # within int32_data is fixed.
-                # q_weight_initializer = onnx.helper.make_tensor(
-                #     q_weight_name, weight_qType, weights_shape, quantized_weights
-                # )
-                packed_data = onnx.helper.pack_float32_to_4bit(
-                    quantized_weights.flatten(), weight_qType == onnx.TensorProto.INT4
-                )
+                if quantized_weights.dtype not in (np.int8, np.uint8):
+                    raise RuntimeError(
+                        f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values."
+                    )
+
+                # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
+                # This can be the difference between a large model taking 30 minutes to quantize vs 5 minutes.
+                packed_data = bytes(pack_bytes_to_4bit(quantized_weights.tobytes()))
+
+                # We only use onnx.helper.make_tensor with raw data due to bug: https://github.com/onnx/onnx/pull/6161
                 q_weight_initializer = onnx.helper.make_tensor(
-                    q_weight_name, weight_qType, weights_shape, packed_data.tobytes(), raw=True
+                    q_weight_name, weight_qType, weights_shape, packed_data, raw=True
                 )
                 self.model.initializer_extend([q_weight_initializer])
             else:
