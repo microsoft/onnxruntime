@@ -35,22 +35,22 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
     return false;
   }
 
-  std::vector<Node*> second_nodes;
+  std::vector<Node*> second_node_ptrs;
   for (auto node_it = first_node.OutputNodesBegin(); node_it != first_node.OutputNodesEnd(); ++node_it) {
-    second_nodes.push_back(graph.GetNode(node_it->Index()));
+    second_node_ptrs.push_back(graph.GetNode(node_it->Index()));
   }
 
-  for (auto second_node : second_nodes) {
+  for (auto second_node_ptr : second_node_ptrs) {
     // check for constant, matching scale/ZP values
     const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
       return graph.GetConstantInitializer(initializer_name, true);
     };
 
-    const bool produces_graph_output = graph.NodeProducesGraphOutput(*second_node);
-    const auto output_edges_count = second_node->GetOutputEdgesCount();
+    const bool produces_graph_output = graph.NodeProducesGraphOutput(*second_node_ptr);
+    const auto output_edges_count = second_node_ptr->GetOutputEdgesCount();
 
-    if (!match_second(*second_node) ||
-        !QDQ::IsQDQPairSupported(first_node, *second_node, get_constant_initializer, graph.ModelPath(), false) ||
+    if (!match_second(*second_node_ptr) ||
+        !QDQ::IsQDQPairSupported(first_node, *second_node_ptr, get_constant_initializer, graph.ModelPath(), false) ||
         (produces_graph_output && output_edges_count != 0) ||
         (!produces_graph_output && output_edges_count != 1)) {
       return false;
@@ -61,74 +61,74 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   if (logger.GetSeverity() == logging::Severity::kVERBOSE) {
     LOGS(logger, VERBOSE) << "Found back-to-back nodes: "
                           << first_node.OpType() << " with name \"" << first_node.Name() << "\"";
-    for (auto second_node : second_nodes) {
-      LOGS(logger, VERBOSE) << ", " << second_node->OpType() << " with name \"" << second_node->Name() << "\"";
+    for (auto& second_node_ptr : second_node_ptrs) {
+      LOGS(logger, VERBOSE) << ", " << second_node_ptr->OpType() << " with name \"" << second_node_ptr->Name() << "\"";
     }
   }
 
-  for (auto second_node_it = second_nodes.begin(); second_node_it != second_nodes.end(); ++second_node_it) {
-  Node& second_node = *graph.GetNode((*second_node_it)->Index());
-  // we support a second_node that produces a graph output if it has no output edges, or a second_node with one output edge.
-  const bool produces_graph_output = graph.NodeProducesGraphOutput(second_node);
+  for (auto second_node_ptr : second_node_ptrs) {
+    Node& second_node = *graph.GetNode(second_node_ptr->Index());
+    // we support a second_node that produces a graph output if it has no output edges, or a second_node with one output edge.
+    const bool produces_graph_output = graph.NodeProducesGraphOutput(second_node);
 
-  // src node or graph input/initializer -> first_node -> second_node -> downstream node or graph output
-  NodeIndex src_node_idx = 0;
-  int src_arg_idx = -1;
-  NodeIndex downstream_node_idx = 0;
-  int downstream_arg_idx = -1;
+    // src node or graph input/initializer -> first_node -> second_node -> downstream node or graph output
+    NodeIndex src_node_idx = 0;
+    int src_arg_idx = -1;
+    NodeIndex downstream_node_idx = 0;
+    int downstream_arg_idx = -1;
 
-  // input could be node or initializer/graph input so need to handle both.
-  // if it's a node we need to replace the edge, so need info on which output idx it was attached to on the src node.
-  const Node::EdgeEnd* input_edge = nullptr;
-  if (first_node.GetInputEdgesCount() == 1) {
-    input_edge = &*first_node.InputEdgesBegin();
-    src_node_idx = input_edge->GetNode().Index();
-    src_arg_idx = input_edge->GetSrcArgIndex();
-    // remove edge from src to first_node. dest arg idx is 0 as first_node (Q or DQ) only has one input
-    if (std::next(second_node_it) == second_nodes.end()) {
-    graph.RemoveEdge(src_node_idx, first_node.Index(), src_arg_idx, 0);
+    // input could be node or initializer/graph input so need to handle both.
+    // if it's a node we need to replace the edge, so need info on which output idx it was attached to on the src node.
+    const Node::EdgeEnd* input_edge = nullptr;
+    if (first_node.GetInputEdgesCount() == 1) {
+      input_edge = &*first_node.InputEdgesBegin();
+      src_node_idx = input_edge->GetNode().Index();
+      src_arg_idx = input_edge->GetSrcArgIndex();
+      // remove edge from src to first_node. dest arg idx is 0 as first_node (Q or DQ) only has one input
+      if (second_node_ptr == second_node_ptrs.back()) {
+        graph.RemoveEdge(src_node_idx, first_node.Index(), src_arg_idx, 0);
+      }
     }
-  }
 
-  // remove edge between pair we're removing
-  // both DQ and Q are single input single output so src idx and dest idx must be 0
-  graph.RemoveEdge(first_node.Index(), second_node.Index(), 0, 0);
+    // remove edge between pair we're removing
+    // both DQ and Q are single input single output so src idx and dest idx must be 0
+    graph.RemoveEdge(first_node.Index(), second_node.Index(), 0, 0);
 
-  if (!produces_graph_output) {
-    // remove edge to downstream node
-    const Node::EdgeEnd& output_edge = *second_node.OutputEdgesBegin();
-    downstream_node_idx = output_edge.GetNode().Index();
-    downstream_arg_idx = output_edge.GetDstArgIndex();
+    if (!produces_graph_output) {
+      // remove edge to downstream node
+      const Node::EdgeEnd& output_edge = *second_node.OutputEdgesBegin();
+      downstream_node_idx = output_edge.GetNode().Index();
+      downstream_arg_idx = output_edge.GetDstArgIndex();
 
-    // source arg idx is 0 as Q/DQ only has one output
-    graph.RemoveEdge(second_node.Index(), downstream_node_idx, 0, downstream_arg_idx);
+      // source arg idx is 0 as Q/DQ only has one output
+      graph.RemoveEdge(second_node.Index(), downstream_node_idx, 0, downstream_arg_idx);
 
-    // replace input on downstream node
-    Node& downstream_node = *graph.GetNode(downstream_node_idx);
-    downstream_node.MutableInputDefs()[downstream_arg_idx] = first_node.MutableInputDefs()[0];
+      // replace input on downstream node
+      Node& downstream_node = *graph.GetNode(downstream_node_idx);
+      downstream_node.MutableInputDefs()[downstream_arg_idx] = first_node.MutableInputDefs()[0];
 
-    // create edge between src_node (if available) and downstream node
-    if (input_edge) {
-      graph.AddEdge(src_node_idx, downstream_node_idx, src_arg_idx, downstream_arg_idx);
-    }
-  } else {
-    NodeArg* graph_output_nodearg = second_node.MutableOutputDefs()[0];
-    if (src_arg_idx >= 0 && second_nodes.size() == 1) {
-      // update the src node to produce the graph output that was being provided by second_node
-      Node& src_node = *graph.GetNode(src_node_idx);
-      src_node.MutableOutputDefs()[src_arg_idx] = graph_output_nodearg;
+      // create edge between src_node (if available) and downstream node
+      if (input_edge) {
+        graph.AddEdge(src_node_idx, downstream_node_idx, src_arg_idx, downstream_arg_idx);
+      }
     } else {
-      // add Identity node to connect the graph input or initializer to the graph output.
-      Node& id_node = graph.AddNode(graph.GenerateNodeName("QDQFinalCleanupTransformer"),
-                                    "Identity", "", {first_node.MutableInputDefs()[0]}, {graph_output_nodearg});
-      id_node.SetExecutionProviderType(second_node.GetExecutionProviderType());
+      NodeArg* graph_output_nodearg = second_node.MutableOutputDefs()[0];
+      if (src_arg_idx >= 0 && second_node_ptrs.size() == 1) {
+        // update the src node to produce the graph output that was being provided by second_node
+        Node& src_node = *graph.GetNode(src_node_idx);
+        src_node.MutableOutputDefs()[src_arg_idx] = graph_output_nodearg;
+      } else {
+        // add Identity node to connect the graph input or initializer to the graph output.
+        Node& id_node = graph.AddNode(graph.GenerateNodeName("QDQFinalCleanupTransformer"),
+                                      "Identity", "", {first_node.MutableInputDefs()[0]}, {graph_output_nodearg});
+        id_node.SetExecutionProviderType(second_node.GetExecutionProviderType());
+      }
     }
-  }
 
-  if (std::next(second_node_it) == second_nodes.end()) {
-  graph.RemoveNode(first_node.Index());
-  }
-  graph.RemoveNode(second_node.Index());
+    if (second_node_ptr == second_node_ptrs.back()) {
+      graph.RemoveNode(first_node.Index());
+    }
+    graph.RemoveNode(second_node.Index());
   }
 
   return true;
