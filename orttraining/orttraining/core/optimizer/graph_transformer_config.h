@@ -28,6 +28,7 @@ struct TrainingGraphTransformerConfiguration : public GraphTransformerConfigurat
   bool print_input_density{false};
 
   // Path for serialization of the transformed optimized model. If empty, serialization is disabled.
+  // A UTF-8 string.
   std::string optimized_pre_grad_filepath;
 };
 
