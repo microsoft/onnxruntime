@@ -329,9 +329,11 @@ class PlannerImpl {
             // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
             // we cannot.
             const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
-            ORT_ENFORCE(producer_node == nullptr || !HasExternalOutputs(*producer_node),
-                        "Node ", node.Name(), " cannot reuse input buffer for node ", producer_node->Name(),
-                        " as it has external outputs, which cannot be reused.");
+            if (producer_node && HasExternalOutputs(*producer_node)) {
+              LOGS_DEFAULT(VERBOSE) << "Be noted Node " << node.Name() << " is reusing input buffer of node "
+                                    << producer_node->Name() << " which has external outputs. "
+                                    << "Be cautious the reuse MUST be a read-only usage.";
+            }
             *reusable_input = Index(p_input_arg->Name());
             return true;
           }
@@ -351,9 +353,11 @@ class PlannerImpl {
           // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
           // we cannot.
           const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
-          ORT_ENFORCE(producer_node == nullptr || !HasExternalOutputs(*producer_node),
-                      "Node ", node.Name(), " cannot reuse input buffer for node ", producer_node->Name(),
-                      " as it has external outputs, which cannot be reused.");
+          if (producer_node && HasExternalOutputs(*producer_node)) {
+            LOGS_DEFAULT(VERBOSE) << "Be noted Node " << node.Name() << " is reusing input buffer of node "
+                                  << producer_node->Name() << " which has external outputs. "
+                                  << "Be cautious the reuse MUST be a read-only usage.";
+          }
           *reusable_input = Index(p_input_arg->Name());
           return true;
         }
@@ -1161,8 +1165,12 @@ class PlannerImpl {
                 // If the producer node does not has external outputs, we can reuse the input buffer;
                 // Otherwise, we cannot reuse the buffer.
                 const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
-                ORT_ENFORCE(producer_node == nullptr || !HasExternalOutputs(*producer_node),
-                            "Cannot alias reuse input buffer for ", p_output_arg->Name(), " as input ", p_input_arg->Name());
+                if (producer_node && HasExternalOutputs(*producer_node)) {
+                  LOGS_DEFAULT(VERBOSE) << "Be noted input buffer " << p_output_arg->Name() << " of node "
+                                        << producer_node->Name() << " which has external outputs is reused. "
+                                        << "Be cautious the reuse MUST be a read-only usage.";
+                }
+
                 OrtValueIndex reusable_input{};
                 if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() /*&&
                     allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate*/
@@ -1198,8 +1206,12 @@ class PlannerImpl {
               // If the producer node does not has external outputs, we can reuse the input buffer;
               // Otherwise, we cannot reuse the buffer.
               const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
-              ORT_ENFORCE(producer_node == nullptr || !HasExternalOutputs(*producer_node),
-                          "Cannot reuse input buffer for ", p_output_arg->Name(), " as input ", p_input_arg->Name());
+              if (producer_node && HasExternalOutputs(*producer_node)) {
+                LOGS_DEFAULT(VERBOSE) << "Be noted input buffer " << p_output_arg->Name() << " of node "
+                                      << producer_node->Name() << " which has external outputs is reused. "
+                                      << "Be cautious the reuse MUST be a read-only usage.";
+              }
+
               OrtValueIndex reusable_input{};
               if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
                   allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
