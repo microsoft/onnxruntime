@@ -85,3 +85,4 @@ def node_arg_exists(model: onnx.ModelProto, node_arg_name: str) -> bool:
             return True
 
     return False
+

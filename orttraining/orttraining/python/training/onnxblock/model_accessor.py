@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import os
 from contextlib import contextmanager
+from typing import Optional
 
 import onnx
 
@@ -18,7 +19,7 @@ class ModelAccessor:
         model_path: The path to the base model. Can be None.
     """
 
-    def __init__(self, model: onnx.ModelProto, model_path: str):
+    def __init__(self, model: onnx.ModelProto, model_path: Optional[str] = None):
         self._model = model
         self._path = model_path
 
@@ -57,7 +58,7 @@ _GLOBAL_CUSTOM_OP_LIBRARY = None
 
 
 @contextmanager
-def base(model: onnx.ModelProto, model_path: str):
+def base(model: onnx.ModelProto, model_path: Optional[str] = None):
     """Registers the base model to be manipulated by the onnx blocks.
 
     Example:

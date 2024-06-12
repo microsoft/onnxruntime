@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import logging
+import os
 from abc import abstractmethod
 from typing import List, Tuple
 
@@ -11,6 +12,8 @@ import onnxruntime.training.onnxblock._graph_utils as _graph_utils
 import onnxruntime.training.onnxblock._training_graph_utils as _training_graph_utils
 import onnxruntime.training.onnxblock.blocks as blocks
 import onnxruntime.training.onnxblock.model_accessor as accessor
+
+TEMP_ONNX_PATH = "temp.onnx"
 
 
 class ForwardBlock(blocks.Block):
@@ -71,9 +74,17 @@ class ForwardBlock(blocks.Block):
         output = self.build(*args, **kwargs)
 
         if accessor._GLOBAL_ACCESSOR.has_path:
-            onnx.shape_inference.infer_shapes_path(accessor._GLOBAL_ACCESSOR.path)
+            onnx.save(self.base, TEMP_ONNX_PATH, save_as_external_data=True, all_tensors_to_one_file=True)
+
+            onnx.shape_inference.infer_shapes_path(TEMP_ONNX_PATH)
             # shape inferenced model is saved to original path
-            self._model = onnx.load(accessor._GLOBAL_ACCESSOR.path)
+            self._model = onnx.load(TEMP_ONNX_PATH)
+
+            # clean-up temp files
+            if os.path.exists(TEMP_ONNX_PATH):
+                os.remove(TEMP_ONNX_PATH)
+            if os.path.exists(TEMP_ONNX_PATH):
+                os.remove(TEMP_ONNX_PATH)
         else:
             self._model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
 
@@ -194,9 +205,17 @@ class TrainingBlock(blocks.Block):
 
         model = None
         if accessor._GLOBAL_ACCESSOR.has_path:
-            onnx.shape_inference.infer_shapes_path(accessor._GLOBAL_ACCESSOR.path)
+            onnx.save(self.base, TEMP_ONNX_PATH, save_as_external_data=True, all_tensors_to_one_file=True)
+
+            onnx.shape_inference.infer_shapes_path(TEMP_ONNX_PATH)
             # shape inferenced model is saved to original path
-            model = onnx.load(accessor._GLOBAL_ACCESSOR.path)
+            model = onnx.load(TEMP_ONNX_PATH)
+
+            # clean-up temp files
+            if os.path.exists(TEMP_ONNX_PATH):
+                os.remove(TEMP_ONNX_PATH)
+            if os.path.exists(TEMP_ONNX_PATH):
+                os.remove(TEMP_ONNX_PATH)
         else:
             model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
 

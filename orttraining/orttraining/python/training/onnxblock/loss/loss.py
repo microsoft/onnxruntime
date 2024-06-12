@@ -95,17 +95,17 @@ class CrossEntropyLoss(blocks.Block):
             labels_input.type.tensor_type.elem_type = onnx.TensorProto.INT64
             # If the predictions are (num_examples x num_classes)
             # labels should be (num_examples,)
-            del labels_input.type.tensor_type.shape.dim[1]
+            del labels_input.type.tensor_type.shape.dim[-1]
             self.base.graph.input.append(labels_input)
 
         loss_node_input_names = [scores_input_name, labels_name]
         if self._weight:
             loss_node_input_names.append(weight_name)
+
         loss_node_output_name = _graph_utils.generate_graph_name("loss")
-        loss_node_output_names = [
-            loss_node_output_name,
-            _graph_utils.generate_graph_name("log_prob"),
-        ]
+        log_prob_output_name = _graph_utils.generate_graph_name("log_prob")
+
+        loss_node_output_names = [loss_node_output_name, log_prob_output_name]
         loss_node = onnx.helper.make_node(
             "SoftmaxCrossEntropyLoss",
             loss_node_input_names,
