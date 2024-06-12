@@ -674,6 +674,7 @@ struct BlockwiseQDQQuantizer {
      * @brief Quantize a matrix shape [rows, columns] row-wise. Scales and zero points are calculated.
      *        Quantized data are packed row-wise based on qbits. Quantized data are stored in row
      *        major, so the output tensor reserves the shape, in terms output type.
+     *        Thread block is [1, quant_block_size * pack_size_].
      * @param src               the source matrix, row major: [rows * columns]
      * @param scales            the scales of quantized blocks, row major layout with shape:
      *                          [rows * ceil(columns / quant_block_size)]
@@ -683,8 +684,10 @@ struct BlockwiseQDQQuantizer {
      * @param dst               the quantized weights, row major: [rows * columns] in terms of
      *                          output type. In terms of uint8_t, the shape is: [ceil(rows * columns * qbits / 8]
      * @param rows              number of rows in the source matrix
-     * @param columns           number of columns in the source matrix
-     * @param quant_block_size  number of rows/columns quantized together
+     * @param columns           number of columns in the source matrix, must satisfy
+     *                          ceil(columns / quant_block_size) % pack_size_ == 0, so in each thread block,
+     *                          zero points are packed into one byte.
+     * @param quant_block_size  number of elements quantized together.
      * @param thread_pool       thread pool for parallel processing
      */
     static void quantizeRowWise(
@@ -705,6 +708,7 @@ struct BlockwiseQDQQuantizer {
      * @brief Quantize a matrix shape [rows, columns] column-wise. Scales and zero points are calculated.
      *        Quantized data are packed row-wise based on qbits. Quantized data are stored in row major
      *        so the output tensor reserves the shape, in terms output type.
+     *        Thread block is [quant_block_size, thread_block_size]. thread_block_size % pack_size_ == 0.
      * @param src               the source matrix, row major: [rows * columns]
      * @param scales            the scales of quantized blocks, row major with shape: [ceil(rows/quant_block_size) * columns]
      * @param zero_points       the zero points of quantized blocks, packed. Same shape as scales in terms of output type.
@@ -712,7 +716,7 @@ struct BlockwiseQDQQuantizer {
      * @param dst               the quantized weights, row major: [rows * columns] in terms of output type. In uint8_t,
      *                          the shape is: [ceil(rows * columns * qbits / 8]
      * @param rows              number of rows in the source matrix
-     * @param columns           number of columns in the source matrix
+     * @param columns           number of columns in the source matrix, must be multiple of pack_size.
      * @param quant_block_size  number of rows/columns quantized together
      * @param thread_pool       thread pool for parallel processing
      */
@@ -727,18 +731,18 @@ struct BlockwiseQDQQuantizer {
         MLAS_THREADPOOL* thread_pool
     )
     {
-        const int32_t thr_blk_size = 128;
+        ORT_ENFORCE(columns % pack_size_ == 0, "Columns of ", qbits, " tensor must be multiple of ", pack_size_);
+        const int32_t thr_blk_size = 16;
         const auto num_row_thr_blk = (rows + quant_block_size - 1) / quant_block_size;
         const auto num_col_thr_blk = (columns + thr_blk_size - 1) / thr_blk_size;
         const auto num_thr_blk = num_row_thr_blk * num_col_thr_blk;
         const auto minf = std::numeric_limits<float>::lowest();
         const auto maxf = std::numeric_limits<float>::max();
 
-        // a thread block is quant_block_size * thr_blk_size
         MlasTryBatchParallel(
             thread_pool, static_cast<ptrdiff_t>(num_thr_blk),
             [&](ptrdiff_t thr_blk_idx) {
-                // TODO(fajin): tweak buffering size to utilize L1 cache
+                // TODO(fajin): tweak stride to optimize L1 cache usage
                 uint8_t zp_t[pack_size_];
                 uint8_t out_t[pack_size_];
                 float reciprocal_scale_t[pack_size_];
@@ -759,48 +763,9 @@ struct BlockwiseQDQQuantizer {
                 auto scale_idx = row_quant_blk_idx * columns + col_idx;
                 auto input_end_idx = input_idx + col_size;
 
-                // leading unaligned elements
-                auto lead_count = input_idx % pack_size_;
                 Tin scale_tt;
-                uint8_t zp_tt, out_tt;
-                if (lead_count) {
-                    // i is the index of current element in a packed byte
-                    int32_t i = lead_count, i_end = std::min(pack_size_, lead_count + col_size);
 
-                    for (; i < i_end; ++i, ++input_idx, ++scale_idx) {
-                        float vmin = maxf;
-                        float vmax = minf;
-                        zp_tt = BitsTraits<qbits>::kMid;
-
-                        for (int32_t j = 0, input_idx_t = input_idx; j < row_size; ++j, input_idx_t += columns) {
-                            auto v = static_cast<float>(src[input_idx_t]);
-                            vmin = v < vmin ? v : vmin;
-                            vmax = v > vmax ? v : vmax;
-                        }
-
-                        if (zero_points) {
-                            range2scalezp<Tin, qbits>(vmin, vmax, scale_tt, zp_tt);
-                            zero_points[scale_idx >> shift_bit_] = SetElem(zp_tt, i, zero_points[scale_idx >> shift_bit_]);
-                        } else {
-                            range2scale<Tin, qbits>(vmin, vmax, scale_tt);
-                        }
-
-                        scales[scale_idx] = scale_tt;
-
-                        float scalef = static_cast<float>(scale_tt), zpf = static_cast<float>(zp_tt);
-                        float reciprocal_sc = scalef ? 1.0f / scalef : 0.0f;
-
-                        for (int32_t j = 0, input_idx_t = input_idx; j < row_size; ++j, input_idx_t += columns) {
-                            auto v = static_cast<float>(src[input_idx_t]);
-                            out_tt = static_cast<uint8_t>(
-                                std::clamp(std::roundf(v * reciprocal_sc) + zpf, 0.0f, BitsTraits<qbits>::kMaxFp)
-                            );
-                            dst[input_idx_t >> shift_bit_] = SetElem(out_tt, i, dst[input_idx_t >> shift_bit_]);
-                        }
-                    }
-                }
-
-                // aligned
+                // input_idx, scale_idx and input_end_idx must be multiple of pack_size_
                 for (input_idx + pack_size_ < input_end_idx; input_idx += pack_size_, scale_idx += pack_size_) {
                     std::fill_n(zp_t, pack_size_, static_cast<uint8_t>(BitsTraits<qbits>::kMid));
                     std::fill_n(vmin_t, pack_size_, maxf);
@@ -837,6 +802,7 @@ struct BlockwiseQDQQuantizer {
 
                     // quantize and pack
                     for (int32_t j = 0, input_idx_t = input_idx; j < row_size; ++j, input_idx_t += columns) {
+                        // TODO(fajin): use SIMD
                         for (int32_t i = 0; i < pack_size_; ++i) {
                             auto v = static_cast<float>(src[input_idx_t + i]);
                             out_t[i] = static_cast<uint8_t>(
@@ -849,39 +815,6 @@ struct BlockwiseQDQQuantizer {
                         }
 
                         dst[input_idx_t >> shift_bit_] = Pack(out_t);
-                    }
-                }
-
-                // tailing unaligned elements
-                for (int32_t i = 0; input_idx < input_end_idx; ++i, ++input_idx, ++scale_idx) {
-                    float vmin = maxf;
-                    float vmax = minf;
-                    zp_tt = BitsTraits<qbits>::kMid;
-
-                    for (int32_t j = 0, input_idx_t = input_idx; j < row_size; ++j, input_idx_t += columns) {
-                        auto v = static_cast<float>(src[input_idx_t]);
-                        vmin = v < vmin ? v : vmin;
-                        vmax = v > vmax ? v : vmax;
-                    }
-
-                    if (zero_points) {
-                        range2scalezp<Tin, qbits>(vmin, vmax, scale_tt, zp_tt);
-                        zero_points[scale_idx >> shift_bit_] = SetElem(zp_tt, i, zero_points[scale_idx >> shift_bit_]);
-                    } else {
-                        range2scale<Tin, qbits>(vmin, vmax, scale_tt);
-                    }
-
-                    scales[scale_idx] = scale_tt;
-
-                    float scalef = static_cast<float>(scale_tt), zpf = static_cast<float>(zp_tt);
-                    float reciprocal_sc = scalef ? 1.0f / scalef : 0.0f;
-
-                    for (int32_t j = 0, input_idx_t = input_idx; j < row_size; ++j, input_idx_t += columns) {
-                        auto v = static_cast<float>(src[input_idx_t]);
-                        out_tt = static_cast<uint8_t>(
-                            std::clamp(std::roundf(v * reciprocal_sc) + zpf, 0.0f, BitsTraits<qbits>::kMaxFp)
-                        );
-                        dst[input_idx_t >> shift_bit_] = SetElem(out_tt, i, dst[input_idx_t >> shift_bit_]);
                     }
                 }
             }
