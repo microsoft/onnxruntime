@@ -8,7 +8,6 @@
 #include "contrib_ops/cuda/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
-#include <iostream>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;

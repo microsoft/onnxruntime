@@ -7,10 +7,7 @@
 
 #include <cute/tensor.hpp>
 
-#include <cutlass/numeric_types.h> //TODO(aciddelgado): check includes
-
-// #include <cutlass/cutlass.h>
-// #include <cutlass/array.h>
+#include <cutlass/numeric_types.h>
 
 #include "contrib_ops/cuda/bert/flash_attention/utils.h"
 

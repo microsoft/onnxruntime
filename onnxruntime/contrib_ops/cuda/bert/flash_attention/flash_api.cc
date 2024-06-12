@@ -408,7 +408,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int num_heads_k,
                        int head_size,
                        int seqlen_q,
-                       int seqlen_k, // TODO(aciddelgado): in case of pagedkv must be calculated correclty
+                       int seqlen_k,
                        int seqlen_k_new,
                        int rotary_dim,
                        const float softmax_scale,
