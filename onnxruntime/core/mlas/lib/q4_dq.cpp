@@ -653,7 +653,7 @@ struct BlockwiseQDQQuantizer {
 
     const int32_t mask_ = (1 << qbits) - 1;
     const int32_t pack_size_ = BitsTraits<qbits>::kPackSize;
-    constexpr int32_t shift_bit_ = qbits == 4 ? 1 : (qbits == 2 ? 2 : 0); 
+    constexpr int32_t shift_bit_ = qbits == 4 ? 1 : (qbits == 2 ? 2 : 0);
 
     static MLAS_FORCEINLINE uint8_t SetElem(uint8_t val, int32_t idx, uint8_t dst)
     {
@@ -663,11 +663,29 @@ struct BlockwiseQDQQuantizer {
 
     static MLAS_FORCEINLINE uint8_t Pack(uint8_t vals[pack_size])
     {
-        return qbits == 4
+        return constexpr (qbits == 4)
                    ? ((vals[0] & 0xF) | ((vals[1] & 0xF) << 4))
-               : qbits == 2
+               : constexpr (qbits == 2)
                    ? ((vals[0] & 3) | ((vals[1] & 3) << 2) | ((vals[2] & 3) << 4) | ((vals[3] & 3) << 6))
                    : vals[0];
+    }
+
+    // If src is row major, a uint8_t in src packs pack_size_ row values, src contains pack_size_ rows.
+    // And dst is column major, a uint8_t in dst packs pack_size column values. dst contains pack_size_ columns.
+    // Vice versa if src is column major and dst is row major.
+    static MLAS_FORCEINLINE void Transpose(uint8_t src[pack_size_], uint8_t dst[pack_size_])
+    {
+        if constexpr (qbits == 4) {
+            dst[0] = (src[0] & 0xF) | ((src[1] & 0xF) << 4);
+            dst[1] = ((src[0] & 0xF0) >> 4) | (src[1] & 0xF0);
+        } else if constexpr (qbits == 2) {
+            dst[0] = (src[0] & 0x3) | ((src[1] & 0x3) << 2) | ((src[2] & 0x3) << 4) | ((src[3] & 0x3) << 6);
+            dst[1] = ((src[0] & 0xC) >> 2) | ((src[1] & 0xC)) | ((src[2] & 0xC) << 2) | ((src[3] & 0xC) << 4);
+            dst[2] = ((src[0] & 0x30) >> 4) | ((src[1] & 0x30) >> 2) | ((src[2] & 0x30)) | ((src[3] & 0x30) << 2);
+            dst[3] = ((src[0] & 0xC0) >> 6) | ((src[1] & 0xC0) >> 4) | ((src[2] & 0xC0) >> 2) | ((src[3] & 0xC0));
+        } else {
+            dst[0] = src[0];
+        }
     }
 
     /**
@@ -753,13 +771,10 @@ struct BlockwiseQDQQuantizer {
                 const int32_t row_quant_blk_idx = static_cast<int32_t>(thr_blk_idx / num_col_thr_blk);
                 const int32_t col_thr_blk_idx = static_cast<int32_t>(thr_blk_idx % num_col_thr_blk);
 
-                const int32_t row_idx = row_quant_blk_idx * quant_block_size;
                 const int32_t col_idx = col_thr_blk_idx * thr_blk_size;
 
-                const int32_t row_size = std::min(quant_block_size, rows - row_idx);
                 const int32_t col_size = std::min(thr_blk_size, columns - col_idx);
 
-                auto input_idx = row_idx * columns + col_idx;
                 auto scale_idx = row_quant_blk_idx * columns + col_idx;
                 auto input_end_idx = input_idx + col_size;
 
@@ -822,29 +837,117 @@ struct BlockwiseQDQQuantizer {
     }
 
     /**
-     * @brief Transpose a quantized tensor to use in MatMulNbits. The input tensor is in row major,
-     *        [rows, columns] in terms of qbits type, packed along rows. The output tensor is in
-     *        [columns, ceil(rows / quant_block_size), ceil(block_size * qbits / 8)] in uint8_t type.
-     *        Since both input tensor and output tensor are packed, it's not needed to consider sign
+     * @brief Transpose quantized tensors, which has been column-wise quantized, for use in MatMulNbits.
+     *        Since both src tensor and dst tensor are packed, it's not needed to consider sign
      *        during the unpacking/packing in transpose.
-     * @param src               the quantized tensor, row major: [rows * columns] in terms of qbits type
-     *                          In uint8_t, the shape is: [ceil(rows * columns * qbits / 8]
-     * @param dest              the transposed quantized tensor, column major. In uint8_t, the shape is
-     *                          [columns * ceil(rows / quant_block_size) * ceil(block_size * qbits / 8)]
-     * @param rows              number of rows in the source matrix
-     * @param columns           number of columns in the source matrix
-     * @param quant_block_size  number of rows/columns quantized together
+     * @param src_weights       The quantized weights, row major: [rows, columns] in qbits type.
+     *                          In uint8_t, [rows, columns / pack_size_] packed row-wise.
+     * @param src_scales        [ceil(rows / quant_block_size), columns]
+     * @param src_zero_points   [ceil(rows / quant_block_size), columns] in qbits type. In uint8_t,
+     *                          [ceil(rows / quant_block_size), columns / pack_size_)] packed row-wise.
+     * @param dst_weights       the transposed quantized weights, column major. In uint8_t, the shape is
+     *                          [columns, ceil(rows / quant_block_size), ceil(quant_block_size / pack_size_)]
+     * @param dst_scales        [columns, ceil(rows / quant_block_size)]
+     * @param dst_zero_points   [columns, ceil(ceil(rows / quant_block_size) / pack_size_)] in uint8_t.
+     * @param rows              number of src rows in qbits type.
+     * @param columns           number of src columns in qbits type. Must be multiple of pack_size_.
+     * @param quant_block_size  number of elements quantized together
      * @param thread_pool       thread pool for parallel processing
      */
-    static void Transpose(
-      const uint8_t* src, 
-      uint8_t *dest, 
-      int32_t rows, 
-      int32_t columns, 
+    static void TransposeColumnWiseQuantized(
+      const uint8_t* src_weights,
+      const Tin* src_scales,
+      const uint8_t* src_zero_points,
+      uint8_t *dst_weights,
+      Tin* dst_scales,
+      uint8_t* dst_zero_points,
+      int32_t rows,
+      int32_t columns,
       int32_t quant_block_size,
       MLAS_THREADPOOL* thread_pool)
     {
+        ORT_ENFORCE(columns % pack_size_ == 0, "Columns of ", qbits, " tensor must be multiple of ", pack_size_);
 
+        auto row_quant_blk_num = (rows + quant_block_size - 1) / quant_block_size;
+        auto dst_bytes_per_quant_blk = (quant_block_size * qbits + 7) / 8;
+        // number of rows in transposed dst
+        auto dstT_num_row = row_quant_blk_num * dst_bytes_per_quant_blk;
+        auto packed_col_size = columns / pack_size_;
+
+        // weight transpose thread block is [dst_bytes_per_quant_blk, pack_size_] on dst_Transpose.
+        // Map to src it is [quant_block_size, 1]. Both in uint8_t.
+        auto num_thread_blk = row_quant_blk_num * packed_col_size;
+        MlasTryBatchParallel(
+            thread_pool, static_cast<ptrdiff_t>(num_thread_blk),
+            [&](ptrdiff_t thread_blk_idx) {
+                uint8_t src_t[pack_size_];
+                uint8_t dst_t[pack_size_];
+
+                auto row_thread_blk_idx = static_cast<int32_t>(thread_blk_idx / packed_col_size);
+                auto col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx % packed_col_size);
+
+                auto dstT_row_idx = row_thread_blk_idx * dst_bytes_per_quant_blk;
+                auto dstT_col_idx = col_thread_blk_idx * pack_size_;
+                auto dst_idx = dstT_col_idx * dstT_num_row + dstT_row_idx;
+                auto dst_end_idx = dst_idx + dst_bytes_per_quant_blk;
+
+                auto src_row_idx = row_thread_blk_idx * quant_block_size;
+                auto src_row_end_idx = std::min(src_row_idx + quant_block_size, rows);
+                auto src_col_idx = col_thread_blk_idx;
+                auto src_idx = src_row_idx * packed_col_size + src_col_idx;
+                auto src_end_idx = src_row_end_idx * packed_col_size + src_col_idx;
+
+                for (; dst_idx < dst_end_idx; ++dst_idx) {
+                    for (int32_t i = 0; i < pack_size_ && src_idx < src_end_idx; ++i, src_idx += packed_col_size) {
+                        src_t[i] = src_weights[src_idx];
+                    }
+                    Transpose(src_t, dst_t);
+                    for (int32_t i = 0, dst_idx_t = dst_idx; i < pack_size_; ++i, dst_idx_t += dstT_num_row) {
+                        dst_weights[dst_idx_t] = dst_t[i];
+                    }
+                }
+            }
+        );
+
+        // Transpose scales. Thread block is [row_quant_blk_num, 1] on dst_Transpose.
+        MlasTryBatchParallel(
+            thread_pool, static_cast<ptrdiff_t>(columns),
+            [&](ptrdiff_t thread_blk_idx) {
+                auto col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx);
+                auto src_idx = col_thread_blk_idx;
+                auto dst_idx = col_thread_blk_idx * row_quant_blk_num;
+                for (int32_t i = 0; i < row_quant_blk_num; ++i, ++dst_idx, src_idx += columns) {
+                    dst_scales[dst_idx] = src_scales[src_idx];
+                }
+            }
+        );
+
+        // Transpose zero points. Thread block is [ceil(row_quant_blk_num / pack_size_), pack_size_]
+        // on dst_Transpose. Map to src it is [row_quant_blk_num, 1]. Both in uint8_t.
+        auto dst_zp_row_num = (row_quant_blk_num + pack_size_ - 1) / pack_size_;
+        MlasTryBatchParallel(
+            thread_pool, static_cast<ptrdiff_t>(packed_col_size),
+            [&](ptrdiff_t thread_blk_idx) {
+                uint8_t src_t[pack_size_];
+                uint8_t dst_t[pack_size_];
+
+                auto col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx) * pack_size_;
+                auto src_idx = col_thread_blk_idx;
+                auto src_end_idx = rows * packed_col_size + col_thread_blk_idx;
+                auto dst_idx = col_thread_blk_idx * dst_zp_row_num;
+                auto dst_end_idx = dst_idx + dst_zp_row_num;
+
+                for (; dst_idx < dst_end_idx; ++dst_idx) {
+                    for (int32_t i = 0; i < pack_size_ && src_idx < src_end_idx; ++i, src_idx += packed_col_size) {
+                        src_t[i] = src_zero_points[src_idx];
+                    }
+                    Transpose(src_t, dst_t);
+                    for (int32_t i = 0, dst_idx_t = dst_idx; i < pack_size_; ++i, dst_idx_t += dst_zp_row_num) {
+                        dst_zero_points[dst_idx_t] = dst_t[i];
+                    }
+                }
+            }
+        );
     }
 };
 
