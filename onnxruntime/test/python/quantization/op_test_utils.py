@@ -217,10 +217,13 @@ class TestDataFeeds(CalibrationDataReader):
         self.iter_next = iter(self.data_feeds)
 
 
-def input_feeds_neg_one_zero_one(n, name2shape):
+def input_feeds_neg_one_zero_one(n, name2shape, seed=None):
     """
     randomize n feed according to shape, its values are from -1, 0, and 1
     """
+    if seed is not None:
+        np.random.seed(seed)
+
     input_data_list = []
     for _i in range(n):
         inputs = {}
@@ -231,10 +234,13 @@ def input_feeds_neg_one_zero_one(n, name2shape):
     return dr
 
 
-def input_feeds_neg_one_zero_one_list(n, name2shape):
+def input_feeds_neg_one_zero_one_list(n, name2shape, seed=None):
     """
     randomize n feed according to shape, its values are from -1, 0, and 1
     """
+    if seed is not None:
+        np.random.seed(seed)
+
     input_data_list = []
     for _i in range(n):
         inputs = {}
