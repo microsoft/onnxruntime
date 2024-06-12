@@ -651,9 +651,9 @@ template <typename Tin, int qbits>
 struct BlockwiseQDQQuantizer {
     static_assert(qbits == 4 || qbits == 2, "Only 4bit or 2bit block quantization is supported!");
 
-    const int32_t mask_ = (1 << qbits) - 1;
-    const int32_t pack_size_ = BitsTraits<qbits>::kPackSize;
-    constexpr int32_t shift_bit_ = qbits == 4 ? 1 : (qbits == 2 ? 2 : 0);
+    static const int32_t mask_ = (1 << qbits) - 1;
+    static const int32_t pack_size_ = BitsTraits<qbits>::kPackSize;
+    static constexpr int32_t shift_bit_ = qbits == 4 ? 1 : (qbits == 2 ? 2 : 0);
 
     static MLAS_FORCEINLINE uint8_t SetElem(uint8_t val, int32_t idx, uint8_t dst)
     {
@@ -661,7 +661,7 @@ struct BlockwiseQDQQuantizer {
         return ((val & mask_) << shift) | (dst & (~(mask_ << shift)));
     }
 
-    static MLAS_FORCEINLINE uint8_t Pack(uint8_t vals[pack_size])
+    static MLAS_FORCEINLINE uint8_t Pack(uint8_t vals[pack_size_])
     {
         return constexpr (qbits == 4)
                    ? ((vals[0] & 0xF) | ((vals[1] & 0xF) << 4))
