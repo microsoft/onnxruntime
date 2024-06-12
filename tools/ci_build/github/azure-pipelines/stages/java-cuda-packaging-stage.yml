@@ -141,7 +141,7 @@ stages:
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_2_x64_ubi8_gcc12:20240531.1
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240610.1
     timeoutInMinutes: 60
 
     steps:
