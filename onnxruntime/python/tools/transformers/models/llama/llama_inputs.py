@@ -35,7 +35,6 @@ def get_sample_inputs(
     seq_len: int,
     engine: str = "pt",
     return_dict: bool = False,
-    use_position_ids: bool = True,
 ):
     input_ids = torch.randint(low=0, high=config.vocab_size, size=(batch_size, seq_len), dtype=torch.int64)
     attention_mask = torch.ones(batch_size, seq_len, dtype=torch.int64)
@@ -53,9 +52,8 @@ def get_sample_inputs(
     inputs = {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
+        "position_ids": position_ids,
     }
-    if use_position_ids:
-        inputs["position_ids"] = position_ids
 
     return inputs
 
@@ -75,7 +73,6 @@ def get_sample_with_past_kv_inputs(
     engine: str = "pt",
     return_dict: bool = False,
     world_size: int = 1,
-    use_position_ids: bool = True,
 ):
     input_ids = torch.randint(low=0, high=config.vocab_size, size=(batch_size, 1), dtype=torch.int64)
     attention_mask = torch.ones(batch_size, past_seq_len + 1, dtype=torch.int64)
@@ -101,9 +98,8 @@ def get_sample_with_past_kv_inputs(
     inputs = {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
+        "position_ids":  position_ids,
     }
-    if use_position_ids:
-        inputs["position_ids"] = position_ids
     if engine == "ort":
         assert isinstance(past_kv, dict)
         inputs.update(past_kv)
@@ -136,7 +132,6 @@ def get_merged_sample_with_past_kv_inputs(
     engine: str = "pt",
     return_dict: bool = False,
     world_size: int = 1,
-    use_position_ids: bool = True,
 ):
     input_ids = torch.randint(low=0, high=config.vocab_size, size=(batch_size, seq_len), dtype=torch.int64)
     attention_mask = torch.ones(batch_size, past_seq_len + seq_len, dtype=torch.int64)
@@ -162,9 +157,8 @@ def get_merged_sample_with_past_kv_inputs(
     inputs = {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
+        "position_ids": position_ids,
     }
-    if use_position_ids:
-        inputs["position_ids"] = position_ids
     if engine == "ort":
         assert isinstance(past_kv, dict)
         inputs.update(past_kv)
@@ -413,7 +407,6 @@ def get_initial_inputs_and_outputs(
     use_fp16: bool,
     use_buffer_share: bool,
     engine: str,
-    use_position_ids: bool = True,
 ):
     tokenizer.pad_token = tokenizer.eos_token
     encodings_dict = tokenizer.batch_encode_plus(prompt, padding=True)
@@ -449,9 +442,8 @@ def get_initial_inputs_and_outputs(
     inputs = {
         "input_ids": input_ids.contiguous() if engine == "ort" else input_ids,
         "attention_mask": attention_mask.contiguous() if engine == "ort" else attention_mask,
+        "position_ids": position_ids.contiguous() if engine == "ort" else position_ids,
     }
-    if use_position_ids:
-        inputs["position_ids"] = position_ids.contiguous() if engine == "ort" else position_ids
     if engine != "ort":
         inputs["past_key_values"] = []
 

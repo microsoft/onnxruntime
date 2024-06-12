@@ -117,18 +117,6 @@ def get_model(args: argparse.Namespace):
     return model
 
 
-# When it runs a model without position_ids input, ORT keep printint out a complaint.
-# Check if a model has a position_ids input and suppress if not.
-def has_position_ids(args):
-    if args.benchmark_type != "ort":
-        return True
-
-    import onnx
-
-    model = onnx.load(args.onnx_model_path, load_external_data=False)
-    return any(input.name == "position_ids" for input in model.graph.input)
-
-
 def run_inference(args, model, runs, inputs, outputs):
     if args.benchmark_type == "pt-compile":
         with torch.no_grad():
@@ -160,10 +148,10 @@ def run_inference(args, model, runs, inputs, outputs):
     return avg, outputs
 
 
-def prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt, use_position_ids):
+def prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt):
     clear_cache()
     inputs, outputs = get_initial_inputs_and_outputs(
-        config, tokenizer, prompt_length, prompt, args.target_device, args.use_fp16, args.use_buffer_share, args.engine, use_position_ids
+        config, tokenizer, prompt_length, prompt, args.target_device, args.use_fp16, args.use_buffer_share, args.engine
     )
     _, outputs = run_inference(args, model, args.warmup_runs, inputs, outputs)
     return inputs, outputs
@@ -386,8 +374,6 @@ def main():
     )
     model = get_model(args)
 
-    use_position_ids = has_position_ids(args)
-
     all_csv_metrics = []
     for batch_size, prompt_length in itertools.product(args.batch_sizes, args.prompt_lengths):
         batch_size, prompt_length = int(batch_size), int(prompt_length)  # noqa: PLW2901
@@ -413,7 +399,7 @@ def main():
         try:
             # Measure prompt processing
             logger.info("Measuring prompt processing...")
-            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt, use_position_ids)
+            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt)
             accelerator_prompt_latency_s, outputs = run_inference(args, model, args.num_runs, inputs, outputs)
 
             # Calculate prompt metrics
@@ -428,7 +414,7 @@ def main():
             # Measure token generation
             logger.info("Measuring token generation...")
             clear_cache()
-            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt, use_position_ids)
+            inputs, outputs = prepare_model_for_inference(args, model, config, tokenizer, prompt_length, prompt)
 
             all_token_ids = inputs["input_ids"].clone()
             current_length = all_token_ids.shape[-1]
@@ -480,7 +466,7 @@ def main():
                 inputs["attention_mask"] = torch.cat(
                     [inputs["attention_mask"], (~has_eos).to(torch.int64).reshape(batch_size, 1)], 1
                 )
-                if use_position_ids:
+                if "position_ids" in inputs:
                     inputs["position_ids"] = torch.max(inputs["position_ids"], dim=1)[0].reshape(batch_size, 1) + 1
 
                 # Set logits to zeros for next inference run and re-use memory buffer
