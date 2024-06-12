@@ -274,7 +274,7 @@ onnxruntime_genai.Generator.compute_logits()
 Returns an output of the model.
 
 ```python
-onnxruntime_genai.Generator.get_output(str: name) -> numpy.ndarray[int32]
+onnxruntime_genai.Generator.get_output(str: name) -> numpy.ndarray
 ```
 
 #### Parameters
