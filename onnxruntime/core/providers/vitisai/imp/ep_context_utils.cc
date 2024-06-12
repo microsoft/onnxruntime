@@ -268,7 +268,7 @@ std::unique_ptr<Model> CreateEPContexModel(
   LOGS_DEFAULT(VERBOSE) << "EP context node created and added to graph";
   // ORT_ENFORCE(ep_ctx_graph.Resolve().IsOK());
   auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
-  LOGS_DEFAULT(VERBOSE) << "EP context graph viewer created with EP context node added";
+  LOGS_DEFAULT(VERBOSE) << "EP context graph viewer created with EP context node added: " << p_ep_ctx_graph_viewer->Name();
   auto p_ep_ctx_model = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
   LOGS_DEFAULT(VERBOSE) << "EP context model created";
   auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
