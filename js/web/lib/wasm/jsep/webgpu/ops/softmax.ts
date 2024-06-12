@@ -137,7 +137,7 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
     getRunData: () => ({
       outputs: [{dims: shape, dataType: input.dataType}],
       dispatchGroup: {x: rows},
-      programUniforms: [{type: DataType.uint32, data: packedCols}]
+      programUniforms: [{type: DataType.int32, data: packedCols}]
     }),
     getShaderSource,
   };

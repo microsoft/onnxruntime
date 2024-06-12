@@ -38,8 +38,7 @@ class TrainingManager(GraphExecutionManager):
         fallback_manager: _FallbackManager,
         logger: Logger,
     ):
-        super().__init__(model, debug_options, fallback_manager, torch.onnx.TrainingMode.TRAINING, logger)
-
+        super().__init__(model, debug_options, torch.onnx.TrainingMode.TRAINING, fallback_manager, logger)
         self._forward_class = self._create_autofunction_class()
 
     @staticmethod
@@ -170,10 +169,10 @@ class TrainingManager(GraphExecutionManager):
                 for idx, grad_output in enumerate(grad_outputs):
                     if idx in self._graph_info.output_grad_indices_non_differentiable:
                         assert grad_output is None, (
-                            "ORT found the {}-th module output '{}' is "
+                            f"ORT found the {idx}-th module output '{self._graph_info.user_output_names[idx]}' is "
                             "non-differentiable according to the onnx graph. "
                             "However, the gradient value is still provided by "
-                            "PyTorch's autograd engine.".format(idx, self._graph_info.user_output_names[idx])
+                            "PyTorch's autograd engine."
                         )
                         continue
 
@@ -262,10 +261,9 @@ class TrainingManager(GraphExecutionManager):
 
                 # Build the gradient graph
                 if build_gradient_graph:
-                    graph_transformer_config = self._get_graph_transformer_config()
-                    # Set the config according to input inspection.
-                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+                    self._detect_from_inputs(inputs, kwargs)
 
+                    graph_transformer_config = self._get_graph_transformer_config()
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)
 
@@ -431,8 +429,9 @@ class TrainingManager(GraphExecutionManager):
             del execution_agent
 
         # Enable memory optimization if it is enabled in the session options.
+
         session_options.add_session_config_entry(
-            "optimization.memory_optimizer_config", self._runtime_options.memory_optimizer_config
+            "optimization.memory_optimizer_config", self._runtime_options.memory_optimizer_config_file_path
         )
         session_options.add_session_config_entry(
             "optimization.enable_memory_probe_recompute_config", self._runtime_options.recompute_probe_config

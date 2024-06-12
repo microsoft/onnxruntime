@@ -11,6 +11,7 @@
 #include "core/common/type_list.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/int4.h"
 
 namespace onnxruntime {
 
@@ -81,6 +82,12 @@ using AllIRv9 =
 #else
 using AllIRv9 = AllIRv4;
 #endif
+
+using AllIRv10 =
+    boost::mp11::mp_push_back<
+        AllIRv9,
+        UInt4x2,
+        Int4x2>;
 
 using All = AllIRv4;
 

@@ -233,20 +233,20 @@ void addOrtValueMethods(pybind11::module& m) {
 #endif
       })
       .def("shape", [](const OrtValue* ort_value) -> py::list {
-        py::list shape_arr;
 #if !defined(DISABLE_SPARSE_TENSORS)
         // OrtValue can only be a Tensor/SparseTensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ort_value->IsTensor() || ort_value->IsSparseTensor(),
                     "Only OrtValues that are Tensors/SpareTensors are currently supported");
 
-        const auto& dims = (ort_value->IsTensor())
-                               ? ort_value->Get<Tensor>().Shape().GetDims()
-                               : ort_value->Get<SparseTensor>().DenseShape().GetDims();
+        const auto dims = (ort_value->IsTensor())
+                              ? ort_value->Get<Tensor>().Shape().GetDims()
+                              : ort_value->Get<SparseTensor>().DenseShape().GetDims();
 #else
         ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are supported in this build");
-        const auto& dims = ort_value->Get<Tensor>().Shape().GetDims();
+        const auto dims = ort_value->Get<Tensor>().Shape().GetDims();
 #endif
 
+        py::list shape_arr;
         for (auto dim : dims) {
           // For sequence tensors - we would append a list of dims to the outermost list
           // For now only tensors are supported in OrtValue
@@ -302,18 +302,16 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
 
-        py::object obj;
-
 #ifdef USE_CUDA
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction());
 #elif USE_ROCM
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetRocmToHostMemCpyFunction());
 #elif USE_CANN
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCannToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
 #elif USE_DML
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetDmlToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction());
 #else
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
 #endif
         return obj;
       })

@@ -74,7 +74,8 @@ inline void sm80_prepack_quant_scales_ref(
     int columns,
     const MatrixRef<ScaleElementT const, Layout, true>& tensor_scale,
     const MatrixRef<ScaleElementT, Layout, true>& tensor_scale_prepacked) {
-  ORT_ENFORCE(tensor_scale.shape()[0] == (rows / QuantBlocking::kRow) && tensor_scale.shape()[1] == (columns / QuantBlocking::kColumn),
+  ORT_ENFORCE(tensor_scale.shape()[0] == (rows / QuantBlocking::kRow) && tensor_scale.shape()[1] ==
+                                                                             (columns / QuantBlocking::kColumn),
               "Unexpected tensor_scale shape! Expected: (",
               rows / QuantBlocking::kRow, ", ", columns / QuantBlocking::kColumn, ")");
   ORT_ENFORCE(tensor_scale_prepacked.shape() == tensor_scale.shape());
@@ -84,7 +85,9 @@ inline void sm80_prepack_quant_scales_ref(
   //    2 B operand tiles per mma instruction stacked on k dimension
   //    (1,n) quantization blocking
   if constexpr (sizeof(ScaleElementT) != 2 || QuantBlocking::kRow != 1) {
-    ORT_THROW("sm80_prepack_quant_scales_ref should only be called for row-wise block quantization on 16b float values.");
+    ORT_THROW(
+        "sm80_prepack_quant_scales_ref should only be called for "
+        " row-wise block quantization on 16b float values.");
   }
 
   // In Ampere tensor op, each operand B tile is 8 x 8, in a warp of 32 threads, each thread

@@ -38,8 +38,6 @@ log = get_logger("build")
 class BaseError(Exception):
     """Base class for errors originating from build.py."""
 
-    pass
-
 
 class BuildError(BaseError):
     """Error from running build steps."""
@@ -75,13 +73,12 @@ _check_python_version()
 
 
 def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"]
+    choices = ["CPU", "GPU", "NPU"]
 
     choices1 = [
-        "CPU_FP32_NO_PARTITION",
-        "CPU_FP16_NO_PARTITION",
-        "GPU_FP32_NO_PARTITION",
-        "GPU_FP16_NO_PARTITION",
+        "CPU_NO_PARTITION",
+        "GPU_NO_PARTITION",
+        "NPU_NO_PARTITION",
     ]
     status_hetero = True
     res = False
@@ -89,14 +86,14 @@ def _openvino_verify_device_type(device_read):
         res = True
     elif device_read in choices1:
         res = True
-    elif device_read.startswith("HETERO:") or device_read.startswith("MULTI:") or device_read.startswith("AUTO:"):
+    elif device_read.startswith(("HETERO:", "MULTI:", "AUTO:")):
         res = True
         comma_separated_devices = device_read.split(":")
         comma_separated_devices = comma_separated_devices[1].split(",")
         if len(comma_separated_devices) < 2:
             print("At least two devices required in Hetero/Multi/Auto Mode")
             status_hetero = False
-        dev_options = ["CPU", "GPU"]
+        dev_options = ["CPU", "GPU", "NPU"]
         for dev in comma_separated_devices:
             if dev not in dev_options:
                 status_hetero = False
@@ -107,7 +104,7 @@ def _openvino_verify_device_type(device_read):
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-        print("are ['CPU','GPU'] \n")
+        print("are ['CPU','GPU','NPU'] \n")
         print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU \n")
         print("An example of how to specify the MULTI build type. Ex: MULTI:GPU,CPU \n")
         print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU \n")
@@ -118,7 +115,7 @@ def _openvino_verify_device_type(device_read):
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
-        if not (device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")):
+        if not (device_read.startswith(("HETERO", "MULTI", "AUTO"))):
             invalid_hetero_build()
         sys.exit("Wrong Build Type selected")
 
@@ -400,7 +397,14 @@ def parse_arguments():
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
 
-    parser.add_argument("--ios", action="store_true", help="build for ios")
+    platform_group = parser.add_mutually_exclusive_group()
+    platform_group.add_argument("--ios", action="store_true", help="build for ios")
+    platform_group.add_argument("--visionos", action="store_true", help="build for visionOS")
+    platform_group.add_argument(
+        "--macos",
+        choices=["MacOSX", "Catalyst"],
+        help="Specify the target platform for macOS build. Only specify this argument when --build_apple_framework is present.",
+    )
 
     parser.add_argument(
         "--apple_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
@@ -409,6 +413,11 @@ def parse_arguments():
         "--ios_toolchain_file",
         default="",
         help="Path to ios toolchain file, or cmake/onnxruntime_ios.toolchain.cmake will be used",
+    )
+    parser.add_argument(
+        "--visionos_toolchain_file",
+        default="",
+        help="Path to visionos toolchain file, or cmake/onnxruntime_visionos.toolchain.cmake will be used",
     )
     parser.add_argument(
         "--xcode_code_signing_team_id", default="", help="The development team ID used for code signing in Xcode"
@@ -421,7 +430,7 @@ def parse_arguments():
         action="store_const",
         const="Xcode",
         dest="cmake_generator",
-        help="Use Xcode as cmake generator, this is only supported on MacOS. Equivalent to '--cmake_generator Xcode'.",
+        help="Use Xcode as cmake generator, this is only supported on MacOS. (non Catalyst build). Equivalent to '--cmake_generator Xcode'.",
     )
     parser.add_argument(
         "--osx_arch",
@@ -453,7 +462,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.51", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.59", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -529,7 +538,7 @@ def parse_arguments():
     parser.add_argument(
         "--use_openvino",
         nargs="?",
-        const="CPU_FP32",
+        const="CPU",
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.",
     )
@@ -899,7 +908,7 @@ def use_dev_mode(args):
         return False
     if args.use_armnn:
         return False
-    if args.ios and is_macOS():
+    if (args.ios or args.visionos) and is_macOS():
         return False
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
     if SYSTEM_COLLECTIONURI and SYSTEM_COLLECTIONURI != "https://dev.azure.com/onnxruntime/":
@@ -1218,33 +1227,20 @@ def generate_build_tree(
     if args.use_openvino:
         cmake_args += [
             "-Donnxruntime_USE_OPENVINO=ON",
-            "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_CPU_FP16=" + ("ON" if args.use_openvino == "CPU_FP16" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_GPU_FP32_NP="
-            + ("ON" if args.use_openvino == "GPU_FP32_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_GPU_FP16_NP="
-            + ("ON" if args.use_openvino == "GPU_FP16_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_CPU_FP32_NP="
-            + ("ON" if args.use_openvino == "CPU_FP32_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_CPU_FP16_NP="
-            + ("ON" if args.use_openvino == "CPU_FP16_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_GPU=" + ("ON" if args.use_openvino == "GPU" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU=" + ("ON" if args.use_openvino == "CPU" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_NPU=" + ("ON" if args.use_openvino == "NPU" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_GPU_NP=" + ("ON" if args.use_openvino == "GPU_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU_NP=" + ("ON" if args.use_openvino == "CPU_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_NPU_NP=" + ("ON" if args.use_openvino == "NPU_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_HETERO=" + ("ON" if args.use_openvino.startswith("HETERO") else "OFF"),
             "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
             "-Donnxruntime_USE_OPENVINO_MULTI=" + ("ON" if args.use_openvino.startswith("MULTI") else "OFF"),
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # VitisAI and OpenVINO providers currently only support
-    # full_protobuf option. TensorRT provider only requires it if built with oss_parser
-    if (
-        args.use_full_protobuf
-        or (args.use_tensorrt and args.use_tensorrt_oss_parser)
-        or args.use_openvino
-        or args.use_vitisai
-        or args.gen_doc
-    ):
+    # VitisAI and OpenVINO providers currently only support full_protobuf option.
+    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_tvm and args.llvm_path is not None:
@@ -1325,8 +1321,12 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    if args.build_apple_framework or args.ios:
-        if not args.cmake_generator == "Xcode":
+    if args.macos or args.ios or args.visionos:
+        # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
+        if args.macos == "Catalyst" and args.cmake_generator == "Xcode":
+            raise BuildError("Xcode CMake generator ('--cmake_generator Xcode') doesn't support Mac Catalyst build.")
+
+        if (args.ios or args.visionos or args.macos == "MacOSX") and not args.cmake_generator == "Xcode":
             raise BuildError(
                 "iOS/MacOS framework build requires use of the Xcode CMake generator ('--cmake_generator Xcode')."
             )
@@ -1344,18 +1344,47 @@ def generate_build_tree(
                 "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
                 + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
             )
+        # note: this value is mainly used in framework_info.json file to specify the build osx type
+        platform_name = "macabi" if args.macos == "Catalyst" else args.apple_sysroot
         cmake_args += [
             "-Donnxruntime_BUILD_SHARED_LIB=ON",
             "-DCMAKE_OSX_SYSROOT=" + args.apple_sysroot,
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
             "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+            "-DPLATFORM_NAME=" + platform_name,
         ]
         if args.ios:
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
                 + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
+            ]
+        # for catalyst build, we need to manually specify cflags for target e.g. x86_64-apple-ios14.0-macabi, etc.
+        # https://forums.developer.apple.com/forums/thread/122571
+        if args.macos == "Catalyst":
+            macabi_target = f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi"
+            cmake_args += [
+                "-DCMAKE_CXX_COMPILER_TARGET=" + macabi_target,
+                "-DCMAKE_C_COMPILER_TARGET=" + macabi_target,
+                "-DCMAKE_CC_COMPILER_TARGET=" + macabi_target,
+                f"-DCMAKE_CXX_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+                f"-DCMAKE_C_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+                f"-DCMAKE_CC_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_CC_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+            ]
+        if args.visionos:
+            cmake_args += [
+                "-DCMAKE_SYSTEM_NAME=visionOS",
+                "-DCMAKE_TOOLCHAIN_FILE="
+                + (
+                    args.visionos_toolchain_file
+                    if args.visionos_toolchain_file
+                    else "../cmake/onnxruntime_visionos.toolchain.cmake"
+                ),
+                "-Donnxruntime_ENABLE_CPUINFO=OFF",
             ]
 
     if args.build_wasm:
@@ -1519,7 +1548,11 @@ def generate_build_tree(
             and not args.build_wasm
         ):
             if is_windows():
-                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
+                # DLL initialization errors due to old conda msvcp140.dll dll are a result of the new MSVC compiler
+                # See https://developercommunity.visualstudio.com/t/Access-violation-with-std::mutex::lock-a/10664660#T-N10668856
+                # Remove this definition (_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+                # once the conda msvcp140.dll dll is updated.
+                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS", "/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR"]
                 if not args.use_gdk:
                     # Target Windows 10
                     cflags += [
@@ -1672,12 +1705,12 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
                 # https://github.com/Microsoft/checkedc-clang/wiki/Parallel-builds-of-clang-on-Windows suggests
                 # not maxing out CL_MPCount
                 # Start by having one less than num_parallel_jobs (default is num logical cores),
-                # limited to a range of 1..3
-                # that gives maxcpucount projects building using up to 3 cl.exe instances each
+                # limited to a range of 1..15
+                # that gives maxcpucount projects building using up to 15 cl.exe instances each
                 build_tool_args += [
                     f"/maxcpucount:{num_parallel_jobs}",
-                    # one less than num_parallel_jobs, at least 1, up to 3
-                    f"/p:CL_MPCount={min(max(num_parallel_jobs - 1, 1), 3)}",
+                    # one less than num_parallel_jobs, at least 1, up to 15
+                    f"/p:CL_MPCount={min(max(num_parallel_jobs - 1, 1), 15)}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
                 ]
@@ -1721,9 +1754,7 @@ def setup_cuda_vars(args):
         if not cuda_home_valid or (not is_windows() and not cudnn_home_valid):
             raise BuildError(
                 "cuda_home and cudnn_home paths must be specified and valid.",
-                "cuda_home='{}' valid={}. cudnn_home='{}' valid={}".format(
-                    cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid
-                ),
+                f"cuda_home='{cuda_home}' valid={cuda_home_valid}. cudnn_home='{cudnn_home}' valid={cudnn_home_valid}",
             )
 
     return cuda_home, cudnn_home
@@ -1975,7 +2006,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "--framework_info_file",
                 framework_info_file,
                 "--variant",
-                "Mobile",
+                "Full",
+                "--skip_macos_test",
             ],
             cwd=cwd,
         )
@@ -1989,7 +2021,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "--framework_info_file",
                 framework_info_file,
                 "--variant",
-                "Mobile",
+                "Full",
+                "--skip_macos_test",
             ],
             cwd=cwd,
         )
@@ -2056,16 +2089,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             # For CUDA or DML enabled builds test IOBinding feature
             if args.use_cuda or args.use_dml:
                 log.info("Testing IOBinding feature")
-                if args.use_dml:
-                    run_subprocess(
-                        [sys.executable, "-m", "pip", "uninstall", "--yes", "onnx"], cwd=cwd, dll_path=dll_path
-                    )
-                    run_subprocess([sys.executable, "-m", "pip", "install", "-q", "onnx"], cwd=cwd, dll_path=dll_path)
                 run_subprocess([sys.executable, "onnxruntime_test_python_iobinding.py"], cwd=cwd, dll_path=dll_path)
 
             if args.use_cuda:
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
+
+            if args.use_dml:
+                log.info("Testing DML Graph feature")
+                run_subprocess([sys.executable, "onnxruntime_test_python_dmlgraph.py"], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
@@ -2489,11 +2521,11 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     nonlocal have_diff
                     have_diff = True
                     log.warning(
-                        "The updated document {} is different from the checked in version. "
-                        "Please regenerate the file{}, or copy the updated version from the "
-                        "CI build's published artifacts if applicable.".format(path, regenerate_qualifiers)
+                        f"The updated document {path} is different from the checked in version. "
+                        f"Please regenerate the file{regenerate_qualifiers}, or copy the updated version from the "
+                        "CI build's published artifacts if applicable."
                     )
-                    log.debug("diff:\n" + diff)
+                    log.debug("diff:\n" + diff)  # noqa: G003
 
             diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
             diff_file(contrib_op_doc_path)
@@ -2508,7 +2540,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
-    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
+    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))  # noqa: G001
 
     args = parse_arguments()
 
@@ -2605,7 +2637,7 @@ def main():
         raise BuildError("Using --get-api-doc requires a single build config")
 
     # Disabling unit tests for GPU on nuget creation
-    if args.use_openvino and args.use_openvino != "CPU_FP32" and args.build_nuget:
+    if args.use_openvino and args.use_openvino != "CPU" and args.build_nuget:
         args.test = False
 
     # GDK builds don't support testing
@@ -2744,7 +2776,13 @@ def main():
             cmake_extra_args += ["-G", args.cmake_generator]
 
         if is_macOS():
-            if not args.ios and not args.android and args.osx_arch == "arm64" and platform.machine() == "x86_64":
+            if (
+                not (args.ios or args.visionos)
+                and args.macos != "Catalyst"
+                and not args.android
+                and args.osx_arch == "arm64"
+                and platform.machine() == "x86_64"
+            ):
                 if args.test:
                     log.warning("Cannot test ARM64 build on X86_64. Will skip test running after build.")
                     args.test = False

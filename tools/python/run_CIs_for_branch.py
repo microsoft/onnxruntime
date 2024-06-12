@@ -13,13 +13,20 @@ from run_CIs_for_external_pr import get_pipeline_names
 from util.platform_helpers import is_windows
 
 
+class DefaultArgsRawHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=DefaultArgsRawHelpFormatter,
         description="""Run the CIs used to validate PRs for the specified branch.
 
+        If not specified, the branch will be inferred (if possible) by running `git branch --show-current`.
+
         If specified, the `--include` filter is applied first, followed by any `--exclude` filter.
+        `--include` and `--exclude` can be specified multiple times to accumulate values to include/exclude.
 
         Requires the Azure CLI with DevOps extension to be installed.
           Azure CLI: https://learn.microsoft.com/en-us/cli/azure/install-azure-cli
@@ -44,12 +51,30 @@ def _parse_args():
         """,
     )
 
-    parser.add_argument("-i", "--include", type=str, help="Include CIs that match this string. Case insensitive.")
-    parser.add_argument("-e", "--exclude", type=str, help="Exclude CIs that match this string. Case insensitive.")
+    current_branch = None
+    get_branch_result = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True, check=False)
+    if get_branch_result.returncode == 0:
+        current_branch = get_branch_result.stdout.strip()
+
+    parser.add_argument(
+        "-i", "--include", action="append", type=str, help="Include CIs that match this string. Case insensitive."
+    )
+    parser.add_argument(
+        "-e", "--exclude", action="append", type=str, help="Exclude CIs that match this string. Case insensitive."
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print selected CIs but do not run them.")
-    parser.add_argument("branch", type=str, help="Specify the branch to run.")
+    parser.add_argument(
+        "branch",
+        type=str,
+        nargs="?",
+        default=current_branch,
+        help="Specify the branch to run. Default is current branch if available.",
+    )
 
     args = parser.parse_args()
+    if not args.branch:
+        raise ValueError("Branch was unable to be inferred and must be specified")
+
     return args
 
 
@@ -77,25 +102,37 @@ def main():
     pipelines = get_pipeline_names()
     pipelines_to_run = []
     if args.include:
-        value = args.include.lower().strip()
+        values = [i.lower().strip() for i in args.include]
         for p in pipelines:
-            if value in p.lower():
+            include = False
+            for value in values:
+                if value in p.lower():
+                    include = True
+                    break
+
+            if include:
                 print(f"Including {p}")
                 pipelines_to_run.append(p)
     else:
         pipelines_to_run = pipelines
 
     if args.exclude:
-        value = args.exclude.lower().strip()
+        values = [e.lower().strip() for e in args.exclude]
         cur_pipelines = pipelines_to_run
         pipelines_to_run = []
         for p in cur_pipelines:
-            if value in p.lower():
+            exclude = False
+            for value in values:
+                if value in p.lower():
+                    exclude = True
+                    break
+
+            if exclude:
                 print(f"Excluding {p}")
             else:
                 pipelines_to_run.append(p)
 
-    print("Pipelines to run:")
+    print(f"Pipelines to run for {args.branch}:")
     for p in pipelines_to_run:
         print(f"\t{p}")
 

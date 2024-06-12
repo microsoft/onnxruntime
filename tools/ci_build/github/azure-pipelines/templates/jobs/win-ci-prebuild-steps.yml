@@ -13,6 +13,14 @@ parameters:
   type: boolean
   default: false
 
+- name: DownloadTRT
+  type: boolean
+  default: false
+
+- name: InstallONNX
+  type: boolean
+  default: true
+
 - name: WITHCACHE
   type: boolean
   default: false
@@ -83,6 +91,7 @@ steps:
   parameters:
     EnvSetupScript: ${{parameters.EnvSetupScript}}
     DownloadCUDA: ${{parameters.DownloadCUDA}}
+    DownloadTRT: ${{parameters.DownloadTRT}}
 
 - ${{ if eq(parameters.WITHCACHE, true) }}:
   - powershell: |
@@ -106,6 +115,7 @@ steps:
 
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
 
+- ${{ if eq(parameters.InstallONNX, true) }}:
   - ${{ if eq(parameters.WITHCACHE, true) }}:
     - task: Cache@2
       # machinepool is used to ensure the compiler is same

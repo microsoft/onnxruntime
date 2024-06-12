@@ -6,13 +6,13 @@
 #include <vector>
 
 #include "core/common/status.h"
+#include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -83,7 +83,8 @@ class QnnModel {
     return GetInputOutputIndex(name, outputs_info_);
   }
 
-  Status DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info);
+  Status DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info,
+                                            const Qnn_ContextHandle_t& context);
 
   const std::vector<std::string>& GetInputNames() const {
     return input_names_;

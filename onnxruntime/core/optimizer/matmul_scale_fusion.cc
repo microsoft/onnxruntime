@@ -245,7 +245,7 @@ Status ProcessNode(
   }
 
   Node& matmul_scale_node = graph.AddNode(
-      graph.GenerateNodeName(node.Name() + "_FusedMatMulAndScale"),
+      graph.GenerateNodeName(node.Name() + "/MatMulScaleFusion/"),
       "FusedMatMul",
       "Fused MatMul and Scale",
       fused_node_inputs,

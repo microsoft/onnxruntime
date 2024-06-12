@@ -18,7 +18,7 @@ from .operators.pad import QPad
 from .operators.pooling import QLinearPool
 from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.resize import QDQResize, QResize
-from .operators.softmax import QDQSoftmax, QLinearSoftmax
+from .operators.softmax import QLinearSoftmax
 from .operators.split import QDQSplit, QSplit
 from .operators.where import QDQWhere, QLinearWhere
 from .quant_utils import QuantizationMode
@@ -79,7 +79,6 @@ QDQRegistry = {
     "MatMul": QDQMatMul,
     "Split": QDQSplit,
     "Gather": QDQGather,
-    "Softmax": QDQSoftmax,
     "Where": QDQWhere,
     "InstanceNormalization": QDQNormalization,
     "LayerNormalization": QDQNormalization,

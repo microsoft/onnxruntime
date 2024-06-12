@@ -30,6 +30,10 @@ std::vector<PyObject*> custom_function_backward_runner(const char* func_name_cha
     bool is_backward = true;
     std::string log_prefix = func_name + " -> " + (is_backward ? "Backward " : "Forward ");
 
+#ifdef NVTX3_ENABLED
+    nvtxRangePushA(std::string(func_name + ".bw").c_str());
+#endif
+
     at::AutoGradMode enable_grad(false);
     auto it = KernelInfoStore::GetInstance().GetKernelInfoMap().find(kernel_invoke_id);
     if (it == KernelInfoStore::GetInstance().GetKernelInfoMap().end()) {
@@ -60,9 +64,10 @@ std::vector<PyObject*> custom_function_backward_runner(const char* func_name_cha
         tensor = torch::utils::tensor_fromDLPack(args[arg_index]);
       } else {
         TORCH_CHECK(args[arg_index] == Py_None, "Only None is supported for non-tensor input.");
-        PyObject* fw_kernel_invoke_id = PyObject_GetAttrString(ctx.ptr(), "fw_kernel_invoke_id");
+        py::object fw_kernel_invoke_id = PyObject_FastGetAttrString(ctx.ptr(), "fw_kernel_invoke_id");
+        TORCH_CHECK(fw_kernel_invoke_id.ptr() != nullptr, "fw_kernel_invoke_id is not found in the context.");
         std::string fw_kernel_invoke_id_str =
-            py::cast<std::string>(py::reinterpret_borrow<py::object>(fw_kernel_invoke_id));
+            py::cast<std::string>(fw_kernel_invoke_id);
         CustomFuncOpKernelInfo& fw_kernel_info =
             KernelInfoStore::GetInstance().GetKernelInfoMap().at(fw_kernel_invoke_id_str);
         if (fw_kernel_info.materialize_grads) {
@@ -90,6 +95,11 @@ std::vector<PyObject*> custom_function_backward_runner(const char* func_name_cha
     }
 
     py::tuple call_args = py::cast(raii_call_args);
+
+#ifdef NVTX3_ENABLED
+    nvtxRangePushA(std::string(func_name + ".call_func").c_str());
+#endif
+
     PyObject* result_pyobj;
     {
       at::AutoGradMode enable_grad(false);
@@ -104,6 +114,10 @@ std::vector<PyObject*> custom_function_backward_runner(const char* func_name_cha
     if (!result_pyobj) {
       throw std::runtime_error("Get null result");
     }
+
+#ifdef NVTX3_ENABLED
+    nvtxRangePop();
+#endif
 
     py::object ret = py::reinterpret_steal<py::object>(result_pyobj);
 
@@ -149,6 +163,10 @@ std::vector<PyObject*> custom_function_backward_runner(const char* func_name_cha
       unregister_grad_fn(ctx);
     }
 
+#ifdef NVTX3_ENABLED
+    nvtxRangePushA(std::string(func_name + ".final").c_str());
+#endif
+
     std::vector<PyObject*> rets;
     for (auto& py_obj : all_outputs_of_kernel_run) {
       PyObject* obj = py_obj.ptr();
@@ -163,9 +181,18 @@ std::vector<PyObject*> custom_function_backward_runner(const char* func_name_cha
       rets.push_back(PyCapsule_New(dlMTensor, "dltensor", dlpack_capsule_destructor));
     }
 
+#ifdef NVTX3_ENABLED
+    nvtxRangePop();
+#endif
+
     if (kernel_info.is_first_run) {
       kernel_info.is_first_run = false;
     }
+
+#ifdef NVTX3_ENABLED
+    nvtxRangePop();
+#endif
+
     return rets;
   } catch (const std::exception& e) {
     std::cerr << "custom_function_backward_runner failed with " << e.what() << std::endl;

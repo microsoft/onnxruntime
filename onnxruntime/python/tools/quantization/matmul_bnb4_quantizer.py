@@ -199,14 +199,14 @@ into a set of 4b integers with an absolute value scaling factor.
         "--quant_type",
         required=False,
         default=1,
-        options=[MatMulBnb4Quantizer.FP4, MatMulBnb4Quantizer.NF4],
+        choices=[MatMulBnb4Quantizer.FP4, MatMulBnb4Quantizer.NF4],
         help="Quantization data type. 0: FP4, 1: NF4",
     )
     parser.add_argument(
         "--block_size",
         required=False,
         default=64,
-        description="Block size for blockwise quantization. Note: bnb.nn.Linear4bit only uses block_size=64",
+        help="Block size for blockwise quantization. Note: bnb.nn.Linear4bit only uses block_size=64",
     )
     parser.add_argument("-v", "--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)

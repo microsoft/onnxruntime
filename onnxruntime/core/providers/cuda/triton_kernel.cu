@@ -83,7 +83,7 @@ void TryToLoadKernel() {
   // get all kernel symbols from curret lib.so
   size_t size = sizeof(kernel_infos) / sizeof(kernel_infos[0]);
 
-  for (int i = 0; i < size; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     auto k_i = kernel_infos[i];
 
     void* buff;

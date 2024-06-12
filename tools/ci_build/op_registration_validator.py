@@ -45,7 +45,7 @@ class RegistrationInfo:
 
 
 def _log_registration_error(r: RegistrationInfo, message: str):
-    log.error("Invalid registration for {}. {}\n{}".format(r.domain_and_op_str(), message, "".join(r.lines)))
+    log.error("Invalid registration for %s. %s\n%s", r.domain_and_op_str(), message, "".join(r.lines))
 
 
 class RegistrationValidator(op_registration_utils.RegistrationProcessor):

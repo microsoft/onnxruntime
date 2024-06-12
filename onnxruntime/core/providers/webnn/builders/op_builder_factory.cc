@@ -47,6 +47,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Activations
     CreateActivationOpBuilder("Elu", op_registrations);
+    CreateActivationOpBuilder("Gelu", op_registrations);
     CreateActivationOpBuilder("HardSigmoid", op_registrations);
     CreateActivationOpBuilder("HardSwish", op_registrations);
     CreateActivationOpBuilder("LeakyRelu", op_registrations);
@@ -181,6 +182,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateTransposeOpBuilder("Transpose", op_registrations);
   }
 
+  {  // Trilu
+    CreateTriangularOpBuilder("Trilu", op_registrations);
+  }
   return op_registrations;
 }
 

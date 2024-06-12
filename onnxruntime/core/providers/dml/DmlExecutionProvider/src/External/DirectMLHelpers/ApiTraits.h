@@ -12,7 +12,7 @@ struct EnumTraits
 template <>
 struct EnumTraits<DML_TENSOR_DATA_TYPE>
 {
-    static constexpr auto ValueCount = 12;
+    static constexpr auto ValueCount = 14;
 };
 
 template <>
@@ -24,7 +24,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 168;
+    static constexpr auto ValueCount = 174;
     static constexpr size_t ActivationFunctionCount = 26;
 };
 
@@ -62,7 +62,7 @@ struct EnumTraits<DML_CONVOLUTION_DIRECTION>
 template <>
 struct EnumTraits<DML_PADDING_MODE>
 {
-    static constexpr auto ValueCount = 5;
+    static constexpr auto ValueCount = 4;
 };
 
 template <>
@@ -86,7 +86,7 @@ struct EnumTraits<DML_FEATURE>
 template <>
 struct EnumTraits<DML_FEATURE_LEVEL>
 {
-    static constexpr auto ValueCount = 13;
+    static constexpr auto ValueCount = 14;
 };
 
 template <>
@@ -123,6 +123,12 @@ template <>
 struct EnumTraits<DML_MULTIHEAD_ATTENTION_MASK_TYPE>
 {
     static constexpr auto ValueCount = 5;
+};
+
+template <>
+struct EnumTraits<DML_QUANTIZATION_TYPE>
+{
+    static constexpr auto ValueCount = 3;
 };
 
 template <typename T>
@@ -880,12 +886,6 @@ struct OperatorDescTraits<DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_DESC>
 };
 
 template <>
-struct OperatorDescTraits<DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC>
-{
-    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT;
-};
-
-template <>
 struct OperatorDescTraits<DML_CONVOLUTION_INTEGER_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_CONVOLUTION_INTEGER;
@@ -1048,6 +1048,36 @@ struct OperatorDescTraits<DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT;
+};
+
+template <>
+struct OperatorDescTraits<DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2;
+};
+
+template <>
+struct OperatorDescTraits<DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MULTIHEAD_ATTENTION1;
+};
+
+template <>
+struct OperatorDescTraits<DML_QUANTIZE_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_QUANTIZE;
+};
+
+template <>
+struct OperatorDescTraits<DML_DEQUANTIZE_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_DEQUANTIZE;
+};
+
+template <>
 struct OperatorDescTraits<DML_ACTIVATION_ELU_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_ELU;
@@ -1202,6 +1232,7 @@ struct OperatorDescTraits<DML_ACTIVATION_HARD_SWISH_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_HARD_SWISH;
 };
+
 
 template <DML_OPERATOR_TYPE Type>
 struct OperatorTypeTraits
@@ -2073,6 +2104,30 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MATRIX_MULTIPLY_INTEGE
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2>
+{
+    using DescType = DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MULTIHEAD_ATTENTION1>
+{
+    using DescType = DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_QUANTIZE>
+{
+    using DescType = DML_QUANTIZE_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_DEQUANTIZE>
+{
+    using DescType = DML_DEQUANTIZE_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_ELU>
 {
     using DescType = DML_ACTIVATION_ELU_OPERATOR_DESC;
@@ -2228,16 +2283,15 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_HARD_SWISH>
     using DescType = DML_ACTIVATION_HARD_SWISH_OPERATOR_DESC;
 };
 
+
 // Calls a visitor functor, supplying an empty operator desc corresponding to the given DML_OPERATOR_TYPE as
 // the first argument.
-// 
+//
 // For example:
 //   Visit(DML_OPERATOR_ELEMENT_WISE_IDENTITY, [](auto tag) {
 //       using T = decltype(tag); // T is one of the DML_*_OPERATOR_DESC structs
 //   });
 //
-#pragma warning(push)
-#pragma warning(disable:4702)
 template <typename Visitor, typename... Ts>
 auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args)
 {
@@ -2531,6 +2585,14 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
         return std::invoke(std::forward<Visitor>(visitor), DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2:
+        return std::invoke(std::forward<Visitor>(visitor), DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_MULTIHEAD_ATTENTION1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_QUANTIZE:
+        return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_DEQUANTIZE:
+        return std::invoke(std::forward<Visitor>(visitor), DML_DEQUANTIZE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_ELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_ELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_CELU:
@@ -2584,11 +2646,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
     case DML_OPERATOR_ACTIVATION_HARD_SWISH:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_HARD_SWISH_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     default:
-        ORT_THROW_HR(E_INVALIDARG);
-        return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_RELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+        THROW_HR(E_INVALIDARG);
     }
 }
-#pragma warning(pop)
+
 
 namespace StringifyHelpers
 {
@@ -2619,6 +2680,8 @@ inline gsl::czstring ToString(DML_TENSOR_DATA_TYPE value)
     case DML_TENSOR_DATA_TYPE_FLOAT64: return "DML_TENSOR_DATA_TYPE_FLOAT64";
     case DML_TENSOR_DATA_TYPE_UINT64: return "DML_TENSOR_DATA_TYPE_UINT64";
     case DML_TENSOR_DATA_TYPE_INT64: return "DML_TENSOR_DATA_TYPE_INT64";
+    case DML_TENSOR_DATA_TYPE_UINT4: return "DML_TENSOR_DATA_TYPE_UINT4";
+    case DML_TENSOR_DATA_TYPE_INT4: return "DML_TENSOR_DATA_TYPE_INT4";
     default:
         assert(false);
         return "<unknown>";
@@ -2813,6 +2876,10 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_MULTIHEAD_ATTENTION: return "DML_OPERATOR_MULTIHEAD_ATTENTION";
     case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING: return "DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING";
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return "DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT";
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2: return "DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2";
+    case DML_OPERATOR_MULTIHEAD_ATTENTION1: return "DML_OPERATOR_MULTIHEAD_ATTENTION1";
+    case DML_OPERATOR_QUANTIZE: return "DML_OPERATOR_QUANTIZE";
+    case DML_OPERATOR_DEQUANTIZE: return "DML_OPERATOR_DEQUANTIZE";
     default:
         assert(false);
         return "<unknown>";
@@ -2968,6 +3035,7 @@ inline gsl::czstring ToString(DML_FEATURE_LEVEL value)
     case DML_FEATURE_LEVEL_6_0: return "DML_FEATURE_LEVEL_6_0";
     case DML_FEATURE_LEVEL_6_1: return "DML_FEATURE_LEVEL_6_1";
     case DML_FEATURE_LEVEL_6_2: return "DML_FEATURE_LEVEL_6_2";
+    case DML_FEATURE_LEVEL_6_3: return "DML_FEATURE_LEVEL_6_3";
     default:
         assert(false);
         return "<unknown>";
@@ -3050,6 +3118,20 @@ inline gsl::czstring ToString(DML_MULTIHEAD_ATTENTION_MASK_TYPE value)
     case DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_END_START: return "DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_SEQUENCE_END_START";
     case DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END: return "DML_MULTIHEAD_ATTENTION_MASK_TYPE_KEY_QUERY_SEQUENCE_LENGTH_START_END";
     case DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN: return "DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN";
+    default:
+        assert(false);
+        return "<unknown>";
+    }
+}
+
+template <>
+inline gsl::czstring ToString(DML_QUANTIZATION_TYPE value)
+{
+    switch (value)
+    {
+    case DML_QUANTIZATION_TYPE_NONE: return "DML_QUANTIZATION_TYPE_NONE";
+    case DML_QUANTIZATION_TYPE_SCALE: return "DML_QUANTIZATION_TYPE_SCALE";
+    case DML_QUANTIZATION_TYPE_SCALE_ZERO_POINT: return "DML_QUANTIZATION_TYPE_SCALE_ZERO_POINT";
     default:
         assert(false);
         return "<unknown>";

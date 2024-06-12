@@ -64,11 +64,8 @@ struct SGDOptimizerV2Algorithm : public OptimizerAlgorithmBase {
 };
 
 struct OptimizerAlorithmFactory {
-  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const PathString& optim_path,
+  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const GraphViewer& graph_viewer,
                                                                 int32_t& group_count);
-  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(const uint8_t* optim_model_data,
-                                                                size_t optim_model_data_len, int32_t& group_count);
-  static std::unique_ptr<OptimizerAlgorithmBase> CreateInstance(std::shared_ptr<Model> model, int32_t& group_count);
 };
 
 struct CheckpointState;

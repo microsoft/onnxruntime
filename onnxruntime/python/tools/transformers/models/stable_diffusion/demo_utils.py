@@ -23,7 +23,7 @@ import argparse
 import os
 import sys
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import controlnet_aux
 import cv2
@@ -246,6 +246,8 @@ def parse_arguments(is_xl: bool, parser):
 
     group = parser.add_argument_group("Options for ORT_CUDA engine only")
     group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
+    group.add_argument("--max-cuda-graphs", type=int, default=1, help="Max number of cuda graphs to use. Default 1.")
+    group.add_argument("--user-compute-stream", action="store_true", help="Use user compute stream.")
 
     # TensorRT only options
     group = parser.add_argument_group("Options for TensorRT (--engine=TRT) only")
@@ -400,15 +402,16 @@ def initialize_pipeline(
     max_image_size: int = 1024,
     max_batch_size: int = 16,
     opt_batch_size: int = 1,
-    build_all_tactics=False,
-    do_classifier_free_guidance=False,
-    lcm=False,
+    build_all_tactics: bool = False,
+    do_classifier_free_guidance: bool = False,
+    lcm: bool = False,
     controlnet=None,
     lora_weights=None,
-    lora_scale=1.0,
-    use_fp16_vae=True,
-    use_vae=True,
-    framework_model_dir=None,
+    lora_scale: float = 1.0,
+    use_fp16_vae: bool = True,
+    use_vae: bool = True,
+    framework_model_dir: Optional[str] = None,
+    max_cuda_graphs: int = 1,
 ):
     pipeline_info = PipelineInfo(
         version,
@@ -465,6 +468,7 @@ def initialize_pipeline(
             tmp_dir=os.path.join(work_dir or ".", engine_type.name, pipeline_info.short_name(), "tmp"),
             device_id=torch.cuda.current_device(),
             import_engine_dir=import_engine_dir,
+            max_cuda_graphs=max_cuda_graphs,
         )
     elif engine_type == EngineType.ORT_TRT:
         pipeline.backend.build_engines(
@@ -562,6 +566,7 @@ def load_pipelines(args, batch_size=None):
         "use_fp16_vae": "xl" in args.version,
         "use_vae": True,
         "framework_model_dir": args.framework_model_dir,
+        "max_cuda_graphs": args.max_cuda_graphs,
     }
 
     if "xl" in args.version:

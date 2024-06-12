@@ -8,6 +8,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
+
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
@@ -64,9 +68,13 @@ TEST(GreedySearchTest, GptGreedySearchFp16_VocabPadded) {
 
   if (is_cuda || is_rocm) {
     Ort::SessionOptions session_options;
+#ifdef USE_CUDA
     if (is_cuda) {
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+      OrtCUDAProviderOptionsV2 cuda_options;
+      cuda_options.use_tf32 = false;
+      session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
     }
+#endif
     if (is_rocm) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
     }
@@ -145,9 +153,13 @@ TEST(GreedySearchTest, GptGreedySearchFp32) {
 
   if (is_cuda || is_rocm) {
     Ort::SessionOptions session_options;
+#ifdef USE_CUDA
     if (is_cuda) {
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+      OrtCUDAProviderOptionsV2 cuda_options;
+      cuda_options.use_tf32 = false;
+      session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
     }
+#endif
     if (is_rocm) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
     }

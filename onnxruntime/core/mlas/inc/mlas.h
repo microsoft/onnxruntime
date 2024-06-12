@@ -1222,6 +1222,26 @@ MlasQuantizeLinear(
     OutputType ZeroPoint
     );
 
+void
+MLASCALL
+MlasQuantizeLinearU4(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasQuantizeLinearS4(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    );
+
 /**
  * @brief Requantize a block of the intermediate buffer to the output buffer,
  *        optionally adding the supplied bias

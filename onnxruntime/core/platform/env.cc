@@ -34,4 +34,29 @@ std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors> af
 
 Env::Env() = default;
 
+std::pair<int, std::string> GetErrnoInfo() {
+  auto err = errno;
+  std::string msg;
+
+  if (err != 0) {
+    char buf[512];
+
+#if defined(_WIN32)
+    auto ret = strerror_s(buf, sizeof(buf), err);
+    msg = ret == 0 ? buf : "Failed to get error message";  // buf is guaranteed to be null terminated by strerror_s
+#else
+    // strerror_r return type differs by platform.
+    auto ret = strerror_r(err, buf, sizeof(buf));
+    if constexpr (std::is_same_v<decltype(ret), int>) {  // POSIX returns int
+      msg = ret == 0 ? buf : "Failed to get error message";
+    } else {
+      // GNU returns char*
+      msg = ret;
+    }
+#endif
+  }
+
+  return {err, msg};
+}
+
 }  // namespace onnxruntime

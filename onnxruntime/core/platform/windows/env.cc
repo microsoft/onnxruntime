@@ -32,7 +32,7 @@ limitations under the License.
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
-#if defined(_M_X64) && !defined(_M_ARM64EC) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+#if defined(_M_X64) && !defined(_M_ARM64EC)
 #include "core/platform/windows/hardware_core_enumerator.h"
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -110,11 +110,10 @@ class WindowsThread : public EnvThread {
                                       local_param.get(), 0,
                                       &threadID);
       if (th_handle == 0) {
-        auto err = errno;
         auto dos_error = _doserrno;
-        char message_buf[256];
-        strerror_s(message_buf, sizeof(message_buf), err);
-        ORT_THROW("WindowThread:_beginthreadex failed with message: ", message_buf, " doserrno: ", dos_error);
+        auto [err, msg] = GetErrnoInfo();
+        ORT_THROW("WindowThread:_beginthreadex failed with errno:", err, " message:", msg,
+                  " doserrno:", dos_error);
       }
       local_param.release();
       hThread.reset(reinterpret_cast<HANDLE>(th_handle));
@@ -252,7 +251,7 @@ void WindowsEnv::SleepForMicroseconds(int64_t micros) const {
 }
 
 // EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
-#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID)
 static constexpr std::array<int, 3> kVendorID_Intel = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
 #endif
 int WindowsEnv::DefaultNumCores() {
@@ -261,7 +260,7 @@ int WindowsEnv::DefaultNumCores() {
 
 int WindowsEnv::GetNumPhysicalCpuCores() const {
 // EIGEN_NO_CPUID is not defined in any C/C++ source code. It is a compile option.
-#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID) && defined(ONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH)
+#if defined(_M_X64) && !defined(_M_ARM64EC) && !defined(EIGEN_NO_CPUID)
   // The following code is a temporary fix for a perf problem on Intel's Meteor Lake CPUs. The Intel compute platform has
   // a hybrid architecture that some CPU cores runs significant slower than the others. If we distribute our compute work
   // evenly to all CPU cores, the slowest CPU core will drag the performance down. So, instead, we reduce the total number

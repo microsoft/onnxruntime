@@ -7,6 +7,22 @@
 #include "core/framework/ort_value.h"
 #include "contrib_ops/cpu/utils/console_dumper.h"
 
+#define DUMP_TENSOR_LEVEL 0  // change it to 1 or 2 if want to enable dumping for code not in generation.
+
+#if DUMP_TENSOR_LEVEL > 0
+#define DUMP_TENSOR_INIT() onnxruntime::contrib::cuda::transformers::CudaTensorConsoleDumper dumper
+#define DUMP_TENSOR(...) dumper.Print(__VA_ARGS__)
+#else
+#define DUMP_TENSOR_INIT()
+#define DUMP_TENSOR(...)
+#endif
+
+#if DUMP_TENSOR_LEVEL > 1
+#define DUMP_TENSOR_D(...) dumper.Print(__VA_ARGS__)
+#else
+#define DUMP_TENSOR_D(...)
+#endif
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {

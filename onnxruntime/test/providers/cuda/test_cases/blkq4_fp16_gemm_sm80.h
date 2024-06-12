@@ -14,12 +14,14 @@
 
 #pragma once
 
-#include <random>
+#include "test/cuda_host/blkq4_fp16_quant_sm80.h"
 
-#include "core/util/matrix_layout.h"
+#include <random>
+#include <thrust/host_vector.h>
+
 #include "core/common/common.h"
 #include "core/mickey/blk_q4/f16_prepack_sm80.h"
-#include "test/cuda_host/blkq4_fp16_quant_sm80.h"
+#include "core/util/matrix_layout.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -48,10 +50,10 @@ Status sm80_supported();
 template <typename ElementT, int block_size, bool col_blocking, bool has_offsets>
 inline void blkq4_weights_gen(
     int rows, int columns,
-    std::vector<ElementT>& dequants,
-    std::vector<uint8_t>& q_weights,
-    std::vector<ElementT>& q_scales,
-    std::vector<uint8_t>& q_zp) {
+    thrust::host_vector<ElementT>& dequants,
+    thrust::host_vector<uint8_t>& q_weights,
+    thrust::host_vector<ElementT>& q_scales,
+    thrust::host_vector<uint8_t>& q_zp) {
   using Base = onnxruntime::cuda::BlockwiseQuantization<
       ElementT,
       block_size,
@@ -74,7 +76,7 @@ inline void blkq4_weights_gen(
 
   const auto q_weight_shape = Base::get_quant_weights_shape(rows, columns);
   const auto meta_shape = Base::get_quant_meta_shape(rows, columns);
-  const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
+  [[maybe_unused]] const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
 
   //
   // For testing quantization and dequantization, it is not straight
@@ -120,9 +122,9 @@ inline void blkq4_weights_gen(
 
   q_scales.resize(meta_shape.product());
   for (size_t i = 0; i < q_scales.size(); i++) {
-    uint32_t v = dis(gen);
-    uint32_t m = (v % 63) + 1;
-    uint32_t e = (v >> 6) % 4;
+    uint32_t vl = dis(gen);
+    uint32_t m = (vl % 63) + 1;
+    uint32_t e = (vl >> 6) % 4;
     q_scales[i] = ElementT(m / static_cast<float>(1 << (2 + e)));
   }
   MatrixRef<ElementT, ColumnMajorLayout, true> tensor_scale(

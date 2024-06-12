@@ -5,7 +5,9 @@
 #include <stdint.h>
 #include <vector>
 #include <mutex>
+#include <limits>
 #include <assert.h>
+#include <math.h>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cuda_common.h"
@@ -229,6 +231,9 @@ __device__ __inline__ double _Erf(double a) { return erf(a); }
 template <>
 __device__ __inline__ half _Erf(half a) { return half(erff((float)a)); }
 
+template <>
+__device__ __inline__ BFloat16 _Erf(BFloat16 a) { return BFloat16(erff((float)a)); }
+
 template <typename T>
 __device__ __host__ __inline__ T _Round(T a);
 
@@ -345,8 +350,28 @@ __device__ __inline__ half _Pow(half a, half b) { return half(powf((float)a, (fl
 template <typename T>
 __device__ __inline__ T _Min(T a, T b) { return a < b ? a : b; }
 
+template <>
+__device__ __inline__ float _Min(float a, float b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : ( a < b ? a : b );
+}
+
+template <>
+__device__ __inline__ double _Min(double a, double b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : ( a < b ? a : b );
+}
+
 template <typename T>
 __device__ __inline__ T _Max(T a, T b) { return a > b ? a : b; }
+
+template <>
+__device__ __inline__ float _Max(float a, float b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : ( a > b ? a : b );
+}
+
+template <>
+__device__ __inline__ double _Max(double a, double b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : ( a > b ? a : b );
+}
 
 template <typename T>
 __device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
@@ -485,7 +510,7 @@ struct IsInfTyped<BFloat16> {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-template<typename T>
+template <typename T>
 struct ReturnFalse {
   constexpr static bool __device__ __inline__ IsInf(T) { return false; }
   constexpr static bool __device__ __inline__ IsInfPos(T) { return false; }
@@ -531,6 +556,63 @@ struct _IsInf {
     }
   }
 };
+
+// float and double
+template <typename T>
+struct _IsNan {
+  __device__ __inline__ bool operator()(T a) const {
+    return isnan(a);
+  }
+};
+
+template <>
+struct _IsNan<half> {
+  __device__ __inline__ bool operator()(half a) const {
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~MLFloat16::kSignMask)
+           > MLFloat16::kPositiveInfinityBits;
+  }
+};
+
+template <>
+struct _IsNan<BFloat16> {
+  __device__ __inline__ bool operator()(BFloat16 a) const {
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~BFloat16::kSignMask)
+           > BFloat16::kPositiveInfinityBits;
+  }
+};
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template<>
+struct _IsNan<Float8E4M3FN> {
+  __device__ __inline__ bool operator()(Float8E4M3FN a) const {
+    return (*reinterpret_cast<const uint8_t*>(&a) & 0x7f) == 0x7f;
+  }
+};
+
+template<>
+struct _IsNan<Float8E4M3FNUZ> {
+  __device__ __inline__ bool operator()(Float8E4M3FNUZ a) const {
+    return *reinterpret_cast<const uint8_t*>(&a) == 0x80;
+  }
+};
+
+template<>
+struct _IsNan<Float8E5M2> {
+  __device__ __inline__ bool operator()(Float8E5M2 a) const {
+    uint8_t c = *reinterpret_cast<const uint8_t*>(&a);
+    return ((c & 0x7c) == 0x7c) && ((c & 0x03) != 0x00);
+  }
+};
+
+template<>
+struct _IsNan<Float8E5M2FNUZ> {
+  __device__ __inline__ bool operator()(Float8E5M2FNUZ a) const {
+    return *reinterpret_cast<const uint8_t*>(&a) == 0x80;
+  }
+};
+
+#endif
 
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.

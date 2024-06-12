@@ -47,6 +47,14 @@ jobs:
         # Details on CodeQL's query packs refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
         queries: security-extended,security-and-quality
 
+    # Setup Java to use a version that is not too old for the project
+    - if: ${{ matrix.language == 'java' }}
+      name: Setup Java 11
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: 'microsoft'
+
     # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
     # If this step fails, then you should remove it and run the build manually (see below)
     - if: ${{ matrix.language != 'cpp' }}

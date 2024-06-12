@@ -36,7 +36,7 @@ struct ATenOperator {
   size_t return_size;
   std::vector<c10::TypeKind> ret_kinds;
 
-  c10::IValue ToIValueArgument(const DLManagedTensor* dlpack, size_t index) const {
+  c10::IValue ToIValueArgument(DLManagedTensor* dlpack, size_t index) const {
     TORCH_INTERNAL_ASSERT(index < argument_size);
     bool is_optional = is_optional_arguments[index];
     TORCH_INTERNAL_ASSERT(dlpack || is_optional || default_values[index] ||

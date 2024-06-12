@@ -11,12 +11,16 @@ class DeprecatedSubGraphSessionState(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsDeprecatedSubGraphSessionState(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = DeprecatedSubGraphSessionState()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsDeprecatedSubGraphSessionState(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def DeprecatedSubGraphSessionStateBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -43,7 +47,26 @@ class DeprecatedSubGraphSessionState(object):
             return obj
         return None
 
-def DeprecatedSubGraphSessionStateStart(builder): builder.StartObject(2)
-def DeprecatedSubGraphSessionStateAddGraphId(builder, graphId): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(graphId), 0)
-def DeprecatedSubGraphSessionStateAddSessionState(builder, sessionState): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(sessionState), 0)
-def DeprecatedSubGraphSessionStateEnd(builder): return builder.EndObject()
+def DeprecatedSubGraphSessionStateStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    DeprecatedSubGraphSessionStateStart(builder)
+
+def DeprecatedSubGraphSessionStateAddGraphId(builder, graphId):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(graphId), 0)
+
+def AddGraphId(builder, graphId):
+    DeprecatedSubGraphSessionStateAddGraphId(builder, graphId)
+
+def DeprecatedSubGraphSessionStateAddSessionState(builder, sessionState):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(sessionState), 0)
+
+def AddSessionState(builder, sessionState):
+    DeprecatedSubGraphSessionStateAddSessionState(builder, sessionState)
+
+def DeprecatedSubGraphSessionStateEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return DeprecatedSubGraphSessionStateEnd(builder)

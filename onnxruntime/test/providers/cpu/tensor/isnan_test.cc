@@ -10,11 +10,15 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-void run_is_nan_test(int opset, const std::vector<int64_t>& dims, const std::initializer_list<T>& input, const std::initializer_list<bool>& output) {
+void run_is_nan_test(int opset, const std::vector<int64_t>& dims, const std::initializer_list<T>& input, const std::initializer_list<bool>& output, bool skip_trt = false) {
   OpTester test("IsNaN", opset, kOnnxDomain);
   test.AddInput<T>("X", dims, input);
   test.AddOutput<bool>("Y", dims, output);
-  test.Run();
+  if (skip_trt) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test.Run();
+  }
 }
 
 TEST(IsNaNOpTest, IsNaNFloat9) {
@@ -38,11 +42,25 @@ TEST(IsNaNOpTest, IsNaNFloat16_9) {
   run_is_nan_test(9, dims, input, output);
 }
 
+TEST(IsNaNOpTest, IsNaNFloat16_13) {
+  std::vector<int64_t> dims{2, 2};
+  std::initializer_list<MLFloat16> input = {MLFloat16::One, MLFloat16::NaN, MLFloat16(2.0f), MLFloat16::NaN};
+  std::initializer_list<bool> output = {false, true, false, true};
+  run_is_nan_test(13, dims, input, output);
+}
+
 TEST(IsNaNOpTest, IsNaNFloat16_20) {
   std::vector<int64_t> dims{2, 2};
-  std::initializer_list<MLFloat16> input = {MLFloat16(1.0f), MLFloat16::NaN, MLFloat16(2.0f), MLFloat16::NaN};
+  std::initializer_list<MLFloat16> input = {MLFloat16::One, MLFloat16::NaN, MLFloat16(2.0f), MLFloat16::NaN};
   std::initializer_list<bool> output = {false, true, false, true};
   run_is_nan_test(20, dims, input, output);
+}
+
+TEST(IsNaNOpTest, IsNaNBFloat16_20) {
+  std::vector<int64_t> dims{2, 2};
+  std::initializer_list<BFloat16> input = {BFloat16::One, BFloat16::NaN, BFloat16(2.0f), BFloat16::NaN};
+  std::initializer_list<bool> output = {false, true, false, true};
+  run_is_nan_test(20, dims, input, output, true);  // Skip as TRT10 supports BF16 but T4 GPU run on TRT CIs doesn't
 }
 
 TEST(IsNaNOpTest, IsNaNDouble9) {
@@ -64,7 +82,7 @@ TEST(IsNaNOpTest, IsNaNFloat8E4M3FN) {
   std::vector<int64_t> dims{2, 2};
   std::initializer_list<Float8E4M3FN> input = {Float8E4M3FN(1.0f), Float8E4M3FN(-NAN), Float8E4M3FN(2.0f), Float8E4M3FN(NAN)};
   std::initializer_list<bool> output = {false, true, false, true};
-  run_is_nan_test(20, dims, input, output);
+  run_is_nan_test(20, dims, input, output, true);  // No direct FP8 usage allowed without QDQ. Skip since TRT10
 }
 
 TEST(IsNaNOpTest, IsNaN_Float8E4M3FNUZ) {

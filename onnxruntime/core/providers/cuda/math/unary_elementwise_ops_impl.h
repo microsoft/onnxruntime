@@ -151,6 +151,20 @@ void Explicit_Impl_IsInf(cudaStream_t stream, int op_set,
                          int32_t input_data_type,
                          const void* input_raw, bool* output_data,
                          size_t count);
+
+// IsNan
+#define ISNAN_OPSET9_FLOATS float, double, MLFloat16
+#define ISNAN_OPSET13_FLOATS float, double, MLFloat16, BFloat16
+#if !defined(DISABLE_FLOAT8_TYPES)
+#define ISNAN_OPSET20_FLOATS float, double, MLFloat16, BFloat16, Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, \
+                             Float8E5M2FNUZ
+#else
+#define ISNAN_OPSET20_FLOATS ISNAN_OPSET13_FLOATS
+#endif
+
+void Explicit_Impl_IsNan(cudaStream_t stream, int32_t input_data_type,
+                         const void* input_raw, bool* output_data, size_t count);
+
 }  // namespace cuda
 
 }  // namespace onnxruntime

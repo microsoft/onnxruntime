@@ -21,6 +21,11 @@ class HuggingfaceFastGelu(torch.nn.Module):
         return 0.5 * x * (1.0 + torch.tanh(x * 0.7978845608 * (1.0 + 0.044715 * x * x)))
 
 
+class HuggingfaceQuickGelu(torch.nn.Module):
+    def forward(self, x):
+        return x * torch.sigmoid(1.702 * x)
+
+
 class MegatronGelu(torch.nn.Module):
     def forward(self, x):
         # The original implementation using ones_like, which might cause problem for input with dynamic axes in onnx.
@@ -36,6 +41,7 @@ class MegatronFastGelu(torch.nn.Module):
 test_cases = [
     ("huggingface", "Gelu", HuggingfaceGelu),
     ("huggingface", "FastGelu", HuggingfaceFastGelu),
+    ("huggingface", "QuickGelu", HuggingfaceQuickGelu),
     ("megatron", "Gelu", MegatronGelu),
     ("megatron", "FastGelu", MegatronFastGelu),
 ]

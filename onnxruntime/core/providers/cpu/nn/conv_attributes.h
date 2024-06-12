@@ -73,7 +73,8 @@ struct ConvAttributes {
 
   ~ConvAttributes() = default;
 
-  Status ComputeKernelShape(const TensorShape& weight_shape, TensorShapeVector& kernel_shape, bool weight_channels_last = false) const {
+  Status ComputeKernelShape(const TensorShape& weight_shape, TensorShapeVector& kernel_shape,
+                            bool weight_channels_last = false) const {
     if (kernel_shape_specified) {
       kernel_shape = kernel_shape_;
       if (kernel_shape.size() + 2 != weight_shape.NumDimensions()) {

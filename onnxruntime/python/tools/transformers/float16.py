@@ -411,9 +411,7 @@ def convert_float_to_float16(
             value_info_list.append(make_value_info_from_tensor(value.initializer))
             if value.fp32_nodes and not force_fp16_initializers:
                 logger.info(
-                    "initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:{}".format(
-                        value.fp16_nodes
-                    )
+                    f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:{value.fp16_nodes}"
                 )
 
     # Some operators have data type fixed as float for some input. Add a float16 to float cast for those inputs.

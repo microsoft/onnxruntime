@@ -75,8 +75,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
   bool IsGraphCaptureEnabled() const override;
-  bool IsGraphCaptured() const override;
-  Status ReplayGraph() override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  Status ReplayGraph(int graph_annotation_id) override;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
@@ -139,10 +139,10 @@ class ROCMExecutionProvider : public IExecutionProvider {
     }
 
     bool IsGraphCaptureAllowed() const;
-    void CaptureBegin();
-    void CaptureEnd();
-    bool IsGraphCaptured() const;
-    Status ReplayGraph();
+    void CaptureBegin(int graph_annotation_id);
+    void CaptureEnd(int graph_annotation_id);
+    bool IsGraphCaptured(int graph_annotation_id) const;
+    Status ReplayGraph(int graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();
 
    private:

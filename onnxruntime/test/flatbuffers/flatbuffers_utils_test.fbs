@@ -1,0 +1,15 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Update the generated schema using /onnxruntime/core/flatbuffers/schema/compile_schema.py.
+// See /onnxruntime/core/flatbuffers/schema/README.md for usage instructions.
+// Diff the old and new generated header. Copy #include info from old as it has some customizations.
+include "../../core/flatbuffers/schema/ort.fbs";
+
+namespace onnxruntime.fbs.test;
+
+table TestData {
+    initializers:[Tensor];
+}
+
+root_type TestData;

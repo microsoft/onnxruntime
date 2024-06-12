@@ -146,18 +146,21 @@ class QDQGemm(QDQOperatorBase):
         if not self.disable_qdq_for_node_output:
             self.quantizer.quantize_activation_tensor(node.output[0])
 
-        if self.quantizer.is_per_channel():
-            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], 0 if is_B_transposed(node) else 1)
+        is_weight_per_channel, weight_axis = self.quantizer.is_tensor_per_channel(
+            node.input[1], default_axis=0 if is_B_transposed(node) else 1
+        )
+        if is_weight_per_channel:
+            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], weight_axis)
         else:
             self.quantizer.quantize_weight_tensor(node.input[1])
 
         if len(node.input) == 3:
             if self.quantizer.is_input_a_initializer(node.input[2]):
-                self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1], get_beta(self.node))
+                self.quantizer.quantize_bias_tensor(
+                    node.name, node.input[2], node.input[0], node.input[1], get_beta(self.node)
+                )
                 set_default_beta(self.node)
             else:
                 logging.warning(
-                    "Bias of Gemm node '{}' is not constant. Please exclude this node for better performance.".format(
-                        self.node.name
-                    )
+                    f"Bias of Gemm node '{self.node.name}' is not constant. Please exclude this node for better performance."
                 )

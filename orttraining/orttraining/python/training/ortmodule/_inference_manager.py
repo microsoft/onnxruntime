@@ -27,7 +27,7 @@ class InferenceManager(GraphExecutionManager):
     """
 
     def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger):
-        super().__init__(model, debug_options, fallback_manager, torch.onnx.TrainingMode.EVAL, logger)
+        super().__init__(model, debug_options, torch.onnx.TrainingMode.EVAL, fallback_manager, logger)
 
     @staticmethod
     def execution_session_run_forward(
@@ -124,10 +124,9 @@ class InferenceManager(GraphExecutionManager):
 
                 # Build the inference graph
                 if build_graph:
-                    graph_transformer_config = self._get_graph_transformer_config()
-                    # Set the config according to input inspection.
-                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+                    self._detect_from_inputs(inputs, kwargs)
 
+                    graph_transformer_config = self._get_graph_transformer_config()
                     # Build the graph
                     self._build_graph(graph_transformer_config)
 

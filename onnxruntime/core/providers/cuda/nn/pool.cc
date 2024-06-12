@@ -87,6 +87,8 @@ POOLING_KERNEL_VERSIONED_WITH_INDICES(MaxPool, float, MaxPool<8>, 11, 11, kMSInt
 POOLING_KERNEL_VERSIONED_WITH_INDICES(MaxPool, MLFloat16, MaxPool<8>, 11, 11, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_WITH_INDICES(MaxPool, float, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_WITH_INDICES(MaxPool, MLFloat16, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_WITH_INDICES(MaxPool, int8_t, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_WITH_INDICES(MaxPool, uint8_t, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
 
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, kMSInternalNHWCDomain, true)
@@ -145,8 +147,8 @@ class CudnnPoolingDescriptor final {
   cudnnPoolingDescriptor_t desc_;
 };
 
-template <typename T, typename PoolType, bool NHWC>
-Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, typename PoolType, bool Layout>
+Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
@@ -157,16 +159,21 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   }
 
   auto kernel_shape = pool_attrs_.kernel_shape;
-  auto pads = pool_attrs_.pads;
   auto strides = pool_attrs_.strides;
+  TensorShapeVector pads = pool_attrs_.pads;
 
   if (pool_attrs_.global_pooling) {
-    kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
-    pads.assign(kernel_shape.size(), 0);
+    if constexpr (Layout == LAYOUT_NCHW) {
+      kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
+    } else if constexpr (Layout == LAYOUT_NHWC) {
+      kernel_shape.assign(x_dims.begin() + 1, x_dims.end() - 1);
+    }
+    pads.assign(2 * kernel_shape.size(), 0);
     strides.assign(kernel_shape.size(), 1);
   }
-  auto out_channel = NHWC ? x_shape[3] : x_shape[1];
-  auto y_dims = pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, NHWC);
+  auto out_channel = (Layout == LAYOUT_NHWC) ? x_shape[x_dims.size() - 1] : x_shape[1];
+
+  auto y_dims = pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, Layout == LAYOUT_NHWC);
   TensorShape y_shape(y_dims);
   Tensor* Y = context->Output(0, y_shape);
   // special case when there is a dim value of 0 in the shape.
@@ -178,20 +185,22 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   TensorShapeVector x_dims_cudnn(x_dims.begin(), x_dims.end());
   TensorShapeVector y_dims_cudnn(y_dims);
   if (kernel_shape.size() < 2) {
-    // cudnn only takes 4D or 5D input, so pad dimensions if needed
-    if (NHWC) {
-      x_dims_cudnn.insert(x_dims_cudnn.begin() + 1, 1);
-      y_dims_cudnn.insert(y_dims_cudnn.begin() + 1, 1);
-      kernel_shape.insert(kernel_shape.begin() + 1, 1);
-      strides.insert(strides.begin() + 1, 1);
-    } else {
-      x_dims_cudnn.push_back(1);
-      y_dims_cudnn.push_back(1);
-      kernel_shape.push_back(1);
-      strides.push_back(1);
+    // cuDNN only takes 4D or 5D input, so pad dimensions if needed
+    if constexpr (Layout == LAYOUT_NHWC) {
+      x_dims_cudnn.insert(x_dims_cudnn.end() - 1, 1);
+      y_dims_cudnn.insert(y_dims_cudnn.end() - 1, 1);
+      pads.insert(pads.begin() + pads.size() / 2, 0);
+      pads.insert(pads.end(), 0);
+      kernel_shape.insert(kernel_shape.end(), 1);
+      strides.insert(strides.end(), 1);
+    } else {  // Layout == LAYOUT_NCHW
+      x_dims_cudnn.insert(x_dims_cudnn.end(), 1);
+      y_dims_cudnn.insert(y_dims_cudnn.end(), 1);
+      pads.insert(pads.begin() + pads.size() / 2, 0);
+      pads.insert(pads.end(), 0);
+      kernel_shape.insert(kernel_shape.end(), 1);
+      strides.insert(strides.end(), 1);
     }
-    pads.insert(pads.begin() + kernel_shape.size(), 0);
-    pads.insert(pads.end(), 0);
   }
 
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
@@ -208,8 +217,8 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
     const auto beta = Consts<float>::Zero;
     CudnnTensor x_tensor;
     CudnnTensor y_tensor;
-    ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<float>(), NHWC));
-    ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<float>(), NHWC));
+    ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<float>(), Layout == LAYOUT_NHWC));
+    ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<float>(), Layout == LAYOUT_NHWC));
 
     const auto input_count = x_shape.Size();
     const auto output_count = y_shape.Size();
@@ -225,8 +234,8 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
     const auto beta = Consts<CudaT>::Zero;
     CudnnTensor x_tensor;
     CudnnTensor y_tensor;
-    ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>(), NHWC));
-    ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>(), NHWC));
+    ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>(), Layout == LAYOUT_NHWC));
+    ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>(), Layout == LAYOUT_NHWC));
 
     CUDNN_RETURN_IF_ERROR(
         PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
@@ -235,8 +244,8 @@ Status Pool<T, PoolType, NHWC>::ComputeInternal(OpKernelContext* context) const 
   return Status::OK();
 }
 
-template <typename T, bool NHWC>
-Status Pool<T, MaxPool<8>, NHWC>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, bool Layout>
+Status Pool<T, MaxPool<8>, Layout>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
@@ -251,12 +260,16 @@ Status Pool<T, MaxPool<8>, NHWC>::ComputeInternal(OpKernelContext* context) cons
   auto strides = this->pool_attrs_.strides;
 
   if (this->pool_attrs_.global_pooling) {
-    kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
-    pads.assign(kernel_shape.size(), 0);
+    if constexpr (Layout == LAYOUT_NCHW) {
+      kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
+    } else if constexpr (Layout == LAYOUT_NHWC) {
+      kernel_shape.assign(x_dims.begin() + 1, x_dims.end() - 1);
+    }
+    pads.assign(2 * kernel_shape.size(), 0);  // x{i}_begin + x{i}_end
     strides.assign(kernel_shape.size(), 1);
   }
-  auto out_channel = NHWC ? x_shape[3] : x_shape[1];
-  auto y_dims = this->pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, NHWC);
+  auto out_channel = Layout == LAYOUT_NHWC ? x_shape[x_shape.NumDimensions() - 1] : x_shape[1];
+  auto y_dims = this->pool_attrs_.SetOutputSize(x_shape, out_channel, &pads, Layout == LAYOUT_NHWC);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
 
   // special case when there is a dim value of 0 in the shape.
@@ -265,13 +278,22 @@ Status Pool<T, MaxPool<8>, NHWC>::ComputeInternal(OpKernelContext* context) cons
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
-  Tensor* I = context->Output(1, TensorShape(y_dims));
+  // I is in NCHW format and the contained indices use NCHW math to compute the index
+  auto i_dims = y_dims;
+  if constexpr (Layout == LAYOUT_NHWC) {
+    // y_dims in NHWDC format, i_dims has to be in NCHWD format.
+    i_dims.insert(i_dims.begin() + 1, i_dims.back());  // N*C*HWDC
+    i_dims.pop_back();                                 // NCHW
+  }
+
+  Tensor* I = context->Output(1, TensorShape(i_dims));
   if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->MutableData<int64_t>();
-    MaxPoolWithIndex<CudaT>(this->Stream(context), x_shape, TensorShape(y_dims), kernel_shape, strides, pads,
-                            this->pool_attrs_.dilations, this->pool_attrs_.storage_order, x_data, y_data, i_data);
+    MaxPoolWithIndex<CudaT, Layout == LAYOUT_NHWC>(this->Stream(context), x_shape, TensorShape(y_dims), kernel_shape,
+                                                   strides, pads, this->pool_attrs_.dilations,
+                                                   this->pool_attrs_.storage_order, x_data, y_data, i_data);
   } else {
-    ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>, NHWC>::ComputeInternal(context)));
+    ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>, Layout == LAYOUT_NHWC>::ComputeInternal(context)));
   }
   return Status::OK();
 }

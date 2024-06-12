@@ -4,7 +4,6 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import copy
 import logging
 import os
 import tempfile
@@ -51,12 +50,15 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         self,
         encoder_input_ids: torch.Tensor,
         decoder_input_ids: torch.Tensor = None,
+        remove_hooks: bool = False,
     ):
         encoder_hidden_states: torch.FloatTensor = self.whisper_encoder(encoder_input_ids)
         # Decoder out: (logits, past_key_values, encoder_hidden_state)
         if self.model_impl == "openai":
             encoder_hidden_states.unsqueeze(0)
-            decinit_out, present = self.whisper_decoder_openai_init(decoder_input_ids, encoder_hidden_states)
+            decinit_out, present = self.whisper_decoder_openai_init(
+                decoder_input_ids, encoder_hidden_states, remove_hooks=remove_hooks
+            )
             return decinit_out, encoder_hidden_states, present
         else:
             decinit_out = self.whisper_decoder_init(decoder_input_ids, encoder_hidden_states)
@@ -131,9 +133,7 @@ class WhisperEncoderDecoderInitHelper:
         )
         input_list = inputs.to_list()
 
-        # TODO : Investigate whether copy of model if needed
-        cloned_model = copy.deepcopy(model).to(device)
-        out = cloned_model(inputs.encoder_input_ids, inputs.decoder_input_ids)
+        out = model(inputs.encoder_input_ids, inputs.decoder_input_ids, remove_hooks=True)
         present = out[2]
         present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
 

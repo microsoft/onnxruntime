@@ -69,7 +69,7 @@ namespace perftest {
       "\t    [DML only] [performance_preference]: DML device performance preference, options: 'default', 'minimum_power', 'high_performance', \n"
       "\t    [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
       "\t    [DML only] [disable_metacommands]: Options: 'true', 'false', \n"
-      "\t    [DML only] [enable_dynamic_graph_fusion]: Options: 'true', 'false', \n"
+      "\t    [DML only] [enable_graph_capture]: Options: 'true', 'false', \n"
       "\t    [DML only] [enable_graph_serialization]: Options: 'true', 'false', \n"
       "\n"
       "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
@@ -78,10 +78,11 @@ namespace perftest {
       "\t    [OpenVINO only] [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
       "\t    [OpenVINO only] [cache_dir]: Explicitly specify the path to dump and load the blobs(Model caching) or cl_cache (Kernel Caching) files feature. If blob files are already present, it will be directly loaded.\n"
       "\t    [OpenVINO only] [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device(Reduces the CPU Utilization while using GPU) \n"
-      "\t    [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_npu_fast_compile|true num_of_threads|5 enable_opencl_throttling|true cache_dir|\"<path>\"\"\n"
+      "\t    [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU enable_npu_fast_compile|true num_of_threads|5 enable_opencl_throttling|true cache_dir|\"<path>\"\"\n"
       "\n"
       "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options: 'basic', 'detailed', default 'off'.\n"
+      "\t    [profiling_file_path] : QNN profiling file path if ETW not enabled.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
@@ -94,6 +95,8 @@ namespace perftest {
       "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
       "\t    Options are '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
       "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
+      "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
+      "\t    Otherwise, it will be fp32 precision. Only works for float32 model. Defaults to '0' (with FP32 precision.). \n"
       "\t    [Example] [For QNN EP] -e qnn -i \"backend_path|/folderpath/libQnnCpu.so\" \n"
       "\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
@@ -109,6 +112,9 @@ namespace perftest {
       "\t    [TensorRT only] [trt_engine_cache_enable]: Enable engine caching.\n"
       "\t    [TensorRT only] [trt_engine_cache_path]: Specify engine cache path.\n"
       "\t    [TensorRT only] [trt_engine_cache_prefix]: Customize engine cache prefix when trt_engine_cache_enable is true.\n"
+      "\t    [TensorRT only] [trt_engine_hw_compatible]: Enable hardware compatibility. Engines ending with '_sm80+' can be re-used across all Ampere+ GPU (a hardware-compatible engine may have lower throughput and/or higher latency than its non-hardware-compatible counterpart).\n"
+      "\t    [TensorRT only] [trt_weight_stripped_engine_enable]: Enable weight-stripped engine build.\n"
+      "\t    [TensorRT only] [trt_onnx_model_folder_path]: Folder path for the ONNX model with weights.\n"
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"
       "\t    [TensorRT only] [trt_context_memory_sharing_enable]: Enable TensorRT context memory sharing between subgraphs.\n"
       "\t    [TensorRT only] [trt_layer_norm_fp32_fallback]: Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow.\n"
@@ -199,7 +205,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqzn"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqzn"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -227,9 +233,6 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         } else {
           return false;
         }
-        break;
-      case 'b':
-        test_config.backend = optarg;
         break;
       case 'p':
         test_config.run_config.profile_file = optarg;

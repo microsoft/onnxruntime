@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument(
         "--variant",
         choices=PackageVariant.release_variant_names(),
-        default=PackageVariant.Mobile.name,
+        default=PackageVariant.Full.name,
         help="Pod package variant.",
     )
 
@@ -86,9 +86,7 @@ def run(arg_list, cwd=None):
     import shlex
     import subprocess
 
-    log.info(
-        "Running subprocess in '{}'\n  {}".format(cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list]))
-    )
+    log.info("Running subprocess in '%s'\n  %s", cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list]))
 
     return subprocess.run(arg_list, check=True, cwd=cwd)
 
