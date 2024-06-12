@@ -47,14 +47,16 @@ class Config:
     kv_num_heads = 0
     head_size = 0
 
-    def __init__(self, b, s, s2, sp, n, n2, h):
-        self.batch_size = b
-        self.sequence_length = s
-        self.kv_sequence_length = s2
-        self.past_sequence_length = sp
-        self.num_heads = n
-        self.kv_num_heads = n2
-        self.head_size = h
+    def __init__(
+        self, batch_size, sequence_length, kv_sequence_length, past_sequence_length, num_heads, kv_num_heads, head_size
+    ):
+        self.batch_size = batch_size
+        self.sequence_length = sequence_length
+        self.kv_sequence_length = kv_sequence_length
+        self.past_sequence_length = past_sequence_length
+        self.num_heads = num_heads
+        self.kv_num_heads = kv_num_heads
+        self.head_size = head_size
 
     def __repr__(self):
         return (
@@ -73,14 +75,23 @@ class PromptConfig:
     kv_num_heads = 0
     head_size = 0
 
-    def __init__(self, b, sq, skv, sb, n, n2, h):
-        self.batch_size = b
-        self.q_sequence_length = sq
-        self.kv_sequence_length = skv
-        self.buffer_sequence_length = sb
-        self.num_heads = n
-        self.kv_num_heads = n2
-        self.head_size = h
+    def __init__(
+        self,
+        batch_size,
+        q_sequence_length,
+        kv_sequence_length,
+        buffer_sequence_length,
+        num_heads,
+        kv_num_heads,
+        head_size,
+    ):
+        self.batch_size = batch_size
+        self.q_sequence_length = q_sequence_length
+        self.kv_sequence_length = kv_sequence_length
+        self.buffer_sequence_length = buffer_sequence_length
+        self.num_heads = num_heads
+        self.kv_num_heads = kv_num_heads
+        self.head_size = head_size
 
     def __repr__(self):
         return (
