@@ -27,7 +27,20 @@ Following are code snippets in various languages demonstrating the usage of this
 
     io_binding.BindOutput("output1", output_mem_info);
     session.Run(run_options, io_binding);
-    ```    
+    ```
+
+   Notice that in the above code sample the output tensor is not allocated before binding it, rather an `Ort::MemoryInfo` is bound as output.
+This is an effective way to let the session allocate the tensor depending on the needed shapes.
+Especially for data dependent shapes or dynamic shapes this can be a great solution to get the right allocation.
+However in case the output shape is known and the output tensor should be reused it is beneficial to bind an `Ort::Value` to the output as well. This can be allocated using the session allocator or external memory. Please refer to the [device tensor docs](../device-tensor.md) for more details:
+
+   ```c++
+   Ort::Allocator gpu_allocator(session, output_mem_info);
+   auto output_value = Ort::Value::CreateTensor(
+        gpu_allocator, output_shape.data(), output_shape.size(),
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+   io_binding.BindOutput("output1", output_mem_info);
+   ```
 
 * Python (see [Python API docs](https://onnxruntime.ai/docs/api/python))
 
