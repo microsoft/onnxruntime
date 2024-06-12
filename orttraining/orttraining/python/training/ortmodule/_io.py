@@ -202,9 +202,9 @@ class ModelInfoForExport:
         # A function to access the input data from the args and kwargs.
         # If it is not None, the length is same as onnx_graph_input_names.
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
-        self.onnx_graph_input_data_accessor_user_defined: Optional[
-            Dict[str, callable]
-        ] = onnx_graph_input_data_accessor_user_defined
+        self.onnx_graph_input_data_accessor_user_defined: Optional[Dict[str, callable]] = (
+            onnx_graph_input_data_accessor_user_defined
+        )
 
         self.onnx_graph_input_const_as_tensor: Optional[Dict[str, torch.device]] = onnx_graph_input_const_as_tensor
 
@@ -234,8 +234,6 @@ def _kwarg_access_with_name_func(name, args, kwargs):
 
 class SkipRetValue:
     """A placeholder class to indicate that the return value of a function should be skipped"""
-
-    pass
 
 
 def parse_inputs_for_onnx_export(

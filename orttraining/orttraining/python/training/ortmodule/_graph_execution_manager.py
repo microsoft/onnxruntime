@@ -7,10 +7,9 @@ import copy
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
-from typing import Dict, List, Optional, OrderedDict, Tuple
 from functools import partial
 from hashlib import md5 as hash_fn
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, OrderedDict, Tuple
 
 import onnx
 import torch
@@ -18,12 +17,6 @@ from torch.utils.cpp_extension import ROCM_HOME
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
-
-
-
-
-from ._graph_transition_manager import GraphTransitionManager, PostExportProcessedModelInfo
-
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.training.utils import ORTModelInputOutputSchemaType, PTable, onnx_dtype_to_pytorch_dtype
 
@@ -38,6 +31,7 @@ from ._fallback import (
 )
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
+from ._graph_transition_manager import GraphTransitionManager, PostExportProcessedModelInfo
 from ._io import _FlattenedModule, _InputInfo
 from ._logger import LogColor
 from ._runtime_inspector import FlagAndPrintDensity, RuntimeInspector
@@ -474,7 +468,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
             self._append_pull_weight_trigger_as_input(kwargs, detected_device)
 
-
         if (
             self._runtime_inspector.memory_ob.is_enabled()
             and not self._runtime_inspector.memory_ob.symbolic_dim_collecting_completed
@@ -488,8 +481,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         param_to_append_as_onnx_graph_inputs = []
         if self._mem_efficient_grad_management_is_enabled:
             from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
-
-
 
         if self._runtime_inspector._sceloss_module_to_ignore_density_map:
             self._runtime_options.label_sparsity_ratio = ",".join(

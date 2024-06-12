@@ -160,9 +160,9 @@ class PostExportProcessedModelInfo:
         # A function to access the input data from the args and kwargs.
         # If it is not None, the length is same as onnx_graph_input_names_user_defined.
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
-        self.onnx_graph_input_data_accessor_user_defined: dict[
-            str, callable
-        ] | None = onnx_graph_input_data_accessor_user_defined
+        self.onnx_graph_input_data_accessor_user_defined: dict[str, callable] | None = (
+            onnx_graph_input_data_accessor_user_defined
+        )
 
         self.onnx_graph_input_const_as_tensor: dict[str, torch.device] | None = onnx_graph_input_const_as_tensor
 
@@ -220,9 +220,9 @@ class PostExportProcessedModelInfo:
                 elif input_name in buffer_names:
                     self._buffer_for_ort_runs[input_name] = buffer_names[input_name]
                 else:
-                    self._buffer_for_ort_runs[
-                        input_name
-                    ] = None  # Fill None for user input first, will be overridden later.
+                    self._buffer_for_ort_runs[input_name] = (
+                        None  # Fill None for user input first, will be overridden later.
+                    )
 
         for name in self.onnx_graph_input_names_user_defined:
             if self._enable_mem_efficient_grad_management and name == MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME:
@@ -723,6 +723,11 @@ class GraphTransitionManager:
         time_tracker: TimeTracker,
         logger: logging.Logger,
     ) -> tuple[onnx.ModelProto, ORTModelInputOutputSchemaType, list[str], list[str]]:
+
+        # Add hooks to check the sparsity of the embedding and label inputs during the export.
+        embedding_hook_handles = self._add_check_embedding_sparsity_hook()
+        label_hook_handles = self._add_check_label_sparsity_hook()
+
         # Record random states here and restore later in case any of them gets changed during the export,
         # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
         random_states = _utils.get_random_states()
@@ -756,6 +761,13 @@ class GraphTransitionManager:
 
         # Restore the recorded random states
         _utils.set_random_states(random_states)
+
+        # Clean up all hooks.
+        for hook in embedding_hook_handles:
+            hook.remove()
+
+        for hook in label_hook_handles:
+            hook.remove()
 
         return exported_model, module_output_schema, onnx_graph_input_names, onnx_graph_input_names_require_grad
 
@@ -873,6 +885,46 @@ class GraphTransitionManager:
                     **model_info_for_export.export_extra_kwargs,
                 )
         except Exception as e:
+            message = _utils.get_exception_as_string(e)
+
+            # Special handling when Huggingface transformers gradient checkpoint usage pattern found.
+            # For new versions of PyTorch 2, tracing torch.utils.checkpoint.checkpoint will be failed like this:
+            #   File "microsoft/phi-2/b10c3eba545ad279e7208ee3a5d644566f001670/modeling_phi.py", line 919, in forward
+            #     layer_outputs = self._gradient_checkpointing_func(
+            #   File "/site-packages/torch/_compile.py", line 24, in inner
+            #     return torch._dynamo.disable(fn, recursive)(*args, **kwargs)
+            #   File "/site-packages/torch/_dynamo/eval_frame.py", line 470, in _fn
+            #     raise RuntimeError(
+            #   RuntimeError: Detected that you are using FX to torch.jit.trace a dynamo-optimized function. This is not supported at the moment.
+            if (
+                "_gradient_checkpointing_func" in message
+                and "Detected that you are using FX to torch.jit.trace a dynamo-optimized function" in message
+            ):
+                is_ckpt_activation_allowed = int(os.getenv("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", "0")) == 1
+                notes = (
+                    " Your model is running with gradient checkpointing, yet the PyTorch exporter\n"
+                    " failed during tracing the graph. Try to enable ORTModule's\n"
+                    " gradient checkpointing (a.k.a. Transformer layerwise subgraph recompute)\n"
+                    " using `export ORTMODULE_MEMORY_OPT_LEVEL=1` for similar or even better memory efficiency.\n"
+                )
+                if is_ckpt_activation_allowed:
+                    # If the user allows the gradient checkpointing export, we should inform the user to disable it,
+                    # to make layerwise recompute work.
+                    notes += (
+                        " We also notice your setting `export ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=1`,\n"
+                        " which enables gradient checkpointing torch.autograd.Functions(s) to export.\n"
+                        " To enable ORTModule's layerwise recompute, it needs to be turned OFF by\n"
+                        " `export ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=0`.\n"
+                    )
+
+                self._logger.error(
+                    f"{LogColor.RED}\n"
+                    "******************************** IMPORTANT NOTE *******************************\n"
+                    f"{notes}"
+                    "*******************************************************************************\n"
+                    f"{LogColor.ENDC}\n"
+                )
+
             raise wrap_exception(  # noqa: B904
                 ORTModuleONNXModelException,
                 RuntimeError(

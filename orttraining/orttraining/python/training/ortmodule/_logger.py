@@ -285,9 +285,11 @@ class SuppressLogs:
                 on_exit=partial(
                     _log_with_filter,
                     kwargs["logger"],
-                    kwargs["debug_options"].onnxruntime_log_filter
-                    if self.is_ort_filter
-                    else kwargs["debug_options"].torch_exporter_filter,
+                    (
+                        kwargs["debug_options"].onnxruntime_log_filter
+                        if self.is_ort_filter
+                        else kwargs["debug_options"].torch_exporter_filter
+                    ),
                     self.phase.to_string(),
                 ),
             ):
