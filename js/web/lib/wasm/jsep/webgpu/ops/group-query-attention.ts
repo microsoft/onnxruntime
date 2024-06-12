@@ -72,7 +72,8 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Attent
   const hasPastKey = pastKey && pastKey.dims.length !== 0;
   const hasPastValue = pastValue && pastValue.dims.length !== 0;
   // TODO : this should be from attributes.
-  const isPastkvBSNH = !hasPastKey || pastKey.dims[3] === attributes.numHeads;
+  const isPastkvBSNH = hasPastKey && pastKey.dims.length === 4 && pastKey.dims[0] === batchSize &&
+      pastKey.dims[2] === attributes.kvNumHeads && pastKey.dims[3] === headSize;
   if (hasPastKey && hasPastValue) {
     if (pastKey.dims.length !== 4) {
       throw new Error('Input "past_key" is expected to have 4 dimensions');
