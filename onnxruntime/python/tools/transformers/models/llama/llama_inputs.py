@@ -382,7 +382,11 @@ def add_io_bindings_as_tensors(
     for output in model.get_outputs():
         name = output.name
         # Bind KV cache outputs to KV cache inputs
-        v = inputs[name.replace("present", "past_key_values")] if use_buffer_share and "present" in name else outputs[name]
+        v = (
+            inputs[name.replace("present", "past_key_values")]
+            if use_buffer_share and "present" in name
+            else outputs[name]
+        )
         io_binding.bind_output(
             name=name,
             device_type=device.type,
