@@ -326,6 +326,7 @@ class PlannerImpl {
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
           auto p_input_arg = input_args[pair.first];
           if (p_input_arg->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
             // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
             // we cannot.
             const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
@@ -334,6 +335,7 @@ class PlannerImpl {
                                     << producer_node->Name() << " which has external outputs. "
                                     << "Be cautious the reuse MUST be a read-only usage.";
             }
+#endif
             *reusable_input = Index(p_input_arg->Name());
             return true;
           }
@@ -350,6 +352,7 @@ class PlannerImpl {
       if (alias_input_index >= 0 && static_cast<size_t>(alias_input_index) < input_args.size()) {
         auto p_input_arg = input_args[alias_input_index];
         if (p_input_arg->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
           // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
           // we cannot.
           const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
@@ -358,6 +361,7 @@ class PlannerImpl {
                                   << producer_node->Name() << " which has external outputs. "
                                   << "Be cautious the reuse MUST be a read-only usage.";
           }
+#endif
           *reusable_input = Index(p_input_arg->Name());
           return true;
         }
@@ -373,10 +377,15 @@ class PlannerImpl {
             auto input_arg_index = Index(p_input_arg->Name());
             auto original = Buffer(input_arg_index);
             if (1 == UseCount(original)) {
+              bool need_skip = false;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
               // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
               // we cannot.
               const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
-              if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
+              need_skip = producer_node && HasExternalOutputs(*producer_node);
+#endif
+
+              if (!need_skip) {
                 if (SameSize(*p_input_arg, *p_output_arg)) {
                   // we can reuse this input since it is its last use and permitted for in-place update
                   *reusable_input = input_arg_index;  // or original; both should be okay
@@ -421,8 +430,13 @@ class PlannerImpl {
         }
 
         if (can_strided) {
+          bool need_skip = false;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
           const Node* producer_node = graph.GetProducerNode(input_args[pair.first]->Name());
-          if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
+          need_skip = producer_node && HasExternalOutputs(*producer_node);
+#endif
+
+          if (!need_skip) {
             *reusable_input = Index(input_args[pair.first]->Name());
             *is_strided_tensor = true;
             return true;
@@ -1162,6 +1176,7 @@ class PlannerImpl {
             if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
               auto p_input_arg = input_args[pair.first];
               if (p_input_arg->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
                 // If the producer node does not has external outputs, we can reuse the input buffer;
                 // Otherwise, we cannot reuse the buffer.
                 const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
@@ -1170,6 +1185,7 @@ class PlannerImpl {
                                         << producer_node->Name() << " which has external outputs is reused. "
                                         << "Be cautious the reuse MUST be a read-only usage.";
                 }
+#endif
 
                 OrtValueIndex reusable_input{};
                 if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() /*&&
@@ -1203,6 +1219,7 @@ class PlannerImpl {
             auto p_input_arg = input_args[alias_input_index];
 
             if (p_input_arg->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
               // If the producer node does not has external outputs, we can reuse the input buffer;
               // Otherwise, we cannot reuse the buffer.
               const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
@@ -1211,6 +1228,7 @@ class PlannerImpl {
                                       << producer_node->Name() << " which has external outputs is reused. "
                                       << "Be cautious the reuse MUST be a read-only usage.";
               }
+#endif
 
               OrtValueIndex reusable_input{};
               if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
@@ -1233,10 +1251,15 @@ class PlannerImpl {
             if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
               auto p_input_arg = input_args[pair.first];
               if (p_input_arg->Exists()) {
+                bool need_skip = false;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
                 // If the producer node does not has external outputs, we can reuse the input buffer;
                 // Otherwise, we cannot reuse the buffer.
                 const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
-                if (producer_node == nullptr || !HasExternalOutputs(*producer_node)) {
+                need_skip = producer_node && HasExternalOutputs(*producer_node);
+#endif
+
+                if (!need_skip) {
                   OrtValueIndex input_arg_index{};
                   if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
                       allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
@@ -1526,11 +1549,13 @@ class PlannerImpl {
       // determine if inputs of *pnode can be freed:
       for (auto node_input : pnode->InputDefs()) {
         if (node_input->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
           const Node* producer_node = graph_viewer_.GetProducerNode(node_input->Name());
           // Skip if the producer node has external outputs.
           if (producer_node != nullptr && HasExternalOutputs(*producer_node)) {
             continue;
           }
+#endif
 
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
@@ -1544,11 +1569,13 @@ class PlannerImpl {
 
       for (auto node_input : pnode->ImplicitInputDefs()) {
         if (node_input->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
           const Node* producer_node = graph_viewer_.GetProducerNode(node_input->Name());
           // Skip if the producer node has external outputs.
           if (producer_node != nullptr && HasExternalOutputs(*producer_node)) {
             continue;
           }
+#endif
 
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
