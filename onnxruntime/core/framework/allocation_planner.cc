@@ -296,6 +296,10 @@ class PlannerImpl {
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th output in the node.
   bool FindReusableInput(const GraphViewer& graph, const onnxruntime::Node& node, int output_arg_num,
                          OrtValueIndex* reusable_input, bool* is_strided_tensor) {
+#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+    ORT_UNUSED_PARAMETER(graph);
+#endif
+
     *is_strided_tensor = false;
 #ifdef ENABLE_TRAINING
     // Inputs of Yields are essentially the outputs for FW partial subgraph
@@ -392,8 +396,10 @@ class PlannerImpl {
                   return true;
                 }
               } else {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
                 LOGS_DEFAULT(VERBOSE) << "Node " << node.Name() << " cannot reuse input buffer for node "
                                       << producer_node->Name() << " as it has external outputs";
+#endif
               }
             }
           }
@@ -441,8 +447,10 @@ class PlannerImpl {
             *is_strided_tensor = true;
             return true;
           } else {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
             LOGS_DEFAULT(VERBOSE) << "Node " << node.Name() << " cannot reuse strided output buffer for node "
                                   << producer_node->Name() << " as it has external outputs.";
+#endif
           }
         }
       }
@@ -1272,8 +1280,10 @@ class PlannerImpl {
                     }
                   }
                 } else {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
                   LOGS_DEFAULT(VERBOSE) << "Node " << node->Name() << " cannot reuse input buffer for node "
                                         << producer_node->Name() << " as it has external outputs";
+#endif
                 }
               }
             }
