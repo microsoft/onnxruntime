@@ -273,7 +273,6 @@ std::unique_ptr<Model> CreateEPContexModel(
   LOGS_DEFAULT(VERBOSE) << "EP context model created";
   auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
   p_ep_ctx_graph_viewer->ToProto(*(p_ep_ctx_model_proto->mutable_graph()), true, true);
-  p_ep_ctx_model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   LOGS_DEFAULT(VERBOSE) << "EP context model populated";
 
   return p_ep_ctx_model;

@@ -82,8 +82,11 @@ Model::Model(const std::string& graph_name,
              const logging::Logger& logger,
              const ModelOptions& options)
     : model_path_(Path::Parse(model_path)) {
+  LOGS(logger, WARNING) << "Start of Model ctor";
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  LOGS(logger, WARNING) << "Done IR version";
   model_proto_.mutable_graph()->set_name(graph_name);
+  LOGS(logger, WARNING) << "Done graph name";
   model_metadata_ = model_metadata;
   for (auto& metadata : model_metadata_) {
     const gsl::not_null<StringStringEntryProto*> prop{model_proto_.add_metadata_props()};
