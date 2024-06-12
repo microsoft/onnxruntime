@@ -10,6 +10,8 @@
 #include "core/framework/float8.h"
 #include "core/framework/int4.h"
 #include <cmath>
+#include <limits>
+#include <algorithm>
 
 namespace onnxruntime {
 
@@ -394,7 +396,8 @@ struct BlockedQuantizeLinear<float, TOut, 0> {
             auto n_end = std::min(N, n + thread_block_size);
             // TODO(fajin): 1> use SIMD, 2> set block to quant_block_size * thread_block_size
             for (; n < n_end; ++n, ++output_idx, ++quant_param_idx_t) {
-              auto zp = zero_point ? static_cast<int32_t>(zero_point[quant_param_idx_t]) : 0;  // TODO(fajin): perf difference
+              // TODO(fajin): perf difference
+              auto zp = zero_point ? static_cast<int32_t>(zero_point[quant_param_idx_t]) : 0;
               auto sc = scale[quant_param_idx_t];
               auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc)) + zp, low, high);
               output[output_idx] = static_cast<TOut>(v);
@@ -532,7 +535,8 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 0> {
             auto sc = scale[begin].ToFloat();
             auto output_idx_end = std::min(K - k, quant_block_size) + output_idx;
             for (; output_idx < output_idx_end; ++output_idx) {
-              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp, low, high);
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp,
+                                  low, high);
               output[output_idx] = static_cast<TOut>(v);
             }
             k = output_idx % K;

@@ -98,7 +98,7 @@ static void BM_BlockedQuantize_NotLastAxis(benchmark::State& state) {
   UnpackedType* a_data_quant = static_cast<UnpackedType*>(aligned_alloc(a_quant_size, 64));
 
   OrtThreadPoolParams tpo;
-  tpo.thread_pool_size = int(threads);
+  tpo.thread_pool_size = static_cast<int>(threads);
   tpo.auto_set_affinity = true;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
@@ -108,7 +108,8 @@ static void BM_BlockedQuantize_NotLastAxis(benchmark::State& state) {
     benchmark::DoNotOptimize(a_data_quant);
     onnxruntime::BlockedQuantizeLinear<float, Int4, 2>::opNotLastAxis(
         tp.get(), a_data, scale, reinterpret_cast<Int4*>(zero_point), reinterpret_cast<Int4*>(a_data_quant),
-        1, M[size_idx], N[size_idx], static_cast<std::ptrdiff_t>(quant_block_size), static_cast<std::ptrdiff_t>(block_size), true);
+        1, M[size_idx], N[size_idx], static_cast<std::ptrdiff_t>(quant_block_size),
+        static_cast<std::ptrdiff_t>(block_size), true);
     benchmark::ClobberMemory();
   }
   aligned_free(a_data_quant);
@@ -135,7 +136,7 @@ static void BM_BlockedQuantize_LastAxis(benchmark::State& state) {
   UnpackedType* a_data_quant = static_cast<UnpackedType*>(aligned_alloc(a_quant_size, 64));
 
   OrtThreadPoolParams tpo;
-  tpo.thread_pool_size = int(threads);
+  tpo.thread_pool_size = static_cast<int>(threads);
   tpo.auto_set_affinity = true;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
