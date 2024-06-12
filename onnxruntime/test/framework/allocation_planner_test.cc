@@ -2040,5 +2040,27 @@ TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
   ASSERT_EQ(gather_count, 4) << "4 gather ops are all placed in CPU stream";
 }
 #endif
+
+#ifdef ENABLE_TRAINING_OPS
+TEST(AllocationPlannerTest, AvoidReuseOfBufferForNodeOutputWithNoConsumers) {
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/avoid_reuse_of_buffer_for_node_output_with_no_consumers.onnx"));
+  auto status = sess.Load();
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  const auto& session_state = sess.GetSessionState();
+  const auto& ort_value_index_map = session_state.GetOrtValueNameIdxMap();
+  const SequentialExecutionPlan* plan = session_state.GetExecutionPlan();
+
+  OrtValueIndex concat_training_unused_out_index;
+  // Here per_input_length output of the ConcatTraining node has no consumers, so it should not reuse the buffer.
+  ASSERT_STATUS_OK(ort_value_index_map.GetIdx("per_input_length", concat_training_unused_out_index));
+  EXPECT_EQ(plan->allocation_plan[concat_training_unused_out_index].alloc_kind, AllocKind::kAllocate);
+}
+#endif // ENABLE_TRAINING_OPS
+
 }  // namespace test
 }  // namespace onnxruntime
