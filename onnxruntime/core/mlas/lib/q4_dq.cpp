@@ -708,7 +708,7 @@ struct BlockwiseQDQQuantizer {
      * @param quant_block_size  number of elements quantized together.
      * @param thread_pool       thread pool for parallel processing
      */
-    static void quantizeRowWise(
+    static void QuantizeRowWise(
         const Tin* src,
         Tin* scales,
         uint8_t* zero_points,
@@ -738,7 +738,7 @@ struct BlockwiseQDQQuantizer {
      * @param quant_block_size  number of rows/columns quantized together
      * @param thread_pool       thread pool for parallel processing
      */
-    static void quantizeColumnWise(
+    static void QuantizeColumnWise(
         const Tin* src,
         Tin* scales,
         uint8_t* zero_points,
@@ -1380,8 +1380,7 @@ MlasDequantizeBlockwise(
     }
 }
 
-template
-void
+template void
 MlasDequantizeBlockwise<float, 4>(
     float* dst,
     const uint8_t* src,
@@ -1392,4 +1391,115 @@ MlasDequantizeBlockwise<float, 4>(
     int rows,
     int columns,
     MLAS_THREADPOOL* thread_pool
-    );
+);
+
+template <typename Tin, int qbits>
+void
+MlasQDQQuantizeBlockwise(
+    const Tin* src,
+    Tin* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+)
+{
+    if (columnwise) {
+        BlockwiseQDQQuantizer<Tin, qbits>::QuantizeColumnWise(
+            src, scales, zero_points, dst, rows, columns, quant_block_size, thread_pool
+        );
+    } else {
+        BlockwiseQDQQuantizer<Tin, qbits>::QuantizeRowWise(
+            src, scales, zero_points, dst, rows, columns, quant_block_size, thread_pool
+        );
+    }
+}
+
+template <>
+void
+MlasQDQQuantizeBlockwise<float, 4>(
+    const float* src,
+    float* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template <>
+void
+MlasQDQQuantizeBlockwise<MLAS_FP16, 4>(
+    const MLAS_FP16* src,
+    MLAS_FP16* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template <typename Tin, int qbits>
+void
+MlasQDQTransposeBlockwiseQuantized(
+    const uint8_t* src_weights,
+    const Tin* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    Tin* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+)
+{
+    if (columnwise) {
+        BlockwiseQDQQuantizer<Tin, qbits>::TransposeColumnWiseQuantized(
+            src_weights, src_scales, src_zero_points, dst_weights, dst_scales, dst_zero_points,
+            rows, columns, quant_block_size, thread_pool
+        );
+    } else {
+        ORT_THROW("Row-wise MlasQDQTransposeBlockwiseQuantized is not implemented");
+    }
+}
+
+template <>
+void
+MlasQDQTransposeBlockwiseQuantized<float, 4>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template <>
+void
+MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 4>(
+    const uint8_t* src_weights,
+    const MLAS_FP16* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    MLAS_FP16* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
