@@ -66,7 +66,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  *     /
  *   "M"
  */
-void CreateBaseModel(std::string model_name,
+void CreateBaseModel(const PathString& model_name,
                      std::string graph_name,
                      std::vector<int> dims,
                      bool add_non_zero_node = false) {
@@ -165,7 +165,7 @@ void RunSession2(InferenceSession& session_object,
   VerifyOutputs(fetches, expected_dims, expected_values);
 }
 
-void RunWithOneSessionSingleThreadInference(std::string model_name, std::string sess_log_id) {
+void RunWithOneSessionSingleThreadInference(PathString model_name, std::string sess_log_id) {
   SessionOptions so;
   so.session_logid = sess_log_id;
   RunOptions run_options;
@@ -222,7 +222,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
 }
 
-void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string sess_log_id, bool has_non_zero_node = false) {
+void RunWithOneSessionMultiThreadsInference(PathString model_name, std::string sess_log_id, bool has_non_zero_node = false) {
   SessionOptions so;
   so.session_logid = sess_log_id;
   RunOptions run_options;
@@ -289,7 +289,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
 
 TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
-  std::string model_name = "trt_execution_provider_multithreading_test.onnx";
+  PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
   std::string graph_name = "multithreading_test";
   std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionSingleThread";
   std::vector<int> dims = {1, 3, 2};
@@ -305,7 +305,7 @@ TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceW
 }
 
 TEST(TensorrtExecutionProviderTest, SessionCreationWithSingleThreadAndInferenceWithMultiThreads) {
-  std::string model_name = "trt_execution_provider_multithreading_test.onnx";
+  PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
   std::string graph_name = "multithreading_test";
   std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionMultiThreads";
   std::vector<int> dims = {1, 3, 2};
@@ -360,7 +360,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
 }
 
 TEST(TensorrtExecutionProviderTest, EPContextNode) {
-  std::string model_name = "EPContextNode_test.onnx";
+  PathString model_name = ORT_TSTR("EPContextNode_test.onnx");
   std::string graph_name = "EPContextNode_test";
   std::string sess_log_id = "EPContextNode_test";
   std::vector<int> dims = {1, 3, 2};
@@ -546,7 +546,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
 }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
-  std::string model_name = "testdata/trt_plugin_custom_op_test.onnx";
+  PathString model_name = "testdata/trt_plugin_custom_op_test.onnx";
   SessionOptions so;
   so.session_logid = "TensorrtExecutionProviderTRTPluginsTest";
   RunOptions run_options;
@@ -593,7 +593,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   ASSERT_NE(pos, std::string::npos);
   std::string cache_type = ToUTF8String(param.substr(0, pos));
 
-  std::string model_name = "trt_execution_provider_" + cache_type + "caching_test_" + input_type + ".onnx";
+  PathString model_name = "trt_execution_provider_" + cache_type + "caching_test_" + input_type + ".onnx";
   std::vector<int> dims;
   if (input_type.compare("dynamic") == 0) {
     dims = {1, -1, -1};  // dynamic shape input
@@ -917,7 +917,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "trt_execution_provider_function_test.onnx";
+  PathString model_file_name = ORT_TSTR("trt_execution_provider_function_test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -1019,7 +1019,7 @@ TEST(TensorrtExecutionProviderTest, DISABLED_NodeIndexMappingTest) {  //  [W:onn
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "trt_execution_provider_nodeindexmapping_test.onnx";
+  PathString model_file_name = ORT_TSTR("trt_execution_provider_nodeindexmapping_test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -1131,7 +1131,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "trt_execution_provider_removecycle_test.onnx";
+  PathString model_file_name = ORT_TSTR("trt_execution_provider_removecycle_test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
 
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
