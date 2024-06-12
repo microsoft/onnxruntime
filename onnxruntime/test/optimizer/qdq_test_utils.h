@@ -5,9 +5,11 @@
 
 #include <vector>
 #include <string>
+#include <type_traits>
 
 #include "graph_transform_test_builder.h"
 
+#include "core/framework/int4.h"
 #include "core/common/span_utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/session/inference_session.h"
@@ -510,12 +512,21 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(const std::vector<int64_t>& input_shape,
                                        bool use_diff_output_scale,
                                        bool use_contrib_qdq = false) {
   return [input_shape, axis, use_diff_output_scale, use_contrib_qdq](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<InputType>(input_shape,
-                                                   std::numeric_limits<InputType>::min(),
-                                                   std::numeric_limits<InputType>::max());
+    InputType dq_zp{};
+    OutputType q_zp{};
+    NodeArg* input_arg = nullptr;
 
-    InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
-    OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
+    if constexpr (std::is_same_v<InputType, Int4x2> || std::is_same_v<InputType, UInt4x2>) {
+      input_arg = builder.MakeInputInt4<InputType>(input_shape, InputType::min_val, InputType::max_val);
+      dq_zp = InputType(static_cast<std::byte>(InputType::max_val / 2));
+      q_zp = OutputType(static_cast<std::byte>(OutputType::max_val / 2));
+    } else {
+      input_arg = builder.MakeInput<InputType>(input_shape, std::numeric_limits<InputType>::min(),
+                                               std::numeric_limits<InputType>::max());
+      dq_zp = std::numeric_limits<InputType>::max() / 2;
+      q_zp = std::numeric_limits<OutputType>::max() / 2;
+    }
+
     auto* dq_output = builder.MakeIntermediate();
     constexpr float input_scale = 0.003f;
     builder.AddDequantizeLinearNode<InputType>(input_arg, input_scale, dq_zp, dq_output, use_contrib_qdq);

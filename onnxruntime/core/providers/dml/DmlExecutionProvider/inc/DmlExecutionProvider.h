@@ -34,7 +34,8 @@ namespace Dml
         Dml::ExecutionContext* execution_context,
         bool enableMetacommands,
         bool enableGraphCapture,
-        bool enableCpuSyncSpinning);
+        bool enableCpuSyncSpinning,
+        bool disableMemoryArena);
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
     void FlushContext(onnxruntime::IExecutionProvider* provider);

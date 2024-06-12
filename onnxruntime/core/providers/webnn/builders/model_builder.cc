@@ -96,7 +96,7 @@ Status ModelBuilder::RegisterInitializers() {
     desc.set("dimensions", emscripten::val::array(dims));
     auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
-    if (IsSupportedDataType(data_type, wnn_device_type_)) {
+    if (IsSupportedDataType(data_type, webnn_supported_data_types)) {
       ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
       auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
       emscripten::val view = emscripten::val::undefined();
@@ -112,12 +112,10 @@ Status ModelBuilder::RegisterInitializers() {
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
         case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-          desc.set("type", emscripten::val("uint8"));
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                                reinterpret_cast<uint8_t*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-          desc.set("type", emscripten::val("int8"));
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                                reinterpret_cast<int8_t*>(tensor_ptr))};
           break;

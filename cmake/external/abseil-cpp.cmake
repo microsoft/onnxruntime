@@ -27,14 +27,18 @@ FetchContent_Declare(
     URL ${DEP_URL_abseil_cpp}
     URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
-    FIND_PACKAGE_ARGS NAMES absl
+    FIND_PACKAGE_ARGS 20240116 NAMES absl
 )
 
 onnxruntime_fetchcontent_makeavailable(abseil_cpp)
 FetchContent_GetProperties(abseil_cpp)
 set(ABSEIL_SOURCE_DIR ${abseil_cpp_SOURCE_DIR})
+# abseil_cpp_SOURCE_DIR is non-empty if we build it from source
 message(STATUS "Abseil source dir:" ${ABSEIL_SOURCE_DIR})
-
+# abseil_cpp_VERSION  is non-empty if we find a preinstalled ABSL
+if(abseil_cpp_VERSION)
+  message(STATUS "Abseil version:" ${abseil_cpp_VERSION})
+endif()
 if (GDK_PLATFORM)
   # Abseil considers any partition that is NOT in the WINAPI_PARTITION_APP a viable platform
   # for Win32 symbolize code (which depends on dbghelp.lib); this logic should really be flipped

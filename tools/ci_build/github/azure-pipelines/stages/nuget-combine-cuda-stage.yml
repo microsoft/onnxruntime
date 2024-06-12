@@ -14,9 +14,6 @@ parameters:
 - name: docker_base_image
   type: string
 
-- name: linux_trt_version
-  type: string
-
 - name: win_trt_home
   type: string
 
@@ -46,7 +43,6 @@ stages:
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
     docker_base_image: ${{ parameters.docker_base_image }}
-    linux_trt_version: ${{ parameters.linux_trt_version }}
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
 

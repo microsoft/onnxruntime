@@ -107,6 +107,7 @@ struct AttributeProto final {
   void set_s(const ::std::string& value) { return g_host->AttributeProto__set_s(this, value); }
   void set_f(const float& value) { return g_host->AttributeProto__set_f(this, value); }
   void set_i(int64_t value) { return g_host->AttributeProto__set_i(this, value); }
+  void set_t(const TensorProto& value) { return g_host->AttributeProto__set_t(this, value); }
   const ::std::string& s() const { return g_host->AttributeProto__s(this); }
   void set_name(const ::std::string& value) { return g_host->AttributeProto__set_name(this, value); }
   void set_type(AttributeProto_AttributeType value) { return g_host->AttributeProto__set_type(this, value); }
@@ -587,6 +588,14 @@ struct KernelRegistry final {
 
 struct PrimitiveDataTypeBase final {
   int32_t GetDataType() const { return g_host->PrimitiveDataTypeBase__GetDataType(this); }
+
+  int32_t GetNumSubElems() const {
+    return g_host->PrimitiveDataTypeBase__GetNumSubElems(this);
+  }
+
+  bool HasSubElems() const {
+    return g_host->PrimitiveDataTypeBase__HasSubElems(this);
+  }
 
   PROVIDER_DISALLOW_ALL(PrimitiveDataTypeBase)
 };

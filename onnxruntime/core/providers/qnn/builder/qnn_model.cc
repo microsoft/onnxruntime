@@ -233,8 +233,8 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
     auto ort_tensor_size = TensorDataSize(ort_input_tensor);
     LOGS(logger_, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
                            << "Ort tensor size: " << ort_tensor_size;
-    ORT_ENFORCE(qnn_input_info.tensor_byte_size == ort_tensor_size,
-                "ORT Tensor data size does not match QNN tensor data size.");
+    ORT_RETURN_IF_NOT(qnn_input_info.tensor_byte_size == ort_tensor_size,
+                      "ORT Tensor data size does not match QNN tensor data size.");
 
     qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
     SetQnnTensorClientBuf(qnn_inputs.back(),
@@ -253,8 +253,8 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
     auto ort_tensor_size = TensorDataSize(ort_output_tensor);
     LOGS(logger_, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
                            << "Ort tensor size: " << ort_tensor_size;
-    ORT_ENFORCE(qnn_output_info.tensor_byte_size == ort_tensor_size,
-                "ORT Tensor data size does not match QNN tensor data size");
+    ORT_RETURN_IF_NOT(qnn_output_info.tensor_byte_size == ort_tensor_size,
+                      "ORT Tensor data size does not match QNN tensor data size");
 
     qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
     SetQnnTensorClientBuf(qnn_outputs.back(),
@@ -337,7 +337,8 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
   return Status::OK();
 }
 
-Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info) {
+Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info,
+                                                    const Qnn_ContextHandle_t& context) {
   std::vector<QnnTensorWrapper> input_tensor_wrappers;
   std::vector<QnnTensorWrapper> output_tensor_wrappers;
 
@@ -367,8 +368,8 @@ Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_Graph
   }
   Qnn_GraphHandle_t graph;
   auto qnn_interface = qnn_backend_manager_->GetQnnInterface();
-  qnn_interface.graphRetrieve(qnn_backend_manager_->GetQnnContext(),
-                              graph_name.c_str(), &graph);
+  auto rt = qnn_interface.graphRetrieve(context, graph_name.c_str(), &graph);
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to retrieve QNN graph.");
 
   graph_info_ = std::make_unique<GraphInfo>(graph,
                                             graph_name,

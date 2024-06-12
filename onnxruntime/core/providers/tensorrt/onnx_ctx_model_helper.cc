@@ -367,7 +367,13 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   // Show the warning if compute capability is not matched
   if (attrs.count(COMPUTE_CAPABILITY) > 0) {
     std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
-    if (model_compute_capability != compute_capability_) {
+    // Verify if engine was compiled with ampere+ hardware compatibility enabled
+    if (model_compute_capability == "80+") {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine is compatible to all Ampere+ GPU (except Jetson)";
+      if (std::stoi(compute_capability_) < 80) {
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] However, this GPU doesn't match. The compute capability of the GPU: " << compute_capability_;
+      }
+    } else if (model_compute_capability != compute_capability_) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine was compiled for a different compatibility level and might not work or perform suboptimal";
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] The compute capability of the engine: " << model_compute_capability;
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] The compute capability of the GPU: " << compute_capability_;

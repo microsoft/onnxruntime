@@ -104,7 +104,7 @@ std::conditional_t<THRW, void, Status> RocmCall(
       if (gethostname(hostname, HOST_NAME_MAX) != 0)
         strcpy(hostname, "?");
 #endif
-      int currentHipDevice;
+      int currentHipDevice = -1;
       ORT_IGNORE_RETURN_VALUE(hipGetDevice(&currentHipDevice));  // void to silence nodiscard
       ORT_IGNORE_RETURN_VALUE(hipGetLastError());                // clear last ROCM error; void to silence nodiscard
       static char str[1024];

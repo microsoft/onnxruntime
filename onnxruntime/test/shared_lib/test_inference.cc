@@ -2827,6 +2827,50 @@ TEST(CApiTest, create_tensor_with_data_float8) {
 
 #endif
 
+// Test creating an Ort::Value with INT4 data.
+TEST(CApiTest, create_tensor_with_data_int4) {
+  std::array<uint8_t, 4> values = {0x10, 0x32, 0x78, 0x06};  // {0, 1, 2, 3, -8, 7, 6, pad_0}
+  std::vector<int64_t> dims = {7};                           // 7 4-bit elements take up 4 bytes.
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
+                                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4);
+  const auto* new_pointer = tensor.GetTensorData<uint8_t>();
+  ASSERT_EQ(new_pointer, values.data());
+  auto type_info = tensor.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  ASSERT_NE(tensor_info, nullptr);
+  auto query_dims = tensor_info.GetShape();
+  ASSERT_EQ(query_dims, dims);
+  ASSERT_EQ(tensor_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4);
+
+  uint8_t pair_2 = tensor.At<uint8_t>({2});
+  ASSERT_EQ(values[2], pair_2);
+}
+
+// Test creating an Ort::Value with UINT4 data.
+TEST(CApiTest, create_tensor_with_data_uint4) {
+  std::array<uint8_t, 4> values = {0x10, 0x32, 0x54, 0x0F};  // {0, 1, 2, 3, 4, 5, 15, pad_0}
+  std::vector<int64_t> dims = {7};                           // 7 4-bit elements take up 4 bytes.
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
+                                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+  const auto* new_pointer = tensor.GetTensorData<uint8_t>();
+  ASSERT_EQ(new_pointer, values.data());
+  auto type_info = tensor.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  ASSERT_NE(tensor_info, nullptr);
+  auto query_dims = tensor_info.GetShape();
+  ASSERT_EQ(query_dims, dims);
+  ASSERT_EQ(tensor_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+
+  uint8_t pair_2 = tensor.At<uint8_t>({2});
+  ASSERT_EQ(values[2], pair_2);
+}
+
 TEST(CApiTest, access_tensor_data_elements) {
   /**
    * Create a 2x3 data blob that looks like:
