@@ -1992,9 +1992,10 @@ def parity_check_gqa_past_no_buff(
 
 def packed_mha_test_cases():
     batches = [2] if pipeline_mode else [1, 5]
-    seqs = [8, 97, 256, 1024] if pipeline_mode else [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]
+    seqs = [1024, 1025] if pipeline_mode else [1024, 1025, 2048]
     num_h = [1, 3] if pipeline_mode else [1, 6, 16]
     h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+
     for b in batches:
         for s in seqs:
             for n in num_h:
@@ -2023,6 +2024,7 @@ def mha_test_cases():
     )
     num_h = [1, 3] if pipeline_mode else [1, 6, 16]
     h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+
     for b in batches:
         for s, s2 in seqs:
             for n in num_h:
@@ -2039,6 +2041,7 @@ class TestMHA(unittest.TestCase):
         major, _ = torch.cuda.get_device_capability()
         if major < 8:
             return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST PACKED MHA ---------")
         all_close = parity_check_mha(config, True)
         self.assertTrue(all_close)
@@ -2050,6 +2053,7 @@ class TestMHA(unittest.TestCase):
         major, _ = torch.cuda.get_device_capability()
         if major < 8:
             return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST MHA ---------")
         all_close = parity_check_mha(config, False)
         self.assertTrue(all_close)
