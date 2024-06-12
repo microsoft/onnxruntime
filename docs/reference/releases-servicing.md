@@ -7,7 +7,7 @@ nav_order: 1
 
 # ONNX Runtime releases
 
-The current ONNX Runtime release is [1.18.0](https://github.com/microsoft/onnxruntime/releases/tag/v1.18.0).
+The current ONNX Runtime release is [1.18](https://github.com/microsoft/onnxruntime/releases/tag/v1.18.0).
 
 The next release is ONNX Runtime release 1.19.
 
