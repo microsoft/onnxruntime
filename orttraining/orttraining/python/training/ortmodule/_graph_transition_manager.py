@@ -28,7 +28,7 @@ from onnxruntime.training.utils import (
 
 from . import _io, _utils
 from ._fallback import ORTModuleDeviceException, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
-from ._logger import LogLevel, ORTModuleInitPhase, SuppressLogs, TimeTracker, TrackTimeForStaticFunction
+from ._logger import LogColor, LogLevel, ORTModuleInitPhase, SuppressLogs, TimeTracker, TrackTimeForStaticFunction
 from ._onnx_models import _get_onnx_file_name, _save_model
 from ._utils import check_function_has_param, get_rank
 from ._zero_stage3_compatibility import stage3_export_context
@@ -949,3 +949,80 @@ class GraphTransitionManager:
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""
         self._original_model_has_changed = True
+
+    def _add_check_embedding_sparsity_hook(self):
+        """
+        Add hook to check embedding sparsity and enable padding elimination if applicable.
+        1. Iterate through all modules to find Embedding modules with padding_idx >= 0.
+        2. Register forward pre hook to the Embedding module and the hook will check sparsity of the embedding input.
+        3. If the sparsity is below a threshold, enable padding elimination by adding FlagAndPrintDensity after the
+           output. GraphTransformer of PaddingElimination will check the FlagAndPrintDensity and do the actual
+           padding elimination graph modification.
+        4. Return the hook handles for later removal.
+
+        """
+        if not self._runtime_options.enable_embedding_sparse_optimizer or self._device.type != "cuda":
+            return []
+
+        def _embedding_hook(name, module, args):
+            ebd_input = args[0]
+            if ebd_input is None or not isinstance(ebd_input, torch.Tensor):
+                self._logger.warning("Embedding input is not a tensor.")
+                return None
+
+            valid_token = torch.count_nonzero(ebd_input - module.padding_idx)
+            total_token = ebd_input.numel()
+            embed_density = float(valid_token) / float(total_token) * 100
+
+            if embed_density < 90:
+                self._logger.info("Embedding sparsity-based optimization is ON for density: %.0f%%", embed_density)
+                self._runtime_inspector._embedding_module_to_padding_density_map[name] = embed_density
+                return FlagAndPrintDensity.apply(args[0], module.padding_idx, "embedding")
+            else:
+                self._logger.info("Embedding sparsity-based optimization is OFF for density: %.0f%%", embed_density)
+                return None
+
+        embedding_hook_handles = []
+        for name, sub_module in self._flattened_module.named_modules():
+            if isinstance(sub_module, torch.nn.modules.sparse.Embedding):
+                if sub_module.padding_idx is not None and sub_module.padding_idx >= 0:
+                    embedding_hook_handles.append(sub_module.register_forward_pre_hook(partial(_embedding_hook, name)))
+
+        return embedding_hook_handles
+
+    def _add_check_label_sparsity_hook(self):
+        """
+        Add hook to check label sparsity and enable sceloss compute optimization if applicable.
+        1. Register forward pre hook to the sceloss module in the model and the hook will check sparsity of the label input.
+        2. If the sparsity is below a threshold, enable sceloss compute optimization by adding FlagAndPrintDensity after the
+           output. GraphTransformer of InsertGatherBeforeSceLoss will check the FlagAndPrintDensity and do the actual
+           sceloss compute optimization graph modification.
+
+        """
+        if not self._runtime_options.enable_label_sparse_optimizer:
+            return None
+
+        def _label_hook(name, module, args):
+            label_input = args[1]
+            if label_input is None or not isinstance(label_input, torch.Tensor):
+                self._logger.warning("Label input is not a tensor.")
+                return None
+
+            valid_token = torch.count_nonzero(label_input - module.ignore_index)
+            total_token = label_input.numel()
+            label_density = float(valid_token) / float(total_token) * 100
+
+            if label_density < 90:
+                self._logger.info("Label sparsity-based optimization is ON for density: %.0f%%", label_density)
+                self._runtime_inspector._sceloss_module_to_ignore_density_map[name] = label_density
+                return (args[0], FlagAndPrintDensity.apply(args[1], module.ignore_index, "label"))
+            else:
+                self._logger.info("Label sparsity-based optimization is OFF for density: %.0f%%", label_density)
+                return None
+
+        label_check_hook_handles = []
+        for name, sub_module in self._flattened_module.named_modules():
+            if isinstance(sub_module, torch.nn.modules.loss.CrossEntropyLoss):
+                label_check_hook_handles.append(sub_module.register_forward_pre_hook(partial(_label_hook, name)))
+
+        return label_check_hook_handles
