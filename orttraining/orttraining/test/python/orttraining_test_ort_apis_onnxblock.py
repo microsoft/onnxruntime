@@ -1,7 +1,6 @@
 import copy
 import io
 import os
-import pathlib
 import random
 import tempfile
 
@@ -205,32 +204,6 @@ def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
     ort_inputs["lazy_reset_grad"] = np.full(1, True)
 
     return ort_inputs
-
-
-def get_root_ort_path():
-    curr_dir = pathlib.Path.cwd()
-
-    if curr_dir.name == "onnxruntime":
-        return curr_dir
-
-    for parent in list(curr_dir.parents):
-        if parent.name == "onnxruntime":
-            return parent
-
-    raise RuntimeError("Cannot find ONNXRuntime root directory.")
-
-
-def get_string_path_to_testdata_onnx_file(onnx_file_name):
-    from_build_dir = pathlib.Path(f"testdata/{onnx_file_name}")
-
-    if from_build_dir.is_file():
-        return str(from_build_dir)
-    else:
-        ort_root = get_root_ort_path()
-        path_to_testdata_onnx_file = ort_root / "onnxruntime" / "test" / "testdata" / f"{onnx_file_name}"
-        if path_to_testdata_onnx_file.is_file():
-            return str(path_to_testdata_onnx_file)
-        raise RuntimeError(f"Cannot find the path for {onnx_file_name}")
 
 
 # All unit tests
