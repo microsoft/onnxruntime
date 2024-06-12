@@ -263,7 +263,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
         PackedQuantBDataSize > 0) {
       PackedQuantBData = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
       MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBData,
-                                   GetMlasThreadPool());
+                                   QuantBScale, QuantBZeroPoint, GetMlasThreadPool());
     }
 
     if (ComputeType == CompFp32) {
