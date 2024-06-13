@@ -4,6 +4,7 @@
 import contextlib
 import copy
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
@@ -28,8 +29,9 @@ class Block(ABC):
         base (onnx.ModelProto): The base model that the subclass can manipulate.
     """
 
-    def __init__(self):
+    def __init__(self, temp_file_name="temp.onnx"):
         self.base = None
+        self.temp_onnx_path = temp_file_name
 
     @abstractmethod
     def build(self, *args, **kwargs):
@@ -48,11 +50,52 @@ class Block(ABC):
         output = self.build(*args, **kwargs)
 
         if accessor._GLOBAL_ACCESSOR.has_path:
-            onnx.checker.check_model(accessor._GLOBAL_ACCESSOR.path, True)
+            onnx.save(
+                accessor._GLOBAL_ACCESSOR.model,
+                self.temp_onnx_path,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+            )
+
+            onnx.checker.check_model(self.temp_onnx_path, True)
+
+            # clean-up temp files
+            if os.path.exists(self.temp_onnx_path):
+                os.remove(self.temp_onnx_path)
+            if os.path.exists(self.temp_onnx_path):
+                os.remove(self.temp_onnx_path)
         else:
             onnx.checker.check_model(self.base, True)
 
         return output
+
+    def infer_shapes_on_base(self):
+        """
+        Performs shape inference on the global model. If a path was used, then uses the
+        infer_shapes_path API to support models with external data.
+
+        Returns the shape-inferenced ModelProto.
+        """
+        if accessor._GLOBAL_ACCESSOR.has_path:
+            onnx.save(
+                accessor._GLOBAL_ACCESSOR.model,
+                self.temp_onnx_path,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+            )
+
+            onnx.shape_inference.infer_shapes_path(self.temp_onnx_path)
+            # shape inferenced model is saved to original path
+            model = onnx.load(self.temp_onnx_path)
+
+            # clean-up temp files
+            if os.path.exists(self.temp_onnx_path):
+                os.remove(self.temp_onnx_path)
+            if os.path.exists(self.temp_onnx_path):
+                os.remove(self.temp_onnx_path)
+            return model
+        else:
+            return onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
 
 
 class _BinaryOp(Block):

@@ -318,8 +318,6 @@ def test_crossentropy_loss_execution():
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
         torch_outs = crossentropy_loss(pt_model(x), target)
-        print("ort_ outs", ort_outs)
-        print("torch outs", torch_outs)
 
         # Then
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
@@ -358,8 +356,6 @@ def test_bcewithlogits_loss_execution():
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
         torch_outs = bcewithlogits_loss(pt_model(x), target)
-        print("ort_ outs", ort_outs)
-        print("torch outs", torch_outs)
 
         # Then
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
