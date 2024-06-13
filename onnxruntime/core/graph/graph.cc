@@ -3209,6 +3209,7 @@ Status Graph::InitInputsInitializersOutputs() {
 
 Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   ORT_RETURN_IF_ERROR(TypeCheckInputsAndInitializers());
+  LOGS(logger_, VERBOSE) << "Done TypeCheckInputsAndInitializers in PerformTypeAndShapeInferencing";
 
   // type/shape inferencing on the nodes is done recursively as we need subgraph outputs
   // to be applied to Node outputs for the node containing the subgraph.
@@ -3223,6 +3224,7 @@ Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   //      - once we finish processing the subgraph/s we apply resultant type/shape information to the outputs
   //        of the node that contains the subgraph.
   ORT_RETURN_IF_ERROR(VerifyNodeAndOpMatch(options));
+  LOGS(logger_, VERBOSE) << "Done VerifyNodeAndOpMatchin PerformTypeAndShapeInferencing";
 
   return Status::OK();
 }

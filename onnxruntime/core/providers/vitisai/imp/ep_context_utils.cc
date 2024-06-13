@@ -192,6 +192,7 @@ std::unique_ptr<Model> CreateEPContexModel(
     const std::string& backend_cache_key,
     bool saving_orig_graph,
     const logging::Logger* p_logger) {
+  ORT_ENFORCE(graph_viewer.GetGraph().Resolve().IsOK(), "Resolving original graph failed");
   // Create a new graph/model, reusing the graph name,
   // the op-domain-to-opset-version map,
   // and the op schema registry of the current graph.
