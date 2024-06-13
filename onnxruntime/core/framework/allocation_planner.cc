@@ -469,6 +469,15 @@ class PlannerImpl {
     */
   }
 
+  static bool OutputHasConsumerNode(const Node& node, int output_idx) {
+    // there will be an edge to all consumer nodes.
+    // if consumed in a subgraph the edge will be to an implicit input of the node containing the subgraph.
+    return std::any_of(node.OutputEdgesBegin(), node.OutputEdgesEnd(),
+                       [&output_idx](const Node::EdgeEnd& edge) {
+                         return edge.GetSrcArgIndex() == output_idx;
+                       });
+  }
+
   bool SameSize(const onnxruntime::NodeArg& arg1, const onnxruntime::NodeArg& arg2) {
     if ((!arg1.Exists()) || (!arg2.Exists())) return false;
     auto p_shape1 = context_->GetShape(arg1);
@@ -1172,8 +1181,8 @@ class PlannerImpl {
                                                           value_consumer_map[output_idx_global].end());
                 reused.insert(reusable_input);
                 continue;
-              }  // if
-            }    // if
+              }
+            }
           }
         }
 
@@ -1456,7 +1465,13 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
         } else if (!context_->IsParallelExecutionEnabled() &&
+                   OutputHasConsumerNode(*pnode, static_cast<int>(output_arg_def_index)) &&
                    FindReusableTensor(*node_output, &reused)) {
+          // The check that OutputHasConsumerNode is to handle an edge case where a node produces a value that is
+          // not consumed by any other nodes. If we set it to kReuse the buffer will be freed prematurely as the
+          // logic in GenerateDeallocationPlan is based on processing consumer nodes. Changing the implementation of
+          // GenerateDeallocationPlan is an alternative but that would be a much bigger change.
+
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
         } else {
@@ -1906,8 +1921,8 @@ class PlannerImpl {
                     node_to_wait[it->Index()].insert({node_index, wait_handle});
                   }
                 }
-              }  // output->Exists
-            }    // for each output
+              }
+            }
             if (output_consumed_in_subgraph) {
               const auto downstream = plan_.node_stream_map_[it->Index()];
               if (downstream != i) {
