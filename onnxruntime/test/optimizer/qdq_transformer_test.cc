@@ -3766,26 +3766,26 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
       auto* q_output = builder.MakeIntermediate();
       builder.AddQuantizeLinearNode<uint8_t>(q_input, 0.05f, 128, q_output, use_contrib_qdq);
 
-      // Add DQ1 -> (Transpose2 ->) output1
+      // Add DQ1 -> (Transpose2 ->) Output1
       if (is_dq1_output) {
-        auto* dq_output1 = builder.MakeOutput();
-        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output1, use_contrib_qdq);
+        auto* dq1_output = builder.MakeOutput();
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq1_output, use_contrib_qdq);
       } else {
-        auto* dq_output1 = builder.MakeIntermediate();
-        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output1, use_contrib_qdq);
+        auto* dq1_output = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq1_output, use_contrib_qdq);
         auto* output1 = builder.MakeOutput();
-        builder.AddNode("Transpose", {dq_output1}, {output1});
+        builder.AddNode("Transpose", {dq1_output}, {output1});
       }
 
-      // Add DQ2 -> (Transpose3 ->) output2
+      // Add DQ2 -> (Transpose3 ->) Output2
       if (is_dq2_output) {
-        auto* dq_output2 = builder.MakeOutput();
-        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output2, use_contrib_qdq);
+        auto* dq2_output = builder.MakeOutput();
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq2_output, use_contrib_qdq);
       } else {
-        auto* dq_output2 = builder.MakeIntermediate();
-        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output2, use_contrib_qdq);
+        auto* dq2_output = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq2_output, use_contrib_qdq);
         auto* output2 = builder.MakeOutput();
-        builder.AddNode("Transpose", {dq_output2}, {output2});
+        builder.AddNode("Transpose", {dq2_output}, {output2});
       }
     };
 
