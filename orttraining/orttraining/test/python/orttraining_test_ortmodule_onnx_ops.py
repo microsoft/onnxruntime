@@ -146,6 +146,38 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                     device = torch.device(device_name)
                     self.gradient_correctness(name, device)
 
+    def test_softmax_bf16_large(self):
+        if not torch.cuda.is_available():
+            # only test bf16 on cuda
+            return
+
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super(Model, self).__init__()
+
+            def forward(self, input):
+                test_op = torch.softmax
+                out = test_op(input, dim=-1)
+                return out
+
+        device = "cuda:0"
+        input_shape = [2, 4096]
+        # run torch to get the expected result
+        data_torch = torch.randn(size=input_shape, device=device, dtype=torch.bfloat16) + 10
+        data_torch.requires_grad = True
+        torch_model = Model()
+        torch_res = torch_model(input=data_torch)
+        init_grad = torch.ones_like(torch_res)
+        torch_res.backward(gradient=init_grad)
+        # run ort
+        ort_model = ORTModule(torch_model)
+        data_ort = data_torch.detach().clone()
+        data_ort.requires_grad = True
+        ort_res = ort_model(input=data_ort)
+        ort_res.backward(gradient=init_grad)
+        # compara result
+        torch.testing.assert_close(data_torch.grad, data_ort.grad, rtol=1e-5, atol=1e-4)
+
 
 if __name__ == "__main__":
     unittest.main()
