@@ -36,6 +36,7 @@ void ortenv_setup() {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4100)  // Ignore warning C4100: unreferenced format parameter.
+#pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::IPluginV2' was declared deprecated
 #endif
 
 // TensorRT will load/unload libraries as builder objects are created and torn down. This will happen for

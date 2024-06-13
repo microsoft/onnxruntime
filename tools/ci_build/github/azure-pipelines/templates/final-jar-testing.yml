@@ -21,7 +21,7 @@ stages:
   dependsOn:
     Jar_Packaging
   jobs:
-  - job:
+  - job: Final_Jar_Testing_${{parameters.OS}}
     workspace:
       clean: all
     ${{ if eq(parameters.OS, 'MacOS') }}:

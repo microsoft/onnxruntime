@@ -2,6 +2,9 @@
 #include "mlasi.h"
 #include <altivec.h>
 
+// NOTE: Vector commands (e.g., vec_xst) need C-style casting to support various compiler versions.
+// ONNX Runtime CI pipelines do not build with all compiler versions.
+
 template<typename OutputType>
 void
 MLASCALL
@@ -194,7 +197,7 @@ Return Value:
         auto ShortVector1 = vec_pack(IntegerVector2, IntegerVector3);
 
         auto CharVector = vec_pack(ShortVector0, ShortVector1);
-        vec_xst(CharVector, 0, static_cast<int8_t *>(&TmpOutput[0]));
+        vec_xst(CharVector, 0, (int8_t *)(&TmpOutput[0]));
 
         MlasPackInt4Elements(Output++, TmpOutput[0], TmpOutput[1]);
         MlasPackInt4Elements(Output++, TmpOutput[2], TmpOutput[3]);
