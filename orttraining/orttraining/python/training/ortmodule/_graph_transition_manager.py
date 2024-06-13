@@ -738,7 +738,7 @@ class GraphTransitionManager:
             enable_embedding_sparse_optimizer, device, logger, runtime_inspector, flattened_module
         )
         label_hook_handles = GraphTransitionManager._add_check_label_sparsity_hook(
-            enable_embedding_sparse_optimizer, logger, runtime_inspector
+            enable_embedding_sparse_optimizer, logger, runtime_inspector, flattened_module
         )
 
         # Record random states here and restore later in case any of them gets changed during the export,
