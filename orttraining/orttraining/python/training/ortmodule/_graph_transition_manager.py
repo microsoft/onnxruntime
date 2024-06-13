@@ -27,7 +27,7 @@ from onnxruntime.training.utils import (
     unflatten_data_using_schema,
 )
 
-from . import _io, _utils
+from . import _io, _utils, export_context
 from ._fallback import ORTModuleDeviceException, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
 from ._logger import LogColor, LogLevel, ORTModuleInitPhase, SuppressLogs, TimeTracker, TrackTimeForStaticFunction
 from ._onnx_models import _get_onnx_file_name, _save_model
@@ -752,7 +752,7 @@ class GraphTransitionManager:
         torch_exporter_verbose_log = debug_options.log_level < LogLevel.WARNING
         from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
 
-        with no_increase_global_step():
+        with export_context(), no_increase_global_step():
             exported_model, module_output_schema = GraphTransitionManager._get_exported_model(
                 flattened_module=flattened_module,
                 model_info_for_export=model_info_for_export,
