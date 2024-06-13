@@ -3675,9 +3675,9 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
     };
 
     // if we block removal of the DQ node the Q node in the pair will not be removed either
-    // NB. block_removal_of_first_dq is useless
-    // NB. block_removal_of_last_dq is useless
-    const int expected_qdq_count = 0; // + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
+    // TODO(yilyu): block_removal_of_first_dq is not functional, need to fix it
+    // TODO(yilyu): block_removal_of_last_dq is not functional, need to fix it
+    const int expected_qdq_count = 0;  // + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
     // blocking removal of DQ by adding an additional edge will cause EnsureUniqueDQForNodeUnit to duplicate the DQ,
     // so we expect twice as many DQ's as original QDQ pairs
     const int expected_dq_count = expected_qdq_count * 2;

@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
+#include <vector>
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/selectors_actions/actions.h"
 #include "core/optimizer/utils.h"
@@ -68,7 +69,8 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
 
   for (auto second_node_ptr : second_node_ptrs) {
     Node& second_node = *graph.GetNode(second_node_ptr->Index());
-    // we support a second_node that produces a graph output if it has no output edges, or a second_node with one output edge.
+    // we support a second_node that produces a graph output if it has no output edges, or a second_node with one
+    // output edge.
     const bool produces_graph_output = graph.NodeProducesGraphOutput(second_node);
 
     // src node or graph input/initializer -> first_node -> second_node -> downstream node or graph output
