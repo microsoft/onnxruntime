@@ -3026,6 +3026,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
   ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
+  LOGS(logger_, VERBOSE) << "Done CheckerContext init in VerifyNodeAndOpMatch";
 
   LexicalScopeContext parent;
   if (parent_node_) {
@@ -3042,6 +3043,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     // and need to call Resolve. parent_node_ would be null in this case
     parent.output_names.insert(outer_scope_node_arg_names_.cbegin(), outer_scope_node_arg_names_.cend());
   }
+  LOGS(logger_, VERBOSE) << "Done LexicalScopeContext 1 init in VerifyNodeAndOpMatch";
 
   LexicalScopeContext lsc{parent};
   lsc.output_names.reserve(resolve_context_.inputs_and_initializers.size() + resolve_context_.output_args.size());
@@ -3049,6 +3051,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   for (const std::string_view& input : resolve_context_.inputs_and_initializers) {
     lsc.output_names.insert(std::string(input));
   }
+  LOGS(logger_, VERBOSE) << "Done LexicalScopeContext 2 init in VerifyNodeAndOpMatch";
 
   for (auto node_index : nodes_in_topological_order_) {
     // Node verification.
@@ -3146,6 +3149,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       lsc.output_names.insert(output->Name());
     }
   }
+  LOGS(logger_, VERBOSE) << "Done check and update nodes of current graph in VerifyNodeAndOpMatch";
 
   // verify subgraphs
   for (auto node_index : nodes_in_topological_order_) {
@@ -3155,6 +3159,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
     }
   }
+  LOGS(logger_, VERBOSE) << "Done recursively check subgraphs in VerifyNodeAndOpMatch";
 
   return Status::OK();
 }
