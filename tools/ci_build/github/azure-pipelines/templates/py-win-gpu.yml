@@ -1,7 +1,7 @@
 parameters:
 - name: MACHINE_POOL
   type: string
-  default: 'onnxruntime-Win2022-GPU-T4'
+  default: 'onnxruntime-Win2022-GPU-A10'
 
 - name: EP_NAME
   type: string
