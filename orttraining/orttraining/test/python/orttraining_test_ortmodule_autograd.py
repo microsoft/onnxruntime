@@ -1839,7 +1839,9 @@ def test_determistic_pythonop_export():
     ortmodule = ORTModule(TestModel(output_size)).train()
     _ = ortmodule(torch.randn(output_size, dtype=torch.float))
 
-    onnx_nodes = ortmodule._torch_module._execution_manager._training_manager._onnx_models.exported_model.graph.node
+    onnx_nodes = (
+        ortmodule._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
+    )
 
     found_pythonop = False
     for node in onnx_nodes:

@@ -168,7 +168,7 @@ class PostExportProcessedModelInfo:
 
         self.onnx_graph_input_const_as_tensor: dict[str, torch.device] | None = onnx_graph_input_const_as_tensor
 
-        self._enable_mem_efficient_grad_management = enable_mem_efficient_grad_management
+        self.is_mem_efficient_grad_management_enabled = enable_mem_efficient_grad_management
 
         # Used for unflattening the outputs from the ORT forward run.
         self.module_forward_output_schema: ORTModelInputOutputSchemaType | None = module_forward_output_schema
@@ -227,7 +227,7 @@ class PostExportProcessedModelInfo:
                     )
 
         for name in self.onnx_graph_input_names_user_defined:
-            if self._enable_mem_efficient_grad_management and name == MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME:
+            if self.is_mem_efficient_grad_management_enabled and name == MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME:
                 self._buffer_for_ort_runs[name] = torch.zeros(
                     MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
                     dtype=onnx_dtype_to_pytorch_dtype(MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE),
@@ -676,7 +676,7 @@ class GraphTransitionManager:
                 # Override the options if model is not modified.
 
                 (
-                    stage3_param_handle._mem_efficient_grad_management_is_enabled,
+                    enable_mem_efficient_grad_management,  # Update the flag to indicate the mem efficient grad management is enabled.
                     post_processed_model,
                     stage3_param_handle._param_trigger_grad,
                 ) = post_processing_enable_mem_efficient_training(
@@ -732,7 +732,7 @@ class GraphTransitionManager:
         onnx_opset_version: int,
         stage3_param_handle: type,
         debug_options: DebugOptions,
-        time_tracker: TimeTracker,
+        time_tracker: TimeTracker,  # time_tracker MUST be provided here to support TrackTimeForStaticFunction
         runtime_inspector: RuntimeInspector,
         logger: logging.Logger,
     ) -> tuple[onnx.ModelProto, ORTModelInputOutputSchemaType, list[str], list[str]]:

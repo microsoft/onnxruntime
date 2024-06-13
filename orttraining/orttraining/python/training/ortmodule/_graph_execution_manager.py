@@ -125,10 +125,6 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._initialize_graph_transition_manager()
 
-        # Will be reset everytime we re-initialize the graph builder.
-        # Be noted, we will never enable this feature for inference mode.
-        self._mem_efficient_grad_management_is_enabled = False
-
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -235,7 +231,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Enable  memory efficient execution order for training if 1). memory efficient grad management is enabled
         # or 2). memory optimizer is enabled.
         use_memory_efficient_topo_sort = (self._export_mode == torch.onnx.TrainingMode.TRAINING) and (
-            self._mem_efficient_grad_management_is_enabled or self._runtime_options.memory_optimizer_is_enabled()
+            self._graph_transition_manager._post_export_processed_model_info.is_mem_efficient_grad_management_enabled
+            or self._runtime_options.memory_optimizer_is_enabled()
         )
         session_options.execution_order = (
             onnxruntime.ExecutionOrder.MEMORY_EFFICIENT
@@ -355,7 +352,10 @@ class GraphExecutionManager(GraphExecutionInterface):
            enable sparsity-based optimization.
 
         """
-        if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
+        if (
+            self._runtime_options.enable_zero_stage3_support
+            or self._graph_transition_manager._post_export_processed_model_info.is_mem_efficient_grad_management_enabled
+        ):
             self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
         if (
