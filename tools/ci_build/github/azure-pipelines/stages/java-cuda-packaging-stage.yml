@@ -81,7 +81,7 @@ stages:
       Jar_Packaging_GPU
     workspace:
       clean: all
-    pool: 'onnxruntime-Win2022-GPU-T4'
+    pool: 'onnxruntime-Win2022-GPU-A10'
     timeoutInMinutes: 60
     variables:
     - name: runCodesignValidationInjection
