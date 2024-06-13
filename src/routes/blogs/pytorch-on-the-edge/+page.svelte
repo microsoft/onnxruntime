@@ -179,9 +179,9 @@ fun run(audioTensor: OnnxTensor): Result {
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Run PyTorch models on the edge</h1>
 	<p class="text-neutral">
-		By: <a href="https://www.linkedin.com/in/natkershaw/" class="text-blue-500">Natalie Kershaw</a>
+		By: <a href="https://www.linkedin.com/in/natkershaw/" class="text-blue-700">Natalie Kershaw</a>
 		and
-		<a href="https://www.linkedin.com/in/prasanthpulavarthi/" class="text-blue-500"
+		<a href="https://www.linkedin.com/in/prasanthpulavarthi/" class="text-blue-700"
 			>Prasanth Pulavarthi</a
 		>
 	</p>
@@ -217,12 +217,12 @@ fun run(audioTensor: OnnxTensor): Result {
 				anywhere that is outside of the cloud, ranging from large, well-resourced personal computers
 				to small footprint devices such as mobile phones. This has been a challenging task to
 				accomplish in the past, but new advances in model optimization and software like
-				<a href="https://onnxruntime.ai/pytorch" class="text-blue-500">ONNX Runtime</a>
+				<a href="https://onnxruntime.ai/pytorch" class="text-blue-700">ONNX Runtime</a>
 				make it more feasible - even for new generative AI and large language models like Stable Diffusion,
 				Whisper, and Llama2.
 			</p>
 
-			<h2 class="text-blue-500 text-3xl mb-4">Considerations for PyTorch models on the edge</h2>
+			<h2 class="text-blue-700 text-3xl mb-4">Considerations for PyTorch models on the edge</h2>
 
 			<p class="mb-4">
 				There are several factors to keep in mind when thinking about running a PyTorch model on the
@@ -292,7 +292,7 @@ fun run(audioTensor: OnnxTensor): Result {
 				</li>
 			</ul>
 
-			<h2 class="text-blue-500 text-3xl mb-4">Tools for PyTorch models on the edge</h2>
+			<h2 class="text-blue-700 text-3xl mb-4">Tools for PyTorch models on the edge</h2>
 
 			<p class="mb-4">
 				We mentioned ONNX Runtime several times above. ONNX Runtime is a compact, standards-based
@@ -305,7 +305,7 @@ fun run(audioTensor: OnnxTensor): Result {
 				format that doesn't require the PyTorch framework and its gigabytes of dependencies. PyTorch
 				has thought about this and includes an API that enables exactly this - <a
 					href="https://pytorch.org/docs/stable/onnx.html"
-					class="text-blue-500">torch.onnx</a
+					class="text-blue-700">torch.onnx</a
 				>. <a href="https://onnx.ai/">ONNX</a> is an open standard that defines the operators that make
 				up models. The PyTorch ONNX APIs take the Pythonic PyTorch code and turn it into a functional
 				graph that captures the operators that are needed to run the model without Python. As with everything
@@ -318,7 +318,7 @@ fun run(audioTensor: OnnxTensor): Result {
 				The popular Hugging Face library also has APIs that build on top of this torch.onnx
 				functionality to export models to the ONNX format. Over <a
 					href="https://huggingface.co/blog/ort-accelerating-hf-models"
-					class="text-blue-500">130,000 models</a
+					class="text-blue-700">130,000 models</a
 				> are supported making it very likely that the model you care about is one of them.
 			</p>
 
@@ -328,7 +328,7 @@ fun run(audioTensor: OnnxTensor): Result {
 				and web browsers) via various languages (from C# to JavaScript to Swift).
 			</p>
 
-			<h2 class="text-blue-500 text-3xl mb-4">Examples of PyTorch models on the edge</h2>
+			<h2 class="text-blue-700 text-3xl mb-4">Examples of PyTorch models on the edge</h2>
 
 			<h3 class=" text-2xl mb-2">Stable Diffusion on Windows</h3>
 
@@ -345,7 +345,7 @@ fun run(audioTensor: OnnxTensor): Result {
 			<p class="mb-4">
 				You don't have to export the fifth model, ClipTokenizer, as it is available in <a
 					href="https://onnxruntime.ai/docs/extensions"
-					class="text-blue-500">ONNX Runtime extensions</a
+					class="text-blue-700">ONNX Runtime extensions</a
 				>, a library for pre and post processing PyTorch models.
 			</p>
 
@@ -366,7 +366,7 @@ fun run(audioTensor: OnnxTensor): Result {
 			<p class="mb-4">
 				You can build the application and run it on Windows with the detailed steps shown in this <a
 					href="https://onnxruntime.ai/docs/tutorials/csharp/stable-diffusion-csharp.html"
-					class="text-blue-500">tutorial</a
+					class="text-blue-700">tutorial</a
 				>.
 			</p>
 
@@ -374,7 +374,7 @@ fun run(audioTensor: OnnxTensor): Result {
 
 			<p class="mb-4">
 				Running a PyTorch model locally in the browser is not only possible but super simple with
-				the <a href="https://huggingface.co/docs/transformers.js/index" class="text-blue-500"
+				the <a href="https://huggingface.co/docs/transformers.js/index" class="text-blue-700"
 					>transformers.js</a
 				> library. Transformers.js uses ONNX Runtime Web as its backend. Many models are already converted
 				to ONNX and served by the tranformers.js CDN, making inference in the browser a matter of writing
@@ -407,7 +407,7 @@ fun run(audioTensor: OnnxTensor): Result {
 				All components of the Whisper Tiny model (audio decoder, encoder, decoder, and text sequence
 				generation) can be composed and exported to a single ONNX model using the <a
 					href="https://github.com/microsoft/Olive/tree/main/examples/whisper"
-					class="text-blue-500">Olive framework</a
+					class="text-blue-700">Olive framework</a
 				>. To run this model as part of a mobile application, you can use ONNX Runtime Mobile, which
 				supports Android, iOS, react-native, and MAUI/Xamarin.
 			</p>
@@ -420,7 +420,7 @@ fun run(audioTensor: OnnxTensor): Result {
 			<p class="mb-4">
 				The relevant snippet of a example <a
 					href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/speech_recognition"
-					class="text-blue-500">Android mobile app</a
+					class="text-blue-700">Android mobile app</a
 				> that performs speech transcription on short samples of audio is shown below:
 			</p>
 			<Highlight language={kotlin} code={mobilecode} />
@@ -476,11 +476,11 @@ fun run(audioTensor: OnnxTensor): Result {
 			<p class="mb-4">
 				You can read the full <a
 					href="https://onnxruntime.ai/docs/tutorials/on-device-training/ios-app.html"
-					class="text-blue-500">Speaker Verification tutorial</a
+					class="text-blue-700">Speaker Verification tutorial</a
 				>, and
 				<a
 					href="https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/ios"
-					class="text-blue-500">build and run the application from source</a
+					class="text-blue-700">build and run the application from source</a
 				>.
 			</p>
 

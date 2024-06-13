@@ -33,7 +33,7 @@
 			<div class="card-body col-span-3 md:col-span-2">
 				<h2 class="card-title">{title}</h2>
 				<p>{description}</p>
-				<p class="text-blue-500 text-right">
+				<p class="text-blue-700 text-right">
 					{date}
 				</p>
 				<div class="card-actions">
