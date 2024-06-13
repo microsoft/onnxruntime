@@ -7,6 +7,7 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/rocm/bert/group_query_attention.h"
 #include "contrib_ops/rocm/bert/group_query_attention_helper.h"
+#include "contrib_ops/rocm/bert/rotary_embedding_impl.h"
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh"
 
 #ifdef USE_COMPOSABLE_KERNEL_CK_TILE
@@ -20,6 +21,18 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
+
+void print(const std::string& msg, const longlong4& s) {
+  std::cout << msg << ":" << s.x << "," << s.y << "," << s.z << "," << s.w << std::endl;
+}
+
+void print(const std::string& msg, const int4& s) {
+  std::cout << msg << ":" << s.x << "," << s.y << "," << s.z << "," << s.w << std::endl;
+}
+
+void print(const std::string& msg, const Strides& s) {
+  print(msg, s.strides_for_bnsh_coord);
+}
 
 #define REGISTER_KERNEL_TYPED(T)                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
@@ -57,7 +70,6 @@ __global__ void seqlens_inc_kernel(const int* seqlens, int* out, int num_elems, 
   int idx = blockDim.x * blockIdx.x + threadIdx.x;
   if (idx < num_elems) {
     out[idx] = seqlens[idx] + inc;
-    printf("inc %d: %d\n", idx, out[idx]);
   }
 }
 
@@ -72,7 +84,6 @@ __global__ void seqstart_init_kernel(int* out, int num_elems, int length_per_seq
   int idx = blockDim.x * blockIdx.x + threadIdx.x;
   if (idx < num_elems) {
     out[idx] = idx * length_per_seq;
-    printf("init %d: %d\n", idx, out[idx]);
   }
   if (idx == 0) {
     out[num_elems] = num_elems * length_per_seq;
@@ -83,6 +94,44 @@ Status LaunchSeqStartInit(hipStream_t stream, int* out, int num_elems, int lengt
   constexpr int NumThreads = 128;
   int num_blks = CeilDiv(num_elems, NumThreads);
   seqstart_init_kernel<<<num_blks, NumThreads, 0, stream>>>(out, num_elems, length_per_seq);
+  return HIP_CALL(hipGetLastError());
+}
+
+// Kernel to convert seqlens_k to position_ids
+__global__ void SeqlensToPosIdsPrompt(const int32_t* seqlens_k, int64_t* position_ids, const int seqlen,
+                                      const int batch_size) {
+  int tid = blockDim.x * blockIdx.x + threadIdx.x;
+  int b = tid / seqlen;
+  int s = tid % seqlen;
+  if (b < batch_size) {
+    if (s < seqlens_k[b] + 1) {
+      position_ids[tid] = s;
+    } else {
+      position_ids[tid] = 1;
+    }
+  }
+}
+
+// Kernel to convert seqlens_k to position_ids
+__global__ void SeqlensToPosIdsToken(const int32_t* seqlens_k, int64_t* position_ids, const int batch_size) {
+  int tid = blockDim.x * blockIdx.x + threadIdx.x;
+  if (tid < batch_size) {
+    position_ids[tid] = seqlens_k[tid];
+  }
+}
+
+// Convert seqlens_k to position_ids
+Status LaunchSeqlensToPosIds(contrib::GroupQueryAttentionParameters& parameters, const int32_t* seqlens_k,
+                             int64_t* position_ids, hipStream_t stream, const int max_threads_per_block) {
+  const int seqlen = parameters.sequence_length;
+  const int batch_size = parameters.batch_size;
+  const int threads = max_threads_per_block;
+  const int blocks = (batch_size * seqlen + threads - 1) / threads;
+  if (parameters.is_prompt) {
+    SeqlensToPosIdsPrompt<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, seqlen, batch_size);
+  } else {
+    SeqlensToPosIdsToken<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, batch_size);
+  }
   return HIP_CALL(hipGetLastError());
 }
 
@@ -194,19 +243,29 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* present_value = ctx->Output(2, present_shape);
 
   Strides query_strides;
+  Strides key_strides;
+  Strides value_strides;
+  int4 kv_shape{batch_size, kv_num_heads, kv_sequence_length, head_size};  // BNSH coord
   const HipT* query_ptr = reinterpret_cast<const HipT*>(query->DataRaw());
   const HipT* key_ptr;
   const HipT* value_ptr;
   if (!parameters.is_packed_qkv) {
     query_strides = Strides::BSNHMemory(batch_size, sequence_length, num_heads, head_size);
+    key_strides = Strides::BSNHMemory(batch_size, kv_sequence_length, kv_num_heads, head_size);
+    value_strides = key_strides;
     key_ptr = reinterpret_cast<const HipT*>(key->DataRaw());
     value_ptr = reinterpret_cast<const HipT*>(value->DataRaw());
   } else {
     query_strides = Strides::BSNHMemory(batch_size, sequence_length, num_heads + 2 * kv_num_heads, head_size);
+    key_strides = Strides::BSNHMemory(batch_size, sequence_length, num_heads + 2 * kv_num_heads, head_size);
+    value_strides = query_strides;
     const size_t key_offset = static_cast<size_t>(num_heads * head_size);
     const size_t value_offset = static_cast<size_t>(kv_num_heads * head_size);
     key_ptr = query_ptr + key_offset;
     value_ptr = key_ptr + value_offset;
+
+    print("!is_packed_qkv, key_shape  ", kv_shape);
+    print("!is_packed_qkv, key_strides", key_strides);
   }
 
   IAllocatorUniquePtr<HipT> rotary_q_tmp;
@@ -214,8 +273,12 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (parameters.do_rotary) {
     size_t q_size = static_cast<size_t>(batch_size * sequence_length * num_heads * head_size);
     size_t k_size = static_cast<size_t>(batch_size * sequence_length * kv_num_heads * head_size);
-    // auto q_buffer = reinterpret_cast<T*>(data.rotary_buffer);
-    // auto k_buffer = q_buffer + q_size;
+    auto rotary_q_strides = Strides::BSNHMemory(batch_size, sequence_length, num_heads, head_size);
+    auto rotary_k_strides = Strides::BSNHMemory(batch_size, sequence_length, kv_num_heads, head_size);
+
+    print("do_rotary, rotary_k_shape  ", int4{batch_size, sequence_length, kv_num_heads, head_size});
+    print("do_rotary, rotary_k_strides", rotary_k_strides);
+
     rotary_q_tmp = GetScratchBuffer<HipT>(q_size, ctx->GetComputeStream());
     rotary_k_tmp = GetScratchBuffer<HipT>(k_size, ctx->GetComputeStream());
     auto rotary_position_ids_tmp = GetScratchBuffer<int64_t>(sequence_length * batch_size, ctx->GetComputeStream());
@@ -232,7 +295,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           parameters.num_heads, parameters.head_size,
                                                           parameters.rotary_dim, parameters.seqlen_present_kv_cache,
                                                           /*position_ids_format*/ 1, parameters.rotary_interleaved,
-                                                          max_thr_per_blk, /*transposed*/ false));
+                                                          max_thr_per_blk, /*transposed*/ false,
+                                                          query_strides.ForBNSHCoord<int4>(),
+                                                          rotary_q_strides.ForBNSHCoord<int4>()));
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<HipT>(hip_stream, rotary_k_tmp.get(), key_ptr,
                                                           reinterpret_cast<int64_t*>(rotary_position_ids_tmp.get()),
                                                           reinterpret_cast<const HipT*>(cos_cache->DataRaw()),
@@ -241,9 +306,15 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           parameters.kv_num_heads, parameters.head_size,
                                                           parameters.rotary_dim, parameters.seqlen_present_kv_cache,
                                                           /*position_ids_format*/ 1, parameters.rotary_interleaved,
-                                                          max_thr_per_blk, /*transposed*/ false));
+                                                          max_thr_per_blk, /*transposed*/ false,
+                                                          key_strides.ForBNSHCoord<int4>(),
+                                                          rotary_k_strides.ForBNSHCoord<int4>()));
     query_ptr = reinterpret_cast<const HipT*>(rotary_q_tmp.get());
     key_ptr = reinterpret_cast<const HipT*>(rotary_k_tmp.get());
+    query_strides = rotary_q_strides;
+    key_strides = rotary_k_strides;
+    print("do_rotary, key_shape  ", kv_shape);
+    print("do_rotary, key_strides", key_strides);
   }
 
   const int* seqlens_k_ptr = seqlens_k ? reinterpret_cast<const int*>(seqlens_k->DataRaw()) : nullptr;
@@ -252,18 +323,22 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   // build present kv cache
   auto* present_key_ptr = reinterpret_cast<HipT*>(present_key->MutableDataRaw());
   auto* present_value_ptr = reinterpret_cast<HipT*>(present_value->MutableDataRaw());
-  int4 kv_shape{batch_size, kv_num_heads, kv_sequence_length, head_size};
-  auto kv_strides = Strides::BSNHMemory(batch_size, kv_sequence_length, kv_num_heads, head_size);
   if (parameters.is_prompt) {
+    std::cout << "is_prompt" << std::endl;
     // copy prompt kv to present kv
-    ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, key_ptr, kv_shape, kv_strides.ForBNSHCoord(),
+    ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, key_ptr, kv_shape, key_strides.ForBNSHCoord(),
                                           present_key_ptr, present_strides.ForBNSHCoord(), max_thr_per_blk));
-    ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, value_ptr, kv_shape, kv_strides.ForBNSHCoord(),
+    ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, value_ptr, kv_shape, value_strides.ForBNSHCoord(),
                                           present_value_ptr, present_strides.ForBNSHCoord(), max_thr_per_blk));
+    print("is_prompt, key_shape  ", kv_shape);
+    print("is_prompt, key_strides", key_strides);
   } else {
-    const auto* past_key_ptr = reinterpret_cast<const HipT*>(past_key->DataRaw());
-    const auto* past_value_ptr = reinterpret_cast<const HipT*>(past_value->DataRaw());
+    std::cout << "!is_prompt" << std::endl;
+    const auto* past_key_ptr = past_key == nullptr ? nullptr : reinterpret_cast<const HipT*>(past_key->DataRaw());
+    const auto* past_value_ptr = past_key == nullptr ? nullptr : reinterpret_cast<const HipT*>(past_value->DataRaw());
+    parameters.kv_share_buffer = past_key_ptr == present_key_ptr;  // FIXME:
     if (!parameters.kv_share_buffer) {
+      std::cout << "!kv_share_buffer" << std::endl;
       // copy past to present,
       // NOTE: we do a low perf full buffer copy due to the seqlens_k indicate the seqlen of different seqs are
       // not the same, aka, can not be as simple as strided
@@ -272,6 +347,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, past_value_ptr, past_shape, past_strides.ForBNSHCoord(),
                                             present_value_ptr, present_strides.ForBNSHCoord(), max_thr_per_blk));
     } else {
+      std::cout << "kv_share_buffer" << std::endl;
       // In the case of share buffer
       ORT_ENFORCE(past_key_ptr == nullptr || past_key_ptr == present_key_ptr);
       ORT_ENFORCE(past_key_ptr == nullptr || past_value_ptr == present_value_ptr);
@@ -279,11 +355,11 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
     // then append new kv to present
     size_t buffer_offset = seqlens_k ? 0 : present_strides.OffsetAt(0, 0, kv_sequence_length, 0);
     ORT_RETURN_IF_ERROR(LaunchStridedCopy(
-        hip_stream, key_ptr, kv_shape, kv_strides.ForBNSHCoord(), /*in_seqlens_offset=*/nullptr,
+        hip_stream, key_ptr, kv_shape, key_strides.ForBNSHCoord(), /*in_seqlens_offset=*/nullptr,
         present_key_ptr + buffer_offset, present_strides.ForBNSHCoord(), seqlens_k_ptr,
         max_thr_per_blk));
     ORT_RETURN_IF_ERROR(LaunchStridedCopy(
-        hip_stream, value_ptr, kv_shape, kv_strides.ForBNSHCoord(), /*in_seqlens_offset=*/nullptr,
+        hip_stream, value_ptr, kv_shape, value_strides.ForBNSHCoord(), /*in_seqlens_offset=*/nullptr,
         present_value_ptr + buffer_offset, present_strides.ForBNSHCoord(), seqlens_k_ptr,
         max_thr_per_blk));
 
@@ -366,8 +442,12 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       mask.right,                                                               // window_size_right
       static_cast<ck_tile::index_t>(mask.type)};
 
-  std::cout << "\n  seqlen_past_kv_cache:" << parameters.seqlen_past_kv_cache
-            << "\n  seqlen_present_kv_cache:" << parameters.seqlen_present_kv_cache << std::endl;
+#if 0
+  std::cout
+      << "\n  sequence_length:" << sequence_length
+      << "\n  kv_sequence_length:" << kv_sequence_length
+      << "\n  seqlen_past_kv_cache:" << parameters.seqlen_past_kv_cache
+      << "\n  seqlen_present_kv_cache:" << parameters.seqlen_present_kv_cache << std::endl;
 
   std::cout
       << "\n  q_ptr:" << args.q_ptr
@@ -411,6 +491,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       << "\n  window_size_right:" << args.window_size_right
       << "\n  mask_type:" << args.mask_type
       << std::endl;
+#endif
 
   fmha_fwd_traits traits{
       parameters.head_size,
