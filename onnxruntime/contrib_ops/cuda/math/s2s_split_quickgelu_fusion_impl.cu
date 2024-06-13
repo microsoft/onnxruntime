@@ -68,16 +68,39 @@ __global__ void S2SModelSplitQuickGeluKernel(const int dim, float alpha, const T
   // CUDA_LONG offset_in2 = offset_in1 + dim;
   // CUDA_LONG offset_out = (offset_in1 + 1) / 2;
   T alpha_val = static_cast<T>(alpha);
-  // New implementation
-  // CUDA_LONG id = offset_in1;
+  T split1[kElementsPerThread];
+  T split2[kElementsPerThread];
+  // Second Implementation with memory storage
+  #pragma unroll
+  for (int i = 0; i < kElementsPerThread; i++) {
+    if (offset_in1 % (2 * dim) < dim) {
+      split1[i] = input[offset_in1];
+      split2[i] = input[offset_in1 + dim];
+      offset_in1 += kThreadsPerBlock;
+    }
+  }
+
+  offset_in1 = kElementsPerThread * kThreadsPerBlock * blockIdx.x + threadIdx.x;
   #pragma unroll
   for (int i = 0; i < kElementsPerThread; i++) {
     if (offset_in1 % (2 * dim) < dim) {
       CUDA_LONG offset_out = (offset_in1 / (2 * dim)) * dim + offset_in1 % dim;
-      output[offset_out] = QuickGeluCompute(input[offset_in1], input[offset_in1 + dim], alpha_val);
+      output[offset_out] = QuickGeluCompute(split1[i], split2[i], alpha_val);
       offset_in1 += kThreadsPerBlock;
     }
   }
+
+
+  // New implementation
+  // CUDA_LONG id = offset_in1;
+  // #pragma unroll
+  // for (int i = 0; i < kElementsPerThread; i++) {
+  //   if (offset_in1 % (2 * dim) < dim) {
+  //     CUDA_LONG offset_out = (offset_in1 / (2 * dim)) * dim + offset_in1 % dim;
+  //     output[offset_out] = QuickGeluCompute(input[offset_in1], input[offset_in1 + dim], alpha_val);
+  //     offset_in1 += kThreadsPerBlock;
+  //   }
+  // }
 
   // Separate QuickGelu code in another fn
   // printf("Curr kElementsPerThread %d\n", kElementsPerThread);
