@@ -2042,6 +2042,21 @@ TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
 #endif
 
 #ifdef ENABLE_TRAINING_OPS
+// use a carefully constructed model to re-produce a customer reported issue where a model produced invalid output.
+// this issue required:
+// - buffer A that is re-used later in the model
+//   - output of the first Shape node
+//   - first usage completes after the following Cast node
+// - buffer B which has the same size requirement and is used after the first usage of A is complete
+//   - buffer B is used for the output from `squeeze2` and a number of other nodes in that part of the model.
+// - re-use of buffer A for an output of a node that has no consumers whilst buffer B is still in use
+//   - this is the `per_input_length` output of the ConcatTraining node 
+//
+// Because the logic to determine when a buffer can be freed is based on consumers, buffer A gets freed after the 
+// Cast node. It is then re-used as buffer B because the memory pattern planner believes that block to be available.
+// When we re-use buffer A for the ConcatTraining output we are using the same address for two different node output
+// buffers, leading to corruption of the output. 
+// This tests that the change in allocation planner to not re-use a buffer for outputs with no consumers prevents this.
 TEST(AllocationPlannerTest, AvoidReuseOfBufferForNodeOutputWithNoConsumers) {
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
