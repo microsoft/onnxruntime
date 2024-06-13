@@ -43,6 +43,7 @@ class Config:
     num_heads = 0
     kv_num_heads = 0
     head_size = 0
+    ep = "CUDAExecutionProvider"
 
     def __init__(self, b, s, s2, sp, n, n2, h):
         self.batch_size = b
@@ -69,6 +70,7 @@ class PromptConfig:
     num_heads = 0
     kv_num_heads = 0
     head_size = 0
+    ep = "CUDAExecutionProvider"
 
     def __init__(self, b, sq, skv, sb, n, n2, h):
         self.batch_size = b
@@ -724,7 +726,7 @@ def flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config
         "cumulative_sequence_length": cu_seqlens.cpu().numpy(),
     }
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
     ort_output = ort_session.run(None, ort_inputs)
     output = torch.tensor(ort_output)
     return output
@@ -741,7 +743,7 @@ def mha_func(q, k, v, config):
         "value": v.detach().cpu().numpy(),
     }
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
     ort_output = ort_session.run(None, ort_inputs)
     ort_output = numpy.array(ort_output)
     output = torch.tensor(ort_output)
@@ -787,7 +789,7 @@ def gqa_prompt_func(
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -828,7 +830,7 @@ def gqa_prompt_func(
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -895,7 +897,7 @@ def gqa_past_func(
             .numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -943,7 +945,7 @@ def gqa_past_func(
             .numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
