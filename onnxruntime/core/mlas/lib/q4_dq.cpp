@@ -812,7 +812,7 @@ private:
     {
         ORT_ENFORCE(columns % 2 == 0, "Columns of tensor must be multiple of 2.");
         // Thread block is [quant_block_size, thread_blk_size]. thread_blk_size % 2 == 0.
-        const int32_t thread_blk_size = 32;
+        const int32_t thread_blk_size = 64;
         const auto num_row_thread_blk = (rows + quant_block_size - 1) / quant_block_size;
         const auto num_col_thread_blk = (columns + thread_blk_size - 1) / thread_blk_size;
         const auto num_thread_blk = num_row_thread_blk * num_col_thread_blk;
@@ -923,88 +923,182 @@ private:
         MLAS_THREADPOOL* thread_pool
     )
     {
-        // Thread block is [quant_block_size, thread_blk_size]. thread_blk_size % 2 == 0.
-        const int32_t thread_blk_size = 32;
-        const auto num_row_thread_blk = (rows + quant_block_size - 1) / quant_block_size;
-        const auto num_col_thread_blk = (columns + thread_blk_size - 1) / thread_blk_size;
-        const auto num_thread_blk = num_row_thread_blk * num_col_thread_blk;
+        // Thread block is [quant_block_size * 2, columns], so the packed bytes do not cross threads.
+        const int32_t buffer_size = 128;
+        const auto row_thread_blk_size = quant_block_size * 2;
+        const auto num_row_thread_blk = (rows + row_thread_blk_size - 1) / (row_thread_blk_size);
         const auto minf = std::numeric_limits<float>::lowest();
         const auto maxf = std::numeric_limits<float>::max();
 
         MlasTryBatchParallel(
-            thread_pool, static_cast<ptrdiff_t>(num_thread_blk),
-            [&](ptrdiff_t thread_blk_idx) {
-                // TODO(fajin): tweak stride to optimize L1 cache usage
-                uint8_t zp_t[2];
-                uint8_t out_t[2];
-                float reciprocal_scale_t[2];
-                float zp_f_t[2];
-                float vmin_t[2];
-                float vmax_t[2];
+            thread_pool, static_cast<ptrdiff_t>(num_row_thread_blk),
+            [&](ptrdiff_t row_thread_blk_idx) {
+                float reciprocal_scale_t[buffer_size];
+                float zp_f_t[buffer_size];
+                float vmin_t[buffer_size];
+                float vmax_t[buffer_size];
 
-                const int32_t row_quant_blk_idx = static_cast<int32_t>(thread_blk_idx / num_col_thread_blk);
-                const int32_t col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx % num_col_thread_blk);
-                const int32_t row_idx = row_quant_blk_idx * quant_block_size;
-                const int32_t col_idx = col_thread_blk_idx * thread_blk_size;
-                const int32_t row_size = std::min(quant_block_size, rows - row_idx);
-                const int32_t col_size = std::min(thread_blk_size, columns - col_idx);
-                auto input_idx = row_idx * columns + col_idx;
-                auto scale_idx = row_quant_blk_idx * columns + col_idx;
-                auto input_col_end_idx = input_idx + col_size;
+                const int32_t row_idx = row_thread_blk_idx * row_thread_blk_size;
+                const int32_t row_idx_end = std::min(row_thread_blk_size + row_idx, rows);
+                auto input_idx = row_idx * columns;
+                auto scale_idx = row_thread_blk_idx * 2 * columns;
+                Tin scale0_tt, scale1_tt;
+                uint8_t v0_tt, v1_tt;
 
-                Tin scale_tt;
+                for (; row_idx < row_idx_end; row_idx += quant_block_size) {
+                    // per quant block row
+                    auto quant_row_size = std::min(quant_block_size, row_idx_end - row_idx);
+                    auto input_buffer_idx = input_idx;
+                    auto scale_buffer_idx = scale_idx;
+                    for (int32_t buffer_idx = 0; buffer_idx < columns; buffer_idx += buffer_size) {
+                        // per buffer column
+                        auto buffer_col_size = std::min(buffer_size, columns - buffer_idx);
 
-                // aligned dst elements
-                for (; input_idx < input_col_end_idx; input_idx += 2, scale_idx += 2) {
-                    std::fill_n(zp_t, 2, static_cast<uint8_t>(BitsTraits<qbits>::kMid));
-                    std::fill_n(vmin_t, 2, maxf);
-                    std::fill_n(vmax_t, 2, minf);
-
-                    // calculate min/max of 2 quant blocks
-                    for (int32_t j = 0, input_idx_t = input_idx; j < row_size; ++j, input_idx_t += columns) {
-                        // TODO(fajin): use SIMD
-                        for (int32_t i = 0; i < 2; ++i) {
-                            auto v = static_cast<float>(src[input_idx_t + i]);
-                            vmin_t[i] = std::min(vmin_t[i], v);
-                            vmax_t[i] = std::max(vmax_t[i], v);
-                        }
-                    }
-
-                    // calculate scale and zero point of 2 quant blocks
-                    for (int32_t i = 0; i < 2; ++i) {
-                        if (zero_points) {
-                            range2scalezp<Tin, qbits>(vmin_t[i], vmax_t[i], scale_tt, zp_t[i]);
-                        } else {
-                            range2scale<Tin, qbits>(vmin_t[i], vmax_t[i], scale_tt);
+                        std::fill_n(vmin_t, buffer_size, maxf);
+                        std::fill_n(vmax_t, buffer_size, minf);
+                        // calculate min/max of [quant block, buffer]
+                        auto input_idx_t = input_buffer_idx;
+                        for (int32_t j = 0; j < quant_row_size; ++j, input_idx_t += columns) {
+                            // TODO(fajin): use SIMD
+                            for (int32_t i = 0; i < buffer_col_size; ++i) {
+                                auto v = static_cast<float>(src[input_idx_t + i]);
+                                vmin_t[i] = std::min(vmin_t[i], v);
+                                vmax_t[i] = std::max(vmax_t[i], v);
+                            }
                         }
 
-                        scales[scale_idx + i] = scale_tt;
+                        // calculate scale and zero point
+                        auto scale_buffer_idx_end = scale_buffer_idx + buffer_col_size;
+                        int32_t i = 0;
+                        // leading unailgned zero points
+                        if (scale_buffer_idx & 1) {
+                            v0_tt = BitsTraits<qbits>::kMid;
+                            if (zero_points) {
+                                range2scalezp<Tin, qbits>(vmin_t[0], vmax_t[0], scale0_tt, v0_tt);
+                                zero_points[scale_buffer_idx >> 1] = SetElem(
+                                    v0_tt, 1, zero_points[scale_buffer_idx >> 1]
+                                );
+                            } else {
+                                range2scale<Tin, qbits>(vmin_t[0], vmax_t[0], scale0_tt);
+                            }
 
-                        float scalef = static_cast<float>(scale_tt);
-                        reciprocal_scale_t[i] = scalef ? 1.0f / scalef : 0.0f;
-                        zp_f_t[i] = static_cast<float>(zp_t[i]);
-                    }
+                            scales[scale_buffer_idx] = scale0_tt;
 
-                    if (zero_points) {
-                        zero_points[scale_idx >> shift_bit_] = Pack(zp_t);
-                    }
+                            float scalef = static_cast<float>(scale0_tt);
+                            reciprocal_scale_t[0] = scalef ? 1.0f / scalef : 0.0f;
+                            zp_f_t[0] = static_cast<float>(v0_tt);
 
-                    // quantize and pack
-                    for (int32_t j = 0, input_idx_t = input_idx; j < row_size; ++j, input_idx_t += columns) {
-                        // TODO(fajin): use SIMD
-                        for (int32_t i = 0; i < 2; ++i) {
-                            auto v = static_cast<float>(src[input_idx_t + i]);
-                            out_t[i] = static_cast<uint8_t>(
-                                std::clamp(
-                                    std::roundf(v * reciprocal_scale_t[i]) + zp_f_t[i],
-                                    0.0f,
-                                    BitsTraits<qbits>::kMaxFp
-                                )
-                            );
+                            ++i;
+                            ++scale_buffer_idx;
+                        }
+                        // aligned zero points
+                        for (; scale_buffer_idx < scale_buffer_idx_end - 1; i += 2, scale_buffer_idx += 2) {
+                            v0_tt = v1_tt = BitsTraits<qbits>::kMid;
+                            if (zero_points) {
+                                range2scalezp<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
+                                range2scalezp<Tin, qbits>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt, v1_tt);
+                                zero_points[scale_buffer_idx >> 1] = Pack(v0_tt, v1_tt);
+                            } else {
+                                range2scale<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt);
+                                range2scale<Tin, qbits>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt);
+                            }
+
+                            scales[scale_buffer_idx] = scale0_tt;
+                            scales[scale_buffer_idx + 1] = scale1_tt;
+
+                            float scalef0 = static_cast<float>(scale0_tt);
+                            reciprocal_scale_t[i] = scalef0 ? 1.0f / scalef0 : 0.0f;
+                            zp_f_t[i] = static_cast<float>(v0_tt);
+
+                            float scalef1 = static_cast<float>(scale1_tt);
+                            reciprocal_scale_t[i + 1] = scalef1 ? 1.0f / scalef1 : 0.0f;
+                            zp_f_t[i + 1] = static_cast<float>(v1_tt);
+                        }
+                        // tailing unaligned elements
+                        if (scale_buffer_idx < scale_buffer_idx_end) {
+                            v0_tt = BitsTraits<qbits>::kMid;
+                            if (zero_points) {
+                                range2scalezp<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
+                                zero_points[scale_buffer_idx >> 1] = SetElem(
+                                    v0_tt, 0, zero_points[scale_buffer_idx >> 1]
+                                );
+                            } else {
+                                range2scale<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt);
+                            }
+
+                            scales[scale_buffer_idx] = scale0_tt;
+
+                            float scalef = static_cast<float>(scale0_tt);
+                            reciprocal_scale_t[i] = scalef ? 1.0f / scalef : 0.0f;
+                            zp_f_t[i] = static_cast<float>(v0_tt);
+
+                            ++scale_buffer_idx;
                         }
 
-                        dst[input_idx_t >> shift_bit_] = Pack(out_t);
+                        // quantize and pack
+                        input_idx_t = input_buffer_idx;
+                        for (int32_t j = 0; j < quant_row_size; ++j, input_idx_t += columns) {
+                            auto input_idx_t_start = input_idx_t;
+                            auto input_idx_t_end = input_idx_t + buffer_col_size;
+                            i = 0;
+                            // leading unaligned output
+                            if (input_idx_t_start & 1) {
+                                auto v = static_cast<float>(src[input_idx_t_start]);
+                                v1_tt = static_cast<uint8_t>(
+                                    std::clamp(
+                                        std::roundf(v * reciprocal_scale_t[i]) + zp_f_t[i],
+                                        0.0f,
+                                        BitsTraits<qbits>::kMaxFp
+                                    )
+                                );
+
+                                dst[input_idx_t_start >> 1] = SetElem(v1_tt, 1, dst[input_idx_t_start >> 1]);
+
+                                ++i;
+                                ++input_idx_t_start;
+                            }
+                            // aligned output
+                            // TODO(fajin): use SIMD
+                            for (; input_idx_t_start < input_idx_t_end - 1; i += 2, input_idx_t_start += 2) {
+                                auto v0 = static_cast<float>(src[input_idx_t_start]);
+                                v0_tt = static_cast<uint8_t>(
+                                    std::clamp(
+                                        std::roundf(v * reciprocal_scale_t[i]) + zp_f_t[i],
+                                        0.0f,
+                                        BitsTraits<qbits>::kMaxFp
+                                    )
+                                );
+                                auto v1 = static_cast<float>(src[input_idx_t_start + 1]);
+                                v1_tt = static_cast<uint8_t>(
+                                    std::clamp(
+                                        std::roundf(v * reciprocal_scale_t[i + 1]) + zp_f_t[i + 1],
+                                        0.0f,
+                                        BitsTraits<qbits>::kMaxFp
+                                    )
+                                );
+
+                                dst[input_idx_t_start >> 1] = Pack(v0_tt, v1_tt);
+                            }
+                            // tailing unaligned output
+                            if (input_idx_t_start < input_idx_t_end) {
+                                auto v = static_cast<float>(src[input_idx_t_start]);
+                                v0_tt = static_cast<uint8_t>(
+                                    std::clamp(
+                                        std::roundf(v * reciprocal_scale_t[i]) + zp_f_t[i],
+                                        0.0f,
+                                        BitsTraits<qbits>::kMaxFp
+                                    )
+                                );
+
+                                dst[input_idx_t_start >> 1] = SetElem(v0_tt, 0, dst[input_idx_t_start >> 1]);
+                            }
+                        }
+
+                        input_buffer_idx += buffer_size;
                     }
+
+                    input_idx += quant_block_size * columns;
+                    scale_idx += columns;
                 }
             }
         );
