@@ -6,7 +6,7 @@
 	export let pathvar = '.';
 </script>
 
-<footer class="footer p-10 mt-10 bg-base-200 text-base-content z-40">
+<footer class="footer p-10 mt-10 text-base-content z-40 border-top border-t">
 	<div>
 		<p>ONNX Runtime<br />Copyright © Microsoft. All rights reserved.</p>
 		<span class="footer-title">Follow us at:</span>
@@ -24,7 +24,7 @@
 	</div>
 	<div />
 	<div>
-		<span class="footer-title">Get Started</span>
+		<span class="footer-title text-bold	">Get Started</span>
 		<a href={pathvar + '/getting-started'} class="link link-hover">Install</a>
 		<a href={pathvar + '/pytorch'} class="link link-hover">PyTorch</a>
 	</div>

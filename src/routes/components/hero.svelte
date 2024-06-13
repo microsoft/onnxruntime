@@ -126,7 +126,7 @@
 					<a class="underline" href="http://">More interested in training? More info here.</a>
 				</p> -->
 				<p class="text-lg mt-2">
-					<a class="text-blue-500 font-medium" href="./getting-started"
+					<a class="text-blue-700 font-medium" href="./getting-started"
 						>Don't see your favorite platform? See the many others we support →</a
 					>
 				</p>

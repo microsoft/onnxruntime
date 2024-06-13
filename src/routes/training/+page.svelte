@@ -87,12 +87,12 @@
 				<h2 class="card-title">Part of the PyTorch ecosystem</h2>
 				<p>
 					ONNX Runtime Training is available via the <a
-						class="text-blue-500"
+						class="text-blue-700"
 						href="https://pytorch.org/ort/">torch-ort</a
 					>
 					package as part of the
 					<a
-						class="text-blue-500"
+						class="text-blue-700"
 						href="https://learn.microsoft.com/en-us/azure/machine-learning/resource-azure-container-for-pytorch?view=azureml-api-2"
 						>Azure Container for PyTorch (ACPT)</a
 					> and seamlessly integrates with existing training pipelines for PyTorch models.
@@ -103,11 +103,11 @@
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Composable with popular acceleration systems</h2>
 				<p>
-					Compose with <a href="https://github.com/microsoft/DeepSpeed" class="text-blue-500"
+					Compose with <a href="https://github.com/microsoft/DeepSpeed" class="text-blue-700"
 						>DeepSpeed</a
 					>,
-					<a href="https://github.com/facebookresearch/fairscale" class="text-blue-500">FairScale</a
-					>, <a href="https://github.com/NVIDIA/Megatron-LM" class="text-blue-500">Megatron</a>, and
+					<a href="https://github.com/facebookresearch/fairscale" class="text-blue-700">FairScale</a
+					>, <a href="https://github.com/NVIDIA/Megatron-LM" class="text-blue-700">Megatron</a>, and
 					more for even faster and more efficient training.
 				</p>
 			</div>
@@ -118,7 +118,7 @@
 				<p>
 					ORT Training is turned on for curated models in the <a
 						href="https://ml.azure.com/"
-						class="text-blue-500">Azure AI | Machine Learning Studio</a
+						class="text-blue-700">Azure AI | Machine Learning Studio</a
 					> model catalog.
 				</p>
 			</div>
@@ -129,7 +129,7 @@
 				<p>
 					ORT Training can be used to accelerate Hugging Face models like Llama-2-7b through <a
 						href="https://github.com/huggingface/optimum/blob/main/examples/onnxruntime/training/text-classification/README.md#onnx-runtime-training"
-						class="text-blue-500">these scripts</a
+						class="text-blue-700">these scripts</a
 					>.
 				</p>
 			</div>

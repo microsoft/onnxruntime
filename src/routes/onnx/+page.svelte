@@ -15,7 +15,7 @@
 					We hope your stay is short and that you quickly get what you need!
 				</p>
 				<p class="text-lg mb-4">
-					All below links are <a href="https://aka.ms" class="text-blue-500">aka.ms/</a> supported, so
+					All below links are <a href="https://aka.ms" class="text-blue-700">aka.ms/</a> supported, so
 					feel free to use those in the future.
 				</p>
 			</div>
