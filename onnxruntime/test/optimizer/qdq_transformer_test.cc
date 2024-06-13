@@ -3743,7 +3743,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
 // test removal of Q->DQs pairs by QDQFinalCleanupTransformer
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
   auto test_case = [&](bool is_input_q,
-                       bool is_dq_output,
+                       bool is_dq1_output,
+                       bool is_dq2_output,
                        bool use_contrib_qdq) {
     // create model with float Input -> (Transpose1 ->) Q -> DQ1 -> (Transpose2 ->) Output1
     //                                                    -> DQ2 -> (Transpose3 ->) Output2
@@ -3766,7 +3767,7 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
       builder.AddQuantizeLinearNode<uint8_t>(q_input, 0.05f, 128, q_output, use_contrib_qdq);
 
       // Add DQ1 -> (Transpose2 ->) output1
-      if (is_dq_output) {
+      if (is_dq1_output) {
         auto* dq_output1 = builder.MakeOutput();
         builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output1, use_contrib_qdq);
       } else {
@@ -3777,7 +3778,7 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
       }
 
       // Add DQ2 -> (Transpose3 ->) output2
-      if (is_dq_output) {
+      if (is_dq2_output) {
         auto* dq_output2 = builder.MakeOutput();
         builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output2, use_contrib_qdq);
       } else {
@@ -3788,7 +3789,7 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
       }
     };
 
-    const int expected_transpose_count = (is_input_q ? 0 : 1) + (is_dq_output ? 0 : 2);
+    const int expected_transpose_count = (is_input_q ? 0 : 1) + (is_dq1_output ? 0 : 1) + (is_dq2_output ? 0 : 1);
 
     auto check_graph = [expected_transpose_count,
                         use_contrib_qdq](InferenceSessionWrapper& session) {
@@ -3834,17 +3835,25 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
                       add_session_options);
   };
 
-  test_case(true, true, false);   // is_input_q, is_dq_output
-  test_case(false, true, false);  // is_dq_output
-  test_case(true, false, false);  // is_input_q
-  test_case(false, false, false);
+  test_case(true, true, true, false);    // is_input_q, is_dq1_output, is_dq2_output
+  test_case(false, true, true, false);   // is_dq1_output, is_dq2_output
+  test_case(true, false, true, false);   // is_input_q, is_dq2_output
+  test_case(false, false, true, false);  // is_dq2_output
+  test_case(true, true, false, false);   // is_input_q, is_dq1_output
+  test_case(false, true, false, false);  // is_dq1_output
+  test_case(true, false, false, false);  // is_input_q
+  test_case(false, false, false, false);
 
 #if !defined(DISABLE_CONTRIB_OPS)
   // Use contrib QDQ ops
-  test_case(true, true, true);   // is_input_q, is_dq_output
-  test_case(false, true, true);  // is_dq_output
-  test_case(true, false, true);  // is_input_q
-  test_case(false, false, true);
+  test_case(true, true, true, true);    // is_input_q, is_dq1_output, is_dq2_output
+  test_case(false, true, true, true);   // is_dq1_output, is_dq2_output
+  test_case(true, false, true, true);   // is_input_q, is_dq2_output
+  test_case(false, false, true, true);  // is_dq2_output
+  test_case(true, true, false, true);   // is_input_q, is_dq1_output
+  test_case(false, true, false, true);  // is_dq1_output
+  test_case(true, false, false, true);  // is_input_q
+  test_case(false, false, false, true);
 #endif
 }
 
