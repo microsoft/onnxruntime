@@ -1182,7 +1182,7 @@ class PlannerImpl {
                 reused.insert(reusable_input);
                 continue;
               }  // if
-            }    // if
+            }  // if
           }
         }
 
@@ -1922,7 +1922,7 @@ class PlannerImpl {
                   }
                 }
               }  // output->Exists
-            }    // for each output
+            }  // for each output
             if (output_consumed_in_subgraph) {
               const auto downstream = plan_.node_stream_map_[it->Index()];
               if (downstream != i) {
