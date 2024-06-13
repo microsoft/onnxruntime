@@ -726,7 +726,6 @@ struct BlockwiseQDQQuantizer {
      * @brief Quantize a matrix shape [rows, columns] column-wise. Scales and zero points are calculated.
      *        Quantized data are packed row-wise based on qbits. Quantized data are stored in row major
      *        so the output tensor reserves the shape, in terms output type.
-     *        Thread block is [quant_block_size, thread_block_size]. thread_block_size % pack_size_ == 0.
      * @param src               the source matrix, row major: [rows * columns]
      * @param scales            the scales of quantized blocks, row major with shape: [ceil(rows/quant_block_size) * columns]
      * @param zero_points       the zero points of quantized blocks, packed. Same shape as scales in terms of output type.
@@ -750,16 +749,17 @@ struct BlockwiseQDQQuantizer {
     )
     {
         ORT_ENFORCE(columns % pack_size_ == 0, "Columns of ", qbits, " tensor must be multiple of ", pack_size_);
-        const int32_t thr_blk_size = 16;
-        const auto num_row_thr_blk = (rows + quant_block_size - 1) / quant_block_size;
-        const auto num_col_thr_blk = (columns + thr_blk_size - 1) / thr_blk_size;
-        const auto num_thr_blk = num_row_thr_blk * num_col_thr_blk;
+        // Thread block is [quant_block_size, thread_blk_size]. thread_blk_size % pack_size_ == 0.
+        const int32_t thread_blk_size = 32;
+        const auto num_row_thread_blk = (rows + quant_block_size - 1) / quant_block_size;
+        const auto num_col_thread_blk = (columns + thread_blk_size - 1) / thread_blk_size;
+        const auto num_thread_blk = num_row_thread_blk * num_col_thread_blk;
         const auto minf = std::numeric_limits<float>::lowest();
         const auto maxf = std::numeric_limits<float>::max();
 
         MlasTryBatchParallel(
-            thread_pool, static_cast<ptrdiff_t>(num_thr_blk),
-            [&](ptrdiff_t thr_blk_idx) {
+            thread_pool, static_cast<ptrdiff_t>(num_thread_blk),
+            [&](ptrdiff_t thread_blk_idx) {
                 // TODO(fajin): tweak stride to optimize L1 cache usage
                 uint8_t zp_t[pack_size_];
                 uint8_t out_t[pack_size_];
@@ -768,20 +768,29 @@ struct BlockwiseQDQQuantizer {
                 float vmin_t[pack_size_];
                 float vmax_t[pack_size_];
 
-                const int32_t row_quant_blk_idx = static_cast<int32_t>(thr_blk_idx / num_col_thr_blk);
-                const int32_t col_thr_blk_idx = static_cast<int32_t>(thr_blk_idx % num_col_thr_blk);
-
-                const int32_t col_idx = col_thr_blk_idx * thr_blk_size;
-
-                const int32_t col_size = std::min(thr_blk_size, columns - col_idx);
-
+                const int32_t row_quant_blk_idx = static_cast<int32_t>(thread_blk_idx / num_col_thread_blk);
+                const int32_t col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx % num_col_thread_blk);
+                const int32_t row_idx = row_quant_blk_idx * quant_block_size;
+                const int32_t col_idx = col_thread_blk_idx * thread_blk_size;
+                const int32_t row_size = std::min(quant_block_size, rows - row_idx);
+                const int32_t col_size = std::min(thread_blk_size, columns - col_idx);
+                auto input_idx = row_idx * columns + col_idx;
                 auto scale_idx = row_quant_blk_idx * columns + col_idx;
-                auto input_end_idx = input_idx + col_size;
+                auto input_col_end_idx = input_idx + col_size;
 
                 Tin scale_tt;
 
-                // input_idx, scale_idx and input_end_idx must be multiple of pack_size_
-                for (input_idx + pack_size_ < input_end_idx; input_idx += pack_size_, scale_idx += pack_size_) {
+                // leading unaligned dst elements
+                auto i = input_idx % pack_size_;
+                auto leading_end = std::min((input_idx + pack_size_ - 1) & ~(pack_size_ - 1), input_col_end_idx);
+                for (; input_idx < leading_end; ++i, ++input_idx, ++scale_idx) {
+                    zp_t[i] = 8;
+                    vmin_t[i] = maxf;
+                    vmax_t[i] = minf;
+                }
+
+                // aligned dst elements
+                for (; input_idx < input_col_end_idx; input_idx += pack_size_, scale_idx += pack_size_) {
                     std::fill_n(zp_t, pack_size_, static_cast<uint8_t>(BitsTraits<qbits>::kMid));
                     std::fill_n(vmin_t, pack_size_, maxf);
                     std::fill_n(vmax_t, pack_size_, minf);
