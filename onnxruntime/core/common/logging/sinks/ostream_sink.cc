@@ -66,7 +66,7 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
 void WOStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
   // operator for formatting of timestamp in ISO8601 format including microseconds
 #if __cplusplus >= 202002L
-  using std::chrono::date::operator<<;
+  using std::chrono::operator<<;
 #else
   using date::operator<<
 #endif
