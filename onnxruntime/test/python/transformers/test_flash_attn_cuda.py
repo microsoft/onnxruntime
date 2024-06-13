@@ -55,10 +55,11 @@ class Config:
         self.head_size = h
 
     def __repr__(self):
+        short_ep = self.ep[:-len("ExecutionProvider")].lower()
         return (
             f"Config(batch_size={self.batch_size}, sequence_length={self.sequence_length}, "
             f"kv_sequence_length={self.kv_sequence_length}, past_sequence_length={self.past_sequence_length}, "
-            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size})"
+            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size}, ep={short_ep})"
         )
 
 
@@ -82,10 +83,11 @@ class PromptConfig:
         self.head_size = h
 
     def __repr__(self):
+        short_ep = self.ep[:-len("ExecutionProvider")].lower()
         return (
             f"PromptConfig(batch_size={self.batch_size}, q_sequence_length={self.q_sequence_length}, "
             f"kv_sequence_length={self.kv_sequence_length}, buffer_sequence_length={self.buffer_sequence_length}, "
-            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size})"
+            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size}, ep={short_ep})"
         )
 
 
@@ -1153,7 +1155,7 @@ def parity_check_mha(
         out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=False)
         out_ref = out_ref.detach().cpu().numpy()
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
 
 
 def parity_check_gqa_prompt(
@@ -1323,10 +1325,14 @@ def parity_check_gqa_prompt(
     out = out.detach().cpu().numpy()
 
     # Make sure past-present buffer updating correctly
-    numpy.testing.assert_allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    numpy.testing.assert_allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
+    numpy.testing.assert_allclose(
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+    )
+    numpy.testing.assert_allclose(
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+    )
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
 
 
 def parity_check_gqa_prompt_no_buff(
@@ -1473,10 +1479,14 @@ def parity_check_gqa_prompt_no_buff(
     out = out.detach().cpu().numpy()
 
     # Make sure past-present buffer updating correctly
-    numpy.testing.assert_allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    numpy.testing.assert_allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
+    numpy.testing.assert_allclose(
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+    )
+    numpy.testing.assert_allclose(
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+    )
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
 
 
 def parity_check_gqa_past(
@@ -1643,10 +1653,14 @@ def parity_check_gqa_past(
     out = out.detach().cpu().numpy()
 
     # Make sure past-present buffer updating correctly
-    numpy.testing.assert_allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    numpy.testing.assert_allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
+    numpy.testing.assert_allclose(
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+    )
+    numpy.testing.assert_allclose(
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+    )
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
 
 
 def parity_check_gqa_past_no_buff(
@@ -1818,7 +1832,7 @@ def parity_check_gqa_past_no_buff(
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
 
 
 def packed_mha_test_cases():
