@@ -28,8 +28,8 @@ steps:
       # ignore BinariesDirectory. BinariesDirectory is used for build output, not for onnxruntime package
       ignoreDirectories:
         '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,
-        $(Build.Repository.LocalPath)/cmake/external/onnx/third_party,
-        $(Build.SourcesDirectory)/cmake/external/onnx/third_party,
+        $(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,
+        $(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,
         $(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,
         $(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,
         $(Build.SourcesDirectory)/onnxruntime-inference-examples,
