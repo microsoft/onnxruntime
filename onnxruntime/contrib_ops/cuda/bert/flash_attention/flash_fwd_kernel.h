@@ -10,8 +10,7 @@
 #endif
 
 #include <cmath>
-#include <cute/algorithm/copy.hpp>
-#include <cute/algorithm/gemm.hpp>
+#include <cute/tensor.hpp>
 
 #include <cutlass/cutlass.h>
 #include <cutlass/array.h>
@@ -98,7 +97,6 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   constexpr int kBlockN = Kernel_traits::kBlockN;
   constexpr int kHeadDim = Kernel_traits::kHeadDim;
   constexpr int kNWarps = Kernel_traits::kNWarps;
-  constexpr int MMA_M = kBlockM / decltype(cute::size<0>(typename Kernel_traits::TiledMma::TiledShape_MNK{}))::value;
 
   const BlockInfo</*Varlen=*/!Is_even_MN> binfo(params, bidb);
   if (m_block * kBlockM >= binfo.actual_seqlen_q || binfo.actual_seqlen_k == 0) return;
