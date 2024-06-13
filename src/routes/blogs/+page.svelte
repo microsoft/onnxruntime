@@ -394,7 +394,7 @@
 			link: 'https://www.linkedin.com/pulse/hcm-sentence-similarity-language-model-using-java-jonathon-palmieri-tdlpc%3FtrackingId=CN2PPVO4Toqh8r6JsAYMIw%253D%253D/?trackingId=ByNomo0pQFKM%2F%2BWEknVs7Q%3D%3D'
 		}
 	];
-	let description = 'ONNX Runtime Blogs - your source for staying updated on the latest ONNX Runtime updated and information.'
+	let description = 'ONNX Runtime Blogs - your source for the latest ONNX Runtime updates and information.'
 	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
 	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
 	let authors = ['']
