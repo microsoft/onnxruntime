@@ -642,7 +642,7 @@ Status FlashAttention(
           sequence_length,
           scale,
           false,  // is causal
-          false  // is bf16
+          false   // is bf16
           ));
 
   DUMP_TENSOR_INIT();

@@ -20,8 +20,10 @@ import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
+
 if platform.system() == "Linux":
     from rotary_flash import apply_rotary_emb
+
 from parameterized import parameterized
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions

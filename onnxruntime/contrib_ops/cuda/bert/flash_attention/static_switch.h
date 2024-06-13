@@ -24,33 +24,33 @@
   }()
 
 #ifdef FLASHATTENTION_DISABLE_ALIBI
-  #define ALIBI_SWITCH(COND, CONST_NAME, ...)   \
-  [&] {                                         \
-    constexpr static bool CONST_NAME = false;   \
-    return __VA_ARGS__();                       \
+#define ALIBI_SWITCH(COND, CONST_NAME, ...)   \
+  [&] {                                       \
+    constexpr static bool CONST_NAME = false; \
+    return __VA_ARGS__();                     \
   }()
 #else
-  #define ALIBI_SWITCH BOOL_SWITCH
+#define ALIBI_SWITCH BOOL_SWITCH
 #endif
 
 #ifdef FLASHATTENTION_DISABLE_UNEVEN_K
-  #define EVENK_SWITCH(COND, CONST_NAME, ...)   \
-  [&] {                                         \
-    constexpr static bool CONST_NAME = true;    \
-    return __VA_ARGS__();                       \
+#define EVENK_SWITCH(COND, CONST_NAME, ...)  \
+  [&] {                                      \
+    constexpr static bool CONST_NAME = true; \
+    return __VA_ARGS__();                    \
   }()
 #else
-  #define EVENK_SWITCH BOOL_SWITCH
+#define EVENK_SWITCH BOOL_SWITCH
 #endif
 
 #ifdef FLASHATTENTION_DISABLE_LOCAL
-  #define LOCAL_SWITCH(COND, CONST_NAME, ...)   \
-  [&] {                                         \
-    constexpr static bool CONST_NAME = false;    \
-    return __VA_ARGS__();                       \
+#define LOCAL_SWITCH(COND, CONST_NAME, ...)   \
+  [&] {                                       \
+    constexpr static bool CONST_NAME = false; \
+    return __VA_ARGS__();                     \
   }()
 #else
-  #define LOCAL_SWITCH BOOL_SWITCH
+#define LOCAL_SWITCH BOOL_SWITCH
 #endif
 
 #define FP16_SWITCH(COND, ...)               \
@@ -64,7 +64,7 @@
     }                                        \
   }()
 
-#define HEADDIM_SWITCH(HEADDIM, ...)   \
+#define HEADDIM_SWITCH(HEADDIM, ...)       \
   [&] {                                    \
     if (HEADDIM <= 32) {                   \
       constexpr static int kHeadDim = 32;  \

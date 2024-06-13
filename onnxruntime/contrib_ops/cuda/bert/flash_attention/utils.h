@@ -144,9 +144,9 @@ template <bool A_in_regs = false, bool B_in_regs = false, typename Tensor0, type
           typename TiledMma, typename TiledCopyA, typename TiledCopyB,
           typename ThrCopyA, typename ThrCopyB>
 __forceinline__ __device__ void gemm(Tensor0& acc, Tensor1& tCrA, Tensor2& tCrB, Tensor3 const& tCsA,
-                            Tensor4 const& tCsB, TiledMma tiled_mma,
-                            TiledCopyA smem_tiled_copy_A, TiledCopyB smem_tiled_copy_B,
-                            ThrCopyA smem_thr_copy_A, ThrCopyB smem_thr_copy_B) {
+                                     Tensor4 const& tCsB, TiledMma tiled_mma,
+                                     TiledCopyA smem_tiled_copy_A, TiledCopyB smem_tiled_copy_B,
+                                     ThrCopyA smem_thr_copy_A, ThrCopyB smem_thr_copy_B) {
   CUTE_STATIC_ASSERT_V(size<1>(tCrA) == size<1>(acc));   // MMA_M
   CUTE_STATIC_ASSERT_V(size<1>(tCrB) == size<2>(acc));   // MMA_N
   CUTE_STATIC_ASSERT_V(size<2>(tCrA) == size<2>(tCrB));  // MMA_K
@@ -179,8 +179,8 @@ __forceinline__ __device__ void gemm(Tensor0& acc, Tensor1& tCrA, Tensor2& tCrB,
 template <typename Tensor0, typename Tensor1, typename Tensor2, typename Tensor3,
           typename TiledMma, typename TiledCopy, typename ThrCopy>
 __forceinline__ __device__ void gemm_rs(Tensor0& acc, Tensor1& tCrA, Tensor2& tCrB, Tensor3 const& tCsB,
-                                      TiledMma tiled_mma, TiledCopy smem_tiled_copy_B,
-                                      ThrCopy smem_thr_copy_B) {
+                                        TiledMma tiled_mma, TiledCopy smem_tiled_copy_B,
+                                        ThrCopy smem_thr_copy_B) {
   CUTE_STATIC_ASSERT_V(size<1>(tCrA) == size<1>(acc));   // MMA_M
   CUTE_STATIC_ASSERT_V(size<1>(tCrB) == size<2>(acc));   // MMA_N
   CUTE_STATIC_ASSERT_V(size<2>(tCrA) == size<2>(tCrB));  // MMA_K
@@ -229,15 +229,14 @@ __forceinline__ __device__ auto convert_layout_acc_Aregs(Layout acc_layout) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Convert acc_layout from (MMA=4, MMA_M, MMA_N) to ((4, 2), MMA_M, MMA_N / 2)
-template<typename Layout>
+template <typename Layout>
 __forceinline__ __device__ auto convert_layout_acc_dropout(Layout acc_layout) {
-    using X = Underscore;
-    static_assert(decltype(size<0>(acc_layout))::value == 4);
-    static_assert(decltype(rank(acc_layout))::value == 3);
-    auto l = logical_divide(acc_layout, Shape<X, X, _2>{});  // (4, MMA_M, (2, MMA_N / 2)))
-    return make_layout(make_layout(get<0>(l), get<2, 0>(l)), get<1>(l), get<2, 1>(l));
+  using X = Underscore;
+  static_assert(decltype(size<0>(acc_layout))::value == 4);
+  static_assert(decltype(rank(acc_layout))::value == 3);
+  auto l = logical_divide(acc_layout, Shape<X, X, _2>{});  // (4, MMA_M, (2, MMA_N / 2)))
+  return make_layout(make_layout(get<0>(l), get<2, 0>(l)), get<1>(l), get<2, 1>(l));
 };
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -302,7 +301,7 @@ __forceinline__ __device__ auto convert_type_relu(Tensor<Engine, Layout> const& 
 template <int N>
 CUTE_HOST_DEVICE void cp_async_wait() {
 #if defined(CUTE_ARCH_CP_ASYNC_SM80_ENABLED)
-  asm volatile("cp.async.wait_group %0;\n" :: "n"(N));
+  asm volatile("cp.async.wait_group %0;\n" ::"n"(N));
 #endif
 }
 
@@ -312,8 +311,8 @@ template <bool Is_even_MN = true, bool Is_even_K = true, bool Clear_OOB_MN = fal
           typename TiledCopy, typename Engine0, typename Layout0, typename Engine1, typename Layout1,
           typename Engine2, typename Layout2, typename Engine3, typename Layout3>
 __forceinline__ __device__ void copy(TiledCopy tiled_copy, Tensor<Engine0, Layout0> const& S,
-                            Tensor<Engine1, Layout1>& D, Tensor<Engine2, Layout2> const& identity_MN,
-                            Tensor<Engine3, Layout3> const& predicate_K, const int max_MN = 0) {
+                                     Tensor<Engine1, Layout1>& D, Tensor<Engine2, Layout2> const& identity_MN,
+                                     Tensor<Engine3, Layout3> const& predicate_K, const int max_MN = 0) {
   CUTE_STATIC_ASSERT_V(rank(S) == Int<3>{});
   CUTE_STATIC_ASSERT_V(rank(D) == Int<3>{});
   CUTE_STATIC_ASSERT_V(size<0>(S) == size<0>(D));  // MMA
