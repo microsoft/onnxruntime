@@ -590,10 +590,12 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   size_t pos = param.find("_");
   std::string input_type = param.substr(pos + 1);
   ASSERT_NE(pos, std::string::npos);
-  std::string cache_type = ToUTF8String(param.substr(0, pos));
-
-  PathString model_name = ORT_TSTR("trt_execution_provider_");
-  model_name += cache_type + "caching_test_" + input_type + ".onnx";
+  std::string cache_type_mbs = param.substr(0, pos);
+  PathString cache_type = ToPathString(cache_type_mbs);
+  std::basic_ostringstream<ORTCHAR_T> oss;
+  oss << ORT_TSTR("trt_execution_provider_") << cache_type << ORT_TSTR("_caching_test_") << ToPathString(input_type)
+      << ORT_TSTR(".onnx");
+  PathString model_name = oss.str();
   std::vector<int> dims;
   if (input_type.compare("dynamic") == 0) {
     dims = {1, -1, -1};  // dynamic shape input
@@ -604,7 +606,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   CreateBaseModel(model_name, cache_type + "cachingtest", dims);
 
   SessionOptions so;
-  so.session_logid = "TensorrtExecutionProvider" + cache_type + "cacheTest";
+  so.session_logid = "TensorrtExecutionProvider" + cache_type_mbs + "cacheTest";
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
@@ -633,7 +635,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
   OrtTensorRTProviderOptionsV2 params;
-  if (cache_type.compare("engine") == 0) {
+  if (cache_type_mbs.compare("engine") == 0) {
     /* Following code block tests the functionality of engine and optimization profile of ORT TRT, including:
      * - engine cache serialization/de-serialization
      * - profile cache serialization/de-serialization
@@ -807,7 +809,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       }
     }
 
-  } else if (cache_type.compare("timing") == 0) {
+  } else if (cache_type_mbs.compare("timing") == 0) {
     /* Following code block tests the functionality of timing cache, including:
      * - timing cache cache serialization/de-serialization
      * - TODO: benefir of usign a timing cache no matter if dynamic / static input
