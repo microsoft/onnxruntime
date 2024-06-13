@@ -546,7 +546,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
 }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
-  PathString model_name = "testdata/trt_plugin_custom_op_test.onnx";
+  PathString model_name = ORT_TSTR("testdata/trt_plugin_custom_op_test.onnx");
   SessionOptions so;
   so.session_logid = "TensorrtExecutionProviderTRTPluginsTest";
   RunOptions run_options;
@@ -575,7 +575,6 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   OrtTensorRTProviderOptionsV2 params;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  std::cout << model_name << std::endl;
   auto status = session_object.Load(model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
@@ -593,7 +592,8 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   ASSERT_NE(pos, std::string::npos);
   std::string cache_type = ToUTF8String(param.substr(0, pos));
 
-  PathString model_name = "trt_execution_provider_" + cache_type + "caching_test_" + input_type + ".onnx";
+  PathString model_name = ORT_TSTR("trt_execution_provider_");
+  model_name += cache_type + "caching_test_" + input_type + ".onnx";
   std::vector<int> dims;
   if (input_type.compare("dynamic") == 0) {
     dims = {1, -1, -1};  // dynamic shape input
