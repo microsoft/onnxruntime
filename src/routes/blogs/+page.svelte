@@ -45,6 +45,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'High performance on-device real-time ML with NimbleEdge, using ONNX Runtime',
+			date: 'June 17th, 2024',
+			blurb:
+				"Using NimbleEdge with ONNX Runtime delivers millisecond latency and minimal resource use, achieving a 15x speedup over cloud methods.",
+			link: 'blogs/nimbleedge-x-onnxruntime',
+			image: 'https://imgly-blog-prod.storage.googleapis.com/2024/06/onnx-runtime-imgly.jpg',
+			imgalt:
+				'Image of a skateboarder with a sky background, with half of the background being alternating grey and white squares indicating it has been removed.'
+		},
+		{
 			title: 'Background Removal in the Browser Using ONNX Runtime with WebGPU',
 			date: 'June 12th, 2024',
 			blurb:
@@ -64,6 +74,10 @@
 			imgalt:
 				'Chart comparing model size (in GB) of ONNX Phi-3-medium between PyTorch and ONNX Runtime'
 		},
+		
+		
+	];
+	let blogs = [
 		{
 			title: 'Enjoy the Power of Phi-3 with ONNX Runtime on your device',
 			date: 'May 20th, 2024',
@@ -73,11 +87,7 @@
 			image: Phi3OnDeviceImage,
 			imgalt:
 				'Chart comparing model size (in GB) of ONNX Phi-3-mini for web and mobile with original Phi-3-mini'
-		},
-		
-	];
-	let blogs = [
-		{
+		},{
 			title: 'ONNX Runtime supports Phi-3 mini models across platforms and devices',
 			date: 'April 22nd, 2024',
 			blurb:
