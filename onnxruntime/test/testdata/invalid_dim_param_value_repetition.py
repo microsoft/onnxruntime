@@ -4,11 +4,8 @@ Example usage:
 python invalid_dim_param_value_repetition.py
 """
 
-import sys
-
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper
 
 
 def order_repeated_field(repeated_proto, key_name, order):
@@ -17,7 +14,7 @@ def order_repeated_field(repeated_proto, key_name, order):
 
 
 def make_node(op_type, inputs, outputs, name=None, doc_string=None, domain=None, **kwargs):
-    node = helper.make_node(op_type, inputs, outputs, name, doc_string, domain, **kwargs)
+    node = onnx.helper.make_node(op_type, inputs, outputs, name, doc_string, domain, **kwargs)
     if doc_string == "":
         node.doc_string = ""
     order_repeated_field(node.attribute, "name", kwargs.keys())
@@ -25,14 +22,14 @@ def make_node(op_type, inputs, outputs, name=None, doc_string=None, domain=None,
 
 
 def make_graph(*args, doc_string=None, **kwargs):
-    graph = helper.make_graph(*args, doc_string=doc_string, **kwargs)
+    graph = onnx.helper.make_graph(*args, doc_string=doc_string, **kwargs)
     if doc_string == "":
         graph.doc_string = ""
     return graph
 
 
-model = helper.make_model(
-    opset_imports=[helper.make_operatorsetid("", 11)],
+model = onnx.helper.make_model(
+    opset_imports=[onnx.helper.make_operatorsetid("", 11)],
     ir_version=5,
     producer_name="skl2onnx",
     producer_version="1.5.9999",
@@ -41,14 +38,14 @@ model = helper.make_model(
     graph=make_graph(
         name="OnnxIdentity",
         inputs=[
-            helper.make_tensor_value_info("X1", TensorProto.FLOAT, shape=["Symbolic", "Symbolic"]),
-            helper.make_tensor_value_info("X2", TensorProto.FLOAT, shape=["Symbolic", "Symbolic"]),
+            onnx.helper.make_tensor_value_info("X1", onnx.TensorProto.FLOAT, shape=["Symbolic", "Symbolic"]),
+            onnx.helper.make_tensor_value_info("X2", onnx.TensorProto.FLOAT, shape=["Symbolic", "Symbolic"]),
         ],
         outputs=[
-            helper.make_tensor_value_info("Y", TensorProto.FLOAT, shape=[None, None]),
+            onnx.helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, shape=[None, None]),
         ],
         initializer=[
-            numpy_helper.from_array(np.array([0.10000000149011612], dtype="float32"), name="Addcst"),
+            onnx.numpy_helper.from_array(np.array([0.10000000149011612], dtype="float32"), name="Addcst"),
         ],
         nodes=[
             # take an input. Add to create a local output buffer for O01.

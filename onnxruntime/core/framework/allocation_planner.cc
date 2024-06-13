@@ -469,7 +469,7 @@ class PlannerImpl {
     */
   }
 
-  static bool OutputHasConsumerNode(const Node& node, size_t output_idx) {
+  static bool OutputHasConsumerNode(const Node& node, int output_idx) {
     // there will be an edge to all consumer nodes.
     // if consumed in a subgraph the edge will be to an implicit input of the node containing the subgraph.
     return std::any_of(node.OutputEdgesBegin(), node.OutputEdgesEnd(),
@@ -1465,7 +1465,7 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
         } else if (!context_->IsParallelExecutionEnabled() &&
-                   OutputHasConsumerNode(*pnode, output_arg_def_index) &&
+                   OutputHasConsumerNode(*pnode, static_cast<int>(output_arg_def_index)) &&
                    FindReusableTensor(*node_output, &reused)) {
           // The check that OutputHasConsumerNode is to handle an edge case where a node produces a value that is
           // not consumed by any other nodes. If we set it to kReuse the buffer will be freed prematurely as the
