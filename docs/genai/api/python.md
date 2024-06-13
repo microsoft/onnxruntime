@@ -67,6 +67,10 @@ Return the device type that the model has been configured to run on.
 onnxruntime_genai.Model.device_type
 ```
 
+#### Returns
+
+`str`: a string describing the device that the loaded model will run on
+
 
 ## Tokenizer class
 
@@ -267,11 +271,26 @@ onnxruntime_genai.Generator.compute_logits()
 
 ### Get output
 
-Returns the output logits of the model.
+Returns an output of the model.
 
 ```python
-onnxruntime_genai.Generator.get_output()
+onnxruntime_genai.Generator.get_output(str: name) -> numpy.ndarray
 ```
+
+#### Parameters
+- `name`: the name of the model output
+
+#### Returns
+- `numpy.ndarray`: a multi dimensional array of the model outputs. The shape of the array is shape of the output.
+
+#### Example
+
+The following code returns the output logits of a model.
+
+```python
+logits = generator.get_output("logits")
+```
+
 
 ### Generate next token
 
