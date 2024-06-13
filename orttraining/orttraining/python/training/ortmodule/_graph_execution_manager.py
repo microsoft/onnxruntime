@@ -125,6 +125,10 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._initialize_graph_transition_manager()
 
+        # Will be reset everytime we re-initialize the graph builder.
+        # Be noted, we will never enable this feature for inference mode.
+        self._mem_efficient_grad_management_is_enabled = False
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -351,12 +355,8 @@ class GraphExecutionManager(GraphExecutionInterface):
            enable sparsity-based optimization.
 
         """
-        detected_device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
-            inputs, kwargs
-        )
-
         if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
-            self._append_pull_weight_trigger_as_input(kwargs, detected_device)
+            self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
         if (
             self._runtime_inspector.memory_ob.is_enabled()

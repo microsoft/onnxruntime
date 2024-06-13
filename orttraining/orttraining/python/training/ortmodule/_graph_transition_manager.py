@@ -675,7 +675,11 @@ class GraphTransitionManager:
 
                 # Override the options if model is not modified.
 
-                post_processed_model = post_processing_enable_mem_efficient_training(
+                (
+                    stage3_param_handle._mem_efficient_grad_management_is_enabled,
+                    post_processed_model,
+                    stage3_param_handle._param_trigger_grad,
+                ) = post_processing_enable_mem_efficient_training(
                     post_processed_model, flatten_module.named_parameters(), parameter_not_as_graph_input_names
                 )
 
