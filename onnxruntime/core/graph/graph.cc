@@ -3258,6 +3258,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
   // find all subgraphs including nested ones.
   std::vector<Graph*> all_subgraphs;
   FindAllSubgraphs(all_subgraphs);
+  LOGS(logger_, VERBOSE) << "Done FindAllSubgraphs";
 
   bool subgraphs_need_resolve = std::any_of(all_subgraphs.cbegin(), all_subgraphs.cend(),
                                             [](const Graph* graph) {
@@ -3271,22 +3272,26 @@ Status Graph::Resolve(const ResolveOptions& options) {
   // init all graph/subgraphs. non-recursive so call via ForThisAndAllSubgraphs.
   auto init_func = [](Graph& graph) { return graph.InitInputsInitializersOutputs(); };
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, init_func));
+  LOGS(logger_, VERBOSE) << "Done graph InitInputsInitializersOutputs";
 
   std::unordered_set<std::string> outer_scope_node_args_consumed;
 
   // recursively build connections between nodes in this graph and all subgraphs
   ORT_RETURN_IF_ERROR(BuildConnections(outer_scope_node_args_consumed));
+  LOGS(logger_, VERBOSE) << "Done BuildConnections";
   ORT_ENFORCE(outer_scope_node_args_consumed.empty(),
               "Shouldn't be possible to have NodeArgs that haven't been handled already.");
 
   // topological sort of this and any subgraphs is non-recursive
   auto topo_sort_func = [](Graph& graph) { return graph.PerformTopologicalSortAndCheckIsAcyclic(); };
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, topo_sort_func));
+  LOGS(logger_, VERBOSE) << "Done graph PerformTopologicalSortAndCheckIsAcyclic";
 
   // type/shape validation and inferencing on this and any subgraphs
   // recurses into subgraphs via the ONNX checker, which descends into the GraphProto in node attributes
   // which define a subgraph.
   ORT_RETURN_IF_ERROR(PerformTypeAndShapeInferencing(options));
+  LOGS(logger_, VERBOSE) << "Done PerformTypeAndShapeInferencing";
 
   // perform the final steps for this graph and all subgraphs
   auto finalize_func = [&options](Graph& graph) {
@@ -3310,6 +3315,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
             return Status::OK(); };
 
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
+  LOGS(logger_, VERBOSE) << "Done graph finalization";
 
   return Status::OK();
 }
