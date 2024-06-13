@@ -57,8 +57,17 @@ struct OrtVitisAIEpAPI {
     if (handle_)
       return;
     auto& env = Provider_GetHost()->Env__Default();
+#ifdef _WIN32
+    // this dll is already linked to the executable, normally a test program
+    handle_ = reinterpret_cast<void*>(GetModuleHandle(TEXT("onnxruntime_vitisai_ep.dll")));
+    if (!handle_) {
+      auto full_path = env.GetRuntimePath() + PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
+      ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, true, &handle_));
+    }
+#else
     auto full_path = env.GetRuntimePath() + PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
     ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, true, &handle_));
+#endif
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "initialize_onnxruntime_vitisai_ep", (void**)&initialize_onnxruntime_vitisai_ep));
     auto status1 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_options", (void**)&compile_onnx_model_with_options);
     auto status2 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep", (void**)&compile_onnx_model_3);
