@@ -168,6 +168,7 @@ namespace Dml
 
                 // Populate input bindings for operator initialization
                 const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(m_indexedSubGraph->GetMetaDef()->inputs.size());
+                const uint32_t fusedNodeOutputCount = gsl::narrow_cast<uint32_t>(m_indexedSubGraph->GetMetaDef()->outputs.size());
                 std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
                 std::vector<uint8_t> isInputsUploadedByDmlEP(fusedNodeInputCount);
                 auto providerImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
@@ -219,7 +220,8 @@ namespace Dml
                 // Compile the operator
                 m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
                     graphDesc,
-                    *m_indexedSubGraph,
+                    fusedNodeInputCount,
+                    fusedNodeOutputCount,
                     providerImpl,
                     &serializedGraphInputIndexToSubgraphInputIndex,
                     &serializedGraphLargeConstantNameToSubgraphInputIndex);

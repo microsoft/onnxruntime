@@ -188,6 +188,7 @@ namespace Dml
 
                     // Create a map of which inputs are uploaded by the DML EP
                     const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->inputs.size());
+                    const uint32_t fusedNodeOutputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->outputs.size());
                     std::vector<uint8_t> isInputsUploadedByDmlEP(fusedNodeInputCount);
                     for (uint32_t index = 0; index < fusedNodeInputCount; ++index)
                     {
@@ -261,7 +262,8 @@ namespace Dml
                     // Compile the operator
                     auto compiledPartition = DmlGraphFusionHelper::TryCreateCompiledOperator(
                         graphDesc,
-                        indexedSubGraph,
+                        fusedNodeInputCount,
+                        fusedNodeOutputCount,
                         m_providerImpl,
                         &serializedGraphInputIndexToSubgraphInputIndex,
                         &serializedGraphLargeConstantNameToSubgraphInputIndex);
