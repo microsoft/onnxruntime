@@ -55,7 +55,7 @@ class Config:
         self.head_size = h
 
     def __repr__(self):
-        short_ep = self.ep[:-len("ExecutionProvider")].lower()
+        short_ep = self.ep[: -len("ExecutionProvider")].lower()
         return (
             f"Config(batch_size={self.batch_size}, sequence_length={self.sequence_length}, "
             f"kv_sequence_length={self.kv_sequence_length}, past_sequence_length={self.past_sequence_length}, "
@@ -83,7 +83,7 @@ class PromptConfig:
         self.head_size = h
 
     def __repr__(self):
-        short_ep = self.ep[:-len("ExecutionProvider")].lower()
+        short_ep = self.ep[: -len("ExecutionProvider")].lower()
         return (
             f"PromptConfig(batch_size={self.batch_size}, q_sequence_length={self.q_sequence_length}, "
             f"kv_sequence_length={self.kv_sequence_length}, buffer_sequence_length={self.buffer_sequence_length}, "
